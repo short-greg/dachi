@@ -31,7 +31,7 @@ class Const(T):
         return self._value
 
     def probe(self, by: typing.Dict['Var', typing.Any]=None, stored: typing.Dict[str, typing.Any]=None):
-        pass
+        return self._value
 
 
 class Var(T):
@@ -59,7 +59,7 @@ class Var(T):
         return val        
 
     def probe(self, by: typing.Dict['Var', typing.Any]=None, stored: typing.Dict[str, typing.Any]=None):
-        pass
+        return self.validate(by)
 
 
 class Process(T):
@@ -78,7 +78,7 @@ class Process(T):
     def probe(self, by: typing.Dict[Var, typing.Any]=None, stored: typing.Dict[str, typing.Any]=None):
 
         if self._name in stored:
-            return
+            return stored[self._name]
         args = []
         kwargs = {}
         for arg in self._args:
@@ -121,23 +121,76 @@ def get_arg(arg, is_variable: bool=False):
 
 class Field(object):
 
-    def __init__(self, name: str, dtype: str, default: typing.Union[typing.Any, typing.Callable[[], typing.Any]]=None):
+    def __init__(self, name: str, dtype: str=None, default: typing.Union[typing.Any, typing.Callable[[], typing.Any]]=None):
 
         self.name = name
         self.dtype = dtype
         self.default = default
 
+    @classmethod
+    def factory(self, f) -> 'Field':
+        if isinstance(f, Field):
+            return Field(f.name, f.dtype, f.default)
+        if isinstance(f, str):
+            return Field(f)
+        if isinstance(f, typing.Iterable):
+            return Field(*f)
+        raise ValueError(f'Argument f must be of type Field, string or tuple')
 
-class Fields(object):
+
+class FieldList(object):
 
     def __init__(self, fields: typing.List[Field]):
 
-        self.fields = fields
+        self.fields = [Field.factory(field) for field in fields]
+
+
+class TList(object):
+
+    def __init__(self, trans: typing.List[typing.Union[typing.Tuple[T, str], T]]):
+
+        self._trans: typing.List[T, str] = []
+        for t in trans:
+            if isinstance(t, T):
+                pass
+            else:
+                pass
+
+    @property
+    def fields(self) -> 'FieldList':
+
+        return [
+            Field(t.name, t.dtype, t.value) for t in self._trans
+        ]
+
+    def probe(self, by: typing.Dict[Var, str], stored: typing.List[str]):
+        
+        results = []
+        for t, key in self._trans:
+            result = t.probe(by, stored)
+            if key is not None:
+                result = [result[key]]
+            results.extend(result)
+        return tuple(results)
+
+
+def to_by(trans: typing.List[Var], args: typing.List[str], kwargs: typing.Dict[str, typing.Any]):
+    
+    i = 0
+    by = {}
+    for t, arg in zip(trans, args):
+        by[t] = arg
+        i += 1
+    for k, arg in kwargs.items():
+        if k in by:
+            raise ValueError(f'Key-value argument {k} has already been defined')
+        by[k] = arg
+    return by
 
 
 class Node(ABC):
 
-    outputs = Fields([])
+    outputs = FieldList([])
 
     def __init__(self, name: str):
         
@@ -176,29 +229,20 @@ class Node(ABC):
 class Adapt(Node):
 
     def __init__(
-        self, name: str, inputs: typing.List[Var],
-        outputs: typing.List[typing.Tuple[T, str]]
+        self, name: str, inputs: typing.List[Var], outputs: TList
     ):
         super().__init__(name)
-        
         self._inputs = inputs
         self._outputs = outputs
+    
+    @property
+    def outputs(self) -> FieldList:
+        return self._outputs.fields
 
     def op(self, *args, **kwargs) -> typing.Any:
         
-        # convert inputs / outputs
-        # get the "by"
-
-        # by = self._inputs.to_by(args, kwargs)
-        by = {}
-        stored = {}
-        return tuple(
-            self.outputs.get(t.probe(stored, by), k)
-            for t, k in self._outputs
-        )
-        
-
-# I need a way to spawn as well
+        by = to_by(self._inputs, args, kwargs)
+        return self._outputs.probe(by)
 
 
 class AppendStr(Node):
