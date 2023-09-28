@@ -19,6 +19,10 @@ class T(ABC):
     def probe(self, by: typing.Dict['Var', typing.Any]=None, stored: typing.Dict[str, typing.Any]=None):
         pass
 
+    @abstractmethod
+    def clone(self) -> 'T':
+        pass
+
 
 class Const(T):
 
@@ -32,6 +36,12 @@ class Const(T):
 
     def probe(self, by: typing.Dict['Var', typing.Any]=None, stored: typing.Dict[str, typing.Any]=None):
         return self._value
+
+    # TODO: use "deep copy?"
+    def clone(self) -> 'Const':
+        return Const(
+            self.name, self._value
+        )
 
 
 class Var(T):
@@ -61,6 +71,11 @@ class Var(T):
     def probe(self, by: typing.Dict['Var', typing.Any]=None, stored: typing.Dict[str, typing.Any]=None):
         return self.validate(by)
 
+    def clone(self) -> 'Var':
+        return Var(
+            self.name, self.dtype, self._default
+        )
+
 
 class Process(T):
 
@@ -87,27 +102,12 @@ class Process(T):
             kwargs[k] = arg.probe(by, stored)
         stored[self._name] = self._node(*args, **kwargs)
         return stored[self._name]
-        #     if isinstance(arg, Process):
-        #         arg._probe_helper(stored, by)
-        #         arg = arg[arg._name]
-        #     elif isinstance(arg, Var):
-        #         arg = arg.validate(by)
-        #     args.append(arg)
-        # for k, arg in self._kwargs.items():
-        #     if isinstance(arg, Process):
-        #         arg.probe(by)
-        #         arg = arg[arg._name]
-        #     elif isinstance(arg, Var):
-                
-        #         arg = arg.validate(by)
-        #     kwargs[k] = arg
 
-    # def probe(self, by: typing.Dict[Var, typing.Any]=None, stored: typing.Dict[str, typing.Any]=None):
-        
-    #     by = by or {}
-    #     stored = stored or {}
-
-    #     return self._probe_helper(by, stored)
+    # TODO: Use deepcopy?
+    def clone(self) -> 'Process':
+        return Process(
+            self._node, self._args, self._kwargs
+        )
 
 
 def get_arg(arg, is_variable: bool=False):
@@ -144,34 +144,33 @@ class FieldList(object):
 
         self.fields = [Field.factory(field) for field in fields]
 
+    def index(self, name: str) -> int:
 
-class TList(object):
+        for i, field in enumerate(self.fields):
+            if field.name == name:
+                return i
+        raise ValueError(f'No field named {name} in the Field List')
 
-    def __init__(self, trans: typing.List[typing.Union[typing.Tuple[T, str], T]]):
 
-        self._trans: typing.List[T, str] = []
-        for t in trans:
-            if isinstance(t, T):
-                pass
-            else:
-                pass
+def probe_ts(ts: typing.List[typing.Union[T, typing.Tuple[T, int]]], by: typing.Dict[Var, str], stored: typing.List[str]):
+    
+    by = by or {}
+    stored = stored or {}
 
-    @property
-    def fields(self) -> 'FieldList':
+    results = []
+    for t in ts:
+        if isinstance(t, tuple):
+            t, idx = t
+        else:
+            idx = None
+        result = t.probe(by, stored)
+        if isinstance(result, typing.Iterable):
+            if idx is None:
+                raise ValueError(f'Index must be specified for {t.name}')
+            result = result[idx]
+        results.append(result)
 
-        return [
-            Field(t.name, t.dtype, t.value) for t in self._trans
-        ]
-
-    def probe(self, by: typing.Dict[Var, str], stored: typing.List[str]):
-        
-        results = []
-        for t, key in self._trans:
-            result = t.probe(by, stored)
-            if key is not None:
-                result = [result[key]]
-            results.extend(result)
-        return tuple(results)
+    return tuple(results)
 
 
 def to_by(trans: typing.List[Var], args: typing.List[str], kwargs: typing.Dict[str, typing.Any]):
@@ -186,6 +185,11 @@ def to_by(trans: typing.List[Var], args: typing.List[str], kwargs: typing.Dict[s
             raise ValueError(f'Key-value argument {k} has already been defined')
         by[k] = arg
     return by
+
+
+# TODO: Figure out how to implement
+def traverse():
+    pass
 
 
 class Node(ABC):
@@ -223,13 +227,25 @@ class Node(ABC):
         if isinstance(result, tuple):
             return tuple(Const(self._name, result_i) for result_i in result)
         return Const(self._name, result)
+    
+    @abstractmethod
+    def clone(self) -> 'Node':
+        pass
 
 
-# TODO: Think of how to implement this
-class Adapt(Node):
+class Tako(Node):
+    
+    @abstractmethod
+    def traverse(self, **kwargs) -> typing.Iterator[T]:
+        pass
+
+
+
+# TODO: FINISH!
+class Adapt(Tako):
 
     def __init__(
-        self, name: str, inputs: typing.List[Var], outputs: TList
+        self, name: str, inputs: typing.List[Var], outputs: typing.List[typing.Union[typing.Tuple[T, int], T]]
     ):
         super().__init__(name)
         self._inputs = inputs
@@ -242,7 +258,11 @@ class Adapt(Node):
     def op(self, *args, **kwargs) -> typing.Any:
         
         by = to_by(self._inputs, args, kwargs)
-        return self._outputs.probe(by)
+        return probe_ts(self._outputs, by)
+    
+    def traverse(self, **kwargs) -> typing.Iterator[T]:
+        # create a traverse method
+        yield None
 
 
 class AppendStr(Node):
