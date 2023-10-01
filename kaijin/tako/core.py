@@ -137,6 +137,8 @@ class Node(ABC):
         if is_variable:
             return Process(self, args, op_kwargs)
 
+        args = [arg.value if isinstance(arg, T) else arg for arg in args]
+        kwargs = {k: arg.value if isinstance(arg, T) else arg for k, arg in kwargs.items()}
         result = self.op(*args, **kwargs)
         if isinstance(result, typing.Tuple):
             return tuple(Output(self._name, result_i, self) for result_i in result)
@@ -301,7 +303,6 @@ class Process(T):
             args.append(arg)
         for k, arg in self._kwargs.items():
             if isinstance(arg, T):
-                print(by)
                 arg = arg.probe(by, stored)
             kwargs[k] = arg
         stored[self._name] = self._node(*args, **kwargs)
@@ -397,14 +398,6 @@ class Adapter(Node):
         
         by = to_by(self._inputs, args, kwargs)
         return probe_ts(self._outputs, by)
-
-
-class AppendStr(Node):
-
-    def op(self, x: str="hi") -> T:
-        return x + "_result"
-
-# t = Node(x=Var('x', str))
 
 
 """

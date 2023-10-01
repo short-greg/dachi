@@ -122,6 +122,15 @@ class TestNode:
         assert r1 == 3
         assert r2 == 4
 
+    def test_node_outputs_correct_value_in_chain_with_no_vars(self):
+
+        node1 = DummyNode("Node1")
+        node2 = DummyNode2("Node2")
+        y1 = node1()
+        r1, r2 = node2(y1)
+        assert r1.value == 4
+        assert r2.value == 5
+
 
 class TestAdapter:
 
