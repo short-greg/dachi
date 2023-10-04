@@ -203,18 +203,6 @@ class Output(T):
     def node(self) -> 'Node':
         return self._node
 
-    # def probe(self, by: typing.Dict['Var', typing.Any]=None, stored: typing.Dict[str, typing.Any]=None) -> typing.Any:
-    #     """
-
-    #     Args:
-    #         by (typing.Dict[Var, typing.Any], optional): The inputs used to retrieve. Defaults to None.
-    #         stored (typing.Dict[str, typing.Any], optional): The currently stored values. Defaults to None.
-
-    #     Returns:
-    #         typing.Any: The result of the operation
-    #     """
-    #     return self._value
-
     # TODO: use "deep copy?"
     def clone(self) -> 'Output':
         return Output(
@@ -292,18 +280,6 @@ class Var(T):
         if self.dtype is not None and not isinstance(val, self.dtype):
             raise ValueError(f'Value must be of dtype {self.dtype}')
         return val        
-
-    # def probe(self, by: typing.Dict['Var', typing.Any]=None, stored: typing.Dict[str, typing.Any]=None) -> typing.Any:
-    #     """
-
-    #     Args:
-    #         by (typing.Dict[Var, typing.Any], optional): . Defaults to None.
-    #         stored (typing.Dict[str, typing.Any], optional): . Defaults to None.
-
-    #     Returns:
-    #         typing.Any: The result of the probe
-    #     """
-    #     return self.validate(by)
 
     def clone(self) -> 'Var':
         return Var(
@@ -396,49 +372,10 @@ class Process(T):
             kwargs[k] = arg
         if evaluate:
             result = self, self._node(*args, **kwargs)
-
-            # if isinstance(result[1].value, typing.Iterable):
-            #     result = (result[0], tuple(r_i for r_i in result[1].value))
-            # else:
-            #     result = result[0], result[1].value
-            # result = stored[self._name]
-            # if isinstance(result, typing.Iterable):
-            #     result = tuple(r_i.value for r_i in result)
-            # yield self, result.value
         else:
             result = self
         stored[self._name] = result
         yield result
-
-    # def probe(self, by: typing.Dict[Var, typing.Any]=None, stored: typing.Dict[str, typing.Any]=None) -> typing.Any:
-    #     """
-
-    #     Args:
-    #         by (typing.Dict[Var, typing.Any], optional): _description_. Defaults to None.
-    #         stored (typing.Dict[str, typing.Any], optional): _description_. Defaults to None.
-
-    #     Returns:
-    #         typing.Any: The result of the probe
-    #     """
-    #     by = by or {}
-    #     stored = stored or {}
-    #     if self._name in stored:
-    #         return stored[self._name]
-    #     args = []
-    #     kwargs = {}
-    #     for arg in self._args:
-    #         if isinstance(arg, T):
-    #             arg = arg.probe(by, stored)
-    #         args.append(arg)
-    #     for k, arg in self._kwargs.items():
-    #         if isinstance(arg, T):
-    #             arg = arg.probe(by, stored)
-    #         kwargs[k] = arg
-    #     stored[self._name] = self._node(*args, **kwargs)
-    #     result = stored[self._name]
-    #     if isinstance(result, typing.Iterable):
-    #         return tuple(r_i.value for r_i in result)
-    #     return result.value
 
     def clone(self) -> 'Process':
         """
