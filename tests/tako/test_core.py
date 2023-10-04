@@ -87,7 +87,6 @@ class TestProcess:
         process = tako.Process(node, [var])
 
         result = process.value
-        print(result)
         assert result[0] == 3
         assert result[1] == 4
 
@@ -101,7 +100,6 @@ class TestProcess:
         process = process.clone()
 
         result = process.value
-        print(result)
         assert result[0] == 3
         assert result[1] == 4
 
