@@ -2,6 +2,12 @@ from abc import abstractmethod, ABC
 import typing
 
 
+def _is_function(f):
+
+    f_type = type(f)
+    return f_type == type(_is_function) or f_type == type(hasattr)
+
+
 class T(ABC):
     """Base transmission class"""
 
@@ -63,6 +69,8 @@ class T(ABC):
 
 
 class Field(object):
+    """Specify the fields for a node
+    """
 
     def __init__(self, name: str, dtype: str=None, default: typing.Union[typing.Any, typing.Callable[[], typing.Any]]=None):
         """Create a field object
@@ -120,6 +128,8 @@ class FieldList(object):
 
 
 class Node(ABC):
+    """
+    """
 
     outputs = FieldList([])
 
@@ -135,6 +145,7 @@ class Node(ABC):
     def name(self) -> str:
         return self._name
 
+    @abstractmethod
     def op(self) -> typing.Any:
         """The operation for the node. 
 
@@ -143,7 +154,10 @@ class Node(ABC):
         """
         pass
 
-    def __call__(self, *args, **kwargs) -> typing.Union[T, typing.Tuple[T], typing.Any, typing.Tuple[typing.Any]]:
+    def __call__(self, *args, **kwargs) -> typing.Any:
+        return self.op(*args, **kwargs)
+
+    def link(self, *args, **kwargs) -> typing.Union[T, typing.Tuple[T], typing.Any, typing.Tuple[typing.Any]]:
         """Use for transmissions. This wraps the operation
 
         Returns:
@@ -233,30 +247,18 @@ class Output(T):
         yield result
 
 
-class F(object):
-
-    def __init__(self, f: typing.Callable[[], typing.Any]):
-        """Create a default function
-
-        Args:
-            f (typing.Callable[[], typing.Any]): The function to call for default
-        """
-        self.f = f
-
-    @property
-    def value(self):
-        return self.f()
- 
-
 class Var(T):
+    """Create a variable transmission that will output a value to send to nodes
+    """
 
-    def __init__(self, name: str, dtype: str=None, default: typing.Union[typing.Any, F]=None):
+    def __init__(self, name: str, dtype: str=None, default:typing.Any=None):
         """
 
         Args:
             name (str): Name of the variable
             dtype (str, optional): The type of the variable. Defaults to None.
-            default (_type_, optional): Default variable for the variable. Defaults to None.
+            default (optional): Default variable for the variable. Defaults to None. If it is of type function or
+             builtin_function_or_method it will be called
         """
         super().__init__(name)
         self.dtype = dtype
@@ -264,14 +266,34 @@ class Var(T):
 
     @property
     def value(self) -> typing.Any:
-        if isinstance(self._default, F):
-            return self._default.value
+        """
+        Returns:
+            typing.Any: The default value for the var
+        """
+        if _is_function(self._default):
+            return self._default()
         return self._default
 
     def set(self, default):
+        """
+
+        Args:
+            default: Set the default value for the var
+        """
         self._default = default
 
-    def validate(self, by: typing.Dict['Var', typing.Any]):
+    def validate(self, by: typing.Dict['Var', typing.Any]) -> typing.Any:
+        """Validate the value in by
+
+        Args:
+            by (typing.Dict[Var, typing.Any]): List of variables and their values
+
+        Raises:
+            ValueError: if the value is not is not valid
+
+        Returns:
+            typing.Any
+        """
 
         try:
             val = by[self]
@@ -311,7 +333,7 @@ class Var(T):
 
 
 class Process(T):
-    """Define a graph of nodes. 
+    """
     """
 
     def __init__(self, node: 'Node', args: typing.List=None, kwargs: typing.Dict=None):
