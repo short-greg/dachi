@@ -190,6 +190,99 @@ class Node(ABC):
         return self.__class__(
             self.name
         )
+    
+
+class NodeFunc(Node):
+
+    def __init__(self, name: str, f, inputs: typing.List[Field], outputs: typing.List[Field]):
+        super().__init__(name)
+        self._inputs = inputs
+        self._outputs = outputs
+        self._f = f
+
+    def op(self, *args, **kwargs) -> typing.Any:
+        return super().op()
+
+    @property
+    def outputs(self) -> FieldList:
+
+        return self._outputs
+
+
+# def __init__(self, name: str, inputs: typing.List[Field], outputs: typing.List[Field]):
+#     super().__init__(name)
+#     self._inputs = inputs
+#     self._outputs = outputs
+
+class NodeMethod(Node):
+
+    def __init__(self, obj, f, inputs: typing.List[Field], outputs: typing.List[Field]):
+
+        super().__init__(f'{obj.__name__}_{f.__name__}')
+        self._obj = obj
+        self._f = f
+        self._inputs = inputs
+        self._outputs = outputs
+
+    def op(self, *args, **kwargs) -> typing.Any:
+        
+        return self._f(self._obj, *args, **kwargs)
+        
+
+class NodeFunc(Node):
+
+    def __init__(self, f, inputs: typing.List[Field], outputs: typing.List[Field]):
+        
+        super().__init__(name=f.__name__)
+        self.f = f
+        self._inputs = inputs
+        self._outputs = outputs
+
+    def op(self, *args, **kwargs) -> typing.Any:
+        
+        return self.f(
+            *args, **kwargs
+        )
+
+
+def nodemethod(inputs: typing.List[Field], outputs: typing.List[Field]):
+
+    def _(f):
+        node = None
+
+        def _(self, *args, get_node: bool=False, **kwargs):
+            nonlocal node
+
+            if node is None:
+                node = NodeMethod(
+                    self, f, inputs, outputs
+                )
+            if get_node:
+                if len(args) != 0 or len(kwargs) != 0:
+                    raise ValueError('Must not pass in args or kwargs if getting the node.')
+                return node
+            
+            return node(*args, **kwargs)
+        return _
+
+
+
+def nodefunc(inputs: typing.List[Field], outputs: typing.List[Field]):
+
+    def _(f):
+
+        return NodeFunc(
+            f, inputs, outputs
+        )
+
+    
+# class Ex(object):
+
+#     @nodemethod
+#     def t(self):
+#         print('t')
+
+# ex = Ex()
 
 
 class Output(T):
@@ -470,11 +563,6 @@ def to_by(trans: typing.List[Var], args: typing.List[str], kwargs: typing.Dict[s
     return by
 
 
-# TODO: Figure out how to implement
-def traverse():
-    pass
-
-
 class Tako(Node):
     
     @abstractmethod
@@ -485,42 +573,6 @@ class Tako(Node):
     def op(self, *args, **kwargs) -> typing.Any:
         pass
 
-
-class Adapter(Node):
-
-    def __init__(
-        self, name: str, inputs: typing.List[Var], outputs: typing.List[typing.Union[typing.Tuple[T, int], T]]
-    ):
-        """Instantiate a node which adaptas
-
-        Args:
-            name (str): Name of the Adapter
-            inputs (typing.List[Var]): Inputs 
-            outputs (typing.List[typing.Union[typing.Tuple[T, int], T]]): _description_
-        """
-        super().__init__(name)
-        self._inputs = inputs
-        self._outputs = outputs
-        fields = []
-        for output in outputs:
-            if isinstance(output, tuple):
-                output = output[0]
-            fields.append(Field(output.name, default=output.value))
-        self._output_fields = FieldList(fields)
-    
-    @property
-    def outputs(self) -> FieldList:
-        """Retrieve the fields
-
-        Returns:
-            FieldList: 
-        """
-        return self._output_fields
-
-    def op(self, *args, **kwargs) -> typing.Any:
-        
-        by = to_by(self._inputs, args, kwargs)
-        return probe_ts(self._outputs, by)
 
 
 """
