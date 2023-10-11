@@ -209,11 +209,6 @@ class NodeFunc(Node):
         return self._outputs
 
 
-# def __init__(self, name: str, inputs: typing.List[Field], outputs: typing.List[Field]):
-#     super().__init__(name)
-#     self._inputs = inputs
-#     self._outputs = outputs
-
 class NodeMethod(Node):
 
     def __init__(self, obj, f, inputs: typing.List[Field], outputs: typing.List[Field]):
