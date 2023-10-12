@@ -2,8 +2,10 @@ import chromadb
 import dbm
 from chromadb.config import Settings
 from .. import tako
-from ..tako import nodemethod, Field, FieldList
+from ..tako import nodemethod, Field, FieldList, nodefunc
 from chromadb.utils import embedding_functions
+import openai
+
 openai_ef = embedding_functions.OpenAIEmbeddingFunction(
                 model_name="text-embedding-ada-002"
             )
@@ -38,31 +40,36 @@ class ChromaDBIndex:
     def __init__(self):
 
         client = chromadb.Client(
-            Settings(chroma_db_impl="duckdb+parquet",
-            persist_directory="db/")
+            # Settings(chroma_db_impl="duckdb+parquet", persist_directory="db/")
         )
         students_embeddings = openai_ef([student_info, club_info, university_info])
 
-        collection = client.create_collection(name="Students")
-        collection.add(
-            embeddings = students_embeddings,
-            documents = [student_info, club_info, university_info],
-            metadatas = [{"source": "student info"},{"source": "club info"},{'source':'university info'}],
-            ids = ["id1", "id2", "id3"]
-        )
+        try:
+            collection = client.get_collection(name="Students")
+        except ValueError:
+            collection = client.create_collection(name="Students")
+            collection.add(
+                embeddings = students_embeddings,
+                documents = [student_info, club_info, university_info],
+                metadatas = [{"source": "student info"},{"source": "club info"},{'source':'university info'}],
+                ids = ["id1", "id2", "id3"]
+            )
         self.collection = collection
         self.idx = 4
 
     @nodemethod(['query'], ['documents'])
-    def retrieve(self, query: str=None):
+    def retrieve(self, query: str=None) -> str:
         
         if query is None:
             return []
-        results = self.collection.query(query_texts=query)
+        embeddings = openai_ef([query])
+
+        results = self.collection.query(query_embeddings=embeddings, n_results=3)
+        print(results['documents'])
         return results['documents']
 
     @nodemethod(['document'], ['document'])
-    def add(self, document: str=None, source: str=None):
+    def add(self, document: str=None, source: str=None) -> str:
 
         if document is None:
             return document
@@ -73,16 +80,18 @@ class ChromaDBIndex:
             metadatas = [{"source": source}],
             ids = [f"id{self._idx}"]
         )
+        self.idx += 1
+        return document
 
 
-class PromptCompletor:
+@nodefunc(['prompt'], ['completion'])
+def prompt_completion(prompt: str=None) -> str:
 
-    def __init__(self):
-        pass
+    if prompt is None:
+        return '<No message sent>'
 
-    
-    @nodemethod(['prompt'], ['completion'])
-    def retrieve(self, prompt: str=None) -> str:
-
-        pass
-
+    response = openai.Completion.create(
+        model='gpt-3.5-turbo-instruct',
+        prompt=prompt
+    )
+    return response['choices'][0]['text']

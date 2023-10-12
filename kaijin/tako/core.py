@@ -37,12 +37,15 @@ class T(ABC):
         by = by if by is not None else {}
 
         for _, result in self.traverse(by, stored, True):
+            print(_, result)
             pass
 
         result = stored[self._name][1]
         if isinstance(result, Output):
             result = result.value
-        elif isinstance(result, typing.Iterable):
+        # TODO: I may need a different kind of instance
+        # because it is possible that a tuple is returned in some cases
+        elif isinstance(result, typing.Tuple):
             result = tuple(r_i.value if isinstance(r_i, Output) else r_i for r_i in result)
         return result
 
@@ -90,7 +93,7 @@ class Field(object):
             return Field(f.name, f.dtype, f.default)
         if isinstance(f, str):
             return Field(f)
-        if isinstance(f, typing.Iterable):
+        if isinstance(f, typing.Tuple) or isinstance(f, typing.List):
             return Field(*f)
         raise ValueError(f'Argument f must be of type Field, string or tuple')
 
@@ -213,7 +216,7 @@ class NodeMethod(Node):
 
     def __init__(self, obj, f, inputs: typing.List[Field], outputs: typing.List[Field]):
 
-        super().__init__(f'{obj.__name__}_{f.__name__}')
+        super().__init__(f'{obj.__class__.__name__}_{f.__name__}')
         self._obj = obj
         self._f = f
         self._inputs = inputs
@@ -222,7 +225,7 @@ class NodeMethod(Node):
     def op(self, *args, **kwargs) -> typing.Any:
         
         return self._f(self._obj, *args, **kwargs)
-        
+
 
 class NodeFunc(Node):
 
@@ -242,23 +245,29 @@ class NodeFunc(Node):
 
 def nodemethod(inputs: typing.List[Field], outputs: typing.List[Field]):
 
-    def _(f):
+    def _out(f):
         node = None
 
-        def _(self, *args, get_node: bool=False, **kwargs):
+        def _in(self, *args, link: bool=False, get_node: bool=False, **kwargs):
             nonlocal node
 
             if node is None:
                 node = NodeMethod(
                     self, f, inputs, outputs
                 )
+            if link:
+                if get_node is True:
+                    raise ValueError('Cannot link if GetNode is true')
+                return node.link(*args, **kwargs)
             if get_node:
                 if len(args) != 0 or len(kwargs) != 0:
                     raise ValueError('Must not pass in args or kwargs if getting the node.')
                 return node
             
             return node(*args, **kwargs)
-        return _
+        _in.node_method = True
+        return _in
+    return _out
 
 
 
@@ -269,15 +278,7 @@ def nodefunc(inputs: typing.List[Field], outputs: typing.List[Field]):
         return NodeFunc(
             f, inputs, outputs
         )
-
-    
-# class Ex(object):
-
-#     @nodemethod
-#     def t(self):
-#         print('t')
-
-# ex = Ex()
+    return _
 
 
 class Output(T):
@@ -475,6 +476,12 @@ class Process(T):
             args.append(arg)
         for k, arg in self._kwargs.items():
             if isinstance(arg, T):
+                # If T is asynchronous
+                # 1) already "running"
+                # 2) not running yet
+                # 3) In either case, I do a "traverse_async" here
+                # 4) then before I execute the node I need to collect the results.. 
+                # ... I'll want to create a sandbox to demonstrate this first
                 for cur_arg in arg.traverse(by, stored, evaluate=evaluate):
                     yield cur_arg
                 arg = cur_arg if not evaluate else cur_arg[1] # arg.probe(by, stored)
@@ -482,6 +489,7 @@ class Process(T):
             kwargs[k] = arg
         if evaluate:
             result = self, self._node(*args, **kwargs)
+            print('Traverse: ', result)
         else:
             result = self
         stored[self._name] = result
@@ -521,17 +529,19 @@ def probe_ts(ts: typing.List[typing.Union[T, typing.Tuple[T, int]]], by: typing.
 
     results = []
     for t in ts:
-        if isinstance(t, tuple):
+        if isinstance(t, typing.Tuple):
             t, idx = t
         else:
             idx = None
         result = t.probe(by, stored)
-        if isinstance(result, typing.Iterable):
+        print(result)
+        if isinstance(result, typing.Tuple):
             if idx is None:
                 raise ValueError(f'Index must be specified for {t.name}')
             result = result[idx]
         results.append(result)
 
+    print(results)
     return tuple(results)
 
 
