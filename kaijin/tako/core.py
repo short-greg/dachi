@@ -3,7 +3,7 @@ import typing
 
 
 class T(ABC):
-    """Base transmission class"""
+    """Define a transmission to pass through the graph"""
 
     def __init__(self, name: str):
         """Create a transition
@@ -36,6 +36,8 @@ class T(ABC):
 
 
 class Field(object):
+    """
+    """
 
     def __init__(self, name: str, dtype: str=None, default: typing.Union[typing.Any, typing.Callable[[], typing.Any]]=None):
         """Create a field object
@@ -51,6 +53,17 @@ class Field(object):
 
     @classmethod
     def factory(self, f) -> 'Field':
+        """Create a field based on the value f
+
+        Args:
+            f : The values for field
+
+        Raises:
+            ValueError: If the value for the field is invalid
+
+        Returns:
+            Field: The resulting field
+        """
         if isinstance(f, Field):
             return Field(f.name, f.dtype, f.default)
         if isinstance(f, str):
@@ -93,11 +106,14 @@ class FieldList(object):
 
 
 class Node(ABC):
+    """A node in the graph defines the operation to execute. 
+    """
 
+    # Define the ouptuts for the operation
     outputs = FieldList([])
 
     def __init__(self, name: str):
-        """
+        """Create a node in the graph
 
         Args:
             name (str): Name of the node
@@ -106,6 +122,10 @@ class Node(ABC):
 
     @property
     def name(self) -> str:
+        """
+        Returns:
+            str: The name of the node
+        """
         return self._name
 
     def op(self) -> typing.Any:
