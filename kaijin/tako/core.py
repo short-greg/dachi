@@ -2,6 +2,12 @@ from abc import abstractmethod, ABC
 import typing
 
 
+def _is_function(f):
+
+    f_type = type(f)
+    return f_type == type(_is_function) or f_type == type(hasattr)
+
+
 class T(ABC):
     """Define a transmission to pass through the graph"""
 
@@ -26,12 +32,42 @@ class T(ABC):
     def name(self) -> str:
         return self._name
 
-    @abstractmethod
     def probe(self, by: typing.Dict['Var', typing.Any]=None, stored: typing.Dict[str, typing.Any]=None):
-        pass
+        stored = stored if stored is not None else {}
+        by = by if by is not None else {}
+
+        for _, result in self.traverse(by, stored, True):
+            print(_, result)
+            pass
+
+        result = stored[self._name][1]
+        if isinstance(result, Output):
+            result = result.value
+        # TODO: I may need a different kind of instance
+        # because it is possible that a tuple is returned in some cases
+        elif isinstance(result, typing.Tuple):
+            result = tuple(r_i.value if isinstance(r_i, Output) else r_i for r_i in result)
+        return result
 
     @abstractmethod
     def clone(self) -> 'T':
+        pass
+
+    @abstractmethod
+    def retrieve(self, key: str) -> 'T':
+        pass
+
+    @abstractmethod
+    def traverse(self, by: typing.Dict['Var', typing.Any]=None, stored: typing.Dict[str, typing.Any]=None, evaluate: bool=False) -> typing.Iterator[typing.Tuple['T', typing.Any]]:
+        """
+
+        Args:
+            by (typing.Dict[Var, typing.Any], optional): _description_. Defaults to None.
+            stored (typing.Dict[str, typing.Any], optional): _description_. Defaults to None.
+
+        Returns:
+            typing.Any: The result of the probe
+        """
         pass
 
 
@@ -68,7 +104,7 @@ class Field(object):
             return Field(f.name, f.dtype, f.default)
         if isinstance(f, str):
             return Field(f)
-        if isinstance(f, typing.Iterable):
+        if isinstance(f, typing.Tuple) or isinstance(f, typing.List):
             return Field(*f)
         raise ValueError(f'Argument f must be of type Field, string or tuple')
 
@@ -128,6 +164,7 @@ class Node(ABC):
         """
         return self._name
 
+    @abstractmethod
     def op(self) -> typing.Any:
         """The operation for the node. 
 
@@ -136,7 +173,10 @@ class Node(ABC):
         """
         pass
 
-    def __call__(self, *args, **kwargs) -> typing.Union[T, typing.Tuple[T], typing.Any, typing.Tuple[typing.Any]]:
+    def __call__(self, *args, **kwargs) -> typing.Any:
+        return self.op(*args, **kwargs)
+
+    def link(self, *args, **kwargs) -> typing.Union[T, typing.Tuple[T], typing.Any, typing.Tuple[typing.Any]]:
         """Use for transmissions. This wraps the operation
 
         Returns:
@@ -169,6 +209,92 @@ class Node(ABC):
         return self.__class__(
             self.name
         )
+    
+
+class NodeFunc(Node):
+
+    def __init__(self, name: str, f, inputs: typing.List[Field], outputs: typing.List[Field]):
+        super().__init__(name)
+        self._inputs = inputs
+        self._outputs = outputs
+        self._f = f
+
+    def op(self, *args, **kwargs) -> typing.Any:
+        return super().op()
+
+    @property
+    def outputs(self) -> FieldList:
+
+        return self._outputs
+
+
+class NodeMethod(Node):
+
+    def __init__(self, obj, f, inputs: typing.List[Field], outputs: typing.List[Field]):
+
+        super().__init__(f'{obj.__class__.__name__}_{f.__name__}')
+        self._obj = obj
+        self._f = f
+        self._inputs = inputs
+        self._outputs = outputs
+
+    def op(self, *args, **kwargs) -> typing.Any:
+        
+        return self._f(self._obj, *args, **kwargs)
+
+
+class NodeFunc(Node):
+
+    def __init__(self, f, inputs: typing.List[Field], outputs: typing.List[Field]):
+        
+        super().__init__(name=f.__name__)
+        self.f = f
+        self._inputs = inputs
+        self._outputs = outputs
+
+    def op(self, *args, **kwargs) -> typing.Any:
+        
+        return self.f(
+            *args, **kwargs
+        )
+
+
+def nodemethod(inputs: typing.List[Field], outputs: typing.List[Field]):
+
+    def _out(f):
+        node = None
+
+        def _in(self, *args, link: bool=False, get_node: bool=False, **kwargs):
+            nonlocal node
+
+            if node is None:
+                node = NodeMethod(
+                    self, f, inputs, outputs
+                )
+            if link:
+                if get_node is True:
+                    raise ValueError('Cannot link if GetNode is true')
+                return node.link(*args, **kwargs)
+            if get_node:
+                if len(args) != 0 or len(kwargs) != 0:
+                    raise ValueError('Must not pass in args or kwargs if getting the node.')
+                return node
+            
+            return node(*args, **kwargs)
+        _in.node_method = True
+        return _in
+    return _out
+
+
+
+def nodefunc(inputs: typing.List[Field], outputs: typing.List[Field]):
+
+    def _(f):
+
+        return NodeFunc(
+            f, inputs, outputs
+        )
+    return _
 
 
 class Output(T):
@@ -196,43 +322,48 @@ class Output(T):
     def node(self) -> 'Node':
         return self._node
 
-    def probe(self, by: typing.Dict['Var', typing.Any]=None, stored: typing.Dict[str, typing.Any]=None) -> typing.Any:
-        """
-
-        Args:
-            by (typing.Dict[Var, typing.Any], optional): The inputs used to retrieve. Defaults to None.
-            stored (typing.Dict[str, typing.Any], optional): The currently stored values. Defaults to None.
-
-        Returns:
-            typing.Any: The result of the operation
-        """
-        return self._value
-
     # TODO: use "deep copy?"
     def clone(self) -> 'Output':
         return Output(
             self.name, self._value
         )
 
-class F(object):
+    def retrieve(self, key: str) -> 'T':
+        if self._name == key:
+            return self
 
-    def __init__(self, f: typing.Callable[[], typing.Any]):
-        self.f = f
+    def traverse(self, by: typing.Dict['Var', typing.Any]=None, stored: typing.Dict[str, typing.Any]=None, evaluate: bool=False) -> typing.Iterator[typing.Tuple['T', typing.Any]]:
+        """
 
-    @property
-    def value(self):
-        return self.f()
- 
+        Args:
+            by (typing.Dict[Var, typing.Any], optional): _description_. Defaults to None.
+            stored (typing.Dict[str, typing.Any], optional): _description_. Defaults to None.
+
+        Returns:
+            typing.Any: The result of the probe
+        """
+        stored = stored if stored is not None else {}
+        by = by if by is not None else {}
+        if evaluate:
+            result = self, self._value
+        else: 
+            result = self
+        stored[self._name] = result
+        yield result
+
 
 class Var(T):
+    """Create a variable transmission that will output a value to send to nodes
+    """
 
-    def __init__(self, name: str, dtype: str=None, default: typing.Union[typing.Any, F]=None):
+    def __init__(self, name: str, dtype: str=None, default:typing.Any=None):
         """
 
         Args:
             name (str): Name of the variable
             dtype (str, optional): The type of the variable. Defaults to None.
-            default (_type_, optional): Default variable for the variable. Defaults to None.
+            default (optional): Default variable for the variable. Defaults to None. If it is of type function or
+             builtin_function_or_method it will be called
         """
         super().__init__(name)
         self.dtype = dtype
@@ -240,14 +371,34 @@ class Var(T):
 
     @property
     def value(self) -> typing.Any:
-        if isinstance(self._default, F):
-            return self._default.value
+        """
+        Returns:
+            typing.Any: The default value for the var
+        """
+        if _is_function(self._default):
+            return self._default()
         return self._default
 
     def set(self, default):
+        """
+
+        Args:
+            default: Set the default value for the var
+        """
         self._default = default
 
-    def validate(self, by: typing.Dict['Var', typing.Any]):
+    def validate(self, by: typing.Dict['Var', typing.Any]) -> typing.Any:
+        """Validate the value in by
+
+        Args:
+            by (typing.Dict[Var, typing.Any]): List of variables and their values
+
+        Raises:
+            ValueError: if the value is not is not valid
+
+        Returns:
+            typing.Any
+        """
 
         try:
             val = by[self]
@@ -257,26 +408,37 @@ class Var(T):
             raise ValueError(f'Value must be of dtype {self.dtype}')
         return val        
 
-    def probe(self, by: typing.Dict['Var', typing.Any]=None, stored: typing.Dict[str, typing.Any]=None) -> typing.Any:
-        """
-
-        Args:
-            by (typing.Dict[Var, typing.Any], optional): . Defaults to None.
-            stored (typing.Dict[str, typing.Any], optional): . Defaults to None.
-
-        Returns:
-            typing.Any: The result of the probe
-        """
-        return self.validate(by)
-
     def clone(self) -> 'Var':
         return Var(
             self.name, self.dtype, self._default
         )
 
+    def retrieve(self, key: str) -> 'T':
+        if self._name == key:
+            return self 
+
+    def traverse(self, by: typing.Dict['Var', typing.Any]=None, stored: typing.Dict[str, typing.Any]=None, evaluate: bool=False) -> typing.Iterator[typing.Tuple['T', typing.Any]]:
+        """
+
+        Args:
+            by (typing.Dict[Var, typing.Any], optional): _description_. Defaults to None.
+            stored (typing.Dict[str, typing.Any], optional): _description_. Defaults to None.
+
+        Returns:
+            typing.Any: The result of the probe
+        """
+        stored = stored if stored is not None else {}
+        by = by if by is not None else {}
+        if evaluate:
+            result = self, self.validate(by)
+        else:
+            result = self
+        stored[self._name] = result
+        yield result
+
 
 class Process(T):
-    """Define a graph of nodes. 
+    """
     """
 
     def __init__(self, node: 'Node', args: typing.List=None, kwargs: typing.Dict=None):
@@ -297,11 +459,11 @@ class Process(T):
         """
 
         Returns:
-            typing.Any: _description_
+            typing.Any: The output of the process
         """
         return self.probe()
     
-    def probe(self, by: typing.Dict[Var, typing.Any]=None, stored: typing.Dict[str, typing.Any]=None) -> typing.Any:
+    def traverse(self, by: typing.Dict['Var', typing.Any]=None, stored: typing.Dict[str, typing.Any]=None, evaluate: bool=False) -> typing.Iterator[typing.Tuple['T', typing.Any]]:
         """
 
         Args:
@@ -311,54 +473,91 @@ class Process(T):
         Returns:
             typing.Any: The result of the probe
         """
-        by = by or {}
-        stored = stored or {}
+
+        stored = stored if stored is not None else {}
+        by = by if by is not None else {}
         if self._name in stored:
-            return stored[self._name]
+            cur = stored[self._name]
+            if cur == self and not evaluate or cur != self and evaluate:
+                yield cur
+                return
         args = []
         kwargs = {}
         for arg in self._args:
             if isinstance(arg, T):
-                arg = arg.probe(by, stored)
+                for cur_arg in arg.traverse(by, stored, evaluate=evaluate):
+                    yield cur_arg
+                
+                arg = cur_arg if not evaluate else cur_arg[1] # arg.probe(by, stored)
             args.append(arg)
         for k, arg in self._kwargs.items():
             if isinstance(arg, T):
-                arg = arg.probe(by, stored)
+                # If T is asynchronous
+                # 1) already "running"
+                # 2) not running yet
+                # 3) In either case, I do a "traverse_async" here
+                # 4) then before I execute the node I need to collect the results.. 
+                # ... I'll want to create a sandbox to demonstrate this first
+                for cur_arg in arg.traverse(by, stored, evaluate=evaluate):
+                    yield cur_arg
+                arg = cur_arg if not evaluate else cur_arg[1] # arg.probe(by, stored)
+                # arg = arg.probe(by, stored)
             kwargs[k] = arg
-        stored[self._name] = self._node(*args, **kwargs)
-        result = stored[self._name]
-        if isinstance(result, typing.Iterable):
-            return tuple(r_i.value for r_i in result)
-        return result.value
+        if evaluate:
+            result = self, self._node(*args, **kwargs)
+            print('Traverse: ', result)
+        else:
+            result = self
+        stored[self._name] = result
+        yield result
 
     def clone(self) -> 'Process':
         """
         Returns:
             Process: The cloned process
         """
+        args = [arg.clone() if isinstance(arg, T) else arg for arg in self._args]
+        kwargs = {k: arg.clone() if isinstance(arg, T) else arg for k, arg in self._kwargs.items()}
         return Process(
-            self._node, self._args, self._kwargs
+            self._node, args, kwargs
         )
+
+    def retrieve(self, key: str) -> 'T':
+        if self._name == key:
+            return self
+        for arg in self._args:
+            if isinstance(arg, T):
+                result = arg.retrieve(key)
+                if result is not None:
+                    return result
+
+        for key, arg in self._kwargs.items():
+            if isinstance(arg, T):
+                result = arg.retrieve(key)
+                if result is not None:
+                    return result
 
 
 def probe_ts(ts: typing.List[typing.Union[T, typing.Tuple[T, int]]], by: typing.Dict[Var, str]=None, stored: typing.Dict[str, typing.Any]=None):
     
-    by = by or {}
-    stored = stored or {}
+    stored = stored if stored is not None else {}
+    by = by if by is not None else {}
 
     results = []
     for t in ts:
-        if isinstance(t, tuple):
+        if isinstance(t, typing.Tuple):
             t, idx = t
         else:
             idx = None
         result = t.probe(by, stored)
-        if isinstance(result, typing.Iterable):
+        print(result)
+        if isinstance(result, typing.Tuple):
             if idx is None:
                 raise ValueError(f'Index must be specified for {t.name}')
             result = result[idx]
         results.append(result)
 
+    print(results)
     return tuple(results)
 
 
@@ -385,11 +584,6 @@ def to_by(trans: typing.List[Var], args: typing.List[str], kwargs: typing.Dict[s
     return by
 
 
-# TODO: Figure out how to implement
-def traverse():
-    pass
-
-
 class Tako(Node):
     
     @abstractmethod
@@ -400,24 +594,6 @@ class Tako(Node):
     def op(self, *args, **kwargs) -> typing.Any:
         pass
 
-
-class Adapter(Node):
-
-    def __init__(
-        self, name: str, inputs: typing.List[Var], outputs: typing.List[typing.Union[typing.Tuple[T, int], T]]
-    ):
-        super().__init__(name)
-        self._inputs = inputs
-        self._outputs = outputs
-    
-    @property
-    def outputs(self) -> FieldList:
-        return self._outputs.fields
-
-    def op(self, *args, **kwargs) -> typing.Any:
-        
-        by = to_by(self._inputs, args, kwargs)
-        return probe_ts(self._outputs, by)
 
 
 """
