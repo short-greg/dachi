@@ -9,10 +9,10 @@ def _is_function(f):
 
 
 class T(ABC):
-    """Define a transmission to pass through the graph"""
+    """Base transmission class"""
 
     def __init__(self, name: str):
-        """Create a transition
+        """Create a transmission from one node to another
 
         Args:
             name (str): Name of the transmission
@@ -22,17 +22,29 @@ class T(ABC):
     @property
     def value(self) -> typing.Any:
         """
-
         Returns:
-            typing.Any: 
+            typing.Any: The output of the transmission
         """
         pass
 
     @property
     def name(self) -> str:
+        """
+        Returns:
+            str: The name of the transmission
+        """
         return self._name
 
-    def probe(self, by: typing.Dict['Var', typing.Any]=None, stored: typing.Dict[str, typing.Any]=None):
+    def probe(self, by: typing.Dict['Var', typing.Any]=None, stored: typing.Dict[str, typing.Any]=None) -> typing.Any:
+        """Retrieve the value of the transmission
+
+        Args:
+            by (typing.Dict[Var, typing.Any], optional): Storage of the values to use for the vars. Defaults to None.
+            stored (typing.Dict[str, typing.Any], optional): Storage of the outputs of the nodes in the graph. Defaults to None.
+
+        Returns:
+            Any: The output of the transmission
+        """
         stored = stored if stored is not None else {}
         by = by if by is not None else {}
 
@@ -72,7 +84,7 @@ class T(ABC):
 
 
 class Field(object):
-    """
+    """Specify the fields for a node
     """
 
     def __init__(self, name: str, dtype: str=None, default: typing.Union[typing.Any, typing.Callable[[], typing.Any]]=None):
@@ -89,17 +101,6 @@ class Field(object):
 
     @classmethod
     def factory(self, f) -> 'Field':
-        """Create a field based on the value f
-
-        Args:
-            f : The values for field
-
-        Raises:
-            ValueError: If the value for the field is invalid
-
-        Returns:
-            Field: The resulting field
-        """
         if isinstance(f, Field):
             return Field(f.name, f.dtype, f.default)
         if isinstance(f, str):
@@ -142,14 +143,13 @@ class FieldList(object):
 
 
 class Node(ABC):
-    """A node in the graph defines the operation to execute. 
+    """Defines a node in the graph. Use it to implement an operation
     """
 
-    # Define the ouptuts for the operation
     outputs = FieldList([])
 
     def __init__(self, name: str):
-        """Create a node in the graph
+        """Create the node
 
         Args:
             name (str): Name of the node
@@ -174,10 +174,16 @@ class Node(ABC):
         pass
 
     def __call__(self, *args, **kwargs) -> typing.Any:
+        """Convenience method that wraps op()
+
+        Returns:
+            typing.Any: The output of op()
+        """
         return self.op(*args, **kwargs)
 
     def link(self, *args, **kwargs) -> typing.Union[T, typing.Tuple[T], typing.Any, typing.Tuple[typing.Any]]:
-        """Use for transmissions. This wraps the operation
+        """Use to link transmissions together. This wraps the op method. It can take either
+        a transmission as an input or it cna take values
 
         Returns:
             typing.Union[typing.Any, typing.Tuple[typing.Any]]: 
@@ -209,23 +215,6 @@ class Node(ABC):
         return self.__class__(
             self.name
         )
-    
-
-class NodeFunc(Node):
-
-    def __init__(self, name: str, f, inputs: typing.List[Field], outputs: typing.List[Field]):
-        super().__init__(name)
-        self._inputs = inputs
-        self._outputs = outputs
-        self._f = f
-
-    def op(self, *args, **kwargs) -> typing.Any:
-        return super().op()
-
-    @property
-    def outputs(self) -> FieldList:
-
-        return self._outputs
 
 
 class NodeMethod(Node):
@@ -244,8 +233,17 @@ class NodeMethod(Node):
 
 
 class NodeFunc(Node):
+    """A Node that wraps a function
+    """
 
     def __init__(self, f, inputs: typing.List[Field], outputs: typing.List[Field]):
+        """Initialize a 
+
+        Args:
+            f: The function to wrap
+            inputs (typing.List[Field]): The inputs to the function
+            outputs (typing.List[Field]): The outputs fromthe function
+        """
         
         super().__init__(name=f.__name__)
         self.f = f
@@ -258,8 +256,47 @@ class NodeFunc(Node):
             *args, **kwargs
         )
 
+    @property
+    def outputs(self) -> FieldList:
+        """
+        Returns:
+            FieldList: The outputs from the Node
+        """
+
+        return self._outputs
+
+
+# TODO: Remove as it is a duplicate
+# class NodeFunc(Node):
+#     """_summary_
+
+#     Args:
+#         Node (_type_): _description_
+#     """
+
+#     def __init__(self, name: str, f, inputs: typing.List[Field], outputs: typing.List[Field]):
+#         super().__init__(name)
+#         self._inputs = inputs
+#         self._outputs = outputs
+#         self._f = f
+
+#     def op(self, *args, **kwargs) -> typing.Any:
+#         return super().op()
+
+#     @property
+#     def outputs(self) -> FieldList:
+
+#         return self._outputs
+
 
 def nodemethod(inputs: typing.List[Field], outputs: typing.List[Field]):
+    """Decorator that transforms a method to work as a node. To get the Node object you 
+    must pass in get_node=True. To link the transmission pass in link=True
+
+    Args:
+        inputs (typing.List[Field]): Definition of the inputs to the Node
+        outputs (typing.List[Field]): Definition of the outputs to the Node
+    """
 
     def _out(f):
         node = None
@@ -288,6 +325,12 @@ def nodemethod(inputs: typing.List[Field], outputs: typing.List[Field]):
 
 
 def nodefunc(inputs: typing.List[Field], outputs: typing.List[Field]):
+    """Decorator that wraps a function. Using this will convert the function to a NodeFunc
+
+    Args:
+        inputs (typing.List[Field]): The inputs to the function
+        outputs (typing.List[Field]): The outputs from the function
+    """
 
     def _(f):
 
@@ -316,19 +359,39 @@ class Output(T):
 
     @property
     def value(self) -> typing.Any:
+        """
+        Returns:
+            typing.Any: The value for the output
+        """
         return self._value
     
     @property
     def node(self) -> 'Node':
+        """
+        Returns:
+            Node: The node that generated the output
+        """
         return self._node
 
     # TODO: use "deep copy?"
     def clone(self) -> 'Output':
+        """Clone the output
+
+        Returns:
+            Output: _description_
+        """
         return Output(
             self.name, self._value
         )
 
     def retrieve(self, key: str) -> 'T':
+        """
+        Args:
+            key (str): The key to retrieve
+
+        Returns:
+            T: Self if self == the Key
+        """
         if self._name == key:
             return self
 
@@ -539,7 +602,20 @@ class Process(T):
 
 
 def probe_ts(ts: typing.List[typing.Union[T, typing.Tuple[T, int]]], by: typing.Dict[Var, str]=None, stored: typing.Dict[str, typing.Any]=None):
-    
+    """Probe the output of transmissions
+
+    Args:
+        ts (typing.List[typing.Union[T, typing.Tuple[T, int]]]): The transmissions to query
+        by (typing.Dict[Var, str], optional): The values to set for the variables. Defaults to None.
+        stored (typing.Dict[str, typing.Any], optional): The stored outputs for the nodes. Defaults to None.
+
+    Raises:
+        ValueError: If an index is not specified for results that return multiple outputs
+
+    Returns:
+        _type_: _description_
+    """
+
     stored = stored if stored is not None else {}
     by = by if by is not None else {}
 
@@ -551,17 +627,30 @@ def probe_ts(ts: typing.List[typing.Union[T, typing.Tuple[T, int]]], by: typing.
             idx = None
         result = t.probe(by, stored)
         print(result)
+        to_extend = False
         if isinstance(result, typing.Tuple):
             if idx is None:
                 raise ValueError(f'Index must be specified for {t.name}')
+            if isinstance(idx, slice) or isinstance(idx, typing.Iterable):
+                to_extend = True
             result = result[idx]
-        results.append(result)
+        if to_extend:
+            results.extend(result)
+        else: results.append(result)
 
-    print(results)
     return tuple(results)
 
 
-def get_arg(arg, is_variable: bool=False):
+def get_arg(arg, is_variable: bool=False) -> typing.Tuple[typing.Any, bool]:
+    """Get the value for an arg
+
+    Args:
+        arg : The arg to retrieve
+        is_variable (bool, optional): If the argument is variable. Defaults to False.
+
+    Returns:
+        typing.Tuple[typing.Any, bool]: The argument, whether it is a variable
+    """
 
     if isinstance(arg, Var) or isinstance(arg, Process):
         return arg, True
@@ -570,8 +659,21 @@ def get_arg(arg, is_variable: bool=False):
     return arg, False or is_variable
 
 
-def to_by(trans: typing.List[Var], args: typing.List[str], kwargs: typing.Dict[str, typing.Any]):
-    
+def to_by(trans: typing.List[Var], args: typing.List[str], kwargs: typing.Dict[str, typing.Any]) -> typing.Dict:
+    """Convert the list of Vars to a 'by' dictionary
+
+    Args:
+        trans (typing.List[Var]): List of Variables
+        args (typing.List[str]): The args for the function
+        kwargs (typing.Dict[str, typing.Any]): The Kwargs to the function
+
+    Raises:
+        ValueError: If the key-value argument is duplicated
+
+    Returns:
+        typing.Dict: the By Dictionary
+    """
+
     i = 0
     by = {}
     for t, arg in zip(trans, args):
@@ -585,13 +687,22 @@ def to_by(trans: typing.List[Var], args: typing.List[str], kwargs: typing.Dict[s
 
 
 class Tako(Node):
+    """Define a Graph Node that wraps multiple other nodes
+    """
     
     @abstractmethod
     def traverse(self, **kwargs) -> typing.Iterator[T]:
+        """Traverse each node in the Tako
+
+        Returns:
+            typing.Iterator[T]: An iterator which iterates over all the nodes
+        """
         pass
 
     @abstractmethod
     def op(self, *args, **kwargs) -> typing.Any:
+        """
+        """
         pass
 
 

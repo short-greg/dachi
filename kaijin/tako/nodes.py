@@ -4,6 +4,8 @@ from .core import Node, Var, FieldList, Field, probe_ts, to_by, T
 
 
 class Adapter(Node):
+    """A Node which wraps a graph
+    """
 
     def __init__(
         self, name: str, inputs: typing.List[Var], 
