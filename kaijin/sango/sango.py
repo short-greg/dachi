@@ -1,11 +1,101 @@
 from enum import Enum
 from abc import abstractmethod, ABC, abstractproperty
 import typing
+from typing import Any
+from dataclasses import dataclass
 
 
-class Request(Enum):
+# tree.tick(comm)
+# comm.share('', ...)
+# comm.shared('')
+# comm.get_or_store()
+# comm.store
+# comm.get
+# comm.send()
+# comm.receive
+# init_comm() # add this hook
+# comm.sub(3)
+
+
+class DataHook(ABC):
+
+    def __init__(self, name: str, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._name = name
     
-    INPUT = 'input'
+    @property
+    def name(self) -> str:
+        return self._name
+
+    @abstractmethod
+    def __call__(self, data: 'Data', prev_value):
+        pass
+
+
+class Data(object):
+
+    def __init__(self, name: str, value: str, check_f=None):
+
+        super().__init__()
+        self._value = value
+        self._name = name
+        self._check_f = check_f
+        self._hooks = CompositeHook(f'')
+
+    def register_hook(self, hook):
+        self._hooks.append(hook)
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    @property
+    def value(self) -> typing.Any:
+        return self._value
+
+    def update(self, value) -> typing.Any:
+        if self._check_f is not None:
+            valid, msg = self._check_f(value)
+            if not valid:
+                raise ValueError(msg)
+        prev_value = self._value
+        self._value = value
+        self._hooks(self, prev_value)
+        return value
+
+
+class Synched(object):
+
+    def __init__(self, name: str, base_data: Data):
+
+        super().__init__()
+        self._base_data = base_data
+        self._name = name
+
+    def register_hook(self, hook):
+        self._base_data.register_hook(hook)
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    @property
+    def value(self) -> typing.Any:
+        return self._value
+
+    def update(self, value) -> typing.Any:
+        return self._base_data.update(value)
+
+# Add the "synchs in advance"
+
+class CompositeHook(DataHook, list):
+
+    def __init__(self, name: str, hooks: typing.List[DataHook]=None):
+        super().__init__(name, hooks)
+
+    def __call__(self, data: 'Data', prev_value):
+        for hook in self:
+            hook(data, prev_value)
 
 
 class Status(Enum):
@@ -20,42 +110,178 @@ class Status(Enum):
         return self == Status.FAILURE or self == Status.SUCCESS
 
 
-class Control(object):
+class DataStore(object):
 
-    def __init__(self):
-        pass
+    def __init__(self) -> None:
+        super().__init__()
+        self._data: typing.Dict[str, Data] = {}
 
+    def add(self, key: str, value: typing.Any, check_f=None) -> None:
+        if key in self._data:
+            raise ValueError()
+        self._data[key] = Data(key, value, check_f)
+    
+    def add_sync(self, key: str, data: Data):
+        if key in self._data:
+            raise ValueError()
+        self._data[key] = Synched(key, data)
+    
+    def update(self, key: str, value: typing.Any):
         
-
-
-class Comm(object):
-
-    def send(self, request: Request, name: str, data, f=None):
-        pass
-
-    def receive(self, request: Request, name: str, f):
-        pass
+        self._data[key].update(value)
 
     def get(self, key: str) -> typing.Any:
-        pass
 
-    def unset(self, key: str) -> typing.Any:
-        pass
+        result = self._data.get(key)
+        if result is None:
+            return None
+        return result.value
+    
+    def __contains__(self, key: str) -> bool:
+        return key in self._data
+    
+    def __getitem__(self, key: str) -> typing.Any:
+        return self._data[key].value
 
-    def set(self, key: str, value: typing.Any) -> typing.Any:
-        pass
 
-    def clear(self):
-        pass
+class MessageType(Enum):
+
+    INPUT = 'input'
+    OUTPUT = 'output'
+    WAITING = 'waiting'
+    CUSTOM = 'custom'
+
+
+@dataclass
+class Message(object):
+
+    message_type: MessageType
+    name: str
+    data: typing.Dict = None
+
+
+class MessageHandler(object):
+
+    def __init__(self):
+
+        self._receivers: typing.Dict[typing.Tuple, typing.List[typing.Tuple[typing.Callable, bool]]] = {}
+
+    def trigger(self, message: Message):
+        
+        receivers = self._receivers.get((message.message_type, message.name))
+        if receivers is None:
+            return
+        
+        updated = []
+        for callback, expires in receivers:
+            callback(message)
+            if not expires:
+                updated.append((callback, False))
+        self._receivers[(message.message_type, message.name)] = updated
+
+    def add_receiver(self, message_type: MessageType, name: str, callback, expires: bool=True):
+
+        if (message_type, name) not in self._receivers:
+            self._receivers = []
+        self._receivers[(message_type, name)].append((callback, expires))
+
+    def remove_receiver(self, message_type: MessageType, name: str, callback):
+
+        updated = []
+
+        for callback, expires in self._receivers[(message_type, name)]:
+            if callback != callback:
+                updated.append[(callback, expires)]
+        self._receivers[(message_type, name)] = updated
+
+
+class Server(object):
+
+    def __init__(self):
+        
+        self._shared = DataStore()
+        self._message_handler = MessageHandler()
+
+    @property
+    def shared(self) -> DataStore:
+        return self._shared
+    
+    def send(self, message: Message):
+        
+        self._message_handler.trigger(message)
+
+    def receive(self, message_type: MessageType, name: str, callback) -> typing.Any:
+        
+        self._message_handler.add_receiver(message_type, name, callback)
+
+    def cancel_receive(self, message_type: MessageType, name: str, f):
+        self._message_handler.cancel_receive(message_type, name, f)
+
+# server.receive(message_type, name, callback)
+
+
+class Terminal(object):
+
+    def __init__(self, server: Server, parent: 'Terminal'=None) -> None:
+        self._initialized = False
+        self._server = server
+        self._parent = parent
+        self._data = DataStore()
+
+    @property
+    def initialized(self) -> bool:
+        return self._initialized
+    
+    def initialize(self):
+
+        self._initialized = True
+
+    @property
+    def storage(self) -> DataStore:
+        return self._storage
+    
+    @property
+    def shared(self) -> DataStore:
+        return self._server.shared
+    
+    @property
+    def server(self) -> Server:
+        return self._server
+    
+    @property
+    def parent(self) -> 'Terminal':
+        return self._parent
+
+    # def send(self, message: Message, name: str, data, f=None):
+    #     self._server.send(message, name, data, f)
+
+    # def receive(self, message_type: MessageType, name: str, receiver: str, f, expires: bool=True):
+    #     self._server.receive(message_type, name, receiver, f, expires: bool=True)
+
+    # def cancel_receive(self, message_type: MessageType, name: str, f):
+    #     self._server.cancel_receive(message_type)
 
 
 class Task(ABC):
 
-    def __init__(self, name: str, comm: Comm) -> None:
+    def _tick_wrapper(self, f) -> typing.Callable[[Terminal], Status]:
+
+        def _tick(self, terminal: Terminal, *args, **kwargs) -> Status:
+            if not terminal.initialized:
+                self.__init_terminal__(terminal)
+
+            return f(terminal, *args, **kwargs)
+        return _tick
+
+    def __init__(self, name: str) -> None:
         super().__init__()
         self._name = name
-        self._comm = comm
         self._status = Status.READY
+        self.tick = self._tick_wrapper(self.tick)
+
+    @abstractmethod
+    def __init_terminal__(self, terminal: Terminal):
+        pass
 
     @property
     def name(self) -> str:
@@ -66,12 +292,8 @@ class Task(ABC):
     def status(self) -> Status:
         return self._status
 
-    @property
-    def comm(self) -> Comm:
-        return self._comm
-
     @abstractmethod    
-    def tick(self) -> Status:
+    def tick(self, terminal: Terminal) -> Status:
         pass
 
     @abstractmethod
@@ -89,73 +311,79 @@ class Task(ABC):
         self._name = state_dict['name']
         self._status = state_dict['status']
 
-
-class CompositeExecutor(object):
-
-    @abstractmethod
-    def reset(self, items: list=None):
-        """Reset the planner to the start state
-
-        Args:
-            items (list, optional): Updated items to set the planner to. Defaults to None.
-        """
-        pass
-
-    @abstractproperty
-    def idx(self):
-        pass
+    def __call__(self, terminal: Terminal) -> Status:
     
-    @idx.setter
-    def idx(self, idx):
-        pass
+        return self.tick(terminal)
 
-    @abstractmethod
-    def end(self) -> bool:
-        """Advance the planner
 
-        Returns:
-            bool
-        """
-        pass
+# server.sync(terminal, []) <- shared fields
 
-    @abstractmethod
-    def adv(self) -> bool:
-        """Advance the planner
+# class CompositeExecutor(object):
 
-        Returns:
-            bool
-        """
-        pass
+#     @abstractmethod
+#     def reset(self, items: list=None):
+#         """Reset the planner to the start state
+
+#         Args:
+#             items (list, optional): Updated items to set the planner to. Defaults to None.
+#         """
+#         pass
+
+#     @abstractproperty
+#     def idx(self):
+#         pass
     
-    @abstractproperty
-    def cur(self) -> Task:
-        """
-        Returns:
-            Task
-        """
-        pass
+#     @idx.setter
+#     def idx(self, idx):
+#         pass
 
-    @abstractmethod
-    def rev(self) -> bool:
-        """Reverse the planner
+#     @abstractmethod
+#     def end(self) -> bool:
+#         """Advance the planner
 
-        Returns:
-            bool
-        """
-        pass
+#         Returns:
+#             bool
+#         """
+#         pass
 
-    @abstractmethod
-    def clone(self):
-        """Clone the linear planner
+#     @abstractmethod
+#     def adv(self) -> bool:
+#         """Advance the planner
 
-        Returns:
-            LinearPlanner
-        """
-        pass
+#         Returns:
+#             bool
+#         """
+#         pass
     
-    @abstractmethod
-    def __len__(self) -> int:
-        pass
+#     @abstractproperty
+#     def cur(self) -> Task:
+#         """
+#         Returns:
+#             Task
+#         """
+#         pass
+
+#     @abstractmethod
+#     def rev(self) -> bool:
+#         """Reverse the planner
+
+#         Returns:
+#             bool
+#         """
+#         pass
+
+#     @abstractmethod
+#     def clone(self):
+#         """Clone the linear planner
+
+#         Returns:
+#             LinearPlanner
+#         """
+#         pass
+    
+#     @abstractmethod
+#     def __len__(self) -> int:
+#         pass
 
 
 class Composite(Task):
@@ -163,11 +391,14 @@ class Composite(Task):
     """
 
     def __init__(
-        self, tasks: typing.List[Task], name: str='', executor: CompositeExecutor=None
+        self, tasks: typing.List[Task], name: str=''
     ):
         super().__init__(name)
-        self._executor = executor or LinearExecutor(tasks)
         self._tasks = tasks
+
+    def __init_terminal__(self, terminal: Terminal):
+        super().__init_terminal__(terminal)
+        terminal.storage.add('idx', 0)
 
     @property
     def n(self):
@@ -180,22 +411,17 @@ class Composite(Task):
         return [*self._tasks]
 
     @abstractmethod
-    def subtick(self) -> Status:
+    def subtick(self, terminal: Terminal) -> Status:
         """Tick each subtask. Implement when implementing a new Composite task"""
         raise NotImplementedError
 
-    def tick(self):
-        # TODO: pass in Comm or not?
-        # I think it is better
-        # 
-
-        status = self.subtick()
-        self._status = status
+    def tick(self, terminal: Terminal) -> Status:
+        status = self.subtick(terminal)
+        terminal.storage['status'] = status
         return status
     
     def reset(self):
         super().reset()
-        self._executor.reset()
         for task in self._tasks:
             task.reset()
 
@@ -206,7 +432,6 @@ class Composite(Task):
                 task.state_dict()
                 for task in self._tasks
             ],
-            'executor': self._executor.state_dict(),
             **super().state_dict()
         }
     
@@ -215,7 +440,6 @@ class Composite(Task):
         super().load_state_dict(state_dict)
         for task, task_state_dict in zip(self._tasks, state_dict['tasks']):
             task.load_state_dict(task_state_dict)
-        self._executor.load_state_dict(state_dict['executor'])
 
     # def iterate(self, filter: Filter=None, deep: bool=True):
     #     filter = filter or NullFilter()    
@@ -229,28 +453,24 @@ class Composite(Task):
 
 class Sequence(Composite):
 
-    def __init__(self, name: str, comm: Comm, tasks: typing.List[Task]=None):
-        super().__init__(name, comm)
-        self._tasks = tasks or []
-        self._order = []
-        self._order = LinearExecutor()
-
     def add(self, task: Task) -> 'Sequence':
         self._tasks.append(task)
 
-    def tick(self) -> Status:
+    def subtick(self, terminal: Terminal) -> Status:
         
-        exeuctor: CompositeExecutor = self._comm.get('executor')
-        if exeuctor is None:
-            self._comm.set('executor', self._executor(self._tasks))
+        idx = terminal.storage['idx']
+        status = self._tasks[idx].tick(terminal)
 
-        status = exeuctor.cur.tick()
         if status == Status.FAILURE:
             return Status.FAILURE
         
         if status == Status.SUCCESS:
-            exeuctor.adv()
-        return exeuctor.cur.STATUS
+            terminal.storage['idx'] = idx + 1
+            status = Status.RUNNING
+        if terminal.storage['idx'] >= len(self._tasks):
+            status = Status.FAILURE
+        
+        return status
 
     def clone(self) -> 'Task':
         return Sequence(
@@ -258,88 +478,31 @@ class Sequence(Composite):
         )
 
 
-class LinearExecutor(CompositeExecutor):
+class Fallback(Composite):
 
-    def __init__(self, items: typing.List[Task]):
-        """initializer
+    def add(self, task: Task) -> 'Sequence':
+        self._tasks.append(task)
 
-        Args:
-            items (typing.List[Task])
-        """
-        self._items = items
-        self._idx = 0
+    def subtick(self, terminal: Terminal) -> Status:
+        
+        idx = terminal.storage['idx']
+        status = self._tasks[idx].tick(terminal)
 
-    def reset(self, items: list=None):
-        """Reset the planner to the start state
+        if status == Status.SUCCESS:
+            return Status.SUCCESS
+        
+        if status == Status.FAILURE:
+            terminal.storage['idx'] = idx + 1
+            status = Status.RUNNING
+        if terminal.storage['idx'] >= len(self._tasks):
+            status = Status.FAILURE
+        
+        return status
 
-        Args:
-            items (list, optional): Updated items to set the planner to. Defaults to None.
-        """
-        self._idx = 0
-        self._items = items # coalesce(items, self._items)
-    
-    @property
-    def idx(self):
-        return self._idx
-    
-    @idx.setter
-    def idx(self, idx):
-        if not (0 <= idx <= len(self._items)):
-            raise IndexError(f"Index {idx} is out of range in {len(self._items)}")
-        self._idx = idx
-
-    def end(self) -> bool:
-        """Advance the planner
-
-        Returns:
-            bool
-        """
-        if self._idx == len(self._items):
-            return True
-        return False
-    
-    def adv(self) -> bool:
-        """Advance the planner
-
-        Returns:
-            bool
-        """
-        if self._idx == len(self._items):
-            return False
-        self._idx += 1
-        return True
-    
-    @property
-    def cur(self) -> Task:
-        """
-        Returns:
-            Task
-        """
-        if self._idx == len(self._items):
-            return None
-        return self._items[self._idx]
-
-    def rev(self) -> bool:
-        """Reverse the planner
-
-        Returns:
-            bool
-        """
-        if self._idx == 0:
-            return False
-        self._idx -= 1
-        return True
-
-    def clone(self):
-        """Clone the linear planner
-
-        Returns:
-            LinearPlanner
-        """
-        return LinearExecutor([*self._items])
-    
-    def __len__(self) -> int:
-        return len(self._items)
+    def clone(self) -> 'Task':
+        return Sequence(
+            self.name, [task.clone() for task in self._tasks]
+        )
 
 
 class Action(Task):
@@ -348,12 +511,13 @@ class Action(Task):
     def act(self):
         raise NotImplementedError
 
-    def tick(self):
+    def tick(self, terminal: Terminal) -> Status:
 
         if self._status.is_done():
             return self._status
-        self._status = self.act()
-        return self._status
+        status = self.act()
+        terminal.storage['status'] = status
+        return status
 
 
 class Condition(Task):
@@ -367,3 +531,88 @@ class Condition(Task):
         if self.condition():
             return Status.SUCCESS
         return Status.FAILURE
+
+
+
+# class LinearExecutor(CompositeExecutor):
+
+#     def __init__(self, items: typing.List[Task]):
+#         """initializer
+
+#         Args:
+#             items (typing.List[Task])
+#         """
+#         self._items = items
+#         self._idx = 0
+
+#     def reset(self, items: list=None):
+#         """Reset the planner to the start state
+
+#         Args:
+#             items (list, optional): Updated items to set the planner to. Defaults to None.
+#         """
+#         self._idx = 0
+#         self._items = items # coalesce(items, self._items)
+    
+#     @property
+#     def idx(self):
+#         return self._idx
+    
+#     @idx.setter
+#     def idx(self, idx):
+#         if not (0 <= idx <= len(self._items)):
+#             raise IndexError(f"Index {idx} is out of range in {len(self._items)}")
+#         self._idx = idx
+
+#     def end(self) -> bool:
+#         """Advance the planner
+
+#         Returns:
+#             bool
+#         """
+#         if self._idx == len(self._items):
+#             return True
+#         return False
+    
+#     def adv(self) -> bool:
+#         """Advance the planner
+
+#         Returns:
+#             bool
+#         """
+#         if self._idx == len(self._items):
+#             return False
+#         self._idx += 1
+#         return True
+    
+#     @property
+#     def cur(self) -> Task:
+#         """
+#         Returns:
+#             Task
+#         """
+#         if self._idx == len(self._items):
+#             return None
+#         return self._items[self._idx]
+
+#     def rev(self) -> bool:
+#         """Reverse the planner
+
+#         Returns:
+#             bool
+#         """
+#         if self._idx == 0:
+#             return False
+#         self._idx -= 1
+#         return True
+
+#     def clone(self):
+#         """Clone the linear planner
+
+#         Returns:
+#             LinearPlanner
+#         """
+#         return LinearExecutor([*self._items])
+    
+#     def __len__(self) -> int:
+#         return len(self._items)
