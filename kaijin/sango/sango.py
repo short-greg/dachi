@@ -17,6 +17,10 @@ from dataclasses import dataclass
 # comm.sub(3)
 
 
+# How to deal with waiting
+# How to continue running
+
+
 class DataHook(ABC):
 
     def __init__(self, name: str, *args, **kwargs):
@@ -32,13 +36,36 @@ class DataHook(ABC):
         pass
 
 
-class Data(object):
+class DataBase(ABC):
+
+    def __init__(self, name: str):
+
+        super().__init__()
+        self._name = name
+
+    @abstractmethod
+    def register_hook(self, hook):
+        pass
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    @abstractproperty
+    def value(self) -> typing.Any:
+        pass
+
+    @abstractmethod
+    def update(self, value) -> typing.Any:
+        pass
+
+
+class Data(DataBase):
 
     def __init__(self, name: str, value: str, check_f=None):
 
-        super().__init__()
+        super().__init__(name)
         self._value = value
-        self._name = name
         self._check_f = check_f
         self._hooks = CompositeHook(f'')
 
@@ -64,13 +91,12 @@ class Data(object):
         return value
 
 
-class Synched(object):
+class Synched(DataBase):
 
     def __init__(self, name: str, base_data: Data):
 
-        super().__init__()
+        super().__init__(name)
         self._base_data = base_data
-        self._name = name
 
     def register_hook(self, hook):
         self._base_data.register_hook(hook)
@@ -78,6 +104,10 @@ class Synched(object):
     @property
     def name(self) -> str:
         return self._name
+    
+    @property
+    def synched_name(self) -> str:
+        return self._base_data.name
 
     @property
     def value(self) -> typing.Any:
@@ -86,7 +116,6 @@ class Synched(object):
     def update(self, value) -> typing.Any:
         return self._base_data.update(value)
 
-# Add the "synchs in advance"
 
 class CompositeHook(DataHook, list):
 
@@ -252,15 +281,6 @@ class Terminal(object):
     def parent(self) -> 'Terminal':
         return self._parent
 
-    # def send(self, message: Message, name: str, data, f=None):
-    #     self._server.send(message, name, data, f)
-
-    # def receive(self, message_type: MessageType, name: str, receiver: str, f, expires: bool=True):
-    #     self._server.receive(message_type, name, receiver, f, expires: bool=True)
-
-    # def cancel_receive(self, message_type: MessageType, name: str, f):
-    #     self._server.cancel_receive(message_type)
-
 
 class Task(ABC):
 
@@ -314,76 +334,6 @@ class Task(ABC):
     def __call__(self, terminal: Terminal) -> Status:
     
         return self.tick(terminal)
-
-
-# server.sync(terminal, []) <- shared fields
-
-# class CompositeExecutor(object):
-
-#     @abstractmethod
-#     def reset(self, items: list=None):
-#         """Reset the planner to the start state
-
-#         Args:
-#             items (list, optional): Updated items to set the planner to. Defaults to None.
-#         """
-#         pass
-
-#     @abstractproperty
-#     def idx(self):
-#         pass
-    
-#     @idx.setter
-#     def idx(self, idx):
-#         pass
-
-#     @abstractmethod
-#     def end(self) -> bool:
-#         """Advance the planner
-
-#         Returns:
-#             bool
-#         """
-#         pass
-
-#     @abstractmethod
-#     def adv(self) -> bool:
-#         """Advance the planner
-
-#         Returns:
-#             bool
-#         """
-#         pass
-    
-#     @abstractproperty
-#     def cur(self) -> Task:
-#         """
-#         Returns:
-#             Task
-#         """
-#         pass
-
-#     @abstractmethod
-#     def rev(self) -> bool:
-#         """Reverse the planner
-
-#         Returns:
-#             bool
-#         """
-#         pass
-
-#     @abstractmethod
-#     def clone(self):
-#         """Clone the linear planner
-
-#         Returns:
-#             LinearPlanner
-#         """
-#         pass
-    
-#     @abstractmethod
-#     def __len__(self) -> int:
-#         pass
 
 
 class Composite(Task):
@@ -500,7 +450,24 @@ class Fallback(Composite):
         return status
 
     def clone(self) -> 'Task':
-        return Sequence(
+        return Fallback(
+            self.name, [task.clone() for task in self._tasks]
+        )
+
+class Parallel(Task):
+
+    def __init__(self, name: str, tasks: typing.List[Task]):
+        super().__init__(name, tasks)
+
+    def add(self, task: Task):
+        self._tasks.append(task)
+
+    @abstractmethod
+    def parallel(self, terminal: Terminal) -> Status:
+        pass
+
+    def clone(self) -> 'Task':
+        return Parallel(
             self.name, [task.clone() for task in self._tasks]
         )
 
@@ -531,7 +498,6 @@ class Condition(Task):
         if self.condition():
             return Status.SUCCESS
         return Status.FAILURE
-
 
 
 # class LinearExecutor(CompositeExecutor):
@@ -616,3 +582,74 @@ class Condition(Task):
     
 #     def __len__(self) -> int:
 #         return len(self._items)
+
+
+
+# server.sync(terminal, []) <- shared fields
+
+# class CompositeExecutor(object):
+
+#     @abstractmethod
+#     def reset(self, items: list=None):
+#         """Reset the planner to the start state
+
+#         Args:
+#             items (list, optional): Updated items to set the planner to. Defaults to None.
+#         """
+#         pass
+
+#     @abstractproperty
+#     def idx(self):
+#         pass
+    
+#     @idx.setter
+#     def idx(self, idx):
+#         pass
+
+#     @abstractmethod
+#     def end(self) -> bool:
+#         """Advance the planner
+
+#         Returns:
+#             bool
+#         """
+#         pass
+
+#     @abstractmethod
+#     def adv(self) -> bool:
+#         """Advance the planner
+
+#         Returns:
+#             bool
+#         """
+#         pass
+    
+#     @abstractproperty
+#     def cur(self) -> Task:
+#         """
+#         Returns:
+#             Task
+#         """
+#         pass
+
+#     @abstractmethod
+#     def rev(self) -> bool:
+#         """Reverse the planner
+
+#         Returns:
+#             bool
+#         """
+#         pass
+
+#     @abstractmethod
+#     def clone(self):
+#         """Clone the linear planner
+
+#         Returns:
+#             LinearPlanner
+#         """
+#         pass
+    
+#     @abstractmethod
+#     def __len__(self) -> int:
+#         pass
