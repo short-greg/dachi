@@ -36,10 +36,16 @@ class DataHook(ABC):
         pass
 
 
-class DataBase(ABC):
+class IData(ABC):
+    """Define the base class for data
+    """
 
     def __init__(self, name: str):
+        """Create the data
 
+        Args:
+            name (str): The name of the data
+        """
         super().__init__()
         self._name = name
 
@@ -49,6 +55,10 @@ class DataBase(ABC):
 
     @property
     def name(self) -> str:
+        """
+        Returns:
+            str: The name of the data
+        """
         return self._name
 
     @abstractproperty
@@ -60,16 +70,29 @@ class DataBase(ABC):
         pass
 
 
-class Data(DataBase):
+class Data(IData):
+    """Definitions of data for the behavior tree
+    """
 
-    def __init__(self, name: str, value: str, check_f=None):
+    def __init__(self, name: str, value: typing.Any, check_f=None):
+        """Create data for the behavior tree
 
+        Args:
+            name (str): The name of the data
+            value (typing.Any): The value for the data
+            check_f (optional): Validation function if necessary. Defaults to None.
+        """
         super().__init__(name)
         self._value = value
         self._check_f = check_f
         self._hooks = CompositeHook(f'')
 
-    def register_hook(self, hook):
+    def register_hook(self, hook: DataHook):
+        """Register a hook for when the data is updated
+
+        Args:
+            hook: The hook to call
+        """
         self._hooks.append(hook)
 
     @property
@@ -91,14 +114,20 @@ class Data(DataBase):
         return value
 
 
-class Synched(DataBase):
+class Synched(IData):
 
     def __init__(self, name: str, base_data: Data):
 
         super().__init__(name)
         self._base_data = base_data
 
-    def register_hook(self, hook):
+    def register_hook(self, hook: DataHook):
+        """Register a hook for when the data is updated. Will be
+        attached to the base data
+
+        Args:
+            hook (DataHook): The hook to call when updating
+        """
         self._base_data.register_hook(hook)
 
     @property
@@ -118,11 +147,25 @@ class Synched(DataBase):
 
 
 class CompositeHook(DataHook, list):
+    """A hook that will run multiple hooks
+    """
 
     def __init__(self, name: str, hooks: typing.List[DataHook]=None):
+        """Create a composite hook to run multiple hook
+
+        Args:
+            name (str): The name of the hook
+            hooks (typing.List[DataHook], optional): The hooks to run. Defaults to None.
+        """
         super().__init__(name, hooks)
 
     def __call__(self, data: 'Data', prev_value):
+        """Run the hooks
+
+        Args:
+            data (Data): The data that was updated
+            prev_value (typing.Any): The previous value for the data
+        """
         for hook in self:
             hook(data, prev_value)
 
@@ -140,12 +183,24 @@ class Status(Enum):
 
 
 class DataStore(object):
+    """
+    """
 
     def __init__(self) -> None:
         super().__init__()
         self._data: typing.Dict[str, Data] = {}
 
     def add(self, key: str, value: typing.Any, check_f=None) -> None:
+        """Add data to the data store
+
+        Args:
+            key (str): The name of the data
+            value (typing.Any): The value for the data
+            check_f (typing.Callable[[typing.Any], bool], optional): Add data to the datastore . Defaults to None.
+
+        Raises:
+            ValueError: 
+        """
         if key in self._data:
             raise ValueError()
         self._data[key] = Data(key, value, check_f)
