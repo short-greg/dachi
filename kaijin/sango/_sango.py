@@ -83,9 +83,10 @@ class Data(IData):
             check_f (optional): Validation function if necessary. Defaults to None.
         """
         super().__init__(name)
-        self._value = value
         self._check_f = check_f
-        self._hooks = CompositeHook(f'')
+        self.validate(value)
+        self._value = value
+        self._hooks = CompositeHook(name)
 
     def register_hook(self, hook: DataHook):
         """Register a hook for when the data is updated
@@ -102,12 +103,15 @@ class Data(IData):
     @property
     def value(self) -> typing.Any:
         return self._value
-
-    def update(self, value) -> typing.Any:
+    
+    def validate(self, value):
         if self._check_f is not None:
             valid, msg = self._check_f(value)
             if not valid:
                 raise ValueError(msg)
+
+    def update(self, value) -> typing.Any:
+        self.validate(value)
         prev_value = self._value
         self._value = value
         self._hooks(self, prev_value)
@@ -157,7 +161,7 @@ class CompositeHook(DataHook, list):
             name (str): The name of the hook
             hooks (typing.List[DataHook], optional): The hooks to run. Defaults to None.
         """
-        super().__init__(name, hooks)
+        super().__init__(name, hooks or [])
 
     def __call__(self, data: 'Data', prev_value):
         """Run the hooks
