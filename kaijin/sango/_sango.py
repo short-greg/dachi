@@ -36,6 +36,20 @@ class DataHook(ABC):
         pass
 
 
+class MetaHook(ABC):
+
+    def __init__(self, hook: DataHook):
+        super().__init__()
+        self._hook = hook
+    
+    @property
+    def name(self) -> str:
+        return self._hook.name
+
+    def __call__(self, data: 'Data', prev_value):
+        self._hook(data, prev_value)
+
+
 class IData(ABC):
     """Define the base class for data
     """
@@ -96,6 +110,26 @@ class Data(IData):
         """
         self._hooks.append(hook)
 
+    def has_hook(self, hook: DataHook):
+        """Get whether 
+
+        Args:
+            hook (DataHook): _description_
+
+        Returns:
+            _type_: _description_
+        """
+        return hook in self._hooks
+
+    def remove_hook(self, hook: DataHook):
+        """Get whether 
+
+        Args:
+            hook (DataHook): _description_
+
+        """
+        self._hooks.remove(hook)
+    
     @property
     def name(self) -> str:
         return self._name
@@ -124,6 +158,7 @@ class Synched(IData):
 
         super().__init__(name)
         self._base_data = base_data
+        self._hooks: typing.Dict[DataHook, MetaHook] = {}
 
     def register_hook(self, hook: DataHook):
         """Register a hook for when the data is updated. Will be
@@ -132,7 +167,9 @@ class Synched(IData):
         Args:
             hook (DataHook): The hook to call when updating
         """
-        self._base_data.register_hook(hook)
+        meta = MetaHook(hook)
+        self._hooks[hook] = meta
+        self._base_data.register_hook(meta)
 
     @property
     def name(self) -> str:
@@ -144,11 +181,33 @@ class Synched(IData):
 
     @property
     def value(self) -> typing.Any:
-        return self._value
+        return self._base_data.value
 
     def update(self, value) -> typing.Any:
         return self._base_data.update(value)
 
+    def has_hook(self, hook: DataHook):
+        """Get whether 
+
+        Args:
+            hook (DataHook): _description_
+
+        Returns:
+            _type_: _description_
+        """
+        return hook in self._hooks
+
+    def remove_hook(self, hook: DataHook):
+        """Get whether 
+
+        Args:
+            hook (DataHook): _description_
+
+        """
+        meta = self._hooks[hook]
+        self._base_data.remove_hook(meta)
+        del self._hooks[hook]
+        
 
 class CompositeHook(DataHook, list):
     """A hook that will run multiple hooks
@@ -231,6 +290,35 @@ class DataStore(object):
     def __getitem__(self, key: str) -> typing.Any:
         return self._data[key].value
 
+    def register_hook(self, key: str, hook: DataHook):
+        """Register a hook for when the data is updated. Will be
+        attached to the base data
+
+        Args:
+            hook (DataHook): The hook to call when updating
+        """
+        self._data[key].register_hook(hook)
+    
+    def has_hook(self, key: str, hook: DataHook):
+        """Get whether 
+
+        Args:
+            hook (DataHook): _description_
+
+        Returns:
+            _type_: _description_
+        """
+        return self._data[key].has_hook(hook)
+
+    def remove_hook(self, key: str, hook: DataHook):
+        """Get whether 
+
+        Args:
+            hook (DataHook): _description_
+
+        """
+        self._data[key].remove_hook(hook)
+        
 
 class MessageType(Enum):
 
@@ -398,7 +486,6 @@ class Task(ABC):
 class Composite(Task):
     """Task composed of subtasks
     """
-
     def __init__(
         self, tasks: typing.List[Task], name: str=''
     ):
