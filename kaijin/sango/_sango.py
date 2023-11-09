@@ -340,7 +340,7 @@ class MessageHandler(object):
 
     def __init__(self):
 
-        self._receivers: typing.Dict[typing.Tuple, typing.List[typing.Tuple[typing.Callable, bool]]] = {}
+        self._receivers: typing.Dict[typing.Tuple, typing.Dict[typing.Callable, bool]] = dict()
 
     def trigger(self, message: Message):
         
@@ -348,27 +348,45 @@ class MessageHandler(object):
         if receivers is None:
             return
         
-        updated = []
-        for callback, expires in receivers:
+        updated = {}
+        for callback, expires in receivers.items():
             callback(message)
             if not expires:
-                updated.append((callback, False))
+                updated[callback] = False
         self._receivers[(message.message_type, message.name)] = updated
 
     def add_receiver(self, message_type: MessageType, name: str, callback, expires: bool=True):
 
         if (message_type, name) not in self._receivers:
-            self._receivers = []
-        self._receivers[(message_type, name)].append((callback, expires))
+            self._receivers[(message_type, name)] = {}
+        self._receivers[(message_type, name)][callback] = expires
 
     def remove_receiver(self, message_type: MessageType, name: str, callback):
 
-        updated = []
+        receiver = self._receivers.get((message_type, name))
+        if receiver is None:
+            raise ValueError(f'No receiver for {message_type} and {name}')
 
-        for callback, expires in self._receivers[(message_type, name)]:
-            if callback != callback:
-                updated.append[(callback, expires)]
-        self._receivers[(message_type, name)] = updated
+        del receiver[callback]
+        if len(receiver) == 0:
+            del self._receivers[message_type, name]
+
+    def __contains__(self, message: typing.Union[Message, typing.Tuple[MessageType, str]]):
+
+        if isinstance(message, Message):
+            message_type, name = message.message_type, message.name
+        else:
+            message_type, name = message
+        
+        return (message_type, name) in self._receivers
+
+    def has_receiver(self, message_type: MessageType, name: str, callback):
+
+        receiver = self._receivers.get((message_type, name))
+        if receiver is None:
+            return False
+        
+        return callback in receiver
 
 
 class Server(object):

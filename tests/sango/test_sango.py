@@ -186,3 +186,75 @@ class TestDataStore:
         data_store.register_hook('x', hook)
         data_store.update('x', 2)
         assert hook.called is True
+
+
+class Receiver:
+
+    def __init__(self) -> None:
+        self.x = 1
+
+    def callback(self, message: sango.Message):
+        self.x = message.data['input']
+
+
+class TestMessageHandler:
+
+    def test_can_add_receiver_to_message_handler(self):
+
+        receiver = Receiver()
+        handler = sango.MessageHandler()
+        handler.add_receiver(sango.MessageType.INPUT, 'x', receiver.callback)
+        assert (sango.MessageType.INPUT, 'x') in handler
+
+    def test_message_in_handler_with_message(self):
+
+        receiver = Receiver()
+        handler = sango.MessageHandler()
+        message = sango.Message(sango.MessageType.INPUT, 'x')
+        handler.add_receiver(sango.MessageType.INPUT, 'x', receiver.callback)
+
+        assert message in handler
+
+    def test_message_in_handler_with_type_and_name(self):
+
+        receiver = Receiver()
+        handler = sango.MessageHandler()
+        message = sango.Message(sango.MessageType.INPUT, 'x')
+        handler.add_receiver(sango.MessageType.INPUT, 'x', receiver.callback)
+
+        assert message in handler
+
+    def test_message_not_in_handler_with_type_and_name_after_removed_last(self):
+
+        receiver = Receiver()
+        handler = sango.MessageHandler()
+        message = sango.Message(sango.MessageType.INPUT, 'x')
+        handler.add_receiver(sango.MessageType.INPUT, 'x', receiver.callback)
+        handler.remove_receiver(sango.MessageType.INPUT, 'x', receiver.callback)
+
+        assert message not in handler
+
+    def test_receiver_not_in_handler_with_type_and_name_after_removed(self):
+
+        receiver = Receiver()
+        handler = sango.MessageHandler()
+        message = sango.Message(sango.MessageType.INPUT, 'x')
+        handler.add_receiver(sango.MessageType.INPUT, 'x', receiver.callback)
+        handler.remove_receiver(sango.MessageType.INPUT, 'x', receiver.callback)
+        assert not handler.has_receiver(message.message_type, message.name, receiver.callback)
+
+    def test_receiver_is_triggered_when_message_is_passed(self):
+
+        receiver = Receiver()
+        handler = sango.MessageHandler()
+        handler.add_receiver(sango.MessageType.INPUT, 'x', receiver.callback)
+        handler.trigger(sango.Message(sango.MessageType.INPUT, 'x', {'input': 2}))
+        assert receiver.x == 2
+
+    def test_receiver_is_not_triggered_when_message_is_passed(self):
+
+        receiver = Receiver()
+        handler = sango.MessageHandler()
+        handler.add_receiver(sango.MessageType.INPUT, 'x', receiver.callback)
+        handler.trigger(sango.Message(sango.MessageType.INPUT, 'y', {'input': 2}))
+        assert receiver.x == 1
