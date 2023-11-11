@@ -265,7 +265,7 @@ class DataStore(object):
             ValueError: 
         """
         if key in self._data:
-            raise ValueError()
+            raise ValueError(f'Data with key {key} has already been added to the data store')
         self._data[key] = Data(key, value, check_f)
     
     def add_sync(self, key: str, data: Data):
@@ -275,7 +275,10 @@ class DataStore(object):
     
     def update(self, key: str, value: typing.Any):
         
-        self._data[key].update(value)
+        if key not in self._data:
+            self.add(key, value)
+        else:
+            self._data[key].update(value)
 
     def get(self, key: str) -> typing.Any:
 
@@ -289,6 +292,11 @@ class DataStore(object):
     
     def __getitem__(self, key: str) -> typing.Any:
         return self._data[key].value
+    
+    def __setitem__(self, key: str, value) -> typing.Any:
+
+        self.update(key, value)
+        return value
 
     def register_hook(self, key: str, hook: DataHook):
         """Register a hook for when the data is updated. Will be
@@ -408,10 +416,8 @@ class Server(object):
         
         self._message_handler.add_receiver(message_type, name, callback)
 
-    def cancel_receive(self, message_type: MessageType, name: str, f):
-        self._message_handler.cancel_receive(message_type, name, f)
-
-# server.receive(message_type, name, callback)
+    def cancel_receive(self, message_type: MessageType, name: str, callback):
+        self._message_handler.remove_receiver(message_type, name, callback)
 
 
 class Terminal(object):
@@ -420,7 +426,7 @@ class Terminal(object):
         self._initialized = False
         self._server = server
         self._parent = parent
-        self._data = DataStore()
+        self._storage = DataStore()
 
     @property
     def initialized(self) -> bool:
@@ -451,9 +457,10 @@ class Task(ABC):
 
     def _tick_wrapper(self, f) -> typing.Callable[[Terminal], Status]:
 
-        def _tick(self, terminal: Terminal, *args, **kwargs) -> Status:
+        def _tick(terminal: Terminal, *args, **kwargs) -> Status:
             if not terminal.initialized:
                 self.__init_terminal__(terminal)
+                terminal.initialize()
 
             return f(terminal, *args, **kwargs)
         return _tick
@@ -464,7 +471,6 @@ class Task(ABC):
         self._status = Status.READY
         self.tick = self._tick_wrapper(self.tick)
 
-    @abstractmethod
     def __init_terminal__(self, terminal: Terminal):
         pass
 
@@ -481,9 +487,8 @@ class Task(ABC):
     def tick(self, terminal: Terminal) -> Status:
         pass
 
-    @abstractmethod
     def clone(self) -> 'Task':
-        pass
+        return self.__class__(self.name)
 
     def state_dict(self) -> typing.Dict:
 
@@ -639,27 +644,27 @@ class Parallel(Task):
 class Action(Task):
 
     @abstractmethod
-    def act(self):
+    def act(self, terminal: Terminal):
         raise NotImplementedError
 
     def tick(self, terminal: Terminal) -> Status:
 
         if self._status.is_done():
             return self._status
-        status = self.act()
-        terminal.storage['status'] = status
+        status = self.act(terminal)
+        terminal.storage[status] = status
         return status
 
 
 class Condition(Task):
 
     @abstractmethod
-    def condition(self) -> bool:
+    def condition(self, terminal: Terminal) -> bool:
         pass
 
-    def tick(self) -> Status:
+    def tick(self, terminal: Terminal) -> Status:
         
-        if self.condition():
+        if self.condition(terminal):
             return Status.SUCCESS
         return Status.FAILURE
 

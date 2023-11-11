@@ -3,5 +3,7 @@ from ._sango import (
     DataStore, Synched,
     CompositeHook, Composite, 
     Status, MessageType, MessageHandler, Message,
-    Server
+    Server, Terminal, Task, Composite,
+    Sequence, Fallback, Parallel, Action,
+    Condition
 )

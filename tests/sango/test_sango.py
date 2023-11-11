@@ -1,5 +1,5 @@
-from kaijin import sango
-from kaijin.sango._sango import Data
+from kaijin.sango import _sango as sango
+from kaijin.sango._sango import Data, Terminal
 import pytest
 
 
@@ -191,9 +191,11 @@ class TestDataStore:
 class Receiver:
 
     def __init__(self) -> None:
+
         self.x = 1
 
     def callback(self, message: sango.Message):
+        print('called')
         self.x = message.data['input']
 
 
@@ -258,3 +260,148 @@ class TestMessageHandler:
         handler.add_receiver(sango.MessageType.INPUT, 'x', receiver.callback)
         handler.trigger(sango.Message(sango.MessageType.INPUT, 'y', {'input': 2}))
         assert receiver.x == 1
+
+
+class TestServer:
+
+    def test_shared_returns_data_stored(self):
+
+        server = sango.Server()
+        server.shared.add('x', 2)
+        assert server.shared['x'] == 2
+
+    def test_send_triggers_a_message(self):
+
+        receiver = Receiver()
+        server = sango.Server()
+        server.receive(sango.MessageType.INPUT, 'x', receiver.callback)
+        server.send(sango.Message(sango.MessageType.INPUT, 'x', {'input': 2}))
+        assert receiver.x == 2
+
+    def test_send_not_triggered_if_canceled(self):
+
+        receiver = Receiver()
+        server = sango.Server()
+        server.receive(sango.MessageType.INPUT, 'x', receiver.callback)
+        server.cancel_receive(sango.MessageType.INPUT, 'x', receiver.callback)
+
+        server.send(sango.Message(sango.MessageType.INPUT, 'y', {'input': 2}))
+        assert receiver.x == 1
+
+
+class TestTerminal:
+
+    def test_can_retrieve_value_stored(self):
+
+        server = sango.Server()
+        terminal = sango.Terminal(server)
+        terminal.storage.add('x', 2)
+        assert terminal.storage['x'] == 2
+
+    def test_initialized_set_to_true_after_initialize(self):
+
+        server = sango.Server()
+        terminal = sango.Terminal(server)
+        terminal.initialize()
+        assert terminal.initialized is True
+
+    def test_shared_gets_shared_value_for_terminal2(self):
+
+        server = sango.Server()
+        terminal1 = sango.Terminal(server)
+        terminal2 = sango.Terminal(server)
+        terminal1.shared.add('x', 2)
+        assert terminal2.shared['x'] == 2
+
+    def test_server_returns_server(self):
+
+        server = sango.Server()
+        terminal1 = sango.Terminal(server)
+        assert terminal1.server is server
+
+    def test_parent_returns_parent(self):
+
+        server = sango.Server()
+        terminal1 = sango.Terminal(server)
+        terminal2 = sango.Terminal(server, terminal1)
+        assert terminal2.parent is terminal1
+
+
+class SetStorageAction(sango.Action):
+
+    key = 'x'
+    value = 4
+
+    def act(self, terminal: Terminal):
+        terminal.storage.update(self.key, self.value)
+        return sango.Status.SUCCESS
+    
+    def __init_terminal__(self, terminal: Terminal):
+        super().__init_terminal__(terminal)
+        terminal.storage.add(
+            'count', 0, lambda x: (x >= 0, 'Value must be greater than or equal to 0')
+        )
+
+
+class SetStorageActionCounter(sango.Action):
+
+    key = 'x'
+    value = 4
+
+    def act(self, terminal: Terminal):
+        terminal.storage['count'] += 1
+        if terminal.storage['count'] == 2:
+            return sango.Status.SUCCESS
+        if terminal.storage['count'] < 0:
+            return sango.Status.FAILURE
+        return sango.Status.RUNNING
+    
+    def __init_terminal__(self, terminal: Terminal):
+        super().__init_terminal__(terminal)
+        terminal.storage.add(
+            'count', 0
+        )
+
+
+class TestAction:
+
+    def test_storage_action_returns_success(self):
+
+        server = sango.Server()
+        terminal = sango.Terminal(server)
+        action = SetStorageAction('SetStorageAction')
+        action.tick(terminal)
+        assert terminal.storage[action.key] == action.value
+
+    def test_count_has_been_initialized_on_terminal(self):
+
+        server = sango.Server()
+        terminal = sango.Terminal(server)
+        action = SetStorageAction('SetStorageAction')
+        action.tick(terminal)
+        assert terminal.storage['count'] == 0
+
+    def test_cannot_set_count_to_less_than_0(self):
+
+        server = sango.Server()
+        terminal = sango.Terminal(server)
+        action = SetStorageAction('SetStorageAction')
+        action.tick(terminal)
+        with pytest.raises(ValueError):
+            terminal.storage['count'] = -1
+
+    def test_storage_action_counter_returns_running_if_count_is_1(self):
+
+        server = sango.Server()
+        terminal = sango.Terminal(server)
+        action = SetStorageActionCounter('SetStorageAction')
+        assert action.tick(terminal) == sango.Status.RUNNING
+
+    def test_storage_action_counter_returns_success_if_count_is_2(self):
+
+        server = sango.Server()
+        terminal = sango.Terminal(server)
+        action = SetStorageAction('SetStorageAction')
+        action.tick(terminal)
+        assert action.tick(terminal) == sango.Status.SUCCESS
+
