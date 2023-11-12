@@ -3,7 +3,8 @@ from abc import abstractmethod, ABC, abstractproperty
 import typing
 from typing import Any
 from dataclasses import dataclass
-
+from uuid import uuid4
+from collections import OrderedDict
 
 # tree.tick(comm)
 # comm.share('', ...)
@@ -308,13 +309,13 @@ class DataStore(object):
         self._data[key].register_hook(hook)
     
     def has_hook(self, key: str, hook: DataHook):
-        """Get whether 
-
+        """
         Args:
-            hook (DataHook): _description_
+            key : The key to check if exists
+            hook (DataHook): The hook to 
 
         Returns:
-            _type_: _description_
+            bool: Whether the hook data specified by key has the hook
         """
         return self._data[key].has_hook(hook)
 
@@ -326,7 +327,12 @@ class DataStore(object):
 
         """
         self._data[key].remove_hook(hook)
-        
+
+    def reset(self):
+        """Clear out the data in the data store
+        """
+        self._data.clear()        
+
 
 class MessageType(Enum):
 
@@ -344,42 +350,171 @@ class Message(object):
     data: typing.Dict = None
 
 
-class MessageHandler(object):
+# class MessageHandler(object):
+
+#     def __init__(self):
+
+#         self._receivers: typing.Dict[typing.Tuple, typing.Dict[typing.Callable, bool]] = dict()
+
+#     def trigger(self, message: Message):
+        
+#         receivers = self._receivers.get((message.message_type, message.name))
+#         if receivers is None:
+#             return
+        
+#         updated = {}
+#         for callback, expires in receivers.items():
+#             callback(message)
+#             if not expires:
+#                 updated[callback] = False
+#         self._receivers[(message.message_type, message.name)] = updated
+
+#     def add_receiver(self, message_type: MessageType, name: str, callback, expires: bool=True):
+
+#         if (message_type, name) not in self._receivers:
+#             self._receivers[(message_type, name)] = {}
+#         self._receivers[(message_type, name)][callback] = expires
+
+#     def remove_receiver(self, message_type: MessageType, name: str, callback):
+
+#         receiver = self._receivers.get((message_type, name))
+#         if receiver is None:
+#             raise ValueError(f'No receiver for {message_type} and {name}')
+
+#         del receiver[callback]
+#         if len(receiver) == 0:
+#             del self._receivers[message_type, name]
+
+#     def __contains__(self, message: typing.Union[Message, typing.Tuple[MessageType, str]]):
+
+#         if isinstance(message, Message):
+#             message_type, name = message.message_type, message.name
+#         else:
+#             message_type, name = message
+        
+#         return (message_type, name) in self._receivers
+
+#     def has_receiver(self, message_type: MessageType, name: str, callback):
+
+#         receiver = self._receivers.get((message_type, name))
+#         if receiver is None:
+#             return False
+        
+#         return callback in receiver
+
+#     # Not sure how to revive te revive this
+#     # the callbacks will likely be wrong
+#     # can 
+
+class Server(object):
 
     def __init__(self):
+        
+        self._shared = DataStore()
+        # self._message_handler = MessageHandler()
+        self._terminals = OrderedDict()
+        self._register = {}
+        self._receivers: typing.Dict[typing.Tuple[MessageType, str], typing.Dict[typing.Union[str, typing.Callable], bool]] = {}
 
-        self._receivers: typing.Dict[typing.Tuple, typing.Dict[typing.Callable, bool]] = dict()
-
-    def trigger(self, message: Message):
+    @property
+    def shared(self) -> DataStore:
+        return self._shared
+    
+    def send(self, message: Message):
         
         receivers = self._receivers.get((message.message_type, message.name))
         if receivers is None:
             return
         
         updated = {}
-        for callback, expires in receivers.items():
-            callback(message)
+        for task, expires in receivers.items():
+            if isinstance(task, str):
+                self._register[task].receive(message)
+            else:
+                task(message)
             if not expires:
-                updated[callback] = False
+                updated[task.id] = False
         self._receivers[(message.message_type, message.name)] = updated
 
-    def add_receiver(self, message_type: MessageType, name: str, callback, expires: bool=True):
+    def register(self, task: 'Task', overwrite: bool=False) -> 'Terminal':
 
+        in_register = self._register.get(task.id)
+        if in_register is None:
+            self._register[task.id] = task
+            terminal = Terminal(self)
+            self._terminals[task.id] = terminal
+        elif in_register and overwrite:
+            self._register[task.id] = task
+            terminal = Terminal(self)
+            self._terminals[task.id] = terminal
+        elif task is not in_register:
+            raise ValueError(f'The task in register {in_register} is different from this task')
+        return self._terminals[task.id]
+    
+    def state_dict(self) -> typing.Dict:
+
+        receivers = {}
+        for k, v in self._receivers.items():
+            cur = {}
+            for callback, expires in v.items():
+                if isinstance(callback, str):
+                    cur[callback] = expires
+            receivers[k] = cur
+
+        return {
+            'shared': self._shared.state_dict(),
+            'registered': {id: None for id, _ in self._register.items()},
+            'terminals': {id: terminal.state_dict() for id, terminal in self._terminals.items()},
+            'receivers': receivers
+        }
+    
+    def load_state_dict(self, state_dict) -> 'Server':
+
+        self._shared.load_state_dict(state_dict['shared'])
+        self._terminals = {
+            k: Terminal(self).load_state_dict(terminal_state) for k, terminal_state in state_dict['terminals']
+        }
+        self._register = {
+            k: None for k, _ in state_dict['registered'].items()
+        }
+        # Update this to account for 
+        self._receivers = {
+            id: receiver for id, receiver in state_dict['receivers'].items()
+        }
+        return self
+
+    def receive(self, message_type: MessageType, name: str, task: typing.Union['Task', typing.Callable], expires: bool=True):
+
+        is_task = isinstance(task, Task)
+        if is_task and task.id not in self._register:
+            raise ValueError(f'No task with id of {task.id} in the register')
         if (message_type, name) not in self._receivers:
             self._receivers[(message_type, name)] = {}
-        self._receivers[(message_type, name)][callback] = expires
+        
+        if is_task:
+            self._receivers[(message_type, name)][task.id] = expires
+        else:
+            self._receivers[(message_type, name)][task] = expires
 
-    def remove_receiver(self, message_type: MessageType, name: str, callback):
+    def cancel_receive(self, message_type: MessageType, name: str, task: typing.Union['Task', typing.Callable]):
 
         receiver = self._receivers.get((message_type, name))
         if receiver is None:
             raise ValueError(f'No receiver for {message_type} and {name}')
 
-        del receiver[callback]
+        del receiver[task.id]
         if len(receiver) == 0:
             del self._receivers[message_type, name]
 
-    def __contains__(self, message: typing.Union[Message, typing.Tuple[MessageType, str]]):
+    def has_receiver(self, message_type: MessageType, name: str, task: 'Task'):
+
+        receiver = self._receivers.get((message_type, name))
+        if receiver is None:
+            return False
+        
+        return task.id in receiver
+
+    def receives_message(self, message: typing.Union[Message, typing.Tuple[MessageType, str]]):
 
         if isinstance(message, Message):
             message_type, name = message.message_type, message.name
@@ -388,44 +523,12 @@ class MessageHandler(object):
         
         return (message_type, name) in self._receivers
 
-    def has_receiver(self, message_type: MessageType, name: str, callback):
-
-        receiver = self._receivers.get((message_type, name))
-        if receiver is None:
-            return False
-        
-        return callback in receiver
-
-
-class Server(object):
-
-    def __init__(self):
-        
-        self._shared = DataStore()
-        self._message_handler = MessageHandler()
-
-    @property
-    def shared(self) -> DataStore:
-        return self._shared
-    
-    def send(self, message: Message):
-        
-        self._message_handler.trigger(message)
-
-    def receive(self, message_type: MessageType, name: str, callback) -> typing.Any:
-        
-        self._message_handler.add_receiver(message_type, name, callback)
-
-    def cancel_receive(self, message_type: MessageType, name: str, callback):
-        self._message_handler.remove_receiver(message_type, name, callback)
-
 
 class Terminal(object):
 
-    def __init__(self, server: Server, parent: 'Terminal'=None) -> None:
+    def __init__(self, server: Server) -> None:
         self._initialized = False
         self._server = server
-        self._parent = parent
         self._storage = DataStore()
 
     @property
@@ -451,6 +554,28 @@ class Terminal(object):
     @property
     def parent(self) -> 'Terminal':
         return self._parent
+    
+    def reset(self):
+        self._initialized = False
+        self._storage.reset()
+
+    def child(self, task: 'Task') -> 'Terminal':
+
+        return self.server.register(task)
+
+    def state_dict(self) -> typing.Dict:
+
+        return {
+            'initialized': self._initialized,
+            'storage': self._storage.state_dict()
+        }
+    
+    def load_state_dict(self, state_dict, server: Server=None):
+
+        server = server or self._server
+        self._storage = DataStore().load_state_dict(state_dict['storage'])
+        self._initialized = state_dict['initialized']
+        return self
 
 
 class Task(ABC):
@@ -468,20 +593,16 @@ class Task(ABC):
     def __init__(self, name: str) -> None:
         super().__init__()
         self._name = name
-        self._status = Status.READY
+        self._id = str(uuid4())
         self.tick = self._tick_wrapper(self.tick)
 
     def __init_terminal__(self, terminal: Terminal):
-        pass
+        terminal.storage.add('status', Status.READY)
 
     @property
     def name(self) -> str:
 
         return self._name
-    
-    @property
-    def status(self) -> Status:
-        return self._status
 
     @abstractmethod    
     def tick(self, terminal: Terminal) -> Status:
@@ -493,17 +614,33 @@ class Task(ABC):
     def state_dict(self) -> typing.Dict:
 
         return {
+            'id': self._id,
             'name': self._name
         }
     
     def load_state_dict(self, state_dict: typing.Dict):
 
+        self._id = state_dict['id']
         self._name = state_dict['name']
-        self._status = state_dict['status']
 
     def __call__(self, terminal: Terminal) -> Status:
     
         return self.tick(terminal)
+
+    def reset(self, terminal):
+
+        terminal.reset()
+        self.__init_terminal__(terminal)
+
+    def receive(self, message: Message):
+        pass
+
+    @property
+    def id(self):
+        return self._id
+
+
+# 1) not sure how to recover the state
 
 
 class Composite(Task):
@@ -560,15 +697,6 @@ class Composite(Task):
         for task, task_state_dict in zip(self._tasks, state_dict['tasks']):
             task.load_state_dict(task_state_dict)
 
-    # def iterate(self, filter: Filter=None, deep: bool=True):
-    #     filter = filter or NullFilter()    
-    #     for task in self._tasks:
-    #         if filter.check(task):
-    #             yield task
-    #             if deep:
-    #                 for subtask in task.iterate(filter, deep):
-    #                     yield subtask
-
 
 class Sequence(Composite):
 
@@ -578,24 +706,28 @@ class Sequence(Composite):
     def subtick(self, terminal: Terminal) -> Status:
         
         idx = terminal.storage['idx']
-        status = self._tasks[idx].tick(terminal)
+        if terminal.storage['status'].is_done():
+            return terminal.storage['status']
+    
+        task = self._tasks[idx]
+        status = task.tick(terminal.child(task.id))
 
         if status == Status.FAILURE:
             return Status.FAILURE
         
         if status == Status.SUCCESS:
-            terminal.storage['idx'] = idx + 1
+            terminal.storage['idx'] += 1
             status = Status.RUNNING
         if terminal.storage['idx'] >= len(self._tasks):
-            status = Status.FAILURE
-        
+            status = Status.SUCCESS
+
         return status
 
-    def clone(self) -> 'Task':
+    def clone(self) -> 'Sequence':
         return Sequence(
             self.name, [task.clone() for task in self._tasks]
         )
-
+    
 
 class Fallback(Composite):
 
@@ -618,7 +750,7 @@ class Fallback(Composite):
         
         return status
 
-    def clone(self) -> 'Task':
+    def clone(self) -> 'Fallback':
         return Fallback(
             self.name, [task.clone() for task in self._tasks]
         )
@@ -649,8 +781,8 @@ class Action(Task):
 
     def tick(self, terminal: Terminal) -> Status:
 
-        if self._status.is_done():
-            return self._status
+        if terminal.storage['status'].is_done():
+            return terminal.storage['status']
         status = self.act(terminal)
         terminal.storage[status] = status
         return status

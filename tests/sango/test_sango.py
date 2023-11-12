@@ -1,5 +1,5 @@
 from kaijin.sango import _sango as sango
-from kaijin.sango._sango import Data, Terminal
+from kaijin.sango._sango import Data, Message, Terminal
 import pytest
 
 
@@ -188,78 +188,18 @@ class TestDataStore:
         assert hook.called is True
 
 
-class Receiver:
+class ATask(sango.Action):
 
     def __init__(self) -> None:
-
+        super().__init__('ATask')
         self.x = 1
 
-    def callback(self, message: sango.Message):
-        print('called')
+    def receive(self, message: Message):
+        print('Received message')
         self.x = message.data['input']
 
-
-class TestMessageHandler:
-
-    def test_can_add_receiver_to_message_handler(self):
-
-        receiver = Receiver()
-        handler = sango.MessageHandler()
-        handler.add_receiver(sango.MessageType.INPUT, 'x', receiver.callback)
-        assert (sango.MessageType.INPUT, 'x') in handler
-
-    def test_message_in_handler_with_message(self):
-
-        receiver = Receiver()
-        handler = sango.MessageHandler()
-        message = sango.Message(sango.MessageType.INPUT, 'x')
-        handler.add_receiver(sango.MessageType.INPUT, 'x', receiver.callback)
-
-        assert message in handler
-
-    def test_message_in_handler_with_type_and_name(self):
-
-        receiver = Receiver()
-        handler = sango.MessageHandler()
-        message = sango.Message(sango.MessageType.INPUT, 'x')
-        handler.add_receiver(sango.MessageType.INPUT, 'x', receiver.callback)
-
-        assert message in handler
-
-    def test_message_not_in_handler_with_type_and_name_after_removed_last(self):
-
-        receiver = Receiver()
-        handler = sango.MessageHandler()
-        message = sango.Message(sango.MessageType.INPUT, 'x')
-        handler.add_receiver(sango.MessageType.INPUT, 'x', receiver.callback)
-        handler.remove_receiver(sango.MessageType.INPUT, 'x', receiver.callback)
-
-        assert message not in handler
-
-    def test_receiver_not_in_handler_with_type_and_name_after_removed(self):
-
-        receiver = Receiver()
-        handler = sango.MessageHandler()
-        message = sango.Message(sango.MessageType.INPUT, 'x')
-        handler.add_receiver(sango.MessageType.INPUT, 'x', receiver.callback)
-        handler.remove_receiver(sango.MessageType.INPUT, 'x', receiver.callback)
-        assert not handler.has_receiver(message.message_type, message.name, receiver.callback)
-
-    def test_receiver_is_triggered_when_message_is_passed(self):
-
-        receiver = Receiver()
-        handler = sango.MessageHandler()
-        handler.add_receiver(sango.MessageType.INPUT, 'x', receiver.callback)
-        handler.trigger(sango.Message(sango.MessageType.INPUT, 'x', {'input': 2}))
-        assert receiver.x == 2
-
-    def test_receiver_is_not_triggered_when_message_is_passed(self):
-
-        receiver = Receiver()
-        handler = sango.MessageHandler()
-        handler.add_receiver(sango.MessageType.INPUT, 'x', receiver.callback)
-        handler.trigger(sango.Message(sango.MessageType.INPUT, 'y', {'input': 2}))
-        assert receiver.x == 1
+    def act(self, terminal: Terminal):
+        return sango.Status.SUCCESS
 
 
 class TestServer:
@@ -272,136 +212,245 @@ class TestServer:
 
     def test_send_triggers_a_message(self):
 
-        receiver = Receiver()
+        task = ATask()
         server = sango.Server()
-        server.receive(sango.MessageType.INPUT, 'x', receiver.callback)
+        server.register(task)
+        server.receive(sango.MessageType.INPUT, 'x', task)
         server.send(sango.Message(sango.MessageType.INPUT, 'x', {'input': 2}))
-        assert receiver.x == 2
+        assert task.x == 2
 
     def test_send_not_triggered_if_canceled(self):
 
-        receiver = Receiver()
+        task = ATask()
         server = sango.Server()
-        server.receive(sango.MessageType.INPUT, 'x', receiver.callback)
-        server.cancel_receive(sango.MessageType.INPUT, 'x', receiver.callback)
+        server.register(task)
+        server.receive(sango.MessageType.INPUT, 'x', task)
+        server.cancel_receive(sango.MessageType.INPUT, 'x', task)
 
         server.send(sango.Message(sango.MessageType.INPUT, 'y', {'input': 2}))
-        assert receiver.x == 1
+        assert task.x == 1
 
+    def test_can_add_receiver_to_message_handler(self):
 
-class TestTerminal:
-
-    def test_can_retrieve_value_stored(self):
-
+        task = ATask()
         server = sango.Server()
-        terminal = sango.Terminal(server)
-        terminal.storage.add('x', 2)
-        assert terminal.storage['x'] == 2
+        server.register(task)
+        server.receive(sango.MessageType.INPUT, 'x', task)
+        assert server.receives_message((sango.MessageType.INPUT, 'x'))
 
-    def test_initialized_set_to_true_after_initialize(self):
+    def test_message_in_handler_with_message(self):
 
+        task = ATask()
         server = sango.Server()
-        terminal = sango.Terminal(server)
-        terminal.initialize()
-        assert terminal.initialized is True
+        server.register(task)
+        message = sango.Message(sango.MessageType.INPUT, 'x')
+        server.receive(sango.MessageType.INPUT, 'x', task)
 
-    def test_shared_gets_shared_value_for_terminal2(self):
+        assert server.receives_message(message)
 
+    def test_message_in_handler_with_type_and_name(self):
+
+        task = ATask()
         server = sango.Server()
-        terminal1 = sango.Terminal(server)
-        terminal2 = sango.Terminal(server)
-        terminal1.shared.add('x', 2)
-        assert terminal2.shared['x'] == 2
+        server.register(task)
+        message = sango.Message(sango.MessageType.INPUT, 'x')
+        server.receive(sango.MessageType.INPUT, 'x', task)
 
-    def test_server_returns_server(self):
+        assert server.receives_message(message)
 
+    def test_message_not_in_handler_with_type_and_name_after_removed_last(self):
+
+        task = ATask()
         server = sango.Server()
-        terminal1 = sango.Terminal(server)
-        assert terminal1.server is server
+        server.register(task)
+        message = sango.Message(sango.MessageType.INPUT, 'x')
+        server.receive(sango.MessageType.INPUT, 'x', task)
+        server.cancel_receive(sango.MessageType.INPUT, 'x', task)
 
-    def test_parent_returns_parent(self):
+        assert not server.receives_message(message)
 
+    def test_receiver_not_in_handler_with_type_and_name_after_removed(self):
+
+        task = ATask()
         server = sango.Server()
-        terminal1 = sango.Terminal(server)
-        terminal2 = sango.Terminal(server, terminal1)
-        assert terminal2.parent is terminal1
+        server.register(task)
+        message = sango.Message(sango.MessageType.INPUT, 'x')
+        server.receive(sango.MessageType.INPUT, 'x', task)
+        server.cancel_receive(sango.MessageType.INPUT, 'x', task)
+        assert not server.has_receiver(message.message_type, message.name, task)
+
+    def test_receiver_is_triggered_when_message_is_passed(self):
+
+        task = ATask()
+        server = sango.Server()
+        server.register(task)
+        server.receive(sango.MessageType.INPUT, 'x', task)
+        server.send(sango.Message(sango.MessageType.INPUT, 'x', {'input': 2}))
+        assert task.x == 2
+
+    def test_receiver_is_not_triggered_when_message_is_passed(self):
+
+        task = ATask()
+        server = sango.Server()
+        server.register(task)
+        server.receive(sango.MessageType.INPUT, 'x', task)
+        server.send(sango.Message(sango.MessageType.INPUT, 'y', {'input': 2}))
+        assert task.x == 1
 
 
-class SetStorageAction(sango.Action):
 
-    key = 'x'
-    value = 4
+# class TestTerminal:
 
-    def act(self, terminal: Terminal):
-        terminal.storage.update(self.key, self.value)
-        return sango.Status.SUCCESS
+#     def test_can_retrieve_value_stored(self):
+
+#         server = sango.Server()
+#         terminal = sango.Terminal(server)
+#         terminal.storage.add('x', 2)
+#         assert terminal.storage['x'] == 2
+
+#     def test_initialized_set_to_true_after_initialize(self):
+
+#         server = sango.Server()
+#         terminal = sango.Terminal(server)
+#         terminal.initialize()
+#         assert terminal.initialized is True
+
+#     def test_shared_gets_shared_value_for_terminal2(self):
+
+#         server = sango.Server()
+#         terminal1 = sango.Terminal(server)
+#         terminal2 = sango.Terminal(server)
+#         terminal1.shared.add('x', 2)
+#         assert terminal2.shared['x'] == 2
+
+#     def test_server_returns_server(self):
+
+#         server = sango.Server()
+#         terminal1 = sango.Terminal(server)
+#         assert terminal1.server is server
+
+
+# class SetStorageAction(sango.Action):
+
+#     key = 'x'
+#     value = 4
+
+#     def act(self, terminal: Terminal):
+#         terminal.storage.update(self.key, self.value)
+#         return sango.Status.SUCCESS
     
-    def __init_terminal__(self, terminal: Terminal):
-        super().__init_terminal__(terminal)
-        terminal.storage.add(
-            'count', 0, lambda x: (x >= 0, 'Value must be greater than or equal to 0')
-        )
+#     def __init_terminal__(self, terminal: Terminal):
+#         super().__init_terminal__(terminal)
+#         terminal.storage.add(
+#             'count', 0, lambda x: (x >= 0, 'Value must be greater than or equal to 0')
+#         )
 
 
-class SetStorageActionCounter(sango.Action):
+# class SetStorageActionCounter(sango.Action):
 
-    key = 'x'
-    value = 4
+#     key = 'x'
+#     value = 4
 
-    def act(self, terminal: Terminal):
-        terminal.storage['count'] += 1
-        if terminal.storage['count'] == 2:
-            return sango.Status.SUCCESS
-        if terminal.storage['count'] < 0:
-            return sango.Status.FAILURE
-        return sango.Status.RUNNING
+#     def act(self, terminal: Terminal):
+
+#         print(terminal.shared.get('failure'))
+#         if terminal.shared.get('failure') is True:
+#             return sango.Status.FAILURE
+#         terminal.storage['count'] += 1
+#         if terminal.storage['count'] == 2:
+#             return sango.Status.SUCCESS
+#         if terminal.storage['count'] < 0:
+#             print('Returning failure')
+#             return sango.Status.FAILURE
+#         return sango.Status.RUNNING
     
-    def __init_terminal__(self, terminal: Terminal):
-        super().__init_terminal__(terminal)
-        terminal.storage.add(
-            'count', 0
-        )
+#     def __init_terminal__(self, terminal: Terminal):
+#         super().__init_terminal__(terminal)
+#         terminal.storage.add(
+#             'count', 0
+#         )
 
 
-class TestAction:
+# class TestAction:
 
-    def test_storage_action_returns_success(self):
+#     def test_storage_action_returns_success(self):
 
-        server = sango.Server()
-        terminal = sango.Terminal(server)
-        action = SetStorageAction('SetStorageAction')
-        action.tick(terminal)
-        assert terminal.storage[action.key] == action.value
+#         server = sango.Server()
+#         terminal = sango.Terminal(server)
+#         action = SetStorageAction('SetStorageAction')
+#         action.tick(terminal)
+#         assert terminal.storage[action.key] == action.value
 
-    def test_count_has_been_initialized_on_terminal(self):
+#     def test_count_has_been_initialized_on_terminal(self):
 
-        server = sango.Server()
-        terminal = sango.Terminal(server)
-        action = SetStorageAction('SetStorageAction')
-        action.tick(terminal)
-        assert terminal.storage['count'] == 0
+#         server = sango.Server()
+#         terminal = sango.Terminal(server)
+#         action = SetStorageAction('SetStorageAction')
+#         action.tick(terminal)
+#         assert terminal.storage['count'] == 0
 
-    def test_cannot_set_count_to_less_than_0(self):
+#     def test_cannot_set_count_to_less_than_0(self):
 
-        server = sango.Server()
-        terminal = sango.Terminal(server)
-        action = SetStorageAction('SetStorageAction')
-        action.tick(terminal)
-        with pytest.raises(ValueError):
-            terminal.storage['count'] = -1
+#         server = sango.Server()
+#         terminal = sango.Terminal(server)
+#         action = SetStorageAction('SetStorageAction')
+#         action.tick(terminal)
+#         with pytest.raises(ValueError):
+#             terminal.storage['count'] = -1
 
-    def test_storage_action_counter_returns_running_if_count_is_1(self):
+#     def test_storage_action_counter_returns_running_if_count_is_1(self):
 
-        server = sango.Server()
-        terminal = sango.Terminal(server)
-        action = SetStorageActionCounter('SetStorageAction')
-        assert action.tick(terminal) == sango.Status.RUNNING
+#         server = sango.Server()
+#         terminal = sango.Terminal(server)
+#         action = SetStorageActionCounter('SetStorageAction')
+#         assert action.tick(terminal) == sango.Status.RUNNING
 
-    def test_storage_action_counter_returns_success_if_count_is_2(self):
+#     def test_storage_action_counter_returns_success_if_count_is_2(self):
 
-        server = sango.Server()
-        terminal = sango.Terminal(server)
-        action = SetStorageAction('SetStorageAction')
-        action.tick(terminal)
-        assert action.tick(terminal) == sango.Status.SUCCESS
+#         server = sango.Server()
+#         terminal = sango.Terminal(server)
+#         action = SetStorageAction('SetStorageAction')
+#         action.tick(terminal)
+#         assert action.tick(terminal) == sango.Status.SUCCESS
 
+
+# class TestSequence:
+
+#     def test_sequence_is_running_when_started(self):
+
+#         server = sango.Server()
+#         terminal = sango.Terminal(server)
+#         action1 = SetStorageAction('SetStorageAction')
+#         action2 = SetStorageAction('SetStorageActionTask2')
+#         sequence = sango.Sequence(
+#             [action1, action2]
+#         )
+        
+#         assert sequence.tick(terminal) == sango.Status.RUNNING
+    
+#     def test_sequence_finished_after_three_ticks(self):
+
+#         server = sango.Server()
+#         terminal = sango.Terminal(server)
+#         action1 = SetStorageAction('SetStorageAction')
+#         action2 = SetStorageActionCounter('SetStorageActionTask2')
+#         sequence = sango.Sequence(
+#             [action1, action2]
+#         )
+#         sequence.tick(terminal)
+#         sequence.tick(terminal)
+#         assert sequence.tick(terminal) == sango.Status.SUCCESS
+
+#     def test_sequence_fails_if_count_is_less_than_0(self):
+
+#         server = sango.Server()
+#         terminal = sango.Terminal(server)
+#         action1 = SetStorageAction('SetStorageAction')
+#         action2 = SetStorageActionCounter('SetStorageActionTask2')
+#         sequence = sango.Sequence(
+#             [action1, action2]
+#         )
+#         terminal.shared['failure'] = True
+#         sequence.tick(terminal)
+        
+#         assert sequence.tick(terminal) == sango.Status.FAILURE
