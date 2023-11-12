@@ -710,7 +710,7 @@ class Sequence(Composite):
             return terminal.storage['status']
     
         task = self._tasks[idx]
-        status = task.tick(terminal.child(task.id))
+        status = task.tick(terminal.child(task))
 
         if status == Status.FAILURE:
             return Status.FAILURE

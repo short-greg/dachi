@@ -298,159 +298,158 @@ class TestServer:
         assert task.x == 1
 
 
+class TestTerminal:
 
-# class TestTerminal:
+    def test_can_retrieve_value_stored(self):
 
-#     def test_can_retrieve_value_stored(self):
+        server = sango.Server()
+        terminal = sango.Terminal(server)
+        terminal.storage.add('x', 2)
+        assert terminal.storage['x'] == 2
 
-#         server = sango.Server()
-#         terminal = sango.Terminal(server)
-#         terminal.storage.add('x', 2)
-#         assert terminal.storage['x'] == 2
+    def test_initialized_set_to_true_after_initialize(self):
 
-#     def test_initialized_set_to_true_after_initialize(self):
+        server = sango.Server()
+        terminal = sango.Terminal(server)
+        terminal.initialize()
+        assert terminal.initialized is True
 
-#         server = sango.Server()
-#         terminal = sango.Terminal(server)
-#         terminal.initialize()
-#         assert terminal.initialized is True
+    def test_shared_gets_shared_value_for_terminal2(self):
 
-#     def test_shared_gets_shared_value_for_terminal2(self):
+        server = sango.Server()
+        terminal1 = sango.Terminal(server)
+        terminal2 = sango.Terminal(server)
+        terminal1.shared.add('x', 2)
+        assert terminal2.shared['x'] == 2
 
-#         server = sango.Server()
-#         terminal1 = sango.Terminal(server)
-#         terminal2 = sango.Terminal(server)
-#         terminal1.shared.add('x', 2)
-#         assert terminal2.shared['x'] == 2
+    def test_server_returns_server(self):
 
-#     def test_server_returns_server(self):
-
-#         server = sango.Server()
-#         terminal1 = sango.Terminal(server)
-#         assert terminal1.server is server
+        server = sango.Server()
+        terminal1 = sango.Terminal(server)
+        assert terminal1.server is server
 
 
-# class SetStorageAction(sango.Action):
+class SetStorageAction(sango.Action):
 
-#     key = 'x'
-#     value = 4
+    key = 'x'
+    value = 4
 
-#     def act(self, terminal: Terminal):
-#         terminal.storage.update(self.key, self.value)
-#         return sango.Status.SUCCESS
+    def act(self, terminal: Terminal):
+        terminal.storage.update(self.key, self.value)
+        return sango.Status.SUCCESS
     
-#     def __init_terminal__(self, terminal: Terminal):
-#         super().__init_terminal__(terminal)
-#         terminal.storage.add(
-#             'count', 0, lambda x: (x >= 0, 'Value must be greater than or equal to 0')
-#         )
+    def __init_terminal__(self, terminal: Terminal):
+        super().__init_terminal__(terminal)
+        terminal.storage.add(
+            'count', 0, lambda x: (x >= 0, 'Value must be greater than or equal to 0')
+        )
 
 
-# class SetStorageActionCounter(sango.Action):
+class SetStorageActionCounter(sango.Action):
 
-#     key = 'x'
-#     value = 4
+    key = 'x'
+    value = 4
 
-#     def act(self, terminal: Terminal):
+    def act(self, terminal: Terminal):
 
-#         print(terminal.shared.get('failure'))
-#         if terminal.shared.get('failure') is True:
-#             return sango.Status.FAILURE
-#         terminal.storage['count'] += 1
-#         if terminal.storage['count'] == 2:
-#             return sango.Status.SUCCESS
-#         if terminal.storage['count'] < 0:
-#             print('Returning failure')
-#             return sango.Status.FAILURE
-#         return sango.Status.RUNNING
+        print(terminal.shared.get('failure'))
+        if terminal.shared.get('failure') is True:
+            return sango.Status.FAILURE
+        terminal.storage['count'] += 1
+        if terminal.storage['count'] == 2:
+            return sango.Status.SUCCESS
+        if terminal.storage['count'] < 0:
+            print('Returning failure')
+            return sango.Status.FAILURE
+        return sango.Status.RUNNING
     
-#     def __init_terminal__(self, terminal: Terminal):
-#         super().__init_terminal__(terminal)
-#         terminal.storage.add(
-#             'count', 0
-#         )
+    def __init_terminal__(self, terminal: Terminal):
+        super().__init_terminal__(terminal)
+        terminal.storage.add(
+            'count', 0
+        )
 
 
-# class TestAction:
+class TestAction:
 
-#     def test_storage_action_returns_success(self):
+    def test_storage_action_returns_success(self):
 
-#         server = sango.Server()
-#         terminal = sango.Terminal(server)
-#         action = SetStorageAction('SetStorageAction')
-#         action.tick(terminal)
-#         assert terminal.storage[action.key] == action.value
+        server = sango.Server()
+        terminal = sango.Terminal(server)
+        action = SetStorageAction('SetStorageAction')
+        action.tick(terminal)
+        assert terminal.storage[action.key] == action.value
 
-#     def test_count_has_been_initialized_on_terminal(self):
+    def test_count_has_been_initialized_on_terminal(self):
 
-#         server = sango.Server()
-#         terminal = sango.Terminal(server)
-#         action = SetStorageAction('SetStorageAction')
-#         action.tick(terminal)
-#         assert terminal.storage['count'] == 0
+        server = sango.Server()
+        terminal = sango.Terminal(server)
+        action = SetStorageAction('SetStorageAction')
+        action.tick(terminal)
+        assert terminal.storage['count'] == 0
 
-#     def test_cannot_set_count_to_less_than_0(self):
+    def test_cannot_set_count_to_less_than_0(self):
 
-#         server = sango.Server()
-#         terminal = sango.Terminal(server)
-#         action = SetStorageAction('SetStorageAction')
-#         action.tick(terminal)
-#         with pytest.raises(ValueError):
-#             terminal.storage['count'] = -1
+        server = sango.Server()
+        terminal = sango.Terminal(server)
+        action = SetStorageAction('SetStorageAction')
+        action.tick(terminal)
+        with pytest.raises(ValueError):
+            terminal.storage['count'] = -1
 
-#     def test_storage_action_counter_returns_running_if_count_is_1(self):
+    def test_storage_action_counter_returns_running_if_count_is_1(self):
 
-#         server = sango.Server()
-#         terminal = sango.Terminal(server)
-#         action = SetStorageActionCounter('SetStorageAction')
-#         assert action.tick(terminal) == sango.Status.RUNNING
+        server = sango.Server()
+        terminal = sango.Terminal(server)
+        action = SetStorageActionCounter('SetStorageAction')
+        assert action.tick(terminal) == sango.Status.RUNNING
 
-#     def test_storage_action_counter_returns_success_if_count_is_2(self):
+    def test_storage_action_counter_returns_success_if_count_is_2(self):
 
-#         server = sango.Server()
-#         terminal = sango.Terminal(server)
-#         action = SetStorageAction('SetStorageAction')
-#         action.tick(terminal)
-#         assert action.tick(terminal) == sango.Status.SUCCESS
+        server = sango.Server()
+        terminal = sango.Terminal(server)
+        action = SetStorageAction('SetStorageAction')
+        action.tick(terminal)
+        assert action.tick(terminal) == sango.Status.SUCCESS
 
 
-# class TestSequence:
+class TestSequence:
 
-#     def test_sequence_is_running_when_started(self):
+    def test_sequence_is_running_when_started(self):
 
-#         server = sango.Server()
-#         terminal = sango.Terminal(server)
-#         action1 = SetStorageAction('SetStorageAction')
-#         action2 = SetStorageAction('SetStorageActionTask2')
-#         sequence = sango.Sequence(
-#             [action1, action2]
-#         )
+        server = sango.Server()
+        terminal = sango.Terminal(server)
+        action1 = SetStorageAction('SetStorageAction')
+        action2 = SetStorageAction('SetStorageActionTask2')
+        sequence = sango.Sequence(
+            [action1, action2]
+        )
         
-#         assert sequence.tick(terminal) == sango.Status.RUNNING
+        assert sequence.tick(terminal) == sango.Status.RUNNING
     
-#     def test_sequence_finished_after_three_ticks(self):
+    def test_sequence_finished_after_three_ticks(self):
 
-#         server = sango.Server()
-#         terminal = sango.Terminal(server)
-#         action1 = SetStorageAction('SetStorageAction')
-#         action2 = SetStorageActionCounter('SetStorageActionTask2')
-#         sequence = sango.Sequence(
-#             [action1, action2]
-#         )
-#         sequence.tick(terminal)
-#         sequence.tick(terminal)
-#         assert sequence.tick(terminal) == sango.Status.SUCCESS
+        server = sango.Server()
+        terminal = sango.Terminal(server)
+        action1 = SetStorageAction('SetStorageAction')
+        action2 = SetStorageActionCounter('SetStorageActionTask2')
+        sequence = sango.Sequence(
+            [action1, action2]
+        )
+        sequence.tick(terminal)
+        sequence.tick(terminal)
+        assert sequence.tick(terminal) == sango.Status.SUCCESS
 
-#     def test_sequence_fails_if_count_is_less_than_0(self):
+    def test_sequence_fails_if_count_is_less_than_0(self):
 
-#         server = sango.Server()
-#         terminal = sango.Terminal(server)
-#         action1 = SetStorageAction('SetStorageAction')
-#         action2 = SetStorageActionCounter('SetStorageActionTask2')
-#         sequence = sango.Sequence(
-#             [action1, action2]
-#         )
-#         terminal.shared['failure'] = True
-#         sequence.tick(terminal)
+        server = sango.Server()
+        terminal = sango.Terminal(server)
+        action1 = SetStorageAction('SetStorageAction')
+        action2 = SetStorageActionCounter('SetStorageActionTask2')
+        sequence = sango.Sequence(
+            [action1, action2]
+        )
+        terminal.shared['failure'] = True
+        sequence.tick(terminal)
         
-#         assert sequence.tick(terminal) == sango.Status.FAILURE
+        assert sequence.tick(terminal) == sango.Status.FAILURE
