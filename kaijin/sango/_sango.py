@@ -737,17 +737,22 @@ class Fallback(Composite):
     def subtick(self, terminal: Terminal) -> Status:
         
         idx = terminal.storage['idx']
-        status = self._tasks[idx].tick(terminal)
+        if terminal.storage['status'].is_done():
+            return terminal.storage['status']
+    
+        task = self._tasks[idx]
+        status = task.tick(terminal.child(task))
 
+        print(status)
         if status == Status.SUCCESS:
             return Status.SUCCESS
         
         if status == Status.FAILURE:
-            terminal.storage['idx'] = idx + 1
+            terminal.storage['idx'] += 1
             status = Status.RUNNING
         if terminal.storage['idx'] >= len(self._tasks):
             status = Status.FAILURE
-        
+
         return status
 
     def clone(self) -> 'Fallback':

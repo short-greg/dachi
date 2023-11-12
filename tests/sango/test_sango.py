@@ -331,11 +331,17 @@ class TestTerminal:
 
 class SetStorageAction(sango.Action):
 
-    key = 'x'
-    value = 4
+    def __init__(self, name: str, key: str='x', value: int=4) -> None:
+        super().__init__(name)
+        self.key = key
+        self.value = value
 
-    def act(self, terminal: Terminal):
+    def act(self, terminal: Terminal) -> sango.Status:
         terminal.storage.update(self.key, self.value)
+
+        if self.value < 0:
+            return sango.Status.FAILURE
+
         return sango.Status.SUCCESS
     
     def __init_terminal__(self, terminal: Terminal):
@@ -344,11 +350,12 @@ class SetStorageAction(sango.Action):
             'count', 0, lambda x: (x >= 0, 'Value must be greater than or equal to 0')
         )
 
-
 class SetStorageActionCounter(sango.Action):
 
-    key = 'x'
-    value = 4
+    def __init__(self, name: str, key: str='x', value: int=4) -> None:
+        super().__init__(name)
+        self.key = key
+        self.value = value
 
     def act(self, terminal: Terminal):
 
@@ -359,7 +366,6 @@ class SetStorageActionCounter(sango.Action):
         if terminal.storage['count'] == 2:
             return sango.Status.SUCCESS
         if terminal.storage['count'] < 0:
-            print('Returning failure')
             return sango.Status.FAILURE
         return sango.Status.RUNNING
     
@@ -453,3 +459,88 @@ class TestSequence:
         sequence.tick(terminal)
         
         assert sequence.tick(terminal) == sango.Status.FAILURE
+
+
+class SampleCondition(sango.Condition):
+
+    def __init__(self, x):
+
+        super().__init__('Failure')
+        self.x = x
+
+    def __init_terminal__(self, terminal: Terminal):
+        super().__init_terminal__(terminal)
+        terminal.storage['x'] = self.x
+
+    def condition(self, terminal: Terminal) -> bool:
+
+        if self.x < 0:
+            return False
+        return True
+
+
+class TestCondition:
+
+    def test_storage_action_initializes_terminal(self):
+
+        server = sango.Server()
+        terminal = sango.Terminal(server)
+        condition = SampleCondition(1)
+        condition.tick(terminal)
+        assert terminal.storage['x'] == 1
+
+    def test_storage_action_returns_success(self):
+
+        server = sango.Server()
+        terminal = sango.Terminal(server)
+        condition = SampleCondition(1)
+        
+        assert condition.tick(terminal) == sango.Status.SUCCESS
+
+    def test_storage_action_returns_failure(self):
+
+        server = sango.Server()
+        terminal = sango.Terminal(server)
+        condition = SampleCondition(-1)
+        
+        assert condition.tick(terminal) == sango.Status.FAILURE
+
+
+class TestFallback:
+
+    def test_fallback_is_running_when_started(self):
+
+        server = sango.Server()
+        terminal = sango.Terminal(server)
+        action1 = SetStorageAction('SetStorageAction')
+        action2 = SetStorageAction('SetStorageActionTask2')
+        fallback = sango.Fallback(
+            [action1, action2]
+        )
+        
+        assert fallback.tick(terminal) == sango.Status.SUCCESS
+    
+    def test_fallback_finished_after_three_ticks(self):
+
+        server = sango.Server()
+        terminal = sango.Terminal(server)
+        action1 = SetStorageAction('SetStorageAction', value=-1)
+        action2 = SetStorageActionCounter('SetStorageActionTask2')
+        fallback = sango.Fallback(
+            [action1, action2]
+        )
+        assert fallback.tick(terminal) == sango.Status.RUNNING
+
+    def test_fallback_fails_if_count_is_less_than_0_for_all(self):
+
+        server = sango.Server()
+        terminal = sango.Terminal(server)
+        action1 = SetStorageAction('SetStorageAction', value=-1)
+        action2 = SetStorageAction('SetStorageAction2', value=-1)
+        fallback = sango.Fallback(
+            [action1, action2]
+        )
+        terminal.shared['failure'] = True
+        fallback.tick(terminal)
+        assert fallback.tick(terminal) == sango.Status.FAILURE
+
