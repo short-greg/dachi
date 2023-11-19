@@ -1,5 +1,5 @@
 import pytest
-from kaijin import tako
+from dachi import tako
 
 
 class DummyNode(tako.Node):
@@ -113,8 +113,8 @@ class TestNode:
         
         var = tako.Var("X", default=1)
 
-        y = node1(var)
-        y = node2(y)
+        y = node1.link(var)
+        y = node2.link(y)
         
         r1, r2 = y.probe()
         assert r1 == 3
@@ -125,7 +125,7 @@ class TestNode:
         node1 = DummyNode("Node1")
         node2 = DummyNode2("Node2")
         y1 = node1()
-        r1, r2 = node2(y1)
+        r1, r2 = node2.link(y1)
         assert r1.value == 4
         assert r2.value == 5
 
@@ -139,12 +139,12 @@ class TestAdapter:
         
         var = tako.Var("X", default=1)
 
-        y1 = node1(var)
-        y2 = node2(y1)
+        y1 = node1.link(var)
+        y2 = node2.link(y1)
         adapter = tako.Adapter(
             "Adapt", [var], [y1, (y2, 0)]
         )
         
         r1, r2 = adapter()
-        assert r1.value == 2
-        assert r2.value == 3
+        assert r1 == 2
+        assert r2 == 3

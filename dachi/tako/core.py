@@ -83,6 +83,20 @@ class T(ABC):
         pass
 
 
+class F(object):
+
+    def __init__(self, f: typing.Callable[[], typing.Any], *args, **kwargs):
+
+        super().__init__()
+        self.f = f
+        self.args = args
+        self.kwargs = kwargs
+
+    @property
+    def value(self) -> typing.Any:
+        return self.f(*self.args, **self.kwargs)
+
+
 class Field(object):
     """Specify the fields for a node
     """
@@ -438,8 +452,8 @@ class Var(T):
         Returns:
             typing.Any: The default value for the var
         """
-        if _is_function(self._default):
-            return self._default()
+        if isinstance(self._default, F):
+            return self._default.value
         return self._default
 
     def set(self, default):
@@ -466,7 +480,7 @@ class Var(T):
         try:
             val = by[self]
         except KeyError:
-            return self._default
+            return self.value
         if self.dtype is not None and not isinstance(val, self.dtype):
             raise ValueError(f'Value must be of dtype {self.dtype}')
         return val        
