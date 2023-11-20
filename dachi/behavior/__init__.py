@@ -3,10 +3,10 @@ from ._storage import (
     DataStore, Synched,
     CompositeHook
 )
-from ._behavior import (
+from ._tasks import (
     Task, Composite,
     Sequence, Fallback, Parallel, Action,
-    Condition
+    Condition, Sango
 )
 from ._status import (
     Status

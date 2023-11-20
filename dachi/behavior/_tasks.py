@@ -69,6 +69,45 @@ class Task(Behavior):
         return self._id
 
 
+class Sango(Behavior):
+
+    def __init__(self, name: str, root: 'Task'=None):
+
+        super().__init__(name)
+        self._root = root
+
+    def tick(self, terminal: Terminal) -> Status:
+
+        if self._root is None:
+            return Status.SUCCESS
+    
+        return self._root.tick(terminal.child(self._root))
+
+    @property
+    def root(self):
+        return self._root
+    
+    @root.setter
+    def root(self, root: 'Task'):
+        self._root = root
+
+    def state_dict(self) -> typing.Dict:
+
+        return {
+            'root': self._root.state_dict() if self._root is not None else None,
+            **super().state_dict()
+        }
+    
+    def load_state_dict(self, state_dict: typing.Dict):
+
+        super().load_state_dict(state_dict)
+        if self._root is not None:
+            self._root.load_state_dict(state_dict['root'])
+        else:
+            if state_dict['root'] is not None:
+                raise ValueError('Cannot load state dict because root is none')
+
+
 class Composite(Task):
     """Task composed of subtasks
     """

@@ -1,7 +1,7 @@
-from dachi.shachi import _cooordination as coordination
-from dachi.shachi._status import Status
-from dachi.shachi._cooordination import Message, Terminal
-from dachi.shachi._behavior import Action
+from dachi.behavior import _cooordination as coordination
+from dachi.behavior._status import Status
+from dachi.behavior._cooordination import Message, Terminal
+from dachi.behavior._tasks import Action
 
 
 class ATask(Action):

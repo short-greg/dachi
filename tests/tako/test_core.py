@@ -1,14 +1,14 @@
 import pytest
-from dachi import tako
+from dachi import graph
 
 
-class DummyNode(tako.Node):
+class DummyNode(graph.Node):
 
     def op(self, x: int=2):
         return x + 1
 
 
-class DummyNode2(tako.Node):
+class DummyNode2(graph.Node):
 
     def op(self, x: int=2):
         return x + 1, x + 2
@@ -17,25 +17,25 @@ class DummyNode2(tako.Node):
 class TestVar:
 
     def test_var_returns_default_when_not_in_by(self):
-        var = tako.Var(
+        var = graph.Var(
             "X", default=2
         )
         assert var.value == 2
 
     def test_var_returns_result_of_function(self):
-        var = tako.Var(
-            "X", default=tako.F(lambda: 2)
+        var = graph.Var(
+            "X", default=graph.F(lambda: 2)
         )
         assert var.value == 2
 
     def test_var_returns_result_of_by_if_defined(self):
-        var = tako.Var(
-            "X", default=tako.F(lambda: 2)
+        var = graph.Var(
+            "X", default=graph.F(lambda: 2)
         )
         assert var.probe(by={var: 3}) == 3
 
     def test_clone_returns_var_with_value(self):
-        var = tako.Var("X", default=tako.F(lambda: 2))
+        var = graph.Var("X", default=graph.F(lambda: 2))
         var = var.clone()
         assert var.probe(by={var: 3}) == 3
 
@@ -44,17 +44,17 @@ class TestOutput:
 
     def test_output_value_returns_1(self):
 
-        output = tako.Output("X", 1)
+        output = graph.Output("X", 1)
         assert output.value == 1
 
     def test_output_probe_returns_1(self):
 
-        output = tako.Output("X", 1)
+        output = graph.Output("X", 1)
         assert output.probe() == 1
 
     def test_output_probe_returns_1_after_probe(self):
 
-        output = tako.Output("Y", 1)
+        output = graph.Output("Y", 1)
         output = output.clone()
         assert output.probe() == 1
 
@@ -64,14 +64,14 @@ class TestProcess:
     def test_process_value_returns_1(self):
 
         node = DummyNode("D")
-        process = tako.Process(node, [1])
+        process = graph.Process(node, [1])
 
         assert process.value == 2
 
     def test_process_value_returns_1(self):
 
         node = DummyNode2("D")
-        process = tako.Process(node, [1])
+        process = graph.Process(node, [1])
 
         result = process.value
         print(result)
@@ -80,11 +80,11 @@ class TestProcess:
 
     def test_process_value_returns_3_with_var(self):
 
-        var = tako.Var(
+        var = graph.Var(
             "X", default=2
         )
         node = DummyNode2("D")
-        process = tako.Process(node, [var])
+        process = graph.Process(node, [var])
 
         result = process.value
         assert result[0] == 3
@@ -92,11 +92,11 @@ class TestProcess:
 
     def test_process_value_returns_3_with_var_after_clone(self):
 
-        var = tako.Var(
+        var = graph.Var(
             "X", default=2
         )
         node = DummyNode2("D")
-        process = tako.Process(node, [var])
+        process = graph.Process(node, [var])
         process = process.clone()
 
         result = process.value
@@ -111,7 +111,7 @@ class TestNode:
         node1 = DummyNode("Node1")
         node2 = DummyNode2("Node2")
         
-        var = tako.Var("X", default=1)
+        var = graph.Var("X", default=1)
 
         y = node1.link(var)
         y = node2.link(y)
@@ -137,11 +137,11 @@ class TestAdapter:
         node1 = DummyNode("Node1")
         node2 = DummyNode2("Node2")
         
-        var = tako.Var("X", default=1)
+        var = graph.Var("X", default=1)
 
         y1 = node1.link(var)
         y2 = node2.link(y1)
-        adapter = tako.Adapter(
+        adapter = graph.Adapter(
             "Adapt", [var], [y1, (y2, 0)]
         )
         

@@ -1,8 +1,8 @@
 import chromadb
 import dbm
 from chromadb.config import Settings
-from .. import tako
-from ..tako import nodemethod, Field, FieldList, nodefunc
+from .. import graph
+from ..graph import nodemethod, Field, FieldList, nodefunc
 from chromadb.utils import embedding_functions
 import openai
 

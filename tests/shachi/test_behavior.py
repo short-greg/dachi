@@ -1,7 +1,7 @@
-from dachi.shachi import _behavior as behavior
-from dachi.shachi import _cooordination as coordination
-from dachi.shachi._cooordination import Message, Terminal
-from dachi.shachi._status import Status
+from dachi.behavior import _tasks as behavior
+from dachi.behavior import _cooordination as coordination
+from dachi.behavior._cooordination import Message, Terminal
+from dachi.behavior._status import Status
 import pytest
 
 

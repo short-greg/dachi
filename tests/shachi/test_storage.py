@@ -1,5 +1,5 @@
-from dachi.shachi import _storage as sango
-from dachi.shachi._storage import Data
+from dachi.behavior import _storage as sango
+from dachi.behavior._storage import Data
 import pytest
 
 
