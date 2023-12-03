@@ -9,7 +9,7 @@ from ._tasks import (
     Condition, Sango
 )
 from ._status import (
-    Status
+    SangoStatus
 )
 from ._cooordination import (
     MessageType, Message,

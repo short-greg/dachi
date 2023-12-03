@@ -49,7 +49,6 @@ class T(ABC):
         by = by if by is not None else {}
 
         for _, result in self.traverse(by, stored, True):
-            print(_, result)
             pass
 
         result = stored[self._name][1]
@@ -70,13 +69,16 @@ class T(ABC):
         pass
 
     @abstractmethod
-    def traverse(self, by: typing.Dict['Var', typing.Any]=None, stored: typing.Dict[str, typing.Any]=None, evaluate: bool=False) -> typing.Iterator[typing.Tuple['T', typing.Any]]:
+    def traverse(
+        self, by: typing.Dict['Var', typing.Any]=None, 
+        stored: typing.Dict[str, typing.Any]=None, 
+        evaluate: bool=False
+    ) -> typing.Iterator[typing.Tuple['T', typing.Any]]:
         """
-
         Args:
-            by (typing.Dict[Var, typing.Any], optional): _description_. Defaults to None.
-            stored (typing.Dict[str, typing.Any], optional): _description_. Defaults to None.
-
+            by (typing.Dict[Var, typing.Any], optional): The values to probe vars by. Defaults to None.
+            stored (typing.Dict[str, typing.Any], optional): The currently stored values. Defaults to None.
+            evaluate (bool, optional)
         Returns:
             typing.Any: The result of the probe
         """
@@ -280,29 +282,6 @@ class NodeFunc(Node):
         return self._outputs
 
 
-# TODO: Remove as it is a duplicate
-# class NodeFunc(Node):
-#     """_summary_
-
-#     Args:
-#         Node (_type_): _description_
-#     """
-
-#     def __init__(self, name: str, f, inputs: typing.List[Field], outputs: typing.List[Field]):
-#         super().__init__(name)
-#         self._inputs = inputs
-#         self._outputs = outputs
-#         self._f = f
-
-#     def op(self, *args, **kwargs) -> typing.Any:
-#         return super().op()
-
-#     @property
-#     def outputs(self) -> FieldList:
-
-#         return self._outputs
-
-
 def nodemethod(inputs: typing.List[Field], outputs: typing.List[Field]):
     """Decorator that transforms a method to work as a node. To get the Node object you 
     must pass in get_node=True. To link the transmission pass in link=True
@@ -335,7 +314,6 @@ def nodemethod(inputs: typing.List[Field], outputs: typing.List[Field]):
         _in.node_method = True
         return _in
     return _out
-
 
 
 def nodefunc(inputs: typing.List[Field], outputs: typing.List[Field]):
@@ -409,13 +387,16 @@ class Output(T):
         if self._name == key:
             return self
 
-    def traverse(self, by: typing.Dict['Var', typing.Any]=None, stored: typing.Dict[str, typing.Any]=None, evaluate: bool=False) -> typing.Iterator[typing.Tuple['T', typing.Any]]:
+    def traverse(
+        self, by: typing.Dict['Var', typing.Any]=None, 
+        stored: typing.Dict[str, typing.Any]=None, 
+        evaluate: bool=False
+    ) -> typing.Iterator[typing.Union[typing.Tuple['T', typing.Any], T]]:
         """
-
         Args:
-            by (typing.Dict[Var, typing.Any], optional): _description_. Defaults to None.
-            stored (typing.Dict[str, typing.Any], optional): _description_. Defaults to None.
-
+            by (typing.Dict[Var, typing.Any], optional): The values to probe vars by. Defaults to None.
+            stored (typing.Dict[str, typing.Any], optional): The currently stored values. Defaults to None.
+            evaluate (bool, optional)
         Returns:
             typing.Any: The result of the probe
         """
@@ -496,11 +477,10 @@ class Var(T):
 
     def traverse(self, by: typing.Dict['Var', typing.Any]=None, stored: typing.Dict[str, typing.Any]=None, evaluate: bool=False) -> typing.Iterator[typing.Tuple['T', typing.Any]]:
         """
-
         Args:
-            by (typing.Dict[Var, typing.Any], optional): _description_. Defaults to None.
-            stored (typing.Dict[str, typing.Any], optional): _description_. Defaults to None.
-
+            by (typing.Dict[Var, typing.Any], optional): The values to probe vars by. Defaults to None.
+            stored (typing.Dict[str, typing.Any], optional): The currently stored values. Defaults to None.
+            evaluate (bool, optional): Whether to evaluate the result and return it
         Returns:
             typing.Any: The result of the probe
         """
@@ -655,6 +635,36 @@ def probe_ts(ts: typing.List[typing.Union[T, typing.Tuple[T, int]]], by: typing.
     return tuple(results)
 
 
+def traverse_ts(
+    ts: typing.List[typing.Union[T, typing.Tuple[T, int]]], 
+    by: typing.Dict[Var, str]=None, stored: typing.Dict[str, typing.Any]=None,
+    evaluate: bool=False
+):
+    """Probe the output of transmissions
+
+    Args:
+        ts (typing.List[typing.Union[T, typing.Tuple[T, int]]]): The transmissions to query
+        by (typing.Dict[Var, str], optional): The values to set for the variables. Defaults to None.
+        stored (typing.Dict[str, typing.Any], optional): The stored outputs for the nodes. Defaults to None.
+
+    Raises:
+        ValueError: If an index is not specified for results that return multiple outputs
+
+    Returns:
+        _type_: _description_
+    """
+
+    stored = stored if stored is not None else {}
+    by = by if by is not None else {}
+
+    results = []
+    for t in ts:
+        for result in t.traverse(by, stored, evaluate):
+            yield result
+
+    return tuple(results)
+
+
 def get_arg(arg, is_variable: bool=False) -> typing.Tuple[typing.Any, bool]:
     """Get the value for an arg
 
@@ -705,7 +715,7 @@ class Tako(Node):
     """
     
     @abstractmethod
-    def traverse(self, **kwargs) -> typing.Iterator[T]:
+    def traverse(self, *args, **kwargs) -> typing.Iterator[T]:
         """Traverse each node in the Tako
 
         Returns:
@@ -720,12 +730,24 @@ class Tako(Node):
         pass
 
 
+# TODO: Remove as it is a duplicate
+# class NodeFunc(Node):
+#     """_summary_
 
-"""
-I can define the names of the 
-I can probe the tran
+#     Args:
+#         Node (_type_): _description_
+#     """
 
+#     def __init__(self, name: str, f, inputs: typing.List[Field], outputs: typing.List[Field]):
+#         super().__init__(name)
+#         self._inputs = inputs
+#         self._outputs = outputs
+#         self._f = f
 
-# Transmission contains data, transmission contains a link to the incoming node
+#     def op(self, *args, **kwargs) -> typing.Any:
+#         return super().op()
 
-"""
+#     @property
+#     def outputs(self) -> FieldList:
+
+#         return self._outputs

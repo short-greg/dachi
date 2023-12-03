@@ -1,6 +1,6 @@
 import typing
 
-from .core import Node, Var, FieldList, Field, probe_ts, to_by, T
+from ._core import Node, Var, FieldList, Field, probe_ts, to_by, T
 
 
 class Adapter(Node):

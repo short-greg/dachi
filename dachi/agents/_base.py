@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from ..behavior import Server
+from ..behavior import Server, SangoStatus
 
 import time
 from enum import Enum
@@ -11,6 +11,17 @@ class AgentStatus(Enum):
     RUNNING = "running"
     STOPPED = "stopped"
     WAITING = "waiting"
+
+    @classmethod
+    def from_status(cls, status: SangoStatus) -> 'AgentStatus':
+
+        if status == SangoStatus.FAILURE or status == SangoStatus.SUCCESS:
+            return AgentStatus.STOPPED
+        if status == SangoStatus.READY:
+            return AgentStatus.READY
+        if status == SangoStatus.WAITING:
+            return AgentStatus.WAITING
+        return AgentStatus.RUNNING
 
 
 class Agent(ABC):

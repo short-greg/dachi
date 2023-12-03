@@ -1,7 +1,7 @@
 from dachi.behavior import _tasks as behavior
 from dachi.behavior import _cooordination as coordination
 from dachi.behavior._cooordination import Message, Terminal
-from dachi.behavior._status import Status
+from dachi.behavior._status import SangoStatus
 import pytest
 
 
@@ -15,7 +15,7 @@ class ATask(behavior.Action):
         self.x = message.data['input']
 
     def act(self, terminal: Terminal):
-        return Status.SUCCESS
+        return SangoStatus.SUCCESS
 
 
 class SetStorageAction(behavior.Action):
@@ -25,13 +25,13 @@ class SetStorageAction(behavior.Action):
         self.key = key
         self.value = value
 
-    def act(self, terminal: Terminal) -> Status:
+    def act(self, terminal: Terminal) -> SangoStatus:
         terminal.storage.update(self.key, self.value)
 
         if self.value < 0:
-            return Status.FAILURE
+            return SangoStatus.FAILURE
 
-        return Status.SUCCESS
+        return SangoStatus.SUCCESS
     
     def __init_terminal__(self, terminal: Terminal):
         super().__init_terminal__(terminal)
@@ -50,13 +50,13 @@ class SetStorageActionCounter(behavior.Action):
 
         print(terminal.shared.get('failure'))
         if terminal.shared.get('failure') is True:
-            return Status.FAILURE
+            return SangoStatus.FAILURE
         terminal.storage['count'] += 1
         if terminal.storage['count'] == 2:
-            return Status.SUCCESS
+            return SangoStatus.SUCCESS
         if terminal.storage['count'] < 0:
-            return Status.FAILURE
-        return Status.RUNNING
+            return SangoStatus.FAILURE
+        return SangoStatus.RUNNING
     
     def __init_terminal__(self, terminal: Terminal):
         super().__init_terminal__(terminal)
@@ -97,7 +97,7 @@ class TestAction:
         server = coordination.Server()
         terminal = behavior.Terminal(server)
         action = SetStorageActionCounter('SetStorageAction')
-        assert action.tick(terminal) == Status.RUNNING
+        assert action.tick(terminal) == SangoStatus.RUNNING
 
     def test_storage_action_counter_returns_success_if_count_is_2(self):
 
@@ -105,7 +105,7 @@ class TestAction:
         terminal = behavior.Terminal(server)
         action = SetStorageAction('SetStorageAction')
         action.tick(terminal)
-        assert action.tick(terminal) == Status.SUCCESS
+        assert action.tick(terminal) == SangoStatus.SUCCESS
 
 
 class TestSequence:
@@ -120,7 +120,7 @@ class TestSequence:
             [action1, action2]
         )
         
-        assert sequence.tick(terminal) == Status.RUNNING
+        assert sequence.tick(terminal) == SangoStatus.RUNNING
     
     def test_sequence_finished_after_three_ticks(self):
 
@@ -133,7 +133,7 @@ class TestSequence:
         )
         sequence.tick(terminal)
         sequence.tick(terminal)
-        assert sequence.tick(terminal) == Status.SUCCESS
+        assert sequence.tick(terminal) == SangoStatus.SUCCESS
 
     def test_sequence_fails_if_count_is_less_than_0(self):
 
@@ -147,7 +147,7 @@ class TestSequence:
         terminal.shared['failure'] = True
         sequence.tick(terminal)
         
-        assert sequence.tick(terminal) == Status.FAILURE
+        assert sequence.tick(terminal) == SangoStatus.FAILURE
 
 
 class SampleCondition(behavior.Condition):
@@ -184,7 +184,7 @@ class TestCondition:
         terminal = behavior.Terminal(server)
         condition = SampleCondition(1)
         
-        assert condition.tick(terminal) == Status.SUCCESS
+        assert condition.tick(terminal) == SangoStatus.SUCCESS
 
     def test_storage_action_returns_failure(self):
 
@@ -192,7 +192,7 @@ class TestCondition:
         terminal = behavior.Terminal(server)
         condition = SampleCondition(-1)
         
-        assert condition.tick(terminal) == Status.FAILURE
+        assert condition.tick(terminal) == SangoStatus.FAILURE
 
 
 class TestFallback:
@@ -207,7 +207,7 @@ class TestFallback:
             [action1, action2]
         )
         
-        assert fallback.tick(terminal) == Status.SUCCESS
+        assert fallback.tick(terminal) == SangoStatus.SUCCESS
     
     def test_fallback_finished_after_three_ticks(self):
 
@@ -218,7 +218,7 @@ class TestFallback:
         fallback = behavior.Fallback(
             [action1, action2]
         )
-        assert fallback.tick(terminal) == Status.RUNNING
+        assert fallback.tick(terminal) == SangoStatus.RUNNING
 
     def test_fallback_fails_if_count_is_less_than_0_for_all(self):
 
@@ -231,4 +231,4 @@ class TestFallback:
         )
         terminal.shared['failure'] = True
         fallback.tick(terminal)
-        assert fallback.tick(terminal) == Status.FAILURE
+        assert fallback.tick(terminal) == SangoStatus.FAILURE

@@ -4,7 +4,7 @@ from enum import Enum
 # How to deal with waiting
 # How to continue running
 
-class Status(Enum):
+class SangoStatus(Enum):
 
     RUNNING = 'running'
     WAITING = 'waiting'
@@ -14,33 +14,33 @@ class Status(Enum):
 
     @property
     def is_done(self) -> bool:
-        return self == Status.FAILURE or self == Status.SUCCESS
+        return self == SangoStatus.FAILURE or self == SangoStatus.SUCCESS
     
     @property
     def in_progress(self) -> bool:
-        return self == Status.RUNNING or self == Status.WAITING
+        return self == SangoStatus.RUNNING or self == SangoStatus.WAITING
     
     @property
     def ready(self) -> bool:
-        return self == Status.READY
+        return self == SangoStatus.READY
     
     @property
     def failure(self) -> bool:
-        return self == Status.FAILURE
+        return self == SangoStatus.FAILURE
     
     @property
     def success(self) -> bool:
-        return self == Status.SUCCESS
+        return self == SangoStatus.SUCCESS
     
     @property
     def waiting(self) -> bool:
-        return self == Status.WAITING
+        return self == SangoStatus.WAITING
     
     @property
     def running(self) -> bool:
-        return self == Status.RUNNING
+        return self == SangoStatus.RUNNING
     
-    def __or__(self, other: 'Status') -> 'Status':
+    def __or__(self, other: 'SangoStatus') -> 'SangoStatus':
 
         if self == other:
             return self
@@ -48,12 +48,12 @@ class Status(Enum):
         if (
             (self.success or other.success)
         ):
-            return Status.SUCCESS
+            return SangoStatus.SUCCESS
         if self.running or other.running:
-            return Status.RUNNING
+            return SangoStatus.RUNNING
         
         if self.waiting or other.waiting:
-            return Status.WAITING
+            return SangoStatus.WAITING
         
         if (self.success and not other.success):
             return other
@@ -62,7 +62,7 @@ class Status(Enum):
         
         raise ValueError(f'Invalid combination of statuses {self} and {other}')
 
-    def __and__(self, other: 'Status') -> 'Status':
+    def __and__(self, other: 'SangoStatus') -> 'SangoStatus':
 
         if self == other:
             return self
@@ -70,12 +70,12 @@ class Status(Enum):
         if (
             (self.failure or other.failure)
         ):
-            return Status.FAILURE
+            return SangoStatus.FAILURE
         if self.running or other.running:
-            return Status.RUNNING
+            return SangoStatus.RUNNING
         
         if self.waiting or other.waiting:
-            return Status.WAITING
+            return SangoStatus.WAITING
         
         if (self.success and not other.success):
             return other

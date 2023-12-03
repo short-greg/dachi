@@ -1,5 +1,5 @@
 from dachi.behavior import _cooordination as coordination
-from dachi.behavior._status import Status
+from dachi.behavior._status import SangoStatus
 from dachi.behavior._cooordination import Message, Terminal
 from dachi.behavior._tasks import Action
 
@@ -14,7 +14,7 @@ class ATask(Action):
         self.x = message.data['input']
 
     def act(self, terminal: Terminal):
-        return Status.SUCCESS
+        return SangoStatus.SUCCESS
 
 
 class TestServer:

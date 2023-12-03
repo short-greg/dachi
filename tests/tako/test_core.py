@@ -1,4 +1,3 @@
-import pytest
 from dachi import graph
 
 
