@@ -1,9 +1,5 @@
-from kivy.app import App
-import ui
+from ui import ChatbotInterface
 
-class ChatApp(App):
-    def build(self):
-        return ui.UI()
-
-if __name__ == '__main__':
-    ChatApp().run()
+if __name__ == "__main__":
+    app = ChatbotInterface()
+    app.mainloop()

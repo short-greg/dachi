@@ -203,7 +203,7 @@ class TestFallback:
         terminal = behavior.Terminal(server)
         action1 = SetStorageAction('SetStorageAction')
         action2 = SetStorageAction('SetStorageActionTask2')
-        fallback = behavior.Fallback(
+        fallback = behavior.Selector(
             [action1, action2]
         )
         
@@ -215,7 +215,7 @@ class TestFallback:
         terminal = behavior.Terminal(server)
         action1 = SetStorageAction('SetStorageAction', value=-1)
         action2 = SetStorageActionCounter('SetStorageActionTask2')
-        fallback = behavior.Fallback(
+        fallback = behavior.Selector(
             [action1, action2]
         )
         assert fallback.tick(terminal) == SangoStatus.RUNNING
@@ -226,7 +226,7 @@ class TestFallback:
         terminal = behavior.Terminal(server)
         action1 = SetStorageAction('SetStorageAction', value=-1)
         action2 = SetStorageAction('SetStorageAction2', value=-1)
-        fallback = behavior.Fallback(
+        fallback = behavior.Selector(
             [action1, action2]
         )
         terminal.shared['failure'] = True

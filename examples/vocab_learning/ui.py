@@ -1,41 +1,91 @@
-from kivy.uix.boxlayout import BoxLayout
-from kivy.uix.textinput import TextInput
-from kivy.uix.button import Button
+import tkinter as tk
+from tkinter import scrolledtext
+from tkinter import font as tkfont
+from collections import OrderedDict
 from backend import ChatBackend
 
 
-class UI(BoxLayout):
+backend = ChatBackend()
 
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.orientation = 'vertical'
 
-        self.chat_layout = BoxLayout(orientation='horizontal')
-        self.add_widget(self.chat_layout)
+class ChatHistory(scrolledtext.ScrolledText):
 
-        self.chat_history = BoxLayout()  # This will contain the chat bubbles
-        self.chat_layout.add_widget(self.chat_history)
+    def __init__(self, frame):
+        larger_font = tkfont.Font(family="Helvetica", size=14)
+        super().__init__(
+            frame, wrap=tk.WORD, font=larger_font
+        )
+        self.history = []
+        self.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
-        self.interactive_pane = BoxLayout()  # This will contain interactive elements
-        self.chat_layout.add_widget(self.interactive_pane)
+    def append(self, speaker, message):
+        self.history.append({'speaker': speaker, 'message': message})
+        self.insert(tk.END, f'{speaker}: {message}' + "\n")
+        self.see(tk.END)
 
-        self.input_field = TextInput(multiline=False)
-        self.send_button = Button(text='Send')
-        self.bottom_bar = BoxLayout(size_hint_y=None, height=50)
-        self.bottom_bar.add_widget(self.input_field)
-        self.bottom_bar.add_widget(self.send_button)
+    def __getitem__(self, index):
 
-        self.add_widget(self.bottom_bar)
-        self.chat_backend = ChatBackend(self.update_chat_history)
+        return self.history[index]
 
-        # Bind events like button click and text input here
 
-    def on_send_pressed(self, instance):
-        message = self.input_field.text
-        self.chat_backend.send_message(message)
-        self.input_field.text = ''  # Clear the input field after sending
+class ChatbotInterface(tk.Tk):
+    def __init__(self):
+        super().__init__()
 
-    def update_chat_history(self, message):
-        # Method to update chat history in the UI
-        # You'll need to implement this to show messages
-        pass
+        self.title("Chatbot")
+        self.geometry("800x600")  # Initial size of the window
+        self.minsize(800, 600)    # Minimum size of the window
+
+        # Main Frame
+        self.main_frame = tk.Frame(self)
+        self.main_frame.pack(fill=tk.BOTH, expand=True)
+        # Chat History Pane
+        self.chat_history = ChatHistory(self.main_frame)
+
+        # Interactive Features Pane
+        self.interactive_pane = tk.Frame(self.main_frame, bg='lightgray')
+        self.interactive_pane.pack(side=tk.RIGHT, fill=tk.Y)
+        tk.Button(self.interactive_pane, text="Quick Reply 1").pack(pady=5)
+        tk.Button(self.interactive_pane, text="Quick Reply 2").pack(pady=5)
+
+        # Bottom Bar
+        self.bottom_bar = tk.Frame(self)
+        self.bottom_bar.pack(side=tk.BOTTOM, fill=tk.X)
+
+        # Text Input Field (Multiline)
+        self.input_field = tk.Text(self.bottom_bar, height=3)
+        self.input_field.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self.input_field.bind("<Shift-Return>", self.send_message)
+
+        # Send Button
+        self.send_button = tk.Button(self.bottom_bar, text="Send", command=self.send_message)
+        self.send_button.pack(side=tk.RIGHT)
+        self.waiting_for_response = False
+
+    def send_message(self, event=None):
+        if self.waiting_for_response:
+            return  # Ignore additional input while waiting
+
+        message = self.input_field.get("1.0", tk.END).strip()
+        if message:
+            self.chat_history.append('You', message)
+            self.input_field.delete("1.0", tk.END)
+            self.waiting_for_response = True
+            self.toggle_input_state(False)
+            # Simulate bot response
+            message = self.chat_history[-1]
+            self.after(1, backend.post, message['speaker'], message['message'], self.bot_response)
+            # self.after(2000, self.bot_response)  # Replace with actual bot logic
+
+    def bot_response(self, speaker, message):
+        # Remove thinking dots
+        self.thinking = False
+        # self.chat_history.delete(self.thinking_message_id, tk.END)
+        # Simulated bot response
+        self.chat_history.append(speaker, message)
+        self.waiting_for_response = False
+        self.toggle_input_state(True)
+        self.thinking_dots = ""
+    
+    def toggle_input_state(self, state):
+        self.send_button.config(state=tk.NORMAL if state else tk.DISABLED)

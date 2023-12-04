@@ -194,7 +194,7 @@ class Sequence(Composite):
         )
 
 
-class Fallback(Composite):
+class Selector(Composite):
 
     def add(self, task: Task) -> 'Sequence':
         self._tasks.append(task)
@@ -220,8 +220,8 @@ class Fallback(Composite):
 
         return status
 
-    def clone(self) -> 'Fallback':
-        return Fallback(
+    def clone(self) -> 'Selector':
+        return Selector(
             self.name, [task.clone() for task in self._tasks]
         )
 
@@ -303,7 +303,7 @@ class Parallel(Composite):
 class Action(Task):
 
     @abstractmethod
-    def act(self, terminal: Terminal):
+    def act(self, terminal: Terminal) -> SangoStatus:
         raise NotImplementedError
 
     def tick(self, terminal: Terminal) -> SangoStatus:
@@ -330,8 +330,9 @@ class Condition(Task):
 
 class Decorator(Task):
 
-    def __init__(self, name: str, task: Task) -> None:
-        super().__init__(name)
+    # name should retrieve the name of the decorated
+    def __init__(self, task: Task) -> None:
+        super().__init__('')
         self.task = task
 
     @abstractmethod
