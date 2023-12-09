@@ -228,7 +228,7 @@ class Selector(Composite):
 
 class Parallel(Composite):
 
-    def __init__(self, name: str, tasks: typing.List[Task], runner=None, fails_on: int=1, succeeds_on: int=None, success_priority: bool=True):
+    def __init__(self, name: str, tasks: typing.List[Task], runner=None, fails_on: int=None, succeeds_on: int=None, success_priority: bool=True):
         super().__init__(name, tasks)
 
         self._use_default_runner = runner is None
@@ -241,9 +241,9 @@ class Parallel(Composite):
 
     def set_condition(self, fails_on: int, succeeds_on: int):
         self._fails_on = fails_on if fails_on is not None else len(self._tasks)
-        self._succeeds_on = succeeds_on if succeeds_on is not None else len(self._tasks)
+        self._succeeds_on = succeeds_on if succeeds_on is not None else (len(self._tasks) + 1 - self._fails_on)
 
-        if (self._fails_on + self._succeeds_on - 1) >= len(self._tasks):
+        if (self._fails_on + self._succeeds_on - 1) > len(self._tasks):
             raise ValueError('')
         if self._fails_on <= 0 or self._succeeds_on <= 0:
             raise ValueError('')
@@ -290,7 +290,15 @@ class Parallel(Composite):
 
         statuses = self._runner(self._tasks, terminal)
         return self._accumulate(statuses)
-            
+
+    @property
+    def fails_on(self) -> int:
+        return self._fails_on
+
+    @property
+    def succeeds_on(self) -> int:
+        return self._succeeds_on        
+    
     def clone(self) -> 'Parallel':
         return Parallel(
             self.name, [task.clone() for task in self._tasks],
@@ -333,11 +341,15 @@ class Decorator(Task):
     # name should retrieve the name of the decorated
     def __init__(self, task: Task) -> None:
         super().__init__('')
-        self.task = task
+        self._task = task
 
     @abstractmethod
     def decorate(self, status: SangoStatus) -> bool:
         pass
+
+    @property
+    def task(self) -> Task:
+        return self._task
 
     def tick(self, terminal: Terminal) -> SangoStatus:
         
