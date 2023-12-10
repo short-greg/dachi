@@ -4,6 +4,16 @@ import typing
 from ._cooordination import Terminal, Message
 from ._status import SangoStatus
 from ._base import Behavior
+from dataclasses import dataclass
+
+
+@dataclass
+class TaskMessage:
+
+    name: str
+    data: typing.Any
+
+
 
 
 class Task(Behavior):

@@ -22,6 +22,15 @@ class LanguageTeacher(Agent):
         output_name = 'message'
         input_name = 'input_name'
         plan_name = 'plan'
+
+        # llm_name 
+        # ui_output_name
+        # 1) needs to create a plan
+        # 2) 
+        # plan_request = '' # A request to create a plan
+        # plan_llm_request = '' # 
+        # ui_output_request = ''
+
         self._io.register_input(input_name)
         with behavior.sango('Language Teacher') as language_teacher:
             with behavior.select('Teach', language_teacher) as teach:
@@ -29,7 +38,7 @@ class LanguageTeacher(Agent):
                 with behavior.sequence('Output', teach) as message:
                     message.add(interface.OutputWaiting(output_name))
                     message.add(interface.OutputMessage(output_name, self._io))
-                teach.add(planner.PlanLearning(input_name, plan_name, output_name))
+                teach.add(planner.PlanPrompter(input_name, plan_name, output_name))
         self._behavior = language_teacher.build()
         self._terminal = self._server.register(self._behavior)
 

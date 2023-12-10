@@ -1,5 +1,34 @@
 from dachi.behavior import Condition, Action, Task, Terminal, SangoStatus
+from dachi.gengo import Prompt
 
+def get_prompt():
+    return Prompt(
+        ['target_vocabulary'],
+        """ 
+        You are language teacher who teaches Japanese vocabulary to native English learners of Japanese.
+        First, create a plan in JSON based on TEMPLATE JSON for the words to teach the learner based on the TARGET VOCABULARY received from the learner.
+
+        If the learner response is not a list of Japanese vocabulary, then return an error message JSON as shown in ERROR JSON. 
+
+        TEMPLATE JSON
+        [
+            {
+            '<Japanese word>': {
+                    'Translation': '<English translation>',
+                    'Definition': '<Japanese definition', 
+                }
+            },
+            ...
+        ]
+
+        TARGET VOCABULARY = {target_vocabulary}
+
+        ERROR JSON
+        {'Message': '<Reason for error>'}
+
+        
+        """
+    )
 
 class WaitingForInput(Condition):
 
@@ -22,26 +51,56 @@ class WaitingForInput(Condition):
         )
 
 
-class PlanLearning(Action):
+class PlanPrompter(Action):
 
-    def __init__(self, input_name: str, plan_name: str, output_name: str) -> None:
+    def __init__(self, input_name: str, plan_name: str, prompt_name: str) -> None:
         super().__init__('Plan Learning')
         self.input_name = input_name
         self.plan_name = plan_name
-        self.output_name = output_name
+        self.prompt_name = prompt_name
         self.tako = None
 
     def act(self, terminal: Terminal) -> SangoStatus:
 
-        if terminal.shared.get(self.input_name) is None:
+        vocabulary = terminal.get(self.input_name)
+        if vocabulary is None:
             return SangoStatus.FAILURE
 
         terminal.shared[self.input_name] = None
-        print(self.output_name)
-        terminal.shared[self.output_name] = 'A simple message'
+        prompt = get_prompt()
+        prompt = prompt.format(vocabulary=vocabulary)
+        terminal.shared[self.prompt_name] = prompt
         return SangoStatus.SUCCESS
         
-    def clone(self) -> 'PlanLearning':
-        return PlanLearning(
-            self.input_name, self.plan_name, self.output_name
+    def clone(self) -> 'PlanPrompter':
+        return PlanPrompter(
+            self.input_name, self.plan_name, self.prompt_name
         )
+
+
+class PlanGenerator(Action):
+
+    def __init__(self, plan_name: str, prompt_name: str) -> None:
+        super().__init__('Plan Learning')
+        self.input_name = input_name
+        self.plan_name = plan_name
+        self.prompt_name = prompt_name
+        self.tako = None
+
+    def act(self, terminal: Terminal) -> SangoStatus:
+
+        vocabulary = terminal.get(self.input_name)
+        if vocabulary is None:
+            return SangoStatus.FAILURE
+
+        terminal.shared[self.input_name] = None
+        prompt = get_prompt()
+        prompt = prompt.format(vocabulary=vocabulary)
+        terminal.shared[self.prompt_name] = prompt
+        return SangoStatus.SUCCESS
+        
+    def clone(self) -> 'PlanPrompter':
+        return PlanPrompter(
+            self.input_name, self.plan_name, self.prompt_name
+        )
+

@@ -23,6 +23,108 @@ class Message(object):
     data: typing.Dict = None
 
 
+@dataclass
+class Request(object):
+
+    name: str
+    receiver: str
+    contents: typing.Any
+
+    def respond(self, contents) -> 'Response':
+
+        return Response(self, contents)
+
+
+@dataclass
+class Response(object):
+
+    request: Request
+    contents: typing.Any
+
+
+class RequestHandler(object):
+
+    def __init__(self):
+
+        self._requests: typing.List[Request] = []
+    
+    def add(self, request: Request):
+
+        self._requests.append(request)
+
+    def find(self, receiver: str=None, request_name: str=None) -> int:
+
+        for i, request in enumerate(self._requests):
+
+            if (
+                request_name is not None and request.name == request_name
+            ) and (
+                receiver is not None and request.receiver == receiver
+            ):
+                return i
+            elif request_name is None and  receiver is not None and request.receiver == receiver:
+                return i
+            elif receiver is None and request_name is not None and request.name == request_name:
+                return i
+        return None
+
+    def pop(self, receiver: str=None, request_name: str=None):
+        
+        index = self.find(receiver, request_name)
+        if index is not None:
+            return self._requests.pop(index)
+        return None
+    
+    def get(self, receiver: str=None, request_name: str=None):
+        
+        index = self.find(receiver, request_name)
+        if index is not None:
+            return self._responses[index]
+        return None
+
+
+class ResponseHandler(object):
+
+    def __init__(self):
+
+        self._responses: typing.List[Response] = []
+    
+    def add(self, response: Response):
+
+        self._responses.append(response)
+
+    def find(self, receiver: str=None, request_name: str=None) -> int:
+
+        for i, response in enumerate(self._responses):
+
+            request = response.request
+            if (
+                request_name is not None and response.name == request_name
+            ) and (
+                receiver is not None and request.receiver == receiver
+            ):
+                return i
+            elif request_name is None and  receiver is not None and request.receiver == receiver:
+                return i
+            elif receiver is None and request_name is not None and request.name == request_name:
+                return i
+        return None
+
+    def pop(self, receiver: str=None, request_name: str=None):
+        
+        index = self.find(receiver, request_name)
+        if index is not None:
+            return self._requests.pop(index)
+        return None
+
+    def get(self, receiver: str=None, request_name: str=None):
+        
+        index = self.find(receiver, request_name)
+        if index is not None:
+            return self._responses[index]
+        return None
+
+
 class Server(object):
 
     def __init__(self):
