@@ -22,18 +22,15 @@ class LanguageTeacher(Agent):
         output_name = 'message'
         input_name = 'input_name'
         plan_name = 'plan'
+        self._io.register_input(input_name)
         with behavior.sango('Language Teacher') as language_teacher:
             with behavior.select('Teach', language_teacher) as teach:
                 teach.add(prompter.PromptLLM(prompt_name, llm_response_signal))
-                teach.add(interface.ProcessInput(input_name))
                 with behavior.sequence('Output', teach) as message:
                     message.add(interface.OutputWaiting(output_name))
                     message.add(interface.OutputMessage(output_name, self._io))
-                with behavior.sequence('Plan', teach) as plan:
-                    plan.add(planner.WaitingForPlan(plan_name))
-                    plan.add(planner.PlanLearning(plan_name, self._io))
+                teach.add(planner.PlanLearning(input_name, plan_name, output_name))
         self._behavior = language_teacher.build()
-        print(self._behavior.root)
         self._terminal = self._server.register(self._behavior)
 
     @property
@@ -44,3 +41,6 @@ class LanguageTeacher(Agent):
         
         sango_status = self._behavior.tick(self._terminal)
         return AgentStatus.from_status(sango_status)
+
+    def reset(self):
+        self._behavior.reset_status(self._terminal)

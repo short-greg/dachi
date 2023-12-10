@@ -166,14 +166,14 @@ class Synched(IData):
     def update(self, value) -> typing.Any:
         return self._base_data.update(value)
 
-    def has_hook(self, hook: DataHook):
-        """Get whether 
+    def has_hook(self, hook: DataHook) -> bool:
+        """Get whether the hook has been set
 
         Args:
-            hook (DataHook): _description_
+            hook (DataHook): The hook to check
 
         Returns:
-            _type_: _description_
+            bool: Whether the hook has been set
         """
         return hook in self._hooks
 
@@ -254,7 +254,16 @@ class DataStore(object):
         if result is None:
             return default
         return result.value
-    
+
+    def get_or_set(self, key: str, default=None) -> typing.Any:
+
+        try:
+            result = self._data[key]
+        except KeyError:
+            self[key] = default
+            return default
+        return result.value
+
     def __contains__(self, key: str) -> bool:
         return key in self._data
     

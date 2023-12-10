@@ -28,9 +28,10 @@ class TeacherApp:
                     if not agent_stopped:
                         status = self._agent.act()
                         if status == AgentStatus.STOPPED:
-                            print('Agent stopped')
-                            agent_stopped = True
-                            # self._agent.reset()
+                            # print('Agent stopped')
+                            # agent_stopped = True
+                            self._agent.reset()
+                            # agent_stopped = False
                 except tk.TclError:
                     break
                 time.sleep(1 / 60)

@@ -13,7 +13,7 @@ class PromptGenerated(Condition):
 
     def __init_terminal__(self, terminal: Terminal):
         super().__init_terminal__(terminal)
-        terminal.shared[self.prompt_name] = terminal.shared.get(self.prompt_name)
+        terminal.shared.get_or_set(self.prompt_name, None)
 
     def condition(self, terminal: Terminal) -> bool:
         

@@ -5,9 +5,6 @@ from ._cooordination import Terminal, Message
 from ._status import SangoStatus
 from ._base import Behavior
 
-# How to deal with waiting
-# How to continue running
-
 
 class Task(Behavior):
 
@@ -26,7 +23,8 @@ class Task(Behavior):
         self.tick = self._tick_wrapper(self.tick)
 
     def __init_terminal__(self, terminal: Terminal):
-        terminal.storage.add('status', SangoStatus.READY)
+        
+        terminal.storage['status'] = SangoStatus.READY
 
     @property
     def name(self) -> str:
@@ -35,10 +33,11 @@ class Task(Behavior):
 
     @abstractmethod    
     def tick(self, terminal: Terminal) -> SangoStatus:
-        pass
+        raise NotImplementedError
 
+    @abstractmethod
     def clone(self) -> 'Task':
-        return self.__class__(self.name)
+        raise NotImplementedError
 
     def state_dict(self) -> typing.Dict:
 
@@ -61,6 +60,10 @@ class Task(Behavior):
         terminal.reset()
         self.__init_terminal__(terminal)
 
+    def reset_status(self, terminal: Terminal):
+        
+        terminal.storage['status'] = SangoStatus.READY
+
     def receive(self, message: Message):
         pass
 
@@ -69,7 +72,7 @@ class Task(Behavior):
         return self._id
 
 
-class Sango(Behavior):
+class Sango(Task):
 
     def __init__(self, name: str, root: 'Task'=None):
 
@@ -80,7 +83,7 @@ class Sango(Behavior):
 
         if self._root is None:
             return SangoStatus.SUCCESS
-    
+
         return self._root.tick(terminal.child(self._root))
 
     @property
@@ -107,6 +110,14 @@ class Sango(Behavior):
             if state_dict['root'] is not None:
                 raise ValueError('Cannot load state dict because root is none')
 
+    def reset_status(self, terminal: Terminal):
+
+        super().reset_status(terminal)
+        if self._root is not None:
+            self._root.reset_status(terminal.child(self._root))
+    def clone(self) -> 'Sango':
+        return Sango(self.name, self.root)
+
 
 class Composite(Task):
     """Task composed of subtasks
@@ -119,7 +130,7 @@ class Composite(Task):
 
     def __init_terminal__(self, terminal: Terminal):
         super().__init_terminal__(terminal)
-        terminal.storage.add('idx', 0)
+        terminal.storage.get_or_set('idx', 0)
 
     @property
     def n(self):
@@ -162,6 +173,12 @@ class Composite(Task):
         for task, task_state_dict in zip(self._tasks, state_dict['tasks']):
             task.load_state_dict(task_state_dict)
 
+    def reset_status(self, terminal: Terminal):
+
+        super().reset_status(terminal)
+        for task in self.tasks:
+            task.reset_status(terminal.child(task))
+
 
 class Sequence(Composite):
 
@@ -193,6 +210,10 @@ class Sequence(Composite):
             self.name, [task.clone() for task in self._tasks]
         )
 
+    def reset_status(self, terminal: Terminal):
+        super().reset_status(terminal)
+        terminal.storage['idx'] = 0
+        
 
 class Selector(Composite):
 
@@ -208,7 +229,6 @@ class Selector(Composite):
         task = self._tasks[idx]
         status = task.tick(terminal.child(task))
 
-        print(status)
         if status == SangoStatus.SUCCESS:
             return SangoStatus.SUCCESS
         
@@ -225,6 +245,10 @@ class Selector(Composite):
             self.name, [task.clone() for task in self._tasks]
         )
 
+    def reset_status(self, terminal: Terminal):
+        super().reset_status(terminal)
+        terminal.storage['idx'] = 0
+        
 
 class Parallel(Composite):
 
@@ -361,6 +385,11 @@ class Decorator(Task):
             self.task.tick(terminal.child(self.task))
         )
         return status
+
+    def reset_status(self, terminal: Terminal):
+
+        super().reset_status(terminal)
+        self._task.reset_status(terminal.child(self._task))
 
 
 class Until(Decorator):

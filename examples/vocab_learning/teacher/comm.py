@@ -27,8 +27,7 @@ class IOHandler:
 
     def post_user_message(self, user_message: str) -> bool:
 
-        if not self.input_name:
+        if self.input_name is None:
             return False
-        
         self.server.shared[self.input_name] = user_message
         return True
