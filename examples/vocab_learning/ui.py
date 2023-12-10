@@ -2,10 +2,12 @@ import tkinter as tk
 from tkinter import scrolledtext
 from tkinter import font as tkfont
 from collections import OrderedDict
-from backend import ChatBackend
+# from backend import ChatBackend
+from .teacher.agent import LanguageTeacher
+# from teacher.comm import IOHandler
 
 
-backend = ChatBackend()
+# backend = ChatBackend()
 
 
 class ChatHistory(scrolledtext.ScrolledText):
@@ -29,8 +31,10 @@ class ChatHistory(scrolledtext.ScrolledText):
 
 
 class ChatbotInterface(tk.Tk):
-    def __init__(self):
+
+    def __init__(self, agent: LanguageTeacher):
         super().__init__()
+        self._agent = agent
 
         self.title("Chatbot")
         self.geometry("800x600")  # Initial size of the window
@@ -61,6 +65,7 @@ class ChatbotInterface(tk.Tk):
         self.send_button = tk.Button(self.bottom_bar, text="Send", command=self.send_message)
         self.send_button.pack(side=tk.RIGHT)
         self.waiting_for_response = False
+        self._agent.io.connect_ui(self.bot_response)
 
     def send_message(self, event=None):
         if self.waiting_for_response:
@@ -74,7 +79,7 @@ class ChatbotInterface(tk.Tk):
             self.toggle_input_state(False)
             # Simulate bot response
             message = self.chat_history[-1]
-            self.after(1, backend.post, message['speaker'], message['message'], self.bot_response)
+            self.after(1, self._agent.io.post_user_message, message['message'])
             # self.after(2000, self.bot_response)  # Replace with actual bot logic
 
     def bot_response(self, speaker, message):

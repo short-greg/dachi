@@ -1,7 +1,7 @@
 from dachi.behavior import _build as build
 from dachi.behavior import _tasks as tasks
 
-from .test_behavior import ATask, SetStorageAction
+from .test_behavior import ATask
 
 
 class TestParallel:
@@ -109,5 +109,3 @@ class TestNot:
             not_.add(ATask())
             not_.add(ATask())
         assert isinstance(not_.build().task, tasks.Sequence)
-
-

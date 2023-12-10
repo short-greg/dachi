@@ -7,16 +7,22 @@ class PromptGenerated(Condition):
     '''Receive response from the user
     '''
 
-    def __init__(self, prompt_signal: str) -> None:
+    def __init__(self, prompt_name: str) -> None:
         super().__init__('Response Receiver')
-        self.prompt_signal = prompt_signal
+        self.prompt_name = prompt_name
 
     def __init_terminal__(self, terminal: Terminal):
-        terminal.shared[self.prompt_signal] = terminal.shared.get(self.prompt_signal)
+        super().__init_terminal__(terminal)
+        terminal.shared[self.prompt_name] = terminal.shared.get(self.prompt_name)
 
     def condition(self, terminal: Terminal) -> bool:
         
-        return terminal.shared[self.prompt_signal] is not None
+        return terminal.shared[self.prompt_name] is not None
+
+    def clone(self) -> 'PromptGenerated':
+        return PromptGenerated(
+            self.prompt_name
+        )
 
 
 # Chat History
@@ -28,10 +34,10 @@ class PromptLLM(Action):
     '''Receive response from the user
     '''
 
-    def __init__(self, prompt_signal: str, llm_response_signal: str) -> None:
+    def __init__(self, prompt_name: str, llm_response_name: str) -> None:
         super().__init__('Prompt LLM')
-        self.prompt_signal = prompt_signal
-        self.llm_response_signal = llm_response_signal
+        self.prompt_name = prompt_name
+        self.llm_response_name = llm_response_name
 
     def __init_terminal__(self, terminal: Terminal):
         super().__init_terminal__(terminal)
@@ -51,21 +57,27 @@ class PromptLLM(Action):
         llm_response = terminal.storage.get('llm_response')
         if llm_response is not None:
             
-            terminal.shared[self.llm_response_signal] = llm_response
+            terminal.shared[self.llm_response_name] = llm_response
             terminal.storage['llm_response'] = None
             terminal.storage['sent_to_llm'] = False
             return SangoStatus.SUCCESS
         
         sent_to_llm = terminal.storage.get('send_to_llm')
-        prompt = terminal.shared.get(self.prompt_signal)
+        prompt = terminal.shared.get(self.prompt_name)
         if sent_to_llm is None:
 
-            prompt_messages = terminal.shared.get(self.prompt_signal)
+            prompt_messages = terminal.shared.get(self.prompt_name)
             if prompt_messages is None:
                 return SangoStatus.FAILURE
-            thread = threading.Thread(target=prompt args=[terminal, prompt_messages])
+            
+            thread = threading.Thread(target=prompt, args=[terminal, prompt_messages])
             thread.start()
-            terminal.shared[self.prompt_signal] = None
+            terminal.shared[self.prompt_name] = None
 
         # send message to the LLM
         return SangoStatus.RUNNING
+
+    def clone(self) -> 'PromptLLM':
+        return PromptLLM(
+            self.prompt_name, self.llm_response_name
+        )

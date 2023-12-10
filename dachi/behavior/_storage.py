@@ -248,11 +248,11 @@ class DataStore(object):
         else:
             self._data[key].update(value)
 
-    def get(self, key: str) -> typing.Any:
+    def get(self, key: str, default=None) -> typing.Any:
 
         result = self._data.get(key)
         if result is None:
-            return None
+            return default
         return result.value
     
     def __contains__(self, key: str) -> bool:

@@ -1,7 +1,7 @@
 from dachi.behavior import _tasks as behavior
 from . import _tasks as behavior
 import typing
-from abc import abstractproperty, abstractmethod
+from abc import abstractmethod
 
 
 class BehaviorBuilder(object):
@@ -42,6 +42,7 @@ class sango(BehaviorBuilder):
             task = self._task.clone()
         elif isinstance(self._task, BehaviorBuilder):
             task = self._task.build()
+        else: task = None
 
         return behavior.Sango(
             self.name, task
@@ -90,16 +91,21 @@ class CompositeBuilder(BehaviorBuilder):
     def build_composite(self, tasks: typing.List[behavior.Task]) -> behavior.Composite:
         pass
 
+    def build_tasks(self) -> typing.List[behavior.Task]:
+
+        return [
+            task.build() if isinstance(task, BehaviorBuilder)
+            else task.clone()
+            for task in self._tasks
+        ]
+
     def build(self) -> behavior.Composite:
         """Build the composite task
 
         Returns:
             behavior.Composite: The built Composite task
         """
-        return self.build_composite([
-            task.clone() if isinstance(task, behavior.Task) else task.build
-            for task in self._tasks
-        ])
+        return self.build_composite(self.build_tasks())
 
     def __enter__(self):
         
@@ -110,6 +116,7 @@ class CompositeBuilder(BehaviorBuilder):
         if exc_type is not None:
             raise 
 
+        print(self.name, self.parent)
         if self.parent is None:
             return 
 
@@ -122,7 +129,7 @@ class CompositeBuilder(BehaviorBuilder):
 class DecoratorBuilder(BehaviorBuilder):
 
     def __init__(self, wrapped: typing.Union['DecoratorBuilder', CompositeBuilder]):
-        """_summary_
+        """
 
         Args:
             wrapped (typing.Union[&#39;DecoratorBuilder&#39;, CompositeBuilder]): _description_
@@ -175,29 +182,28 @@ class DecoratorBuilder(BehaviorBuilder):
 
 class sequence(CompositeBuilder):
 
-    def build(self) -> behavior.Composite:
-        """Build the parallel task
+    def build_composite(self, tasks: typing.List[behavior.Task]) -> behavior.Sequence:  
+        """Build the sequential task
 
         Returns:
-            behavior.Parallel: The built Parallel task
-        """
+            behavior.Sequence: The built Sequence task
+        """ 
         return behavior.Sequence(
-            self._tasks, self.name
+            tasks, self.name
         )
 
 
 class select(CompositeBuilder):
 
-    def build(self) -> 'behavior.Selector':
-        """_summary_
+    def build_composite(self, tasks: typing.List[behavior.Task]) -> behavior.Selector: 
+        """Build the Selector task
 
         Returns:
             behavior.Selector: The built Selector task
-        """
+        """   
         return behavior.Selector(
-            self._tasks, self.name
+            tasks, self.name
         )
-
 
 class parallel(CompositeBuilder):
 
@@ -221,14 +227,14 @@ class parallel(CompositeBuilder):
         self.succeeds_on = succeeds_on
         self.success_priority = success_priority
 
-    def build(self) -> 'behavior.Parallel':
+    def build_composite(self, tasks: typing.List[behavior.Task]) -> behavior.Parallel: 
         """Build the parallel task
 
         Returns:
             behavior.Parallel: The built Parallel task
-        """
+        """  
         return behavior.Parallel(
-            self._tasks, self.name, fails_on=self.fails_on,
+            tasks, self.name, fails_on=self.fails_on,
             succeeds_on=self.succeeds_on, success_priority=self.success_priority
         )
 
