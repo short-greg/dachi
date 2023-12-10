@@ -43,17 +43,32 @@ class Response(object):
 
 
 class RequestHandler(object):
+    """Manage the requests to send to other tasks
+    """
 
     def __init__(self):
-
+        """Create a handler to manage the requests to send to other tasks
+        """
         self._requests: typing.List[Request] = []
     
     def add(self, request: Request):
+        """Add another request to the handler
 
+        Args:
+            request (Request): The request to add
+        """
         self._requests.append(request)
 
     def find(self, receiver: str=None, request_name: str=None) -> int:
+        """Find a request in the handler
 
+        Args:
+            receiver (str, optional): The receiver to find by. Defaults to None.
+            request_name (str, optional): The name of the request. Defaults to None.
+
+        Returns:
+            int: The position of the request
+        """
         for i, request in enumerate(self._requests):
 
             if (
@@ -69,21 +84,50 @@ class RequestHandler(object):
         return None
 
     def pop(self, receiver: str=None, request_name: str=None):
-        
+        """Get the response and pop it
+
+        Args:
+            receiver (str, optional): The name of the receiver. Defaults to None.
+            request_name (str, optional): The naem of the request. Defaults to None.
+
+        Returns:
+            Response: The response if found else None
+        """
         index = self.find(receiver, request_name)
         if index is not None:
             return self._requests.pop(index)
         return None
     
     def get(self, receiver: str=None, request_name: str=None):
-        
+        """Get the response
+
+        Args:
+            receiver (str, optional): The name of the receiver. Defaults to None.
+            request_name (str, optional): The naem of the request. Defaults to None.
+
+        Returns:
+            Response: The response if found else None
+        """
         index = self.find(receiver, request_name)
         if index is not None:
             return self._responses[index]
         return None
 
+    def has_request(self, receiver: str=None, request_name: str=None) -> bool:
+        """
+        Args:
+            receiver (str, optional): The name of the receiver. Defaults to None.
+            request_name (str, optional): The naem of the request. Defaults to None.
+
+        Returns:
+            bool: if the quest is found
+        """
+        return self.find(receiver, request_name) is not None
+
 
 class ResponseHandler(object):
+    """Manage the responses to requests
+    """
 
     def __init__(self):
 
@@ -94,7 +138,15 @@ class ResponseHandler(object):
         self._responses.append(response)
 
     def find(self, receiver: str=None, request_name: str=None) -> int:
+        """Find the response if it exists
 
+        Args:
+            receiver (str, optional): The name of the receiver. Defaults to None.
+            request_name (str, optional): The naem of the request. Defaults to None.
+
+        Returns:
+            int: _description_
+        """
         for i, response in enumerate(self._responses):
 
             request = response.request
@@ -111,35 +163,75 @@ class ResponseHandler(object):
         return None
 
     def pop(self, receiver: str=None, request_name: str=None):
-        
+        """Get the response and pop it
+
+        Args:
+            receiver (str, optional): The name of the receiver. Defaults to None.
+            request_name (str, optional): The naem of the request. Defaults to None.
+
+        Returns:
+            Response: The response if found else None
+        """
         index = self.find(receiver, request_name)
         if index is not None:
             return self._requests.pop(index)
         return None
 
-    def get(self, receiver: str=None, request_name: str=None):
-        
+    def get(self, receiver: str=None, request_name: str=None) -> Response:
+        """
+        Args:
+            receiver (str, optional): The name of the receiver. Defaults to None.
+            request_name (str, optional): The naem of the request. Defaults to None.
+
+        Returns:
+            Response: The response if found else None
+        """
         index = self.find(receiver, request_name)
         if index is not None:
             return self._responses[index]
         return None
 
+    def has_response(self, receiver: str=None, request_name: str=None) -> bool:
+        """
+        Args:
+            receiver (str, optional): The name of the receiver. Defaults to None.
+            request_name (str, optional): The naem of the request. Defaults to None.
+
+        Returns:
+            bool: if the response is found
+        """
+        return self.find(receiver, request_name) is not None
+
 
 class Server(object):
 
     def __init__(self):
-        
+        """Create a server to manage requests and store data
+        """
         self._shared = DataStore()
         self._terminals = OrderedDict()
         self._register = {}
+        self._responses = ResponseHandler()
+        self._requests = RequestHandler()
         self._receivers: typing.Dict[typing.Tuple[MessageType, str], typing.Dict[typing.Union[str, typing.Callable], bool]] = {}
 
     @property
     def shared(self) -> DataStore:
         return self._shared
     
+    @property
+    def reponses(self) -> ResponseHandler:
+        return self._responses
+    
+    @property
+    def requests(self) -> RequestHandler:
+        return self._requests
+    
     def send(self, message: Message):
-        
+        """Send a message to the server
+        Args:
+            message (Message): The message to send to the server
+        """
         receivers = self._receivers.get((message.message_type, message.name))
         if receivers is None:
             return
@@ -155,7 +247,18 @@ class Server(object):
         self._receivers[(message.message_type, message.name)] = updated
 
     def register(self, behavior: 'Behavior', overwrite: bool=False) -> 'Terminal':
+        """Register a behavior with the server
 
+        Args:
+            behavior (Behavior): The behavior to register
+            overwrite (bool, optional): Overwrite the behavior if it already exist. Defaults to False.
+
+        Raises:
+            ValueError: If overwrite is false and not in reg
+
+        Returns:
+            Terminal: The terminal for the behavior
+        """
         in_register = self._register.get(behavior.id)
         if in_register is None:
             self._register[behavior.id] = behavior
@@ -165,6 +268,8 @@ class Server(object):
             self._register[behavior.id] = behavior
             terminal = Terminal(self)
             self._terminals[behavior.id] = terminal
+        elif in_register:
+            raise ValueError(f'The task in register {in_register} is different from this task')
         elif behavior is not in_register:
             raise ValueError(f'The task in register {in_register} is different from this task')
         return self._terminals[behavior.id]
@@ -232,8 +337,15 @@ class Server(object):
         
         return behavior.id in receiver
 
-    def receives_message(self, message: typing.Union[Message, typing.Tuple[MessageType, str]]):
+    def receives_message(self, message: typing.Union[Message, typing.Tuple[MessageType, str]]) -> bool:
+        """Check if it receives a message
 
+        Args:
+            message (typing.Union[Message, typing.Tuple[MessageType, str]]): _description_
+
+        Returns:
+            bool: If it receives a message
+        """
         if isinstance(message, Message):
             message_type, name = message.message_type, message.name
         else:
@@ -243,23 +355,54 @@ class Server(object):
 
 
 class Terminal(object):
+    """A Terminal connects a task to the server. It has its own storage.
+    """
 
     def __init__(self, server: Server) -> None:
+        """Create the terminal to connect to the server
+
+        Args:
+            server (Server): the server to connect to
+        """
         self._initialized = False
         self._server = server
         self._storage = DataStore()
 
     @property
     def initialized(self) -> bool:
+        """
+        Returns:
+            bool: If the terminal has been initialized
+        """
         return self._initialized
     
     def initialize(self):
-
+        """Set the terminal to initialized"""
         self._initialized = True
 
     @property
     def storage(self) -> DataStore:
+        """
+        Returns:
+            DataStore: The storage associated with the terminal
+        """
         return self._storage
+    
+    @property
+    def responses(self) -> ResponseHandler:
+        """
+        Returns:
+            ResponseHandler: The response handler for the server
+        """
+        return self._server.reponses
+    
+    @property
+    def requests(self) -> RequestHandler:
+        """
+        Returns:
+            RequestHandler: The request handler for the server
+        """
+        return self._server.requests
     
     @property
     def shared(self) -> DataStore:
