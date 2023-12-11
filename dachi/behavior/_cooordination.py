@@ -7,6 +7,8 @@ from ._base import Behavior
 from ._storage import DataStore
 
 
+# TODO: Decide whether to keep this
+
 class MessageType(Enum):
 
     INPUT = 'input'
@@ -25,20 +27,31 @@ class Message(object):
 
 @dataclass
 class Request(object):
-
+    """Create a request for another task to process
+    """
     name: str
     receiver: str
     contents: typing.Any
 
-    def respond(self, contents) -> 'Response':
+    def respond(self, sender: str, contents) -> 'Response':
+        """Respond to the request
 
-        return Response(self, contents)
+        Args:
+            sender (str): The sender of the response
+            contents: The contents of the response
+
+        Returns:
+            Response: The response
+        """
+        return Response(self, sender, contents)
 
 
 @dataclass
 class Response(object):
-
+    """Create a response to a request that has been processed
+    """
     request: Request
+    sender: str
     contents: typing.Any
 
 
@@ -425,7 +438,7 @@ class Terminal(object):
         return self.server.register(behavior)
 
     def state_dict(self) -> typing.Dict:
-
+        
         return {
             'initialized': self._initialized,
             'storage': self._storage.state_dict()

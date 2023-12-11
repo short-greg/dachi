@@ -1,14 +1,26 @@
 from abc import abstractmethod, ABC, abstractproperty
 import typing
 
+
 class DataHook(ABC):
+    """A hook that will be called if the data is updated
+    """
 
     def __init__(self, name: str, *args, **kwargs):
+        """Create a hook to be called when the data is updated
+
+        Args:
+            name (str): The name of the  hook
+        """
         super().__init__(*args, **kwargs)
         self._name = name
     
     @property
     def name(self) -> str:
+        """
+        Returns:
+            str: Retrieve the name of the hook
+        """
         return self._name
 
     @abstractmethod
@@ -17,16 +29,33 @@ class DataHook(ABC):
 
 
 class MetaHook(ABC):
+    """
+    """
 
     def __init__(self, hook: DataHook):
+        """Create a hook that will be called when another is called
+
+        Args:
+            hook (DataHook): The hook to be called on
+        """
         super().__init__()
         self._hook = hook
     
     @property
     def name(self) -> str:
+        """
+        Returns:
+            str: Retrieve the name of the hook
+        """
         return self._hook.name
 
     def __call__(self, data: 'Data', prev_value):
+        """Call the hook
+
+        Args:
+            data (Data): The data updated
+            prev_value : The previous value of the data
+        """
         self._hook(data, prev_value)
 
 
@@ -255,8 +284,16 @@ class DataStore(object):
             return default
         return result.value
 
-    def get_or_set(self, key: str, default=None) -> typing.Any:
+    def get_or_set(self, key: str, default) -> typing.Any:
+        """Get the value specified by key or if it does not exist set it
 
+        Args:
+            key (str): The key to retrieve for
+            default: The value to set if the key has not been specified. Defaults to None.
+
+        Returns:
+            typing.Any: The value specified by key
+        """
         try:
             result = self._data[key]
         except KeyError:
@@ -265,9 +302,24 @@ class DataStore(object):
         return result.value
 
     def __contains__(self, key: str) -> bool:
+        """
+        Args:
+            key (str): The key to check if exists
+
+        Returns:
+            bool: Whether the key is in the data
+        """
         return key in self._data
     
     def __getitem__(self, key: str) -> typing.Any:
+        """Get the value specified by key
+
+        Args:
+            key (str): The key to retrieve for
+
+        Returns:
+            typing.Any: The value
+        """
         return self._data[key].value
     
     def __setitem__(self, key: str, value) -> typing.Any:
@@ -307,4 +359,4 @@ class DataStore(object):
     def reset(self):
         """Clear out the data in the data store
         """
-        self._data.clear()        
+        self._data.clear()
