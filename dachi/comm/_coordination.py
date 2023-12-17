@@ -13,6 +13,8 @@ CALLBACK = typing.Union[str, typing.Callable]
 
 def callback(cb, contents, store: DataStore):
 
+    if cb is None:
+        return
     if isinstance(cb, str):
         store[cb] = contents
     else:
@@ -26,29 +28,7 @@ class Query(ABC):
         self._on_post = []
         self._on_response = []
         self._server = server
-        self._base_respond = self.respond
-        self._base_post = self.post
-        self.respond = self._respond
-        self.post = self._post
     
-    def _respond(
-        self, store: DataStore, contents,
-        on_response: CALLBACK=None):
-        
-        self._base_respond(store, contents, on_response)
-        for on_response in self._on_response:
-            callback(on_response, contents, store)
-
-    def _post(
-        self, store: DataStore, contents, 
-        on_post: CALLBACK=None, 
-        on_response: CALLBACK=None
-    ):
-        
-        self._base_post(store, contents, on_response)
-        for on_post in self._on_post:
-            callback(on_post, contents, store)
-
     def register(
         self, 
         on_post: typing.Union[str, typing.Callable]=None,
@@ -70,16 +50,34 @@ class Query(ABC):
             self._on_response.remove(on_response)
 
     @abstractmethod
-    def respond(
-        self, store: DataStore, contents,
-        on_response: CALLBACK=None
-    ):
-        raise NotImplementedError
+    def prepare_response(self, store: DataStore, contents):
+        pass
 
     @abstractmethod
+    def prepare_post(self, store: DataStore, contents):
+        pass
+
     def post(
         self, store: DataStore, contents, 
         on_post: CALLBACK=None, 
+        on_response: CALLBACK=None
+    ):
+        
+        """Make a query for information. If the content cannot be processed it raises an ValueError
+
+        Args:
+            contents: The contents of the query
+            on_post (typing.Union[str, typing.Callable], optional): Callback when the query was posted. If it is a string, it sets that value to true on storage. Defaults to None.
+            on_response (typing.Union[str, typing.Callable], optional): The  . If it is a string, it will set the storage specified by the key to the reponse Defaults to None.
+
+        """
+        self.prepare_post(store, contents, on_response)
+        callback(on_post, contents, store)
+        for on_post in self._on_post:
+            callback(on_post, contents, store)
+
+    def respond(
+        self, store: DataStore, contents,
         on_response: CALLBACK=None
     ):
         """Make a query for information. If the content cannot be processed it raises an ValueError
@@ -90,7 +88,10 @@ class Query(ABC):
             on_response (typing.Union[str, typing.Callable], optional): The  . If it is a string, it will set the storage specified by the key to the reponse Defaults to None.
 
         """
-        raise NotImplementedError
+        self.prepare_response(store, contents)
+        callback(on_response, contents, store)
+        for on_response in self._on_response:
+            callback(on_response, contents, store)
 
 
 class Signal(ABC):
@@ -98,16 +99,32 @@ class Signal(ABC):
     def __init__(self):
 
         self._on_post = []
-        self._base_post = self.post
-        self.post = self._post
     
-    def _post(
+    @abstractmethod
+    def prepare_post(
         self, store: DataStore, contents, 
         on_post: CALLBACK=None, 
-        on_response: CALLBACK=None
     ):
-        
-        self._base_post(store, contents, on_response)
+        """Sends a message. If the content cannot be processed it raises an ValueError
+
+        Args:
+            contents: The contents of the message
+        """
+        raise NotImplementedError
+
+    def post(
+        self, store: DataStore, contents, 
+        on_post: CALLBACK=None, 
+    ):
+        """Sends a message. If the content cannot be processed it raises an ValueError
+
+        Args:
+            contents: The contents of the message
+            on_post (typing.Union[str, typing.Callable], optional): Callback when the query was posted. If it is a string, it sets that value to true on storage. Defaults to None.
+
+        """
+        self._base_post(store, contents, on_post)
+        callback(on_post, contents, store)
         for on_post in self._on_post:
             callback(on_post, contents, store)
 
@@ -122,19 +139,6 @@ class Signal(ABC):
         on_post: typing.Union[str, typing.Callable]
     ):
         self._on_post.remove(on_post)
-    
-    @abstractmethod
-    def post(
-        self, store: DataStore, contents, on_post: CALLBACK=None
-    ):
-        """Sends a message. If the content cannot be processed it raises an ValueError
-
-        Args:
-            contents: The contents of the message
-            on_post (typing.Union[str, typing.Callable], optional): Callback when the query was posted. If it is a string, it sets that value to true on storage. Defaults to None.
-
-        """
-        raise NotImplementedError
 
 
 class Server(object):
