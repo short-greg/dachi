@@ -1,6 +1,6 @@
 from dachi.behavior import _tasks as behavior
 from dachi.behavior import _cooordination as coordination
-from dachi.behavior._cooordination import Message, Terminal
+from dachi.behavior._cooordination import Signal, Terminal
 from dachi.behavior._status import SangoStatus
 import pytest
 
@@ -11,8 +11,8 @@ class ATask(behavior.Action):
         super().__init__('ATask')
         self.x = 1
 
-    def receive(self, message: Message):
-        self.x = message.data['input']
+    # def receive(self, message: Signal):
+    #     self.x = message.data['input']
 
     def act(self, terminal: Terminal):
         return SangoStatus.SUCCESS

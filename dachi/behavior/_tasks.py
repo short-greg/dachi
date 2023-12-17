@@ -1,9 +1,10 @@
 from abc import abstractmethod
 import typing
 
-from ._cooordination import Terminal, Message
+
+from ..comm import Receiver, Terminal, Signal
 from ._status import SangoStatus
-from ._base import Behavior
+from ._base import Receiver
 from dataclasses import dataclass
 
 
@@ -14,9 +15,7 @@ class TaskMessage:
     data: typing.Any
 
 
-
-
-class Task(Behavior):
+class Task(Receiver):
 
     def _tick_wrapper(self, f) -> typing.Callable[[Terminal], SangoStatus]:
 
@@ -74,7 +73,7 @@ class Task(Behavior):
         
         terminal.storage['status'] = SangoStatus.READY
 
-    def receive(self, message: Message):
+    def receive(self, message: Signal):
         pass
 
     @property
@@ -436,3 +435,55 @@ class Not(Decorator):
         if status.success:
             return SangoStatus.FAILURE
         return status
+
+
+class CheckReady(Condition):
+
+    def __init__(self, name: str, field_name: str):
+        """Check if a field has been prepared
+
+        Args:
+            name (str): The name of the task
+            field_name (str): The name of the field to check
+        """
+        super().__init__(name)
+        self.field_name = field_name
+
+    def condition(self, terminal: Terminal) -> bool:
+        
+        return terminal.storage[self.field_name] is not None
+
+
+class Check(Condition):
+
+    def __init__(self, name: str, f):
+        """Check if a field has been prepared
+
+        Args:
+            name (str): The name of the task
+            f (typing.Callable): The function to call
+        """
+        super().__init__(name)
+        self.f = f
+
+    def condition(self, terminal: Terminal) -> bool:
+        
+        return self.f(terminal)
+
+
+class CheckTrue(Condition):
+
+    def __init__(self, name: str, field_name: str):
+        """Check if a field is true
+
+        Args:
+            name (str): The name of the task
+            field_name (str): The name of the field to check
+        """
+        super().__init__(name)
+        self.field_name = field_name
+
+    def condition(self, terminal: Terminal) -> bool:
+        
+        return terminal.storage[self.field_name]
+

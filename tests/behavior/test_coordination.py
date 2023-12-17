@@ -1,6 +1,6 @@
 from dachi.behavior import _cooordination as coordination
 from dachi.behavior._status import SangoStatus
-from dachi.behavior._cooordination import Message, Terminal
+from dachi.behavior._cooordination import Signal, Terminal
 from dachi.behavior._tasks import Action
 
 
@@ -10,7 +10,7 @@ class ATask(Action):
         super().__init__('ATask')
         self.x = 1
 
-    def receive(self, message: Message):
+    def receive(self, message: Signal):
         self.x = message.data['input']
 
     def act(self, terminal: Terminal):
@@ -30,8 +30,8 @@ class TestServer:
         task = ATask()
         server = coordination.Server()
         server.register(task)
-        server.receive(coordination.MessageType.INPUT, 'x', task)
-        server.send(coordination.Message(coordination.MessageType.INPUT, 'x', {'input': 2}))
+        server.receive(coordination.SignalType.INPUT, 'x', task)
+        server.send(coordination.Signal(coordination.SignalType.INPUT, 'x', {'input': 2}))
         assert task.x == 2
 
     def test_send_not_triggered_if_canceled(self):
@@ -39,10 +39,10 @@ class TestServer:
         task = ATask()
         server = coordination.Server()
         server.register(task)
-        server.receive(coordination.MessageType.INPUT, 'x', task)
-        server.cancel_receive(coordination.MessageType.INPUT, 'x', task)
+        server.receive(coordination.SignalType.INPUT, 'x', task)
+        server.cancel_receive(coordination.SignalType.INPUT, 'x', task)
 
-        server.send(coordination.Message(coordination.MessageType.INPUT, 'y', {'input': 2}))
+        server.send(coordination.Signal(coordination.SignalType.INPUT, 'y', {'input': 2}))
         assert task.x == 1
 
     def test_can_add_receiver_to_message_handler(self):
@@ -50,48 +50,48 @@ class TestServer:
         task = ATask()
         server = coordination.Server()
         server.register(task)
-        server.receive(coordination.MessageType.INPUT, 'x', task)
-        assert server.receives_message((coordination.MessageType.INPUT, 'x'))
+        server.receive(coordination.SignalType.INPUT, 'x', task)
+        assert server.receives_signal((coordination.SignalType.INPUT, 'x'))
 
     def test_message_in_handler_with_message(self):
 
         task = ATask()
         server = coordination.Server()
         server.register(task)
-        message = coordination.Message(coordination.MessageType.INPUT, 'x')
-        server.receive(coordination.MessageType.INPUT, 'x', task)
+        message = coordination.Signal(coordination.SignalType.INPUT, 'x')
+        server.receive(coordination.SignalType.INPUT, 'x', task)
 
-        assert server.receives_message(message)
+        assert server.receives_signal(message)
 
     def test_message_in_handler_with_type_and_name(self):
 
         task = ATask()
         server = coordination.Server()
         server.register(task)
-        message = coordination.Message(coordination.MessageType.INPUT, 'x')
-        server.receive(coordination.MessageType.INPUT, 'x', task)
+        message = coordination.Signal(coordination.SignalType.INPUT, 'x')
+        server.receive(coordination.SignalType.INPUT, 'x', task)
 
-        assert server.receives_message(message)
+        assert server.receives_signal(message)
 
     def test_message_not_in_handler_with_type_and_name_after_removed_last(self):
 
         task = ATask()
         server = coordination.Server()
         server.register(task)
-        message = coordination.Message(coordination.MessageType.INPUT, 'x')
-        server.receive(coordination.MessageType.INPUT, 'x', task)
-        server.cancel_receive(coordination.MessageType.INPUT, 'x', task)
+        message = coordination.Signal(coordination.SignalType.INPUT, 'x')
+        server.receive(coordination.SignalType.INPUT, 'x', task)
+        server.cancel_receive(coordination.SignalType.INPUT, 'x', task)
 
-        assert not server.receives_message(message)
+        assert not server.receives_signal(message)
 
     def test_receiver_not_in_handler_with_type_and_name_after_removed(self):
 
         task = ATask()
         server = coordination.Server()
         server.register(task)
-        message = coordination.Message(coordination.MessageType.INPUT, 'x')
-        server.receive(coordination.MessageType.INPUT, 'x', task)
-        server.cancel_receive(coordination.MessageType.INPUT, 'x', task)
+        message = coordination.Signal(coordination.SignalType.INPUT, 'x')
+        server.receive(coordination.SignalType.INPUT, 'x', task)
+        server.cancel_receive(coordination.SignalType.INPUT, 'x', task)
         assert not server.has_receiver(message.message_type, message.name, task)
 
     def test_receiver_is_triggered_when_message_is_passed(self):
@@ -99,8 +99,8 @@ class TestServer:
         task = ATask()
         server = coordination.Server()
         server.register(task)
-        server.receive(coordination.MessageType.INPUT, 'x', task)
-        server.send(coordination.Message(coordination.MessageType.INPUT, 'x', {'input': 2}))
+        server.receive(coordination.SignalType.INPUT, 'x', task)
+        server.send(coordination.Signal(coordination.SignalType.INPUT, 'x', {'input': 2}))
         assert task.x == 2
 
     def test_receiver_is_not_triggered_when_message_is_passed(self):
@@ -108,8 +108,8 @@ class TestServer:
         task = ATask()
         server = coordination.Server()
         server.register(task)
-        server.receive(coordination.MessageType.INPUT, 'x', task)
-        server.send(coordination.Message(coordination.MessageType.INPUT, 'y', {'input': 2}))
+        server.receive(coordination.SignalType.INPUT, 'x', task)
+        server.send(coordination.Signal(coordination.SignalType.INPUT, 'y', {'input': 2}))
         assert task.x == 1
 
 
