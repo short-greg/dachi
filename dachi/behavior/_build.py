@@ -205,6 +205,9 @@ class select(CompositeBuilder):
             tasks, self.name
         )
 
+fallback = select
+
+
 class parallel(CompositeBuilder):
 
     def __init__(

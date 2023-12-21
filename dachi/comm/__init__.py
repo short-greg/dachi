@@ -7,3 +7,4 @@ from ._storage import (
     DataStore, Synched,
     CompositeHook
 )
+from ._base import Receiver

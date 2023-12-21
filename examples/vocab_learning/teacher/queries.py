@@ -1,30 +1,51 @@
-import typing
 import threading
-
 from openai import OpenAI
 
-from typing import Dict
-from dachi.comm import Query, Server
+from typing import Any
+from dachi.comm import Query, DataStore
+from dachi.comm._storage import DataStore
 
 
 class LLMQuery(Query):
 
-    def __init__(self, server: Server):
+    def __init__(self, store: DataStore):
+        """
+
+        Args:
+            store (DataStore): 
+        """
+        super().__init__(store)
         self.client = OpenAI()
-        self.server = server
-        
-    def generate_response(
-        self, contents: Dict, server: Server,
-    ):
+
+    def prepare_response(self, contents):
+        assert 'prompt' in contents
         response = self.client.chat.completions.create(
             model="gpt-4-turbo",
             messages=contents['prompt']
         )
         return response
-
-    def prepare_post(self, contents: Dict, server: Server, on_post: typing.Union[str, typing.Callable]= None, on_response: typing.Union[str, typing.Callable]=None):
-        
-        thread = threading.Thread(self.query, server, args=[contents, on_post, on_response])
+    
+    def prepare_post(self, contents) -> Any:
+        thread = threading.Thread(self.prepare_post, args=[contents])
         thread.run()
-        # threading.Thread()
 
+
+class UIQuery(Query):
+
+    def __init__(self, ui_callback, store: DataStore):
+        """
+
+        Args:
+            store (DataStore): 
+        """
+        super().__init__(store)
+        self.client = OpenAI()
+        self.ui_callback = ui_callback
+
+    def prepare_response(self, contents) -> Any:
+ 
+        return contents
+
+    def prepare_post(self, contents):
+        thread = threading.Thread(self.ui_callback, args=[contents, self.prepare_response])
+        thread.run()

@@ -1,9 +1,9 @@
 from abc import ABC
 
 from dachi.agents import Agent, AgentStatus
-from dachi.behavior import Server
+from dachi.comm import Server
 from dachi import behavior
-from .tasks import planner, prompter, interface
+from .tasks import lesson, planner, base
 from .comm import IOHandler
 
 
@@ -30,15 +30,30 @@ class LanguageTeacher(Agent):
         # plan_request = '' # A request to create a plan
         # plan_llm_request = '' # 
         # ui_output_request = ''
+        # with fallback as teach
+        #     with sequence as lesson
+        #         Check(lambda terminal: terminal.storage['plan'] is not None)
+        #         with fallback as section:
+        #             Quiz()
+        #             Explain()
+        #         UpdateLesson() # sets the plan to none
+        #     PlanLesson()
+
+        # UICallback
 
         self._io.register_input(input_name)
         with behavior.sango('Language Teacher') as language_teacher:
             with behavior.select('Teach', language_teacher) as teach:
-                teach.add(prompter.PromptLLM(prompt_name, llm_response_signal))
-                with behavior.sequence('Output', teach) as message:
-                    message.add(interface.OutputWaiting(output_name))
-                    message.add(interface.OutputMessage(output_name, self._io))
-                teach.add(planner.PlanPrompter(input_name, plan_name, output_name))
+                with behavior.sequence('Quiz', teach) as message:
+                    message.add(behavior.CheckReady('plan'))
+                    message.add(lesson.PrepareQuiz(...))
+                    message.add(lesson.CreateQuizItem(...))
+                    message.add(lesson.ProcessAnswer(...))
+                with behavior.select('Plan', language_teacher) as plan:
+                    message.add(planner.StartPlanning('plan_convo'))
+                    plan.add(base.ChatUIResponse('plan_convo', 'ai', 'user'))
+                    plan.add(lesson.CreatePlan())
+                # teach.add(planner.PlanGenerator(...))
         self._behavior = language_teacher.build()
         self._terminal = self._server.register(self._behavior)
 

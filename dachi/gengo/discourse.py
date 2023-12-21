@@ -47,6 +47,9 @@ class Conversation(object):
             turn.role.name: turn.text
             for turn in self._turns
         }
+    
+    def clear(self):
+        self._turns.clear()
 
     def __len__(self) -> int:
         return len(self._turns)

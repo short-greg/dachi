@@ -1,5 +1,5 @@
 from dachi.behavior import Condition, Action, Task, Terminal, SangoStatus
-from ..comm import IOHandler
+from ...comm import IOHandler
 
 
 class OutputWaiting(Condition):

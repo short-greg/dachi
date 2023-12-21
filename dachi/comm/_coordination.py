@@ -1,12 +1,9 @@
-from enum import Enum
 import typing
-from dataclasses import dataclass
 from collections import OrderedDict
 from abc import ABC, abstractmethod
 
 from ._storage import DataStore
 from ._base import Receiver
-
 
 CALLBACK = typing.Union[str, typing.Callable]
 
@@ -23,11 +20,11 @@ def callback(cb, contents, store: DataStore):
 
 class Query(ABC):
 
-    def __init__(self, server: 'Server'):
+    def __init__(self, store: 'DataStore'):
 
         self._on_post = []
         self._on_response = []
-        self._server = server
+        self._store = store
     
     def register(
         self, 
@@ -50,15 +47,15 @@ class Query(ABC):
             self._on_response.remove(on_response)
 
     @abstractmethod
-    def prepare_response(self, store: DataStore, contents):
+    def prepare_response(self, contents) -> typing.Any:
         pass
 
     @abstractmethod
-    def prepare_post(self, store: DataStore, contents):
+    def prepare_post(self,  contents):
         pass
 
     def post(
-        self, store: DataStore, contents, 
+        self, contents, 
         on_post: CALLBACK=None, 
         on_response: CALLBACK=None
     ):
@@ -71,13 +68,13 @@ class Query(ABC):
             on_response (typing.Union[str, typing.Callable], optional): The  . If it is a string, it will set the storage specified by the key to the reponse Defaults to None.
 
         """
-        self.prepare_post(store, contents, on_response)
-        callback(on_post, contents, store)
+        self.prepare_post(contents, on_response)
+        callback(on_post, contents, self._store)
         for on_post in self._on_post:
-            callback(on_post, contents, store)
+            callback(on_post, contents, self._store)
 
     def respond(
-        self, store: DataStore, contents,
+        self, contents,
         on_response: CALLBACK=None
     ):
         """Make a query for information. If the content cannot be processed it raises an ValueError
@@ -88,17 +85,18 @@ class Query(ABC):
             on_response (typing.Union[str, typing.Callable], optional): The  . If it is a string, it will set the storage specified by the key to the reponse Defaults to None.
 
         """
-        self.prepare_response(store, contents)
-        callback(on_response, contents, store)
+        response = self.prepare_response(contents)
+        callback(on_response, response, self._store)
         for on_response in self._on_response:
-            callback(on_response, contents, store)
+            callback(on_response, contents, self._store)
 
 
 class Signal(ABC):
 
-    def __init__(self):
+    def __init__(self, store: DataStore):
 
         self._on_post = []
+        self._store = store
     
     @abstractmethod
     def prepare_post(
@@ -124,9 +122,9 @@ class Signal(ABC):
 
         """
         self._base_post(store, contents, on_post)
-        callback(on_post, contents, store)
+        callback(on_post, contents, self._store)
         for on_post in self._on_post:
-            callback(on_post, contents, store)
+            callback(on_post, contents, self._store)
 
     def register(
         self, 
@@ -151,9 +149,6 @@ class Server(object):
         self._register = {}
         self._queries: typing.Dict[str, Query] = {}
         self._signals: typing.Dict[str, Signal] = {}
-        # self._responses = ResponseHandler()
-        # self._requests = RequestHandler()
-        # self._receivers: typing.Dict[typing.Tuple[SignalType, str], typing.Dict[typing.Union[str, typing.Callable], bool]] = {}
 
     @property
     def shared(self) -> DataStore:
@@ -207,108 +202,6 @@ class Server(object):
         }
         return self
 
-    # def receive(self, signal_type: SignalType, name: str, receiver: typing.Union['Receiver', typing.Callable], expires: bool=True):
-
-    #     is_receiver = isinstance(receiver, Receiver)
-    #     if is_receiver and receiver.id not in self._register:
-    #         raise ValueError(f'No task with id of {receiver.id} in the register')
-    #     if (signal_type, name) not in self._receivers:
-    #         self._receivers[(signal_type, name)] = {}
-        
-    #     if is_receiver:
-    #         self._receivers[(signal_type, name)][receiver.id] = expires
-    #     else:
-    #         self._receivers[(signal_type, name)][receiver] = expires
-
-    # def cancel_receive(self, signal_type: SignalType, name: str, receiver: typing.Union['Receiver', typing.Callable]):
-
-    #     receiver = self._receivers.get((signal_type, name))
-    #     if receiver is None:
-    #         raise ValueError(f'No receiver for {signal_type} and {name}')
-
-    #     del receiver[receiver.id]
-    #     if len(receiver) == 0:
-    #         del self._receivers[signal_type, name]
-
-    # def has_receiver(self, signal_type: SignalType, name: str, receiver: 'Receiver'):
-
-    #     receiver = self._receivers.get((signal_type, name))
-    #     if receiver is None:
-    #         return False
-        
-    #     return receiver.id in receiver
-
-    # def receives_signal(self, signal: typing.Union[Signal, typing.Tuple[SignalType, str]]) -> bool:
-    #     """Check if it receives a message
-
-    #     Args:
-    #         message (typing.Union[Message, typing.Tuple[MessageType, str]]): _description_
-
-    #     Returns:
-    #         bool: If it receives a message
-    #     """
-    #     if isinstance(signal, Signal):
-    #         message_type, name = signal.message_type, signal.name
-    #     else:
-    #         message_type, name = signal
-        
-    #     return (message_type, name) in self._receivers
-
-    # @property
-    # def reponses(self) -> ResponseHandler:
-    #     return self._responses
-    
-    # @property
-    # def requests(self) -> RequestHandler:
-    #     return self._requests
-    
-    # def send(self, signal: Signal):
-    #     """Send a signal to the server
-    #     Args:
-    #         signal (Signal): The message to send to the server
-    #     """
-    #     receivers = self._receivers.get((signal.message_type, signal.name))
-    #     if receivers is None:
-    #         return
-        
-    #     updated = {}
-    #     for task, expires in receivers.items():
-    #         if isinstance(task, str):
-    #             self._register[task].receive(signal)
-    #         else:
-    #             task(signal)
-    #         if not expires:
-    #             updated[task.id] = False
-    #     self._receivers[(signal.message_type, signal.name)] = updated
-
-    # def register(self, receiver: 'Receiver', overwrite: bool=False) -> 'Terminal':
-    #     """Register a receiver with the server
-
-    #     Args:
-    #         receiver (receiver): The receiver to register
-    #         overwrite (bool, optional): Overwrite the receiver if it already exist. Defaults to False.
-
-    #     Raises:
-    #         ValueError: If overwrite is false and not in reg
-
-    #     Returns:
-    #         Terminal: The terminal for the receiver
-    #     """
-    #     in_register = self._register.get(receiver.id)
-    #     if in_register is None:
-    #         self._register[receiver.id] = receiver
-    #         terminal = Terminal(self)
-    #         self._terminals[receiver.id] = terminal
-    #     elif in_register and overwrite:
-    #         self._register[receiver.id] = receiver
-    #         terminal = Terminal(self)
-    #         self._terminals[receiver.id] = terminal
-    #     elif in_register:
-    #         raise ValueError(f'The task in register {in_register} is different from this task')
-    #     elif receiver is not in_register:
-    #         raise ValueError(f'The task in register {in_register} is different from this task')
-    #     return self._terminals[receiver.id]
-    
 
 class Terminal(object):
     """A Terminal connects a task to the server. It has its own storage.
@@ -344,22 +237,6 @@ class Terminal(object):
         """
         return self._storage
     
-    # @property
-    # def responses(self) -> ResponseHandler:
-    #     """
-    #     Returns:
-    #         ResponseHandler: The response handler for the server
-    #     """
-    #     return self._server.reponses
-    
-    # @property
-    # def requests(self) -> RequestHandler:
-    #     """
-    #     Returns:
-    #         RequestHandler: The request handler for the server
-    #     """
-    #     return self._server.requests
-    
     @property
     def shared(self) -> DataStore:
         return self._server.shared
@@ -393,215 +270,3 @@ class Terminal(object):
         self._storage = DataStore().load_state_dict(state_dict['storage'])
         self._initialized = state_dict['initialized']
         return self
-
-
-
-# @dataclass
-# class Request(object):
-#     """Create a request for another task to process
-#     """
-#     name: str
-#     receiver: str
-#     contents: typing.Any
-
-#     def respond(self, sender: str, contents) -> 'Response':
-#         """Respond to the request
-
-#         Args:
-#             sender (str): The sender of the response
-#             contents: The contents of the response
-
-#         Returns:
-#             Response: The response
-#         """
-#         return Response(self, sender, contents)
-
-
-# @dataclass
-# class Response(object):
-#     """Create a response to a request that has been processed
-#     """
-#     request: Request
-#     sender: str
-#     contents: typing.Any
-
-
-# class RequestHandler(object):
-#     """Manage the requests to send to other tasks
-#     """
-
-#     def __init__(self):
-#         """Create a handler to manage the requests to send to other tasks
-#         """
-#         self._requests: typing.List[Request] = []
-    
-#     def add(self, request: Request):
-#         """Add another request to the handler
-
-#         Args:
-#             request (Request): The request to add
-#         """
-#         self._requests.append(request)
-
-#     def find(self, receiver: str=None, request_name: str=None) -> int:
-#         """Find a request in the handler
-
-#         Args:
-#             receiver (str, optional): The receiver to find by. Defaults to None.
-#             request_name (str, optional): The name of the request. Defaults to None.
-
-#         Returns:
-#             int: The position of the request
-#         """
-#         for i, request in enumerate(self._requests):
-
-#             if (
-#                 request_name is not None and request.name == request_name
-#             ) and (
-#                 receiver is not None and request.receiver == receiver
-#             ):
-#                 return i
-#             elif request_name is None and  receiver is not None and request.receiver == receiver:
-#                 return i
-#             elif receiver is None and request_name is not None and request.name == request_name:
-#                 return i
-#         return None
-
-#     def pop(self, receiver: str=None, request_name: str=None):
-#         """Get the response and pop it
-
-#         Args:
-#             receiver (str, optional): The name of the receiver. Defaults to None.
-#             request_name (str, optional): The naem of the request. Defaults to None.
-
-#         Returns:
-#             Response: The response if found else None
-#         """
-#         index = self.find(receiver, request_name)
-#         if index is not None:
-#             return self._requests.pop(index)
-#         return None
-    
-#     def get(self, receiver: str=None, request_name: str=None):
-#         """Get the response
-
-#         Args:
-#             receiver (str, optional): The name of the receiver. Defaults to None.
-#             request_name (str, optional): The naem of the request. Defaults to None.
-
-#         Returns:
-#             Response: The response if found else None
-#         """
-#         index = self.find(receiver, request_name)
-#         if index is not None:
-#             return self._responses[index]
-#         return None
-
-#     def has_request(self, receiver: str=None, request_name: str=None) -> bool:
-#         """
-#         Args:
-#             receiver (str, optional): The name of the receiver. Defaults to None.
-#             request_name (str, optional): The naem of the request. Defaults to None.
-
-#         Returns:
-#             bool: if the quest is found
-#         """
-#         return self.find(receiver, request_name) is not None
-
-
-# class ResponseHandler(object):
-#     """Manage the responses to requests
-#     """
-
-#     def __init__(self):
-
-#         self._responses: typing.List[Response] = []
-    
-#     def add(self, response: Response):
-
-#         self._responses.append(response)
-
-#     def find(self, receiver: str=None, request_name: str=None) -> int:
-#         """Find the response if it exists
-
-#         Args:
-#             receiver (str, optional): The name of the receiver. Defaults to None.
-#             request_name (str, optional): The naem of the request. Defaults to None.
-
-#         Returns:
-#             int: _description_
-#         """
-#         for i, response in enumerate(self._responses):
-
-#             request = response.request
-#             if (
-#                 request_name is not None and response.name == request_name
-#             ) and (
-#                 receiver is not None and request.receiver == receiver
-#             ):
-#                 return i
-#             elif request_name is None and  receiver is not None and request.receiver == receiver:
-#                 return i
-#             elif receiver is None and request_name is not None and request.name == request_name:
-#                 return i
-#         return None
-
-#     def pop(self, receiver: str=None, request_name: str=None):
-#         """Get the response and pop it
-
-#         Args:
-#             receiver (str, optional): The name of the receiver. Defaults to None.
-#             request_name (str, optional): The naem of the request. Defaults to None.
-
-#         Returns:
-#             Response: The response if found else None
-#         """
-#         index = self.find(receiver, request_name)
-#         if index is not None:
-#             return self._requests.pop(index)
-#         return None
-
-#     def get(self, receiver: str=None, request_name: str=None) -> Response:
-#         """
-#         Args:
-#             receiver (str, optional): The name of the receiver. Defaults to None.
-#             request_name (str, optional): The naem of the request. Defaults to None.
-
-#         Returns:
-#             Response: The response if found else None
-#         """
-#         index = self.find(receiver, request_name)
-#         if index is not None:
-#             return self._responses[index]
-#         return None
-
-#     def has_response(self, receiver: str=None, request_name: str=None) -> bool:
-#         """
-#         Args:
-#             receiver (str, optional): The name of the receiver. Defaults to None.
-#             request_name (str, optional): The naem of the request. Defaults to None.
-
-#         Returns:
-#             bool: if the response is found
-#         """
-#         return self.find(receiver, request_name) is not None
-
-
-
-# TODO: Decide whether to keep this
-
-# class SignalType(Enum):
-
-#     INPUT = 'input'
-#     OUTPUT = 'output'
-#     WAITING = 'waiting'
-#     CUSTOM = 'custom'
-
-
-# @dataclass
-# class Signal(object):
-
-#     message_type: SignalType
-#     name: str
-#     data: typing.Dict = None
-
