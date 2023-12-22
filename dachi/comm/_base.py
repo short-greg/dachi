@@ -12,5 +12,9 @@ class Receiver(ABC):
         self._id = str(uuid4())
 
     @property
-    def id(self):
+    def id(self) -> str:
         return self._id
+    
+    @property
+    def name(self) -> str:
+        return self._name

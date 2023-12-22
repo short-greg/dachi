@@ -4,7 +4,6 @@ import typing
 
 from ..comm import Receiver, Terminal, Signal
 from ._status import SangoStatus
-from ._base import Receiver
 from dataclasses import dataclass
 
 

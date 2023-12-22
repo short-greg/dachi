@@ -37,3 +37,8 @@ class Prompt(object):
         return Prompt(
             self._text.format(**inputs)
         )
+    
+    @property
+    def text(self) -> str:
+
+        return self._text

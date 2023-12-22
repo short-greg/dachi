@@ -2,6 +2,7 @@ from abc import ABC
 
 from dachi.agents import Agent, AgentStatus
 from dachi.comm import Server
+from .queries import UIQuery, LLMQuery
 from dachi import behavior
 from .tasks import lesson, planner, base
 from .comm import IOHandler
@@ -42,17 +43,23 @@ class LanguageTeacher(Agent):
         # UICallback
 
         self._io.register_input(input_name)
-        with behavior.sango('Language Teacher') as language_teacher:
+        with behavior.sango('Language Teacher', server) as language_teacher:
             with behavior.select('Teach', language_teacher) as teach:
+                teach.add(lesson.Complete('completed'))
                 with behavior.sequence('Quiz', teach) as message:
+                    # # Consider something like this to make it clearer
+                    # message << (
+                    #     behavior.CheckReady('plan'),
+                    #     lesson.StartLesson('plan', 'convo'),
+                    # )
                     message.add(behavior.CheckReady('plan'))
-                    message.add(lesson.PrepareQuiz(...))
-                    message.add(lesson.CreateQuizItem(...))
-                    message.add(lesson.ProcessAnswer(...))
+                    message.add(lesson.StartLesson('plan', 'convo'))
+                    message.add(lesson.QuizUser('ai', 'convo', LLMQuery(server)))
+                    message.add(lesson.UserConversationResponse('convo', 'ai', 'user', UIQuery(...)))
                 with behavior.select('Plan', language_teacher) as plan:
                     message.add(planner.StartPlanning('plan_convo'))
-                    plan.add(base.ChatUIResponse('plan_convo', 'ai', 'user'))
-                    plan.add(lesson.CreatePlan())
+                    plan.add(base.UserConversationResponse('plan_convo', 'plan_ai', 'planuser', UIQuery(...)))
+                    plan.add(planner.CreatePlan('plan', 'ai', 'plan_convo', LLMQuery(server)))
                 # teach.add(planner.PlanGenerator(...))
         self._behavior = language_teacher.build()
         self._terminal = self._server.register(self._behavior)

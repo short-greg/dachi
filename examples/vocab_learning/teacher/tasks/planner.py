@@ -1,7 +1,8 @@
 from dachi.comm import Terminal
 from dachi.gengo import Prompt, Conversation
 import json
-from base import ChatConversationAI, PrepareConversation
+from base import ConversationAI, PrepareConversation
+from examples.vocab_learning.teacher.queries import LLMQuery
 
 
 def get_prompt():
@@ -45,15 +46,21 @@ class StartPlanning(PrepareConversation):
         return True
 
 
-class CreatePlan(ChatConversationAI):
+class CreatePlan(ConversationAI):
+
+    def __init__(self, plan: str, ai_message: str, convo_var: str, query: LLMQuery) -> None:
+        super().__init__(ai_message, convo_var, query)
+        self.plan = plan
 
     def process_response(self, terminal: Terminal):
 
-        response = terminal.shared.get(self.user_message)
+        response = terminal.shared.get(self.ai_message)
         
         response = json.loads(response)
         if 'Error' in response:
             return False, response['Error']
         if 'Plan' in response:
-            return False, response['Plan']
-        return True, 'Unknown error occurred'
+            terminal.shared.get_or_set(self.plan, response['Plan'])
+            return True, response['Plan']
+        
+        return False, 'Unknown error occurred'

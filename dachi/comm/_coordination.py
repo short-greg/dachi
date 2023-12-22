@@ -139,6 +139,72 @@ class Signal(ABC):
         self._on_post.remove(on_post)
 
 
+class InterComm(object):
+
+    def __init__(self):
+        """Create a set of communication channels to allow for more 'private' communication
+        between tasks
+        """
+
+        self._channels: typing.Dict[str, DataStore] = {}
+
+    def __getitem__(self, name: str) -> DataStore:
+        """
+        Args:
+            name (str): Name of the DataStore
+
+        Raises:
+            KeyError: If name is incorrect
+        Returns:
+            DataStore: the DataStore specified by name
+        """
+        if name not in self._channels:
+            raise KeyError(f'Name by {name} does not exist in channels')
+
+        return self._channels[name]
+    
+    def get_or_add(self, name: str) -> DataStore:
+        """Get the DataStore specified by name or add it
+
+        Args:
+            name (str): The name of the DataStore
+
+        Returns:
+            DataStore: The DataStore specified by name
+        """
+
+        if name not in self._channels:
+            self._channels[name] = DataStore()
+        
+        return self._channels[name]
+
+    def add(self, name: str) -> 'InterComm':
+        """Add DataStore specified by name
+        Args:
+            name (str): Name of the DataStore
+
+        Raises:
+            ValueError: If it cannot be added
+        Returns:
+            InterComm: self
+        """
+        if name in self._channels:
+            raise ValueError('Channel with name {name} already exists')
+        
+        return self._channels[name]
+    
+    def get(self, name: str) -> DataStore:
+        """
+        Args:
+            name (str): Name of the DataStore
+
+        Returns:
+            DataStore: the DataStore specified by name
+        """
+        return self._channels.get(name)
+
+
+
 class Server(object):
 
     def __init__(self):
@@ -146,32 +212,87 @@ class Server(object):
         """
         self._shared = DataStore()
         self._terminals = OrderedDict()
-        self._register = {}
+        self._register: typing.Dict[str, 'Terminal'] = {}
         self._queries: typing.Dict[str, Query] = {}
         self._signals: typing.Dict[str, Signal] = {}
+        self._intercomm: InterComm = InterComm()
 
     @property
     def shared(self) -> DataStore:
+        """
+        Returns:
+            DataStore: The globally shared data
+        """
         return self._shared
 
     @property
     def signals(self) -> typing.Dict[str, Signal]:
+        """
+        Returns:
+            typing.Dict[str, Signal]: All of the Signals
+        """
         return self._signals
     
     @property
     def queries(self) -> typing.Dict[str, Query]:
+        """
+        Returns:
+            typing.Dict[str, Query]: The queries the server has
+        """
         return self._queries
 
     def signal(self, name: str, contents, on_post: CALLBACK=None):
+        """Send a signal 
 
-        self._signals[name].post(self.storage, contents, on_post)
+        Args:
+            name (str): The name of the signal
+            contents: The contents of the signal
+            on_post (CALLBACK, optional): The callback when the signal is posted. Defaults to None.
+        """
+        self._signals[name].post(self.shared, contents, on_post)
     
     def query(self, name: str, contents, on_post: CALLBACK=None, on_response: CALLBACK=None):
+        """Send a query
 
-        self._queries[name].post(self.storage, contents, on_post, on_response)
+        Args:
+            name (str): The name of the query
+            contents (_type_): The contents of the query
+            on_post (CALLBACK, optional): The callback when the query is posted. Defaults to None.
+            on_response (CALLBACK, optional): The callback when the response is received. Defaults to None.
+        """
+        self._queries[name].post(self.shared, contents, on_post, on_response)
+
+    @property
+    def intercomm(self) -> typing.Dict[str, 'DataStore']:
+        """Intercomm is used to have more exclusive communication between 
+
+        Returns:
+            typing.Dict[str, 'Terminal']: The dictionary of terminals
+        """
+        return self._intercomm
+
+    def register(self, terminal: 'Terminal'):
+        """
+        Returns:
+            typing.Dict[str, 'Terminal']: The registered terminals
+        """
+        # TODO: IMPLEMENT
+
+        return self._register
+
+    @property
+    def registered(self) -> typing.Dict[str, 'Terminal']:
+        """
+        Returns:
+            typing.Dict[str, 'Terminal']: The registered terminals
+        """
+        return self._register
 
     def state_dict(self) -> typing.Dict:
-
+        """
+        Returns:
+            typing.Dict: The server converted to a state dict
+        """
         receivers = {}
         for k, v in self._receivers.items():
             cur = {}
@@ -188,7 +309,14 @@ class Server(object):
         }
     
     def load_state_dict(self, state_dict) -> 'Server':
+        """Load a state dict
 
+        Args:
+            state_dict (): The dictionary specifying the state
+
+        Returns:
+            Server: The updated Server
+        """
         self._shared.load_state_dict(state_dict['shared'])
         self._terminals = {
             k: Terminal(self).load_state_dict(terminal_state) for k, terminal_state in state_dict['terminals']
@@ -239,15 +367,23 @@ class Terminal(object):
     
     @property
     def shared(self) -> DataStore:
+        """
+        Returns:
+            DataStore: The globally shared data
+        """
         return self._server.shared
     
     @property
     def server(self) -> Server:
+        """
+        Returns:
+            Server: The server for the terminal
+        """
         return self._server
     
-    @property
-    def parent(self) -> 'Terminal':
-        return self._parent
+    # @property
+    # def parent(self) -> 'Terminal':
+    #     return self._parent
     
     def reset(self):
         self._initialized = False

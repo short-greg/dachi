@@ -1,7 +1,7 @@
-from dachi.behavior import Action, Terminal, SangoStatus
+from dachi.behavior import Action, SangoStatus
 from dachi.comm import Terminal
 from .. import queries
-from dachi.gengo import Conversation
+from dachi.gengo import Conversation, Prompt
 from abc import abstractmethod
 
 
@@ -12,6 +12,7 @@ class PrepareConversation(Action):
     def __init__(self, convo_name: str) -> None:
         super().__init__('Convo')
         self.convo_name = convo_name
+        self.posted = 'posted'
 
     def __init_terminal__(self, terminal: Terminal):
         super().__init_terminal__(terminal)
@@ -41,15 +42,15 @@ class PrepareConversation(Action):
         )
 
 
-class ChatConversationAI(Action):
+class ConversationAI(Action):
     # create the quiz item
     # process the result
 
-    def __init__(self, ai_var: str, convo_var: str, query: queries.LLMQuery) -> None:
-        super().__init__('Chat ConvO AI')
+    def __init__(self, ai_message: str, convo_var: str, query: queries.LLMQuery) -> None:
+        super().__init__('Chat Convo AI')
         self.query = query
         self.convo_var = convo_var
-        self.ai_message = ai_var
+        self.ai_message = ai_message
         self.posted = 'posted'
 
     def __init_terminal__(self, terminal: Terminal):
@@ -57,60 +58,141 @@ class ChatConversationAI(Action):
         terminal.storage.get_or_set(self.posted, False)
         terminal.storage.get_or_set(self.ai_message, None)
 
-    @abstractmethod
-    def process_response(self, terminal: Terminal):
-        pass
+    def process_response(self, terminal: Terminal) -> str:
+        """Default behavior is just to return the message from the AI
+
+        Args:
+            terminal (Terminal): the terminal for the AI
+
+        Returns:
+            str: The response
+        """
+        return True, terminal.shared[self.ai_message]
 
     def act(self, terminal: Terminal) -> SangoStatus:
+        """
 
-        # I want to reduce this to a couple of lines
-        # if terminal.shared.get('plan') is None:
-        #     return SangoStatus.FAILURE
+        Args:
+            terminal (Terminal): 
 
-        converstation: Conversation = terminal.shared[self.convo_var]
-        # if len(converstation) == 0:
-        #     converstation.add_turn(
-        #         'System', get_prompt(terminal.shared[self.plan_name])
-        #     )
+        Returns:
+            SangoStatus: 
+        """
+
+        conversation: Conversation = terminal.shared[self.convo_var]
 
         if terminal.storage[self.posted] is False:
-            self.query.post(converstation, on_response=self.ai_message)
+            self.query.post(
+                conversation, on_response=self.ai_message
+            )
             terminal.storage[self.posted] = True
 
         if terminal.shared[self.ai_message] is not None:
             terminal.storage[self.posted] = False
 
-            completed, response = self.process_response(terminal)
-            if completed is True:
-                terminal.shared[self.convo_var].clear()
-                return SangoStatus.FAILURE
-
+            success, response = self.process_response(terminal)
+            
             terminal.shared[self.convo_var].add_turn(
                 'AI', response
             )
 
+            if success:
+
+                return SangoStatus.SUCCESS
+            return SangoStatus.FAILURE
+        
+        return SangoStatus.RUNNING
+        
+    def clone(self) -> 'ConversationAI':
+        return self.__class__(
+            self.ai_message, self.convo_var,  self.query
+        )
+
+
+
+class CompletionAI(Action):
+    # create the quiz item
+    # process the result
+
+    def __init__(self, ai_message: str, system_prompt: str, query: queries.LLMQuery) -> None:
+        super().__init__('Chat Convo AI')
+        self.query = query
+        self.system_prompt = system_prompt
+        self.ai_message = ai_message
+        self.posted = 'posted'
+
+    def __init_terminal__(self, terminal: Terminal):
+        super().__init_terminal__(terminal)
+        terminal.storage.get_or_set(self.posted, False)
+        terminal.storage.get_or_set(self.ai_message, None)
+
+    def process_response(self, terminal: Terminal) -> str:
+        """Default behavior is just to return the message from the AI
+
+        Args:
+            terminal (Terminal): the terminal for the AI
+
+        Returns:
+            str: The response
+        """
+        return terminal.shared[self.ai_message]
+
+    def act(self, terminal: Terminal) -> SangoStatus:
+        """
+
+        Args:
+            terminal (Terminal): 
+
+        Returns:
+            SangoStatus: 
+        """
+
+        prompt: Prompt = terminal.shared[self.system_prompt]
+        conversation = Conversation()
+        conversation.add_turn('system', prompt.text)
+
+        if terminal.storage[self.posted] is False:
+            self.query.post(
+                conversation, on_response=self.ai_message
+            )
+            terminal.storage[self.posted] = True
+
+        if terminal.shared[self.ai_message] is not None:
+            terminal.storage[self.posted] = False
+
+            self.process_response(terminal)
+            
             return SangoStatus.SUCCESS
         
         return SangoStatus.RUNNING
         
-    def clone(self) -> 'ChatConversationAI':
+    def clone(self) -> 'CompletionAI':
         return self.__class__(
-            self.convo_var, self.plan_name, self.query
+            self.ai_message, self.system_prompt,  self.query
         )
 
 
-class ChatUIResponse(Action):
+class UserConversationResponse(Action):
 
     def __init__(self, conversation_var: str, ai_var: str, user_var: str, query: queries.UIQuery) -> None:
+        """Create 
+
+        Args:
+            conversation_var (str): _description_
+            ai_var (str): _description_
+            user_var (str): _description_
+            query (queries.UIQuery): _description_
+        """
         super().__init__('Chat UI Response')
         self.ai_var = ai_var
         self.user_var = user_var
         self.query = query
         self.conversation_var = conversation_var
+        self.posted = 'posted'
 
     def __init_terminal__(self, terminal: Terminal):
         
-        terminal.storage.get_or_set('posted', False)
+        terminal.storage.get_or_set(self.posted, False)
         terminal.shared.get_or_set(self.ai_var, None)
 
     def act(self, terminal: Terminal) -> SangoStatus:
@@ -135,7 +217,7 @@ class ChatUIResponse(Action):
 
         return SangoStatus.RUNNING
         
-    def clone(self) -> 'ChatUIResponse':
+    def clone(self) -> 'UserConversationResponse':
         return self.__class__(
             self.conversation_var, self.ai_var,
             self.user_var, self.query

@@ -4,6 +4,7 @@ from openai import OpenAI
 from typing import Any
 from dachi.comm import Query, DataStore
 from dachi.comm._storage import DataStore
+from .comm import IOHandler
 
 
 class LLMQuery(Query):
@@ -39,7 +40,7 @@ class UIQuery(Query):
             store (DataStore): 
         """
         super().__init__(store)
-        self.client = OpenAI()
+        # self.io_handler = io_handler
         self.ui_callback = ui_callback
 
     def prepare_response(self, contents) -> Any:
