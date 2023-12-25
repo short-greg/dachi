@@ -42,7 +42,7 @@ class StartPlanning(PrepareConversation):
         convo = Conversation(['AI', 'System', 'User'])
         convo.add_turn('System', get_prompt())
         convo.add_turn('AI', "学習したい語彙を教えてください。")
-        terminal.shared.set(self.convo_name, convo)
+        terminal.cnetral.set(self.convo_name, convo)
         return True
 
 
@@ -54,13 +54,13 @@ class CreatePlan(ConversationAI):
 
     def process_response(self, terminal: Terminal):
 
-        response = terminal.shared.get(self.ai_message)
+        response = terminal.cnetral.get(self.ai_message)
         
         response = json.loads(response)
         if 'Error' in response:
             return False, response['Error']
         if 'Plan' in response:
-            terminal.shared.get_or_set(self.plan, response['Plan'])
+            terminal.cnetral.get_or_set(self.plan, response['Plan'])
             return True, response['Plan']
         
         return False, 'Unknown error occurred'

@@ -1,6 +1,6 @@
 from dachi.behavior import _cooordination as coordination
 from dachi.behavior._status import SangoStatus
-from dachi.comm._coordination import Signal, Terminal
+from dachi.comm._serving import Signal, Terminal
 # from dachi.comm._cooordination import Signal, Terminal
 from dachi.behavior._tasks import Action
 

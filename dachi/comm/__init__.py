@@ -1,4 +1,4 @@
-from ._coordination import (
+from ._serving import (
     SignalType, Signal,
     Server, Terminal, Query, Signal
 )

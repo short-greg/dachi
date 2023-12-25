@@ -49,8 +49,8 @@ class SetStorageActionCounter(behavior.Action):
 
     def act(self, terminal: Terminal):
 
-        print(terminal.shared.get('failure'))
-        if terminal.shared.get('failure') is True:
+        print(terminal.cnetral.get('failure'))
+        if terminal.cnetral.get('failure') is True:
             return SangoStatus.FAILURE
         terminal.storage['count'] += 1
         if terminal.storage['count'] == 2:
@@ -145,7 +145,7 @@ class TestSequence:
         sequence = behavior.Sequence(
             [action1, action2]
         )
-        terminal.shared['failure'] = True
+        terminal.cnetral['failure'] = True
         sequence.tick(terminal)
         
         assert sequence.tick(terminal) == SangoStatus.FAILURE
@@ -230,6 +230,6 @@ class TestFallback:
         fallback = behavior.Selector(
             [action1, action2]
         )
-        terminal.shared['failure'] = True
+        terminal.cnetral['failure'] = True
         fallback.tick(terminal)
         assert fallback.tick(terminal) == SangoStatus.FAILURE

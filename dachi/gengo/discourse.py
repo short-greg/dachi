@@ -3,6 +3,8 @@ from dataclasses import dataclass, Field
 
 import typing
 from dataclasses import dataclass, Field
+from typing import Dict
+from base import PromptComponent
 
 
 @dataclass
@@ -19,7 +21,7 @@ class Turn(object):
     text: str
 
 
-class Conversation(object):
+class Conversation(PromptComponent):
 
     def __init__(self, roles: typing.Dict[str, Role]=None, max_turns: int=None):
 
@@ -56,6 +58,60 @@ class Conversation(object):
 
     def __len__(self) -> int:
         return len(self._turns)
+    
+    def remap_role(self, **role_map) -> 'Conversation':
+        """Remap the names of the roles to a new set of roles
+
+        Returns:
+            Conversation: The conversation with remapped roles
+        """
+        roles = [role_map.get(role, role) for role in self._roles]
+        turns = [
+            (role_map.get(role, role), text)
+            for role, text in self._turns
+        ]
+        conversation = Conversation(
+            roles=roles, max_turns=self._max_turns
+        )
+        conversation._turns = turns
+        return conversation
+
+    def as_dict(self) -> Dict:
+        return {
+            'roles': self._roles,
+            'turns': self._turns,
+            'max_turns': self._max_turns   
+        }
+    
+    def as_text(self, heading: str=None) -> str:
+        
+        result = f'{heading}\n' if heading is not None else ''
+        for turn in self._turns:
+            result += f'{turn[0]}: {turn[1]}\n'
+        return result
+
+
+class Text(PromptComponent):
+    """A simple wrapper to use text as a prompt component
+    """
+
+    def __init__(self, text: str):
+        """Wrap the string 
+
+        Args:
+            text (str): The string to wrap
+        """
+        self.text = text
+
+    def as_dict(self) -> Dict:
+        return {
+            "text": self.text
+        }
+    
+    def as_text(self, heading: str=None) -> str:
+        return self.structure(
+            self.text, heading
+        )
 
 
 # Example
@@ -63,46 +119,46 @@ class Conversation(object):
 # Completion
 # 
 
-@dataclass
-class Arg:
+# @dataclass
+# class Arg:
     
-    name: str
-    description: str = Field("")
+#     name: str
+#     description: str = Field("")
     
 
-class Prompt(object):
+# class Prompt(object):
 
-    def __init__(self, args: typing.List[typing.Union[Arg, str]], text: str):
+#     def __init__(self, args: typing.List[typing.Union[Arg, str]], text: str):
         
-        super().__init__()
-        self._args = {}
-        for arg in args:
-            if isinstance(arg, str):
-                self._args[arg] = Arg(arg)
-            else:
-                self._args[arg.name] = arg
-        self._text = text
+#         super().__init__()
+#         self._args = {}
+#         for arg in args:
+#             if isinstance(arg, str):
+#                 self._args[arg] = Arg(arg)
+#             else:
+#                 self._args[arg.name] = arg
+#         self._text = text
 
-    def format(self, **kwargs):
+#     def format(self, **kwargs):
 
-        input_names = set(kwargs.keys())
-        difference = input_names - set(self._args)
-        if len(difference) != 0:
-            raise ValueError(f'Input has keys that are not arguments to the prompt')
-        inputs = {}
-        for k, v in self._args.items():
-            if k in kwargs:
-                inputs[k] = v
-            else:
-                inputs[k] = "{{}}"
-        return Prompt(
-            self._text.format(**inputs)
-        )
+#         input_names = set(kwargs.keys())
+#         difference = input_names - set(self._args)
+#         if len(difference) != 0:
+#             raise ValueError(f'Input has keys that are not arguments to the prompt')
+#         inputs = {}
+#         for k, v in self._args.items():
+#             if k in kwargs:
+#                 inputs[k] = v
+#             else:
+#                 inputs[k] = "{{}}"
+#         return Prompt(
+#             self._text.format(**inputs)
+#         )
     
-    @property
-    def text(self) -> str:
+#     @property
+#     def text(self) -> str:
 
-        return self._text
+#         return self._text
 
 
 # class Example

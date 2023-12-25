@@ -88,7 +88,7 @@ class CompositeBuilder(BehaviorBuilder):
         return [*self._tasks]
     
     @abstractmethod
-    def build_composite(self, tasks: typing.List[behavior.Task]) -> behavior.Composite:
+    def build_composite(self, tasks: typing.List[behavior.Task]) -> behavior.Serial:
         pass
 
     def build_tasks(self) -> typing.List[behavior.Task]:
@@ -99,7 +99,7 @@ class CompositeBuilder(BehaviorBuilder):
             for task in self._tasks
         ]
 
-    def build(self) -> behavior.Composite:
+    def build(self) -> behavior.Serial:
         """Build the composite task
 
         Returns:

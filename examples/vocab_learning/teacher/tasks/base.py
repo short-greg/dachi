@@ -16,7 +16,7 @@ class PrepareConversation(Action):
 
     def __init_terminal__(self, terminal: Terminal):
         super().__init_terminal__(terminal)
-        terminal.shared.get_or_set(
+        terminal.cnetral.get_or_set(
             self.convo_name, Conversation(['System', 'AI', 'User'])
         )
         terminal.storage.get_or_set(self.posted, False)
@@ -67,7 +67,7 @@ class ConversationAI(Action):
         Returns:
             str: The response
         """
-        return True, terminal.shared[self.ai_message]
+        return True, terminal.cnetral[self.ai_message]
 
     def act(self, terminal: Terminal) -> SangoStatus:
         """
@@ -79,7 +79,7 @@ class ConversationAI(Action):
             SangoStatus: 
         """
 
-        conversation: Conversation = terminal.shared[self.convo_var]
+        conversation: Conversation = terminal.cnetral[self.convo_var]
 
         if terminal.storage[self.posted] is False:
             self.query.post(
@@ -87,12 +87,12 @@ class ConversationAI(Action):
             )
             terminal.storage[self.posted] = True
 
-        if terminal.shared[self.ai_message] is not None:
+        if terminal.cnetral[self.ai_message] is not None:
             terminal.storage[self.posted] = False
 
             success, response = self.process_response(terminal)
             
-            terminal.shared[self.convo_var].add_turn(
+            terminal.cnetral[self.convo_var].add_turn(
                 'AI', response
             )
 
@@ -135,7 +135,7 @@ class CompletionAI(Action):
         Returns:
             str: The response
         """
-        return terminal.shared[self.ai_message]
+        return terminal.cnetral[self.ai_message]
 
     def act(self, terminal: Terminal) -> SangoStatus:
         """
@@ -147,7 +147,7 @@ class CompletionAI(Action):
             SangoStatus: 
         """
 
-        prompt: Prompt = terminal.shared[self.system_prompt]
+        prompt: Prompt = terminal.cnetral[self.system_prompt]
         conversation = Conversation()
         conversation.add_turn('system', prompt.text)
 
@@ -157,7 +157,7 @@ class CompletionAI(Action):
             )
             terminal.storage[self.posted] = True
 
-        if terminal.shared[self.ai_message] is not None:
+        if terminal.cnetral[self.ai_message] is not None:
             terminal.storage[self.posted] = False
 
             self.process_response(terminal)
@@ -193,26 +193,26 @@ class UserConversationResponse(Action):
     def __init_terminal__(self, terminal: Terminal):
         
         terminal.storage.get_or_set(self.posted, False)
-        terminal.shared.get_or_set(self.ai_var, None)
+        terminal.cnetral.get_or_set(self.ai_var, None)
 
     def act(self, terminal: Terminal) -> SangoStatus:
 
-        if terminal.shared.get(self.ai_var) is None:
+        if terminal.cnetral.get(self.ai_var) is None:
             return SangoStatus.FAILURE
 
         # 
         if terminal.storage[self.posted] is False:
             self.query.post(
-                terminal.shared[self.ai_var], 
+                terminal.cnetral[self.ai_var], 
                 on_response=self.user_var
             )
 
-        if terminal.shared[self.user_var] is not None:
+        if terminal.cnetral[self.user_var] is not None:
             terminal.storage[self.posted] = False
-            answer = terminal.shared[self.user_var]
-            conversation: Conversation = terminal.shared[self.conversation_var]
+            answer = terminal.cnetral[self.user_var]
+            conversation: Conversation = terminal.cnetral[self.conversation_var]
             conversation.add_turn('User', answer)
-            terminal.shared[self.user_var] = None
+            terminal.cnetral[self.user_var] = None
             return SangoStatus.SUCCESS
 
         return SangoStatus.RUNNING

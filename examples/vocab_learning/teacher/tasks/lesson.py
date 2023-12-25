@@ -51,14 +51,14 @@ class StartLesson(PrepareConversation):
     def prepare_conversation(self, terminal: Terminal):
 
         convo = Conversation(['AI', 'System', 'User'])
-        plan = terminal.shared.get(self.plan)
+        plan = terminal.cnetral.get(self.plan)
         if plan is None:
             return False
         convo.add_turn(
             'system', plan
         )
 
-        terminal.shared.add(self.convo_name, convo)
+        terminal.cnetral.add(self.convo_name, convo)
         return True
 
 
@@ -66,7 +66,7 @@ class QuizUser(ConversationAI):
 
     def process_response(self, terminal: Terminal):
         
-        response = json.loads(terminal.shared[self.user_var])
+        response = json.loads(terminal.cnetral[self.user_var])
         if 'Error' in response:
             return False, response['Error']
         if 'Completed' in response:
@@ -94,7 +94,13 @@ class QuizUser(ConversationAI):
 class Complete(Action):
 
     def __init__(self, completion: str, plan: str, convo: str):
+        """
 
+        Args:
+            completion (str): 
+            plan (str): 
+            convo (str): 
+        """
         self.completion = completion
         self.plan = plan
         self.convo = convo
@@ -102,21 +108,21 @@ class Complete(Action):
     def __init_terminal__(self, terminal: Terminal):
         
         super().__init_terminal__(terminal)
-        terminal.shared.get_or_set('completed', False)
+        terminal.cnetral.get_or_set('completed', False)
 
     def act(self, terminal: Terminal) -> SangoStatus:
         
-        completed = terminal.shared.get('completed')
+        completed = terminal.cnetral.get('completed')
         if completed is True:
-            plan = terminal.shared.get('plan')
-            convo = terminal.shared.get('convo')
+            plan = terminal.cnetral.get('plan')
+            convo = terminal.cnetral.get('convo')
             if plan is not None:
                 # This requires me to understand how it works
                 # I don't like this
-                terminal.shared['plan'] = None
+                terminal.cnetral['plan'] = None
             if convo is not None:
                 convo.clear()
-            terminal.shared['completed'] = False
+            terminal.cnetral['completed'] = False
             # I just want to return self.SUCCESS
             return SangoStatus.SUCCESS
         return SangoStatus.FAILURE

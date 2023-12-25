@@ -1,6 +1,6 @@
 
 from ._tasks import (
-    Task, Composite,
+    Task, Serial,
     Sequence, Selector, 
     Parallel, Action,
     Condition, Sango,
