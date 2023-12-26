@@ -5,6 +5,9 @@ from ._requests import Query, Signal, InterComm
 from ._storage import DataStore
 from ._base import Receiver
 
+import uuid
+
+# REMOVE
 CALLBACK = typing.Union[str, typing.Callable]
 
 
@@ -241,3 +244,96 @@ class Terminal(object):
         self._storage = DataStore().load_state_dict(state_dict['storage'])
         self._initialized = state_dict['initialized']
         return self
+
+
+class Ref(object):
+    """A Ref is used to provide a way to access date in a 
+    storage. 
+    """
+
+    CENTRAL = 'CENTRAL'
+    LOCAL = 'LOCAL'
+
+    def get_store(self, terminal: Terminal) -> DataStore:
+
+        if self._store == 'CENTRAL':
+            return terminal.central
+        if self._store == 'LOCAL':
+            return terminal.storage
+        return terminal.shared[self._store]
+
+    def __init__(self, name: str, store: str='CENTRAL', key: str=None):
+        """
+        Args:
+            name (str): The name of the key
+            key (str, optional): The key to retrieve. Defaults to uuid.
+        """
+        self._key = key or str(uuid.uuid4())
+        self._name = name
+        self._store = store
+
+    def get(self, terminal: Terminal, default) -> typing.Any:
+        """Get A value from the store
+
+        Args:
+            terminal (Terminal): The terminal to retrieve from
+            default: The value to return if not in store
+
+        Returns:
+            typing.Any: The value retrieved
+        """
+        return self.get_store(terminal).get(self._key, default)
+    
+    def get_or_set(self, terminal: Terminal, value):
+        """Get or set the value
+
+        Args:
+            store (DataStore): The store to get or set from
+            value: Value to set if not set
+        """
+        return self.get_store(terminal).get_or_set(self._key, value)
+    
+    def set(self, terminal: Terminal, value):
+        """Set the value indexed by the ref
+
+        Args:
+            terminal (Terminal): The terminal to set to
+            value : The value to set
+        """
+        self.get_store(terminal)[self._key] = value
+    
+    def load_state_dict(self, state_dict):
+        """Retrieve the definition for ref 
+
+        Args:
+            state_dict:  The state dict specified  
+        """
+        self._name = state_dict['name']
+        self._key = state_dict['key']
+        self._store = state_dict['terminal']
+
+    def state_dict(self) -> typing.Dict:
+        """
+        Returns:
+            typing.Dict: The state dict for the Ref
+        """
+        return {
+            'name': self._name,
+            'key': self._key,
+            'terminal': self._store
+        }
+
+
+def refs(names: typing.List[str], store: str='CENTRAL') -> typing.Tuple[Ref]:
+    """Create several refs
+
+    Args:
+        names (typing.List[str]): The names of the refs
+        terminal (terminal): str
+
+    Returns:
+        typing.Tuple[Ref]: Several refs
+    """
+    return tuple(
+        Ref(name, store) for name in names
+    )

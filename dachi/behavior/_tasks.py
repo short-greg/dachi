@@ -16,6 +16,10 @@ class TaskMessage:
 
 class Task(Receiver):
 
+    SUCCESS = SangoStatus.SUCCESS
+    FAILURE = SangoStatus.FAILURE
+    RUNNING = SangoStatus.RUNNING
+
     def _tick_wrapper(self, f) -> typing.Callable[[Terminal], SangoStatus]:
         """Wraps the tick function so that the terminal will be initialized
         if not initialized
@@ -31,6 +35,8 @@ class Task(Receiver):
                 self.__init_terminal__(terminal)
                 terminal.initialize()
 
+            if terminal.storage['status'].is_done():
+                return terminal.storage['status']
             return f(terminal, *args, **kwargs)
         return _tick
 
@@ -300,6 +306,41 @@ class Sequence(Serial):
         terminal.storage['idx'] = 0
 
 
+class Sequence(Serial):
+
+    def add(self, task: Task) -> 'Sequence':
+        self._tasks.append(task)
+
+    def subtick(self, terminal: Terminal) -> SangoStatus:
+        
+        idx = terminal.storage['idx']
+        if terminal.storage['status'].is_done:
+            return terminal.storage['status']
+    
+        task = self._tasks[idx]
+        status = task.tick(terminal.child(task))
+
+        if status == SangoStatus.FAILURE:
+            return SangoStatus.FAILURE
+        
+        if status == SangoStatus.SUCCESS:
+            terminal.storage['idx'] += 1
+            status = SangoStatus.RUNNING
+        if terminal.storage['idx'] >= len(self._tasks):
+            status = SangoStatus.SUCCESS
+
+        return status
+
+    def clone(self) -> 'Sequence':
+        return Sequence(
+            self.name, [task.clone() for task in self._tasks]
+        )
+
+    def reset_status(self, terminal: Terminal):
+        super().reset_status(terminal)
+        terminal.storage['idx'] = 0
+
+
 class Selector(Serial):
 
     def add(self, task: Task) -> 'Sequence':
@@ -345,6 +386,8 @@ class Selector(Serial):
         
 
 class Parallel(Task):
+    """A composite task for running multiple tasks in parallel
+    """
 
     def __init__(self, name: str, tasks: typing.List[Task], runner=None, fails_on: int=None, succeeds_on: int=None, success_priority: bool=True):
         super().__init__(name)
@@ -358,6 +401,15 @@ class Parallel(Task):
         self._tasks.append(task)
 
     def set_condition(self, fails_on: int, succeeds_on: int):
+        """Set the number of falures or successes it takes to end
+
+        Args:
+            fails_on (int): The number of failures it takes to fail
+            succeeds_on (int): The number of successes it takes to succeed
+
+        Raises:
+            ValueError: If teh number of successes or failures is invalid
+        """
         self._fails_on = fails_on if fails_on is not None else len(self._tasks)
         self._succeeds_on = succeeds_on if succeeds_on is not None else (len(self._tasks) + 1 - self._fails_on)
 
@@ -367,7 +419,15 @@ class Parallel(Task):
             raise ValueError('')
     
     def _default_runner(self, tasks: typing.List[Task], terminal: Terminal) -> typing.List[SangoStatus]:
-        
+        """Run the paralel
+
+        Args:
+            tasks (typing.List[Task]): The tasks to run
+            terminal (Terminal): The terminal for the task
+
+        Returns:
+            typing.List[SangoStatus]: _description_
+        """
         statuses = []
         for task in tasks:
             statuses.append(task.tick(terminal.child(task)))
@@ -425,6 +485,12 @@ class Parallel(Task):
             success_priority=self._success_priority
         )
 
+    def reset_status(self, terminal: Terminal):
+
+        super().reset_status(terminal)
+        for task in self.tasks:
+            task.reset_status(terminal.child(task))
+
 
 class Action(Task):
 
@@ -442,13 +508,23 @@ class Action(Task):
 
 
 class Condition(Task):
+    """Check whether a condition is satisfied before
+    running a task.
+    """
 
     @abstractmethod
     def condition(self, terminal: Terminal) -> bool:
         pass
 
     def tick(self, terminal: Terminal) -> SangoStatus:
-        
+        """Check the condition
+
+        Args:
+            terminal (Terminal): The terminal 
+
+        Returns:
+            SangoStatus: Whether the condition failed or succeeded
+        """
         if self.condition(terminal):
             return SangoStatus.SUCCESS
         return SangoStatus.FAILURE

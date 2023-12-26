@@ -2,7 +2,7 @@ from dachi.behavior._status import SangoStatus
 from dachi.comm import Terminal
 from dachi.behavior import Action
 from dachi.gengo import Prompt, Conversation
-from base import PrepareConversation, ConversationAI, UserConversationResponse
+from base import UIResponse, AIResponse, PreparePrompt
 import json
 
 
@@ -42,87 +42,105 @@ def get_prompt(plan):
     ).format(plan=plan)
 
 
-class StartLesson(PrepareConversation):
+class LessonPrompt(PreparePrompt):
 
-    def __init__(self, plan: str, convo_name: str) -> None:
-        super().__init__(convo_name)
-        self.plan = plan
-
-    def prepare_conversation(self, terminal: Terminal):
-
-        convo = Conversation(['AI', 'System', 'User'])
-        plan = terminal.cnetral.get(self.plan)
-        if plan is None:
-            return False
-        convo.add_turn(
-            'system', plan
-        )
-
-        terminal.cnetral.add(self.convo_name, convo)
-        return True
+    pass
 
 
-class QuizUser(ConversationAI):
+class ContinueConversation(Action):
+    pass
 
-    def process_response(self, terminal: Terminal):
+
+class QuizAnswer(UIResponse):
+    pass
+
+
+class QuizQuestion(AIResponse):
+
+    pass
+
+
+# class StartLesson(PrepareConversation):
+
+#     def __init__(self, plan: str, convo_name: str) -> None:
+#         super().__init__(convo_name)
+#         self.plan = plan
+
+#     def prepare_conversation(self, terminal: Terminal):
+
+#         convo = Conversation(['AI', 'System', 'User'])
+#         plan = terminal.cnetral.get(self.plan)
+#         if plan is None:
+#             return False
+#         convo.add_turn(
+#             'system', plan
+#         )
+
+#         terminal.cnetral.add(self.convo_name, convo)
+#         return True
+
+
+# class QuizUser(ConversationAI):
+
+#     def process_response(self, terminal: Terminal):
         
-        response = json.loads(terminal.cnetral[self.user_var])
-        if 'Error' in response:
-            return False, response['Error']
-        if 'Completed' in response:
-            return True, response['Completed']
-        if 'Item' in response:
-            return True, response['Item']
-        return False, 'Unknown error occurred'
+#         response = json.loads(terminal.cnetral[self.user_var])
+#         if 'Error' in response:
+#             return False, response['Error']
+#         if 'Completed' in response:
+#             return True, response['Completed']
+#         if 'Item' in response:
+#             return True, response['Item']
+#         return False, 'Unknown error occurred'
 
 
-# class ProcessAnswer(UserConversationResponse):
-#     pass
+# # class ProcessAnswer(UserConversationResponse):
+# #     pass
 
-    # def process_response(self, terminal: Terminal):
+#     # def process_response(self, terminal: Terminal):
         
-    #     response = json.loads(terminal.shared[self.user_var])
-    #     if 'Error' in response:
-    #         return response['Error']
-    #     if 'Completed' in response:
-    #         return response['Completed']
-    #     if 'Item' in response:
-    #         return response['Item']
-    #     return 'Unknown error occurred'
+#     #     response = json.loads(terminal.shared[self.user_var])
+#     #     if 'Error' in response:
+#     #         return response['Error']
+#     #     if 'Completed' in response:
+#     #         return response['Completed']
+#     #     if 'Item' in response:
+#     #         return response['Item']
+#     #     return 'Unknown error occurred'
 
 
-class Complete(Action):
+# class Complete(Action):
 
-    def __init__(self, completion: str, plan: str, convo: str):
-        """
+#     def __init__(self, completion: str, plan: str, convo: str):
+#         """
 
-        Args:
-            completion (str): 
-            plan (str): 
-            convo (str): 
-        """
-        self.completion = completion
-        self.plan = plan
-        self.convo = convo
+#         Args:
+#             completion (str): 
+#             plan (str): 
+#             convo (str): 
+#         """
+#         self.completion = completion
+#         self.plan = plan
+#         self.convo = convo
 
-    def __init_terminal__(self, terminal: Terminal):
+#     def __init_terminal__(self, terminal: Terminal):
         
-        super().__init_terminal__(terminal)
-        terminal.cnetral.get_or_set('completed', False)
+#         super().__init_terminal__(terminal)
+#         terminal.cnetral.get_or_set('completed', False)
 
-    def act(self, terminal: Terminal) -> SangoStatus:
+#     def act(self, terminal: Terminal) -> SangoStatus:
         
-        completed = terminal.cnetral.get('completed')
-        if completed is True:
-            plan = terminal.cnetral.get('plan')
-            convo = terminal.cnetral.get('convo')
-            if plan is not None:
-                # This requires me to understand how it works
-                # I don't like this
-                terminal.cnetral['plan'] = None
-            if convo is not None:
-                convo.clear()
-            terminal.cnetral['completed'] = False
-            # I just want to return self.SUCCESS
-            return SangoStatus.SUCCESS
-        return SangoStatus.FAILURE
+#         completed = terminal.cnetral.get('completed')
+#         if completed is True:
+#             plan = terminal.cnetral.get('plan')
+#             convo = terminal.cnetral.get('convo')
+#             if plan is not None:
+#                 # This requires me to understand how it works
+#                 # I don't like this
+#                 terminal.cnetral['plan'] = None
+#             if convo is not None:
+#                 convo.clear()
+#             terminal.cnetral['completed'] = False
+#             # I just want to return self.SUCCESS
+#             return SangoStatus.SUCCESS
+#         return SangoStatus.FAILURE

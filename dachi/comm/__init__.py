@@ -1,6 +1,10 @@
 from ._serving import (
-    SignalType, Signal,
-    Server, Terminal, Query, Signal
+    Server, Terminal, 
+    refs, Ref
+)
+from ._requests import (
+    Signal, Query,
+    SignalType, InterComm, Request
 )
 from ._storage import (
     Data, IData, DataHook,
