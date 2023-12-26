@@ -1,8 +1,7 @@
 from dachi.behavior._status import SangoStatus
-from dachi.comm import Terminal
+from dachi.comm import Terminal, Ref
 from dachi.behavior import Action
 from dachi.gengo import Prompt, Conversation
-from base import UIResponse, AIResponse, PreparePrompt
 import json
 
 
@@ -42,22 +41,36 @@ def get_prompt(plan):
     ).format(plan=plan)
 
 
-class LessonPrompt(PreparePrompt):
+class ProcessAIMessage(Action):
+    
+    def __init__(self, ai_request: Ref, ai_message: Ref, conversation: Conversation):
 
-    pass
+        self.ai_request = ai_request
+        self.ai_message = ai_message
+        self.conversation = conversation
 
+    def act(self, terminal: Terminal) -> SangoStatus:
+        
+        request = self.ai_request.get(terminal)
 
-class ContinueConversation(Action):
-    pass
+        conv = self.conversation.get(terminal)
+        response = json.loads(request.response)
+        if 'completed' in response:
+            conv.clear()
+            self.ai_message.clear()
 
-
-class QuizAnswer(UIResponse):
-    pass
-
-
-class QuizQuestion(AIResponse):
-
-    pass
+            return self.FAILURE
+        if 'error' in response:
+            # how to react to an error (?)
+            self.ai_message.set(terminal, response['error'])
+            conv.add_turn('assistant', response['message'])
+            return self.SUCCESS
+        if 'message' in response:
+            self.ai_message.set(terminal, response['message'])
+            conv.add_turn('assistant', response['message'])
+            return self.SUCCESS
+            
+        return self.FAILURE
 
 
 # class StartLesson(PrepareConversation):
