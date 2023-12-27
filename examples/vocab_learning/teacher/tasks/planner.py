@@ -27,7 +27,7 @@ PLAN_PROMPT = Prompt(
     {"Error": "<Reason for error>"}
 
     TARGET VOCABULARY = {target_vocabulary}
-"""
+""")
 
 
 class ProcessAIMessage(Action):
@@ -62,34 +62,3 @@ class ProcessAIMessage(Action):
             return self.SUCCESS
             
         return self.FAILURE
-
-
-# class StartPlanning(PrepareConversation):
-
-#     def prepare_conversation(self, terminal: Terminal):
-
-#         convo = Conversation(['AI', 'System', 'User'])
-#         convo.add_turn('System', get_prompt())
-#         convo.add_turn('AI', "学習したい語彙を教えてください。")
-#         terminal.cnetral.set(self.convo_name, convo)
-#         return True
-
-
-# class CreatePlan(ConversationAI):
-
-#     def __init__(self, plan: str, ai_message: str, convo_var: str, query: LLMQuery) -> None:
-#         super().__init__(ai_message, convo_var, query)
-#         self.plan = plan
-
-#     def process_response(self, terminal: Terminal):
-
-#         response = terminal.cnetral.get(self.ai_message)
-        
-#         response = json.loads(response)
-#         if 'Error' in response:
-#             return False, response['Error']
-#         if 'Plan' in response:
-#             terminal.cnetral.get_or_set(self.plan, response['Plan'])
-#             return True, response['Plan']
-        
-#         return False, 'Unknown error occurred'
