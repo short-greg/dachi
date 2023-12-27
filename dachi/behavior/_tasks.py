@@ -1,7 +1,5 @@
 from abc import abstractmethod
 import typing
-
-
 from ..comm import Receiver, Terminal, Signal
 from ._status import SangoStatus
 from dataclasses import dataclass
@@ -40,7 +38,7 @@ class Task(Receiver):
             return f(terminal, *args, **kwargs)
         return _tick
 
-    def __init__(self, name: str) -> None:
+    def __init__(self, name: str=None) -> None:
         """Create the task
 
         Args:
@@ -122,12 +120,12 @@ class Task(Receiver):
 
 class Sango(Task):
 
-    def __init__(self, name: str, root: 'Task'=None):
+    def __init__(self, root: 'Task'=None, name: str=None):
         """Create a tree to store the tasks
 
         Args:
-            name (str): The name of the tree
             root (Task, optional): The root task. Defaults to None.
+            name (str): The name of the tree
         """
         super().__init__(name)
         self._root = root
@@ -202,14 +200,14 @@ class Sango(Task):
         Returns:
             Sango: The 
         """
-        return Sango(self.name, self.root)
+        return Sango(self._name, self.root)
 
 
 class Serial(Task):
     """Task composed of subtasks
     """
     def __init__(
-        self, tasks: typing.List[Task], name: str=''
+        self, tasks: typing.List[Task], name: str=None
     ):
         super().__init__(name)
         self._tasks = tasks
@@ -298,7 +296,7 @@ class Sequence(Serial):
 
     def clone(self) -> 'Sequence':
         return Sequence(
-            self.name, [task.clone() for task in self._tasks]
+            [task.clone() for task in self._tasks], self._name
         )
 
     def reset_status(self, terminal: Terminal):
@@ -333,7 +331,7 @@ class Sequence(Serial):
 
     def clone(self) -> 'Sequence':
         return Sequence(
-            self.name, [task.clone() for task in self._tasks]
+            [task.clone() for task in self._tasks], self._name
         )
 
     def reset_status(self, terminal: Terminal):
@@ -377,7 +375,7 @@ class Selector(Serial):
 
     def clone(self) -> 'Selector':
         return Selector(
-            self.name, [task.clone() for task in self._tasks]
+            [task.clone() for task in self._tasks], self._name
         )
 
     def reset_status(self, terminal: Terminal):
@@ -390,6 +388,16 @@ class Parallel(Task):
     """
 
     def __init__(self, name: str, tasks: typing.List[Task], runner=None, fails_on: int=None, succeeds_on: int=None, success_priority: bool=True):
+        """
+
+        Args:
+            name (str): 
+            tasks (typing.List[Task]): 
+            runner (_type_, optional): . Defaults to None.
+            fails_on (int, optional): . Defaults to None.
+            succeeds_on (int, optional): . Defaults to None.
+            success_priority (bool, optional): . Defaults to True.
+        """
         super().__init__(name)
         self._tasks = tasks
         self._use_default_runner = runner is None
@@ -398,6 +406,11 @@ class Parallel(Task):
         self._success_priority = success_priority
 
     def add(self, task: Task):
+        """
+
+        Args:
+            task (Task): 
+        """
         self._tasks.append(task)
 
     def set_condition(self, fails_on: int, succeeds_on: int):
@@ -534,7 +547,7 @@ class Decorator(Task):
 
     # name should retrieve the name of the decorated
     def __init__(self, task: Task) -> None:
-        super().__init__('')
+        super().__init__()
         self._task = task
 
     @abstractmethod
@@ -546,7 +559,14 @@ class Decorator(Task):
         return self._task
 
     def tick(self, terminal: Terminal) -> SangoStatus:
-        
+        """Decorate the tick for the decorated task
+
+        Args:
+            terminal (Terminal): The terminal for the task
+
+        Returns:
+            SangoStatus: The decorated status
+        """
         status: SangoStatus = terminal.storage.get('status')
         if status.is_done:
             return status
@@ -567,6 +587,15 @@ class Until(Decorator):
     """
 
     def decorate(self, terminal: Terminal, status: SangoStatus) -> SangoStatus:
+        """Continue running unless the result is a success
+
+        Args:
+            terminal (Terminal): The terminal for the task
+            status (SangoStatus): The status of the decorated task
+
+        Returns:
+            SangoStatus: The decorated status
+        """
         if status.success:
             return SangoStatus.SUCCESS
         if status.failure:
@@ -579,6 +608,15 @@ class While(Decorator):
     """
 
     def decorate(self, terminal: Terminal, status: SangoStatus) -> SangoStatus:
+        """Continue running unless the result is a failure
+
+        Args:
+            terminal (Terminal): The terminal for the task
+            status (SangoStatus): The status of the decorated task
+
+        Returns:
+            SangoStatus: The decorated status
+        """
         if status.failure:
             return SangoStatus.FAILURE
         if status.success:
@@ -591,6 +629,15 @@ class Not(Decorator):
     """
 
     def decorate(self, terminal: Terminal, status: SangoStatus) -> SangoStatus:
+        """Return Success if status is a Failure or Failure if it is a SUCCESS
+
+        Args:
+            terminal (Terminal): The terminal for the task
+            status (SangoStatus): The status of the decorated task
+
+        Returns:
+            SangoStatus: The decorated status
+        """
         if status.failure:
             return SangoStatus.SUCCESS
         if status.success:
@@ -600,12 +647,12 @@ class Not(Decorator):
 
 class CheckReady(Condition):
 
-    def __init__(self, name: str, field_name: str):
+    def __init__(self, field_name: str, name: str=None):
         """Check if a field has been prepared
 
         Args:
-            name (str): The name of the task
             field_name (str): The name of the field to check
+            name (str): The name of the task
         """
         super().__init__(name)
         self.field_name = field_name
@@ -617,12 +664,12 @@ class CheckReady(Condition):
 
 class Check(Condition):
 
-    def __init__(self, name: str, f):
+    def __init__(self, f, name: str=None):
         """Check if a field has been prepared
 
         Args:
-            name (str): The name of the task
             f (typing.Callable): The function to call
+            name (str): The name of the task
         """
         super().__init__(name)
         self.f = f
@@ -634,12 +681,12 @@ class Check(Condition):
 
 class CheckTrue(Condition):
 
-    def __init__(self, name: str, field_name: str):
+    def __init__(self, field_name: str, name: str):
         """Check if a field is true
 
         Args:
-            name (str): The name of the task
             field_name (str): The name of the field to check
+            name (str): The name of the task
         """
         super().__init__(name)
         self.field_name = field_name

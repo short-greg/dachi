@@ -1,6 +1,6 @@
 from ._serving import (
     Server, Terminal, 
-    refs, Ref
+    gen_refs, Ref
 )
 from ._requests import (
     Signal, Query,

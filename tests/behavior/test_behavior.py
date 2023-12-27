@@ -37,7 +37,8 @@ class SetStorageAction(behavior.Action):
     def __init_terminal__(self, terminal: Terminal):
         super().__init_terminal__(terminal)
         terminal.storage.add(
-            'count', 0, lambda x: (x >= 0, 'Value must be greater than or equal to 0')
+            'count', 0, 
+            lambda x: (x >= 0, 'Value must be greater than or equal to 0')
         )
 
 class SetStorageActionCounter(behavior.Action):

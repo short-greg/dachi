@@ -8,7 +8,7 @@ class TestParallel:
 
     def test_parallel_creates_a_parallel_node(self):
 
-        with build.parallel('Action') as parallel:
+        with build.parallel(name='Action') as parallel:
 
             parallel.add(ATask())
             parallel.add(ATask())
@@ -16,7 +16,7 @@ class TestParallel:
 
     def test_parallel_creates_a_parallel_node_with_correct_fails_on(self):
 
-        with build.parallel('Action') as parallel:
+        with build.parallel(name='Action') as parallel:
 
             parallel.add(ATask())
             parallel.add(ATask())
@@ -28,7 +28,7 @@ class TestSelector:
 
     def test_parallel_creates_a_parallel_node(self):
 
-        with build.select('Action') as selector:
+        with build.select(name='Action') as selector:
 
             selector.add(ATask())
             selector.add(ATask())
@@ -39,7 +39,7 @@ class TestSequence:
 
     def test_parallel_creates_a_parallel_node(self):
 
-        with build.sequence('Action') as sequence:
+        with build.sequence(name='Action') as sequence:
 
             sequence.add(ATask())
             sequence.add(ATask())
@@ -52,7 +52,7 @@ class TestSango:
 
         with build.sango('Sango') as tree:
 
-            with build.sequence('Action', tree) as sequence:
+            with build.sequence(tree, name='Action') as sequence:
 
                 sequence.add(ATask())
                 sequence.add(ATask())
@@ -60,9 +60,9 @@ class TestSango:
 
     def test_sango_creates_a_tree_with_a_sequence(self):
 
-        with build.sango('Sango') as tree:
+        with build.sango(name='Sango') as tree:
 
-            with build.sequence('Action', tree) as sequence:
+            with build.sequence(tree, name='Action') as sequence:
 
                 sequence.add(ATask())
                 sequence.add(ATask())

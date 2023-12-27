@@ -2,19 +2,18 @@ import threading
 from openai import OpenAI
 
 from typing import Any
-from dachi.comm import Query, DataStore
-from dachi.comm._storage import DataStore
+from dachi.comm import Query
 
 
 class LLMQuery(Query):
 
-    def __init__(self, store: DataStore):
+    def __init__(self):
         """
 
         Args:
             store (DataStore): 
         """
-        super().__init__(store)
+        super().__init__()
         self.client = OpenAI()
 
     def prepare_response(self, contents):
@@ -32,13 +31,13 @@ class LLMQuery(Query):
 
 class UIQuery(Query):
 
-    def __init__(self, ui_callback, store: DataStore):
+    def __init__(self, ui_callback):
         """
 
         Args:
             store (DataStore): 
         """
-        super().__init__(store)
+        super().__init__()
         # self.io_handler = io_handler
         self.ui_callback = ui_callback
 

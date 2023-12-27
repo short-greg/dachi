@@ -7,14 +7,14 @@ import typing
 
 class UIConvMessage(Action):
 
-    def __init__(self, name: str, conv: Ref, query: Query):
+    def __init__(self, conv: Ref, query: Query, name: str=None):
         """
 
         Args:
             name (str): 
             query (Query): 
         """
-        super().__init__(name)
+        super().__init__()
         self._query = query
         self._conv = conv
 
@@ -38,7 +38,7 @@ class UIConvMessage(Action):
 
 class AIConvMessage(Action):
 
-    def __init__(self, name: str, conv: Ref,  query: Query):
+    def __init__(self, conv: Ref,  query: Query, name: str=None):
         """
 
         Args:
@@ -68,7 +68,7 @@ class AIConvMessage(Action):
 
 class PreparePrompt(Action):
 
-    def __init__(self, name: str, conv: Ref, prompt: Prompt, components: typing.Dict[str, PromptComponent]):
+    def __init__(self, conv: Ref, prompt: Prompt, components: typing.Dict[str, PromptComponent], name: str=None):
 
         super().__init__(name)
         self.prompt = prompt 
@@ -97,7 +97,7 @@ class PreparePrompt(Action):
 
 class Display(Action):
 
-    def __init__(self, name: str, message: Ref, io: IOHandler):
+    def __init__(self, message: Ref, io: IOHandler, name: str=None):
         """
 
         Args:

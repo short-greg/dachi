@@ -9,16 +9,6 @@ from dataclasses import dataclass
 CALLBACK = typing.Union[str, typing.Callable]
 
 
-# def callback(cb, contents, store: DataStore):
-
-#     if cb is None:
-#         return
-#     if isinstance(cb, str):
-#         store[cb] = contents
-#     else:
-#         cb(contents)
-
-
 @dataclass
 class Request(object):
 

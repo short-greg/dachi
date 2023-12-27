@@ -91,15 +91,6 @@ class Server(object):
         """
         return self._intercomm
 
-    def register(self, terminal: 'Terminal'):
-        """
-        Returns:
-            typing.Dict[str, 'Terminal']: The registered terminals
-        """
-        # TODO: IMPLEMENT
-
-        return self._register
-
     @property
     def registered(self) -> typing.Dict[str, 'Terminal']:
         """
@@ -107,6 +98,12 @@ class Server(object):
             typing.Dict[str, 'Terminal']: The registered terminals
         """
         return self._register
+    
+    def terminal(self) -> 'Terminal':
+
+        terminal = Terminal(self)
+        self._register[terminal]
+        return terminal
 
     def state_dict(self) -> typing.Dict:
         """
@@ -167,6 +164,7 @@ class Terminal(object):
         self._initialized = False
         self._server = server
         self._storage = DataStore()
+        self._id = str(uuid.uuid4())
 
     @property
     def initialized(self) -> bool:
@@ -324,7 +322,7 @@ class Ref(object):
         }
 
 
-def refs(names: typing.List[str], store: str='CENTRAL') -> typing.Tuple[Ref]:
+def gen_refs(names: typing.List[str], store: str='CENTRAL') -> typing.Tuple[Ref]:
     """Create several refs
 
     Args:

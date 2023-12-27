@@ -13,7 +13,7 @@ class BehaviorBuilder(object):
 
 class sango(BehaviorBuilder):
 
-    def __init__(self, name: str) -> None:
+    def __init__(self, name: str=None) -> None:
         """Create a Sango builder
 
         Args:
@@ -60,24 +60,27 @@ class sango(BehaviorBuilder):
 
 class CompositeBuilder(BehaviorBuilder):
 
-    def __init__(self, name: str='', parent: 'CompositeBuilder'=None):
+    def __init__(self, parent: 'CompositeBuilder'=None, name: str=None):
         """Create a composite task
 
         Args:
-            name (str, optional): The name of the task. Defaults to ''.
             parent (CompositeBuilder, optional): The parent for the task. Defaults to None.
+            name (str, optional): The name of the task. Defaults to ''.
         """
         self._tasks = []
         self.parent = parent
         self.name = name
 
-    def add(self, task: behavior.Task):
+    def add(self, task: typing.Union[typing.Iterable[behavior.Task], behavior.Task]):
         """Add a task to teh tasks to build
 
         Args:
             task (behavior.Task): The task to add
         """
-        self._tasks.append(task)
+        if isinstance(task, behavior.Task):
+            self._tasks.append(task)
+        else:
+            self._tasks.extend(task)
 
     @property
     def tasks(self) -> typing.List[behavior.Task]:
@@ -205,14 +208,16 @@ class select(CompositeBuilder):
             tasks, self.name
         )
 
+
 fallback = select
 
 
 class parallel(CompositeBuilder):
 
     def __init__(
-        self, name: str='', parent: typing.Union[behavior.Sango, CompositeBuilder]=None, 
-        fails_on: int=1, succeeds_on: int=None, success_priority: bool=False
+        self, parent: typing.Union[behavior.Sango, CompositeBuilder]=None, 
+        fails_on: int=1, succeeds_on: int=None, success_priority: bool=False,
+        name: str=None
     ):
         """Execute two tasks in parallel
 
