@@ -4,7 +4,7 @@ from dataclasses import dataclass, Field
 import typing
 from dataclasses import dataclass, Field
 from typing import Dict
-from base import PromptComponent
+from ..comm._serving import Component
 
 
 @dataclass
@@ -21,7 +21,7 @@ class Turn(object):
     text: str
 
 
-class Conversation(PromptComponent):
+class Conversation(Component):
 
     def __init__(self, roles: typing.Dict[str, Role]=None, max_turns: int=None):
 
@@ -91,7 +91,7 @@ class Conversation(PromptComponent):
         return result
 
 
-class Text(PromptComponent):
+class Text(Component):
     """A simple wrapper to use text as a prompt component
     """
 

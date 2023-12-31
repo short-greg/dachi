@@ -1,14 +1,41 @@
 import typing
 from collections import OrderedDict
 from ._requests import Query, Signal, InterComm
+from abc import abstractmethod
 
 from ._storage import DataStore
 from ._base import Receiver
+from abc import ABC
 
 import uuid
 
 # REMOVE
 CALLBACK = typing.Union[str, typing.Callable]
+
+from abc import ABC, abstractmethod
+import typing
+
+
+class Component(ABC):
+
+    @abstractmethod
+    def as_text(self) -> str:
+        pass
+
+    @abstractmethod
+    def as_dict(self) -> typing.Dict:
+        pass
+
+    @staticmethod
+    def structure(text: str, heading: str=None):
+
+        if heading is None:
+            return f'{text}'
+        
+        return f"""
+        {heading}
+        {text}
+        """
 
 
 class Server(object):
@@ -244,6 +271,18 @@ class Terminal(object):
         return self
 
 
+NAME = typing.Union[str, typing.List[str]]
+
+def get_parent_dict(d: typing.Dict, name: NAME) -> typing.Tuple[typing.Dict, str]:
+
+    cur = d
+    if isinstance(name, typing.List):
+        for name_i in name[:-1]:
+            cur = cur[name_i]
+        name = name_i
+    return cur, name
+
+
 class Ref(object):
     """A Ref is used to provide a way to access date in a 
     storage. 
@@ -252,15 +291,7 @@ class Ref(object):
     CENTRAL = 'CENTRAL'
     LOCAL = 'LOCAL'
 
-    def get_store(self, terminal: Terminal) -> DataStore:
-
-        if self._store == 'CENTRAL':
-            return terminal.central
-        if self._store == 'LOCAL':
-            return terminal.storage
-        return terminal.shared[self._store]
-
-    def __init__(self, name: str, store: str='CENTRAL', key: str=None):
+    def __init__(self, name: str, store: str='CENTRAL', key: str=None, sub_name: 'NAME'=None):
         """
         Args:
             name (str): The name of the key
@@ -269,6 +300,15 @@ class Ref(object):
         self._key = key or str(uuid.uuid4())
         self._name = name
         self._store = store
+        self._sub_name = sub_name
+
+    def get_store(self, terminal: Terminal) -> DataStore:
+
+        if self._store == 'CENTRAL':
+            return terminal.central
+        if self._store == 'LOCAL':
+            return terminal.storage
+        return terminal.shared[self._store]
 
     def get(self, terminal: Terminal, default) -> typing.Any:
         """Get A value from the store
@@ -280,7 +320,10 @@ class Ref(object):
         Returns:
             typing.Any: The value retrieved
         """
-        return self.get_store(terminal).get(self._key, default)
+        base = self.get_store(terminal).get(self._key, default)
+        if self._sub_name is None:
+            return base
+        return base.get(self._sub_name)
     
     def get_or_set(self, terminal: Terminal, value):
         """Get or set the value
@@ -289,7 +332,11 @@ class Ref(object):
             store (DataStore): The store to get or set from
             value: Value to set if not set
         """
-        return self.get_store(terminal).get_or_set(self._key, value)
+        store = self.get_store(terminal)
+        if self._sub_name is None:
+            return store.get_or_set(self._key, value)
+        data = store.get(self._key)
+        return data.get_or_set(self._sub_name, value)
     
     def set(self, terminal: Terminal, value):
         """Set the value indexed by the ref
@@ -298,7 +345,12 @@ class Ref(object):
             terminal (Terminal): The terminal to set to
             value : The value to set
         """
-        self.get_store(terminal)[self._key] = value
+        store = self.get_store(terminal)
+        if self._sub_name is None:
+            store[self._key] = value
+        else:
+            data = store[self._key]
+            data.set(self._sub_name, value)
     
     def load_state_dict(self, state_dict):
         """Retrieve the definition for ref 
@@ -335,3 +387,36 @@ def gen_refs(names: typing.List[str], store: str='CENTRAL') -> typing.Tuple[Ref]
     return tuple(
         Ref(name, store) for name in names
     )
+
+
+class DataStruct(Component, ABC):
+
+    def get(self, name: NAME) -> typing.Any:
+        """
+
+        Args:
+            name (NAME): The name of the value to get
+
+        Returns:
+            typing.Any: The value retrieved
+        """
+        if isinstance(name, typing.List):
+            cur = self.__dict__
+            for name_i in name:
+                cur = cur[name_i]
+            return cur
+        return self.__dict__[name]
+    
+    def set(self, name: NAME, value):
+        cur, name = get_parent_dict(self.__dict__, name)
+        cur[name] = value
+
+    @abstractmethod
+    def as_text(self) -> str:
+        raise NotImplementedError
+    
+    def as_dict(self) -> typing.Dict:
+        return self.__dict__
+
+    def refs(self, name: str, *sub_names: NAME, store: str='CENTRAL') -> typing.Tuple[Ref]:
+        return tuple(Ref(name, store=store, sub_names=sub_name) for sub_name in sub_names)

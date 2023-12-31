@@ -7,17 +7,23 @@ import typing
 
 class UIConvMessage(Action):
 
-    def __init__(self, conv: Ref, query: Query, name: str=None):
+    def __init__(self, conv: Ref, request: Ref, query: Query, name: str=None):
         """
 
         Args:
             name (str): 
             query (Query): 
         """
-        super().__init__()
+        super().__init__(name)
         self._query = query
         self._conv = conv
+        self._request = request
 
+    def process_response(self, request: Request, terminal: Terminal):
+
+        self._request.set(request)
+        terminal.storage.clear('request')
+    
     def act(self, terminal: Terminal) -> SangoStatus:
         
         request = terminal.storage.get('request')
@@ -38,7 +44,10 @@ class UIConvMessage(Action):
 
 class AIConvMessage(Action):
 
-    def __init__(self, conv: Ref,  query: Query, name: str=None):
+    def __init__(
+        self, conv: Ref, request: Ref, 
+        query: Query, name: str=None
+    ):
         """
 
         Args:
@@ -48,6 +57,12 @@ class AIConvMessage(Action):
         super().__init__(name)
         self._query = query
         self._conv = conv
+        self._request = request
+    
+    def process_response(self, request: Request, terminal: Terminal):
+
+        self._request.set(request)
+        terminal.storage.clear('request')
 
     def act(self, terminal: Terminal) -> SangoStatus:
         
@@ -68,12 +83,12 @@ class AIConvMessage(Action):
 
 class PreparePrompt(Action):
 
-    def __init__(self, conv: Ref, prompt: Prompt, components: typing.Dict[str, PromptComponent], name: str=None):
+    def __init__(self, conv: Ref, prompt: Prompt, components: typing.Dict[str, PromptComponent]=None, name: str=None):
 
         super().__init__(name)
         self.prompt = prompt 
         self.conv = conv
-        self.components = components
+        self.components = components or {}
 
     def act(self, terminal: Terminal) -> SangoStatus:
 
@@ -85,8 +100,6 @@ class PreparePrompt(Action):
             for k, component in self.components.items():
                 if isinstance(component, Ref):
                     component = component.get(terminal)
-                if isinstance(component, PromptComponent):
-                    component = component.as_text()
                 components[k] = component
             self.prompt.set(
                 terminal, self.prompt.format(**components).as_text()

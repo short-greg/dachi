@@ -1,6 +1,7 @@
 from ._serving import (
     Server, Terminal, 
-    gen_refs, Ref
+    gen_refs, Ref, Component,
+    DataStruct
 )
 from ._requests import (
     Signal, Query,

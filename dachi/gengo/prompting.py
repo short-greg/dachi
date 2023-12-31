@@ -1,12 +1,11 @@
 import typing
 from dataclasses import dataclass, Field
-
 from .base import PromptComponent
 
 
 @dataclass
 class Arg:
-    
+
     name: str
     description: str = Field("")
 
@@ -29,10 +28,14 @@ class Prompt(PromptComponent):
         input_names = set(kwargs.keys())
         difference = input_names - set(self._args)
         if len(difference) != 0:
-            raise ValueError(f'Input has keys that are not arguments to the prompt')
+            raise ValueError(
+                f'Input has keys that are not arguments to the prompt'
+            )
         inputs = {}
         for k, v in self._args.items():
             if k in kwargs:
+                if isinstance(v, PromptComponent):
+                    v = v.as_text()
                 inputs[k] = v
             else:
                 inputs[k] = "{{}}"

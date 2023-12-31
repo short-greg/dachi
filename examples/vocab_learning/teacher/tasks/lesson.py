@@ -43,7 +43,7 @@ class ProcessAIMessage(Action):
     
     def __init__(
         self, ai_request: Ref, ai_message: Ref, 
-        conversation: Conversation
+        conv: Ref
     ):
         """
 
@@ -54,7 +54,7 @@ class ProcessAIMessage(Action):
         """
         self.ai_request = ai_request
         self.ai_message = ai_message
-        self.conversation = conversation
+        self.conv = conv
 
     def act(self, terminal: Terminal) -> SangoStatus:
         

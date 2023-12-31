@@ -7,6 +7,29 @@ from dachi import behavior
 from .tasks import lesson, planner, base
 from .comm import IOHandler
 
+# llm_name 
+# ui_output_name
+# 1) needs to create a plan
+# 2) 
+# plan_request = '' # A request to create a plan
+# plan_llm_request = '' # 
+# ui_output_request = ''
+# with fallback as teach
+#     with sequence as lesson
+#         Check(lambda terminal: terminal.storage['plan'] is not None)
+#         with fallback as section:
+#             Quiz()
+#             Explain()
+#         UpdateLesson() # sets the plan to none
+#     PlanLesson()
+
+# UICallback
+
+# self._io.register_input(input_name)
+
+# set teh ser
+# Make naming optional
+
 
 class LanguageTeacher(Agent):
 
@@ -20,62 +43,43 @@ class LanguageTeacher(Agent):
         self._interval = interval
         self._io = IOHandler(self._server, 'Bot')
 
-        # llm_name 
-        # ui_output_name
-        # 1) needs to create a plan
-        # 2) 
-        # plan_request = '' # A request to create a plan
-        # plan_llm_request = '' # 
-        # ui_output_request = ''
-        # with fallback as teach
-        #     with sequence as lesson
-        #         Check(lambda terminal: terminal.storage['plan'] is not None)
-        #         with fallback as section:
-        #             Quiz()
-        #             Explain()
-        #         UpdateLesson() # sets the plan to none
-        #     PlanLesson()
-
-        # UICallback
-
-        self._io.register_input(input_name)
-
-        # set teh ser
-        # Make naming optional
-
         llm_query = LLMQuery()
         ui_query = UIQuery(self.io.backend_callback)
-        plan, convo, request, ai_message = (
-            gen_refs(['plan', 'convo', 'request', 'ai_message'])
+
+        # refs = RefGroup([])
+
+        convo, request, ai_message, = (
+            gen_refs(
+                ['convo', 'request', 'ai_message'])
+        )
+
+        plan, plan_message, plan_conv, plan_request = gen_refs(
+            ['plan', 'plan_message', 'plan_conv', 'plan_request']
         )
         quiz_prompt = lesson.QUIZ_PROMPT
         plan_prompt = plan.PLAN_PROMPT
         with behavior.sango() as language_teacher:
             with behavior.select(language_teacher) as teach:
-                teach.add(lesson.Complete())
+                # can make these two trees
                 with behavior.sequence(teach) as message:
-                    # # Consider something like this to make it clearer
-                    # message << (
-                    #     behavior.CheckReady('plan'),
-                    #     lesson.StartLesson('plan', 'convo'),
-                    # )
-
                     message.add([
                         behavior.CheckReady(plan),
-                        base.PreparePrompt(convo, quiz_prompt, components={'plan': plan}),
+                        base.PreparePrompt(
+                            convo, quiz_prompt, components={'plan': plan}
+                        ),
                         base.AIConvMessage(convo, request, llm_query),
-                        base.Display(),
                         lesson.ProcessAIMessage(request, ai_message, convo),
+                        base.Display(ai_message),
                         base.UIConvMessage(convo, ui_query)
                     ])
                 with behavior.select(language_teacher) as plan:
                     plan.add([
-                        base.Display(),
-                        base.UIConvMessage(convo, ui_query),
-                        base.PreparePrompt(convo, quiz_prompt, components={'plan': plan}),
-                        planner.CreatePlan('plan', 'ai', 'plan_convo', LLMQuery(server))
+                        base.Display(plan_message, self.io),
+                        base.UIConvMessage(plan_conv, ui_query),
+                        base.PreparePrompt(plan_conv, plan_prompt),
+                        base.AIConvMessage(plan_conv, plan_request, llm_query),
+                        planner.CreateAIPlan(plan_request, plan, plan_conv)
                     ])
-                # teach.add(planner.PlanGenerator(...))
         self._behavior = language_teacher.build()
         self._terminal = self._server.register(self._behavior)
 
@@ -89,4 +93,4 @@ class LanguageTeacher(Agent):
         return AgentStatus.from_status(sango_status)
 
     def reset(self):
-        self._behavior.reset_status(self._terminal)
+        self._behavior.reset_status(self._root_terminal)

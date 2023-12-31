@@ -30,34 +30,38 @@ PLAN_PROMPT = Prompt(
 """)
 
 
-class ProcessAIMessage(Action):
+class CreateAIPlan(Action):
     
-    def __init__(self, ai_request: Ref, plan: Ref, conversation: Conversation):
+    def __init__(
+        self, 
+        ai_request: Ref, 
+        plan: Ref, 
+        plan_conv: Ref
+    ):
         """
 
         Args:
             ai_request (Ref): 
             ai_message (Ref): 
-            conversation (Conversation): 
+            conversation (Ref): 
         """
         self.ai_request = ai_request
         self.plan = plan
-        self.conversation = conversation
+        self.plan_conv = plan_conv
 
     def act(self, terminal: Terminal) -> SangoStatus:
         
         request = self.ai_request.get(terminal)
 
-        conv = self.conversation.get(terminal)
+        plan_conv = self.plan_conv.get(terminal)
         response = json.loads(request.response)
-        if 'error' in response:
+        if 'error' in response and plan_conv is not None:
             # how to react to an error (?)
-            self.ai_message.set(terminal, response['error'])
-            conv.add_turn('assistant', response['message'])
+            self.plan_conv.add_turn('assistant', response['error'])
             return self.FAILURE
-        if 'plan' in response:
-            self.plan.message.set(terminal, response['message'])
-            self.conversation.clear()
+        if 'plan' in response and plan_conv is not None:
+            self.plan.set(terminal, response['message'])
+            plan_conv.clear()
             
             return self.SUCCESS
             
