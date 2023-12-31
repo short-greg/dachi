@@ -291,7 +291,7 @@ class Ref(object):
     CENTRAL = 'CENTRAL'
     LOCAL = 'LOCAL'
 
-    def __init__(self, name: str, store: str='CENTRAL', key: str=None, sub_name: 'NAME'=None):
+    def __init__(self, name: str, store: str='CENTRAL', key: str=None, sub_name: str=None):
         """
         Args:
             name (str): The name of the key
@@ -391,32 +391,48 @@ def gen_refs(names: typing.List[str], store: str='CENTRAL') -> typing.Tuple[Ref]
 
 class DataStruct(Component, ABC):
 
-    def get(self, name: NAME) -> typing.Any:
+    def get(self, name: str) -> typing.Any:
         """
 
         Args:
-            name (NAME): The name of the value to get
+            name (str): The name of the value to get
 
         Returns:
             typing.Any: The value retrieved
         """
-        if isinstance(name, typing.List):
-            cur = self.__dict__
-            for name_i in name:
-                cur = cur[name_i]
-            return cur
         return self.__dict__[name]
     
-    def set(self, name: NAME, value):
-        cur, name = get_parent_dict(self.__dict__, name)
-        cur[name] = value
+    def set(self, name: str, value):
+        if name not in self.__dict__:
+            raise KeyError(f'Key by name of {name} does not exist.')
+        self.__dict__[name] = value
+
+    def __getitem__(self, name: str) -> typing.Any:
+
+        return self.__dict__[name]
 
     @abstractmethod
     def as_text(self) -> str:
         raise NotImplementedError
     
     def as_dict(self) -> typing.Dict:
-        return self.__dict__
+        return {**self.__dict__}
 
-    def refs(self, name: str, *sub_names: NAME, store: str='CENTRAL') -> typing.Tuple[Ref]:
-        return tuple(Ref(name, store=store, sub_names=sub_name) for sub_name in sub_names)
+    def refs(self, name: str, *sub_names: str, store: str='CENTRAL') -> typing.Tuple[Ref]:
+        return tuple(Ref(name, store=store, sub_name=sub_name) for sub_name in sub_names)
+
+    def load_state_dict(self, state_dict):
+        """Retrieve the definition for ref 
+
+        Args:
+            state_dict:  The state dict specified  
+        """
+        for k, _ in self.__dict__.items():
+            self[k] = state_dict[k]
+
+    def state_dict(self) -> typing.Dict:
+        """
+        Returns:
+            typing.Dict: The state dict for the Ref
+        """
+        return {**self.__dict__}

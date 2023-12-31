@@ -39,6 +39,10 @@ QUIZ_PROMPT = Prompt(
 )
 
 
+class PlanConv(object):
+    pass
+
+
 class ProcessAIMessage(Action):
     
     def __init__(

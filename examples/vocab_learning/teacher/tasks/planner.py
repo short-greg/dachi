@@ -30,6 +30,10 @@ PLAN_PROMPT = Prompt(
 """)
 
 
+class QuizConv(object):
+    pass
+
+
 class CreateAIPlan(Action):
     
     def __init__(
