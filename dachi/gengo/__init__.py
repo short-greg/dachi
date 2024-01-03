@@ -1,5 +1,5 @@
 from .discourse import (
-    Role, Conversation, Turn,
+    Role, Conv, Turn,
     Arg, Prompt
 )
 from .prompting import (

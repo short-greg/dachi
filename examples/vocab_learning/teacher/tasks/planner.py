@@ -1,6 +1,6 @@
 from dachi.comm import Terminal, Ref
 from dachi.behavior import Action, SangoStatus
-from dachi.gengo import Prompt, Conversation
+from dachi.gengo import Prompt, Conv
 import json
 
 

@@ -1,6 +1,5 @@
 from abc import abstractmethod, ABC, abstractproperty
 import typing
-import uuid
 
 
 class DataHook(ABC):
