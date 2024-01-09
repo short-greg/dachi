@@ -1,8 +1,9 @@
 import typing
 from dataclasses import dataclass, Field
-from .base import PromptComponent
+from ..comm._serving import Component
 from typing import Dict
-from ..comm._serving import DataStruct
+from abc import abstractmethod
+from ..base import Storable
 
 
 @dataclass
@@ -12,10 +13,59 @@ class Arg:
     description: str = Field("")
 
 
-class Prompt(PromptComponent):
+class Component(Storable):
+
+    @abstractmethod
+    def as_text(self) -> str:
+        pass
+
+    @abstractmethod
+    def as_dict(self) -> typing.Dict:
+        pass
+
+    @staticmethod
+    def structure(text: str, heading: str=None):
+
+        if heading is None:
+            return f'{text}'
+        
+        return f"""
+        {heading}
+        {text}
+        """
+
+    def get(self, name: str) -> typing.Any:
+        """
+
+        Args:
+            name (str): The name of the value to get
+
+        Returns:
+            typing.Any: The value retrieved
+        """
+        return self.__dict__[name]
+    
+    def set(self, name: str, value):
+        if name not in self.__dict__:
+            raise KeyError(f'Key by name of {name} does not exist.')
+        self.__dict__[name] = value
+
+    def __getitem__(self, name: str) -> typing.Any:
+
+        return self.__dict__[name]
+
+
+class Prompt(Component):
+    """Define a prompt to send to the LLM
+    """
 
     def __init__(self, args: typing.List[typing.Union[Arg, str]], text: str):
-        
+        """Create a prompt with variable arguments
+
+        Args:
+            args (typing.List[typing.Union[Arg, str]]): The args for the prompt. If none use []
+            text (str): The prompt text
+        """
         super().__init__()
         self._args = {}
         for arg in args:
@@ -25,8 +75,16 @@ class Prompt(PromptComponent):
                 self._args[arg.name] = arg
         self._text = text
 
-    def format(self, **kwargs):
+    def format(self, **kwargs) -> 'Prompt':
+        """Format the prompt to remove its variables
 
+        Raises:
+            ValueError: If there are arguments passed in that are not 
+            arguments to the prompt
+
+        Returns:
+            Prompt: The formatted prompt
+        """
         input_names = set(kwargs.keys())
         difference = input_names - set(self._args)
         if len(difference) != 0:
@@ -36,12 +94,13 @@ class Prompt(PromptComponent):
         inputs = {}
         for k, v in self._args.items():
             if k in kwargs:
-                if isinstance(v, PromptComponent):
+                if isinstance(v, Component):
                     v = v.as_text()
                 inputs[k] = v
             else:
                 inputs[k] = "{{}}"
         return Prompt(
+            list(set(self._args) - input_names), 
             self._text.format(**inputs)
         )
     
@@ -55,12 +114,23 @@ class Prompt(PromptComponent):
             "args": self._args,
             "text": self._text
         }
+    
+    def spawn(self) -> 'Prompt':
+        return Prompt(
+            [*self._args], self._text
+        )
 
 
-class Completion(PromptComponent):
+class Completion(Component):
+    """
+    """
     
     def __init__(self, prompt: Prompt, response: str):
-
+        """
+        Args:
+            prompt (Prompt): The prompt for the completion
+            response (str): The response for the completion
+        """
         self.prompt = prompt
         self.response = response
 
@@ -92,8 +162,13 @@ class Completion(PromptComponent):
             "response": self.response
         }
 
+    def spawn(self) -> 'Completion':
+        return Completion(
+            self.prompt.spawn(), self.response
+        )
 
-class Text(PromptComponent):
+
+class Text(Component):
     """A simple wrapper to use text as a prompt component
     """
 
@@ -114,6 +189,11 @@ class Text(PromptComponent):
         return self.structure(
             self.text, heading
         )
+    
+    def spawn(self) -> 'Text':
+        return Text(
+            self.text
+        )
 
 # TODO: Add Example, Add Document
 
@@ -131,7 +211,7 @@ class Turn(object):
     text: str
 
 
-class Conv(DataStruct):
+class Conv(Component):
 
     def __init__(self, roles: typing.Dict[str, Role]=None, max_turns: int=None):
 
@@ -156,23 +236,6 @@ class Conv(DataStruct):
         self._roles[role] = role
         return self
     
-    def filter(self, role: str):
-
-        return [role for turn in self._turns if turn.role == role]
-    
-    def to_dict(self) -> typing.Dict[str, str]:
-
-        return {
-            turn.role.name: turn.text
-            for turn in self._turns
-        }
-    
-    def clear(self):
-        self._turns.clear()
-
-    def __len__(self) -> int:
-        return len(self._turns)
-    
     def remap_role(self, **role_map) -> 'Conv':
         """Remap the names of the roles to a new set of roles
 
@@ -184,11 +247,65 @@ class Conv(DataStruct):
             (role_map.get(role, role), text)
             for role, text in self._turns
         ]
-        conversation = Conv(
+        conversation = self.__class__(
             roles=roles, max_turns=self._max_turns
         )
-        conversation._turns = turns
+        for turn in turns:
+            conversation.add_turn(turn[0], turn[1])
         return conversation
+
+    def __getitem__(self, idx) -> Turn:
+
+        return self._turns[idx]
+    
+    def __setitem__(self, idx, turn: Turn) -> Turn:
+
+        self._turns[idx] = turn
+        return turn
+
+    def filter(self, role: str):
+
+        return [turn for turn in self._turns if turn.role == role]
+    
+    def to_dict(self) -> typing.Dict[str, str]:
+
+        return {
+            turn.role.name: turn.text
+            for turn in self._turns
+        }
+    
+    @property
+    def max_turns(self) -> int:
+        """
+        Returns:
+            int: The max turns for the conversation
+        """
+        return self._max_turns
+    
+    @max_turns.setter
+    def max_turns(self, max_turns) -> int:
+        """_summary_
+
+        Returns:
+            int: _description_
+        """
+        if max_turns <= 0:
+            raise ValueError('')
+        self._max_turns = max_turns
+        return self._max_turns
+    
+    def clear(self):
+        """Clear the turns
+        """
+        self._turns.clear()
+
+    def __len__(self) -> int:
+        return len(self._turns)
+    
+    def __iter__(self) -> typing.Tuple[Role, str]:
+
+        for turn in self._turns:
+            yield turn.role, turn.text
 
     def as_dict(self) -> Dict:
         return {
@@ -203,3 +320,9 @@ class Conv(DataStruct):
         for turn in self._turns:
             result += f'{turn[0]}: {turn[1]}\n'
         return result
+
+    def spawn(self) -> 'Conv':
+
+        return Conv(
+            {**self._roles}, self._max_turns
+        )

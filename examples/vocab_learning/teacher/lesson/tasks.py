@@ -1,5 +1,5 @@
 from dachi.behavior import Condition, Action, Task, Terminal, SangoStatus
-from dachi.gengo import Prompt
+from dachi.struct import Prompt
 
 
 class UpdateLesson(Action):

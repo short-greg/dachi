@@ -1,0 +1,1 @@
+from ._serialize import Storable

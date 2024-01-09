@@ -1,56 +1,22 @@
-from dachi.behavior import _tasks as behavior
+from dachi.behavior._tasks import Decorator, Task
 from . import _tasks as behavior
 import typing
-from abc import abstractmethod
 
 
-class BehaviorBuilder(object):
+class sango(object):
 
-    @abstractmethod
-    def build(self) -> typing.Type[behavior.Task]:
-        pass
-
-
-class sango(BehaviorBuilder):
-
-    def __init__(self, name: str=None) -> None:
-        """Create a Sango builder
+    def __init__(self) -> None:
+        """Create a Sango
 
         Args:
             name (str): The name of the "Sango"
         """
         super().__init__()
-        self.name = name
-        self._task = None
-    
-    def set(self, task: typing.Union[behavior.Task, BehaviorBuilder]):
-        """Set the root builder for the Sango
-
-        Args:
-            task (typing.Union[behavior.Task, BehaviorBuilder]): The root task builder 
-        """
-        assert not isinstance(task, sango)
-        self._task = task
-
-    def build(self) -> behavior.Sango:
-        """Build the Sango
-
-        Returns:
-            behavior.Sango: The built "Sango"
-        """
-        if isinstance(self._task, behavior.Task):
-            task = self._task.clone()
-        elif isinstance(self._task, BehaviorBuilder):
-            task = self._task.build()
-        else: task = None
-
-        return behavior.Sango(
-            self.name, task
-        )
+        self._sango = behavior.Sango()
 
     def __enter__(self):
         
-        return self
+        return self._sango
     
     def __exit__(self, exc_type, exc_value, traceback):
 
@@ -58,214 +24,147 @@ class sango(BehaviorBuilder):
             raise
 
 
-class CompositeBuilder(BehaviorBuilder):
+class composite(object):
 
-    def __init__(self, parent: 'CompositeBuilder'=None, name: str=None):
-        """Create a composite task
-
-        Args:
-            parent (CompositeBuilder, optional): The parent for the task. Defaults to None.
-            name (str, optional): The name of the task. Defaults to ''.
-        """
-        self._tasks = []
-        self.parent = parent
-        self.name = name
-
-    def add(self, task: typing.Union[typing.Iterable[behavior.Task], behavior.Task]):
-        """Add a task to teh tasks to build
+    def __init__(self, child: behavior.Task, parent: behavior.Task=None) -> None:
+        """Create a Sango
 
         Args:
-            task (behavior.Task): The task to add
+            name (str): The name of the "Sango"
         """
-        if isinstance(task, behavior.Task):
-            self._tasks.append(task)
-        else:
-            self._tasks.extend(task)
+        super().__init__()
+        self._child = child
+        self._parent = parent
+        
+        if parent is None:
+            pass
+        elif isinstance(parent, behavior.Sango):
+            parent.root = child
+        elif isinstance(parent, behavior.Serial):
+            parent.add(child)
+        elif isinstance(parent, behavior.Parallel):
+            parent.add(child)
 
     @property
-    def tasks(self) -> typing.List[behavior.Task]:
-        """ 
-        Returns:
-            typing.List[behavior.Task]: the list of tasks making up the composite builder
-        """
-        return [*self._tasks]
-    
-    @abstractmethod
-    def build_composite(self, tasks: typing.List[behavior.Task]) -> behavior.Serial:
-        pass
+    def task(self) -> behavior.Task:
+        return self._child
 
-    def build_tasks(self) -> typing.List[behavior.Task]:
-
-        return [
-            task.build() if isinstance(task, BehaviorBuilder)
-            else task.clone()
-            for task in self._tasks
-        ]
-
-    def build(self) -> behavior.Serial:
-        """Build the composite task
-
-        Returns:
-            behavior.Composite: The built Composite task
-        """
-        return self.build_composite(self.build_tasks())
+    @property
+    def parent(self) -> behavior.Task:
+        return self._parent
 
     def __enter__(self):
         
-        return self
+        return self._child
     
     def __exit__(self, exc_type, exc_value, traceback):
 
         if exc_type is not None:
-            raise 
-
-        print(self.name, self.parent)
-        if self.parent is None:
-            return 
-
-        if isinstance(self.parent,CompositeBuilder) or isinstance(self.parent, DecoratorBuilder):
-            self.parent.add(self)
-        elif isinstance(self.parent, sango):
-            self.parent.set(self)
+            raise
 
 
-class DecoratorBuilder(BehaviorBuilder):
+class decorate(object):
 
-    def __init__(self, wrapped: typing.Union['DecoratorBuilder', CompositeBuilder]):
+    def __init__(
+        self, decorate: typing.Type[behavior.Decorator], 
+        decorated: typing.Union['decorate', composite], parent: behavior.Task=None
+    ) -> None:
+        """Create a decorated task
+
         """
+        super().__init__()
+        assert decorated.parent is None
+        self._decorated = decorate(decorated.task)
 
-        Args:
-            wrapped (typing.Union[&#39;DecoratorBuilder&#39;, CompositeBuilder]): _description_
-        """
-        self._wrapped = wrapped
+        self._parent = parent
+        
+        if parent is None:
+            pass
+        elif isinstance(parent, behavior.Sango):
+            parent.root = self._decorated
+        elif isinstance(parent, behavior.Serial):
+            parent.add(self._decorated)
+        elif isinstance(parent, behavior.Parallel):
+            parent.add(self._decorated)
+
+    @property
+    def task(self) -> behavior.Task:
+        return self._decorated
+
+    @property
+    def parent(self) -> behavior.Task:
+        return self._parent
 
     def __enter__(self):
         
-        return self
+        return self._decorated
     
-    def add(self, task: behavior.Task):
-
-        self._wrapped.add(task)
-    
-    @property
-    def parent(self) -> typing.Union['DecoratorBuilder', 'sango', 'CompositeBuilder']:
-        return self._wrapped.parent
-
-    @parent.setter
-    def parent(self, parent) -> 'BehaviorBuilder':
-
-        self._wrapped.parent = parent
-
-    @abstractmethod
-    def build_decorator(self, wrapped: behavior.Task) -> behavior.Decorator:
-        pass
-
-    def build(self) -> behavior.Decorator:
-        """Build the decorator task
-
-        Returns:
-            behavior.Decorator: The built Decorator task
-        """
-        wrapped = self._wrapped.build()
-        return self.build_decorator(wrapped)
-
     def __exit__(self, exc_type, exc_value, traceback):
 
         if exc_type is not None:
-            raise 
-
-        if self.parent is None:
-            return 
-
-        if isinstance(self.parent,CompositeBuilder) or isinstance(self.parent, DecoratorBuilder):
-            self.parent.add(self)
-        elif isinstance(self.parent, sango):
-            self.parent.set(self)
+            raise
 
 
-class sequence(CompositeBuilder):
+class sequence(composite):
 
-    def build_composite(self, tasks: typing.List[behavior.Task]) -> behavior.Sequence:  
-        """Build the sequential task
+    def __init__(self, parent: behavior.Task=None) -> None:
+        """Create a Sango
 
-        Returns:
-            behavior.Sequence: The built Sequence task
-        """ 
-        return behavior.Sequence(
-            tasks, self.name
-        )
+        Args:
+            name (str): The name of the "Sango"
+        """
+        super().__init__(behavior.Sequence([]), parent)
 
 
-class select(CompositeBuilder):
+class select(composite):
 
-    def build_composite(self, tasks: typing.List[behavior.Task]) -> behavior.Selector: 
-        """Build the Selector task
+    def __init__(self, parent: behavior.Task=None) -> None:
+        """Create a Sango
 
-        Returns:
-            behavior.Selector: The built Selector task
-        """   
-        return behavior.Selector(
-            tasks, self.name
-        )
+        Args:
+            name (str): The name of the "Sango"
+        """
+        super().__init__(behavior.Selector([]), parent)
 
 
 fallback = select
 
 
-class parallel(CompositeBuilder):
+class parallel(composite):
 
     def __init__(
-        self, parent: typing.Union[behavior.Sango, CompositeBuilder]=None, 
-        fails_on: int=1, succeeds_on: int=None, success_priority: bool=False,
-        name: str=None
+        self, parent: behavior.Task=None, 
+        fails_on: int=1, succeeds_on: int=None, success_priority: bool=False
     ):
         """Execute two tasks in parallel
 
         Args:
-            name (str): The name of the parallel node
             parent (typing.Union[behavior.Sango, CompositeBuilder], optional): The parent biulder. Defaults to None.
             fails_on (int, optional): The number of tasks that must fail for this to fail. Defaults to 1.
             succeeds_on (int, optional): The number of tasks to succeed for the parallel task to succeed. Defaults to None.
             success_priority (bool, optional): Whether it will return as soon as it succeeds. Defaults to False.
         """
+        parallel = behavior.Parallel(
+            [], fails_on=fails_on, succeeds_on=succeeds_on, 
+            success_priority=success_priority)
         super().__init__(
-            name, parent
-        )
-        self.fails_on = fails_on
-        self.succeeds_on = succeeds_on
-        self.success_priority = success_priority
-
-    def build_composite(self, tasks: typing.List[behavior.Task]) -> behavior.Parallel: 
-        """Build the parallel task
-
-        Returns:
-            behavior.Parallel: The built Parallel task
-        """  
-        return behavior.Parallel(
-            tasks, self.name, fails_on=self.fails_on,
-            succeeds_on=self.succeeds_on, success_priority=self.success_priority
+            parallel, parent
         )
 
 
-class not_(DecoratorBuilder):
-    """Negate the task that is decorated. So if the decorated task
-    outputs Success, it will be a Failure and vice verss
-    """
+class not_(decorate):
 
-    def build_decorator(self, wrapped: behavior.Task) -> behavior.Decorator:
-        return behavior.Not(wrapped)
+    def __init__(self, decorated: composite, parent: Task = None) -> None:
+        super().__init__(behavior.Not, decorated, parent)
 
 
-class until_(DecoratorBuilder):
-    """Loop on the task that is decorated until it succeeds. 
-    """
+class while_(decorate):
 
-    def build_decorator(self, wrapped: behavior.Task) -> behavior.Decorator:
-        return behavior.Until(wrapped)
+    def __init__(self, decorated: composite, parent: Task = None) -> None:
+        super().__init__(behavior.While, decorated, parent)
 
 
-class while_(DecoratorBuilder):
-    """Loop on the task that is while it succeeds. 
-    """
-    def build_decorator(self, wrapped: behavior.Task) -> behavior.Decorator:
-        return behavior.While(wrapped)
+class until_(decorate):
+
+    def __init__(self, decorated: composite, parent: Task = None) -> None:
+        super().__init__(behavior.Until, decorated, parent)

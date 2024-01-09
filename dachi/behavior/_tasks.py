@@ -1,6 +1,6 @@
 from abc import abstractmethod
 import typing
-from ..comm import Receiver, Terminal, Signal
+from ..base import Storable
 from ._status import SangoStatus
 from dataclasses import dataclass
 
@@ -12,77 +12,28 @@ class TaskMessage:
     data: typing.Any
 
 
-class Task(Receiver):
+class Task(Storable):
+    """The base class for a task in the behavior tree
+    """
 
     SUCCESS = SangoStatus.SUCCESS
     FAILURE = SangoStatus.FAILURE
     RUNNING = SangoStatus.RUNNING
 
-    def _tick_wrapper(self, f) -> typing.Callable[[Terminal], SangoStatus]:
-        """Wraps the tick function so that the terminal will be initialized
-        if not initialized
-
-        Args:
-            f (): The tick function
-
-        Returns:
-            typing.Callable[[Terminal], SangoStatus]: The wrapped tick function
-        """
-        def _tick(terminal: Terminal, *args, **kwargs) -> SangoStatus:
-            if not terminal.initialized:
-                self.__init_terminal__(terminal)
-                terminal.initialize()
-
-            if terminal.storage['status'].is_done():
-                return terminal.storage['status']
-            return f(terminal, *args, **kwargs)
-        return _tick
-
-    def __init__(self, name: str=None) -> None:
+    def __init__(self) -> None:
         """Create the task
 
         Args:
             name (str): The name of the task
         """
-        super().__init__(name)
-        self.tick = self._tick_wrapper(self.tick)
-
-    def __init_terminal__(self, terminal: Terminal):
-        """Initialize the terminal
-
-        Args:
-            terminal (Terminal): The terminal
-        """
-        terminal.storage['status'] = SangoStatus.READY
+        super().__init__()
+        self._status = SangoStatus.READY
 
     @abstractmethod    
-    def tick(self, terminal: Terminal) -> SangoStatus:
+    def tick(self) -> SangoStatus:
         raise NotImplementedError
 
-    @abstractmethod
-    def clone(self) -> 'Task':
-        raise NotImplementedError
-
-    def state_dict(self) -> typing.Dict:
-        """
-        Returns:
-            typing.Dict: The state dict for the task
-        """
-        return {
-            'id': self._id,
-            'name': self._name
-        }
-    
-    def load_state_dict(self, state_dict: typing.Dict):
-        """Load the state of the task 
-
-        Args:
-            state_dict (typing.Dict): The state
-        """
-        self._id = state_dict['id']
-        self._name = state_dict['name']
-
-    def __call__(self, terminal: Terminal) -> SangoStatus:
+    def __call__(self) -> SangoStatus:
         """
 
         Args:
@@ -91,50 +42,38 @@ class Task(Receiver):
         Returns:
             SangoStatus: _description_
         """
-        return self.tick(terminal)
+        return self.tick()
 
-    def reset(self, terminal):
+    def reset(self):
         """Reset the terminal
 
-        Args:
-            terminal (_type_): The reset terminal and initialized
         """
-        terminal.reset()
-        self.__init_terminal__(terminal)
-
-    def reset_status(self, terminal: Terminal):
-        """Reset the status of the task
-
-        Args:
-            terminal (Terminal): The terminal
-        """
-        terminal.storage['status'] = SangoStatus.READY
-
-    def receive(self, message: Signal):
-        pass
+        self._status = SangoStatus.READY
+    
+    @property
+    def status(self) -> SangoStatus:
+        return self._status
 
     @property
     def id(self):
         return self._id
 
 
+
 class Sango(Task):
 
-    def __init__(self, root: 'Task'=None, name: str=None):
+    def __init__(self, root: 'Task'=None):
         """Create a tree to store the tasks
 
         Args:
             root (Task, optional): The root task. Defaults to None.
             name (str): The name of the tree
         """
-        super().__init__(name)
+        super().__init__()
         self._root = root
 
-    def tick(self, terminal: Terminal) -> SangoStatus:
+    def tick(self) -> SangoStatus:
         """Update the task
-
-        Args:
-            terminal (Terminal): The terminal storing the task
 
         Returns:
             SangoStatus: The status after tick
@@ -142,7 +81,7 @@ class Sango(Task):
         if self._root is None:
             return SangoStatus.SUCCESS
 
-        return self._root.tick(terminal.child(self._root))
+        return self._root.tick()
 
     @property
     def root(self) -> Task:
@@ -160,66 +99,35 @@ class Sango(Task):
         """
         self._root = root
 
-
-    def state_dict(self) -> typing.Dict:
-        """
-        Returns:
-            typing.Dict: The state dict for the task
-        """
-        return {
-            'root': self._root.state_dict() if self._root is not None else None,
-            **super().state_dict()
-        }
-    
-    def load_state_dict(self, state_dict: typing.Dict):
-        """Load the state of the task 
-
-        Args:
-            state_dict (typing.Dict): The state
-        """
-        super().load_state_dict(state_dict)
-        if self._root is not None:
-            self._root.load_state_dict(state_dict['root'])
-        else:
-            if state_dict['root'] is not None:
-                raise ValueError('Cannot load state dict because root is none')
-
-    def reset_status(self, terminal: Terminal):
+    def reset(self):
         """Reset the status of the task
 
-        Args:
-            terminal (Terminal): The terminal
         """
-        super().reset_status(terminal)
+        super().reset()
         if self._root is not None:
-            self._root.reset_status(terminal.child(self._root))
+            self._root.reset()
 
-    def clone(self) -> 'Sango':
-        """Clone the task
+    def spawn(self) -> 'Sango':
+        """Spawn the task
 
         Returns:
-            Sango: The 
+            Sango: The spawned task
         """
-        return Sango(self._name, self.root)
+        return Sango(self.root.spawn())
 
 
 class Serial(Task):
     """Task composed of subtasks
     """
     def __init__(
-        self, tasks: typing.List[Task], name: str=None
+        self, tasks: typing.List[Task]
     ):
-        super().__init__(name)
+        super().__init__()
         self._tasks = tasks
+        self._idx = 0
 
-    def __init_terminal__(self, terminal: Terminal):
-        """Initialize the terminal
-
-        Args:
-            terminal (Terminal): 
-        """
-        super().__init_terminal__(terminal)
-        terminal.storage.get_or_set('idx', 0)
+    def add(self, task: Task) -> 'Serial':
+        self._tasks.append(task)
 
     @property
     def n(self):
@@ -232,111 +140,84 @@ class Serial(Task):
         return [*self._tasks]
 
     @abstractmethod
-    def subtick(self, terminal: Terminal) -> SangoStatus:
+    def subtick(self) -> SangoStatus:
         """Tick each subtask. Implement when implementing a new Composite task"""
         raise NotImplementedError
 
-    def tick(self, terminal: Terminal) -> SangoStatus:
-        status = self.subtick(terminal)
-        terminal.storage['status'] = status
-        return status
+    def tick(self) -> SangoStatus:
+        self._status = self.subtick()
+        
+        return self._status
     
     def reset(self):
         super().reset()
         for task in self._tasks:
             task.reset()
 
-    def state_dict(self) -> typing.Dict:
-
-        return {
-            'tasks': [
-                task.state_dict()
-                for task in self._tasks
-            ],
-            **super().state_dict()
-        }
-    
-    def load_state_dict(self, state_dict: typing.Dict):
-
-        super().load_state_dict(state_dict)
-        for task, task_state_dict in zip(self._tasks, state_dict['tasks']):
-            task.load_state_dict(task_state_dict)
-
-    def reset_status(self, terminal: Terminal):
-
-        super().reset_status(terminal)
-        for task in self.tasks:
-            task.reset_status(terminal.child(task))
-
 
 class Sequence(Serial):
 
-    def add(self, task: Task) -> 'Sequence':
-        self._tasks.append(task)
+    # def add(self, task: Task) -> 'Sequence':
+    #     self._tasks.append(task)
 
-    def subtick(self, terminal: Terminal) -> SangoStatus:
+    def subtick(self) -> SangoStatus:
         
-        idx = terminal.storage['idx']
-        if terminal.storage['status'].is_done:
-            return terminal.storage['status']
+        if self._status.is_done:
+            return self._status
     
-        task = self._tasks[idx]
-        status = task.tick(terminal.child(task))
+        task = self._tasks[self._idx]
+        status = task.tick()
 
         if status == SangoStatus.FAILURE:
             return SangoStatus.FAILURE
         
         if status == SangoStatus.SUCCESS:
-            terminal.storage['idx'] += 1
+            self._idx += 1
             status = SangoStatus.RUNNING
-        if terminal.storage['idx'] >= len(self._tasks):
+        if self._idx >= len(self._tasks):
             status = SangoStatus.SUCCESS
 
         return status
 
-    def clone(self) -> 'Sequence':
+    def spawn(self) -> 'Sequence':
         return Sequence(
-            [task.clone() for task in self._tasks], self._name
+            [task.spawn() for task in self._tasks]
         )
 
-    def reset_status(self, terminal: Terminal):
-        super().reset_status(terminal)
-        terminal.storage['idx'] = 0
+    def reset(self):
+        super().reset()
+        self._idx = 0
 
 
 class Sequence(Serial):
 
-    def add(self, task: Task) -> 'Sequence':
-        self._tasks.append(task)
-
-    def subtick(self, terminal: Terminal) -> SangoStatus:
+    def subtick(self) -> SangoStatus:
         
-        idx = terminal.storage['idx']
-        if terminal.storage['status'].is_done:
-            return terminal.storage['status']
+        if self._status.is_done:
+            return self._status
     
-        task = self._tasks[idx]
-        status = task.tick(terminal.child(task))
+        task = self._tasks[self._idx]
+        status = task.tick()
 
         if status == SangoStatus.FAILURE:
             return SangoStatus.FAILURE
         
         if status == SangoStatus.SUCCESS:
-            terminal.storage['idx'] += 1
+            self._idx += 1
             status = SangoStatus.RUNNING
-        if terminal.storage['idx'] >= len(self._tasks):
+        if self._idx >= len(self._tasks):
             status = SangoStatus.SUCCESS
 
         return status
 
-    def clone(self) -> 'Sequence':
+    def spawn(self) -> 'Sequence':
         return Sequence(
-            [task.clone() for task in self._tasks], self._name
+            [task.spawn() for task in self._tasks]
         )
 
-    def reset_status(self, terminal: Terminal):
-        super().reset_status(terminal)
-        terminal.storage['idx'] = 0
+    def reset(self):
+        super().reset()
+        self._idx = 0
 
 
 class Selector(Serial):
@@ -353,52 +234,50 @@ class Selector(Serial):
         self._tasks.append(task)
         return self
     
-    def subtick(self, terminal: Terminal) -> SangoStatus:
+    def subtick(self) -> SangoStatus:
         
-        idx = terminal.storage['idx']
-        if terminal.storage['status'].is_done:
-            return terminal.storage['status']
+        if self._status.is_done:
+            return self._status
     
-        task = self._tasks[idx]
-        status = task.tick(terminal.child(task))
+        task = self._tasks[self._idx]
+        status = task.tick()
 
         if status == SangoStatus.SUCCESS:
             return SangoStatus.SUCCESS
         
         if status == SangoStatus.FAILURE:
-            terminal.storage['idx'] += 1
+            self._idx += 1
             status = SangoStatus.RUNNING
-        if terminal.storage['idx'] >= len(self._tasks):
+        if self._idx >= len(self._tasks):
             status = SangoStatus.FAILURE
 
         return status
 
-    def clone(self) -> 'Selector':
+    def spawn(self) -> 'Selector':
         return Selector(
-            [task.clone() for task in self._tasks], self._name
+            [task.clone() for task in self._tasks]
         )
 
-    def reset_status(self, terminal: Terminal):
-        super().reset_status(terminal)
-        terminal.storage['idx'] = 0
+    def reset(self):
+        super().reset()
+        self._idx = 0
         
 
 class Parallel(Task):
     """A composite task for running multiple tasks in parallel
     """
 
-    def __init__(self, name: str, tasks: typing.List[Task], runner=None, fails_on: int=None, succeeds_on: int=None, success_priority: bool=True):
+    def __init__(self, tasks: typing.List[Task], runner=None, fails_on: int=None, succeeds_on: int=None, success_priority: bool=True):
         """
 
         Args:
-            name (str): 
             tasks (typing.List[Task]): 
             runner (_type_, optional): . Defaults to None.
             fails_on (int, optional): . Defaults to None.
             succeeds_on (int, optional): . Defaults to None.
             success_priority (bool, optional): . Defaults to True.
         """
-        super().__init__(name)
+        super().__init__()
         self._tasks = tasks
         self._use_default_runner = runner is None
         self._runner = runner or self._default_runner
@@ -426,24 +305,25 @@ class Parallel(Task):
         self._fails_on = fails_on if fails_on is not None else len(self._tasks)
         self._succeeds_on = succeeds_on if succeeds_on is not None else (len(self._tasks) + 1 - self._fails_on)
 
+    def validate(self):
+        
         if (self._fails_on + self._succeeds_on - 1) > len(self._tasks):
             raise ValueError('')
         if self._fails_on <= 0 or self._succeeds_on <= 0:
             raise ValueError('')
     
-    def _default_runner(self, tasks: typing.List[Task], terminal: Terminal) -> typing.List[SangoStatus]:
+    def _default_runner(self, tasks: typing.List[Task]) -> typing.List[SangoStatus]:
         """Run the paralel
 
         Args:
             tasks (typing.List[Task]): The tasks to run
-            terminal (Terminal): The terminal for the task
 
         Returns:
-            typing.List[SangoStatus]: _description_
+            typing.List[SangoStatus]:
         """
         statuses = []
         for task in tasks:
-            statuses.append(task.tick(terminal.child(task)))
+            statuses.append(task.tick())
 
         return statuses
 
@@ -477,47 +357,61 @@ class Parallel(Task):
         # failures + successes - 1
         return SangoStatus.RUNNING
 
-    def subtick(self, terminal: Terminal) -> SangoStatus:
+    def subtick(self) -> SangoStatus:
 
-        statuses = self._runner(self._tasks, terminal)
+        statuses = self._runner(self._tasks)
         return self._accumulate(statuses)
 
     @property
     def fails_on(self) -> int:
         return self._fails_on
 
+    @fails_on.setter
+    def fails_on(self, fails_on) -> int:
+        self._fails_on = fails_on
+        return self._fails_on
+
     @property
     def succeeds_on(self) -> int:
         return self._succeeds_on        
     
-    def clone(self) -> 'Parallel':
+    @succeeds_on.setter
+    def succeeds_on(self, succeeds_on) -> int:
+        self._succeeds_on = succeeds_on
+        return self._succeeds_on
+    
+    def spawn(self) -> 'Parallel':
         return Parallel(
-            self.name, [task.clone() for task in self._tasks],
+            [task.spawn() for task in self._tasks],
             self._runner if not self._use_default_runner else None,
             fails_on=self._fails_on, succeeds_on=self._succeeds_on,
             success_priority=self._success_priority
         )
+    
+    def tick(self) -> SangoStatus:
+        
+        self._status = self.subtick()
+        return self._status
 
-    def reset_status(self, terminal: Terminal):
+    def reset(self):
 
-        super().reset_status(terminal)
+        super().reset()
         for task in self.tasks:
-            task.reset_status(terminal.child(task))
+            task.reset_status()
 
 
 class Action(Task):
 
     @abstractmethod
-    def act(self, terminal: Terminal) -> SangoStatus:
+    def act(self) -> SangoStatus:
         raise NotImplementedError
 
-    def tick(self, terminal: Terminal) -> SangoStatus:
+    def tick(self) -> SangoStatus:
 
-        if terminal.storage['status'].is_done:
-            return terminal.storage['status']
-        status = self.act(terminal)
-        terminal.storage[status] = status
-        return status
+        if self._status.is_done:
+            return self._status
+        self._status = self.act()
+        return self._status
 
 
 class Condition(Task):
@@ -526,21 +420,17 @@ class Condition(Task):
     """
 
     @abstractmethod
-    def condition(self, terminal: Terminal) -> bool:
+    def condition(self) -> bool:
         pass
 
-    def tick(self, terminal: Terminal) -> SangoStatus:
+    def tick(self) -> SangoStatus:
         """Check the condition
-
-        Args:
-            terminal (Terminal): The terminal 
 
         Returns:
             SangoStatus: Whether the condition failed or succeeded
         """
-        if self.condition(terminal):
-            return SangoStatus.SUCCESS
-        return SangoStatus.FAILURE
+        self._status = SangoStatus.SUCCESS if self.condition() else SangoStatus.FAILURE
+        return self._status
 
 
 class Decorator(Task):
@@ -558,7 +448,7 @@ class Decorator(Task):
     def task(self) -> Task:
         return self._task
 
-    def tick(self, terminal: Terminal) -> SangoStatus:
+    def tick(self) -> SangoStatus:
         """Decorate the tick for the decorated task
 
         Args:
@@ -567,30 +457,29 @@ class Decorator(Task):
         Returns:
             SangoStatus: The decorated status
         """
-        status: SangoStatus = terminal.storage.get('status')
-        if status.is_done:
-            return status
 
-        status = terminal.storage['status'] = self.decorate(
-            self.task.tick(terminal.child(self.task))
+        if self._status.is_done:
+            return self._status
+
+        self._status = self.decorate(
+            self.task.tick()
         )
-        return status
+        return self._status
 
-    def reset_status(self, terminal: Terminal):
+    def reset(self):
 
-        super().reset_status(terminal)
-        self._task.reset_status(terminal.child(self._task))
+        super().reset()
+        self._task.reset_status()
 
 
 class Until(Decorator):
     """Loop until a condition is met
     """
 
-    def decorate(self, terminal: Terminal, status: SangoStatus) -> SangoStatus:
+    def decorate(self, status: SangoStatus) -> SangoStatus:
         """Continue running unless the result is a success
 
         Args:
-            terminal (Terminal): The terminal for the task
             status (SangoStatus): The status of the decorated task
 
         Returns:
@@ -599,19 +488,23 @@ class Until(Decorator):
         if status.success:
             return SangoStatus.SUCCESS
         if status.failure:
+            self._task.reset()
             return SangoStatus.RUNNING
         return status
+
+    def spawn(self) -> 'Until':
+
+        return Until(self._task.spawn())
 
 
 class While(Decorator):
     """Loop while a condition is met
     """
 
-    def decorate(self, terminal: Terminal, status: SangoStatus) -> SangoStatus:
+    def decorate(self, status: SangoStatus) -> SangoStatus:
         """Continue running unless the result is a failure
 
         Args:
-            terminal (Terminal): The terminal for the task
             status (SangoStatus): The status of the decorated task
 
         Returns:
@@ -620,19 +513,23 @@ class While(Decorator):
         if status.failure:
             return SangoStatus.FAILURE
         if status.success:
+            self._task.reset()
             return SangoStatus.RUNNING
         return status
+
+    def spawn(self) -> 'While':
+
+        return While(self._task.spawn())
 
 
 class Not(Decorator):
     """Invert the result
     """
 
-    def decorate(self, terminal: Terminal, status: SangoStatus) -> SangoStatus:
+    def decorate(self, status: SangoStatus) -> SangoStatus:
         """Return Success if status is a Failure or Failure if it is a SUCCESS
 
         Args:
-            terminal (Terminal): The terminal for the task
             status (SangoStatus): The status of the decorated task
 
         Returns:
@@ -644,53 +541,21 @@ class Not(Decorator):
             return SangoStatus.FAILURE
         return status
 
+    def spawn(self) -> 'While':
 
-class CheckReady(Condition):
-
-    def __init__(self, field_name: str, name: str=None):
-        """Check if a field has been prepared
-
-        Args:
-            field_name (str): The name of the field to check
-            name (str): The name of the task
-        """
-        super().__init__(name)
-        self.field_name = field_name
-
-    def condition(self, terminal: Terminal) -> bool:
-        
-        return terminal.storage[self.field_name] is not None
+        return Not(self._task.spawn())
 
 
 class Check(Condition):
 
-    def __init__(self, f, name: str=None):
-        """Check if a field has been prepared
-
-        Args:
-            f (typing.Callable): The function to call
-            name (str): The name of the task
-        """
-        super().__init__(name)
+    def __init__(self, data, f: typing.Callable[[typing.Any], bool]):
+        super().__init__()
+        self.data = data
         self.f = f
 
-    def condition(self, terminal: Terminal) -> bool:
-        
-        return self.f(terminal)
+    def condition(self) -> bool:
+        return self.f(self.data)
 
+    def spawn(self) -> 'Check':
 
-class CheckTrue(Condition):
-
-    def __init__(self, field_name: str, name: str):
-        """Check if a field is true
-
-        Args:
-            field_name (str): The name of the field to check
-            name (str): The name of the task
-        """
-        super().__init__(name)
-        self.field_name = field_name
-
-    def condition(self, terminal: Terminal) -> bool:
-        
-        return terminal.storage[self.field_name]
+        return Check(self.data, self.f)

@@ -1,7 +1,7 @@
 from abc import ABC
 
 from dachi.agents import Agent, AgentStatus
-from dachi.comm import Server, gen_refs
+from dachi.comm import Server, refer
 from .queries import UIQuery, LLMQuery
 from dachi import behavior
 from .tasks import lesson, planner, base
@@ -49,11 +49,11 @@ class LanguageTeacher(Agent):
         # refs = RefGroup([])
 
         convo, request, ai_message, = (
-            gen_refs(
+            refer(
                 ['convo', 'request', 'ai_message'])
         )
 
-        plan, plan_message, plan_conv, plan_request = gen_refs(
+        plan, plan_message, plan_conv, plan_request = refer(
             ['plan', 'plan_message', 'plan_conv', 'plan_request']
         )
         quiz_prompt = lesson.QUIZ_PROMPT

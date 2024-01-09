@@ -148,12 +148,28 @@ class Data(IData):
         return self._value
     
     def validate(self, value):
+        """Check that the data is valid
+
+        Args:
+            value: The data stored by Data
+
+        Raises:
+            ValueError: If the validation fails
+        """
         if self._check_f is not None:
             valid, msg = self._check_f(value)
             if not valid:
                 raise ValueError(msg)
 
     def update(self, value) -> typing.Any:
+        """Update the value of the data
+
+        Args:
+            value: The value of the data
+
+        Returns:
+            typing.Any: The updated value
+        """
         self.validate(value)
         prev_value = self._value
         self._value = value
@@ -162,6 +178,8 @@ class Data(IData):
 
 
 class Synched(IData):
+    """Data that refers to another data source
+    """
 
     def __init__(self, name: str, base_data: Data):
 
@@ -182,17 +200,38 @@ class Synched(IData):
 
     @property
     def name(self) -> str:
+        """The name of the data
+
+        Returns:
+            str: The name of the synched data
+        """
         return self._name
     
     @property
     def synched_name(self) -> str:
+        """The name of the value synched to
+
+        Returns:
+            str: The name of the base data
+        """
         return self._base_data.name
 
     @property
     def value(self) -> typing.Any:
+        """
+        Returns:
+            typing.Any: The value of the base data
+        """
         return self._base_data.value
 
     def update(self, value) -> typing.Any:
+        """
+        Args:
+            value: The value to update with
+
+        Returns:
+            typing.Any: The updated value
+        """
         return self._base_data.update(value)
 
     def has_hook(self, hook: DataHook) -> bool:

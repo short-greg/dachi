@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from ..behavior import Server, SangoStatus
+from ..behavior import SangoStatus
 
 import time
 from enum import Enum
@@ -25,16 +25,19 @@ class AgentStatus(Enum):
 
 
 class Agent(ABC):
+    """Agent c;lass
+    """
 
-    def __init__(self, server: Server=None, interval: float=None):
+    def __init__(self, interval: float=None):
+        """
+
+        Args:
+            server (Server, optional): The server the agent uses. Defaults to None.
+            interval (float, optional): The interval to repeat actions at. Defaults to None.
+        """
         super().__init__()
-        self._server = server or Server()
         self._status = AgentStatus.READY
         self._interval = interval
-
-    @property
-    def server(self) -> Server:
-        return self._server
 
     @abstractmethod
     def act(self) -> AgentStatus:
@@ -50,6 +53,8 @@ class Agent(ABC):
         self._status = AgentStatus.STOPPED
 
     def start(self):
+        """Execute the agent at the specified interval
+        """
         
         while self._status != AgentStatus.STOPPED:
             # possible race condition here

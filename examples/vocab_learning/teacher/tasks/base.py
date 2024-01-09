@@ -1,5 +1,5 @@
 from dachi.behavior import Action, SangoStatus
-from dachi.gengo import Prompt, PromptComponent
+from dachi.struct import Prompt, PromptComponent
 from dachi.comm import Terminal, Ref, Query, Request
 from ..comm import IOHandler
 import typing

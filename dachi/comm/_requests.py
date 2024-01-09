@@ -11,13 +11,14 @@ CALLBACK = typing.Union[str, typing.Callable]
 
 @dataclass
 class Request(object):
+    """Make a request to a query
+    """
 
     contents: typing.Any = None
     on_post: typing.Callable = None
     on_response: typing.Callable = None
 
     def __post_init__(self):
-
         self.id = str(uuid.uuid4())
         self._posted: bool = False
         self._processing: bool = False
@@ -25,7 +26,8 @@ class Request(object):
         self._success = False
 
     def post(self):
-
+        """Post the request
+        """
         if self._posted:
             return
 
@@ -198,67 +200,3 @@ class Signal(ABC):
         on_post: typing.Union[str, typing.Callable]
     ):
         self._on_post.remove(on_post)
-
-
-class InterComm(object):
-
-    def __init__(self):
-        """Create a set of communication channels to allow for more 'private' communication
-        between tasks
-        """
-        self._channels: typing.Dict[str, DataStore] = {}
-
-    def __getitem__(self, name: str) -> DataStore:
-        """
-        Args:
-            name (str): Name of the DataStore
-
-        Raises:
-            KeyError: If name is incorrect
-        Returns:
-            DataStore: the DataStore specified by name
-        """
-        if name not in self._channels:
-            raise KeyError(f'Name by {name} does not exist in channels')
-
-        return self._channels[name]
-    
-    def get_or_add(self, name: str) -> DataStore:
-        """Get the DataStore specified by name or add it
-
-        Args:
-            name (str): The name of the DataStore
-
-        Returns:
-            DataStore: The DataStore specified by name
-        """
-
-        if name not in self._channels:
-            self._channels[name] = DataStore()
-        
-        return self._channels[name]
-
-    def add(self, name: str) -> 'InterComm':
-        """Add DataStore specified by name
-        Args:
-            name (str): Name of the DataStore
-
-        Raises:
-            ValueError: If it cannot be added
-        Returns:
-            InterComm: self
-        """
-        if name in self._channels:
-            raise ValueError('Channel with name {name} already exists')
-        
-        return self._channels[name]
-    
-    def get(self, name: str) -> DataStore:
-        """
-        Args:
-            name (str): Name of the DataStore
-
-        Returns:
-            DataStore: the DataStore specified by name
-        """
-        return self._channels.get(name)

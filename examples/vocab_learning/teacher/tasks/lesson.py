@@ -1,7 +1,7 @@
 from dachi.behavior._status import SangoStatus
 from dachi.comm import Terminal, Ref
 from dachi.behavior import Action
-from dachi.gengo import Prompt, Conv
+from dachi.struct import Prompt, ConvBase
 import json
 
 
