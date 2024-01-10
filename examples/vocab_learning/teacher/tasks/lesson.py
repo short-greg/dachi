@@ -1,8 +1,7 @@
-from dachi.behavior._status import SangoStatus
-from dachi.comm import Terminal, Ref
-from dachi.behavior import Action
-from dachi.struct import Prompt, ConvBase
+from dachi.struct import Prompt, Conv
 import json
+
+from dachi.struct._prompting import Conv
 
 
 QUIZ_PROMPT = Prompt(
@@ -39,46 +38,46 @@ QUIZ_PROMPT = Prompt(
 )
 
 
-class PlanConv(object):
-    pass
-
-
-class ProcessAIMessage(Action):
+class QuizConv(Conv):
     
-    def __init__(
-        self, ai_request: Ref, ai_message: Ref, 
-        conv: Ref
-    ):
-        """
+    def __init__(self, max_turns: int=None):
 
-        Args:
-            ai_request (Ref): 
-            ai_message (Ref): 
-            conversation (Conversation): 
-        """
-        self.ai_request = ai_request
-        self.ai_message = ai_message
-        self.conv = conv
+        # add introductory message
+        super().__init__(
+            ['system', 'assistant', 'user'], 
+            max_turns, True
+        )
+        self.add_turn('system', None)
+        self._plan = None
 
-    def act(self, terminal: Terminal) -> SangoStatus:
-        
-        request = self.ai_request.get(terminal)
+    def set_system(self, heading: str=None, plan=''):
 
-        conv = self.conversation.get(terminal)
-        response = json.loads(request.response)
-        if 'completed' in response:
-            conv.clear()
-            self.ai_message.clear()
-            return self.FAILURE
-        if 'error' in response:
-            # how to react to an error (?)
-            self.ai_message.set(terminal, response['error'])
-            conv.add_turn('assistant', response['message'])
-            return self.SUCCESS
-        if 'message' in response:
-            self.ai_message.set(terminal, response['message'])
-            conv.add_turn('assistant', response['message'])
-            return self.SUCCESS
-            
-        return self.FAILURE
+        self[0].text = QUIZ_PROMPT.format(
+            plan
+        ).as_text(heading=heading)
 
+    def add_turn(self, role: str, text: str) -> Conv:
+        if role == 'assistant':
+            result = json.loads(
+                self.filter('assistant')[-1].text
+            )
+            if 'Message' in result:
+                self._completed = False
+                super().add_turn(role, result['Message'])
+            if 'Error' in result:
+                self._completed = False
+                super().add_turn(role, result['Error'])
+            if 'Completed' in result:
+                self._completed = True
+                super().add_turn(role, result['Completed'])
+        else:
+            super().add_turn(role, text)
+
+    def reset(self):
+        super().reset()
+        self.add_turn('system', None)
+        self._completed = False
+
+    @property
+    def completed(self) -> bool:
+        return self._completed

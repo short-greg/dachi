@@ -1,6 +1,4 @@
-from dachi.comm import Terminal, Ref
-from dachi.behavior import Action, SangoStatus
-from dachi.struct import Prompt, ConvBase
+from dachi.struct import Prompt, Conv
 import json
 
 
@@ -30,43 +28,43 @@ PLAN_PROMPT = Prompt(
 """)
 
 
-class QuizConv(object):
-    pass
-
-
-class CreateAIPlan(Action):
+class PlanConv(Conv):
     
-    def __init__(
-        self, 
-        ai_request: Ref, 
-        plan: Ref, 
-        plan_conv: Ref
-    ):
-        """
+    def __init__(self, max_turns: int=None):
 
-        Args:
-            ai_request (Ref): 
-            ai_message (Ref): 
-            conversation (Ref): 
-        """
-        self.ai_request = ai_request
-        self.plan = plan
-        self.plan_conv = plan_conv
+        # add introductory message
+        super().__init__(
+            ['system', 'assistant', 'user'], 
+            max_turns, True
+        )
+        self.add_turn('system', None)
+        self._plan = None
 
-    def act(self, terminal: Terminal) -> SangoStatus:
-        
-        request = self.ai_request.get(terminal)
+    def set_system(self, heading: str=None, **kwargs):
 
-        plan_conv = self.plan_conv.get(terminal)
-        response = json.loads(request.response)
-        if 'error' in response and plan_conv is not None:
-            # how to react to an error (?)
-            self.plan_conv.add_turn('assistant', response['error'])
-            return self.FAILURE
-        if 'plan' in response and plan_conv is not None:
-            self.plan.set(terminal, response['message'])
-            plan_conv.clear()
-            
-            return self.SUCCESS
-            
-        return self.FAILURE
+        self[0].text = PLAN_PROMPT.format(
+            **kwargs
+        ).as_text(heading=heading)
+
+    def add_turn(self, role: str, text: str) -> Conv:
+        if role == 'assistant':
+            result = json.loads(
+                self.filter('assistant')[-1].text
+            )
+            if 'Plan' in result:
+                self._plan = result['Plan']
+                super().add_turn(role, result['Plan'])
+            if 'Error' in result:
+                self._plan = None
+                super().add_turn(role, result['Error'])
+        else:
+            super().add_turn(role, text)
+
+    @property
+    def plan(self):
+        return self._plan
+
+    def reset(self):
+        super().reset()
+        self.add_turn('system', None)
+        self._plan = None

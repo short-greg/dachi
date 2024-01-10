@@ -1,6 +1,5 @@
 import typing
 from dataclasses import dataclass, Field
-from ..comm._serving import Component
 from typing import Dict
 from abc import abstractmethod
 from ..base import Storable
@@ -35,24 +34,18 @@ class Component(Storable):
         """
 
     def get(self, name: str) -> typing.Any:
-        """
+        return getattr(self, name)
 
-        Args:
-            name (str): The name of the value to get
+    def r(self, name: str) -> typing.Any:
+        
+        def _():
+            return self.get(name)
+        return _
 
-        Returns:
-            typing.Any: The value retrieved
-        """
-        return self.__dict__[name]
-    
     def set(self, name: str, value):
         if name not in self.__dict__:
             raise KeyError(f'Key by name of {name} does not exist.')
         self.__dict__[name] = value
-
-    def __getitem__(self, name: str) -> typing.Any:
-
-        return self.__dict__[name]
 
 
 class Prompt(Component):
@@ -119,6 +112,14 @@ class Prompt(Component):
         return Prompt(
             [*self._args], self._text
         )
+    
+    @property
+    def text(self) -> str:
+        return self._text
+
+    @property
+    def args(self) -> typing.List[typing.Union[Arg, str]]:
+        return self._args
 
 
 class Completion(Component):
@@ -205,19 +206,33 @@ class Role(object):
 
 
 @dataclass
-class Turn(object):
+class Turn(Component):
 
     role: Role
     text: str
 
+    def as_dict(self) -> Dict:
+        return {
+            'role': self.role.name,
+            'text': self.text,  
+        }
+
+    def as_text(self) -> str:
+        
+        return f"""
+        {self.role}: {self.text}\n
+        """
+
 
 class Conv(Component):
 
-    def __init__(self, roles: typing.Dict[str, Role]=None, max_turns: int=None):
+    def __init__(self, roles: typing.Dict[str, Role]=None, max_turns: int=None, check_roles: bool=False):
 
+        super().__init__()
         self._roles: typing.Dict[str, Role] = roles or {}
         self._turns: typing.List[Turn] = []
         self._max_turns = max_turns
+        self._check_roles = check_roles
 
     def add_turn(self, role: str, text: str) -> 'Conv':
 
@@ -233,6 +248,8 @@ class Conv(Component):
 
         if overwrite and role.name in self._roles:
             raise KeyError(f'Role {role.name} already added.')
+        if self._check_roles and role.name in self._roles:
+            raise KeyError(f'Role {role.name} is an invalid role.')
         self._roles[role] = role
         return self
     
@@ -294,7 +311,7 @@ class Conv(Component):
         self._max_turns = max_turns
         return self._max_turns
     
-    def clear(self):
+    def reset(self):
         """Clear the turns
         """
         self._turns.clear()
@@ -313,7 +330,7 @@ class Conv(Component):
             'turns': self._turns,
             'max_turns': self._max_turns   
         }
-    
+
     def as_text(self, heading: str=None) -> str:
         
         result = f'{heading}\n' if heading is not None else ''
@@ -325,4 +342,32 @@ class Conv(Component):
 
         return Conv(
             {**self._roles}, self._max_turns
+        )
+
+    @property
+    def turns(self) -> typing.List[Turn]:
+        return self._turns
+
+
+class StoreList(list, Component):
+    
+    def as_dict(self) -> Dict:
+        return {
+            enumerate(self)
+        }
+
+    def as_text(self, heading: str=None) -> str:
+        
+        text = ' '.join(self)
+        if heading is not None:
+            return f"""
+            {heading}
+            {text}
+            """
+        return text
+    
+    def spawn(self) -> 'StoreList':
+
+        return StoreList(
+            self
         )

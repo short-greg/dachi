@@ -4,8 +4,10 @@ from tkinter import font as tkfont
 from collections import OrderedDict
 # from backend import ChatBackend
 from .teacher.agent import LanguageTeacher
+from dachi.comm import Request
 # from teacher.comm import IOHandler
-
+import typing
+from .teacher.comm import UIInterface
 
 # backend = ChatBackend()
 
@@ -30,7 +32,7 @@ class ChatHistory(scrolledtext.ScrolledText):
         return self.history[index]
 
 
-class ChatbotInterface(tk.Tk):
+class ChatbotInterface(tk.Tk, UIInterface):
 
     def __init__(self, agent: LanguageTeacher):
         super().__init__()
@@ -65,7 +67,14 @@ class ChatbotInterface(tk.Tk):
         self.send_button = tk.Button(self.bottom_bar, text="Send", command=self.send_message)
         self.send_button.pack(side=tk.RIGHT)
         self.waiting_for_response = False
+        self.toggle_input_state(False)
         self._agent.io.connect_ui(self.bot_response)
+        self._requests: typing.List[typing.Callable[[str], None]] = []
+
+    def request_message(self, callback: typing.Callable[[str], None]):
+
+        self._requests.append(callback)
+        self.toggle_input_state(True)
 
     def send_message(self, event=None):
         if self.waiting_for_response:
@@ -73,6 +82,10 @@ class ChatbotInterface(tk.Tk):
 
         message = self.input_field.get("1.0", tk.END).strip()
         if message:
+            self._requests[0](message)
+            self._requests.pop(0)
+            if len(self._requests) == 0:
+                self.toggle_input_state(False)
             self.chat_history.append('You', message)
             self.input_field.delete("1.0", tk.END)
             self.waiting_for_response = True
@@ -89,8 +102,8 @@ class ChatbotInterface(tk.Tk):
         # Simulated bot response
         self.chat_history.append(speaker, message)
         self.waiting_for_response = False
-        self.toggle_input_state(True)
+        # self.toggle_input_state(True)
         self.thinking_dots = ""
     
-    def toggle_input_state(self, state):
-        self.send_button.config(state=tk.NORMAL if state else tk.DISABLED)
+    def toggle_input_state(self, on: bool=True):
+        self.send_button.config(state=tk.NORMAL if on else tk.DISABLED)

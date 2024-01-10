@@ -2,7 +2,7 @@ import threading
 from openai import OpenAI
 
 from typing import Any
-from dachi.comm import Query
+from .comm import Query, UIInterface
 
 
 class LLMQuery(Query):
@@ -25,21 +25,20 @@ class LLMQuery(Query):
         return response
     
     def prepare_post(self, contents) -> Any:
-        thread = threading.Thread(self.prepare_post, args=[contents])
+        thread = threading.Thread(self.prepare_response, args=[contents])
         thread.run()
 
 
 class UIQuery(Query):
 
-    def __init__(self, ui_callback):
+    def __init__(self, ui_interface: UIInterface):
         """
 
         Args:
             store (DataStore): 
         """
         super().__init__()
-        # self.io_handler = io_handler
-        self.ui_callback = ui_callback
+        self.ui_interface = ui_interface
 
     def prepare_response(self, contents) -> Any:
         """
@@ -51,6 +50,6 @@ class UIQuery(Query):
         """
         return contents
 
-    def prepare_post(self, contents):
-        thread = threading.Thread(self.ui_callback, args=[contents, self.prepare_response])
+    def prepare_post(self, contents=None):
+        thread = threading.Thread(self.ui_interface, args=[self.prepare_response])
         thread.run()
