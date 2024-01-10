@@ -137,32 +137,64 @@ class TestDisplayAI:
         assert status == SangoStatus.FAILURE
 
 
+class TestPreparePrompt:
+
+    def test_prepare_prompt_updates_plan(self):
+
+        conv = planner.PlanConv()
+        prompt = base.PreparePrompt(conv, lesson.QUIZ_PROMPT, plan='Big Plan')
+        prompt.tick()
+        assert conv[0].text is not None
+
+    def test_prepare_prompt_updates_plan(self):
+
+        conv = planner.PlanConv()
+        prompt = base.PreparePrompt(conv, lesson.QUIZ_PROMPT, plan='Big Plan')
+        assert conv[0].text is None
+
+    def test_prepare_prompt_does_not_update_prompt_with_two_ticks(self):
+
+        conv = planner.PlanConv()
+        prompt = base.PreparePrompt(conv, lesson.QUIZ_PROMPT, plan='Big Plan')
+        prompt.tick()
+        prompt.tick()
+        assert conv[0].text is not None
+
+
 class TestPlanConv:
 
     def test_adds_system_message(self):
 
         conv = planner.PlanConv()
-        conv.set_system(target_vocabulary='X Y Z')
+        prompt = planner.PLAN_PROMPT
+        prompt = prompt.format(target_vocabulary='X Y Z')
+        conv.set_system(prompt)
         assert conv[0].text is not None
 
     def test_plan_is_extracted(self):
 
         conv = planner.PlanConv()
-        conv.set_system(target_vocabulary='X Y Z')
+        prompt = planner.PLAN_PROMPT
+        prompt = prompt.format(target_vocabulary='X Y Z')
+        conv.set_system(prompt)
         conv.add_turn('assistant', '{"Plan": "Big plan"}')
         assert conv.plan == 'Big plan'
 
     def test_plan_is_not_extracted_if_error(self):
 
         conv = planner.PlanConv()
-        conv.set_system(target_vocabulary='X Y Z')
+        prompt = planner.PLAN_PROMPT
+        prompt = prompt.format(target_vocabulary='X Y Z')
+        conv.set_system(prompt)
         conv.add_turn('assistant', '{"Error": "Error"}')
         assert conv.plan is None
 
     def test_response_is_unknown_if_invalid_input(self):
 
         conv = planner.PlanConv()
-        conv.set_system(target_vocabulary='X Y Z')
+        prompt = planner.PLAN_PROMPT
+        prompt = prompt.format(target_vocabulary='X Y Z')
+        conv.set_system(prompt)
         conv.add_turn('assistant', '{"X": "Error"}')
         assert conv.plan is None
         assert conv.error == "Unknown response from LLM"
@@ -173,13 +205,16 @@ class TestQuizConv:
     def test_plan_set_if_system_set(self):
 
         conv = lesson.QuizConv()
-        conv.set_system(plan='PLAN')
+        prompt = lesson.QUIZ_PROMPT
+        prompt = prompt.format(plan='PLAN')
+        conv.set_system(prompt)
         assert conv[0].text is not None
 
     def test_completed_if_completed_extracted(self):
 
         conv = lesson.QuizConv()
-        conv.set_system(plan='PLAN')
+        prompt = lesson.QUIZ_PROMPT
+        prompt = prompt.format(plan='PLAN')
         conv.add_turn(
             "assistant", '{"Completed": "Completed"}'
         )
@@ -188,7 +223,8 @@ class TestQuizConv:
     def test_not_completed_if_not_extracted(self):
 
         conv = lesson.QuizConv()
-        conv.set_system(plan='PLAN')
+        prompt = lesson.QUIZ_PROMPT
+        prompt = prompt.format(plan='PLAN')
         conv.add_turn(
             "assistant", '{"Message": "Completed"}'
         )
@@ -197,7 +233,8 @@ class TestQuizConv:
     def test_error_extracted_if_error(self):
 
         conv = lesson.QuizConv()
-        conv.set_system(plan='PLAN')
+        prompt = lesson.QUIZ_PROMPT
+        prompt = prompt.format(plan='PLAN')
         conv.add_turn(
             "assistant", '{"Error": "Completed"}'
         )

@@ -4,6 +4,26 @@ from dachi.comm import Query, Request
 from ..comm import UIInterface
 
 
+class ChatConv(Conv):
+
+    def __init__(self, max_turns: int=None):
+
+        # add introductory message
+        super().__init__(
+            ['system', 'assistant', 'user'], 
+            max_turns, True
+        )
+        self.add_turn('system', None)
+
+    def set_system(self, prompt: Prompt):
+
+        self[0].text = prompt.as_text()
+
+    def reset(self):
+        super().reset()
+        self.add_turn('system', None)
+
+
 class ConvMessage(Action):
 
     def __init__(
@@ -38,10 +58,11 @@ class ConvMessage(Action):
 
 class PreparePrompt(Action):
 
-    def __init__(self, prompt: Prompt, **components):
+    def __init__(self, conv: Conv, prompt: Prompt, **components):
 
         super().__init__()
         self.prompt = prompt 
+        self._conv = conv
         self.components = components
         self._prepared = False
 
@@ -52,8 +73,9 @@ class PreparePrompt(Action):
         components = {}
         for k, component in self.components.items():
             components[k] = component
-        self.prompt.format(**components, inplace=True)
+        prompt = self.prompt.format(**components, inplace=False)
         self._prepared = True
+        self._conv.set_system(prompt)
         return SangoStatus.SUCCESS
     
     def reset(self):

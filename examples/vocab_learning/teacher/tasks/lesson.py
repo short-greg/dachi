@@ -1,5 +1,6 @@
 from dachi.struct import Prompt, Conv
 import json
+from .base import ChatConv
 
 from dachi.struct._prompting import Conv
 
@@ -38,24 +39,16 @@ QUIZ_PROMPT = Prompt(
 )
 
 
-class QuizConv(Conv):
+class QuizConv(ChatConv):
     
     def __init__(self, max_turns: int=None):
 
         # add introductory message
         super().__init__(
-            ['system', 'assistant', 'user'], 
-            max_turns, True
+            max_turns
         )
-        self.add_turn('system', None)
-        self._plan = None
+        self._completed = False
         self._error = None
-
-    def set_system(self, plan):
-
-        self[0].text = QUIZ_PROMPT.format(
-            plan=plan
-        ).as_text()
 
     def add_turn(self, role: str, text: str) -> Conv:
         if role == 'assistant':
@@ -89,7 +82,6 @@ class QuizConv(Conv):
 
     def reset(self):
         super().reset()
-        self.add_turn('system', None)
         self._completed = False
 
     @property

@@ -121,6 +121,7 @@ class Prompt(Component):
         """
         input_names = set(kwargs.keys())
         difference = input_names - set(self._args)
+        print(difference, input_names, self._args)
         if len(difference) != 0:
             raise ValueError(
                 f'Input has names that are not arguments to the prompt'

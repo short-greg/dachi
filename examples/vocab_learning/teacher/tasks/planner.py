@@ -1,4 +1,5 @@
 from dachi.struct import Prompt, Conv
+from .base import ChatConv
 import json
 
 
@@ -28,24 +29,16 @@ PLAN_PROMPT = Prompt(
 """)
 
 
-class PlanConv(Conv):
+class PlanConv(ChatConv):
     
     def __init__(self, max_turns: int=None):
 
         # add introductory message
         super().__init__(
-            ['system', 'assistant', 'user'], 
-            max_turns, True
+            max_turns
         )
-        self.add_turn('system', None)
         self._plan = None
         self._error = None
-
-    def set_system(self, **kwargs):
-
-        self[0].text = PLAN_PROMPT.format(
-            **kwargs
-        )
 
     def add_turn(self, role: str, text: str) -> Conv:
         if role == 'assistant':
@@ -77,5 +70,4 @@ class PlanConv(Conv):
 
     def reset(self):
         super().reset()
-        self.add_turn('system', None)
         self._plan = None
