@@ -60,15 +60,17 @@ class Component(Storable):
         pass
 
     @staticmethod
-    def structure(text: str, heading: str=None):
+    def structure(text: str, heading: str=None, empty: float='Undefined'):
+
+        text = text if text is not None else empty
 
         if heading is None:
             return f'{text}'
         
-        return f"""
-        {heading}
-        {text}
-        """
+        return (
+            f'{heading}\n'
+            f'{text}'
+        )
 
     def get(self, name: str) -> typing.Any:
         return getattr(self, name)
@@ -81,6 +83,7 @@ class Component(Storable):
         if name not in self.__dict__:
             raise KeyError(f'Key by name of {name} does not exist.')
         self.__dict__[name] = value
+        return value
 
     def reset(self):
         pass
@@ -116,24 +119,26 @@ class Prompt(Component):
         Returns:
             Prompt: The formatted prompt
         """
-        input_names = set(kwargs.names())
+        input_names = set(kwargs.keys())
         difference = input_names - set(self._args)
         if len(difference) != 0:
             raise ValueError(
                 f'Input has names that are not arguments to the prompt'
             )
         inputs = {}
-        for k, v in self._args.items():
+        for k, _ in self._args.items():
             if k in kwargs:
-                if isinstance(v, Component):
-                    v = v.as_text()
-                inputs[k] = v
+                cur_v = kwargs[k]
+                if isinstance(cur_v, Component):
+                    cur_v = cur_v.as_text()
+                inputs[k] = cur_v
             else:
-                inputs[k] = "{{}}"
+                inputs[k] = "{" + f'{k}' + "}"
         return Prompt(
             list(set(self._args) - input_names), 
             self._text.format(**inputs)
         )
+
     
     def as_text(self, heading: str=None) -> str:
 
@@ -164,7 +169,7 @@ class Completion(Component):
     """
     """
     
-    def __init__(self, prompt: Prompt, response: str):
+    def __init__(self, prompt: Prompt, response: str=None):
         """
         Args:
             prompt (Prompt): The prompt for the completion
@@ -172,6 +177,20 @@ class Completion(Component):
         """
         self.prompt = prompt
         self.response = response
+
+    def format_prompt(self, **kwargs) -> 'Completion':
+        """Format the prompt to remove its variables
+
+        Raises:
+            ValueError: If there are arguments passed in that are not 
+            arguments to the prompt
+
+        Returns:
+            Prompt: The formatted prompt
+        """
+        return Completion(
+            self.prompt.format(**kwargs)
+        )
 
     def as_text(
         self, 
@@ -197,7 +216,7 @@ class Completion(Component):
             typing.Dict: The completion object as a dict
         """
         return {
-            "prompt": self.prompt,
+            "prompt": self.prompt.as_dict(),
             "response": self.response
         }
 
@@ -240,7 +259,7 @@ class Text(Component):
 class Role(object):
 
     name: str
-    meta: field(default_factory=dict)
+    meta: typing.Dict = field(default_factory=dict)
 
 
 @dataclass
@@ -256,10 +275,7 @@ class Turn(Component):
         }
 
     def as_text(self) -> str:
-        
-        return f"""
-        {self.role}: {self.text}\n
-        """
+        return f"{self.role.name}: {self.text}"
 
 
 class Conv(Component):
@@ -268,7 +284,7 @@ class Conv(Component):
 
         super().__init__()
         self._roles: typing.Dict[str, Role] = roles or {}
-        self._turns: typing.List[Turn] = []
+        self._turns: typing.List[Turn] = StoreList()
         self._max_turns = max_turns
         self._check_roles = check_roles
 
@@ -325,8 +341,8 @@ class Conv(Component):
     def to_dict(self) -> typing.Dict[str, str]:
 
         return {
-            turn.role.name: turn.text
-            for turn in self._turns
+            i: turn
+            for i, turn in enumerate(self._turns)
         }
     
     @property
@@ -365,15 +381,18 @@ class Conv(Component):
     def as_dict(self) -> Dict:
         return {
             'roles': self._roles,
-            'turns': self._turns,
+            'turns': self._turns.as_dict(),
             'max_turns': self._max_turns   
         }
 
     def as_text(self, heading: str=None) -> str:
         
         result = f'{heading}\n' if heading is not None else ''
-        for turn in self._turns:
-            result += f'{turn[0]}: {turn[1]}\n'
+        for i, turn in enumerate(self._turns):
+            result += f'{turn.as_text()}'
+            if i < len(self._turns) - 1:
+                result += '\n'
+
         return result
 
     def spawn(self) -> 'Conv':
@@ -390,9 +409,7 @@ class Conv(Component):
 class StoreList(list, Storable):
     
     def as_dict(self) -> Dict:
-        return {
-            enumerate(self)
-        }
+        return dict(enumerate(self))
 
     def as_text(self, heading: str=None) -> str:
         
@@ -407,7 +424,7 @@ class StoreList(list, Storable):
     def spawn(self) -> 'StoreList':
 
         return StoreList(
-            self
+            [x.spawn() if isinstance(x, Storable) else x for x in self]
         )
 
     def load_state_dict(self, state_dict: typing.Dict):
