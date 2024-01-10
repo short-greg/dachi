@@ -25,8 +25,8 @@ class LLMQuery(Query):
         return response
     
     def prepare_post(self, contents) -> Any:
-        thread = threading.Thread(self.prepare_response, args=[contents])
-        thread.run()
+        thread = threading.Thread(target=self.prepare_response, args=[contents])
+        thread.start()
 
 
 class UIQuery(Query):
@@ -51,5 +51,5 @@ class UIQuery(Query):
         return contents
 
     def prepare_post(self, contents=None):
-        thread = threading.Thread(self.ui_interface, args=[self.prepare_response])
-        thread.run()
+        thread = threading.Thread(target=self.ui_interface, args=[self.prepare_response])
+        thread.start()

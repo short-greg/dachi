@@ -21,7 +21,7 @@ class Request(object):
     def __post_init__(self):
         self.id = str(uuid.uuid4())
         self._posted: bool = False
-        self._processing: bool = False
+        self._responded: bool = False
         self._response = None
         self._success = False
 
@@ -32,7 +32,6 @@ class Request(object):
             return
 
         self._posted = True
-        self._processing = True
         if self.on_post is not None:
             self.on_post(self)
 
@@ -43,14 +42,18 @@ class Request(object):
     
     def respond(self, response, success: bool=True):
 
-        if self.processed:
+        if self.responded:
             raise ValueError('Request has already been processed')
 
-        self._processing = False
         self._response = response
         self._success = success
+        self._responded = True
         if self.on_response is not None:
             self.on_response(self)
+
+    @property
+    def processing(self) -> bool:
+        return self._processing
 
     @property
     def response(self) -> typing.Any:
@@ -58,9 +61,9 @@ class Request(object):
         return self._response
 
     @property
-    def processed(self) -> bool:
+    def responded(self) -> bool:
 
-        return not self._processing and self._posted
+        return self._responded
     
     @property
     def success(self) -> bool:

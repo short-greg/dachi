@@ -109,7 +109,7 @@ class Prompt(Component):
                 self._args[arg.name] = arg
         self._text = text
 
-    def format(self, **kwargs) -> 'Prompt':
+    def format(self, inplace: bool=False, **kwargs) -> 'Prompt':
         """Format the prompt to remove its variables
 
         Raises:
@@ -134,11 +134,15 @@ class Prompt(Component):
                 inputs[k] = cur_v
             else:
                 inputs[k] = "{" + f'{k}' + "}"
-        return Prompt(
+        print(self._text.format(**inputs))
+        prompt = Prompt(
             list(set(self._args) - input_names), 
             self._text.format(**inputs)
         )
-
+        if inplace:
+            self._args = prompt.args
+            self._text = prompt.text
+        return prompt
     
     def as_text(self, heading: str=None) -> str:
 
@@ -280,31 +284,36 @@ class Turn(Component):
 
 class Conv(Component):
 
-    def __init__(self, roles: typing.Dict[str, Role]=None, max_turns: int=None, check_roles: bool=False):
+    def __init__(self, roles: typing.List[typing.Union[str, Role]]=None, max_turns: int=None, check_roles: bool=False):
 
         super().__init__()
-        self._roles: typing.Dict[str, Role] = roles or {}
+        self._check_roles = check_roles
+        roles = roles or []
+        self._roles = {}
+        for role in roles:
+            self.add_role(role)
         self._turns: typing.List[Turn] = StoreList()
         self._max_turns = max_turns
-        self._check_roles = check_roles
 
     def add_turn(self, role: str, text: str) -> 'Conv':
 
         if role not in self._roles:
-            self._roles[role] = Role(role)
+            self.add_role(role)
         if self._max_turns is not None and len(self._turns) == self._max_turns:
             self._turns = self._turns[1:]
         self._turns.append(Turn(self._roles[role], text))
 
         return self
     
-    def add_role(self, role: Role, overwrite: bool=False) -> 'Conv':
+    def add_role(self, role: typing.Union[Role, str], overwrite: bool=False) -> 'Conv':
 
+        if isinstance(role, str):
+            role = Role(role)
         if overwrite and role.name in self._roles:
             raise KeyError(f'Role {role.name} already added.')
         if self._check_roles and role.name in self._roles:
             raise KeyError(f'Role {role.name} is an invalid role.')
-        self._roles[role] = role
+        self._roles[role.name] = role
         return self
     
     def remap_role(self, **role_map) -> 'Conv':
@@ -336,7 +345,8 @@ class Conv(Component):
 
     def filter(self, role: str):
 
-        return [turn for turn in self._turns if turn.role == role]
+        return [
+            turn for turn in self._turns if turn.role.name == role]
     
     def to_dict(self) -> typing.Dict[str, str]:
 
@@ -406,19 +416,19 @@ class Conv(Component):
         return self._turns
 
 
-class StoreList(list, Storable):
+class StoreList(list, Component):
     
     def as_dict(self) -> Dict:
         return dict(enumerate(self))
 
     def as_text(self, heading: str=None) -> str:
         
-        text = ' '.join(self)
+        text = '\n'.join(self)
         if heading is not None:
-            return f"""
-            {heading}
-            {text}
-            """
+            return (
+                f'{heading}'
+                f'{text}'
+            )
         return text
     
     def spawn(self) -> 'StoreList':

@@ -24,15 +24,15 @@ QUIZ_PROMPT = Prompt(
     # RESPONSE CHOICES - Choose from one of these
 
     - RESULT TEMPLATE (JSON)
-    \{
+    {{
         "Message": "<The prompt and four questions >"
-    \}
+    }}
     - COMPLETED TEMPLATE (JSON)
-    \{
+    {{
         "Completed": "<Evaluation of performance>"
-    \}
+    }}
     - ERROR TEMPLATE (JSON)
-    \{'Error': '<Reason for error>'\}
+    {{'Error': '<Reason for error>'}}
     
     """
 )
@@ -49,29 +49,43 @@ class QuizConv(Conv):
         )
         self.add_turn('system', None)
         self._plan = None
+        self._error = None
 
-    def set_system(self, heading: str=None, plan=''):
+    def set_system(self, plan):
 
         self[0].text = QUIZ_PROMPT.format(
-            plan
-        ).as_text(heading=heading)
+            plan=plan
+        ).as_text()
 
     def add_turn(self, role: str, text: str) -> Conv:
         if role == 'assistant':
-            result = json.loads(
-                self.filter('assistant')[-1].text
-            )
+            result = json.loads(text)
             if 'Message' in result:
                 self._completed = False
+                self._error = None
                 super().add_turn(role, result['Message'])
-            if 'Error' in result:
+            elif 'Error' in result:
                 self._completed = False
+                self._error = result['Error']
                 super().add_turn(role, result['Error'])
-            if 'Completed' in result:
+            elif 'Completed' in result:
                 self._completed = True
+                self._error = None
                 super().add_turn(role, result['Completed'])
+            else:
+                self._completed = True
+                self._error = "Unknown response"
+                super().add_turn(role, result)
+
         else:
+            self._error = None
+            self._completed = False
             super().add_turn(role, text)
+
+    @property
+    def error(self) -> str:
+
+        return self._error
 
     def reset(self):
         super().reset()
