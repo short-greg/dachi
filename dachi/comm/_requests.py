@@ -85,8 +85,8 @@ class Query(ABC):
     
     def register(
         self, 
-        on_post: typing.Union[str, typing.Callable]=None,
-        on_response: typing.Union[str, typing.Callable]=None
+        on_post: typing.Callable=None,
+        on_response: typing.Callable=None
     ):
         """Register a callback 
 
@@ -101,14 +101,14 @@ class Query(ABC):
 
     def unregister(
         self, 
-        on_post: typing.Union[str, typing.Callable]=None,
-        on_response: typing.Union[str, typing.Callable]=None
+        on_post: typing.Callable=None,
+        on_response: typing.Callable=None
     ):
         """Remove a callback from the query
 
         Args:
-            on_post (typing.Union[str, typing.Callable], optional): The on_post callback to remove. Defaults to None.
-            on_response (typing.Union[str, typing.Callable], optional): The on_resposne callback to remove. Defaults to None.
+            on_post (typing.Callable, optional): The on_post callback to remove. Defaults to None.
+            on_response (typing.Callable, optional): The on_resposne callback to remove. Defaults to None.
         """
         if on_post is not None:
             self._on_post.remove(on_post)
@@ -186,6 +186,8 @@ class Signal(ABC):
             contents: The contents of the message
         """
         self.prepare_post(request)
+
+        request.post()
         for on_post in self._on_post:
             on_post(request)
 
