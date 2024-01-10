@@ -12,8 +12,8 @@ class TeacherApp:
 
         self._running = False
         # TODO: set interval in "run" method
-        self._agent = LanguageTeacher(interval=1/60)
         self._ui = ChatbotInterface(self._agent)
+        self._agent = LanguageTeacher(self._ui, interval=1/60)
         self._interval = 1 / 60
 
     def run(self):

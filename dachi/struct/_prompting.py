@@ -1,7 +1,7 @@
 import typing
-from dataclasses import dataclass, Field
+from dataclasses import dataclass, field
 from typing import Dict
-from abc import abstractmethod
+from abc import abstractmethod, ABC
 from ..base import Storable
 
 
@@ -9,7 +9,44 @@ from ..base import Storable
 class Arg:
 
     name: str
-    description: str = Field("")
+    description: str = field(default="")
+
+
+class Q(ABC):
+
+    @abstractmethod
+    def __call__(self, *args, **kwargs) -> typing.Any:
+        raise NotImplementedError
+
+
+class F(Q):
+
+    def __init__(self, f, *args, **kwargs):
+
+        self._f = f
+        self._args = args
+        self._kwargs = kwargs
+    
+    def __call__(self, *args, **kwargs) -> typing.Any:
+
+        kwargs = {
+            **self._kwargs,
+            **kwargs
+        }
+        args = [*args, *self._args]
+        return self._f(*args, **kwargs)
+
+
+class R(Q):
+
+    def __init__(self, data: 'Component', name: str):
+        
+        self._data = data
+        self._name = name
+
+    def __call__(self) -> typing.Any:
+
+        return self._data.get(self._name)
 
 
 class Component(Storable):
@@ -36,16 +73,17 @@ class Component(Storable):
     def get(self, name: str) -> typing.Any:
         return getattr(self, name)
 
-    def r(self, name: str) -> typing.Any:
+    def r(self, name: str) -> R:
         
-        def _():
-            return self.get(name)
-        return _
+        return R(self, name)
 
     def set(self, name: str, value):
         if name not in self.__dict__:
             raise KeyError(f'Key by name of {name} does not exist.')
         self.__dict__[name] = value
+
+    def reset(self):
+        pass
 
 
 class Prompt(Component):
@@ -78,11 +116,11 @@ class Prompt(Component):
         Returns:
             Prompt: The formatted prompt
         """
-        input_names = set(kwargs.keys())
+        input_names = set(kwargs.names())
         difference = input_names - set(self._args)
         if len(difference) != 0:
             raise ValueError(
-                f'Input has keys that are not arguments to the prompt'
+                f'Input has names that are not arguments to the prompt'
             )
         inputs = {}
         for k, v in self._args.items():
@@ -202,7 +240,7 @@ class Text(Component):
 class Role(object):
 
     name: str
-    meta: Field(default_factory=dict)
+    meta: field(default_factory=dict)
 
 
 @dataclass
@@ -349,7 +387,7 @@ class Conv(Component):
         return self._turns
 
 
-class StoreList(list, Component):
+class StoreList(list, Storable):
     
     def as_dict(self) -> Dict:
         return {
@@ -371,3 +409,30 @@ class StoreList(list, Component):
         return StoreList(
             self
         )
+
+    def load_state_dict(self, state_dict: typing.Dict):
+        """
+
+        Args:
+            state_dict (typing.Dict): 
+        """
+        for i, v in enumerate(self):
+            if isinstance(v, Storable):
+                self[i] = v.load_state_dict(state_dict[i])
+            else:
+                self[i] = state_dict[i]
+        
+    def state_dict(self) -> typing.Dict:
+        """
+
+        Returns:
+            typing.Dict: 
+        """
+        cur = {}
+
+        for i, v in enumerate(self):
+            if isinstance(v, Storable):
+                cur[i] = v.state_dict()
+            else:
+                cur[i] = v
+        return cur

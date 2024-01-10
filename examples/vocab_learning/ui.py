@@ -1,15 +1,9 @@
 import tkinter as tk
 from tkinter import scrolledtext
 from tkinter import font as tkfont
-from collections import OrderedDict
-# from backend import ChatBackend
 from .teacher.agent import LanguageTeacher
-from dachi.comm import Request
-# from teacher.comm import IOHandler
 import typing
 from .teacher.comm import UIInterface
-
-# backend = ChatBackend()
 
 
 class ChatHistory(scrolledtext.ScrolledText):
@@ -104,6 +98,9 @@ class ChatbotInterface(tk.Tk, UIInterface):
         self.waiting_for_response = False
         # self.toggle_input_state(True)
         self.thinking_dots = ""
+    
+    def post_message(self, speaker, message: str):
+        return self.bot_response(speaker, message)
     
     def toggle_input_state(self, on: bool=True):
         self.send_button.config(state=tk.NORMAL if on else tk.DISABLED)

@@ -4,7 +4,7 @@ from dachi.agents import Agent, AgentStatus
 from .queries import UIQuery, LLMQuery
 from dachi import behavior, struct
 from .tasks import lesson, planner, base
-from .comm import IOHandler
+from .comm import UIInterface
 
 
 # llm_name 
@@ -33,38 +33,39 @@ from .comm import IOHandler
 
 class LanguageTeacher(Agent):
 
-    def __init__(self, interval: float=None):
+    def __init__(self, ui_interface: UIInterface, interval: float=None):
 
         super().__init__()
 
         self._status = AgentStatus.READY
         self._interval = interval
-        self._io = IOHandler(self._server, 'Bot')
         self._plan_conv = planner.PlanConv()
         self._user_conv = lesson.QuizConv()
 
         llm_query = LLMQuery()
-        ui_query = UIQuery(self.io.backend_callback)
+        ui_query = UIQuery(ui_interface)
 
+        # Set the first messaeg of plan conv
         # self._user_conv.set_system(plan=self._plan_conv.plan)
         with behavior.sango() as language_teacher:
             with behavior.select(language_teacher) as teach:
                 # can make these two trees
                 with behavior.sequence(teach) as message:
                     message.add([
-                        behavior.CheckReady(self._plan_conv, self._plan_conv.r('plan')),
+                        behavior.Check(self._plan_conv.r('plan'), lambda plan: plan is not None),
                         base.PreparePrompt(
                             self._user_conv, plan=self._plan_conv.r('plan')
                         ),
-                        base.AIConvMessage(self._user_conv, Request(), llm_query, 'assistant'),
-                        base.DisplayAI(self._user_conv),
-                        base.ConvMessage(self._user_conv, ui_query, )
+                        base.ConvMessage(self._user_conv, llm_query, 'assistant'),
+                        base.DisplayAI(self._user_conv, ui_interface),
+                        base.ConvMessage(self._user_conv, ui_query, 'user'),
+                        behavior.Reset(self._plan_conv, self._user_conv.r('completed'))
                     ])
                 with behavior.sequence(language_teacher) as plan:
                     plan.add([
-                        base.DisplayAI(self._plan_conv, self.io),
-                        base.UIConvMessage(self._plan_conv, ui_query),
-                        base.AIConvMessage(self._plan_conv, llm_query)
+                        base.DisplayAI(self._plan_conv, ui_interface),
+                        base.ConvMessage(self._plan_conv, ui_query, 'user'),
+                        base.ConvMessage(self._plan_conv, llm_query, 'assistant')
                     ])
         self._behavior = language_teacher
         self._terminal = self._server.register(self._behavior)

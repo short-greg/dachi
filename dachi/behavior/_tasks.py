@@ -3,6 +3,7 @@ import typing
 from ..base import Storable
 from ._status import SangoStatus
 from dataclasses import dataclass
+from ..struct import Component, Q, R
 
 
 @dataclass
@@ -57,7 +58,6 @@ class Task(Storable):
     @property
     def id(self):
         return self._id
-
 
 
 class Sango(Task):
@@ -548,14 +548,36 @@ class Not(Decorator):
 
 class Check(Condition):
 
-    def __init__(self, data, f: typing.Callable[[typing.Any], bool]):
+    def __init__(self, data, f: Q):
         super().__init__()
         self.data = data
         self.f = f
 
     def condition(self) -> bool:
-        return self.f(self.data)
+        data = self.data if not isinstance(self.data, R) else self.data()
+        return self.f(data)
 
     def spawn(self) -> 'Check':
 
         return Check(self.data, self.f)
+
+
+class CheckReady(Check):
+
+    def __init__(self, r: R):
+        super().__init__(r, lambda r: r() is not None)
+
+
+class Reset(Action):
+
+    def __init__(self, data: Component, on_condition: typing.Callable[[typing.Any], None]=None):
+
+        super().__init__()
+        self._data = data
+        self._cond = on_condition
+
+    def act(self) -> SangoStatus:
+        if self._cond(self._data) or self._cond is None:
+            self._data.reset()
+            return SangoStatus.SUCCESS
+        return SangoStatus.FAILURE

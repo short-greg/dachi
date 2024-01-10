@@ -4,7 +4,8 @@ from ._tasks import (
     Sequence, Selector, 
     Parallel, Action,
     Condition, Sango,
-    Check, Not, While, Until
+    Check, Not, While, Until,
+    CheckReady, Reset
 )
 from ._status import (
     SangoStatus
