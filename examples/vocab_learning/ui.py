@@ -3,7 +3,7 @@ from tkinter import scrolledtext
 from tkinter import font as tkfont
 from .teacher.agent import LanguageTeacher
 import typing
-from .teacher.comm import UIInterface
+from .teacher.comm import UI
 
 
 class ChatHistory(scrolledtext.ScrolledText):
@@ -26,7 +26,7 @@ class ChatHistory(scrolledtext.ScrolledText):
         return self.history[index]
 
 
-class ChatbotInterface(tk.Tk, UIInterface):
+class ChatbotInterface(tk.Tk, UI):
 
     def __init__(self, agent: LanguageTeacher):
         super().__init__()

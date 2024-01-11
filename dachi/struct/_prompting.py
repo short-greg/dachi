@@ -5,6 +5,8 @@ from abc import abstractmethod, ABC
 from ..base import Storable
 
 
+T = typing.TypeVar("T")
+
 @dataclass
 class Arg:
 
@@ -12,14 +14,25 @@ class Arg:
     description: str = field(default="")
 
 
-class Q(ABC):
+class Q(ABC, typing.Generic[T]):
 
     @abstractmethod
-    def __call__(self, *args, **kwargs) -> typing.Any:
+    def __call__(self, *args, **kwargs) -> T:
         raise NotImplementedError
 
 
-class F(Q):
+class D(Q, typing.Generic[T]):
+
+    def __init__(self, data: 'Component'):
+
+        self._data = data
+
+    def __call__(self) -> T:
+
+        return self._data
+
+
+class F(Q, typing.Generic[T]):
 
     def __init__(self, f, *args, **kwargs):
 
@@ -27,7 +40,7 @@ class F(Q):
         self._args = args
         self._kwargs = kwargs
     
-    def __call__(self, *args, **kwargs) -> typing.Any:
+    def __call__(self, *args, **kwargs) -> T:
 
         kwargs = {
             **self._kwargs,
@@ -37,14 +50,14 @@ class F(Q):
         return self._f(*args, **kwargs)
 
 
-class R(Q):
+class R(Q, typing.Generic[T]):
 
     def __init__(self, data: 'Component', name: str):
         
         self._data = data
         self._name = name
 
-    def __call__(self) -> typing.Any:
+    def __call__(self) -> T:
 
         return self._data.get(self._name)
 
@@ -78,6 +91,11 @@ class Component(Storable):
     def r(self, name: str) -> R:
         
         return R(self, name)
+
+    @property
+    def d(self) -> D:
+        
+        return D(self)
 
     def set(self, name: str, value):
         if name not in self.__dict__:

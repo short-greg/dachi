@@ -4,7 +4,7 @@ from dachi.agents import Agent, AgentStatus
 from .queries import UIQuery, LLMQuery
 from dachi import behavior, struct
 from .tasks import lesson, planner, base
-from .comm import UIInterface
+from .comm import UI
 
 
 # llm_name 
@@ -33,7 +33,7 @@ from .comm import UIInterface
 
 class LanguageTeacher(Agent):
 
-    def __init__(self, ui_interface: UIInterface, interval: float=None):
+    def __init__(self, ui_interface: UI, interval: float=None):
 
         super().__init__()
 
@@ -52,19 +52,23 @@ class LanguageTeacher(Agent):
                 # can make these two trees
                 with behavior.sequence(teach) as message:
                     message.add([
-                        behavior.Check(self._plan_conv.r('plan'), lambda plan: plan is not None),
+                        behavior.Check(self._plan_conv.r('plan'), lambda plan: plan() is not None),
                         base.PreparePrompt(
                             self._user_conv, plan=self._plan_conv.r('plan')
                         ),
                         base.ConvMessage(self._user_conv, llm_query, 'assistant'),
                         base.DisplayAI(self._user_conv, ui_interface),
                         base.ConvMessage(self._user_conv, ui_query, 'user'),
-                        behavior.Reset(self._plan_conv, self._user_conv.r('completed'))
+                        behavior.Not(
+                            behavior.Reset(self._plan_conv.d, self._user_conv.r('completed')),
+                            behavior.Reset(self._user_conv.d),
+                        )
                     ])
-                with behavior.sequence(language_teacher) as plan:
+                with behavior.sequence(teach) as plan:
                     plan.add([
                         base.DisplayAI(self._plan_conv, ui_interface),
                         base.ConvMessage(self._plan_conv, ui_query, 'user'),
+                        # think how to improve this
                         base.ConvMessage(self._plan_conv, llm_query, 'assistant')
                     ])
         self._behavior = language_teacher

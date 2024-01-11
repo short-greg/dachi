@@ -2,7 +2,7 @@ import threading
 from openai import OpenAI
 
 from typing import Any
-from .comm import Query, UIInterface
+from .comm import Query, UI
 
 
 class LLMQuery(Query):
@@ -31,7 +31,7 @@ class LLMQuery(Query):
 
 class UIQuery(Query):
 
-    def __init__(self, ui_interface: UIInterface):
+    def __init__(self, ui_interface: UI):
         """
 
         Args:

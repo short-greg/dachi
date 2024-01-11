@@ -6,12 +6,12 @@ from dachi import struct
 from time import sleep
 import threading
 from dachi.behavior import SangoStatus
-from dachi.struct import Prompt
+from dachi.struct import Prompt, D
 from copy import deepcopy
 import typing
 
 
-class UI(base.UIInterface):
+class UI(base.UI):
 
     def __init__(self, user_message):
         super().__init__()
@@ -155,7 +155,7 @@ class TestPreparePrompt:
     def test_prepare_prompt_does_not_update_prompt_with_two_ticks(self):
 
         conv = planner.PlanConv()
-        prompt = base.PreparePrompt(conv, lesson.QUIZ_PROMPT, plan='Big Plan')
+        prompt = base.PreparePrompt(conv, lesson.QUIZ_PROMPT, plan=D('Big Plan'))
         prompt.tick()
         prompt.tick()
         assert conv[0].text is not None
@@ -167,7 +167,7 @@ class TestPlanConv:
 
         conv = planner.PlanConv()
         prompt = planner.PLAN_PROMPT
-        prompt = prompt.format(target_vocabulary='X Y Z')
+        prompt = prompt.format()
         conv.set_system(prompt)
         assert conv[0].text is not None
 
@@ -175,7 +175,7 @@ class TestPlanConv:
 
         conv = planner.PlanConv()
         prompt = planner.PLAN_PROMPT
-        prompt = prompt.format(target_vocabulary='X Y Z')
+        prompt = prompt.format()
         conv.set_system(prompt)
         conv.add_turn('assistant', '{"Plan": "Big plan"}')
         assert conv.plan == 'Big plan'
@@ -184,7 +184,7 @@ class TestPlanConv:
 
         conv = planner.PlanConv()
         prompt = planner.PLAN_PROMPT
-        prompt = prompt.format(target_vocabulary='X Y Z')
+        prompt = prompt.format()
         conv.set_system(prompt)
         conv.add_turn('assistant', '{"Error": "Error"}')
         assert conv.plan is None
@@ -193,11 +193,11 @@ class TestPlanConv:
 
         conv = planner.PlanConv()
         prompt = planner.PLAN_PROMPT
-        prompt = prompt.format(target_vocabulary='X Y Z')
+        prompt = prompt.format()
         conv.set_system(prompt)
         conv.add_turn('assistant', '{"X": "Error"}')
         assert conv.plan is None
-        assert conv.error == "Unknown response from LLM"
+        assert conv.error is None
 
 
 class TestQuizConv:

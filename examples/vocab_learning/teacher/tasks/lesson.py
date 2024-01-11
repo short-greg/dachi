@@ -52,22 +52,26 @@ class QuizConv(ChatConv):
 
     def add_turn(self, role: str, text: str) -> Conv:
         if role == 'assistant':
-            result = json.loads(text)
-            if 'Message' in result:
-                self._completed = False
-                self._error = None
-                super().add_turn(role, result['Message'])
-            elif 'Error' in result:
-                self._completed = False
-                self._error = result['Error']
-                super().add_turn(role, result['Error'])
-            elif 'Completed' in result:
-                self._completed = True
-                self._error = None
-                super().add_turn(role, result['Completed'])
-            else:
-                self._completed = True
-                self._error = "Unknown response"
+            try:
+                result = json.loads(text)
+                if 'Message' in result:
+                    self._completed = False
+                    self._error = None
+                    super().add_turn(role, result['Message'])
+                elif 'Error' in result:
+                    self._completed = False
+                    self._error = result['Error']
+                    super().add_turn(role, result['Error'])
+                elif 'Completed' in result:
+                    self._completed = True
+                    self._error = None
+                    super().add_turn(role, result['Completed'])
+                else:
+                    self._completed = True
+                    self._error = "Unknown response"
+                    super().add_turn(role, result)
+            except json.JSONDecoderError:
+                self._error = 'Could not decode JSON.'
                 super().add_turn(role, result)
 
         else:

@@ -548,14 +548,13 @@ class Not(Decorator):
 
 class Check(Condition):
 
-    def __init__(self, data, f: Q):
+    def __init__(self, data: Q, f: Q):
         super().__init__()
         self.data = data
         self.f = f
 
     def condition(self) -> bool:
-        data = self.data if not isinstance(self.data, R) else self.data()
-        return self.f(data)
+        return self.f(self.data())
 
     def spawn(self) -> 'Check':
 
@@ -570,14 +569,15 @@ class CheckReady(Check):
 
 class Reset(Action):
 
-    def __init__(self, data: Component, on_condition: typing.Callable[[typing.Any], None]=None):
+    def __init__(self, data: Q[Component], on_condition: typing.Callable[[typing.Any], None]=None):
 
         super().__init__()
         self._data = data
         self._cond = on_condition
 
     def act(self) -> SangoStatus:
-        if self._cond(self._data) or self._cond is None:
-            self._data.reset()
+        data = self._data()
+        if self._cond(data) or self._cond is None:
+            data.reset()
             return SangoStatus.SUCCESS
         return SangoStatus.FAILURE

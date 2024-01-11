@@ -1,7 +1,7 @@
 from dachi.behavior import Action, SangoStatus
-from dachi.struct import Prompt, Conv
+from dachi.struct import Prompt, Conv, Q
 from dachi.comm import Query, Request
-from ..comm import UIInterface
+from ..comm import UI
 
 
 class ChatConv(Conv):
@@ -58,21 +58,22 @@ class ConvMessage(Action):
 
 class PreparePrompt(Action):
 
-    def __init__(self, conv: Conv, prompt: Prompt, **components):
+    def __init__(self, conv: Conv, prompt: Prompt, replace: bool=False, **components: Q):
 
         super().__init__()
         self.prompt = prompt 
         self._conv = conv
         self.components = components
         self._prepared = False
+        self.replace = replace
 
     def act(self) -> SangoStatus:
 
-        if self._prepared:
+        if self._prepared and not self.replace:
             return SangoStatus.SUCCESS
         components = {}
         for k, component in self.components.items():
-            components[k] = component
+            components[k] = component()
         prompt = self.prompt.format(**components, inplace=False)
         self._prepared = True
         self._conv.set_system(prompt)
@@ -83,10 +84,11 @@ class PreparePrompt(Action):
         super().__init__()
         self._prepared = False
 
-
+# TODO: Improve R <= need to retrieve. Add f(). 
+# TODO: Add a Buffer that is used for this
 class DisplayAI(Action):
 
-    def __init__(self, conv: Conv, user_interface: UIInterface):
+    def __init__(self, conv: Conv, user_interface: UI):
         """
 
         Args:
@@ -96,7 +98,7 @@ class DisplayAI(Action):
         super().__init__()
         self._conv = conv
         self._user_interface = user_interface
-        self._i = 0
+        self._cur = None
     
     def reset(self):
         super().reset()
@@ -104,11 +106,9 @@ class DisplayAI(Action):
     def act(self) -> SangoStatus:
         
         turns = self._conv.filter('assistant')
-        if self._i >= len(turns):
-            return self.FAILURE
-        posted = self._user_interface.post_message('assistant', turns[self._i].text)
+    
+        posted = self._user_interface.post_message('assistant', turns[-1].text)
         if not posted:
             return self.FAILURE
         
-        self._i += 1
         return self.SUCCESS
