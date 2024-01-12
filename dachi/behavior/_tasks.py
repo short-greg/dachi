@@ -3,7 +3,7 @@ import typing
 from ..base import Storable
 from ._status import SangoStatus
 from dataclasses import dataclass
-from ..struct import Component, Q, R
+from ..storage import Struct, Q, R
 
 
 @dataclass
@@ -129,6 +129,9 @@ class Serial(Task):
     def add(self, task: Task) -> 'Serial':
         self._tasks.append(task)
 
+    def add_tasks(self, tasks: typing.Iterable[Task]) -> 'Serial':
+        self._tasks.extend(tasks)
+
     @property
     def n(self):
         """The number of subtasks"""
@@ -157,9 +160,6 @@ class Serial(Task):
 
 class Sequence(Serial):
 
-    # def add(self, task: Task) -> 'Sequence':
-    #     self._tasks.append(task)
-
     def subtick(self) -> SangoStatus:
         
         if self._status.is_done:
@@ -189,35 +189,35 @@ class Sequence(Serial):
         self._idx = 0
 
 
-class Sequence(Serial):
+# class Sequence(Serial):
 
-    def subtick(self) -> SangoStatus:
+#     def subtick(self) -> SangoStatus:
         
-        if self._status.is_done:
-            return self._status
+#         if self._status.is_done:
+#             return self._status
     
-        task = self._tasks[self._idx]
-        status = task.tick()
+#         task = self._tasks[self._idx]
+#         status = task.tick()
 
-        if status == SangoStatus.FAILURE:
-            return SangoStatus.FAILURE
+#         if status == SangoStatus.FAILURE:
+#             return SangoStatus.FAILURE
         
-        if status == SangoStatus.SUCCESS:
-            self._idx += 1
-            status = SangoStatus.RUNNING
-        if self._idx >= len(self._tasks):
-            status = SangoStatus.SUCCESS
+#         if status == SangoStatus.SUCCESS:
+#             self._idx += 1
+#             status = SangoStatus.RUNNING
+#         if self._idx >= len(self._tasks):
+#             status = SangoStatus.SUCCESS
 
-        return status
+#         return status
 
-    def spawn(self) -> 'Sequence':
-        return Sequence(
-            [task.spawn() for task in self._tasks]
-        )
+#     def spawn(self) -> 'Sequence':
+#         return Sequence(
+#             [task.spawn() for task in self._tasks]
+#         )
 
-    def reset(self):
-        super().reset()
-        self._idx = 0
+#     def reset(self):
+#         super().reset()
+#         self._idx = 0
 
 
 class Selector(Serial):
@@ -291,6 +291,9 @@ class Parallel(Task):
             task (Task): 
         """
         self._tasks.append(task)
+
+    def add_tasks(self, tasks: typing.Iterable[Task]) -> 'Serial':
+        self._tasks.extend(tasks)
 
     def set_condition(self, fails_on: int, succeeds_on: int):
         """Set the number of falures or successes it takes to end
@@ -397,7 +400,7 @@ class Parallel(Task):
 
         super().reset()
         for task in self.tasks:
-            task.reset_status()
+            task.reset()
 
 
 class Action(Task):
@@ -469,7 +472,7 @@ class Decorator(Task):
     def reset(self):
 
         super().reset()
-        self._task.reset_status()
+        self._task.reset()
 
 
 class Until(Decorator):
@@ -567,9 +570,15 @@ class CheckReady(Check):
         super().__init__(r, lambda r: r() is not None)
 
 
+class CheckTrue(Check):
+
+    def __init__(self, r: R):
+        super().__init__(r, lambda r: r is True)
+
+
 class Reset(Action):
 
-    def __init__(self, data: Q[Component], on_condition: typing.Callable[[typing.Any], None]=None):
+    def __init__(self, data: Q[Struct], on_condition: typing.Callable[[], None]=None):
 
         super().__init__()
         self._data = data
@@ -577,7 +586,8 @@ class Reset(Action):
 
     def act(self) -> SangoStatus:
         data = self._data()
-        if self._cond(data) or self._cond is None:
+
+        if self._cond is None or self._cond():
             data.reset()
             return SangoStatus.SUCCESS
         return SangoStatus.FAILURE

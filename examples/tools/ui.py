@@ -1,9 +1,9 @@
 import tkinter as tk
 from tkinter import scrolledtext
 from tkinter import font as tkfont
-from .teacher.agent import LanguageTeacher
+from ..vocab_learning.teacher.agent import LanguageTeacher
 import typing
-from .teacher.comm import UI
+from .comm import UI
 
 
 class ChatHistory(scrolledtext.ScrolledText):
@@ -28,9 +28,9 @@ class ChatHistory(scrolledtext.ScrolledText):
 
 class ChatbotInterface(tk.Tk, UI):
 
-    def __init__(self, agent: LanguageTeacher):
+    def __init__(self):
         super().__init__()
-        self._agent = agent
+        # self._agent = agent
 
         self.title("Chatbot")
         self.geometry("800x600")  # Initial size of the window
@@ -62,13 +62,18 @@ class ChatbotInterface(tk.Tk, UI):
         self.send_button.pack(side=tk.RIGHT)
         self.waiting_for_response = False
         self.toggle_input_state(False)
-        self._agent.io.connect_ui(self.bot_response)
+        self._input_state = False
+        # self._agent.io.connect_ui(self.bot_response)
         self._requests: typing.List[typing.Callable[[str], None]] = []
+
+    def update(self) -> None:
+        self.toggle_input_state(self._input_state)
+        return super().update()
 
     def request_message(self, callback: typing.Callable[[str], None]):
 
         self._requests.append(callback)
-        self.toggle_input_state(True)
+        self._input_state = True
 
     def send_message(self, event=None):
         if self.waiting_for_response:
@@ -76,17 +81,19 @@ class ChatbotInterface(tk.Tk, UI):
 
         message = self.input_field.get("1.0", tk.END).strip()
         if message:
-            self._requests[0](message)
+            request = self._requests[0]
             self._requests.pop(0)
             if len(self._requests) == 0:
                 self.toggle_input_state(False)
             self.chat_history.append('You', message)
             self.input_field.delete("1.0", tk.END)
             self.waiting_for_response = True
-            self.toggle_input_state(False)
+            # self.toggle_input_state(False)
+            self._input_state = False
             # Simulate bot response
             message = self.chat_history[-1]
-            self.after(1, self._agent.io.post_user_message, message['message'])
+            
+            self.after(1, request, message['message'])
             # self.after(2000, self.bot_response)  # Replace with actual bot logic
 
     def bot_response(self, speaker, message):
@@ -99,8 +106,9 @@ class ChatbotInterface(tk.Tk, UI):
         # self.toggle_input_state(True)
         self.thinking_dots = ""
     
-    def post_message(self, speaker, message: str):
-        return self.bot_response(speaker, message)
+    def post_message(self, speaker, message: str) -> bool:
+        self.bot_response(speaker, message)
+        return True
     
     def toggle_input_state(self, on: bool=True):
         self.send_button.config(state=tk.NORMAL if on else tk.DISABLED)

@@ -73,7 +73,6 @@ class TestProcess:
         process = graph.Process(node, [1])
 
         result = process.value
-        print(result)
         assert result[0] == 2
         assert result[1] == 3
 

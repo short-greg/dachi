@@ -23,7 +23,7 @@ class Q(ABC, typing.Generic[T]):
 
 class D(Q, typing.Generic[T]):
 
-    def __init__(self, data: 'Component'):
+    def __init__(self, data: 'Struct'):
 
         self._data = data
 
@@ -52,7 +52,7 @@ class F(Q, typing.Generic[T]):
 
 class R(Q, typing.Generic[T]):
 
-    def __init__(self, data: 'Component', name: str):
+    def __init__(self, data: 'Struct', name: str):
         
         self._data = data
         self._name = name
@@ -62,7 +62,7 @@ class R(Q, typing.Generic[T]):
         return self._data.get(self._name)
 
 
-class Component(Storable):
+class Struct(Storable):
 
     @abstractmethod
     def as_text(self) -> str:
@@ -96,6 +96,9 @@ class Component(Storable):
     def d(self) -> D:
         
         return D(self)
+    
+    def f(self, name: str, *args, **kwargs) -> F:
+        return F(getattr(self, name), *args, **kwargs)
 
     def set(self, name: str, value):
         if name not in self.__dict__:
@@ -107,7 +110,7 @@ class Component(Storable):
         pass
 
 
-class Prompt(Component):
+class Prompt(Struct):
     """Define a prompt to send to the LLM
     """
 
@@ -139,7 +142,6 @@ class Prompt(Component):
         """
         input_names = set(kwargs.keys())
         difference = input_names - set(self._args)
-        print(difference, input_names, self._args)
         if len(difference) != 0:
             raise ValueError(
                 f'Input has names that are not arguments to the prompt'
@@ -148,12 +150,11 @@ class Prompt(Component):
         for k, _ in self._args.items():
             if k in kwargs:
                 cur_v = kwargs[k]
-                if isinstance(cur_v, Component):
+                if isinstance(cur_v, Struct):
                     cur_v = cur_v.as_text()
                 inputs[k] = cur_v
             else:
                 inputs[k] = "{" + f'{k}' + "}"
-        print(self._text.format(**inputs))
         prompt = Prompt(
             list(set(self._args) - input_names), 
             self._text.format(**inputs)
@@ -188,7 +189,7 @@ class Prompt(Component):
         return self._args
 
 
-class Completion(Component):
+class Completion(Struct):
     """
     """
     
@@ -249,8 +250,8 @@ class Completion(Component):
         )
 
 
-class Text(Component):
-    """A simple wrapper to use text as a prompt component
+class Text(Struct):
+    """A simple wrapper to use text as a prompt struct
     """
 
     def __init__(self, text: str):
@@ -286,7 +287,7 @@ class Role(object):
 
 
 @dataclass
-class Turn(Component):
+class Turn(Struct):
 
     role: Role
     text: str
@@ -301,7 +302,7 @@ class Turn(Component):
         return f"{self.role.name}: {self.text}"
 
 
-class Conv(Component):
+class Conv(Struct):
 
     def __init__(self, roles: typing.List[typing.Union[str, Role]]=None, max_turns: int=None, check_roles: bool=False):
 
@@ -433,9 +434,16 @@ class Conv(Component):
     @property
     def turns(self) -> typing.List[Turn]:
         return self._turns
+    
+    def as_messages(self) -> typing.List[typing.Dict[str, str]]:
+
+        return [
+            {'role': turn.role.name, 'content': turn.text}
+            for turn in self._turns
+        ]
 
 
-class StoreList(list, Component):
+class StoreList(typing.List, Struct):
     
     def as_dict(self) -> Dict:
         return dict(enumerate(self))
@@ -482,3 +490,27 @@ class StoreList(list, Component):
             else:
                 cur[i] = v
         return cur
+
+
+S = typing.TypeVar('S', bound=Struct)
+
+
+class Wrapper(Struct, typing.Generic[S]):
+
+    def __init__(self, wrapped: S=None):
+        super().__init__()
+        self.wrapped = wrapped
+
+    def as_text(self) -> str:
+        if self.wrapped is None:
+            return ''
+        return self.wrapped.as_text()
+
+    def as_dict(self) -> typing.Dict:
+        if self.wrapped is None:
+            return {}
+        return self.wrapped.as_text()
+
+    def reset(self):
+        super().__init__()
+        self.wrapped = None

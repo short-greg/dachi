@@ -1,8 +1,8 @@
-from dachi.struct import Prompt, Conv
+from dachi.storage import Prompt, Conv
 import json
-from .base import ChatConv
+from ....tools.base import ChatConv
 
-from dachi.struct._prompting import Conv
+from dachi.storage._prompting import Conv
 
 
 QUIZ_PROMPT = Prompt(
@@ -70,9 +70,9 @@ class QuizConv(ChatConv):
                     self._completed = True
                     self._error = "Unknown response"
                     super().add_turn(role, result)
-            except json.JSONDecoderError:
+            except json.JSONDecodeError:
                 self._error = 'Could not decode JSON.'
-                super().add_turn(role, result)
+                super().add_turn(role, text)
 
         else:
             self._error = None

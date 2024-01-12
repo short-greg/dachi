@@ -1,8 +1,8 @@
 from typing import Dict
-from dachi.struct import _prompting as prompting
+from dachi.storage import _prompting as prompting
 
 
-class DummyComponent(prompting.Component):
+class DummyStruct(prompting.Struct):
 
     def __init__(self, x=1):
         super().__init__()
@@ -41,42 +41,42 @@ class TestR:
 
     def test_r_returns_data(self):
 
-        dummy = DummyComponent()
+        dummy = DummyStruct()
         f = prompting.R(dummy, "x")
         assert f() == 1
 
     def test_r_returns_2_if_y_called(self):
 
-        dummy = DummyComponent()
+        dummy = DummyStruct()
         f = prompting.R(dummy, 'y')
         assert f() == 2
 
 
-class TestComponent:
+class TestStruct:
 
     def test_get_returns_value(self):
-        dummy = DummyComponent()
+        dummy = DummyStruct()
         assert dummy.get('x') == 1
 
     def test_set_sets_value(self):
-        dummy = DummyComponent()
+        dummy = DummyStruct()
         dummy.set('x', 2)
         assert dummy.x == 2
 
     def test_r_returns_R(self):
-        dummy = DummyComponent(3)
+        dummy = DummyStruct(3)
         r = dummy.r('x')
         assert r() == 3
 
 
-class TestComponent:
+class TestStruct:
 
     def test_get_returns_value(self):
-        dummy = DummyComponent()
+        dummy = DummyStruct()
         assert dummy.get('x') == 1
 
 
-class TestPromptComponent:
+class TestPromptStruct:
 
     def test_prompt_format_removes_args(self):
 
@@ -100,7 +100,6 @@ class TestPromptComponent:
             ['x'], """Answer is {x}"""
         )
         answer = prompt.format(x=2).as_text('==Prompt==')
-        print(answer)
         assert answer == (
             f'==Prompt==\n'
             f'Answer is 2'
@@ -223,7 +222,6 @@ class TestStoreList:
         conv = prompting.StoreList()
         conv.append(1)
         conv2 = conv.spawn()
-        print(conv2)
         assert conv2.as_dict()[0] == 1
 
     def test_spawn_creates_new_store_list_with_turn(self):

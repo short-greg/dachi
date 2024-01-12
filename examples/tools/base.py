@@ -1,7 +1,7 @@
 from dachi.behavior import Action, SangoStatus
-from dachi.storage import Prompt, Conv, Q
+from dachi.storage import Prompt, Conv, Q, StoreList, Wrapper, R
 from dachi.comm import Query, Request
-from ..vocab_learning.teacher.comm import UI
+from .comm import UI
 
 
 class ChatConv(Conv):
@@ -62,12 +62,12 @@ class ConvMessage(Action):
 
 class PreparePrompt(Action):
 
-    def __init__(self, conv: Conv, prompt: Prompt, replace: bool=False, **components: Q):
+    def __init__(self, conv: Conv, prompt: Prompt, replace: bool=False, **structs: Q):
 
         super().__init__()
         self.prompt = prompt 
         self._conv = conv
-        self.components = components
+        self.structs = structs
         self._prepared = False
         self.replace = replace
 
@@ -75,10 +75,15 @@ class PreparePrompt(Action):
 
         if self._prepared and not self.replace:
             return SangoStatus.SUCCESS
-        components = {}
-        for k, component in self.components.items():
-            components[k] = component()
-        prompt = self.prompt.format(**components, inplace=False)
+        structs = {}
+        for k, struct in self.structs.items():
+            structs[k] = struct()
+        if isinstance(self.prompt, R):
+            prompt = self.prompt()
+        else:
+            prompt = self.prompt
+        prompt = prompt.format(**structs, inplace=False)
+        print('Formatted prompt ' + prompt.text)
         self._prepared = True
         self._conv.set_system(prompt)
         return SangoStatus.SUCCESS
@@ -87,6 +92,34 @@ class PreparePrompt(Action):
 
         super().__init__()
         self._prepared = False
+
+
+class AdvPrompt(Action):
+
+    def __init__(self, prompts: StoreList, default: Prompt, wrapper: Wrapper[Prompt]):
+
+        super().__init__()
+        self._prompts = StoreList([*prompts, default])
+        self._default = default
+        self._wrapper = wrapper
+        self._idx = 0
+        self._wrapper.val = self._prompts[0]
+
+    def act(self) -> SangoStatus:
+
+        if self._idx >= len(self._prompts) - 1:
+            return SangoStatus.FAILURE
+        
+        self._idx += 1
+        self._wrapper.val = self._prompts[self._idx]
+
+        return SangoStatus.SUCCESS
+    
+    def reset(self):
+
+        super().__init__()
+        self._idx = 0
+
 
 # TODO: Improve R <= need to retrieve. Add f(). 
 # TODO: Add a Buffer that is used for this

@@ -1,5 +1,5 @@
-from dachi.struct import Prompt, Conv
-from .base import ChatConv
+from dachi.storage import Prompt, Conv
+from ....tools.base import ChatConv
 import json
 
 
@@ -56,7 +56,7 @@ class PlanConv(ChatConv):
                     self._error = None
                     self._plan = None
                     super().add_turn(role, text)
-            except json.JSONDecoderError:
+            except json.JSONDecodeError:
                 self._error = 'Could not decode JSON.'
                 super().add_turn(role, result)
         else:

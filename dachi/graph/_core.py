@@ -562,7 +562,6 @@ class Process(T):
             kwargs[k] = arg
         if evaluate:
             result = self, self._node(*args, **kwargs)
-            print('Traverse: ', result)
         else:
             result = self
         stored[self._name] = result
@@ -620,7 +619,6 @@ def probe_ts(ts: typing.List[typing.Union[T, typing.Tuple[T, int]]], by: typing.
         else:
             idx = None
         result = t.probe(by, stored)
-        print(result)
         to_extend = False
         if isinstance(result, typing.Tuple):
             if idx is None:

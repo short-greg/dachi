@@ -1,12 +1,12 @@
 from examples.vocab_learning.teacher.tasks import lesson
 from examples.vocab_learning.teacher.tasks import planner
-from examples.vocab_learning.teacher.tasks import base
+from examples.tools import base
 from dachi.comm import _requests as requests
-from dachi import struct
+from dachi import storage
 from time import sleep
 import threading
 from dachi.behavior import SangoStatus
-from dachi.struct import Prompt, D
+from dachi.storage import Prompt, D
 from copy import deepcopy
 import typing
 
@@ -24,7 +24,6 @@ class UI(base.UI):
         callback(self.user_message)
     
     def post_message(self, speaker, message: str):
-        print('POSTING!')
         self.bot_message = message
 
 
@@ -57,7 +56,6 @@ class DummyQueryDelay(requests.Query):
     def delay_response(self, request):
 
         sleep(self.delay)
-        print('Slept')
         self.respond(request)
     
     def prepare_post(self, request):
@@ -70,7 +68,7 @@ class TestConvMessage:
 
     def test_conv_message_acts(self):
 
-        conv = struct.Conv()
+        conv = storage.Conv()
         message = base.ConvMessage(
             conv, DummyQuery('RESPONSE')
         )
@@ -79,7 +77,7 @@ class TestConvMessage:
 
     def test_conv_message_does_not_act(self):
 
-        conv = struct.Conv()
+        conv = storage.Conv()
         message = base.ConvMessage(
             conv, DummyQueryDelay('RESPONSE', 0.02)
         )
@@ -89,7 +87,7 @@ class TestConvMessage:
 
     def test_conv_message_does_not_act_til_after_the_delay(self):
 
-        conv = struct.Conv()
+        conv = storage.Conv()
         query = DummyQueryDelay('RESPONSE', 0.01)
         message = base.ConvMessage(
             conv, query
@@ -107,7 +105,7 @@ class TestDisplayAI:
     def test_display_ai_returns_message(self):
 
         x = 2
-        conv = struct.Conv()
+        conv = storage.Conv()
         conv.add_turn('assistant', 'HELLO')
         ui =  UI('HI my name is Roy')
         display = base.DisplayAI(conv, ui)
@@ -116,7 +114,7 @@ class TestDisplayAI:
 
     def test_fails_on_second_display(self):
 
-        conv = struct.Conv()
+        conv = storage.Conv()
         conv.add_turn('assistant', 'HELLO')
         ui =  UI('HI my name is Roy')
         display = base.DisplayAI(conv, ui)
@@ -126,7 +124,7 @@ class TestDisplayAI:
 
     def test_failure_if_resetting_after_second(self):
 
-        conv = struct.Conv()
+        conv = storage.Conv()
         conv.add_turn('assistant', 'HELLO')
         ui =  UI('HI my name is Roy')
         display = base.DisplayAI(conv, ui)

@@ -1,18 +1,18 @@
 
 import tkinter as tk
-from .teacher.agent import LanguageTeacher, AgentStatus
+from .agent import StoryWriter, AgentStatus
 from ..tools.ui import ChatbotInterface
 import time
 
 
-class TeacherApp:
+class StoryWriterApp:
 
     def __init__(self):
 
         self._running = False
         # TODO: set interval in "run" method
         self._ui = ChatbotInterface()
-        self._agent = LanguageTeacher(self._ui, interval=1/60)
+        self._agent = StoryWriter(self._ui, interval=1/60)
         self._interval = 1 / 60
 
     def run(self):

@@ -65,7 +65,6 @@ class ChromaDBIndex:
         embeddings = openai_ef([query])
 
         results = self.collection.query(query_embeddings=embeddings, n_results=3)
-        print(results['documents'])
         return results['documents']
 
     @nodemethod(['document'], ['document'])

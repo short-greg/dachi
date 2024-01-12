@@ -119,10 +119,6 @@ class Query(ABC):
             self._on_response.remove(on_response)
 
     @abstractmethod
-    def prepare_response(self, request) -> typing.Any:
-        pass
-
-    @abstractmethod
     def prepare_post(self,  request):
         pass
 
@@ -143,7 +139,7 @@ class Query(ABC):
             on_post(request)
 
     def respond(
-        self, request: Request
+        self, request: Request, response
     ):
         """Make a query for information. If the content cannot be processed it raises an ValueError
 
@@ -153,7 +149,7 @@ class Query(ABC):
             on_response (typing.Union[str, typing.Callable], optional): The  . If it is a string, it will set the storage specified by the key to the reponse Defaults to None.
 
         """
-        response = self.prepare_response(request)
+        # response = self.prepare_response(request)
         request.respond(response)
         for on_response in self._on_response:
             on_response(request)

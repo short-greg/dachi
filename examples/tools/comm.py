@@ -9,5 +9,5 @@ class UI(ABC):
         pass
 
     @abstractmethod
-    def post_message(self, speaker, message: str):
+    def post_message(self, speaker, message: str) -> bool:
         pass
