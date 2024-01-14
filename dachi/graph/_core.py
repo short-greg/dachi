@@ -726,26 +726,3 @@ class Tako(Node):
         """
         """
         pass
-
-
-# TODO: Remove as it is a duplicate
-# class NodeFunc(Node):
-#     """_summary_
-
-#     Args:
-#         Node (_type_): _description_
-#     """
-
-#     def __init__(self, name: str, f, inputs: typing.List[Field], outputs: typing.List[Field]):
-#         super().__init__(name)
-#         self._inputs = inputs
-#         self._outputs = outputs
-#         self._f = f
-
-#     def op(self, *args, **kwargs) -> typing.Any:
-#         return super().op()
-
-#     @property
-#     def outputs(self) -> FieldList:
-
-#         return self._outputs

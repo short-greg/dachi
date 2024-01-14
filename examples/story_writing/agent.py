@@ -55,7 +55,15 @@ class StoryWriter(Agent):
             with behavior.select(story_writer) as teach:
                 # can make these two trees
                 with behavior.sequence(teach) as summarizer:
+                    # Can't this be simplified.. If this is too complex it makes
+                    # it hard to use
+                    # CheckTrue
+                    # RunPrompt <- I want it to be simple.. If it was just two 
+                    #  items it would be easier.. Prompt, Conv, Display, 
                     summarizer.add_tasks([
+                        # CheckTrue
+                        # Converse
+                        # Reset
                         behavior.CheckTrue(self._assist_conv.r('completed')),
                         behavior.Reset(self._summary_conv.d),
                         base.PreparePrompt(
@@ -68,7 +76,13 @@ class StoryWriter(Agent):
                         behavior.Reset(self._assist_conv.d),
                         base.AdvPrompt(self._prompts, self._default, self._wrapper),
                     ])
+                # teach.add(ConverseCond())
+                # 
                 with behavior.sequence(teach) as assistance:
+
+                    # ConverseCond # Can easily create multiple "assistances" with this
+                    # Spawn a thread which goes through each point
+                    # function 1, function 2, etc... Should be relatively easy
                     assistance.add_tasks([
                         base.PreparePrompt(
                             self._assist_conv, self._wrapper.r('wrapped'), 

@@ -441,6 +441,12 @@ class Conv(Struct):
             {'role': turn.role.name, 'content': turn.text}
             for turn in self._turns
         ]
+    
+    def range(self, from_: int=0, to_: int=-1) -> 'StoreList':
+
+        return StoreList(
+            
+        )
 
 
 class StoreList(typing.List, Struct):

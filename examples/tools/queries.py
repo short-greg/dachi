@@ -3,6 +3,7 @@ from openai import OpenAI
 
 from typing import Any
 from .comm import UI
+from dachi.storage import Conv
 from dachi.comm import Query, Request
 from functools import partial
 
@@ -30,6 +31,12 @@ class LLMQuery(Query):
     def prepare_post(self, request: Request) -> Any:
         thread = threading.Thread(target=self.prepare_response, args=[request])
         thread.start()
+
+    def __call__(self, conv: Conv):
+
+        request = Request(contents=conv)
+        self.prepare_response(request)
+        return request.response.choices[0].message.content
 
 
 class UIQuery(Query):

@@ -1,7 +1,10 @@
 from dachi.behavior import Action, SangoStatus
-from dachi.storage import Prompt, Conv, Q, StoreList, Wrapper, R
+from dachi.storage import Prompt, Conv, Q, StoreList, Wrapper, R, Struct
 from dachi.comm import Query, Request
+from .queries import UIQuery, LLMQuery
 from .comm import UI
+import typing
+import threading
 
 
 class ChatConv(Conv):
@@ -22,6 +25,135 @@ class ChatConv(Conv):
     def reset(self):
         super().reset()
         self.add_turn('system', None)
+
+
+# TODO: Add 
+class PromptGen(Struct):
+
+    def __init__(self, prompt: Prompt, **components):
+
+        super().__init__()
+        self.base_prompt = prompt
+        self.components = components
+
+    @property
+    def prompt(self) -> Prompt:
+
+        return self.base_prompt.format(
+            **self.components
+        )
+
+    # TODO: Complete
+    def as_text(self) -> str:
+        return (
+            f'{self.base_prompt.as_text()}\n'
+        )
+
+    def as_dict(self) -> typing.Dict:
+        
+        components = {}
+        for k, v in self.components:
+            if isinstance(v, Struct):
+                components[k] = v.as_dict()
+            else:
+                components[k] = v
+        return {
+            'base_prompt': self.prompt.as_dict(),
+            'components': components
+        }
+
+
+class Converse(Action):
+
+    def __init__(
+        self, prompt: PromptGen, conv: Conv, llm: Query, user_interface: UI
+    ):
+        # Use to send a message from the LLM
+        
+        super().__init__()
+        self._conv = conv
+        self._prompt = prompt
+        self._llm_query = llm
+        self._ui_query = UIQuery(user_interface)
+        self._ui = user_interface
+
+    def converse_turn(self):
+
+        self._conv[0].text = self._prompt.prompt.as_text()
+        response = self._llm_query(self._conv)
+        self._ui.post_message('assistant', response)
+        self._conv.add_turn(
+            'assistant', response
+        )
+        self._request.contents = self._conv
+        self._ui_query.post(self._request)
+
+    def act(self) -> SangoStatus:
+        
+        if self._status == SangoStatus.READY:
+            # use threading here
+            thread = threading.Thread(target=self.converse_turn, args=[])
+            thread.start()
+
+        if self._request.responded is True:
+            if self._request.success is True:
+                self._conv.add_turn(
+                    'user', self._request.response
+                )
+                return SangoStatus.SUCCESS
+            else:
+                return SangoStatus.FAILURE
+        
+        return SangoStatus.RUNNING
+
+    def reset(self):
+        super().reset()
+        self._request = Request()
+
+
+class Message(Action):
+    # Use to send a message from the LLM
+
+    def __init__(
+        self, prompt: PromptGen, conv: Conv, llm: Query, user_interface: UI
+    ):
+        
+        super().__init__()
+        self._conv = conv
+        self._prompt = prompt
+        self._llm_query = llm
+        self._ui = user_interface
+
+    def converse_turn(self):
+
+        self._conv[0].text = self._prompt.prompt.as_text()
+        response = self._llm_query(self._conv)
+        self._ui.post_message('assistant', response)
+        self._conv.add_turn(
+            'assistant', response
+        )
+
+    def act(self) -> SangoStatus:
+        
+        if self._status == SangoStatus.READY:
+            # use threading here
+            thread = threading.Thread(target=self.converse_turn, args=[])
+            thread.start()
+
+        if self._request.responded is True:
+            if self._request.success is True:
+                self._conv.add_turn(
+                    'user', self._request.response
+                )
+                return SangoStatus.SUCCESS
+            else:
+                return SangoStatus.FAILURE
+        
+        return SangoStatus.RUNNING
+
+    def reset(self):
+        super().reset()
+        self._request = Request()
 
 
 class ConvMessage(Action):

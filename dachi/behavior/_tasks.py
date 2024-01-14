@@ -4,6 +4,8 @@ from ..base import Storable
 from ._status import SangoStatus
 from dataclasses import dataclass
 from ..storage import Struct, Q, R
+from ..graph import Tako
+import threading
 
 
 @dataclass
@@ -576,6 +578,12 @@ class CheckTrue(Check):
         super().__init__(r, lambda r: r is True)
 
 
+class CheckFalse(Check):
+
+    def __init__(self, r: R):
+        super().__init__(r, lambda r: r is False)
+
+
 class Reset(Action):
 
     def __init__(self, data: Q[Struct], on_condition: typing.Callable[[], None]=None):
@@ -591,3 +599,26 @@ class Reset(Action):
             data.reset()
             return SangoStatus.SUCCESS
         return SangoStatus.FAILURE
+
+
+class ExecTako(Action):
+
+    def __init__(self, tako: Tako):
+
+        super().__init__()
+        self._tako = tako
+        self._executed = False
+
+    def exec(self):
+        self._tako()
+
+    def act(self) -> SangoStatus:
+        
+        if self._status == self.READY:
+            thread = threading.Thread(target=self.exec, args=[])
+            thread.start()
+
+        if self._executed:
+            return self.SUCCESS
+        
+        return self.RUNNING
