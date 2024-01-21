@@ -312,7 +312,7 @@ class Conv(Struct):
         self._roles = {}
         for role in roles:
             self.add_role(role)
-        self._turns: typing.List[Turn] = StoreList()
+        self._turns: typing.List[Turn] = DDict()
         self._max_turns = max_turns
 
     def add_turn(self, role: str, text: str) -> 'Conv':
@@ -442,14 +442,14 @@ class Conv(Struct):
             for turn in self._turns
         ]
     
-    def range(self, from_: int=0, to_: int=-1) -> 'StoreList':
+    def range(self, from_: int=0, to_: int=-1) -> 'DDict':
 
-        return StoreList(
+        return DDict(
             
         )
 
 
-class StoreList(typing.List, Struct):
+class DDict(typing.List, Struct):
     
     def as_dict(self) -> Dict:
         return dict(enumerate(self))
@@ -464,9 +464,9 @@ class StoreList(typing.List, Struct):
             )
         return text
     
-    def spawn(self) -> 'StoreList':
+    def spawn(self) -> 'DDict':
 
-        return StoreList(
+        return DDict(
             [x.spawn() if isinstance(x, Storable) else x for x in self]
         )
 
@@ -495,6 +495,55 @@ class StoreList(typing.List, Struct):
                 cur[i] = v.state_dict()
             else:
                 cur[i] = v
+        return cur
+
+
+class DDict(typing.Dict, Struct):
+    
+    def as_dict(self) -> Dict:
+        return self
+
+    def as_text(self, heading: str=None) -> str:
+        
+        text = '\n'.join([f"{k}: {v}" for k, v in self.items()])
+        if heading is not None:
+            return (
+                f'{heading}'
+                f'{text}'
+            )
+        return text
+    
+    def spawn(self) -> 'DDict':
+
+        return DDict(
+            {k: x.spawn() if isinstance(x, Storable) else x for k, x in self.items()}
+        )
+
+    def load_state_dict(self, state_dict: typing.Dict):
+        """
+
+        Args:
+            state_dict (typing.Dict): 
+        """
+        for k, v in enumerate(self.items()):
+            if isinstance(v, Storable):
+                self[k] = v.load_state_dict(state_dict[i])
+            else:
+                self[k] = state_dict[k]
+        
+    def state_dict(self) -> typing.Dict:
+        """
+
+        Returns:
+            typing.Dict: 
+        """
+        cur = {}
+
+        for k, v in self.items():
+            if isinstance(v, Storable):
+                cur[k] = v.state_dict()
+            else:
+                cur[k] = v
         return cur
 
 

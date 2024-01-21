@@ -42,7 +42,7 @@ class OpenAIQuery(LLMQuery):
         return self.client.chat.completions.create(
             model="gpt-4-1106-preview",
             messages=request.contents, temperature=self.temperature
-        )
+        ).choices[0].message.content
 
 
 class UIQuery(Query):

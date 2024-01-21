@@ -1,5 +1,5 @@
 from dachi.storage import Prompt, Conv, Turn
-from ..tools.base import ChatConv
+from ..tools.base import ChatConv, ProcessResponse, Processed
 import typing
 
 from dachi.storage._prompting import Conv
@@ -64,6 +64,25 @@ DEFAULT_PROMPT = Prompt(
 {summary}
 """
 )
+
+
+class ProcessComplete(ProcessResponse):
+
+    def __init__(self, to_set: str, state: typing.Dict):
+
+        self.state = state
+        self.to_set = to_set
+
+    def process(self, content) -> Processed:
+        
+        if content == '完了':
+            self.state[self.to_set] = True
+            return Processed(
+                '', True, True
+            )
+        return Processed(
+            content, False, False
+        )
 
 
 class StoryTellerConv(ChatConv):

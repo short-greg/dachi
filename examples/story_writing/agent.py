@@ -46,7 +46,7 @@ class StoryWriter(Agent):
         llm_query = LLMQuery()
         ui_query = UIQuery(ui_interface)
 
-        self._prompts = storage.StoreList([tasks.QUESTION_PROMPT, tasks.ANSWER_PROMPT])        
+        self._prompts = storage.DDict([tasks.QUESTION_PROMPT, tasks.ANSWER_PROMPT])        
         self._default = tasks.DEFAULT_PROMPT
         self._wrapper = storage.Wrapper(tasks.QUESTION_PROMPT)
         # Set the first messaeg of plan conv

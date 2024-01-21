@@ -1,10 +1,12 @@
 from dachi.behavior import Action, SangoStatus
-from dachi.storage import Prompt, Conv, Q, StoreList, Wrapper, R, Struct
+from dachi.storage import Prompt, Conv, Q, DDict, Wrapper, R, Struct
 from dachi.comm import Query, Request
 from .queries import UIQuery, LLMQuery
 from .comm import UI
 import typing
 import threading
+from abc import ABC, abstractmethod, abstractproperty
+from dataclasses import dataclass, field
 
 
 class ChatConv(Conv):
@@ -63,10 +65,36 @@ class PromptGen(Struct):
         }
 
 
+@dataclass
+class Processed:
+
+    text: str
+    succeeded: bool
+    to_interrupt: bool = field(default=False)
+    other: typing.Any = field(default_factory=dict)
+
+
+class ProcessResponse(ABC):
+
+    @abstractmethod
+    def process(self, content) -> Processed:
+        pass
+
+
+class NullProcessResponse(ProcessResponse):
+
+    def process(self, content) -> Processed:
+
+        return Processed(
+            content, True, False
+        )
+
+
 class Converse(Action):
 
     def __init__(
-        self, prompt: PromptGen, conv: Conv, llm: LLMQuery, user_interface: UI
+        self, prompt: PromptGen, conv: Conv, llm: LLMQuery, user_interface: UI,
+        response_processor: ProcessResponse=None
     ):
         # Use to send a message from the LLM
         
@@ -77,14 +105,22 @@ class Converse(Action):
         self._ui_query = UIQuery(user_interface)
         self._ui = user_interface
         self._request = Request()
+        self._processed: Processed = None
+        self._response_processor = response_processor or NullProcessResponse()
 
     def converse_turn(self):
 
         self._conv[0].text = self._prompt.prompt.as_text()
         response = self._llm_query(self._conv, asynchronous=False)
-        self._ui.post_message('assistant', response)
+        processed = self._response_processor.process(response)
+
+        self._processed = processed
+        if processed.to_interrupt:
+            return
+        self._ui.post_message('assistant', processed.text)
+
         self._conv.add_turn(
-            'assistant', response
+            'assistant', processed.text
         )
         self._request.contents = self._conv
         self._ui_query.post(self._request)
@@ -93,14 +129,20 @@ class Converse(Action):
         
         if self._status == SangoStatus.READY:
             # use threading here
-            thread = threading.Thread(target=self.converse_turn, args=[])
+            thread = threading.Thread(
+                target=self.converse_turn, args=[]
+            )
             thread.start()
 
-        if self._request.responded is True:
-            if self._request.success is True:
+        if self._processed is not None and (
+            self._request.responded is True or self._processed.to_interrupt
+        ):
+            
+            if not self._processed.to_interrupt and self._request.success is True:
                 self._conv.add_turn(
                     'user', self._request.response
                 )
+            if self._processed.succeeded:
                 return SangoStatus.SUCCESS
             else:
                 return SangoStatus.FAILURE
@@ -109,6 +151,7 @@ class Converse(Action):
 
     def reset(self):
         super().reset()
+        self._interrupt = False
         self._request = Request()
 
 
@@ -116,9 +159,16 @@ class Message(Action):
     # Use to send a message from the LLM
 
     def __init__(
-        self, prompt: PromptGen, conv: Conv, llm: Query, user_interface: UI
+        self, prompt: PromptGen, conv: Conv, llm: LLMQuery, user_interface: UI
     ):
-        
+        """
+
+        Args:
+            prompt (PromptGen): 
+            conv (Conv): 
+            llm (Query): 
+            user_interface (UI): 
+        """
         super().__init__()
         self._conv = conv
         self._prompt = prompt
@@ -130,6 +180,7 @@ class Message(Action):
 
         self._conv[0].text = self._prompt.prompt.as_text()
         response = self._llm_query(self._conv, asynchronous=False)
+
         self._ui.post_message('assistant', response)
         self._conv.add_turn(
             'assistant', response
@@ -196,7 +247,10 @@ class ConvMessage(Action):
 
 class PreparePrompt(Action):
 
-    def __init__(self, conv: Conv, prompt: Prompt, replace: bool=False, **structs: Q):
+    def __init__(
+        self, conv: Conv, prompt: Prompt, 
+        replace: bool=False, **structs: Q
+    ):
 
         super().__init__()
         self.prompt = prompt 
@@ -230,10 +284,10 @@ class PreparePrompt(Action):
 
 class AdvPrompt(Action):
 
-    def __init__(self, prompts: StoreList, default: Prompt, wrapper: Wrapper[Prompt]):
+    def __init__(self, prompts: DDict, default: Prompt, wrapper: Wrapper[Prompt]):
 
         super().__init__()
-        self._prompts = StoreList([*prompts, default])
+        self._prompts = DDict([*prompts, default])
         self._default = default
         self._wrapper = wrapper
         self._idx = 0

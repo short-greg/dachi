@@ -205,28 +205,28 @@ class TestStoreList:
 
     def test_state_dict_returns_dict(self):
 
-        conv = prompting.StoreList()
+        conv = prompting.DDict()
         conv.append(1)
 
         assert conv.state_dict()[0] == 1
 
     def test_as_dict_returns_dict(self):
 
-        conv = prompting.StoreList()
+        conv = prompting.DDict()
         conv.append(1)
 
         assert conv.as_dict()[0] == 1
 
     def test_spawn_creates_new_store_list(self):
 
-        conv = prompting.StoreList()
+        conv = prompting.DDict()
         conv.append(1)
         conv2 = conv.spawn()
         assert conv2.as_dict()[0] == 1
 
     def test_spawn_creates_new_store_list_with_turn(self):
 
-        conv = prompting.StoreList()
+        conv = prompting.DDict()
         conv.append(prompting.Text('text'))
         conv2 = conv.spawn()
         assert conv2.as_dict()[0].text == 'text'

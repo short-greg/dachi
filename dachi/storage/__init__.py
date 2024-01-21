@@ -3,5 +3,5 @@ from ._prompting import (
     Completion, Role, Turn, Arg, 
     Prompt, Conv, Text,
     Struct, R, Q, F, D,
-    StoreList, Storable, Wrapper
+    DDict, Storable, Wrapper
 )

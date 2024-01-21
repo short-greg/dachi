@@ -1,7 +1,9 @@
 from examples.vocab_learning.teacher.tasks import lesson
 from examples.vocab_learning.teacher.tasks import planner
+from examples.story_writing.tasks import ProcessComplete
 from examples.tools import base
 from dachi.comm import _requests as requests
+
 from dachi import storage
 from time import sleep
 import threading
@@ -41,7 +43,7 @@ class DummyQuery(requests.Query):
 
 class DummyLLMQuery(base.LLMQuery):
 
-    def __init__(self, termperature=0.0):
+    def __init__(self, message='message'):
         """
 
         Args:
@@ -49,10 +51,10 @@ class DummyLLMQuery(base.LLMQuery):
         """
         super().__init__()
         self.called = False
-        self.temperature = termperature
+        self.message = message
 
     def prepare_response(self, request: base.Request):
-        return 'Response from LLM!'
+        return self.message
 
 
 class DummyQueryDelay(requests.Query):
@@ -263,13 +265,30 @@ class TestConverse:
         prompt = base.Prompt([], self.PROMPT)
         prompt_gen = base.PromptGen(prompt)
         conv = base.ChatConv()
-        llm_query = DummyLLMQuery(0.1)
+        llm_query = DummyLLMQuery('続く')
         ui = UI('message')
         converse = base.Converse(
             prompt_gen, conv, llm_query, ui
         )
         converse.tick()
+        sleep(0.1)
         assert len(conv) == 3
+
+    def test_converse_interrupts_conversation(self):
+
+        prompt = base.Prompt([], self.PROMPT)
+        prompt_gen = base.PromptGen(prompt)
+        state = dict(completed=False)
+        conv = base.ChatConv()
+        llm_query = DummyLLMQuery('完了')
+        ui = UI('message')
+        converse = base.Converse(
+            prompt_gen, conv, llm_query, ui, ProcessComplete('completed', state)
+        )
+        converse.tick()
+        sleep(0.1)
+        assert state['completed'] is True
+        assert len(conv) == 1
 
 
 class TestMessage:
@@ -290,6 +309,7 @@ class TestMessage:
         converse = base.Message(
             prompt_gen, conv, llm_query, ui
         )
-        converse.tick()
-        assert len(conv) == 2
 
+        converse.tick()
+        sleep(0.1)
+        assert len(conv) == 2
