@@ -1,5 +1,6 @@
 import threading
 from openai import OpenAI
+from abc import abstractmethod
 
 from typing import Any
 from .comm import UI
@@ -10,7 +11,24 @@ from functools import partial
 
 class LLMQuery(Query):
 
-    def __init__(self, termperature=0.0):
+    @abstractmethod
+    def prepare_response(self, request: Request):
+        pass
+    
+    def exec_post(self, request: Request) -> Any:
+        message = self.prepare_response(request)
+        self.respond(request, message)
+
+    def __call__(self, conv: Conv, asynchronous: bool=True):
+
+        request = Request(contents=conv.as_messages())
+        self.post(request, asynchronous)
+        return request.response
+
+
+class OpenAIQuery(LLMQuery):
+
+    def __init__(self, temperature: float=0.0):
         """
 
         Args:
@@ -18,25 +36,13 @@ class LLMQuery(Query):
         """
         super().__init__()
         self.client = OpenAI()
-        self.temperature = termperature
+        self.temperature = temperature
 
     def prepare_response(self, request: Request):
-        response = self.client.chat.completions.create(
+        return self.client.chat.completions.create(
             model="gpt-4-1106-preview",
-            messages=request.contents.as_messages(), temperature=self.temperature
+            messages=request.contents, temperature=self.temperature
         )
-        message = response.choices[0].message.content
-        self.respond(request, message)
-    
-    def prepare_post(self, request: Request) -> Any:
-        thread = threading.Thread(target=self.prepare_response, args=[request])
-        thread.start()
-
-    def __call__(self, conv: Conv):
-
-        request = Request(contents=conv)
-        self.prepare_response(request)
-        return request.response.choices[0].message.content
 
 
 class UIQuery(Query):
@@ -50,6 +56,5 @@ class UIQuery(Query):
         super().__init__()
         self.ui_interface = ui_interface
 
-    def prepare_post(self, request: Request):
-        thread = threading.Thread(target=self.ui_interface.request_message, args=[partial(self.respond, request)])
-        thread.start()
+    def exec_post(self, request: Request):
+        self.ui_interface.request_message(partial(self.respond, request))

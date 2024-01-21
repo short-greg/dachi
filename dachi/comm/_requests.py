@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from ._storage import DataStore
 import uuid
 from dataclasses import dataclass
-
+import threading
 
 CALLBACK = typing.Union[str, typing.Callable]
 
@@ -119,11 +119,11 @@ class Query(ABC):
             self._on_response.remove(on_response)
 
     @abstractmethod
-    def prepare_post(self,  request):
+    def exec_post(self,  request):
         pass
 
     def post(
-        self, request: Request
+        self, request: Request, asynchronous: bool=True
     ):
         """Make a query for information. If the content cannot be processed it raises an ValueError
 
@@ -133,10 +133,15 @@ class Query(ABC):
             on_response (typing.Union[str, typing.Callable], optional): The  . If it is a string, it will set the storage specified by the key to the reponse Defaults to None.
 
         """
-        self.prepare_post(request)
-        request.post()
         for on_post in self._on_post:
             on_post(request)
+        request.post()
+
+        if asynchronous:
+            thread = threading.Thread(target=self.exec_post, args=[request])
+            thread.start()
+        else:
+            self.exec_post(request)
 
     def respond(
         self, request: Request, response
@@ -149,11 +154,12 @@ class Query(ABC):
             on_response (typing.Union[str, typing.Callable], optional): The  . If it is a string, it will set the storage specified by the key to the reponse Defaults to None.
 
         """
-        # response = self.prepare_response(request)
         request.respond(response)
         for on_response in self._on_response:
             on_response(request)
 
+
+# TODO: Update SIGNAL
 
 class Signal(ABC):
     """A message that does not respond to the user
@@ -177,7 +183,7 @@ class Signal(ABC):
         raise NotImplementedError
 
     def post(
-        self, request: Request
+        self, request: Request, asynchronous: bool=False
     ):
         """Sends a message. If the content cannot be processed it raises an ValueError
 

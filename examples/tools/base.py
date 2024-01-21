@@ -66,7 +66,7 @@ class PromptGen(Struct):
 class Converse(Action):
 
     def __init__(
-        self, prompt: PromptGen, conv: Conv, llm: Query, user_interface: UI
+        self, prompt: PromptGen, conv: Conv, llm: LLMQuery, user_interface: UI
     ):
         # Use to send a message from the LLM
         
@@ -76,11 +76,12 @@ class Converse(Action):
         self._llm_query = llm
         self._ui_query = UIQuery(user_interface)
         self._ui = user_interface
+        self._request = Request()
 
     def converse_turn(self):
 
         self._conv[0].text = self._prompt.prompt.as_text()
-        response = self._llm_query(self._conv)
+        response = self._llm_query(self._conv, asynchronous=False)
         self._ui.post_message('assistant', response)
         self._conv.add_turn(
             'assistant', response
@@ -123,11 +124,12 @@ class Message(Action):
         self._prompt = prompt
         self._llm_query = llm
         self._ui = user_interface
+        self._request = Request()
 
     def converse_turn(self):
 
         self._conv[0].text = self._prompt.prompt.as_text()
-        response = self._llm_query(self._conv)
+        response = self._llm_query(self._conv, asynchronous=False)
         self._ui.post_message('assistant', response)
         self._conv.add_turn(
             'assistant', response

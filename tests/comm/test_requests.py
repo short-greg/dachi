@@ -11,7 +11,7 @@ class DummyQuery(requests.Query):
     def prepare_response(self, request):
         return 'respond!'
     
-    def prepare_post(self, request):
+    def exec_post(self, request):
 
         self.respond(request)
 
