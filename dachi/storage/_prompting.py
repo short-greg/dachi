@@ -3,111 +3,104 @@ from dataclasses import dataclass, field
 from typing import Dict
 from abc import abstractmethod, ABC
 from ..base import Storable
+from ._core import DList, Struct, Arg, Q
 
 
 T = typing.TypeVar("T")
 
-@dataclass
-class Arg:
 
-    name: str
-    description: str = field(default="")
+class Text(Struct):
+    """A simple wrapper to use text as a prompt struct
+    """
 
+    def __init__(self, text: str):
+        """Wrap the string 
 
-class Q(ABC, typing.Generic[T]):
+        Args:
+            text (str): The string to wrap
+        """
+        self.text = text
 
-    @abstractmethod
-    def __call__(self, *args, **kwargs) -> T:
-        raise NotImplementedError
-
-
-class D(Q, typing.Generic[T]):
-
-    def __init__(self, data: 'Struct'):
-
-        self._data = data
-
-    def __call__(self) -> T:
-
-        return self._data
-
-
-class F(Q, typing.Generic[T]):
-
-    def __init__(self, f, *args, **kwargs):
-
-        self._f = f
-        self._args = args
-        self._kwargs = kwargs
-    
-    def __call__(self, *args, **kwargs) -> T:
-
-        kwargs = {
-            **self._kwargs,
-            **kwargs
+    def as_dict(self) -> Dict:
+        return {
+            "text": self.text
         }
-        args = [*args, *self._args]
-        return self._f(*args, **kwargs)
-
-
-class R(Q, typing.Generic[T]):
-
-    def __init__(self, data: 'Struct', name: str):
-        
-        self._data = data
-        self._name = name
-
-    def __call__(self) -> T:
-
-        return self._data.get(self._name)
-
-
-class Struct(Storable):
-
-    @abstractmethod
-    def as_text(self) -> str:
-        pass
-
-    @abstractmethod
-    def as_dict(self) -> typing.Dict:
-        pass
-
-    @staticmethod
-    def structure(text: str, heading: str=None, empty: float='Undefined'):
-
-        text = text if text is not None else empty
-
-        if heading is None:
-            return f'{text}'
-        
-        return (
-            f'{heading}\n'
-            f'{text}'
+    
+    def as_text(self, heading: str=None) -> str:
+        return self.structure(
+            self.text, heading
+        )
+    
+    def spawn(self) -> 'Text':
+        return Text(
+            self.text
         )
 
-    def get(self, name: str) -> typing.Any:
-        return getattr(self, name)
+# TODO: Add Example, Add Document
 
-    def r(self, name: str) -> R:
-        
-        return R(self, name)
+@dataclass
+class Role(object):
 
-    @property
-    def d(self) -> D:
-        
-        return D(self)
+    name: str
+    meta: typing.Dict = field(default_factory=dict)
+
+
+@dataclass
+class Message(Struct):
+
+    role: Role
+    text: Struct
+
+    def as_dict(self) -> Dict:
+        return {
+            'role': self.role.name,
+            'text': self.text.as_text(),  
+        }
+
+    def as_text(self) -> str:
+        return f"{self.role.name}: {self.text.as_text()}"
+
+
+# class MessageList(Struct, typing.List[Message]):
+
+#     def __init__(self, messages: typing.List[Message]=None):
+
+#         super().__init__()
+#         if messages is not None:
+#             self.extend(messages)
+
+#     def filter(self, role: str):
+
+#         return MessageList([
+#             message for message in self._messages if message.role.name == role]
+#         )
     
-    def f(self, name: str, *args, **kwargs) -> F:
-        return F(getattr(self, name), *args, **kwargs)
+#     def reset(self):
+#         """Clear the turns
+#         """
+#         self.clear()
+    
+#     def as_dict(self) -> Dict:
+#         return {
+#             i: turn
+#             for i, turn in enumerate(self)
+#         }
 
-    def set(self, name: str, value):
-        if name not in self.__dict__:
-            raise KeyError(f'Key by name of {name} does not exist.')
-        self.__dict__[name] = value
-        return value
+#     def as_text(self, heading: str=None) -> str:
+        
+#         result = f'{heading}\n' if heading is not None else ''
+#         for i, message in enumerate(self._messages):
+#             result += f'{message.as_text()}'
+#             if i < len(self._turns) - 1:
+#                 result += '\n'
 
-    def reset(self):
-        pass
+#         return result
+
+#     def spawn(self) -> 'MessageList':
+
+#         return MessageList()
+
+
 
 
 class Prompt(Struct):
@@ -150,6 +143,8 @@ class Prompt(Struct):
         for k, _ in self._args.items():
             if k in kwargs:
                 cur_v = kwargs[k]
+                if isinstance(cur_v, Q):
+                    cur_v = cur_v()
                 if isinstance(cur_v, Struct):
                     cur_v = cur_v.as_text()
                 inputs[k] = cur_v
@@ -189,120 +184,50 @@ class Prompt(Struct):
         return self._args
 
 
-class Completion(Struct):
-    """
-    """
-    
-    def __init__(self, prompt: Prompt, response: str=None):
-        """
-        Args:
-            prompt (Prompt): The prompt for the completion
-            response (str): The response for the completion
-        """
-        self.prompt = prompt
-        self.response = response
+# TODO: Add 
+class PromptGen(Struct):
 
-    def format_prompt(self, **kwargs) -> 'Completion':
-        """Format the prompt to remove its variables
+    def __init__(self, prompt: Prompt, **components):
 
-        Raises:
-            ValueError: If there are arguments passed in that are not 
-            arguments to the prompt
+        super().__init__()
+        self.base_prompt = prompt
+        self.components = components
 
-        Returns:
-            Prompt: The formatted prompt
-        """
-        return Completion(
-            self.prompt.format(**kwargs)
+    @property
+    def prompt(self) -> Prompt:
+
+        return self.base_prompt.format(
+            **self.components
         )
 
-    def as_text(
-        self, 
-        heading: str=None,
-        prompt_heading: str="===Prompt===", 
-        response_heading: str="===Response==="
-    ) -> str:
-        """
-        Returns:
-            typing.Dict: The completion object as a dict
-        """
-        body = f"""
-        {self.structure(self.prompt.as_text(), prompt_heading)}
-        {self.structure(self.response, response_heading)}
-        """
-        return self.structure(
-            body, heading
-        )
-    
-    def as_dict(self) -> typing.Dict:
-        """
-        Returns:
-            typing.Dict: The completion object as a dict
-        """
-        return {
-            "prompt": self.prompt.as_dict(),
-            "response": self.response
-        }
-
-    def spawn(self) -> 'Completion':
-        return Completion(
-            self.prompt.spawn(), self.response
-        )
-
-
-class Text(Struct):
-    """A simple wrapper to use text as a prompt struct
-    """
-
-    def __init__(self, text: str):
-        """Wrap the string 
-
-        Args:
-            text (str): The string to wrap
-        """
-        self.text = text
-
-    def as_dict(self) -> Dict:
-        return {
-            "text": self.text
-        }
-    
-    def as_text(self, heading: str=None) -> str:
-        return self.structure(
-            self.text, heading
-        )
-    
-    def spawn(self) -> 'Text':
-        return Text(
-            self.text
-        )
-
-# TODO: Add Example, Add Document
-
-@dataclass
-class Role(object):
-
-    name: str
-    meta: typing.Dict = field(default_factory=dict)
-
-
-@dataclass
-class Turn(Struct):
-
-    role: Role
-    text: str
-
-    def as_dict(self) -> Dict:
-        return {
-            'role': self.role.name,
-            'text': self.text,  
-        }
-
+    # TODO: Complete
     def as_text(self) -> str:
-        return f"{self.role.name}: {self.text}"
+        return (
+            f'{self.base_prompt.as_text()}\n'
+        )
+
+    def as_dict(self) -> typing.Dict:
+        
+        components = {}
+        for k, v in self.components:
+            if isinstance(v, Struct):
+                components[k] = v.as_dict()
+            else:
+                components[k] = v
+        return {
+            'base_prompt': self.prompt.as_dict(),
+            'components': components
+        }
 
 
-class Conv(Struct):
+class MessageLister(ABC):
+
+    @abstractmethod
+    def as_messages(self) -> DList:
+        pass
+
+
+class Conv(Struct, MessageLister):
 
     def __init__(self, roles: typing.List[typing.Union[str, Role]]=None, max_turns: int=None, check_roles: bool=False):
 
@@ -312,7 +237,7 @@ class Conv(Struct):
         self._roles = {}
         for role in roles:
             self.add_role(role)
-        self._turns: typing.List[Turn] = DDict()
+        self._turns = DList()
         self._max_turns = max_turns
 
     def add_turn(self, role: str, text: str) -> 'Conv':
@@ -321,7 +246,7 @@ class Conv(Struct):
             self.add_role(role)
         if self._max_turns is not None and len(self._turns) == self._max_turns:
             self._turns = self._turns[1:]
-        self._turns.append(Turn(self._roles[role], text))
+        self._turns.append(Message(self._roles[role], text))
 
         return self
     
@@ -354,11 +279,11 @@ class Conv(Struct):
             conversation.add_turn(turn[0], turn[1])
         return conversation
 
-    def __getitem__(self, idx) -> Turn:
+    def __getitem__(self, idx) -> Message:
 
         return self._turns[idx]
     
-    def __setitem__(self, idx, turn: Turn) -> Turn:
+    def __setitem__(self, idx, turn: Message) -> Message:
 
         self._turns[idx] = turn
         return turn
@@ -403,7 +328,7 @@ class Conv(Struct):
     def __len__(self) -> int:
         return len(self._turns)
     
-    def __iter__(self) -> typing.Tuple[Role, str]:
+    def __iter__(self) -> typing.Tuple[Role, Message]:
 
         for turn in self._turns:
             yield turn.role, turn.text
@@ -432,140 +357,114 @@ class Conv(Struct):
         )
 
     @property
-    def turns(self) -> typing.List[Turn]:
+    def turns(self) -> typing.List[Message]:
         return self._turns
     
-    def as_messages(self) -> typing.List[typing.Dict[str, str]]:
+    def as_messages(self) -> typing.List[Message]:
 
-        return [
-            {'role': turn.role.name, 'content': turn.text}
-            for turn in self._turns
-        ]
+        return self._turns
     
-    def range(self, from_: int=0, to_: int=-1) -> 'DDict':
+    def range(self, from_: int=0, to_: int=-1) -> 'DList':
 
-        return DDict(
+        return DList(
             
         )
 
 
-class DDict(typing.List, Struct):
-    
-    def as_dict(self) -> Dict:
-        return dict(enumerate(self))
+class PromptConv(Conv):
+
+    def __init__(self, prompt_gen: PromptGen, max_turns: int=None):
+
+        # add introductory message
+        super().__init__(
+            ['assistant', 'user'], 
+            max_turns, True
+        )
+        self.prompt_gen = prompt_gen
+
+    def as_messages(self) -> typing.List[typing.Dict[str, str]]:
+
+        return [
+            Message('system', self.prompt_gen),
+            *super().as_messages()
+        ]
 
     def as_text(self, heading: str=None) -> str:
         
-        text = '\n'.join(self)
-        if heading is not None:
-            return (
-                f'{heading}'
-                f'{text}'
-            )
-        return text
-    
-    def spawn(self) -> 'DDict':
+        result = f'{heading}\n' if heading is not None else ''
+        result += self.prompt_gen.as_text()
+        for i, turn in enumerate(self._turns):
+            result += f'{turn.as_text()}'
+            if i < len(self._turns) - 1:
+                result += '\n'
 
-        return DDict(
-            [x.spawn() if isinstance(x, Storable) else x for x in self]
+        return result
+
+    def spawn(self) -> 'PromptConv':
+
+        return PromptConv(
+            self.prompt_gen.spawn(),
+            self._max_turns
         )
 
-    def load_state_dict(self, state_dict: typing.Dict):
-        """
-
-        Args:
-            state_dict (typing.Dict): 
-        """
-        for i, v in enumerate(self):
-            if isinstance(v, Storable):
-                self[i] = v.load_state_dict(state_dict[i])
-            else:
-                self[i] = state_dict[i]
-        
-    def state_dict(self) -> typing.Dict:
-        """
-
-        Returns:
-            typing.Dict: 
-        """
-        cur = {}
-
-        for i, v in enumerate(self):
-            if isinstance(v, Storable):
-                cur[i] = v.state_dict()
-            else:
-                cur[i] = v
-        return cur
-
-
-class DDict(typing.Dict, Struct):
-    
     def as_dict(self) -> Dict:
-        return self
+        return {
+            'prompt_gen': self.prompt_gen.as_dict(),
+            **super().as_dict()
+        }
 
-    def as_text(self, heading: str=None) -> str:
-        
-        text = '\n'.join([f"{k}: {v}" for k, v in self.items()])
-        if heading is not None:
-            return (
-                f'{heading}'
-                f'{text}'
-            )
-        return text
+
+class Completion(Struct, MessageLister):
+    """
+    """
     
-    def spawn(self) -> 'DDict':
-
-        return DDict(
-            {k: x.spawn() if isinstance(x, Storable) else x for k, x in self.items()}
-        )
-
-    def load_state_dict(self, state_dict: typing.Dict):
+    def __init__(self, prompt: 'PromptGen', response: str=None, prompt_name: str='system'):
         """
-
         Args:
-            state_dict (typing.Dict): 
+            prompt (PromptGen): The prompt for the completion
+            response (str): The response for the completion
         """
-        for k, v in enumerate(self.items()):
-            if isinstance(v, Storable):
-                self[k] = v.load_state_dict(state_dict[i])
-            else:
-                self[k] = state_dict[k]
-        
-    def state_dict(self) -> typing.Dict:
-        """
+        self.prompt_gen = prompt
+        self.response = response
+        self.prompt_name = prompt_name
 
+    @property
+    def prompt(self) -> 'prompt':
+        return self.prompt_gen.prompt
+
+    def as_text(
+        self, 
+        heading: str=None,
+        prompt_heading: str="===Prompt===", 
+        response_heading: str="===Response==="
+    ) -> str:
+        """
         Returns:
-            typing.Dict: 
+            typing.Dict: The completion object as a dict
         """
-        cur = {}
+        body = f"""
+        {self.structure(self.prompt_gen.as_text(), prompt_heading)}
+        {self.structure(self._response, response_heading)}
+        """
+        return self.structure(
+            body, heading
+        )
+    
+    def as_messages(self) -> DList:
 
-        for k, v in self.items():
-            if isinstance(v, Storable):
-                cur[k] = v.state_dict()
-            else:
-                cur[k] = v
-        return cur
-
-
-S = typing.TypeVar('S', bound=Struct)
-
-
-class Wrapper(Struct, typing.Generic[S]):
-
-    def __init__(self, wrapped: S=None):
-        super().__init__()
-        self.wrapped = wrapped
-
-    def as_text(self) -> str:
-        if self.wrapped is None:
-            return ''
-        return self.wrapped.as_text()
-
+        return DList([Message('system', self.prompt_gen)])
+    
     def as_dict(self) -> typing.Dict:
-        if self.wrapped is None:
-            return {}
-        return self.wrapped.as_text()
+        """
+        Returns:
+            typing.Dict: The completion object as a dict
+        """
+        return {
+            "prompt": self.prompt_gen.prompt,
+            "response": self.response
+        }
 
-    def reset(self):
-        super().__init__()
-        self.wrapped = None
+    def spawn(self) -> 'Completion':
+        return Completion(
+            self.prompt_gen.spawn(), self.response
+        )

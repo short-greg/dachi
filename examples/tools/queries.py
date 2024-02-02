@@ -1,10 +1,11 @@
 import threading
+import typing
 from openai import OpenAI
 from abc import abstractmethod
 
 from typing import Any
 from .comm import UI
-from dachi.storage import Conv
+from dachi.storage import MessageLister
 from dachi.comm import Query, Request
 from functools import partial
 
@@ -19,9 +20,9 @@ class LLMQuery(Query):
         message = self.prepare_response(request)
         self.respond(request, message)
 
-    def __call__(self, conv: Conv, asynchronous: bool=True):
+    def __call__(self, conv: MessageLister, asynchronous: bool=True):
 
-        request = Request(contents=conv.as_messages())
+        request = Request(contents=conv.as_messages().as_dict_list())
         self.post(request, asynchronous)
         return request.response
 

@@ -1,5 +1,5 @@
 from dachi.storage import Prompt, Conv
-from ....tools.base import ChatConv
+from ....tools.base import PromptConv
 import json
 
 
@@ -28,7 +28,7 @@ PLAN_PROMPT = Prompt(
 """)
 
 
-class PlanConv(ChatConv):
+class PlanConv(PromptConv):
     
     def __init__(self, max_turns: int=None):
 

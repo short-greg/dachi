@@ -1,6 +1,6 @@
 from dachi.storage import Prompt, Conv
 import json
-from ....tools.base import ChatConv
+from ....tools.base import PromptConv
 
 from dachi.storage._prompting import Conv
 
@@ -39,7 +39,7 @@ QUIZ_PROMPT = Prompt(
 )
 
 
-class QuizConv(ChatConv):
+class QuizConv(PromptConv):
     
     def __init__(self, max_turns: int=None):
 

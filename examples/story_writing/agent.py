@@ -40,59 +40,46 @@ class StoryWriter(Agent):
 
         self._status = AgentStatus.READY
         self._interval = interval
-        self._assist_conv = tasks.StoryTellerConv()
-        self._summary_conv = tasks.SummaryCompletion()
+        self._state = storage.DDict()
+        self._state.set('conv_summary', 'Not available')
+        # Work on this a little more
+        self._define_question = storage.PromptConv(
+            storage.PromptGen(tasks.QUESTION_PROMPT, summary=self._state.r('conv_summary'))
+        )
+        self._converse = storage.PromptConv(
+            storage.PromptGen(tasks.DEFAULT_PROMPT, summary=self._state.r('conv_summary'))
+        )
+        self._summary_conv = storage.Completion(
+            storage.PromptGen(
+                tasks.SUMMARY_PROMPT, chat=self._state.r('conv_summary')
+            )
+        )
 
         llm_query = LLMQuery()
-        ui_query = UIQuery(ui_interface)
 
-        self._prompts = storage.DDict([tasks.QUESTION_PROMPT, tasks.ANSWER_PROMPT])        
+        self._prompts = storage.DList([tasks.QUESTION_PROMPT, tasks.ANSWER_PROMPT])        
         self._default = tasks.DEFAULT_PROMPT
-        self._wrapper = storage.Wrapper(tasks.QUESTION_PROMPT)
+
         # Set the first messaeg of plan conv
-        # self._user_conv.set_system(plan=self._plan_conv.plan)
         with behavior.sango() as story_writer:
             with behavior.select(story_writer) as teach:
-                # can make these two trees
-                with behavior.sequence(teach) as summarizer:
-                    # Can't this be simplified.. If this is too complex it makes
-                    # it hard to use
-                    # CheckTrue
-                    # RunPrompt <- I want it to be simple.. If it was just two 
-                    #  items it would be easier.. Prompt, Conv, Display, 
-                    summarizer.add_tasks([
-                        # CheckTrue
-                        # Converse
-                        # Reset
-                        behavior.CheckTrue(self._assist_conv.r('completed')),
-                        behavior.Reset(self._summary_conv.d),
-                        base.PreparePrompt(
-                           self._summary_conv, tasks.SUMMARY_PROMPT, 
-                           conversation=self._assist_conv.r('conv'),
-                           summary=self._summary_conv.r('summary')
+                with behavior.sequence(teach) as define_question:
+                    # TODO: Wrap into one sequence
+                    define_question.add_tasks([
+                        behavior.CheckFalse(self._state.r('question_defined')),
+                        base.Converse(
+                            self._define_question,  llm_query, ui_interface, 
+                            tasks.ProcessComplete('question_defined', self._state)
                         ),
-                        base.ConvMessage(self._summary_conv, llm_query, 'assistant'),
-                        base.DisplayAI(self._summary_conv, ui_interface),
-                        behavior.Reset(self._assist_conv.d),
-                        base.AdvPrompt(self._prompts, self._default, self._wrapper),
+                        base.PromptCompleter(self._prompt, self._summary_conv, llm_query, ui_interface),
+                        base.Transfer(self._summary_conv.r('response'), self._state, 'conv_summary')
                     ])
-                # teach.add(ConverseCond())
-                # 
-                with behavior.sequence(teach) as assistance:
-
-                    # ConverseCond # Can easily create multiple "assistances" with this
-                    # Spawn a thread which goes through each point
-                    # function 1, function 2, etc... Should be relatively easy
-                    assistance.add_tasks([
-                        base.PreparePrompt(
-                            self._assist_conv, self._wrapper.r('wrapped'), 
-                            summary=self._summary_conv.r('summary')
-                        ),
-                        base.ConvMessage(self._assist_conv, llm_query, 'assistant'),
-                        behavior.Not(behavior.CheckTrue(self._assist_conv.r('completed'))),
-                        base.DisplayAI(self._assist_conv, ui_interface),
-                        base.ConvMessage(self._assist_conv, ui_query, 'user'),
-                    ])
+                teach.add_task(
+                    base.Converse(
+                        self._converse, llm_query, ui_interface, 
+                        tasks.ProcessComplete('question_defined', self._state)
+                    )
+                )
         self._behavior = story_writer
 
     @property

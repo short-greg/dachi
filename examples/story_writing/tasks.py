@@ -1,5 +1,5 @@
-from dachi.storage import Prompt, Conv, Turn
-from ..tools.base import ChatConv, ProcessResponse, Processed
+from dachi.storage import Prompt
+from ..tools.base import ProcessResponse, Processed
 import typing
 
 from dachi.storage._prompting import Conv
@@ -85,74 +85,74 @@ class ProcessComplete(ProcessResponse):
         )
 
 
-class StoryTellerConv(ChatConv):
+# class StoryTellerConv(ChatConv):
     
-    def __init__(self, max_turns: int=None):
+#     def __init__(self, max_turns: int=None):
 
-        # add introductory message
-        super().__init__(
-            max_turns
-        )
-        self._completed = False
-        self._conv_turns: typing.List[Turn] = []
+#         # add introductory message
+#         super().__init__(
+#             max_turns
+#         )
+#         self._completed = False
+#         self._conv_turns: typing.List[Message] = []
 
-    def add_turn(self, role: str, text: str) -> Conv:
-        if role == 'assistant':
-            if text == '完了':
-                self._completed = True
-            else:
-                self._completed = False
-                super().add_turn(role, text)
-                self._conv_turns.append(self._turns[-1])
-        elif role == 'user':
-            self._completed = False
-            super().add_turn(role, text)
-            self._conv_turns.append(self._turns[-1])
-        else:
-            super().add_turn(role, text)
+#     def add_turn(self, role: str, text: str) -> Conv:
+#         if role == 'assistant':
+#             if text == '完了':
+#                 self._completed = True
+#             else:
+#                 self._completed = False
+#                 super().add_turn(role, text)
+#                 self._conv_turns.append(self._turns[-1])
+#         elif role == 'user':
+#             self._completed = False
+#             super().add_turn(role, text)
+#             self._conv_turns.append(self._turns[-1])
+#         else:
+#             super().add_turn(role, text)
 
-    def reset(self):
-        super().reset()
-        self._completed = False
-        self._conv_turns.clear()
+#     def reset(self):
+#         super().reset()
+#         self._completed = False
+#         self._conv_turns.clear()
 
-    def as_text(self, heading: str = None) -> str:
-        return super().as_text(heading)
+#     def as_text(self, heading: str = None) -> str:
+#         return super().as_text(heading)
 
-    @property
-    def conv(self) -> str:
+#     @property
+#     def conv(self) -> str:
 
-        result = ''
-        for turn in self._conv_turns:
-            result += f'{turn.as_text()}\n'
-        return result
+#         result = ''
+#         for turn in self._conv_turns:
+#             result += f'{turn.as_text()}\n'
+#         return result
 
-    @property
-    def completed(self) -> bool:
-        return self._completed
+#     @property
+#     def completed(self) -> bool:
+#         return self._completed
 
 
-class SummaryCompletion(ChatConv):
+# class SummaryCompletion(ChatConv):
     
-    def __init__(self, max_turns: int=None):
+#     def __init__(self, max_turns: int=None):
 
-        # add introductory message
-        super().__init__(
-            max_turns
-        )
-        self._summary = None
+#         # add introductory message
+#         super().__init__(
+#             max_turns
+#         )
+#         self._summary = None
 
-    def add_turn(self, role: str, text: str) -> Conv:
-        if role == 'assistant':
-            self._summary = text
-            super().add_turn(role, text)
-        else:
-            super().add_turn(role, text)
+#     def add_turn(self, role: str, text: str) -> Conv:
+#         if role == 'assistant':
+#             self._summary = text
+#             super().add_turn(role, text)
+#         else:
+#             super().add_turn(role, text)
 
-    @property
-    def summary(self):
-        return self._summary
+#     @property
+#     def summary(self):
+#         return self._summary
 
-    def reset(self):
-        super().reset()
-        self._completed = False
+#     def reset(self):
+#         super().reset()
+#         self._completed = False

@@ -1,27 +1,7 @@
 from dachi.behavior import Action, SangoStatus
 from dachi.storage import Prompt, Conv, Q
 from dachi.comm import Query, Request
-from ..vocab_learning.teacher.comm import UI
-
-
-class ChatConv(Conv):
-
-    def __init__(self, max_turns: int=None):
-
-        # add introductory message
-        super().__init__(
-            ['system', 'assistant', 'user'], 
-            max_turns, True
-        )
-        self.add_turn('system', None)
-
-    def set_system(self, prompt: Prompt):
-
-        self[0].text = prompt.as_text()
-
-    def reset(self):
-        super().reset()
-        self.add_turn('system', None)
+from ....tools.comm import UI
 
 
 class ConvMessage(Action):
@@ -117,3 +97,23 @@ class DisplayAI(Action):
             return self.FAILURE
         
         return self.SUCCESS
+
+
+# class ChatConv(Conv):
+
+#     def __init__(self, max_turns: int=None):
+
+#         # add introductory message
+#         super().__init__(
+#             ['system', 'assistant', 'user'], 
+#             max_turns, True
+#         )
+#         self.add_turn('system', None)
+
+#     def set_system(self, prompt: Prompt):
+
+#         self[0].text = prompt.as_text()
+
+#     def reset(self):
+#         super().reset()
+#         self.add_turn('system', None)

@@ -306,7 +306,7 @@ class TestMessage:
         conv = base.ChatConv()
         ui = UI('message')
         llm_query = DummyLLMQuery(0.1)
-        converse = base.Message(
+        converse = base.PromptCompleter(
             prompt_gen, conv, llm_query, ui
         )
 

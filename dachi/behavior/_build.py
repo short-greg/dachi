@@ -53,7 +53,7 @@ class composite(object):
     def parent(self) -> behavior.Task:
         return self._parent
 
-    def __enter__(self):
+    def __enter__(self) -> behavior.Serial:
         
         return self._child
     
