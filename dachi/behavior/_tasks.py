@@ -581,7 +581,7 @@ class CheckTrue(Check):
 class CheckFalse(Check):
 
     def __init__(self, r: R):
-        super().__init__(r, lambda r: r is False)
+        super().__init__(r, lambda r: r is False or r is None)
 
 
 class Reset(Action):

@@ -64,10 +64,14 @@ class ChatbotInterface(tk.Tk, UI):
         self.toggle_input_state(False)
         self._input_state = False
         # self._agent.io.connect_ui(self.bot_response)
+        self.bot_message_buffer = []
         self._requests: typing.List[typing.Callable[[str], None]] = []
 
     def update(self) -> None:
         self.toggle_input_state(self._input_state)
+        for speaker, message in self.bot_message_buffer:
+            self.bot_response(speaker, message)
+        self.bot_message_buffer.clear()
         return super().update()
 
     def request_message(self, callback: typing.Callable[[str], None]):
@@ -107,7 +111,8 @@ class ChatbotInterface(tk.Tk, UI):
         self.thinking_dots = ""
     
     def post_message(self, speaker, message: str) -> bool:
-        self.bot_response(speaker, message)
+        self.bot_message_buffer.append((speaker, message))
+        # self.bot_response(speaker, message)
         return True
     
     def toggle_input_state(self, on: bool=True):

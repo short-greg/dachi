@@ -41,7 +41,6 @@ class Converse(Action):
         response_processor: ProcessResponse=None
     ):
         # Use to send a message from the LLM
-        
         super().__init__()
         self._conv = prompt_conv
         self._llm_query = llm
@@ -53,16 +52,16 @@ class Converse(Action):
 
     def converse_turn(self):
 
+        self._request = Request()
         response = self._llm_query(self._conv, asynchronous=False)
-        processed = self._response_processor.process(response)
+        self._processed  = self._response_processor.process(response)
 
-        self._processed = processed
-        if processed.to_interrupt:
+        if self._processed.to_interrupt:
             return
-        self._ui.post_message('assistant', processed.text)
+        self._ui.post_message('assistant', self._processed.text)
 
         self._conv.add_turn(
-            'assistant', processed.text
+            'assistant', self._processed.text
         )
         self._request.contents = self._conv
         self._ui_query.post(self._request)
@@ -85,8 +84,10 @@ class Converse(Action):
                     'user', self._request.response
                 )
             if self._processed.succeeded:
+                print('SUCCEEDED!')
                 return SangoStatus.SUCCESS
             else:
+                print('FAILED!')
                 return SangoStatus.FAILURE
         
         return SangoStatus.RUNNING
@@ -101,7 +102,8 @@ class PromptCompleter(Action):
     # Use to send a message from the LLM
 
     def __init__(
-        self, completion: Completion, llm: LLMQuery, user_interface: UI
+        self, completion: Completion, llm: LLMQuery, user_interface: UI,
+        post_processor: typing.Callable=None
     ):
         """
 
@@ -115,13 +117,18 @@ class PromptCompleter(Action):
         self._llm_query = llm
         self._ui = user_interface
         self._request = Request()
+        self._post_processor = post_processor
 
     def respond(self):
 
-        response = self._llm_query(self._completion, asynchronous=False)
+        print('Generating response!')
 
+        response = self._llm_query(self._completion, asynchronous=False)
+        print('Generated response ', response)
         self._ui.post_message('assistant', response)
         self._completion.response = response
+        if self._post_processor is not None:
+            self._post_processor()
 
     def act(self) -> SangoStatus:
         
@@ -144,7 +151,7 @@ class PromptCompleter(Action):
 
 
 # TODO: Reconsider the best way to do this
-class Transfer(Action):
+class Transfer(object):
 
     def __init__(self, q: Q, d: DDict, name: str):
 
@@ -153,11 +160,10 @@ class Transfer(Action):
         self.d = d
         self.name = name
 
-    def act(self) -> SangoStatus:
+    def __call__(self):
         
         val = self.q()
         self.d.set(self.name, val)
-        return self.SUCCESS
 
 
 # class ConvMessage(Action):

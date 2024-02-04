@@ -51,56 +51,21 @@ class Message(Struct):
     role: Role
     text: Struct
 
+    def __post_init__(self):
+
+        if isinstance(self.role, str):
+            self.role = Role(self.role)
+        if isinstance(self.text, str):
+            self.text = Text(self.text)
+
     def as_dict(self) -> Dict:
         return {
             'role': self.role.name,
-            'text': self.text.as_text(),  
+            'content': self.text.as_text(),  
         }
 
     def as_text(self) -> str:
         return f"{self.role.name}: {self.text.as_text()}"
-
-
-# class MessageList(Struct, typing.List[Message]):
-
-#     def __init__(self, messages: typing.List[Message]=None):
-
-#         super().__init__()
-#         if messages is not None:
-#             self.extend(messages)
-
-#     def filter(self, role: str):
-
-#         return MessageList([
-#             message for message in self._messages if message.role.name == role]
-#         )
-    
-#     def reset(self):
-#         """Clear the turns
-#         """
-#         self.clear()
-    
-#     def as_dict(self) -> Dict:
-#         return {
-#             i: turn
-#             for i, turn in enumerate(self)
-#         }
-
-#     def as_text(self, heading: str=None) -> str:
-        
-#         result = f'{heading}\n' if heading is not None else ''
-#         for i, message in enumerate(self._messages):
-#             result += f'{message.as_text()}'
-#             if i < len(self._turns) - 1:
-#                 result += '\n'
-
-#         return result
-
-#     def spawn(self) -> 'MessageList':
-
-#         return MessageList()
-
-
 
 
 class Prompt(Struct):
@@ -137,7 +102,7 @@ class Prompt(Struct):
         difference = input_names - set(self._args)
         if len(difference) != 0:
             raise ValueError(
-                f'Input has names that are not arguments to the prompt'
+                f'Input has names, {input_names}, that are not arguments to the prompt {self._args}'
             )
         inputs = {}
         for k, _ in self._args.items():
@@ -202,8 +167,11 @@ class PromptGen(Struct):
 
     # TODO: Complete
     def as_text(self) -> str:
+
+        prompt = self.base_prompt.format(**self.components)
+
         return (
-            f'{self.base_prompt.as_text()}\n'
+            f'{prompt.as_text()}\n'
         )
 
     def as_dict(self) -> typing.Dict:
@@ -360,15 +328,15 @@ class Conv(Struct, MessageLister):
     def turns(self) -> typing.List[Message]:
         return self._turns
     
-    def as_messages(self) -> typing.List[Message]:
+    def as_messages(self) -> DList[Message]:
 
-        return self._turns
+        return DList(self._turns)
     
-    def range(self, from_: int=0, to_: int=-1) -> 'DList':
+    # def range(self, from_: int=0, to_: int=-1) -> 'DList':
 
-        return DList(
+    #     return DList(
             
-        )
+    #     )
 
 
 class PromptConv(Conv):
@@ -382,12 +350,16 @@ class PromptConv(Conv):
         )
         self.prompt_gen = prompt_gen
 
+    def as_turns(self) -> typing.List[typing.Dict[str, str]]:
+
+        return super().as_messages()
+
     def as_messages(self) -> typing.List[typing.Dict[str, str]]:
 
-        return [
+        return DList([
             Message('system', self.prompt_gen),
             *super().as_messages()
-        ]
+        ])
 
     def as_text(self, heading: str=None) -> str:
         
@@ -468,3 +440,47 @@ class Completion(Struct, MessageLister):
         return Completion(
             self.prompt_gen.spawn(), self.response
         )
+
+
+
+# class MessageList(Struct, typing.List[Message]):
+
+#     def __init__(self, messages: typing.List[Message]=None):
+
+#         super().__init__()
+#         if messages is not None:
+#             self.extend(messages)
+
+#     def filter(self, role: str):
+
+#         return MessageList([
+#             message for message in self._messages if message.role.name == role]
+#         )
+    
+#     def reset(self):
+#         """Clear the turns
+#         """
+#         self.clear()
+    
+#     def as_dict(self) -> Dict:
+#         return {
+#             i: turn
+#             for i, turn in enumerate(self)
+#         }
+
+#     def as_text(self, heading: str=None) -> str:
+        
+#         result = f'{heading}\n' if heading is not None else ''
+#         for i, message in enumerate(self._messages):
+#             result += f'{message.as_text()}'
+#             if i < len(self._turns) - 1:
+#                 result += '\n'
+
+#         return result
+
+#     def spawn(self) -> 'MessageList':
+
+#         return MessageList()
+
+
+

@@ -69,6 +69,7 @@ class R(Q, typing.Generic[T]):
 
         return self._data.get(self._name)
 
+
 class Struct(Storable):
 
     @abstractmethod
@@ -93,7 +94,10 @@ class Struct(Storable):
         )
 
     def get(self, name: str) -> typing.Any:
-        return getattr(self, name)
+        try:
+            getattr(self, name)
+        except AttributeError:
+            return None
 
     def r(self, name: str) -> R:
         
@@ -123,8 +127,9 @@ class DList(typing.List, Struct):
         return dict(enumerate(self))
 
     def as_text(self, heading: str=None) -> str:
-        
-        text = '\n'.join(self)
+
+        text = '\n'.join(
+            [d.as_text() if isinstance(d, Struct) else d for d in self])
         if heading is not None:
             return (
                 f'{heading}'
@@ -176,7 +181,7 @@ class DList(typing.List, Struct):
     def as_dict_list(self) -> typing.List[typing.Dict]:
 
         return [
-            item.as_dict() if isinstance(item, 'Struct') else {'value': item}
+            item.as_dict() if isinstance(item, Struct) else {'value': item}
             for item in self
         ]
 
@@ -229,8 +234,8 @@ class DDict(typing.Dict, Struct):
                 cur[k] = v
         return cur
     
-    def get(self, name: str) -> typing.Any:
-        return self[name]
+    # def get(self, name: str) -> typing.Any:
+    #     return self.get(name)
 
     def set(self, name: str, value) -> typing.Any:
         self[name] = value

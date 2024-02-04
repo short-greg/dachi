@@ -2,7 +2,7 @@ from abc import ABC
 
 from dachi.agents import Agent, AgentStatus
 from ..tools import base
-from ..tools.queries import UIQuery, LLMQuery
+from ..tools.queries import UIQuery, OpenAIQuery
 from dachi import behavior, storage
 from . import tasks
 from ..tools.comm import UI
@@ -51,13 +51,15 @@ class StoryWriter(Agent):
         )
         self._summary_conv = storage.Completion(
             storage.PromptGen(
-                tasks.SUMMARY_PROMPT, chat=self._state.r('conv_summary')
+                tasks.SUMMARY_PROMPT, summary=self._state.r('conv_summary'), 
+                conversation=self._define_question.f('as_turns')
             )
         )
 
-        llm_query = LLMQuery()
+        llm_query = OpenAIQuery()
 
-        self._prompts = storage.DList([tasks.QUESTION_PROMPT, tasks.ANSWER_PROMPT])        
+        # self._prompts = storage.DList([tasks.QUESTION_PROMPT, tasks.ANSWER_PROMPT])        
+        self._prompt = tasks.QUESTION_PROMPT
         self._default = tasks.DEFAULT_PROMPT
 
         # Set the first messaeg of plan conv
@@ -65,16 +67,20 @@ class StoryWriter(Agent):
             with behavior.select(story_writer) as teach:
                 with behavior.sequence(teach) as define_question:
                     # TODO: Wrap into one sequence
-                    define_question.add_tasks([
-                        behavior.CheckFalse(self._state.r('question_defined')),
-                        base.Converse(
-                            self._define_question,  llm_query, ui_interface, 
-                            tasks.ProcessComplete('question_defined', self._state)
-                        ),
-                        base.PromptCompleter(self._prompt, self._summary_conv, llm_query, ui_interface),
-                        base.Transfer(self._summary_conv.r('response'), self._state, 'conv_summary')
-                    ])
-                teach.add_task(
+                    define_question.add(behavior.CheckFalse(self._state.r('question_defined')))
+                    with behavior.select(define_question) as converse:
+                        converse.add_tasks([
+                            base.Converse(
+                                self._define_question,  llm_query, ui_interface, 
+                                tasks.ProcessComplete('question_defined', self._state)
+                            ),
+                            base.PromptCompleter(
+                                self._summary_conv, llm_query, ui_interface,
+                                post_processor=base.Transfer(
+                                    self._summary_conv.r('response'), self._state, 'conv_summary')
+                            ),
+                        ])
+                teach.add(
                     base.Converse(
                         self._converse, llm_query, ui_interface, 
                         tasks.ProcessComplete('question_defined', self._state)

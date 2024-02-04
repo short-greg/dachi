@@ -12,6 +12,9 @@ QUESTION_PROMPT = Prompt(
 あなたはストーリー作成のアシスタントです。作家が物語の各ステップを理解するのを手伝ってください。
 今回のステップが物語の問いかけを決めるステップです。
 
+# 現時点の会話の要約
+{summary}
+
 # 指示
 1. はじめに、適切な挨拶をしてください。
 2. 作家の返答に基づいて、作家が物語の中心となる問いを定義するのを手伝ってください。中心となる問いは、かなり正確で答えにくいものでなければなりません。そうでなければ、興味深い話を書くことは難しくなります。例えば、「世界に一人きりでも人間は生き残ることができるか」というのは良い質問です。「自由とは何か」というのは広すぎます。「子犬を蹴るのは大丈夫か」というのは答えやすくて面白くありません。作家に、その答えをどのように改善できるかについてアドバイスを与えてください。
@@ -78,10 +81,13 @@ class ProcessComplete(ProcessResponse):
         if content == '完了':
             self.state[self.to_set] = True
             return Processed(
-                '', True, True
+                '', False, True
             )
+        
+        self.state[self.to_set] = False
+        
         return Processed(
-            content, False, False
+            content, True, False
         )
 
 

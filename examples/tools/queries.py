@@ -21,7 +21,9 @@ class LLMQuery(Query):
         self.respond(request, message)
 
     def __call__(self, conv: MessageLister, asynchronous: bool=True):
-
+        print(
+            conv.as_messages().as_dict_list()
+        )
         request = Request(contents=conv.as_messages().as_dict_list())
         self.post(request, asynchronous)
         return request.response
@@ -40,6 +42,7 @@ class OpenAIQuery(LLMQuery):
         self.temperature = temperature
 
     def prepare_response(self, request: Request):
+        # exepct content to be a list of messages
         return self.client.chat.completions.create(
             model="gpt-4-1106-preview",
             messages=request.contents, temperature=self.temperature
