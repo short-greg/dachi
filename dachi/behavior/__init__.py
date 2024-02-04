@@ -6,7 +6,8 @@ from ._tasks import (
     Condition, Sango,
     Check, Not, While, Until,
     CheckReady, Reset, CheckTrue,
-    CheckFalse
+    CheckFalse,
+    Converse, PromptCompleter
 )
 from ._status import (
     SangoStatus

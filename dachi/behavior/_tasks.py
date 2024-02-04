@@ -3,8 +3,17 @@ import typing
 from ..base import Storable
 from ._status import SangoStatus
 from dataclasses import dataclass
-from ..storage import Struct, Q, R
+from ..storage import (
+    Struct, Q, R, DDict, 
+    PromptConv, Completion,
+)
 from ..graph import Tako
+from ..comm import (
+    Request, UIQuery, LLMQuery, UI,
+    ProcessResponse, Processed,
+    NullProcessResponse
+)
+
 import threading
 
 
@@ -189,37 +198,6 @@ class Sequence(Serial):
     def reset(self):
         super().reset()
         self._idx = 0
-
-
-# class Sequence(Serial):
-
-#     def subtick(self) -> SangoStatus:
-        
-#         if self._status.is_done:
-#             return self._status
-    
-#         task = self._tasks[self._idx]
-#         status = task.tick()
-
-#         if status == SangoStatus.FAILURE:
-#             return SangoStatus.FAILURE
-        
-#         if status == SangoStatus.SUCCESS:
-#             self._idx += 1
-#             status = SangoStatus.RUNNING
-#         if self._idx >= len(self._tasks):
-#             status = SangoStatus.SUCCESS
-
-#         return status
-
-#     def spawn(self) -> 'Sequence':
-#         return Sequence(
-#             [task.spawn() for task in self._tasks]
-#         )
-
-#     def reset(self):
-#         super().reset()
-#         self._idx = 0
 
 
 class Selector(Serial):
@@ -622,3 +600,153 @@ class ExecTako(Action):
             return self.SUCCESS
         
         return self.RUNNING
+
+
+class Converse(Action):
+
+    def __init__(
+        self, prompt_conv: PromptConv, llm: LLMQuery, user_interface: UI,
+        response_processor: ProcessResponse=None
+    ):
+        # Use to send a message from the LLM
+        super().__init__()
+        self._conv = prompt_conv
+        self._llm_query = llm
+        self._ui_query = UIQuery(user_interface)
+        self._ui = user_interface
+        self._request = Request()
+        self._processed: Processed = None
+        self._response_processor = response_processor or NullProcessResponse()
+
+    def converse_turn(self):
+
+        self._request = Request()
+        response = self._llm_query(self._conv, asynchronous=False)
+        self._processed  = self._response_processor.process(response)
+
+        if self._processed.to_interrupt:
+            return
+        self._ui.post_message('assistant', self._processed.text)
+
+        self._conv.add_turn(
+            'assistant', self._processed.text
+        )
+        self._request.contents = self._conv
+        self._ui_query.post(self._request)
+
+    def act(self) -> SangoStatus:
+        
+        if self._status == SangoStatus.READY:
+            # use threading here
+            thread = threading.Thread(
+                target=self.converse_turn, args=[]
+            )
+            thread.start()
+
+        if self._processed is not None and (
+            self._request.responded is True or self._processed.to_interrupt
+        ):
+            
+            if not self._processed.to_interrupt and self._request.success is True:
+                self._conv.add_turn(
+                    'user', self._request.response
+                )
+            if self._processed.succeeded:
+                print('SUCCEEDED!')
+                return SangoStatus.SUCCESS
+            else:
+                print('FAILED!')
+                return SangoStatus.FAILURE
+        
+        return SangoStatus.RUNNING
+
+    def reset(self):
+        super().reset()
+        self._interrupt = False
+        self._request = Request()
+
+
+class PromptCompleter(Action):
+    # Use to send a message from the LLM
+
+    def __init__(
+        self, completion: Completion, llm: LLMQuery, user_interface: UI,
+        post_processor: typing.Callable=None
+    ):
+        """
+
+        Args:
+            completion (Completion): 
+            llm (Query): 
+            user_interface (UI): 
+        """
+        super().__init__()
+        self._completion = completion
+        self._llm_query = llm
+        self._ui = user_interface
+        self._request = Request()
+        self._post_processor = post_processor
+
+    def respond(self):
+
+        self._request = Request()
+
+        response = self._llm_query(self._completion, asynchronous=False)
+        self._ui.post_message('assistant', response)
+        self._completion.response = response
+        print(self._completion.response)
+        if self._post_processor is not None:
+            self._post_processor()
+        self._request.respond(response)
+
+    def act(self) -> SangoStatus:
+        
+        if self._status == SangoStatus.READY:
+            # use threading here
+            thread = threading.Thread(target=self.respond, args=[])
+            thread.start()
+
+        if self._request.responded is True:
+            # self._request.status # wouldn't this be easier? 
+            if self._request.success is True:
+                return SangoStatus.SUCCESS
+            else:
+                return SangoStatus.FAILURE
+        
+        return SangoStatus.RUNNING
+
+    def reset(self):
+        super().reset()
+        self._request = Request()
+
+
+
+# class Sequence(Serial):
+
+#     def subtick(self) -> SangoStatus:
+        
+#         if self._status.is_done:
+#             return self._status
+    
+#         task = self._tasks[self._idx]
+#         status = task.tick()
+
+#         if status == SangoStatus.FAILURE:
+#             return SangoStatus.FAILURE
+        
+#         if status == SangoStatus.SUCCESS:
+#             self._idx += 1
+#             status = SangoStatus.RUNNING
+#         if self._idx >= len(self._tasks):
+#             status = SangoStatus.SUCCESS
+
+#         return status
+
+#     def spawn(self) -> 'Sequence':
+#         return Sequence(
+#             [task.spawn() for task in self._tasks]
+#         )
+
+#     def reset(self):
+#         super().reset()
+#         self._idx = 0

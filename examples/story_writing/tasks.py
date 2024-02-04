@@ -1,6 +1,6 @@
 from dachi.behavior._status import SangoStatus
 from dachi.storage import Prompt
-from ..tools.base import ProcessResponse, Processed
+from dachi.comm import ProcessResponse, Processed
 import typing
 
 from dachi.storage import Conv, R
@@ -104,76 +104,3 @@ class PrintOut(Action):
     def act(self) -> SangoStatus:
         print(self.output, self.r())
         return self.SUCCESS
-
-
-# class StoryTellerConv(ChatConv):
-    
-#     def __init__(self, max_turns: int=None):
-
-#         # add introductory message
-#         super().__init__(
-#             max_turns
-#         )
-#         self._completed = False
-#         self._conv_turns: typing.List[Message] = []
-
-#     def add_turn(self, role: str, text: str) -> Conv:
-#         if role == 'assistant':
-#             if text == '完了':
-#                 self._completed = True
-#             else:
-#                 self._completed = False
-#                 super().add_turn(role, text)
-#                 self._conv_turns.append(self._turns[-1])
-#         elif role == 'user':
-#             self._completed = False
-#             super().add_turn(role, text)
-#             self._conv_turns.append(self._turns[-1])
-#         else:
-#             super().add_turn(role, text)
-
-#     def reset(self):
-#         super().reset()
-#         self._completed = False
-#         self._conv_turns.clear()
-
-#     def as_text(self, heading: str = None) -> str:
-#         return super().as_text(heading)
-
-#     @property
-#     def conv(self) -> str:
-
-#         result = ''
-#         for turn in self._conv_turns:
-#             result += f'{turn.as_text()}\n'
-#         return result
-
-#     @property
-#     def completed(self) -> bool:
-#         return self._completed
-
-
-# class SummaryCompletion(ChatConv):
-    
-#     def __init__(self, max_turns: int=None):
-
-#         # add introductory message
-#         super().__init__(
-#             max_turns
-#         )
-#         self._summary = None
-
-#     def add_turn(self, role: str, text: str) -> Conv:
-#         if role == 'assistant':
-#             self._summary = text
-#             super().add_turn(role, text)
-#         else:
-#             super().add_turn(role, text)
-
-#     @property
-#     def summary(self):
-#         return self._summary
-
-#     def reset(self):
-#         super().reset()
-#         self._completed = False

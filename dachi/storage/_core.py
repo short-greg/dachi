@@ -97,6 +97,7 @@ class Struct(Storable):
         try:
             return getattr(self, name)
         except AttributeError:
+            # TODO: Decide how to handle this
             print('No such attribute as ', name)
             return None
 
@@ -263,3 +264,21 @@ class Wrapper(Struct, typing.Generic[S]):
     def reset(self):
         super().__init__()
         self.wrapped = None
+
+
+# TODO: Reconsider the best way to do this
+class Transfer(object):
+
+    def __init__(self, q: Q, d: DDict, name: str):
+
+        super().__init__()
+        self.q = q
+        self.d = d
+        self.name = name
+
+    def __call__(self):
+        
+        val = self.q()
+        self.d.set(self.name, val)
+        print(self.name, self.d.get(self.name), val)
+

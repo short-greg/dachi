@@ -1,9 +1,8 @@
 import tkinter as tk
 from tkinter import scrolledtext
 from tkinter import font as tkfont
-from ..vocab_learning.teacher.agent import LanguageTeacher
 import typing
-from .comm import UI
+from dachi.comm import UI
 
 
 class ChatHistory(scrolledtext.ScrolledText):

@@ -1,10 +1,11 @@
 import typing
 from abc import ABC, abstractmethod
 
-from ._storage import DataStore
+from ..storage._data import DataStore
 import uuid
 from dataclasses import dataclass
 import threading
+from dataclasses import field, dataclass
 
 CALLBACK = typing.Union[str, typing.Callable]
 
@@ -71,139 +72,28 @@ class Request(object):
         return self._success
 
 
-class Query(ABC):
-    """Base class for creating a message that will return a response
-    after completion
-    """
+@dataclass
+class Processed:
 
-    def __init__(self):
-        """Run a Query
+    text: str
+    succeeded: bool
+    to_interrupt: bool = field(default=False)
+    other: typing.Any = field(default_factory=dict)
 
-        Args:
-            store (DataStore): The store that the query uses
-        """
-        self._on_post = []
-        self._on_response = []
-        self._processing = {}
-    
-    def register(
-        self, 
-        on_post: typing.Callable=None,
-        on_response: typing.Callable=None
-    ):
-        """Register a callback 
 
-        Args:
-            on_post (typing.Union[str, typing.Callable], optional): Callback for when posting. Defaults to None.
-            on_response (typing.Union[str, typing.Callable], optional): Callback for when response. Defaults to None.
-        """
-        if on_post is not None:
-            self._on_post.append(on_post)
-        if on_response is not None:
-            self._on_response.append(on_response)
-
-    def unregister(
-        self, 
-        on_post: typing.Callable=None,
-        on_response: typing.Callable=None
-    ):
-        """Remove a callback from the query
-
-        Args:
-            on_post (typing.Callable, optional): The on_post callback to remove. Defaults to None.
-            on_response (typing.Callable, optional): The on_resposne callback to remove. Defaults to None.
-        """
-        if on_post is not None:
-            self._on_post.remove(on_post)
-        if on_response is not None:
-            self._on_response.remove(on_response)
+class ProcessResponse(ABC):
 
     @abstractmethod
-    def exec_post(self,  request):
+    def process(self, content) -> Processed:
         pass
 
-    def post(
-        self, request: Request, asynchronous: bool=True
-    ):
-        """Make a query for information. If the content cannot be processed it raises an ValueError
 
-        Args:
-            contents: The contents of the query
-            on_post (typing.Union[str, typing.Callable], optional): Callback when the query was posted. If it is a string, it sets that value to true on storage. Defaults to None.
-            on_response (typing.Union[str, typing.Callable], optional): The  . If it is a string, it will set the storage specified by the key to the reponse Defaults to None.
+class NullProcessResponse(ProcessResponse):
 
-        """
-        for on_post in self._on_post:
-            on_post(request)
-        request.post()
+    def process(self, content) -> Processed:
 
-        if asynchronous:
-            thread = threading.Thread(target=self.exec_post, args=[request])
-            thread.start()
-        else:
-            self.exec_post(request)
-
-    def respond(
-        self, request: Request, response
-    ):
-        """Make a query for information. If the content cannot be processed it raises an ValueError
-
-        Args:
-            contents: The contents of the query
-            on_post (typing.Union[str, typing.Callable], optional): Callback when the query was posted. If it is a string, it sets that value to true on storage. Defaults to None.
-            on_response (typing.Union[str, typing.Callable], optional): The  . If it is a string, it will set the storage specified by the key to the reponse Defaults to None.
-
-        """
-        request.respond(response)
-        for on_response in self._on_response:
-            on_response(request)
+        return Processed(
+            content, True, False
+        )
 
 
-# TODO: Update SIGNAL
-
-class Signal(ABC):
-    """A message that does not respond to the user
-    """
-
-    def __init__(self):
-        """
-        """
-        self._on_post = []
-    
-    @abstractmethod
-    def prepare_post(
-        self, request: Request,
-        on_post: CALLBACK=None, 
-    ):
-        """Sends a message. If the content cannot be processed it raises an ValueError
-
-        Args:
-            contents: The contents of the message
-        """
-        raise NotImplementedError
-
-    def post(
-        self, request: Request, asynchronous: bool=False
-    ):
-        """Sends a message. If the content cannot be processed it raises an ValueError
-
-        Args:
-            contents: The contents of the message
-        """
-        self.prepare_post(request)
-
-        request.post()
-        for on_post in self._on_post:
-            on_post(request)
-
-    def register(
-        self, 
-        on_post: typing.Union[str, typing.Callable]
-    ):
-        self._on_post.append(on_post)
-
-    def unregister(
-        self, 
-        on_post: typing.Union[str, typing.Callable]
-    ):
-        self._on_post.remove(on_post)

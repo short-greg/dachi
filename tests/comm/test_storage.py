@@ -1,4 +1,4 @@
-from dachi.comm._storage import (
+from dachi.storage._data import (
     Data, DataHook, Synched, CompositeHook,
     DataStore
 )

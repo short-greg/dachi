@@ -10,7 +10,6 @@ class StoryWriterApp:
     def __init__(self):
 
         self._running = False
-        # TODO: set interval in "run" method
         self._ui = ChatbotInterface()
         self._agent = StoryWriter(self._ui, interval=1/60)
         self._interval = 1 / 60
@@ -27,10 +26,7 @@ class StoryWriterApp:
                     if not agent_stopped:
                         status = self._agent.act()
                         if status == AgentStatus.STOPPED:
-                            # print('Agent stopped')
-                            # agent_stopped = True
                             self._agent.reset()
-                            # agent_stopped = False
                 except tk.TclError:
                     break
                 time.sleep(1 / 60)
