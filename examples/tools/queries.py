@@ -21,9 +21,6 @@ class LLMQuery(Query):
         self.respond(request, message)
 
     def __call__(self, conv: MessageLister, asynchronous: bool=True):
-        print(
-            conv.as_messages().as_dict_list()
-        )
         request = Request(contents=conv.as_messages().as_dict_list())
         self.post(request, asynchronous)
         return request.response

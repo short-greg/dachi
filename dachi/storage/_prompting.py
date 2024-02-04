@@ -278,7 +278,7 @@ class Conv(Struct, MessageLister):
     
     @max_turns.setter
     def max_turns(self, max_turns) -> int:
-        """_summary_
+        """
 
         Returns:
             int: _description_

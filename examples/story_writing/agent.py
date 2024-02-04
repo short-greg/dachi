@@ -62,11 +62,11 @@ class StoryWriter(Agent):
         self._prompt = tasks.QUESTION_PROMPT
         self._default = tasks.DEFAULT_PROMPT
 
-        # Set the first messaeg of plan conv
         with behavior.sango() as story_writer:
             with behavior.select(story_writer) as teach:
                 with behavior.sequence(teach) as define_question:
                     # TODO: Wrap into one sequence
+                    define_question.add(tasks.PrintOut('Checking false', self._state.r('question_defined')))
                     define_question.add(behavior.CheckFalse(self._state.r('question_defined')))
                     with behavior.select(define_question) as converse:
                         converse.add_tasks([
@@ -82,8 +82,7 @@ class StoryWriter(Agent):
                         ])
                 teach.add(
                     base.Converse(
-                        self._converse, llm_query, ui_interface, 
-                        tasks.ProcessComplete('question_defined', self._state)
+                        self._converse, llm_query, ui_interface
                     )
                 )
         self._behavior = story_writer
@@ -95,6 +94,7 @@ class StoryWriter(Agent):
     def act(self) -> AgentStatus:
         
         sango_status = self._behavior.tick()
+
         return AgentStatus.from_status(sango_status)
 
     def reset(self):

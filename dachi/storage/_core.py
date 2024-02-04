@@ -95,8 +95,9 @@ class Struct(Storable):
 
     def get(self, name: str) -> typing.Any:
         try:
-            getattr(self, name)
+            return getattr(self, name)
         except AttributeError:
+            print('No such attribute as ', name)
             return None
 
     def r(self, name: str) -> R:

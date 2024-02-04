@@ -121,14 +121,15 @@ class PromptCompleter(Action):
 
     def respond(self):
 
-        print('Generating response!')
+        self._request = Request()
 
         response = self._llm_query(self._completion, asynchronous=False)
-        print('Generated response ', response)
         self._ui.post_message('assistant', response)
         self._completion.response = response
+        print(self._completion.response)
         if self._post_processor is not None:
             self._post_processor()
+        self._request.respond(response)
 
     def act(self) -> SangoStatus:
         
@@ -138,6 +139,7 @@ class PromptCompleter(Action):
             thread.start()
 
         if self._request.responded is True:
+            # self._request.status # wouldn't this be easier? 
             if self._request.success is True:
                 return SangoStatus.SUCCESS
             else:
@@ -164,6 +166,7 @@ class Transfer(object):
         
         val = self.q()
         self.d.set(self.name, val)
+        print(self.name, self.d.get(self.name), val)
 
 
 # class ConvMessage(Action):

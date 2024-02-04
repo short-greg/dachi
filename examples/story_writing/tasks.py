@@ -1,8 +1,11 @@
+from dachi.behavior._status import SangoStatus
 from dachi.storage import Prompt
 from ..tools.base import ProcessResponse, Processed
 import typing
 
-from dachi.storage._prompting import Conv
+from dachi.storage import Conv, R
+
+from dachi.behavior import Action
 
 
 QUESTION_PROMPT = Prompt(
@@ -89,6 +92,18 @@ class ProcessComplete(ProcessResponse):
         return Processed(
             content, True, False
         )
+
+
+class PrintOut(Action):
+
+    def __init__(self, output: str, r: R):
+        super().__init__()
+        self.output = output
+        self.r = r
+
+    def act(self) -> SangoStatus:
+        print(self.output, self.r())
+        return self.SUCCESS
 
 
 # class StoryTellerConv(ChatConv):
