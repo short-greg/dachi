@@ -606,7 +606,7 @@ class Converse(Action):
 
     def __init__(
         self, prompt_conv: PromptConv, llm: LLMQuery, user_interface: UI,
-        response_processor: ProcessResponse=None
+        response_processor: ProcessResponse=None, **prompt_components: Struct
     ):
         # Use to send a message from the LLM
         super().__init__()
@@ -617,11 +617,13 @@ class Converse(Action):
         self._request = Request()
         self._processed: Processed = None
         self._response_processor = response_processor or NullProcessResponse()
+        self._components = prompt_components
 
     def converse_turn(self):
 
         self._request = Request()
-        response = self._llm_query(self._conv, asynchronous=False)
+        conv = self._conv.with_components(**self._components)
+        response = self._llm_query(conv, asynchronous=False)
         self._processed  = self._response_processor.process(response)
 
         if self._processed.to_interrupt:
@@ -671,7 +673,7 @@ class PromptCompleter(Action):
 
     def __init__(
         self, completion: Completion, llm: LLMQuery, user_interface: UI,
-        post_processor: typing.Callable=None
+        post_processor: typing.Callable=None, **prompt_components: Struct
     ):
         """
 
@@ -686,15 +688,15 @@ class PromptCompleter(Action):
         self._ui = user_interface
         self._request = Request()
         self._post_processor = post_processor
+        self._components = prompt_components
 
     def respond(self):
 
         self._request = Request()
-
-        response = self._llm_query(self._completion, asynchronous=False)
+        completion = self._completion.with_components(**self._components)
+        response = self._llm_query(completion, asynchronous=False)
         self._ui.post_message('assistant', response)
         self._completion.response = response
-        print(self._completion.response)
         if self._post_processor is not None:
             self._post_processor()
         self._request.respond(response)
