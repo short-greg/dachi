@@ -14,6 +14,8 @@ from ..comm import (
     NullProcessResponse
 )
 
+from functools import partial
+
 import threading
 
 
@@ -118,30 +120,19 @@ class Sango(Task):
         if self._root is not None:
             self._root.reset()
 
-    def spawn(self) -> 'Sango':
-        """Spawn the task
-
-        Returns:
-            Sango: The spawned task
-        """
-        return Sango(self.root.spawn())
-
 
 class Serial(Task):
     """Task composed of subtasks
     """
     def __init__(
-        self, tasks: typing.List[Task]
+        self, tasks: typing.Iterable[Task], stop_on: bool=SangoStatus.FAILURE
     ):
         super().__init__()
-        self._tasks = tasks
-        self._idx = 0
-
-    def add(self, task: Task) -> 'Serial':
-        self._tasks.append(task)
-
-    def add_tasks(self, tasks: typing.Iterable[Task]) -> 'Serial':
-        self._tasks.extend(tasks)
+        self._tasks = tasks if tasks is not None else []
+        self._cur = None
+        self._iter = None
+        self._stop_on = stop_on
+        self._ticked = set()
 
     @property
     def n(self):
@@ -151,12 +142,49 @@ class Serial(Task):
     @property
     def tasks(self):
         """The subtasks"""
-        return [*self._tasks]
+        return self._tasks
 
     @abstractmethod
     def subtick(self) -> SangoStatus:
         """Tick each subtask. Implement when implementing a new Composite task"""
-        raise NotImplementedError
+        
+        if self._status.is_done:
+            return self._status
+    
+        # Not started yet?
+        if self._iter is None:
+            self._iter = iter(self._tasks)
+
+            try:
+                self._cur = next(self._iter)
+                self._ticked.add(self._cur)
+            except StopIteration:
+                self._iter = None
+                self._cur = None
+                return SangoStatus.SUCCESS
+
+        status = self._cur.tick()
+
+        # Still in progress?
+        if status == SangoStatus.RUNNING:
+            return SangoStatus.RUNNING
+    
+        # Reached a stopping condition?
+        if (status == SangoStatus.FAILURE == self._stop_on):
+            self._cur = None
+            self._iter = None
+            return status
+
+        # Made it to the end?
+        try:
+            self._cur = next(self._iter)
+            self._ticked.append(self._cur)
+        except StopIteration:
+            self._cur = None
+            self._iter = None
+            return SangoStatus.SUCCESS
+
+        return SangoStatus.RUNNING
 
     def tick(self) -> SangoStatus:
         self._status = self.subtick()
@@ -165,115 +193,55 @@ class Serial(Task):
     
     def reset(self):
         super().reset()
-        for task in self._tasks:
+        self._cur = None
+        self._iter = None
+        for task in self._ticked:
             task.reset()
+        self._ticked = set()
 
 
 class Sequence(Serial):
 
-    def subtick(self) -> SangoStatus:
-        
-        if self._status.is_done:
-            return self._status
-    
-        task = self._tasks[self._idx]
-        status = task.tick()
-
-        if status == SangoStatus.FAILURE:
-            return SangoStatus.FAILURE
-        
-        if status == SangoStatus.SUCCESS:
-            self._idx += 1
-            status = SangoStatus.RUNNING
-        if self._idx >= len(self._tasks):
-            status = SangoStatus.SUCCESS
-
-        return status
-
-    def spawn(self) -> 'Sequence':
-        return Sequence(
-            [task.spawn() for task in self._tasks]
-        )
-
-    def reset(self):
-        super().reset()
-        self._idx = 0
+    def __init__(self, tasks: typing.Iterable[Task]):
+        super().__init__(tasks, False)
 
 
 class Selector(Serial):
 
-    def add(self, task: Task) -> 'Sequence':
-        """Add task to the selector
+    def __init__(self, tasks: typing.Iterable[Task]):
+        super().__init__(tasks, False)
 
-        Args:
-            task (Task): 
-
-        Returns:
-            Sequence: The sequence added to
-        """
-        self._tasks.append(task)
-        return self
-    
-    def subtick(self) -> SangoStatus:
-        
-        if self._status.is_done:
-            return self._status
-    
-        task = self._tasks[self._idx]
-        status = task.tick()
-
-        if status == SangoStatus.SUCCESS:
-            return SangoStatus.SUCCESS
-        
-        if status == SangoStatus.FAILURE:
-            self._idx += 1
-            status = SangoStatus.RUNNING
-        if self._idx >= len(self._tasks):
-            status = SangoStatus.FAILURE
-
-        return status
-
-    def spawn(self) -> 'Selector':
-        return Selector(
-            [task.clone() for task in self._tasks]
-        )
-
-    def reset(self):
-        super().reset()
-        self._idx = 0
-        
 
 class Parallel(Task):
     """A composite task for running multiple tasks in parallel
     """
 
-    def __init__(self, tasks: typing.List[Task], runner=None, fails_on: int=None, succeeds_on: int=None, success_priority: bool=True):
+    def __init__(self, tasks: typing.Iterable[Task]=None, fails_on: int=None, succeeds_on: int=None, success_priority: bool=True):
         """
 
         Args:
-            tasks (typing.List[Task]): 
-            runner (_type_, optional): . Defaults to None.
+            tasks (typing.Iterable[Task]): 
+            runner (, optional): . Defaults to None.
             fails_on (int, optional): . Defaults to None.
             succeeds_on (int, optional): . Defaults to None.
             success_priority (bool, optional): . Defaults to True.
         """
         super().__init__()
-        self._tasks = tasks
-        self._use_default_runner = runner is None
-        self._runner = runner or self._default_runner
+        self._tasks = tasks if tasks is not None else []
         self.set_condition(fails_on, succeeds_on)
         self._success_priority = success_priority
+        self._ticked = set()
 
-    def add(self, task: Task):
-        """
+    # def add(self, task: Task):
+    #     """
 
-        Args:
-            task (Task): 
-        """
-        self._tasks.append(task)
+    #     Args:
+    #         task (Task): 
+    #     """
+    #     self._tasks.append(task)
 
-    def add_tasks(self, tasks: typing.Iterable[Task]) -> 'Serial':
-        self._tasks.extend(tasks)
+    # def add_tasks(self, tasks: typing.Iterable[Task]) -> 'Serial':
+    #     self._tasks.extend(tasks)
 
     def set_condition(self, fails_on: int, succeeds_on: int):
         """Set the number of falures or successes it takes to end
@@ -295,20 +263,20 @@ class Parallel(Task):
         if self._fails_on <= 0 or self._succeeds_on <= 0:
             raise ValueError('')
     
-    def _default_runner(self, tasks: typing.List[Task]) -> typing.List[SangoStatus]:
-        """Run the paralel
+    # def _default_runner(self, tasks: typing.List[Task]) -> typing.List[SangoStatus]:
+    #     """Run the paralel
 
-        Args:
-            tasks (typing.List[Task]): The tasks to run
+    #     Args:
+    #         tasks (typing.List[Task]): The tasks to run
 
-        Returns:
-            typing.List[SangoStatus]:
-        """
-        statuses = []
-        for task in tasks:
-            statuses.append(task.tick())
+    #     Returns:
+    #         typing.List[SangoStatus]:
+    #     """
+    #     statuses = []
+    #     for task in tasks:
+    #         statuses.append(task.tick())
 
-        return statuses
+    #     return statuses
 
     def _accumulate(self, statuses: typing.List[SangoStatus]) -> SangoStatus:
         
@@ -342,7 +310,11 @@ class Parallel(Task):
 
     def subtick(self) -> SangoStatus:
 
-        statuses = self._runner(self._tasks)
+        statuses = []
+        for task in self.tasks:
+            statuses.append(task.tick())
+            self._ticked.add(task)
+
         return self._accumulate(statuses)
 
     @property
@@ -363,14 +335,6 @@ class Parallel(Task):
         self._succeeds_on = succeeds_on
         return self._succeeds_on
     
-    def spawn(self) -> 'Parallel':
-        return Parallel(
-            [task.spawn() for task in self._tasks],
-            self._runner if not self._use_default_runner else None,
-            fails_on=self._fails_on, succeeds_on=self._succeeds_on,
-            success_priority=self._success_priority
-        )
-    
     def tick(self) -> SangoStatus:
         
         self._status = self.subtick()
@@ -379,8 +343,9 @@ class Parallel(Task):
     def reset(self):
 
         super().reset()
-        for task in self.tasks:
+        for task in self._ticked:
             task.reset()
+        self._ticked = set()
 
 
 class Action(Task):
@@ -475,10 +440,6 @@ class Until(Decorator):
             return SangoStatus.RUNNING
         return status
 
-    def spawn(self) -> 'Until':
-
-        return Until(self._task.spawn())
-
 
 class While(Decorator):
     """Loop while a condition is met
@@ -500,10 +461,6 @@ class While(Decorator):
             return SangoStatus.RUNNING
         return status
 
-    def spawn(self) -> 'While':
-
-        return While(self._task.spawn())
-
 
 class Not(Decorator):
     """Invert the result
@@ -524,10 +481,6 @@ class Not(Decorator):
             return SangoStatus.FAILURE
         return status
 
-    def spawn(self) -> 'While':
-
-        return Not(self._task.spawn())
-
 
 class Check(Condition):
 
@@ -538,10 +491,6 @@ class Check(Condition):
 
     def condition(self) -> bool:
         return self.f(self.data())
-
-    def spawn(self) -> 'Check':
-
-        return Check(self.data, self.f)
 
 
 class CheckReady(Check):
@@ -579,7 +528,7 @@ class Reset(Action):
         return SangoStatus.FAILURE
 
 
-class ExecTako(Action):
+class TakoTask(Action):
 
     def __init__(self, tako: Tako):
 
@@ -722,9 +671,60 @@ class PromptCompleter(Action):
         self._request = Request()
 
 
+class FAction(Action):
 
-# class Sequence(Serial):
+    def __init__(self, action: typing.Callable[[typing.Any], SangoStatus], *args, **kwargs) -> None:
+        super().__init__()
+        self._action = action
+        self._args = args
+        self._kwargs = kwargs
 
+    def act(self) -> SangoStatus:
+        return self._action(*self._args, **self._kwargs)
+
+
+class FCond(Condition):
+
+    def __init__(self, cond: typing.Callable[[typing.Any], bool], *args, **kwargs) -> None:
+        super().__init__()
+        self._cond = cond
+        self._args = args
+        self._kwargs = kwargs
+
+    def condition(self) -> bool:
+        return self._cond(*self._args, **self._kwargs)
+
+
+class FSerial(Serial):
+
+    def __init__(self, iterable: typing.Callable[[typing.Any], bool], *args, stop_on: bool=SangoStatus.FAILURE, **kwargs) -> None:
+        super().__init__(
+            partial(iterable, *args, **kwargs), stop_on=stop_on
+        )
+
+
+class FParallel(Parallel):
+
+    def __init__(self, iterable: typing.Callable[[typing.Any], bool], *args, stop_on: bool=SangoStatus.FAILURE, **kwargs) -> None:
+        super().__init__(
+            partial(iterable, *args, **kwargs), stop_on=stop_on
+        )
+
+
+# class Selector(Serial):
+
+#     def add(self, task: Task) -> 'Sequence':
+#         """Add task to the selector
+
+#         Args:
+#             task (Task): 
+
+#         Returns:
+#             Sequence: The sequence added to
+#         """
+#         self._tasks.append(task)
+#         return self
+    
 #     def subtick(self) -> SangoStatus:
         
 #         if self._status.is_done:
@@ -733,22 +733,18 @@ class PromptCompleter(Action):
 #         task = self._tasks[self._idx]
 #         status = task.tick()
 
-#         if status == SangoStatus.FAILURE:
-#             return SangoStatus.FAILURE
-        
 #         if status == SangoStatus.SUCCESS:
+#             return SangoStatus.SUCCESS
+        
+#         if status == SangoStatus.FAILURE:
 #             self._idx += 1
 #             status = SangoStatus.RUNNING
 #         if self._idx >= len(self._tasks):
-#             status = SangoStatus.SUCCESS
+#             status = SangoStatus.FAILURE
 
 #         return status
-
-#     def spawn(self) -> 'Sequence':
-#         return Sequence(
-#             [task.spawn() for task in self._tasks]
-#         )
 
 #     def reset(self):
 #         super().reset()
 #         self._idx = 0
+        

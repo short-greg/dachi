@@ -38,6 +38,7 @@ class Agent(ABC):
         super().__init__()
         self._status = AgentStatus.READY
         self._interval = interval
+        self._queued = []
 
     @abstractmethod
     def act(self) -> AgentStatus:
@@ -64,3 +65,23 @@ class Agent(ABC):
                 self._status = status
             if self._interval is not None:
                 time.sleep(self._interval)
+
+
+    def queue(self, f):
+
+        # periodically check i fqueued
+        # Do not use wait() because there can be race
+        # conditions... one may think it was complete
+        # even though it wasn't
+
+        while self._status == AgentStatus.RUNNING:
+            # if agent stopped
+            # check if cur is first item in queue
+            # This will be the "enter part"
+            pass
+
+        # this ensures it will run
+        # with agent.queue() as runner:
+        #   for status in runner:
+        #       yield _
+        #
