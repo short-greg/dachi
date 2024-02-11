@@ -262,21 +262,6 @@ class Parallel(Task):
             raise ValueError('')
         if self._fails_on <= 0 or self._succeeds_on <= 0:
             raise ValueError('')
-    
-    # def _default_runner(self, tasks: typing.List[Task]) -> typing.List[SangoStatus]:
-    #     """Run the paralel
-
-    #     Args:
-    #         tasks (typing.List[Task]): The tasks to run
-
-    #     Returns:
-    #         typing.List[SangoStatus]:
-    #     """
-    #     statuses = []
-    #     for task in tasks:
-    #         statuses.append(task.tick())
-
-    #     return statuses
 
     def _accumulate(self, statuses: typing.List[SangoStatus]) -> SangoStatus:
         
@@ -709,42 +694,3 @@ class FParallel(Parallel):
         super().__init__(
             partial(iterable, *args, **kwargs), stop_on=stop_on
         )
-
-
-# class Selector(Serial):
-
-#     def add(self, task: Task) -> 'Sequence':
-#         """Add task to the selector
-
-#         Args:
-#             task (Task): 
-
-#         Returns:
-#             Sequence: The sequence added to
-#         """
-#         self._tasks.append(task)
-#         return self
-    
-#     def subtick(self) -> SangoStatus:
-        
-#         if self._status.is_done:
-#             return self._status
-    
-#         task = self._tasks[self._idx]
-#         status = task.tick()
-
-#         if status == SangoStatus.SUCCESS:
-#             return SangoStatus.SUCCESS
-        
-#         if status == SangoStatus.FAILURE:
-#             self._idx += 1
-#             status = SangoStatus.RUNNING
-#         if self._idx >= len(self._tasks):
-#             status = SangoStatus.FAILURE
-
-#         return status
-
-#     def reset(self):
-#         super().reset()
-#         self._idx = 0
-        
