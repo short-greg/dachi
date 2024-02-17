@@ -4,7 +4,7 @@ from ..base import Storable
 from ._status import SangoStatus
 from dataclasses import dataclass
 from ..storage import (
-    Struct, Q, R, DDict, 
+    Struct, Q, R, 
     PromptConv, Completion,
 )
 from ..graph import Tako
@@ -231,17 +231,6 @@ class Parallel(Task):
         self.set_condition(fails_on, succeeds_on)
         self._success_priority = success_priority
         self._ticked = set()
-
-    # def add(self, task: Task):
-    #     """
-
-    #     Args:
-    #         task (Task): 
-    #     """
-    #     self._tasks.append(task)
-
-    # def add_tasks(self, tasks: typing.Iterable[Task]) -> 'Serial':
-    #     self._tasks.extend(tasks)
 
     def set_condition(self, fails_on: int, succeeds_on: int):
         """Set the number of falures or successes it takes to end
@@ -680,17 +669,80 @@ class FCond(Condition):
         return self._cond(*self._args, **self._kwargs)
 
 
-class FSerial(Serial):
+class FSelector(Parallel):
 
-    def __init__(self, iterable: typing.Callable[[typing.Any], bool], *args, stop_on: bool=SangoStatus.FAILURE, **kwargs) -> None:
+    def __init__(self, iterable: typing.Callable[[typing.Any], bool], *args, **kwargs) -> None:
         super().__init__(
-            partial(iterable, *args, **kwargs), stop_on=stop_on
+            partial(iterable, *args, **kwargs), stop_on=True
+        )
+
+
+class FSequence(Sequence):
+
+    def __init__(self, iterable: typing.Callable[[typing.Any], bool], *args, **kwargs) -> None:
+        super().__init__(
+            partial(iterable, *args, **kwargs)
         )
 
 
 class FParallel(Parallel):
 
-    def __init__(self, iterable: typing.Callable[[typing.Any], bool], *args, stop_on: bool=SangoStatus.FAILURE, **kwargs) -> None:
+    def __init__(
+        self, iterable: typing.Callable[[typing.Any], bool], *args, fails_on: int=1, 
+        succeeds_on=-1, success_priority: bool=True, **kwargs
+    ) -> None:
         super().__init__(
-            partial(iterable, *args, **kwargs), stop_on=stop_on
+            partial(iterable, *args, **kwargs),
+            fails_on=fails_on, succeeds_on=succeeds_on, 
+            success_priority=success_priority
         )
+
+
+def sequencef(f):
+
+    def task(self, *args, **kwargs):
+        return f(self, *args, **kwargs)
+
+    task.task = lambda *args, **kwargs: FSequence(task, *args, **kwargs)
+    return task
+
+
+def selectorf(f):
+
+    def task(self, *args, **kwargs):
+        return f(self, *args, **kwargs)
+    
+    task.task = lambda *args, **kwargs: FSelector(task, *args, **kwargs)
+
+    return task
+
+
+def actionf(f):
+
+    def task(self, *args, **kwargs):
+        return f(self, *args, **kwargs)
+
+    task.task = lambda *args, **kwargs: FAction(task, *args, **kwargs)
+    return task
+
+
+def parallelf(f, succeeds_on: int=-1, fails_on=1, success_priority: bool=True):
+
+    def task(self, *args, **kwargs):
+        return f(self, *args, **kwargs)
+
+    task.task = lambda *args, **kwargs: FParallel(
+        task, *args, succeeds_on=succeeds_on, 
+        success_priority=success_priority, 
+        fails_on=fails_on, **kwargs
+    )
+    return task
+
+
+def condf(f):
+
+    def task(self, *args, **kwargs):
+        return f(self, *args, **kwargs)
+
+    task.task = lambda *args, **kwargs: FCond(task, *args, **kwargs)
+    return task
