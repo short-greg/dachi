@@ -1,1 +1,1 @@
-from ._serialize import Storable
+from ._serialize import Storable, Ref
