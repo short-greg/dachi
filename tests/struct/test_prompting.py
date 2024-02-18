@@ -37,36 +37,36 @@ class TestF:
         assert f() == 3
 
 
-# class TestR:
+class TestR:
 
-#     def test_r_returns_data(self):
+    def test_r_returns_data(self):
 
-#         dummy = DummyStruct()
-#         f = storage.R(dummy, "x")
-#         assert f() == 1
+        dummy = DummyStruct()
+        f = storage.R(dummy, "x")
+        assert f() == 1
 
-#     def test_r_returns_2_if_y_called(self):
+    def test_r_returns_2_if_y_called(self):
 
-#         dummy = DummyStruct()
-#         f = storage.R(dummy, 'y')
-#         assert f() == 2
+        dummy = DummyStruct()
+        f = storage.R(dummy, 'y')
+        assert f() == 2
 
 
-# class TestStruct:
+class TestStruct:
 
-#     def test_get_returns_value(self):
-#         dummy = DummyStruct()
-#         assert dummy.get('x') == 1
+    def test_get_returns_value(self):
+        dummy = DummyStruct()
+        assert dummy.get('x') == 1
 
-#     def test_set_sets_value(self):
-#         dummy = DummyStruct()
-#         dummy.set('x', 2)
-#         assert dummy.x == 2
+    def test_set_sets_value(self):
+        dummy = DummyStruct()
+        dummy.set('x', 2)
+        assert dummy.x == 2
 
-#     def test_r_returns_R(self):
-#         dummy = DummyStruct(3)
-#         r = dummy.r('x')
-#         assert r() == 3
+    def test_r_returns_R(self):
+        dummy = DummyStruct(3)
+        r = dummy.r('x')
+        assert r() == 3
 
 
 class TestStruct:
