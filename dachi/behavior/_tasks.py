@@ -1,7 +1,7 @@
 from abc import abstractmethod
 import typing
 from ..base import Storable
-from ._status import SangoStatus
+from ._status import TaskStatus
 from dataclasses import dataclass
 from ..storage import (
     Struct, Q, R, 
@@ -30,9 +30,9 @@ class Task(Storable):
     """The base class for a task in the behavior tree
     """
 
-    SUCCESS = SangoStatus.SUCCESS
-    FAILURE = SangoStatus.FAILURE
-    RUNNING = SangoStatus.RUNNING
+    SUCCESS = TaskStatus.SUCCESS
+    FAILURE = TaskStatus.FAILURE
+    RUNNING = TaskStatus.RUNNING
 
     def __init__(self) -> None:
         """Create the task
@@ -41,13 +41,13 @@ class Task(Storable):
             name (str): The name of the task
         """
         super().__init__()
-        self._status = SangoStatus.READY
+        self._status = TaskStatus.READY
 
     @abstractmethod    
-    def tick(self) -> SangoStatus:
+    def tick(self) -> TaskStatus:
         raise NotImplementedError
 
-    def __call__(self) -> SangoStatus:
+    def __call__(self) -> TaskStatus:
         """
 
         Args:
@@ -62,10 +62,10 @@ class Task(Storable):
         """Reset the terminal
 
         """
-        self._status = SangoStatus.READY
+        self._status = TaskStatus.READY
     
     @property
-    def status(self) -> SangoStatus:
+    def status(self) -> TaskStatus:
         return self._status
 
     @property
@@ -85,14 +85,14 @@ class Sango(Task):
         super().__init__()
         self._root = root
 
-    def tick(self) -> SangoStatus:
+    def tick(self) -> TaskStatus:
         """Update the task
 
         Returns:
             SangoStatus: The status after tick
         """
         if self._root is None:
-            return SangoStatus.SUCCESS
+            return TaskStatus.SUCCESS
 
         return self._root.tick()
 
@@ -126,8 +126,8 @@ class Serial(Task):
     """
     def __init__(
         self, tasks: typing.Iterable[Task], 
-        stop_on: SangoStatus=SangoStatus.FAILURE,
-        complete_with: SangoStatus=SangoStatus.SUCCESS
+        stop_on: TaskStatus=TaskStatus.FAILURE,
+        complete_with: TaskStatus=TaskStatus.SUCCESS
     ):
         super().__init__()
         self._tasks = tasks if tasks is not None else []
@@ -154,7 +154,7 @@ class Serial(Task):
 
         try:
             self._cur = next(self._iter)
-            if not isinstance(self._cur, SangoStatus):
+            if not isinstance(self._cur, TaskStatus):
                 self._ticked.add(self._cur)
             return False
         except StopIteration:
@@ -168,7 +168,7 @@ class Serial(Task):
             return self._advance()
         return False
 
-    def subtick(self) -> SangoStatus:
+    def subtick(self) -> TaskStatus:
         """Tick each subtask. Implement when implementing a new Composite task"""
         
         if self._status.is_done:
@@ -176,16 +176,16 @@ class Serial(Task):
     
         # Not started yet?
         if self._initiate():
-            return SangoStatus.SUCCESS
+            return TaskStatus.SUCCESS
     
-        if isinstance(self._cur, SangoStatus):
+        if isinstance(self._cur, TaskStatus):
             status = self._cur
         else: 
             status = self._cur.tick()
 
         # Still in progress?
-        if status == SangoStatus.RUNNING:
-            return SangoStatus.RUNNING
+        if status == TaskStatus.RUNNING:
+            return TaskStatus.RUNNING
     
         # Reached a stopping condition?
         if (status == self._stop_on):
@@ -195,9 +195,9 @@ class Serial(Task):
         if self._advance():
             return self._complete_with
 
-        return SangoStatus.RUNNING
+        return TaskStatus.RUNNING
 
-    def tick(self) -> SangoStatus:
+    def tick(self) -> TaskStatus:
         self._status = self.subtick()
         
         return self._status
@@ -214,13 +214,13 @@ class Serial(Task):
 class Sequence(Serial):
 
     def __init__(self, tasks: typing.Iterable[Task]):
-        super().__init__(tasks, SangoStatus.FAILURE)
+        super().__init__(tasks, TaskStatus.FAILURE)
 
 
 class Selector(Serial):
 
     def __init__(self, tasks: typing.Iterable[Task]):
-        super().__init__(tasks, SangoStatus.SUCCESS, SangoStatus.FAILURE)
+        super().__init__(tasks, TaskStatus.SUCCESS, TaskStatus.FAILURE)
 
 
 class Parallel(Task):
@@ -267,7 +267,7 @@ class Parallel(Task):
         if self._fails_on <= 0 or self._succeeds_on <= 0:
             raise ValueError('')
 
-    def _accumulate(self, statuses: typing.List[SangoStatus]) -> SangoStatus:
+    def _accumulate(self, statuses: typing.List[TaskStatus]) -> TaskStatus:
         
         successes = 0
         failures = 0
@@ -284,20 +284,20 @@ class Parallel(Task):
         has_succeeded = successes >= self._succeeds_on
         if self._success_priority:
             if has_succeeded:
-                return SangoStatus.SUCCESS
+                return TaskStatus.SUCCESS
             if has_failed:
-                return SangoStatus.FAILURE
+                return TaskStatus.FAILURE
 
         if has_failed:
-            return SangoStatus.FAILURE
+            return TaskStatus.FAILURE
         if has_succeeded:
-            return SangoStatus.SUCCESS
+            return TaskStatus.SUCCESS
         if waiting == (len(statuses) - dones):
-            return SangoStatus.WAITING
+            return TaskStatus.WAITING
         # failures + successes - 1
-        return SangoStatus.RUNNING
+        return TaskStatus.RUNNING
 
-    def subtick(self) -> SangoStatus:
+    def subtick(self) -> TaskStatus:
 
         statuses = []
         for task in self.tasks:
@@ -324,7 +324,7 @@ class Parallel(Task):
         self._succeeds_on = succeeds_on
         return self._succeeds_on
     
-    def tick(self) -> SangoStatus:
+    def tick(self) -> TaskStatus:
         
         self._status = self.subtick()
         return self._status
@@ -339,10 +339,10 @@ class Parallel(Task):
 class Action(Task):
 
     @abstractmethod
-    def act(self) -> SangoStatus:
+    def act(self) -> TaskStatus:
         raise NotImplementedError
 
-    def tick(self) -> SangoStatus:
+    def tick(self) -> TaskStatus:
 
         if self._status.is_done:
             return self._status
@@ -359,13 +359,13 @@ class Condition(Task):
     def condition(self) -> bool:
         pass
 
-    def tick(self) -> SangoStatus:
+    def tick(self) -> TaskStatus:
         """Check the condition
 
         Returns:
             SangoStatus: Whether the condition failed or succeeded
         """
-        self._status = SangoStatus.SUCCESS if self.condition() else SangoStatus.FAILURE
+        self._status = TaskStatus.SUCCESS if self.condition() else TaskStatus.FAILURE
         return self._status
 
 
@@ -377,14 +377,14 @@ class Decorator(Task):
         self._task = task
 
     @abstractmethod
-    def decorate(self, status: SangoStatus) -> bool:
+    def decorate(self, status: TaskStatus) -> bool:
         pass
 
     @property
     def task(self) -> Task:
         return self._task
 
-    def tick(self) -> SangoStatus:
+    def tick(self) -> TaskStatus:
         """Decorate the tick for the decorated task
 
         Args:
@@ -412,7 +412,7 @@ class Until(Decorator):
     """Loop until a condition is met
     """
 
-    def decorate(self, status: SangoStatus) -> SangoStatus:
+    def decorate(self, status: TaskStatus) -> TaskStatus:
         """Continue running unless the result is a success
 
         Args:
@@ -422,10 +422,10 @@ class Until(Decorator):
             SangoStatus: The decorated status
         """
         if status.success:
-            return SangoStatus.SUCCESS
+            return TaskStatus.SUCCESS
         if status.failure:
             self._task.reset()
-            return SangoStatus.RUNNING
+            return TaskStatus.RUNNING
         return status
 
 
@@ -433,7 +433,7 @@ class While(Decorator):
     """Loop while a condition is met
     """
 
-    def decorate(self, status: SangoStatus) -> SangoStatus:
+    def decorate(self, status: TaskStatus) -> TaskStatus:
         """Continue running unless the result is a failure
 
         Args:
@@ -443,10 +443,10 @@ class While(Decorator):
             SangoStatus: The decorated status
         """
         if status.failure:
-            return SangoStatus.FAILURE
+            return TaskStatus.FAILURE
         if status.success:
             self._task.reset()
-            return SangoStatus.RUNNING
+            return TaskStatus.RUNNING
         return status
 
 
@@ -454,7 +454,7 @@ class Not(Decorator):
     """Invert the result
     """
 
-    def decorate(self, status: SangoStatus) -> SangoStatus:
+    def decorate(self, status: TaskStatus) -> TaskStatus:
         """Return Success if status is a Failure or Failure if it is a SUCCESS
 
         Args:
@@ -464,9 +464,9 @@ class Not(Decorator):
             SangoStatus: The decorated status
         """
         if status.failure:
-            return SangoStatus.SUCCESS
+            return TaskStatus.SUCCESS
         if status.success:
-            return SangoStatus.FAILURE
+            return TaskStatus.FAILURE
         return status
 
 
@@ -507,13 +507,13 @@ class Reset(Action):
         self._data = data
         self._cond = on_condition
 
-    def act(self) -> SangoStatus:
+    def act(self) -> TaskStatus:
         data = self._data()
 
         if self._cond is None or self._cond():
             data.reset()
-            return SangoStatus.SUCCESS
-        return SangoStatus.FAILURE
+            return TaskStatus.SUCCESS
+        return TaskStatus.FAILURE
 
 
 class TakoTask(Action):
@@ -527,7 +527,7 @@ class TakoTask(Action):
     def exec(self):
         self._tako()
 
-    def act(self) -> SangoStatus:
+    def act(self) -> TaskStatus:
         
         if self._status == self.READY:
             thread = threading.Thread(target=self.exec, args=[])
@@ -573,9 +573,9 @@ class Converse(Action):
         self._request.contents = self._conv
         self._ui_query.post(self._request)
 
-    def act(self) -> SangoStatus:
+    def act(self) -> TaskStatus:
         
-        if self._status == SangoStatus.READY:
+        if self._status == TaskStatus.READY:
             # use threading here
             thread = threading.Thread(
                 target=self.converse_turn, args=[]
@@ -592,12 +592,12 @@ class Converse(Action):
                 )
             if self._processed.succeeded:
                 print('SUCCEEDED!')
-                return SangoStatus.SUCCESS
+                return TaskStatus.SUCCESS
             else:
                 print('FAILED!')
-                return SangoStatus.FAILURE
+                return TaskStatus.FAILURE
         
-        return SangoStatus.RUNNING
+        return TaskStatus.RUNNING
 
     def reset(self):
         super().reset()
@@ -638,9 +638,9 @@ class PromptCompleter(Action):
             self._post_processor()
         self._request.respond(response)
 
-    def act(self) -> SangoStatus:
+    def act(self) -> TaskStatus:
         
-        if self._status == SangoStatus.READY:
+        if self._status == TaskStatus.READY:
             # use threading here
             thread = threading.Thread(target=self.respond, args=[])
             thread.start()
@@ -648,11 +648,11 @@ class PromptCompleter(Action):
         if self._request.responded is True:
             # self._request.status # wouldn't this be easier? 
             if self._request.success is True:
-                return SangoStatus.SUCCESS
+                return TaskStatus.SUCCESS
             else:
-                return SangoStatus.FAILURE
+                return TaskStatus.FAILURE
         
-        return SangoStatus.RUNNING
+        return TaskStatus.RUNNING
 
     def reset(self):
         super().reset()
@@ -661,13 +661,13 @@ class PromptCompleter(Action):
 
 class FAction(Action):
 
-    def __init__(self, action: typing.Callable[[typing.Any], SangoStatus], *args, **kwargs) -> None:
+    def __init__(self, action: typing.Callable[[typing.Any], TaskStatus], *args, **kwargs) -> None:
         super().__init__()
         self._action = action
         self._args = args
         self._kwargs = kwargs
 
-    def act(self) -> SangoStatus:
+    def act(self) -> TaskStatus:
         return self._action(*self._args, **self._kwargs)
 
 

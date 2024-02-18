@@ -1,6 +1,6 @@
 from dachi.behavior import _tasks as behavior
 from dachi.comm import Signal
-from dachi.behavior._status import SangoStatus
+from dachi.behavior._status import TaskStatus
 
 
 class ATask(behavior.Action):
@@ -10,7 +10,7 @@ class ATask(behavior.Action):
         self.x = 1
 
     def act(self):
-        return SangoStatus.SUCCESS
+        return TaskStatus.SUCCESS
 
 
 class SetStorageAction(behavior.Action):
@@ -19,12 +19,12 @@ class SetStorageAction(behavior.Action):
         super().__init__()
         self.value = value
 
-    def act(self) -> SangoStatus:
+    def act(self) -> TaskStatus:
 
         if self.value < 0:
-            return SangoStatus.FAILURE
+            return TaskStatus.FAILURE
 
-        return SangoStatus.SUCCESS
+        return TaskStatus.SUCCESS
 
 
 class SetStorageActionCounter(behavior.Action):
@@ -37,43 +37,43 @@ class SetStorageActionCounter(behavior.Action):
     def act(self):
 
         if self.value == 0:
-            return SangoStatus.FAILURE
+            return TaskStatus.FAILURE
         self.count += 1
         if self.count == 2:
-            return SangoStatus.SUCCESS
+            return TaskStatus.SUCCESS
         if self.count < 0:
-            return SangoStatus.FAILURE
-        return SangoStatus.RUNNING
+            return TaskStatus.FAILURE
+        return TaskStatus.RUNNING
 
 
 class TestAction:
 
     def test_storage_action_count_is_1(self):
         action = SetStorageAction(1)
-        assert action.tick() == SangoStatus.SUCCESS
+        assert action.tick() == TaskStatus.SUCCESS
 
     def test_store_action_returns_fail_if_fail(self):
 
         action = SetStorageAction(-1)
-        assert action.tick() == SangoStatus.FAILURE
+        assert action.tick() == TaskStatus.FAILURE
 
     def test_running_after_one_tick(self):
 
         action = SetStorageActionCounter(1)
-        assert action.tick() == SangoStatus.RUNNING
+        assert action.tick() == TaskStatus.RUNNING
 
     def test_success_after_two_tick(self):
 
         action = SetStorageActionCounter(2)
         action.tick()
-        assert action.tick() == SangoStatus.SUCCESS
+        assert action.tick() == TaskStatus.SUCCESS
 
     def test_ready_after_reset(self):
 
         action = SetStorageActionCounter(2)
         action.tick()
         action.reset()
-        assert action.status == SangoStatus.READY
+        assert action.status == TaskStatus.READY
 
     def test_load_state_dict_sets_state(self):
 
@@ -84,7 +84,7 @@ class TestAction:
             action.state_dict()
         )
         assert action2.value == 3
-        assert action2.status == SangoStatus.RUNNING
+        assert action2.status == TaskStatus.RUNNING
 
 
 class TestSequence:
@@ -97,7 +97,7 @@ class TestSequence:
             [action1, action2]
         )
         
-        assert sequence.tick() == SangoStatus.RUNNING
+        assert sequence.tick() == TaskStatus.RUNNING
 
     def test_sequence_is_success_when_finished(self):
 
@@ -107,7 +107,7 @@ class TestSequence:
             [action1, action2]
         )
         sequence.tick()
-        assert sequence.tick() == SangoStatus.SUCCESS
+        assert sequence.tick() == TaskStatus.SUCCESS
 
     def test_sequence_is_failure_less_than_zero(self):
 
@@ -117,7 +117,7 @@ class TestSequence:
             [action1, action2]
         )
         sequence.tick()
-        assert sequence.tick() == SangoStatus.FAILURE
+        assert sequence.tick() == TaskStatus.FAILURE
 
     def test_sequence_is_ready_when_reset(self):
 
@@ -129,7 +129,7 @@ class TestSequence:
         sequence.tick()
         sequence.tick()
         sequence.reset()
-        assert sequence.status == SangoStatus.READY
+        assert sequence.status == TaskStatus.READY
 
     def test_sequence_finished_after_three_ticks(self):
 
@@ -141,7 +141,7 @@ class TestSequence:
         sequence.tick()
         sequence.tick()
         
-        assert sequence.tick() == SangoStatus.SUCCESS
+        assert sequence.tick() == TaskStatus.SUCCESS
 
 
 class SampleCondition(behavior.Condition):
@@ -163,25 +163,25 @@ class TestCondition:
     def test_condition_returns_success(self):
 
         condition = SampleCondition(1)
-        assert condition.tick() == SangoStatus.SUCCESS
+        assert condition.tick() == TaskStatus.SUCCESS
 
     def test_condition_returns_failure(self):
 
         condition = SampleCondition(-1)
-        assert condition.tick() == SangoStatus.FAILURE
+        assert condition.tick() == TaskStatus.FAILURE
 
     def test_condition_status_is_success(self):
 
         condition = SampleCondition(-1)
         condition.tick()
-        assert condition.status == SangoStatus.FAILURE
+        assert condition.status == TaskStatus.FAILURE
 
     def test_condition_status_is_ready_after_reset(self):
 
         condition = SampleCondition(-1)
         condition.tick()
         condition.reset()
-        assert condition.status == SangoStatus.READY
+        assert condition.status == TaskStatus.READY
 
 
 class TestFallback:
@@ -194,7 +194,7 @@ class TestFallback:
             [action1, action2]
         )
         
-        assert fallback.tick() == SangoStatus.SUCCESS
+        assert fallback.tick() == TaskStatus.SUCCESS
     
     def test_fallback_is_successful_after_two_ticks(self):
 
@@ -204,7 +204,7 @@ class TestFallback:
             [action1, action2]
         )
         fallback.tick()
-        assert fallback.tick() == SangoStatus.SUCCESS
+        assert fallback.tick() == TaskStatus.SUCCESS
     
     def test_fallback_fails_after_two_ticks(self):
 
@@ -214,7 +214,7 @@ class TestFallback:
             [action1, action2]
         )
         fallback.tick()
-        assert fallback.tick() == SangoStatus.FAILURE
+        assert fallback.tick() == TaskStatus.FAILURE
 
     def test_fallback_running_after_one_tick(self):
 
@@ -224,7 +224,7 @@ class TestFallback:
             [action1, action2]
         )
         
-        assert fallback.tick() == SangoStatus.RUNNING
+        assert fallback.tick() == TaskStatus.RUNNING
     
     def test_fallback_ready_after_reset(self):
 
@@ -235,7 +235,7 @@ class TestFallback:
         )
         fallback.tick()
         fallback.reset()
-        assert fallback.status == SangoStatus.READY
+        assert fallback.status == TaskStatus.READY
 
 
 class TestWhile:
@@ -249,7 +249,7 @@ class TestWhile:
         while_.tick()
         action1.value = 1
 
-        assert while_.status == SangoStatus.FAILURE
+        assert while_.status == TaskStatus.FAILURE
 
     def test_while_fails_if_failure_after_two(self):
 
@@ -261,7 +261,7 @@ class TestWhile:
         while_.tick()
         action1.value = 0
 
-        assert while_.tick() == SangoStatus.FAILURE
+        assert while_.tick() == TaskStatus.FAILURE
 
 
 class TestUntil:
@@ -272,7 +272,7 @@ class TestUntil:
         action1.count = 1
         until_ = behavior.Until(action1)
 
-        assert until_.tick() == SangoStatus.SUCCESS
+        assert until_.tick() == TaskStatus.SUCCESS
 
     def test_until_successful_if_success_after_two(self):
 
@@ -282,4 +282,4 @@ class TestUntil:
         until_.tick()
         action1.value = 1
 
-        assert until_.tick() == SangoStatus.SUCCESS
+        assert until_.tick() == TaskStatus.SUCCESS

@@ -1,4 +1,4 @@
-from dachi.behavior._status import SangoStatus
+from dachi.behavior._status import TaskStatus
 from dachi.storage import Prompt
 from dachi.comm import ProcessResponse, Processed
 import typing
@@ -101,6 +101,6 @@ class PrintOut(Action):
         self.output = output
         self.r = r
 
-    def act(self) -> SangoStatus:
+    def act(self) -> TaskStatus:
         print(self.output, self.r())
         return self.SUCCESS

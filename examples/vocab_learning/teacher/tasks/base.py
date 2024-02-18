@@ -1,4 +1,4 @@
-from dachi.behavior import Action, SangoStatus
+from dachi.behavior import Action, TaskStatus
 from dachi.storage import Prompt, Conv, Q
 from dachi.comm import Query, Request
 from ....tools.comm import UI
@@ -21,19 +21,19 @@ class ConvMessage(Action):
         self._request = Request()
         self._role = role
 
-    def act(self) -> SangoStatus:
+    def act(self) -> TaskStatus:
         
-        if self._status == SangoStatus.READY:
+        if self._status == TaskStatus.READY:
             self._request.contents = self._conv
             self._query.post(self._request)
         
         if self._request.responded is False:
-            return SangoStatus.RUNNING
+            return TaskStatus.RUNNING
         if self._request.success is False:
-            return SangoStatus.FAILURE
+            return TaskStatus.FAILURE
         
         self._conv.add_turn(self._role, self._request.response)
-        return SangoStatus.SUCCESS
+        return TaskStatus.SUCCESS
     
     def reset(self):
         super().reset()
@@ -51,17 +51,17 @@ class PreparePrompt(Action):
         self._prepared = False
         self.replace = replace
 
-    def act(self) -> SangoStatus:
+    def act(self) -> TaskStatus:
 
         if self._prepared and not self.replace:
-            return SangoStatus.SUCCESS
+            return TaskStatus.SUCCESS
         components = {}
         for k, component in self.components.items():
             components[k] = component()
         prompt = self.prompt.format(**components, inplace=False)
         self._prepared = True
         self._conv.set_system(prompt)
-        return SangoStatus.SUCCESS
+        return TaskStatus.SUCCESS
     
     def reset(self):
 
@@ -87,7 +87,7 @@ class DisplayAI(Action):
     def reset(self):
         super().reset()
 
-    def act(self) -> SangoStatus:
+    def act(self) -> TaskStatus:
         
         turns = self._conv.filter('assistant')
     

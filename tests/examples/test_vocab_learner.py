@@ -9,7 +9,7 @@ from dachi.behavior import Converse, PromptCompleter
 from dachi import storage
 from time import sleep
 import threading
-from dachi.behavior import SangoStatus
+from dachi.behavior import TaskStatus
 from dachi.storage import Prompt, D
 from copy import deepcopy
 import typing

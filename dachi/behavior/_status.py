@@ -1,7 +1,7 @@
 from enum import Enum
 
 
-class SangoStatus(Enum):
+class TaskStatus(Enum):
     """Status of a Sango Behavior Tree task
     """
 
@@ -18,29 +18,29 @@ class SangoStatus(Enum):
 
     @property
     def is_done(self) -> bool:
-        return self == SangoStatus.FAILURE or self == SangoStatus.SUCCESS
+        return self == TaskStatus.FAILURE or self == TaskStatus.SUCCESS
     
     @property
     def in_progress(self) -> bool:
-        return self == SangoStatus.RUNNING or self == SangoStatus.WAITING
+        return self == TaskStatus.RUNNING or self == TaskStatus.WAITING
     
     @property
     def ready(self) -> bool:
-        return self == SangoStatus.READY
+        return self == TaskStatus.READY
     
     @property
     def failure(self) -> bool:
-        return self == SangoStatus.FAILURE
+        return self == TaskStatus.FAILURE
     
     @property
     def success(self) -> bool:
-        return self == SangoStatus.SUCCESS
+        return self == TaskStatus.SUCCESS
     
     @property
     def running(self) -> bool:
-        return self == SangoStatus.RUNNING
+        return self == TaskStatus.RUNNING
     
-    def __or__(self, other: 'SangoStatus') -> 'SangoStatus':
+    def __or__(self, other: 'TaskStatus') -> 'TaskStatus':
         """Compute the union of two statuses
 
         Returns:
@@ -53,12 +53,12 @@ class SangoStatus(Enum):
         if (
             (self.success or other.success)
         ):
-            return SangoStatus.SUCCESS
+            return TaskStatus.SUCCESS
         if self.running or other.running:
-            return SangoStatus.RUNNING
+            return TaskStatus.RUNNING
         
         if self.waiting or other.waiting:
-            return SangoStatus.WAITING
+            return TaskStatus.WAITING
         
         if (self.success and not other.success):
             return other
@@ -67,7 +67,7 @@ class SangoStatus(Enum):
         
         raise ValueError(f'Invalid combination of statuses {self} and {other}')
 
-    def __and__(self, other: 'SangoStatus') -> 'SangoStatus':
+    def __and__(self, other: 'TaskStatus') -> 'TaskStatus':
         """Compute the union of two statuses
 
         Returns:
@@ -81,12 +81,12 @@ class SangoStatus(Enum):
         if (
             (self.failure or other.failure)
         ):
-            return SangoStatus.FAILURE
+            return TaskStatus.FAILURE
         if self.running or other.running:
-            return SangoStatus.RUNNING
+            return TaskStatus.RUNNING
         
         if self.waiting or other.waiting:
-            return SangoStatus.WAITING
+            return TaskStatus.WAITING
         
         if (self.success and not other.success):
             return other

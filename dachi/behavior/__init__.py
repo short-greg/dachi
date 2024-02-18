@@ -10,7 +10,7 @@ from ._tasks import (
     Converse, PromptCompleter
 )
 from ._status import (
-    SangoStatus
+    TaskStatus
 )
 from ._build import (
     composite, sequence,

@@ -1,8 +1,11 @@
-from abc import ABC, abstractmethod
-from ..behavior import SangoStatus
+from ..behavior import TaskStatus
+import threading
+import typing
 
 import time
 from enum import Enum
+from ..behavior import Sango
+
 
 class AgentStatus(Enum):
 
@@ -12,37 +15,29 @@ class AgentStatus(Enum):
     STOPPED = "stopped"
     WAITING = "waiting"
 
-    @classmethod
-    def from_status(cls, status: SangoStatus) -> 'AgentStatus':
 
-        if status == SangoStatus.FAILURE or status == SangoStatus.SUCCESS:
-            return AgentStatus.STOPPED
-        if status == SangoStatus.READY:
-            return AgentStatus.READY
-        if status == SangoStatus.WAITING:
-            return AgentStatus.WAITING
-        return AgentStatus.RUNNING
-
-
-class Agent(ABC):
-    """Agent c;lass
+class Agent(object):
+    """Agent class
     """
 
-    def __init__(self, interval: float=None):
+    def __init__(self, sango: Sango=None, interval: float=None):
         """
 
         Args:
-            server (Server, optional): The server the agent uses. Defaults to None.
+            sango (Sango, optional): The default sango to use if act() is not overridden. Defaults to None.
             interval (float, optional): The interval to repeat actions at. Defaults to None.
         """
         super().__init__()
-        self._status = AgentStatus.READY
+        self._task_status = None
+        self._status = None
+        self._sango = sango
         self._interval = interval
         self._queued = []
 
-    @abstractmethod
-    def act(self) -> AgentStatus:
-        pass
+    def act(self) -> TaskStatus:
+        if self._sango is None:
+            return TaskStatus.SUCCESS
+        return self._sango.tick()
 
     def pause(self):
         self._status = AgentStatus.PAUSED
@@ -53,35 +48,15 @@ class Agent(ABC):
     def stop(self):
         self._status = AgentStatus.STOPPED
 
-    def start(self):
+    def run(self, continue_on_fail: bool) -> typing.Iterator[TaskStatus]:
         """Execute the agent at the specified interval
         """
-        
         while self._status != AgentStatus.STOPPED:
-            # possible race condition here
-            # status should not be set in "act"
-            status = self.act()
-            if self._status == AgentStatus.RUNNING:
-                self._status = status
+            self._task_status = self.act()
             if self._interval is not None:
                 time.sleep(self._interval)
-
-
-    def queue(self, f):
-
-        # periodically check i fqueued
-        # Do not use wait() because there can be race
-        # conditions... one may think it was complete
-        # even though it wasn't
-
-        while self._status == AgentStatus.RUNNING:
-            # if agent stopped
-            # check if cur is first item in queue
-            # This will be the "enter part"
-            pass
-
-        # this ensures it will run
-        # with agent.queue() as runner:
-        #   for status in runner:
-        #       yield _
-        #
+            if (
+                (not continue_on_fail and self._task_status == TaskStatus.FAILURE)
+            ):
+                self._status = AgentStatus.STOPPED
+            yield self._task_status
