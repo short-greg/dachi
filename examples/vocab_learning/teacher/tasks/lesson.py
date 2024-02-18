@@ -1,8 +1,5 @@
-from dachi.storage import Prompt, Conv
+from dachi.storage import Prompt, Conv, PromptConv
 import json
-from ....tools.base import PromptConv
-
-from dachi.storage._prompting import Conv
 
 
 QUIZ_PROMPT = Prompt(

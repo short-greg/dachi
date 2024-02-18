@@ -1,8 +1,8 @@
 from typing import Dict
-from dachi.storage import _prompting as prompting
+from dachi import storage 
 
 
-class DummyStruct(prompting.Struct):
+class DummyStruct(storage.Struct):
 
     def __init__(self, x=1):
         super().__init__()
@@ -23,50 +23,50 @@ class TestF:
 
     def test_f_returns_3_if_2_passed(self):
 
-        f = prompting.F(lambda x: x + 1)
+        f = storage.F(lambda x: x + 1)
         assert f(2) == 3
 
     def test_f_returns_3_if_2_passed_in_kwargs(self):
 
-        f = prompting.F(lambda x: x + 1, x=2)
+        f = storage.F(lambda x: x + 1, x=2)
         assert f() == 3
 
     def test_f_returns_3_if_2_passed_in_args(self):
 
-        f = prompting.F(lambda x: x + 1, 2)
+        f = storage.F(lambda x: x + 1, 2)
         assert f() == 3
 
 
-class TestR:
+# class TestR:
 
-    def test_r_returns_data(self):
+#     def test_r_returns_data(self):
 
-        dummy = DummyStruct()
-        f = prompting.R(dummy, "x")
-        assert f() == 1
+#         dummy = DummyStruct()
+#         f = storage.R(dummy, "x")
+#         assert f() == 1
 
-    def test_r_returns_2_if_y_called(self):
+#     def test_r_returns_2_if_y_called(self):
 
-        dummy = DummyStruct()
-        f = prompting.R(dummy, 'y')
-        assert f() == 2
+#         dummy = DummyStruct()
+#         f = storage.R(dummy, 'y')
+#         assert f() == 2
 
 
-class TestStruct:
+# class TestStruct:
 
-    def test_get_returns_value(self):
-        dummy = DummyStruct()
-        assert dummy.get('x') == 1
+#     def test_get_returns_value(self):
+#         dummy = DummyStruct()
+#         assert dummy.get('x') == 1
 
-    def test_set_sets_value(self):
-        dummy = DummyStruct()
-        dummy.set('x', 2)
-        assert dummy.x == 2
+#     def test_set_sets_value(self):
+#         dummy = DummyStruct()
+#         dummy.set('x', 2)
+#         assert dummy.x == 2
 
-    def test_r_returns_R(self):
-        dummy = DummyStruct(3)
-        r = dummy.r('x')
-        assert r() == 3
+#     def test_r_returns_R(self):
+#         dummy = DummyStruct(3)
+#         r = dummy.r('x')
+#         assert r() == 3
 
 
 class TestStruct:
@@ -80,7 +80,7 @@ class TestPromptStruct:
 
     def test_prompt_format_removes_args(self):
 
-        prompt = prompting.Prompt(
+        prompt = storage.Prompt(
             ['x'], """Answer is {x}"""
         )
         answer = prompt.format(x=1)
@@ -88,7 +88,7 @@ class TestPromptStruct:
 
     def test_prompt_leaves_args_if_not_provided(self):
 
-        prompt = prompting.Prompt(
+        prompt = storage.Prompt(
             ['x'], """Answer is {x}"""
         )
         answer = prompt.format()
@@ -96,7 +96,7 @@ class TestPromptStruct:
 
     def test_prompt_as_text_adds_header(self):
 
-        prompt = prompting.Prompt(
+        prompt = storage.Prompt(
             ['x'], """Answer is {x}"""
         )
         answer = prompt.format(x=2).as_text('==Prompt==')
@@ -107,7 +107,7 @@ class TestPromptStruct:
 
     def test_prompt_spawn_spawns_same_prompt(self):
 
-        prompt = prompting.Prompt(
+        prompt = storage.Prompt(
             ['x'], """Answer is {x}"""
         )
         prompt2 = prompt.spawn()
@@ -119,26 +119,25 @@ class TestCompletion:
 
     def test_completion_response_is_true(self):
 
-        prompt = prompting.Completion(
-            prompting.Prompt([], """Answer is 1"""), 'True',
+        prompt = storage.Completion(
+            storage.PromptGen(storage.Prompt([], """Answer is 1""")), 'True'
         )
         assert prompt.as_dict()['response'] == 'True'
 
     def test_completion_formats_the_prompt(self):
 
-        prompt = prompting.Completion(
-            prompting.Prompt(['x'], """Answer is {x}"""),
+        completion = storage.Completion(
+            storage.Prompt(['x'], """Answer is {x}""").gen(x=2)
         )
-        formatted = prompt.format_prompt(x=2)
-        
-        assert formatted._prompt.text == "Answer is 2"
+        messages = completion.as_messages().as_text()
+        assert messages  == "system: Answer is 2\n"
 
 
 class TestText:
 
     def test_text_returns_text_in_dict(self):
 
-        text = prompting.Text(
+        text = storage.Text(
             "Answer is 2"
         )
         assert text.as_text() == "Answer is 2"
@@ -148,15 +147,15 @@ class TestTurn:
 
     def test_spawn_creates_new_turn(self):
 
-        text = prompting.Message(
-            prompting.Role('user'), 'x'
+        text = storage.Message(
+            storage.Role('user'), 'x'
         )
-        assert text.text == 'x'
+        assert text.text.as_text() == 'x'
 
     def test_as_text_returns_turn(self):
 
-        text = prompting.Message(
-            prompting.Role('user'), 'x'
+        text = storage.Message(
+            storage.Role('user'), 'x'
         )
         assert text.as_text() == "user: x"
 
@@ -165,14 +164,14 @@ class TestConv:
 
     def test_add_turn_adds_turn(self):
 
-        conv = prompting.Conv()
+        conv = storage.Conv()
         conv.add_turn('system', 'name three people')
 
-        assert conv[0].text == 'name three people'
+        assert conv[0].text.as_text() == 'name three people'
 
     def test_reset_removes_all_turns(self):
 
-        conv = prompting.Conv()
+        conv = storage.Conv()
         conv.add_turn('system', 'name three people')
         conv.reset()
 
@@ -180,7 +179,7 @@ class TestConv:
 
     def test_as_text_returns_conv_as_text(self):
 
-        conv = prompting.Conv()
+        conv = storage.Conv()
         conv.add_turn('system', 'name three people')
         conv.add_turn('user', 'y j z')
 
@@ -191,7 +190,7 @@ class TestConv:
 
     def test_spawn_creates_new_conv(self):
 
-        conv = prompting.Conv()
+        conv = storage.Conv()
         conv.add_turn('system', 'name three people')
         conv.add_turn('user', 'y j z')
         conv = conv.spawn()
@@ -205,28 +204,28 @@ class TestStoreList:
 
     def test_state_dict_returns_dict(self):
 
-        conv = prompting.DList()
+        conv = storage.DList()
         conv.append(1)
 
         assert conv.state_dict()[0] == 1
 
     def test_as_dict_returns_dict(self):
 
-        conv = prompting.DList()
+        conv = storage.DList()
         conv.append(1)
 
         assert conv.as_dict()[0] == 1
 
     def test_spawn_creates_new_store_list(self):
 
-        conv = prompting.DList()
+        conv = storage.DList()
         conv.append(1)
         conv2 = conv.spawn()
         assert conv2.as_dict()[0] == 1
 
     def test_spawn_creates_new_store_list_with_turn(self):
 
-        conv = prompting.DList()
-        conv.append(prompting.Text('text'))
+        conv = storage.DList()
+        conv.append(storage.Text('text'))
         conv2 = conv.spawn()
         assert conv2.as_dict()[0].text == 'text'

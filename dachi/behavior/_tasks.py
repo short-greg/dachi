@@ -125,7 +125,9 @@ class Serial(Task):
     """Task composed of subtasks
     """
     def __init__(
-        self, tasks: typing.Iterable[Task], stop_on: bool=SangoStatus.FAILURE
+        self, tasks: typing.Iterable[Task], 
+        stop_on: SangoStatus=SangoStatus.FAILURE,
+        complete_with: SangoStatus=SangoStatus.SUCCESS
     ):
         super().__init__()
         self._tasks = tasks if tasks is not None else []
@@ -133,6 +135,7 @@ class Serial(Task):
         self._iter = None
         self._stop_on = stop_on
         self._ticked = set()
+        self._complete_with = complete_with
 
     @property
     def n(self):
@@ -144,7 +147,27 @@ class Serial(Task):
         """The subtasks"""
         return self._tasks
 
-    @abstractmethod
+    def _advance(self):
+
+        if self._iter is None:
+            self._iter = iter(self._tasks)
+
+        try:
+            self._cur = next(self._iter)
+            if not isinstance(self._cur, SangoStatus):
+                self._ticked.add(self._cur)
+            return False
+        except StopIteration:
+            self._cur = None
+            return True
+    
+    def _initiate(self):
+
+        if self._iter is None:
+            self._iter = iter(self._tasks)
+            return self._advance()
+        return False
+
     def subtick(self) -> SangoStatus:
         """Tick each subtask. Implement when implementing a new Composite task"""
         
@@ -152,37 +175,25 @@ class Serial(Task):
             return self._status
     
         # Not started yet?
-        if self._iter is None:
-            self._iter = iter(self._tasks)
-
-            try:
-                self._cur = next(self._iter)
-                self._ticked.add(self._cur)
-            except StopIteration:
-                self._iter = None
-                self._cur = None
-                return SangoStatus.SUCCESS
-
-        status = self._cur.tick()
+        if self._initiate():
+            return SangoStatus.SUCCESS
+    
+        if isinstance(self._cur, SangoStatus):
+            status = self._cur
+        else: 
+            status = self._cur.tick()
 
         # Still in progress?
         if status == SangoStatus.RUNNING:
             return SangoStatus.RUNNING
     
         # Reached a stopping condition?
-        if (status == SangoStatus.FAILURE == self._stop_on):
+        if (status == self._stop_on):
             self._cur = None
-            self._iter = None
             return status
-
-        # Made it to the end?
-        try:
-            self._cur = next(self._iter)
-            self._ticked.append(self._cur)
-        except StopIteration:
-            self._cur = None
-            self._iter = None
-            return SangoStatus.SUCCESS
+        
+        if self._advance():
+            return self._complete_with
 
         return SangoStatus.RUNNING
 
@@ -203,13 +214,13 @@ class Serial(Task):
 class Sequence(Serial):
 
     def __init__(self, tasks: typing.Iterable[Task]):
-        super().__init__(tasks, False)
+        super().__init__(tasks, SangoStatus.FAILURE)
 
 
 class Selector(Serial):
 
     def __init__(self, tasks: typing.Iterable[Task]):
-        super().__init__(tasks, False)
+        super().__init__(tasks, SangoStatus.SUCCESS, SangoStatus.FAILURE)
 
 
 class Parallel(Task):
@@ -231,6 +242,10 @@ class Parallel(Task):
         self.set_condition(fails_on, succeeds_on)
         self._success_priority = success_priority
         self._ticked = set()
+
+    @property
+    def tasks(self) -> typing.Iterable[Task]:
+        return self._tasks
 
     def set_condition(self, fails_on: int, succeeds_on: int):
         """Set the number of falures or successes it takes to end
@@ -320,7 +335,6 @@ class Parallel(Task):
         for task in self._ticked:
             task.reset()
         self._ticked = set()
-
 
 class Action(Task):
 

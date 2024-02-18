@@ -1,7 +1,7 @@
-from dachi.comm import _requests as requests
+from dachi.comm import Query, Signal, Request
 
 
-class DummyQuery(requests.Query):
+class DummyQuery(Query):
 
     def __init__(self):
         super().__init__()
@@ -12,8 +12,7 @@ class DummyQuery(requests.Query):
         return 'respond!'
     
     def exec_post(self, request):
-
-        self.respond(request)
+        self.respond(request, 'CALLED')
 
     def on_post(self, request):
         self.called = True
@@ -22,7 +21,7 @@ class DummyQuery(requests.Query):
         self.response_called = True
 
 
-class DummySignal(requests.Signal):
+class DummySignal(Signal):
 
     def __init__(self):
         super().__init__()
@@ -46,13 +45,13 @@ class TestQuery:
 
         query = DummyQuery()
         query.register(query.on_post)
-        query.post(requests.Request('query'))
+        query.post(Request('query'))
         assert query.called is True
 
     def test_post_is_called(self):
 
         query = DummyQuery()
-        request = requests.Request('query')
+        request = Request('query')
         request.on_post = query.on_post
         query.post(request)
         assert query.called is True
@@ -60,9 +59,9 @@ class TestQuery:
     def test_respond_is_called_after_post(self):
 
         query = DummyQuery()
-        request = requests.Request('query')
+        request = Request('query')
         request.on_response = query.on_response
-        query.post(request)
+        query.post(request, False)
         assert query.response_called is True
 
 
@@ -72,13 +71,13 @@ class TestSignal:
 
         signal = DummySignal()
         signal.register(signal.on_post)
-        signal.post(requests.Request('signal'))
+        signal.post(Request('signal'))
         assert signal.called is True
 
     def test_post_is_called(self):
 
         signal = DummySignal()
-        request = requests.Request('signal')
+        request = Request('signal')
         request.on_post = signal.on_post
         signal.post(request)
         assert signal.called is True

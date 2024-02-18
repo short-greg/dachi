@@ -10,16 +10,16 @@ class TestParallel:
 
         with build.parallel() as parallel:
 
-            parallel.add(ATask())
-            parallel.add(ATask())
+            parallel.tasks.append(ATask())
+            parallel.tasks.append(ATask())
         assert isinstance(parallel, tasks.Parallel)
 
     def test_parallel_creates_a_parallel_node_with_correct_fails_on(self):
 
         with build.parallel() as parallel:
 
-            parallel.add(ATask())
-            parallel.add(ATask())
+            parallel.tasks.append(ATask())
+            parallel.tasks.append(ATask())
             parallel.fails_on = 2
         assert parallel.fails_on == 2
 
@@ -30,8 +30,8 @@ class TestSelector:
 
         with build.select() as selector:
 
-            selector.add(ATask())
-            selector.add(ATask())
+            selector.tasks.append(ATask())
+            selector.tasks.append(ATask())
         assert isinstance(selector, tasks.Selector)
 
 
@@ -41,8 +41,8 @@ class TestSequence:
 
         with build.sequence() as sequence:
 
-            sequence.add(ATask())
-            sequence.add(ATask())
+            sequence.tasks.append(ATask())
+            sequence.tasks.append(ATask())
         assert isinstance(sequence, tasks.Sequence)
 
 
@@ -54,8 +54,8 @@ class TestSango:
 
             with build.sequence(tree) as sequence:
 
-                sequence.add(ATask())
-                sequence.add(ATask())
+                sequence.tasks.append(ATask())
+                sequence.tasks.append(ATask())
         assert isinstance(tree, tasks.Sango)
         assert isinstance(tree.root, Sequence)
 
@@ -67,8 +67,8 @@ class TestWhile:
 
         with build.while_(build.sequence()) as while_:
 
-            while_.task.add(ATask())
-            while_.task.add(ATask())
+            while_.task.tasks.append(ATask())
+            while_.task.tasks.append(ATask())
         assert isinstance(while_, tasks.While)
 
 
@@ -78,8 +78,8 @@ class TestUntil:
 
         with build.until_(build.sequence()) as until_:
 
-            until_.task.add(ATask())
-            until_.task.add(ATask())
+            until_.task.tasks.append(ATask())
+            until_.task.tasks.append(ATask())
         assert isinstance(until_, tasks.Until)
 
 
@@ -89,14 +89,14 @@ class TestNot:
 
         with build.not_(build.sequence()) as not_:
 
-            not_.task.add(ATask())
-            not_.task.add(ATask())
+            not_.task.tasks.append(ATask())
+            not_.task.tasks.append(ATask())
         assert isinstance(not_, tasks.Not)
 
     def test_not_decorates_a_sequence(self):
 
         with build.not_(build.sequence()) as not_:
 
-            not_.task.add(ATask())
-            not_.task.add(ATask())
+            not_.task.tasks.append(ATask())
+            not_.task.tasks.append(ATask())
         assert isinstance(not_.task, tasks.Sequence)

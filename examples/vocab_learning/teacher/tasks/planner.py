@@ -1,5 +1,4 @@
-from dachi.storage import Prompt, Conv
-from ....tools.base import PromptConv
+from dachi.storage import Prompt, Conv, PromptConv
 import json
 
 

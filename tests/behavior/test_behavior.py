@@ -1,9 +1,6 @@
 from dachi.behavior import _tasks as behavior
-# from dachi.behavior import _cooordination as coordination
 from dachi.comm import Signal
-# from dachi.behavior._cooordination import Signal, Terminal
 from dachi.behavior._status import SangoStatus
-import pytest
 
 
 class ATask(behavior.Action):

@@ -147,6 +147,11 @@ class Prompt(Struct):
     @property
     def args(self) -> typing.List[typing.Union[Arg, str]]:
         return self._args
+    
+    def gen(self, **components) -> 'PromptGen':
+        return PromptGen(
+            self, **components
+        )
 
 
 # TODO: Add 
