@@ -6,10 +6,7 @@ import typing
 class sango(object):
 
     def __init__(self) -> None:
-        """Create a Sango
-
-        Args:
-            name (str): The name of the "Sango"
+        """Create the behavior tree. This is the root node
         """
         super().__init__()
         self._sango = behavior.Sango()
@@ -27,7 +24,7 @@ class sango(object):
 class composite(object):
 
     def __init__(self, child: behavior.Task, parent: behavior.Task=None) -> None:
-        """Create a Sango
+        """Create a composite node that uses a list to store all of the subtasks
 
         Args:
             name (str): The name of the "Sango"
@@ -47,18 +44,24 @@ class composite(object):
 
     @property
     def task(self) -> behavior.Task:
+        """
+        Returns:
+            behavior.Task: The composite task
+        """
         return self._child
 
     @property
     def parent(self) -> behavior.Task:
+        """
+        Returns:
+            behavior.Task: The parent task of the composite task
+        """
         return self._parent
 
     def __enter__(self) -> behavior.Serial:
-        
         return self._child
     
     def __exit__(self, exc_type, exc_value, traceback):
-
         if exc_type is not None:
             raise
 
@@ -69,7 +72,7 @@ class decorate(object):
         self, decorate: typing.Type[behavior.Decorator], 
         decorated: typing.Union['decorate', composite], parent: behavior.Task=None
     ) -> None:
-        """Create a decorated task
+        """Decorate the task
 
         """
         super().__init__()
@@ -89,14 +92,21 @@ class decorate(object):
 
     @property
     def task(self) -> behavior.Task:
+        """
+        Returns:
+            behavior.Task: The decorated task
+        """
         return self._decorated
 
     @property
     def parent(self) -> behavior.Task:
+        """
+        Returns:
+            behavior.Task: The parent of the decorated tak
+        """
         return self._parent
 
     def __enter__(self):
-        
         return self._decorated
     
     def __exit__(self, exc_type, exc_value, traceback):
@@ -108,10 +118,10 @@ class decorate(object):
 class sequence(composite):
 
     def __init__(self, parent: behavior.Task=None) -> None:
-        """Create a Sango
+        """Create a Sequence task
 
         Args:
-            name (str): The name of the "Sango"
+            parent (behavior.Task, optional): The parent of the sequence. Defaults to None.
         """
         super().__init__(behavior.Sequence([]), parent)
 
@@ -119,10 +129,10 @@ class sequence(composite):
 class select(composite):
 
     def __init__(self, parent: behavior.Task=None) -> None:
-        """Create a Sango
+        """Create a selector task
 
         Args:
-            name (str): The name of the "Sango"
+            parent (behavior.Task, optional): The parent of the selector. Defaults to None.
         """
         super().__init__(behavior.Selector([]), parent)
 
@@ -155,16 +165,34 @@ class parallel(composite):
 class not_(decorate):
 
     def __init__(self, decorated: composite, parent: Task = None) -> None:
+        """Invert the output of a composite task
+
+        Args:
+            decorated (composite): The task to decorate
+            parent (Task, optional): The parent task. Defaults to None.
+        """
         super().__init__(behavior.Not, decorated, parent)
 
 
 class while_(decorate):
 
-    def __init__(self, decorated: composite, parent: Task = None) -> None:
+    def __init__(self, decorated, parent: Task = None) -> None:
+        """Loop over the subtask while it 'succeeds'
+
+        Args:
+            decorated: The task to loop over
+            parent (Task, optional): The parent task. Defaults to None.
+        """
         super().__init__(behavior.While, decorated, parent)
 
 
 class until_(decorate):
 
     def __init__(self, decorated: composite, parent: Task = None) -> None:
+        """Loop over the subtask until it 'succeeds'
+
+        Args:
+            decorated: The task to loop over
+            parent (Task, optional): The parent task. Defaults to None.
+        """
         super().__init__(behavior.Until, decorated, parent)

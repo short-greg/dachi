@@ -23,17 +23,17 @@ class TestF:
 
     def test_f_returns_3_if_2_passed(self):
 
-        f = storage.F(lambda x: x + 1)
+        f = storage.FRetrieve(lambda x: x + 1)
         assert f(2) == 3
 
     def test_f_returns_3_if_2_passed_in_kwargs(self):
 
-        f = storage.F(lambda x: x + 1, x=2)
+        f = storage.FRetrieve(lambda x: x + 1, x=2)
         assert f() == 3
 
     def test_f_returns_3_if_2_passed_in_args(self):
 
-        f = storage.F(lambda x: x + 1, 2)
+        f = storage.FRetrieve(lambda x: x + 1, 2)
         assert f() == 3
 
 
@@ -42,13 +42,13 @@ class TestR:
     def test_r_returns_data(self):
 
         dummy = DummyStruct()
-        f = storage.R(dummy, "x")
+        f = storage.SRetrieve(dummy, "x")
         assert f() == 1
 
     def test_r_returns_2_if_y_called(self):
 
         dummy = DummyStruct()
-        f = storage.R(dummy, 'y')
+        f = storage.SRetrieve(dummy, 'y')
         assert f() == 2
 
 

@@ -10,7 +10,7 @@ from dachi import storage
 from time import sleep
 import threading
 from dachi.behavior import TaskStatus
-from dachi.storage import Prompt, D
+from dachi.storage import Prompt, DRetrieve
 from copy import deepcopy
 import typing
 

@@ -3,6 +3,8 @@ import typing
 
 
 class UI(ABC):
+    """Defines an interface for creating a UI
+    """
 
     @abstractmethod
     def request_message(self, callback: typing.Callable[[str], None]):

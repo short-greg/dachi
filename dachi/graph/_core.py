@@ -499,7 +499,8 @@ class Process(T):
     """
 
     def __init__(self, node: 'Node', args: typing.List=None, kwargs: typing.Dict=None):
-        """Wraps a node in a graph. Each arg and kwargs will be used to define teh graph
+        """Wraps a node in a graph. Each arg and kwargs will be used to define the graph
+        # i feel the easy approach 
 
         Args:
             node (Node): Node to use 
@@ -561,6 +562,9 @@ class Process(T):
                 # arg = arg.probe(by, stored)
             kwargs[k] = arg
         if evaluate:
+            # here is where I execute the node... 
+            # there is a possibility that the node is 
+            # async or streaming
             result = self, self._node(*args, **kwargs)
         else:
             result = self
@@ -649,7 +653,7 @@ def traverse_ts(
         ValueError: If an index is not specified for results that return multiple outputs
 
     Returns:
-        _type_: _description_
+        the result
     """
 
     stored = stored if stored is not None else {}

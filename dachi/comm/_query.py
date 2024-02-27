@@ -1,4 +1,5 @@
 from openai import OpenAI
+from openai import AsyncOpenAI
 from abc import abstractmethod, ABC
 from typing import Any
 from ._ui import UI
@@ -6,6 +7,7 @@ from ..storage import MessageLister
 from functools import partial
 import threading
 import typing
+import datetime
 from ._requests import CALLBACK, Request
 
 
@@ -196,3 +198,75 @@ class UIQuery(Query):
 
     def exec_post(self, request: Request):
         self.ui_interface.request_message(partial(self.respond, request))
+
+
+class Query2(ABC):
+
+    @abstractmethod
+    def exec(self, request: Request, callback: CALLBACK=None):
+        pass
+
+    @abstractmethod
+    async def aexec(self, request: Request):
+        pass
+
+    def post(self, request: Request, callback: CALLBACK=None, use_thread: bool=False):
+        
+        if use_thread:
+            thread = threading.Thread(target=self.exec_post, args=[request, callback])
+            thread.start()
+        else:
+            self.exec_post(request, callback)
+
+    async def apost(self, request: Request):
+        
+        return await self.aexec(request)
+
+
+class LLMQUery2(Query2):
+
+    def __init__(self, temperature: float=0.0, stream: bool=False) -> None:
+        super().__init__()
+        self.temperature = temperature
+        self.stream = stream
+
+    def query(self, request: Request, callback: CALLBACK=None):
+
+        client = OpenAI()
+        response = client.chat.completions.create(
+            model="gpt-4-1106-preview",
+            messages=request.contents, temperature=self.temperature,
+            stream=self.stream
+        )
+        if self.stream:
+            for chunk in response:
+                # improve this
+                request.response += chunk.choices[0].delta.content
+                request.responded_at = datetime.now()
+        else:
+            request.response = response.choices[0].message.content
+            request.responded_at = datetime.now()
+        request.processed = True
+
+    async def query(self, request: Request):
+        
+        client = AsyncOpenAI()
+        response = await client.chat.completions.create(
+            model="gpt-4-1106-preview",
+            messages=request.contents, temperature=self.temperature,
+            stream=self.stream
+        )
+        
+        if self.stream:
+            for chunk in response:
+                request.response += chunk.choices[0].delta.content
+                request.responded_at = datetime.now()
+        else:
+            request.response = response.choices[0].message.content
+            request.responded_at = datetime.now()
+        request.processed = True
+
+
+# class Query
+#   # async def __async_call__()
+#   # def __call__(  callback=None) # if not called will call thread

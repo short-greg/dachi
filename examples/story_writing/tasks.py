@@ -3,7 +3,7 @@ from dachi.storage import Prompt
 from dachi.comm import ProcessResponse, Processed
 import typing
 
-from dachi.storage import Conv, R
+from dachi.storage import Conv, SRetrieve
 
 from dachi.behavior import Action
 
@@ -96,7 +96,7 @@ class ProcessComplete(ProcessResponse):
 
 class PrintOut(Action):
 
-    def __init__(self, output: str, r: R):
+    def __init__(self, output: str, r: SRetrieve):
         super().__init__()
         self.output = output
         self.r = r

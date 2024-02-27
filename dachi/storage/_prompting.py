@@ -3,7 +3,7 @@ from dataclasses import dataclass, field
 from typing import Dict
 from abc import abstractmethod, ABC
 from ..base import Storable
-from ._core import DList, Struct, Arg, Q
+from ._core import DList, Struct, Arg, Retrieve
 
 
 T = typing.TypeVar("T")
@@ -108,7 +108,7 @@ class Prompt(Struct):
         for k, _ in self._args.items():
             if k in kwargs:
                 cur_v = kwargs[k]
-                if isinstance(cur_v, Q):
+                if isinstance(cur_v, Retrieve):
                     cur_v = cur_v()
                 if isinstance(cur_v, Struct):
                     cur_v = cur_v.as_text()
@@ -213,7 +213,13 @@ class MessageLister(ABC):
 class Conv(Struct, MessageLister):
 
     def __init__(self, roles: typing.List[typing.Union[str, Role]]=None, max_turns: int=None, check_roles: bool=False):
+        """
 
+        Args:
+            roles (typing.List[typing.Union[str, Role]], optional): The roles in the conversation. Defaults to None.
+            max_turns (int, optional): The max number of turns to record. Defaults to None.
+            check_roles (bool, optional): Whether to check the roles. Defaults to False.
+        """
         super().__init__()
         self._check_roles = check_roles
         roles = roles or []
@@ -224,7 +230,15 @@ class Conv(Struct, MessageLister):
         self._max_turns = max_turns
 
     def add_turn(self, role: str, text: str) -> 'Conv':
+        """Add a turn to the conversation
 
+        Args:
+            role (str): The role for a turn
+            text (str): The text for the turn
+
+        Returns:
+            Conv: The conversation with updated turns
+        """
         if role not in self._roles:
             self.add_role(role)
         if self._max_turns is not None and len(self._turns) == self._max_turns:
@@ -234,7 +248,15 @@ class Conv(Struct, MessageLister):
         return self
     
     def add_role(self, role: typing.Union[Role, str], overwrite: bool=False) -> 'Conv':
+        """
 
+        Args:
+            role (typing.Union[Role, str]): The role to add
+            overwrite (bool, optional): Whether to ovewrite the role. Defaults to False.
+
+        Returns:
+            Conv: The conversation with a new role
+        """
         if isinstance(role, str):
             role = Role(role)
         if overwrite and role.name in self._roles:
@@ -263,21 +285,45 @@ class Conv(Struct, MessageLister):
         return conversation
 
     def __getitem__(self, idx) -> Message:
+        """
+        Args:
+            idx (int): The index of the message to get
 
+        Returns:
+            Message: The message
+        """
         return self._turns[idx]
     
     def __setitem__(self, idx, turn: Message) -> Message:
+        """
+        Args:
+            idx: The index for the message
+            turn (Message): The turn to add
 
+        Returns:
+            Message: The added turn
+        """
         self._turns[idx] = turn
         return turn
 
-    def filter(self, role: str):
+    def filter(self, role: str) -> typing.List[Message]:
+        """Filter by a role
 
+        Args:
+            role (str): the string to filter by
+
+        Returns:
+            typing.List[Message]: The 
+        """
         return [
-            turn for turn in self._turns if turn.role.name == role]
+            turn for turn in self._turns if turn.role.name == role
+        ]
     
     def to_dict(self) -> typing.Dict[str, str]:
-
+        """
+        Returns:
+            typing.Dict[str, str]: Convert the Conversation to a dict
+        """
         return {
             i: turn
             for i, turn in enumerate(self._turns)
@@ -311,12 +357,19 @@ class Conv(Struct, MessageLister):
     def __len__(self) -> int:
         return len(self._turns)
     
-    def __iter__(self) -> typing.Tuple[Role, Message]:
-
+    def __iter__(self) -> typing.Iterator[typing.Tuple[Role, Message]]:
+        """
+        Yields:
+            Iterator[typing.Iterator[typing.Tuple[Role, Message]]]: Iterate over each message
+        """
         for turn in self._turns:
             yield turn.role, turn.text
 
     def as_dict(self) -> Dict:
+        """
+        Returns:
+            Dict: The conversation as a dictionary
+        """
         return {
             'roles': self._roles,
             'turns': self._turns.as_dict(),
@@ -324,7 +377,13 @@ class Conv(Struct, MessageLister):
         }
 
     def as_text(self, heading: str=None) -> str:
-        
+        """
+        Args:
+            heading (str, optional): The heading of the conversation. Defaults to None.
+
+        Returns:
+            str: The conversation as text
+        """
         result = f'{heading}\n' if heading is not None else ''
         for i, turn in enumerate(self._turns):
             result += f'{turn.as_text()}'
@@ -334,30 +393,39 @@ class Conv(Struct, MessageLister):
         return result
 
     def spawn(self) -> 'Conv':
-
+        """
+        Returns:
+            Conv: The spawned conversation
+        """
         return Conv(
             {**self._roles}, self._max_turns
         )
 
     @property
     def turns(self) -> typing.List[Message]:
+        """
+        Returns:
+            typing.List[Message]: The turns for the conversation
+        """
         return self._turns
     
     def as_messages(self) -> DList[Message]:
-
+        """
+        Returns:
+            DList[Message]: The conversation as a list of messages
+        """
         return DList(self._turns)
-    
-    # def range(self, from_: int=0, to_: int=-1) -> 'DList':
-
-    #     return DList(
-            
-    #     )
 
 
 class PromptConv(Conv):
 
     def __init__(self, prompt_gen: PromptGen, max_turns: int=None):
+        """Create a conversation with a system prompt 
 
+        Args:
+            prompt_gen (PromptGen): The generator for the prompt
+            max_turns (int, optional): The number of turns in the conversation. Defaults to None.
+        """
         # add introductory message
         super().__init__(
             ['assistant', 'user'], 
@@ -365,8 +433,14 @@ class PromptConv(Conv):
         )
         self.prompt_gen = prompt_gen
 
-    def with_components(self, reset_turns: bool=False, **components: Struct):
+    def with_components(self, reset_turns: bool=False, **components: Struct) -> 'PromptConv':
+        """
+        Args:
+            reset_turns (bool, optional): Reset the turns for the conversation. Defaults to False.
 
+        Returns:
+            PromptConv: The conversation updated with the components passed in
+        """
         prompt_conv = PromptConv(self.prompt_gen.with_components(
             **components
         ), self.max_turns)
@@ -375,18 +449,30 @@ class PromptConv(Conv):
         return prompt_conv
 
     def as_turns(self) -> typing.List[typing.Dict[str, str]]:
-
+        """
+        Returns:
+            typing.List[typing.Dict[str, str]]: Convert to a list of messages
+        """
         return super().as_messages()
 
     def as_messages(self) -> typing.List[typing.Dict[str, str]]:
-
+        """
+        Returns:
+            typing.List[typing.Dict[str, str]]: The 
+        """
         return DList([
             Message('system', self.prompt_gen),
             *super().as_messages()
         ])
 
     def as_text(self, heading: str=None) -> str:
-        
+        """
+        Args:
+            heading (str, optional): The heading for text. Defaults to None.
+
+        Returns:
+            str: The PromptConv as text
+        """
         result = f'{heading}\n' if heading is not None else ''
         result += self.prompt_gen.as_text()
         for i, turn in enumerate(self._turns):
@@ -397,13 +483,20 @@ class PromptConv(Conv):
         return result
 
     def spawn(self) -> 'PromptConv':
-
+        """
+        Returns:
+            PromptConv: The PromptConv spawned
+        """
         return PromptConv(
             self.prompt_gen.spawn(),
             self._max_turns
         )
 
     def as_dict(self) -> Dict:
+        """
+        Returns:
+            Dict: Convert the prompt conv to a dict
+        """
         return {
             'prompt_gen': self.prompt_gen.as_dict(),
             **super().as_dict()
@@ -453,7 +546,10 @@ class Completion(Struct, MessageLister):
         )
     
     def as_messages(self) -> DList:
-
+        """
+        Returns:
+            DList: Return the Completion as a list of messages
+        """
         return DList([Message('system', self.prompt_gen)])
     
     def as_dict(self) -> typing.Dict:
@@ -467,6 +563,10 @@ class Completion(Struct, MessageLister):
         }
 
     def spawn(self) -> 'Completion':
+        """
+        Returns:
+            Completion: Spawn the completion
+        """
         return Completion(
             self.prompt_gen.spawn(), self.response
         )

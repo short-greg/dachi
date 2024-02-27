@@ -2,7 +2,7 @@ from enum import Enum
 
 
 class TaskStatus(Enum):
-    """Status of a Sango Behavior Tree task
+    """Status of a Behavior Tree task
     """
 
     # The task is currently in progress

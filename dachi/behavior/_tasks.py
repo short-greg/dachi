@@ -4,7 +4,7 @@ from ..base import Storable
 from ._status import TaskStatus
 from dataclasses import dataclass
 from ..storage import (
-    Struct, Q, R, 
+    Struct, Retrieve, SRetrieve, 
     PromptConv, Completion,
 )
 from ..graph import Tako
@@ -14,6 +14,7 @@ from ..comm import (
     NullProcessResponse
 )
 
+import inspect
 from functools import partial
 
 import threading
@@ -472,7 +473,7 @@ class Not(Decorator):
 
 class Check(Condition):
 
-    def __init__(self, data: Q, f: Q):
+    def __init__(self, data: Retrieve, f: Retrieve):
         super().__init__()
         self.data = data
         self.f = f
@@ -483,25 +484,25 @@ class Check(Condition):
 
 class CheckReady(Check):
 
-    def __init__(self, r: R):
+    def __init__(self, r: SRetrieve):
         super().__init__(r, lambda r: r() is not None)
 
 
 class CheckTrue(Check):
 
-    def __init__(self, r: R):
+    def __init__(self, r: SRetrieve):
         super().__init__(r, lambda r: r is True)
 
 
 class CheckFalse(Check):
 
-    def __init__(self, r: R):
+    def __init__(self, r: SRetrieve):
         super().__init__(r, lambda r: r is False or r is None)
 
 
 class Reset(Action):
 
-    def __init__(self, data: Q[Struct], on_condition: typing.Callable[[], None]=None):
+    def __init__(self, data: Retrieve[Struct], on_condition: typing.Callable[[], None]=None):
 
         super().__init__()
         self._data = data
@@ -666,9 +667,28 @@ class FAction(Action):
         self._action = action
         self._args = args
         self._kwargs = kwargs
+        self._iterate_over = inspect.isgeneratorfunction(
+            action
+        )
+        self._iterate = None
 
     def act(self) -> TaskStatus:
-        return self._action(*self._args, **self._kwargs)
+        
+        if self._iterate_over:
+            if self._iterate is None:
+                self._iterate = iter(self._action(
+                    *self._args, **self._kwargs)
+                )
+            try:
+                return next(iter)
+            except StopIteration:
+                return TaskStatus.SUCCESS
+        else:
+            return self._action(*self._args, **self._kwargs)
+    
+    def __reset__(self):
+        super().reset()
+        self._iterate = None
 
 
 class FCond(Condition):
@@ -740,17 +760,19 @@ def actionf(f):
     return task
 
 
-def parallelf(f, succeeds_on: int=-1, fails_on=1, success_priority: bool=True):
+def parallelf(succeeds_on: int=-1, fails_on=1, success_priority: bool=True):
 
-    def task(self, *args, **kwargs):
-        return f(self, *args, **kwargs)
+    def _(f):
+        def task(self, *args, **kwargs):
+            return f(self, *args, **kwargs)
 
-    task.task = lambda *args, **kwargs: FParallel(
-        task, *args, succeeds_on=succeeds_on, 
-        success_priority=success_priority, 
-        fails_on=fails_on, **kwargs
-    )
-    return task
+        task.task = lambda *args, **kwargs: FParallel(
+            task, *args, succeeds_on=succeeds_on, 
+            success_priority=success_priority, 
+            fails_on=fails_on, **kwargs
+        )
+        return task
+    return _
 
 
 def condf(f):

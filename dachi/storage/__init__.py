@@ -1,5 +1,5 @@
 from ._core import (
-    Arg, R, Q, F, D, Wrapper, DList, 
+    Arg, SRetrieve, Retrieve, FRetrieve, DRetrieve, Wrapper, DList, 
     DDict, Storable, Struct, Transfer
 )
 from ._prompting import (

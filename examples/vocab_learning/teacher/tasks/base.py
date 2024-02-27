@@ -1,5 +1,5 @@
 from dachi.behavior import Action, TaskStatus
-from dachi.storage import Prompt, Conv, Q
+from dachi.storage import Prompt, Conv, Retrieve
 from dachi.comm import Query, Request
 from ....tools.comm import UI
 
@@ -42,7 +42,7 @@ class ConvMessage(Action):
 
 class PreparePrompt(Action):
 
-    def __init__(self, conv: Conv, prompt: Prompt, replace: bool=False, **components: Q):
+    def __init__(self, conv: Conv, prompt: Prompt, replace: bool=False, **components: Retrieve):
 
         super().__init__()
         self.prompt = prompt 

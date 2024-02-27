@@ -2,6 +2,8 @@ from abc import ABC
 from uuid import uuid4
 import typing
 
+T = typing.TypeVar('T')
+
 
 class Storable(ABC):
     """Object to serialize objects to make them easy to recover
@@ -43,8 +45,6 @@ class Storable(ABC):
                 cur[k] = v
         return cur
 
-
-T = typing.TypeVar('T')
 
 class Ref(typing.Generic[T]):
 
