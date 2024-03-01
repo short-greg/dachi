@@ -107,7 +107,6 @@ class FieldList(object):
             raise ValueError(f'No field named {name} in the Field List')
 
 
-
 class T(ABC):
     """Base transmission class"""
 
@@ -117,7 +116,12 @@ class T(ABC):
         Args:
             name (str): Name of the transmission
         """
+        self._id = id(self)
         self._name = name
+
+    @property
+    def id(self) -> int:
+        return self._id
 
     @property
     def value(self) -> typing.Any:
@@ -248,6 +252,8 @@ class Incoming:
     def _process_arg(cls, t: T, by: typing.Dict[Var, typing.Any], 
         stored: typing.Dict[str, typing.Any]):
         
+        if not isinstance(t, T):
+            return t
         if t in by:
             return by[t]
         if t.name in stored:
@@ -418,11 +424,12 @@ def get_arg(arg, is_variable: bool=False) -> typing.Tuple[typing.Any, bool]:
         typing.Tuple[typing.Any, bool]: The argument, whether it is a variable
     """
 
-    if isinstance(arg, Var) or isinstance(arg, Process):
-        return arg, True
-    elif isinstance(arg, Output):
+    if isinstance(arg, Output):
         return arg.value, False or is_variable
+    elif isinstance(arg, T):
+        return arg, True
     return arg, False or is_variable
+
 
 class Output(T):
     """An output transmission defines the result of an
@@ -536,6 +543,9 @@ class Process(T):
 
         return incoming
 
+    def __getitem__(self, idx) -> 'ProcessIdx':
+        return ProcessIdx(self, idx)
+
     def __call__(self, by: typing.Dict['Var', typing.Any]=None, stored: typing.Dict[str, typing.Any]=None, deep: bool=True) -> typing.Any:
         """Retrieve the value of the transmission
 
@@ -567,6 +577,99 @@ class Process(T):
         # elif isinstance(result, typing.Tuple):
         #     result = tuple(r_i.value if isinstance(r_i, Output) else r_i for r_i in result)
         # return result
+
+
+class ProcessIdx(T):
+    """
+    """
+
+    def __init__(self, process: Process, idx: int):
+        """Wraps a node in a graph. Each arg and kwargs will be used to define the graph
+        # i feel the easy approach 
+
+        Args:
+            node (Node): Node to use 
+            args (typing.List): The args to pass to the node
+            kwargs (typing.Dict): The kwargs to pass to the node
+        """
+        super().__init__(process.name + '_' + str(idx))
+        self._idx = idx
+        self._process = process
+
+    @property
+    def value(self) -> typing.Any:
+        """
+
+        Returns:
+            typing.Any: The output of the process
+        """
+        return self.__call__()
+    
+    def clone(self) -> 'ProcessIdx':
+        """
+        Returns:
+            Process: The cloned process
+        """
+        # TODO: what if the underlying process is cloned
+        return ProcessIdx(
+            self._process, self._idx
+        )
+
+    @property
+    def incoming(self) -> typing.List[Incoming]:
+        return [Incoming(self._process, 0)]
+
+    def __call__(self, by: typing.Dict['Var', typing.Any]=None, stored: typing.Dict[str, typing.Any]=None, deep: bool=True) -> typing.Any:
+        """Retrieve the value of the transmission
+
+        Args:
+            by (typing.Dict[Var, typing.Any], optional): Storage of the values to use for the vars. Defaults to None.
+            stored (typing.Dict[str, typing.Any], optional): Storage of the outputs of the nodes in the graph. Defaults to None.
+
+        Returns:
+            Any: The output of the transmission
+        """
+        stored = stored if stored is not None else {}
+        by = by if by is not None else {}
+        if deep:
+            self._process(by, stored, True)
+        result = stored[self.name] = stored[self._process.name][self._idx]
+        return result
+
+
+class Out(object):
+
+    def __init__(self, outputs: typing.Union[
+        typing.Tuple[T, int], T, 
+        typing.List[typing.Union[typing.Tuple[T, int], T]]]):
+
+        self._singular = not isinstance(outputs, typing.List)
+        self._outputs = [outputs] if self._singular else outputs
+        self._output_ts = []
+        for output in self._outputs:
+            if isinstance(output, typing.Tuple):
+                self._output_ts.append(output[0])
+            else:
+                self._output_ts.append(output)
+
+    @property
+    def ts(self) -> typing.List[T]:
+        return self._output_ts
+    
+    def idx(self, output: typing.Union[typing.Tuple[T, int], T], stored: typing.Dict) -> typing.Any:
+
+        if isinstance(output, typing.Tuple):
+            return stored[output[0].name][output[1]]
+        return stored[output.name]
+    
+    def __call__(self, stored: typing.Dict[str, typing.Any]):
+
+        result = tuple(
+            self.idx(output, stored) for output in self._outputs
+        )
+        if self._singular:
+            return result[0]
+        return result
 
 
 # TODO: See if this is necessary still

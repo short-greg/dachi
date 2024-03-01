@@ -3,7 +3,7 @@ import typing
 
 # 3rd party
 import networkx as nx
-from ._core import Incoming, T, Var
+from ._core import Incoming, T, Var, Out
 
 
 class Network(object):
@@ -11,7 +11,6 @@ class Network(object):
     def _traverse(self, ts: typing.List[T], G: nx.DiGraph, all_ts: typing.Dict, incoming: typing.Dict):
 
         for t in ts:
-
             if not G.has_node(t.name):
                 G.add_node(t.name)
             inc_ts = []
@@ -28,13 +27,15 @@ class Network(object):
                 incoming[t.name].append(inc_i)
             self._traverse(inc_ts, G, all_ts, incoming)
                 
-    def __init__(self, outputs: typing.Union[T, typing.List[T]]):
+    def __init__(self, outputs: typing.List[typing.Union[typing.Tuple[T, int], T]]):
         # get all of the ts
 
         self._ts = {}
         self._incoming = {}
         self._G = nx.DiGraph()
-        self._traverse([outputs] if isinstance(outputs, T) else outputs, self._G, self._ts, self._incoming)
+        
+        self._out = Out(outputs)
+        self._traverse(self._out.ts, self._G, self._ts, self._incoming)
         self._execution_order = list(nx.topological_sort(self._G))
         self._outputs = outputs
 
@@ -59,15 +60,10 @@ class Network(object):
     def exec(self, by: typing.Dict[Var, typing.Any]):
 
         stored = {}
-    
         for t in self:
+            print(t.name)
             t(by, stored, deep=False)
 
-        if isinstance(self._outputs, T):
-            return stored[self._outputs.name]
-        else:
-            return tuple(
-                stored[output.name] for output in self._outputs
-            )
+        return self._out.__call__(stored)
     
     # will need to add async, stream, async_stream etc

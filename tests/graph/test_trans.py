@@ -24,14 +24,14 @@ class TestOutput:
 
 class TestProcess:
 
-    def test_process_value_returns_1(self):
+    def test_process_value_returns_2(self):
 
         node = DummyNode("D")
         process = graph.Process(node, [1])
 
         assert process.value == 2
 
-    def test_process_value_returns_1(self):
+    def test_process_value_returns_correct_values(self):
 
         node = DummyNode2("D")
         process = graph.Process(node, [1])

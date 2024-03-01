@@ -3,7 +3,8 @@ import typing
 from typing import Callable
 
 # local
-from ._core import Var, FieldList, Field, T, Node, to_by
+from ._core import Var, FieldList, Field, T, Node, to_by, Out
+
 
 class Adapter(Node):
     """A Node which wraps a graph
@@ -22,8 +23,8 @@ class Adapter(Node):
         """
         super().__init__(name)
         self._inputs = inputs
-        self._outputs = outputs
         fields = []
+        self._out = Out(outputs)
         for output in outputs:
             if isinstance(output, tuple):
                 output = output[0]
@@ -41,18 +42,13 @@ class Adapter(Node):
 
     def op(self, *args, **kwargs) -> typing.Any:
         
-        by = to_by(self._inputs, args, kwargs)
+        stored = to_by(self._inputs, args, kwargs)
+        by = {}
+        for t in self._out.ts:
+            t(by, stored, deep=True)
 
-        result = []
-        stored = {}
-        for output in self._outputs:
-            
-            if isinstance(output, T):
-                result.append(output(by, stored))
-            else:
-                cur_result = output[0](by, stored)
-                result.append(cur_result[output[1]])
-        return result
+        return self._out(stored)
+
 
 class NodeFunc(Node):
     """A Node that wraps a function
