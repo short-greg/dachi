@@ -1,7 +1,6 @@
 import pydantic
 from abc import (
-    abstractmethod, abstractclassmethod, 
-    abstractproperty, ABC
+    abstractmethod, ABC
 )
 from functools import wraps
 from typing import Callable

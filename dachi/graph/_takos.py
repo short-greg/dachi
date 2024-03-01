@@ -1,8 +1,9 @@
+# 1st party
 import typing
 
+# local
 from ._core import (
-    Tako, Var, T, to_by, 
-    traverse_ts, probe_ts
+    Tako, Var, T, to_by
 )
 
 
@@ -25,12 +26,14 @@ class TakoWrapper(Tako):
             typing.Iterator[T]: An iterator which iterates over all the nodes
         """
         by = to_by(self._inputs, args, kwargs)
-        for result in traverse_ts(self._outputs, by, evaluate=False):
-            yield result
+        # TODO: USE NETWORK
+        # for result in traverse_ts(self._outputs, by, evaluate=False):
+        #     yield result
 
     def op(self, *args, **kwargs) -> typing.Any:
         """
         """
 
         by = to_by(self._inputs, args, kwargs)
-        return probe_ts(self._outputs, by)
+        # return probe_ts(self._outputs, by)
+        # TODO: Use network

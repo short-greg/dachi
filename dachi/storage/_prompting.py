@@ -1,13 +1,14 @@
+# 1st party
 import typing
 from dataclasses import dataclass, field
 from typing import Dict
 from abc import abstractmethod, ABC
-from ..base import Storable
+
+# local
 from ._core import DList, Struct, Arg, Retrieve
 
 
 T = typing.TypeVar("T")
-
 
 class Text(Struct):
     """A simple wrapper to use text as a prompt struct

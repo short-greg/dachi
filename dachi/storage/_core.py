@@ -1,12 +1,10 @@
+# 1st party
 import typing
 from typing import Dict
-from abc import abstractmethod, ABC
-from ..base import Storable
-
-import typing
 from dataclasses import dataclass, field
-from typing import Dict
 from abc import abstractmethod, ABC
+
+# local
 from ..base import Storable
 
 T = typing.TypeVar("T")
