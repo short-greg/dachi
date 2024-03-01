@@ -20,7 +20,6 @@ def _is_function(f) -> bool:
     return f_type == type(_is_function) or f_type == type(hasattr)
 
 
-
 class F(object):
     """F is a functor that allows the user to set the args and kwargs
     """
@@ -136,7 +135,7 @@ class T(ABC):
         """
         return self._name
 
-    def __call__(self, by: typing.Dict['Var', typing.Any]=None, stored: typing.Dict[str, typing.Any]=None) -> typing.Any:
+    def __call__(self, by: typing.Dict['Var', typing.Any]=None, stored: typing.Dict[str, typing.Any]=None, deep: bool=True) -> typing.Any:
         """Retrieve the value of the transmission
 
         Args:
@@ -218,7 +217,7 @@ class Var(T):
             self.name, self.dtype, self._default
         )
 
-    def __call__(self, by: typing.Dict['Var', typing.Any]=None, stored: typing.Dict[str, typing.Any]=None) -> typing.Any:
+    def __call__(self, by: typing.Dict['Var', typing.Any]=None, stored: typing.Dict[str, typing.Any]=None, deep: bool=True) -> typing.Any:
         """Retrieve the value of the transmission
 
         Args:
@@ -272,7 +271,6 @@ class Incoming:
                 args.insert(inc_i.idx, arg)
 
         return args, kwargs
-
 
 
 class OpStream:
@@ -470,7 +468,7 @@ class Output(T):
             self.name, self._value
         )
 
-    def __call__(self, by: typing.Dict['Var', typing.Any]=None, stored: typing.Dict[str, typing.Any]=None) -> typing.Any:
+    def __call__(self, by: typing.Dict['Var', typing.Any]=None, stored: typing.Dict[str, typing.Any]=None, deep: bool=True) -> typing.Any:
         """Retrieve the value of the transmission
 
         Args:
@@ -489,7 +487,6 @@ class Output(T):
     def incoming(self) -> typing.List['Incoming']:
         return []
 
-        
 
 class Process(T):
     """
@@ -539,7 +536,7 @@ class Process(T):
 
         return incoming
 
-    def __call__(self, by: typing.Dict['Var', typing.Any]=None, stored: typing.Dict[str, typing.Any]=None) -> typing.Any:
+    def __call__(self, by: typing.Dict['Var', typing.Any]=None, stored: typing.Dict[str, typing.Any]=None, deep: bool=True) -> typing.Any:
         """Retrieve the value of the transmission
 
         Args:
@@ -554,10 +551,11 @@ class Process(T):
 
         args, kwargs = Incoming.prepare_args(self.incoming, by, stored)
 
-        args = [arg(by, stored) if isinstance(arg, T) else arg for arg in args]
-        kwargs = {
-            k: arg(by, stored) if isinstance(arg, T) else arg for k, arg in kwargs.items()
-        }
+        if deep:
+            args = [arg(by, stored) if isinstance(arg, T) else arg for arg in args]
+            kwargs = {
+                k: arg(by, stored) if isinstance(arg, T) else arg for k, arg in kwargs.items()
+            }
         
         result = stored[self.name] = self._node(*args, **kwargs)
         return result

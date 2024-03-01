@@ -31,6 +31,8 @@ class TestNetwork:
         y = node1.link(var)
         y = node2.link(y)
         
-        graph.Network(y)
-        assert r1 == 3
-        assert r2 == 4
+        network = graph.Network(y)
+
+        result = network.exec(by={var: 2})
+        print(result)
+        assert False

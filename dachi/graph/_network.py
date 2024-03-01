@@ -3,7 +3,7 @@ import typing
 
 # 3rd party
 import networkx as nx
-from ._core import Incoming, T
+from ._core import Incoming, T, Var
 
 
 class Network(object):
@@ -12,11 +12,11 @@ class Network(object):
 
         for t in ts:
 
-            if not G.has_node(t.val.name):
-                G.add_node(t.val.name)
+            if not G.has_node(t.name):
+                G.add_node(t.name)
             inc_ts = []
             all_ts[t.name] = t
-            incoming[t.name]
+            incoming[t.name] = []
             for inc_i in t.incoming:
                 if inc_i.is_t():
                     if not G.has_node(inc_i.val.name):
@@ -56,15 +56,18 @@ class Network(object):
         for name in self._execution_order:
             yield self._ts[name]
     
-    def exec(self, by: typing.Dict):
+    def exec(self, by: typing.Dict[Var, typing.Any]):
 
         stored = {}
     
         for t in self:
-            t(by, stored)
+            t(by, stored, deep=False)
 
-        return tuple(
-            stored[output] for output in self.outputs
-        )
+        if isinstance(self._outputs, T):
+            return stored[self._outputs.name]
+        else:
+            return tuple(
+                stored[output.name] for output in self._outputs
+            )
     
     # will need to add async, stream, async_stream etc
