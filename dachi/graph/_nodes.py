@@ -1,40 +1,9 @@
 # 1st party
 import typing
 from typing import Callable
-from abc import ABC, abstractmethod, abstractproperty
 
 # local
 from ._core import Var, FieldList, Field, T, Node, to_by
-
-
-# TODO: Review decorators to improve this
-# class NodeMethod(Node):
-#     """A node that wraps a method
-#     """
-
-#     def __init__(self, obj, f, inputs: typing.List[Field], outputs: typing.List[Field]):
-#         """Create a Node out of an instance method
-
-#         Args:
-#             obj: The object wrapped
-#             f: The function to call
-#             inputs (typing.List[Field]): The input fields
-#             outputs (typing.List[Field]): The output fields
-#         """
-#         super().__init__(f'{obj.__class__.__name__}_{f.__name__}')
-#         self._obj = obj
-#         self._f = f
-#         self._inputs = inputs
-#         self._outputs = outputs
-
-#     def op(self, *args, **kwargs) -> typing.Any:
-#         """Call the method in the object
-
-#         Returns:
-#             typing.Any: The output of the function
-#         """
-#         return self._f(self._obj, *args, **kwargs)
-
 
 class Adapter(Node):
     """A Node which wraps a graph

@@ -28,13 +28,13 @@ class Network(object):
                 incoming[t.name].append(inc_i)
             self._traverse(inc_ts, G, all_ts, incoming)
                 
-    def __init__(self, outputs: typing.List[T]):
+    def __init__(self, outputs: typing.Union[T, typing.List[T]]):
         # get all of the ts
 
         self._ts = {}
         self._incoming = {}
         self._G = nx.DiGraph()
-        self._traverse(outputs, self._G, self._ts, self._incoming)
+        self._traverse([outputs] if isinstance(outputs, T) else outputs, self._G, self._ts, self._incoming)
         self._execution_order = list(nx.topological_sort(self._G))
         self._outputs = outputs
 
