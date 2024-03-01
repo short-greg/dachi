@@ -131,6 +131,13 @@ class T(ABC):
         """
         pass
 
+    def __getitem__(self, idx) -> 'TIdx':
+        return TIdx(self, idx)
+    
+    @property
+    def is_output(self) -> bool:
+        return False
+
     @property
     def name(self) -> str:
         """
@@ -457,6 +464,10 @@ class Output(T):
         return self._value
     
     @property
+    def is_output(self) -> bool:
+        return True
+
+    @property
     def node(self) -> 'Node':
         """
         Returns:
@@ -543,9 +554,6 @@ class Process(T):
 
         return incoming
 
-    def __getitem__(self, idx) -> 'ProcessIdx':
-        return ProcessIdx(self, idx)
-
     def __call__(self, by: typing.Dict['Var', typing.Any]=None, stored: typing.Dict[str, typing.Any]=None, deep: bool=True) -> typing.Any:
         """Retrieve the value of the transmission
 
@@ -579,11 +587,11 @@ class Process(T):
         # return result
 
 
-class ProcessIdx(T):
+class TIdx(T):
     """
     """
 
-    def __init__(self, process: Process, idx: int):
+    def __init__(self, t: T, idx: int):
         """Wraps a node in a graph. Each arg and kwargs will be used to define the graph
         # i feel the easy approach 
 
@@ -592,9 +600,9 @@ class ProcessIdx(T):
             args (typing.List): The args to pass to the node
             kwargs (typing.Dict): The kwargs to pass to the node
         """
-        super().__init__(process.name + '_' + str(idx))
+        super().__init__(t.name + '_' + str(idx))
         self._idx = idx
-        self._process = process
+        self._t = t
 
     @property
     def value(self) -> typing.Any:
@@ -605,19 +613,23 @@ class ProcessIdx(T):
         """
         return self.__call__()
     
-    def clone(self) -> 'ProcessIdx':
+    def clone(self) -> 'TIdx':
         """
         Returns:
             Process: The cloned process
         """
         # TODO: what if the underlying process is cloned
-        return ProcessIdx(
-            self._process, self._idx
+        return TIdx(
+            self._t, self._idx
         )
 
     @property
     def incoming(self) -> typing.List[Incoming]:
-        return [Incoming(self._process, 0)]
+        return [Incoming(self._t, 0)]
+
+    @property
+    def is_output(self) -> bool:
+        return self._t.is_output
 
     def __call__(self, by: typing.Dict['Var', typing.Any]=None, stored: typing.Dict[str, typing.Any]=None, deep: bool=True) -> typing.Any:
         """Retrieve the value of the transmission
@@ -632,8 +644,8 @@ class ProcessIdx(T):
         stored = stored if stored is not None else {}
         by = by if by is not None else {}
         if deep:
-            self._process(by, stored, True)
-        result = stored[self.name] = stored[self._process.name][self._idx]
+            self._t(by, stored, True)
+        result = stored[self.name] = stored[self._t.name][self._idx]
         return result
 
 
