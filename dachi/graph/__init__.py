@@ -5,8 +5,11 @@ from ._core import (
     Tako
 )
 from ._nodes import (
-    Adapter, Node, NodeFunc, 
-    NodeMethod, nodefunc, nodemethod
+    Adapter, Node, 
+    # NodeFunc, 
+    # NodeMethod, 
+    # nodefunc, 
+    # nodemethod
 )
 from ._takos import (
     TakoWrapper

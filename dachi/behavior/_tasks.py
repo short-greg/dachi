@@ -13,6 +13,7 @@ from ..comm import (
     ProcessResponse, Processed,
     NullProcessResponse
 )
+import types
 
 import inspect
 from functools import partial
@@ -151,7 +152,12 @@ class Serial(Task):
     def _advance(self):
 
         if self._iter is None:
-            self._iter = iter(self._tasks)
+            
+            if isinstance(self._tasks, typing.Iterable):
+                tasks = self._tasks
+            else:
+                tasks = self._tasks()
+            self._iter = iter(tasks)
 
         try:
             self._cur = next(self._iter)
@@ -165,7 +171,12 @@ class Serial(Task):
     def _initiate(self):
 
         if self._iter is None:
-            self._iter = iter(self._tasks)
+
+            if isinstance(self._tasks, typing.Iterable):
+                tasks = self._tasks
+            else:
+                tasks = self._tasks()
+            self._iter = iter(tasks)
             return self._advance()
         return False
 
@@ -272,14 +283,14 @@ class Parallel(Task):
         
         successes = 0
         failures = 0
-        waiting = 0
+        # waiting = 0
         dones = 0
         for status in statuses:
             failures += status.failure
             successes += status.success
 
             dones += status.is_done
-            waiting += status.waiting
+            # waiting += status.waiting
 
         has_failed = failures >= self._fails_on
         has_succeeded = successes >= self._succeeds_on
@@ -293,15 +304,18 @@ class Parallel(Task):
             return TaskStatus.FAILURE
         if has_succeeded:
             return TaskStatus.SUCCESS
-        if waiting == (len(statuses) - dones):
-            return TaskStatus.WAITING
+        # if waiting == (len(statuses) - dones):
+        #     return TaskStatus.WAITING
         # failures + successes - 1
         return TaskStatus.RUNNING
 
     def subtick(self) -> TaskStatus:
 
         statuses = []
-        for task in self.tasks:
+        if isinstance(self.tasks, typing.Iterable):
+            tasks = self.tasks
+        else: tasks = self.tasks()
+        for task in tasks:
             statuses.append(task.tick())
             self._ticked.add(task)
 
@@ -336,6 +350,7 @@ class Parallel(Task):
         for task in self._ticked:
             task.reset()
         self._ticked = set()
+
 
 class Action(Task):
 
@@ -658,127 +673,3 @@ class PromptCompleter(Action):
     def reset(self):
         super().reset()
         self._request = Request()
-
-
-class FAction(Action):
-
-    def __init__(self, action: typing.Callable[[typing.Any], TaskStatus], *args, **kwargs) -> None:
-        super().__init__()
-        self._action = action
-        self._args = args
-        self._kwargs = kwargs
-        self._iterate_over = inspect.isgeneratorfunction(
-            action
-        )
-        self._iterate = None
-
-    def act(self) -> TaskStatus:
-        
-        if self._iterate_over:
-            if self._iterate is None:
-                self._iterate = iter(self._action(
-                    *self._args, **self._kwargs)
-                )
-            try:
-                return next(iter)
-            except StopIteration:
-                return TaskStatus.SUCCESS
-        else:
-            return self._action(*self._args, **self._kwargs)
-    
-    def __reset__(self):
-        super().reset()
-        self._iterate = None
-
-
-class FCond(Condition):
-
-    def __init__(self, cond: typing.Callable[[typing.Any], bool], *args, **kwargs) -> None:
-        super().__init__()
-        self._cond = cond
-        self._args = args
-        self._kwargs = kwargs
-
-    def condition(self) -> bool:
-        return self._cond(*self._args, **self._kwargs)
-
-
-class FSelector(Parallel):
-
-    def __init__(self, iterable: typing.Callable[[typing.Any], bool], *args, **kwargs) -> None:
-        super().__init__(
-            partial(iterable, *args, **kwargs), stop_on=True
-        )
-
-
-class FSequence(Sequence):
-
-    def __init__(self, iterable: typing.Callable[[typing.Any], bool], *args, **kwargs) -> None:
-        super().__init__(
-            partial(iterable, *args, **kwargs)
-        )
-
-
-class FParallel(Parallel):
-
-    def __init__(
-        self, iterable: typing.Callable[[typing.Any], bool], *args, fails_on: int=1, 
-        succeeds_on=-1, success_priority: bool=True, **kwargs
-    ) -> None:
-        super().__init__(
-            partial(iterable, *args, **kwargs),
-            fails_on=fails_on, succeeds_on=succeeds_on, 
-            success_priority=success_priority
-        )
-
-
-def sequencef(f):
-
-    def task(self, *args, **kwargs):
-        return f(self, *args, **kwargs)
-
-    task.task = lambda *args, **kwargs: FSequence(task, *args, **kwargs)
-    return task
-
-
-def selectorf(f):
-
-    def task(self, *args, **kwargs):
-        return f(self, *args, **kwargs)
-    
-    task.task = lambda *args, **kwargs: FSelector(task, *args, **kwargs)
-
-    return task
-
-
-def actionf(f):
-
-    def task(self, *args, **kwargs):
-        return f(self, *args, **kwargs)
-
-    task.task = lambda *args, **kwargs: FAction(task, *args, **kwargs)
-    return task
-
-
-def parallelf(succeeds_on: int=-1, fails_on=1, success_priority: bool=True):
-
-    def _(f):
-        def task(self, *args, **kwargs):
-            return f(self, *args, **kwargs)
-
-        task.task = lambda *args, **kwargs: FParallel(
-            task, *args, succeeds_on=succeeds_on, 
-            success_priority=success_priority, 
-            fails_on=fails_on, **kwargs
-        )
-        return task
-    return _
-
-
-def condf(f):
-
-    def task(self, *args, **kwargs):
-        return f(self, *args, **kwargs)
-
-    task.task = lambda *args, **kwargs: FCond(task, *args, **kwargs)
-    return task

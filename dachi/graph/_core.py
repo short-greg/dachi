@@ -263,8 +263,8 @@ class Incoming:
             return t
         if t in by:
             return by[t]
-        if t.name in stored:
-            return stored[t.name]
+        if t.id in stored:
+            return stored[t.id]
         return t
         
     @classmethod
@@ -498,7 +498,7 @@ class Output(T):
         """
         stored = stored if stored is not None else {}
         by = by if by is not None else {}
-        by[self.name] = self._value
+        stored[self.id] = self._value
         return self._value
 
     @property
@@ -575,7 +575,7 @@ class Process(T):
                 k: arg(by, stored) if isinstance(arg, T) else arg for k, arg in kwargs.items()
             }
         
-        result = stored[self.name] = self._node(*args, **kwargs)
+        result = stored[self.id] = self._node(*args, **kwargs)
         return result
         # result = stored[self._name][1]
         # if isinstance(result, Output):
@@ -645,7 +645,7 @@ class TIdx(T):
         by = by if by is not None else {}
         if deep:
             self._t(by, stored, True)
-        result = stored[self.name] = stored[self._t.name][self._idx]
+        result = stored[self.id] = stored[self._t.id][self._idx]
         return result
 
 
@@ -671,8 +671,8 @@ class Out(object):
     def idx(self, output: typing.Union[typing.Tuple[T, int], T], stored: typing.Dict) -> typing.Any:
 
         if isinstance(output, typing.Tuple):
-            return stored[output[0].name][output[1]]
-        return stored[output.name]
+            return stored[output[0].id][output[1]]
+        return stored[output.id]
     
     def __call__(self, stored: typing.Dict[str, typing.Any]):
 

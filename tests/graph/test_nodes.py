@@ -64,7 +64,6 @@ class TestAdapter:
         adapter = graph.Adapter(
             "Adapt", [var], [y1, (y2, 0)]
         )
-        
         r1, r2 = adapter()
         assert r1 == 2
         assert r2 == 3

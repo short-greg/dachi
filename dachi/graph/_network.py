@@ -11,20 +11,20 @@ class Network(object):
     def _traverse(self, ts: typing.List[T], G: nx.DiGraph, all_ts: typing.Dict, incoming: typing.Dict):
 
         for t in ts:
-            if not G.has_node(t.name):
-                G.add_node(t.name)
+            if not G.has_node(t.id):
+                G.add_node(t.id)
             inc_ts = []
-            all_ts[t.name] = t
-            incoming[t.name] = []
+            all_ts[t.id] = t
+            incoming[t.id] = []
             for inc_i in t.incoming:
                 if inc_i.is_t():
-                    if not G.has_node(inc_i.val.name):
-                        G.add_node(inc_i.val.name)
+                    if not G.has_node(inc_i.val.id):
+                        G.add_node(inc_i.val.id)
 
-                    G.add_edge(inc_i.val.name, t.name)
+                    G.add_edge(inc_i.val.id, t.id)
                     inc_ts.append(inc_i.val)
                 
-                incoming[t.name].append(inc_i)
+                incoming[t.id].append(inc_i)
             self._traverse(inc_ts, G, all_ts, incoming)
                 
     def __init__(self, outputs: typing.List[typing.Union[typing.Tuple[T, int], T]]):
@@ -49,7 +49,7 @@ class Network(object):
     def incoming(self, t: typing.Union[T, str]) -> typing.List[Incoming]:
 
         if isinstance(t, T):
-            t = t.name
+            t = t.id
         return self._incoming[t]
     
     def __iter__(self) -> typing.Iterator[T]:
@@ -61,7 +61,7 @@ class Network(object):
 
         stored = {}
         for t in self:
-            print(t.name)
+            print(t.id)
             t(by, stored, deep=False)
 
         return self._out.__call__(stored)
