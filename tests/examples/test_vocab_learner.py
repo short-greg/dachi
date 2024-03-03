@@ -1,7 +1,7 @@
 from examples.vocab_learning.teacher.tasks import lesson
 from examples.vocab_learning.teacher.tasks import planner
 from examples.story_writing.tasks import ProcessComplete
-from dachi.comm import LLMQuery, UI, Request, Query
+from dachi.comm import LLMQuery, UI, Request, Request
 from dachi.storage import PromptGen, Prompt
 from dachi.comm import _requests as requests
 from dachi.behavior import Converse, PromptCompleter
@@ -31,7 +31,7 @@ class UI(UI):
         self.bot_message = message
 
 
-class DummyQuery(Query):
+class DummyQuery(Request):
 
     def __init__(self, response):
         super().__init__()
@@ -59,7 +59,7 @@ class DummyLLMQuery(LLMQuery):
         return self.message
 
 
-class DummyQueryDelay(Query):
+class DummyQueryDelay(Request):
 
     def __init__(self, response, delay):
         super().__init__()

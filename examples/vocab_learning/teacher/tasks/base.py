@@ -1,13 +1,13 @@
 from dachi.behavior import Action, TaskStatus
 from dachi.storage import Prompt, Conv, Retrieve
-from dachi.comm import Query, Request
+from dachi.comm import Request, Request
 from ....tools.comm import UI
 
 
 class ConvMessage(Action):
 
     def __init__(
-        self, conv: Conv, query: Query, role: str='user'
+        self, conv: Conv, query: Request, role: str='user'
     ):
         """
 

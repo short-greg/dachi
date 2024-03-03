@@ -1,25 +1,20 @@
+# 1st party
 from abc import abstractmethod
 import typing
+from dataclasses import dataclass
+import threading
+
+# 3rd party
 from ..base import Storable
 from ._status import TaskStatus
-from dataclasses import dataclass
 from ..storage import (
     Struct, Retrieve, SRetrieve, 
     PromptConv, Completion,
 )
 from ..graph import Tako
 from ..comm import (
-    Request, UIQuery, LLMQuery, UI,
-    ProcessResponse, Processed,
-    NullProcessResponse
+    Request, UIQuery, OpenAIRequest, UI
 )
-import types
-
-import inspect
-from functools import partial
-
-import threading
-
 
 @dataclass
 class TaskMessage:
@@ -558,8 +553,8 @@ class TakoTask(Action):
 class Converse(Action):
 
     def __init__(
-        self, prompt_conv: PromptConv, llm: LLMQuery, user_interface: UI,
-        response_processor: ProcessResponse=None, **prompt_components: Struct
+        self, prompt_conv: PromptConv, llm: OpenAIRequest, user_interface: UI,
+        **prompt_components: Struct
     ):
         # Use to send a message from the LLM
         super().__init__()
@@ -568,8 +563,6 @@ class Converse(Action):
         self._ui_query = UIQuery(user_interface)
         self._ui = user_interface
         self._request = Request()
-        self._processed: Processed = None
-        self._response_processor = response_processor or NullProcessResponse()
         self._components = prompt_components
 
     def converse_turn(self):
@@ -625,7 +618,7 @@ class PromptCompleter(Action):
     # Use to send a message from the LLM
 
     def __init__(
-        self, completion: Completion, llm: LLMQuery, user_interface: UI,
+        self, completion: Completion, llm: OpenAIRequest, user_interface: UI,
         post_processor: typing.Callable=None, **prompt_components: Struct
     ):
         """

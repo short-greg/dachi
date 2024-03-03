@@ -20,6 +20,7 @@ def conceptmethod(func: Callable[..., T]) -> Callable[..., T]:
 
     return classmethod(wrapper)
 
+
 def abstractconceptmethod(func: Callable[..., T]) -> Callable[..., T]:
     func = abstractmethod(func)
 

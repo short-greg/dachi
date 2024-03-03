@@ -23,20 +23,6 @@ def meth2(x):
     return x + 2
 
 
-# class TestNodeMethod:
-
-#     def test_node_method_works_as_regular_node(self):
-
-#         tester = NodeMethodTester()
-#         var = graph.Var("X", default=1)
-
-#         y1 = tester.meth1.link(var)
-#         y2 = tester.meth2.link(y1)
-
-#         result = y2()
-#         assert result == 4
-
-
 class TestNodeFunc:
 
     def test_node_func_works_as_regular_node(self):

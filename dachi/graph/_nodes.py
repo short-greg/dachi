@@ -1,6 +1,5 @@
 # 1st party
 import typing
-from typing import Callable
 import functools
 
 # local
@@ -151,6 +150,12 @@ class NodeFunc(Node):
 
 
 def nodedef(input_names, output_names):
+    """
+
+    Args:
+        input_names: The names for each input
+        output_names: The names for each output
+    """
 
     def _(f):
         f.__input_names__ = input_names
@@ -159,48 +164,15 @@ def nodedef(input_names, output_names):
     return _
 
 
-def linkf(f, *args, **kwargs):
+def linkf(f, *args, **kwargs) -> T:
+    """
 
+    Args:
+        f : The function
+
+    Returns:
+        T: the linked output
+    """
     node = NodeFunc(
         f, f.__input_names__, f.__output_names__)
     return node.link(*args, **kwargs)
-
-# class NodeMethod(Node):
-
-#     def __init__(self, f: Callable, input_names, output_names, instance):
-
-#         super().__init__(f.__name__)
-#         self.f = f
-#         self.input_names = input_names
-#         self.output_names = output_names
-#         self.instance = instance
-
-#     def op(self, *args, **kwargs) -> typing.Any:
-#         return self.f(self.instance, *args, **kwargs)
-    
-
-# add Async version
-# class NodeMethodWrapper(object):
-
-#     def __init__(self, f: Callable, input_names, output_names):
-
-#         self.f = f
-#         self.input_names = input_names
-#         self.output_names = output_names
-
-#     def op(self, *args, **kwargs) -> typing.Any:
-#         return self.f(*args, **kwargs)
-    
-#     def __get__(self, instance, owner):
-#         return NodeFunc(
-#             self.f, self.input_names, self.output_names, instance
-#         )
-    
-
-# def nodemethod(input_names, output_names):
-
-#     def _(f):
-
-#         return NodeMethodWrapper(f, input_names, output_names)
-        
-#     return _
