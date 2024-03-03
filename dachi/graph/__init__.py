@@ -6,6 +6,8 @@ from ._core import (
 )
 from ._nodes import (
     Adapter, Node, 
+    linkf, nodedef,
+    NodeFunc
     # NodeFunc, 
     # NodeMethod, 
     # nodefunc, 

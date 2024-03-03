@@ -106,32 +106,64 @@ def nodefunc(inputs: typing.List[Field], outputs: typing.List[Field]):
         )
     return _
 
-# add Async version
-class NodeMethodWrapper(object):
 
-    def __init__(self, f: Callable, input_names, output_names):
+class NodeFunc(Node):
+    """A Node that wraps a function
+    """
 
+    def __init__(self, f, inputs: typing.List[Field], outputs: typing.List[Field]):
+        """Initialize a 
+
+        Args:
+            f: The function to wrap
+            inputs (typing.List[Field]): The inputs to the function
+            outputs (typing.List[Field]): The outputs fromthe function
+        """
+        
+        super().__init__(name=f.__name__)
         self.f = f
-        self.input_names = input_names
-        self.output_names = output_names
+        self._inputs = inputs
+        self._outputs = outputs
 
     def op(self, *args, **kwargs) -> typing.Any:
-        return self.f(*args, **kwargs)
     
-    def __get__(self, instance, owner):
-        return NodeFunc(
-            self.f, self.input_names, self.output_names, instance
+        return self.f(
+            *args, **kwargs
         )
-    
 
-def nodemethod(input_names, output_names):
+    @property
+    def outputs(self) -> FieldList:
+        """
+        Returns:
+            FieldList: The outputs from the Node
+        """
+
+        return self._outputs
+
+    @property
+    def inputs(self) -> FieldList:
+        """
+        Returns:
+            FieldList: The outputs from the Node
+        """
+
+        return self._inputs
+
+
+def nodedef(input_names, output_names):
 
     def _(f):
-
-        return NodeMethodWrapper(f, input_names, output_names)
-        
+        f.__input_names__ = input_names
+        f.__output_names__ = output_names
+        return f
     return _
 
+
+def linkf(f, *args, **kwargs):
+
+    node = NodeFunc(
+        f, f.__input_names__, f.__output_names__)
+    return node.link(*args, **kwargs)
 
 # class NodeMethod(Node):
 
@@ -146,3 +178,29 @@ def nodemethod(input_names, output_names):
 #     def op(self, *args, **kwargs) -> typing.Any:
 #         return self.f(self.instance, *args, **kwargs)
     
+
+# add Async version
+# class NodeMethodWrapper(object):
+
+#     def __init__(self, f: Callable, input_names, output_names):
+
+#         self.f = f
+#         self.input_names = input_names
+#         self.output_names = output_names
+
+#     def op(self, *args, **kwargs) -> typing.Any:
+#         return self.f(*args, **kwargs)
+    
+#     def __get__(self, instance, owner):
+#         return NodeFunc(
+#             self.f, self.input_names, self.output_names, instance
+#         )
+    
+
+# def nodemethod(input_names, output_names):
+
+#     def _(f):
+
+#         return NodeMethodWrapper(f, input_names, output_names)
+        
+#     return _
