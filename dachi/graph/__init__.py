@@ -2,7 +2,7 @@ from ._core import (
     T, Field, Var, FieldList,
     F, Incoming, OpStream, SingleOpStream,
     Process, Output, to_by, get_arg,
-    Tako
+    TakoBase
 )
 from ._nodes import (
     Adapter, Node, 

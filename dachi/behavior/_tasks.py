@@ -11,7 +11,7 @@ from ..storage import (
     Struct, Retrieve, SRetrieve, 
     PromptConv, Completion,
 )
-from ..graph import Tako
+from ..graph import TakoBase
 from ..comm import (
     Request, UIQuery, OpenAIRequest, UI
 )
@@ -529,7 +529,7 @@ class Reset(Action):
 
 class TakoTask(Action):
 
-    def __init__(self, tako: Tako):
+    def __init__(self, tako: TakoBase):
 
         super().__init__()
         self._tako = tako

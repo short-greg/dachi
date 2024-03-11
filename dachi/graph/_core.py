@@ -400,7 +400,7 @@ class Node(ABC):
         )
 
 
-class Tako(Node):
+class TakoBase(Node):
     """Define a Graph Node that wraps multiple other nodes
     """
     

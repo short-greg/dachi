@@ -8,7 +8,7 @@ from ._core import Incoming, T, Var, Out
 
 class Network(object):
 
-    def _traverse(self, ts: typing.List[T], G: nx.DiGraph, all_ts: typing.Dict, incoming: typing.Dict):
+    def _build_network(self, ts: typing.List[T], G: nx.DiGraph, all_ts: typing.Dict, incoming: typing.Dict):
 
         for t in ts:
             if not G.has_node(t.id):
@@ -25,7 +25,7 @@ class Network(object):
                     inc_ts.append(inc_i.val)
                 
                 incoming[t.id].append(inc_i)
-            self._traverse(inc_ts, G, all_ts, incoming)
+            self._build_network(inc_ts, G, all_ts, incoming)
                 
     def __init__(self, outputs: typing.List[typing.Union[typing.Tuple[T, int], T]]):
         # get all of the ts
@@ -35,7 +35,7 @@ class Network(object):
         self._G = nx.DiGraph()
         
         self._out = Out(outputs)
-        self._traverse(self._out.ts, self._G, self._ts, self._incoming)
+        self._build_network(self._out.ts, self._G, self._ts, self._incoming)
         self._execution_order = list(nx.topological_sort(self._G))
         self._outputs = outputs
 
@@ -57,11 +57,16 @@ class Network(object):
         for name in self._execution_order:
             yield self._ts[name]
     
+    def traverse(self, by: typing.Dict[Var, typing.Any]) -> typing.Iterator[typing.Any]:
+
+        stored = {}
+        for t in self:
+            yield t(by, stored, deep=False)
+
     def exec(self, by: typing.Dict[Var, typing.Any]):
 
         stored = {}
         for t in self:
-            print(t.id)
             t(by, stored, deep=False)
 
         return self._out.__call__(stored)
