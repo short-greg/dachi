@@ -119,10 +119,6 @@ class Concept(BaseModel):
     def columns(cls, dtypes: bool=False) -> typing.List[str]:
         schema = cls.schema()
 
-        print(
-            schema['properties'].values()
-        )
-
         columns = list(schema['properties'].keys())
         if dtypes:
             types = [cls.__annotations__[c] if c in cls.__annotations__ else None for c in columns]
@@ -184,7 +180,7 @@ class Val(object):
     def __init__(self, val) -> None:
         self.val = val
 
-    def __call__(self, df: pd.DataFrame):
+    def query(self, df: pd.DataFrame):
         return self.val
 
 
@@ -202,35 +198,38 @@ class Comp(object):
         self.rhs = rhs
         self.f = f
 
+    def query(self, df: pd.DataFrame):
+        lhs = self.lhs.query(df)
+        rhs = self.rhs.query(df)
+        return self.f(lhs, rhs)
+
     def __call__(self, df: pd.DataFrame) -> typing.Any:
 
-        lhs = self.lhs(df)
-        rhs = self.rhs(df)
-        return self.f(lhs, rhs)
+        return df[self.query(df)]
     
-    def __eq__(self, other):
+    # def __eq__(self, other):
 
-        return Comp(self, other, lambda lhs, rhs: lhs == rhs)
+    #     return Comp(self, other, lambda lhs, rhs: lhs == rhs)
     
-    def __lt__(self, other):
+    # def __lt__(self, other):
 
-        return Comp(self, other, lambda lhs, rhs: lhs < rhs)
+    #     return Comp(self, other, lambda lhs, rhs: lhs < rhs)
 
-    def __le__(self, other):
+    # def __le__(self, other):
 
-        return Comp(self, other, lambda lhs, rhs: lhs <= rhs)
+    #     return Comp(self, other, lambda lhs, rhs: lhs <= rhs)
 
-    def __gt__(self, other):
+    # def __gt__(self, other):
 
-        return Comp(self, other, lambda lhs, rhs: lhs > rhs)
+    #     return Comp(self, other, lambda lhs, rhs: lhs > rhs)
 
-    def __ge__(self, other):
+    # def __ge__(self, other):
 
-        return Comp(self, other, lambda lhs, rhs: lhs > rhs)
+    #     return Comp(self, other, lambda lhs, rhs: lhs > rhs)
 
-    def __ge__(self, other):
+    # def __ge__(self, other):
 
-        return Comp(self, other, lambda lhs, rhs: lhs >= rhs)
+    #     return Comp(self, other, lambda lhs, rhs: lhs >= rhs)
 
     def __xor__(self, other):
 
@@ -275,19 +274,19 @@ class Col(object):
 
         return Comp(self, other, lambda lhs, rhs: lhs >= rhs)
 
-    def __xor__(self, other):
+    # def __xor__(self, other):
 
-        return Comp(self, other, lambda lhs, rhs: lhs ^ rhs)
+    #     return Comp(self, other, lambda lhs, rhs: lhs ^ rhs)
 
-    def __and__(self, other):
+    # def __and__(self, other):
 
-        return Comp(self, other, lambda lhs, rhs: lhs & rhs)
+    #     return Comp(self, other, lambda lhs, rhs: lhs & rhs)
 
-    def __or__(self, other):
+    # def __or__(self, other):
 
-        return Comp(self, other, lambda lhs, rhs: lhs | rhs)
+    #     return Comp(self, other, lambda lhs, rhs: lhs | rhs)
 
-    def __call__(self, df: pd.DataFrame) -> typing.Any:
+    def query(self, df: pd.DataFrame) -> typing.Any:
 
         return df[self.name]
 

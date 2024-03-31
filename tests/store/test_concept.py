@@ -1,5 +1,7 @@
 import typing
 from dachi.store import _concept
+from dachi.store._concept import Col, Concept, ConceptManager
+import pandas as pd
 
 
 class Person(_concept.Concept):
@@ -47,3 +49,70 @@ class TestConcept:
         assert len(data.index) == 1
 
 
+class TestCol:
+
+    def test_eq_retrieves_less_than(self):
+
+        df = pd.DataFrame(
+            {'x': [1, 2], 'y': [3, 4]}
+        )
+        comp = Col('x') == 2
+        df2 = comp(df)
+        assert df2.iloc[0]['y'] == 4
+
+    def test_lt_retrieves_less_than(self):
+
+        df = pd.DataFrame(
+            {'x': [1, 2], 'y': [3, 4]}
+        )
+        comp = Col('x') < 2
+        df2 = comp(df)
+        assert df2.iloc[0]['y'] == 3
+
+    def test_gt_retrieves_greater_than(self):
+
+        df = pd.DataFrame(
+            {'x': [1, 2], 'y': [3, 4]}
+        )
+        comp = Col('x') > 1
+        df2 = comp(df)
+        assert df2.iloc[0]['y'] == 4
+
+    def test_ge_retrieves_greater_than_or_equal(self):
+
+        df = pd.DataFrame(
+            {'x': [1, 2], 'y': [3, 4]}
+        )
+        comp = Col('x') >= 2
+        df2 = comp(df)
+        assert df2.iloc[0]['y'] == 4
+
+    def test_ge_retrieves_greater_than_or_equal(self):
+
+        df = pd.DataFrame(
+            {'x': [1, 2], 'y': [3, 4]}
+        )
+        comp = Col('x') >= 2
+        df2 = comp(df)
+        assert df2.iloc[0]['y'] == 4
+
+
+class TestComp:
+
+    def test_and_retrieves_correct_row(self):
+
+        df = pd.DataFrame(
+            {'x': [1, 2], 'y': [3, 4]}
+        )
+        comp = (Col('x') == 2) & (Col('y') == 4)
+        df2 = comp(df)
+        assert df2.iloc[0]['y'] == 4
+
+    def test_or_retrieves_correct_row(self):
+
+        df = pd.DataFrame(
+            {'x': [1, 2], 'y': [3, 4]}
+        )
+        comp = (Col('x') == 2) | (Col('y') == 9)
+        df2 = comp(df)
+        assert df2.iloc[0]['y'] == 4
