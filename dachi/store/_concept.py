@@ -207,30 +207,6 @@ class Comp(object):
 
         return df[self.query(df)]
     
-    # def __eq__(self, other):
-
-    #     return Comp(self, other, lambda lhs, rhs: lhs == rhs)
-    
-    # def __lt__(self, other):
-
-    #     return Comp(self, other, lambda lhs, rhs: lhs < rhs)
-
-    # def __le__(self, other):
-
-    #     return Comp(self, other, lambda lhs, rhs: lhs <= rhs)
-
-    # def __gt__(self, other):
-
-    #     return Comp(self, other, lambda lhs, rhs: lhs > rhs)
-
-    # def __ge__(self, other):
-
-    #     return Comp(self, other, lambda lhs, rhs: lhs > rhs)
-
-    # def __ge__(self, other):
-
-    #     return Comp(self, other, lambda lhs, rhs: lhs >= rhs)
-
     def __xor__(self, other):
 
         return Comp(self, other, lambda lhs, rhs: lhs ^ rhs)
@@ -273,18 +249,6 @@ class Col(object):
     def __ge__(self, other):
 
         return Comp(self, other, lambda lhs, rhs: lhs >= rhs)
-
-    # def __xor__(self, other):
-
-    #     return Comp(self, other, lambda lhs, rhs: lhs ^ rhs)
-
-    # def __and__(self, other):
-
-    #     return Comp(self, other, lambda lhs, rhs: lhs & rhs)
-
-    # def __or__(self, other):
-
-    #     return Comp(self, other, lambda lhs, rhs: lhs | rhs)
 
     def query(self, df: pd.DataFrame) -> typing.Any:
 
