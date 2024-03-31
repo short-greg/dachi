@@ -36,15 +36,60 @@ def abstractconceptmethod(func: typing.Callable[..., T]) -> typing.Callable[...,
     return classmethod(wrapper)
 
 
-class RepFactory(typing.Generic[T]):
+class RepIdx(typing.Generic[T]):
 
-    def __init__(self, rep: typing.Type[T], *args, **kwargs):
+    def __init__(self, col: str, vk: faiss.Index, emb: typing.Callable[[T], np.ndarray]):
+
+        super().__init__()
+        self.col = col
+        self.vk = faiss.IndexIDMap2(vk)
+        self.emb = emb
+
+    def add(self, id, val: T):
+        
+        vb = self.emb([val])
+
+        self.vk.add_with_ids(vb, [id])
+    
+    def remove(self, id):
+        id_selector = faiss.IDSelectorBatch(1, faiss.swig_ptr(np.array([id], dtype=np.int64)))
+        self.vk.remove_ids(id_selector)
+
+    def __len__(self) -> int:
+        return self.vk.ntotal
+
+    def like(
+        self, vals: typing.Union[T, typing.List[T]], k: int=1, subset=None
+    ) -> typing.List[int]:
+
+        # TODO: limit to the subset
+        x = self.emb(vals)
+        D, I = self.vk.search(x=x, k=k)
+        return I
+    
+    # def F(cls, vk: faiss.Index, emb: typing.Callable[[T], np.ndarray]) -> RepFactory[Self]:
+
+    @classmethod
+    def F(cls, col: str, vk: typing.Type[faiss.Index], emb: typing.Callable[[T], np.ndarray], *idx_args, **idx_kwargs) -> 'RepFactory[RepIdx]':
+
+        return RepFactory[Self](
+            cls, col, vk, emb, *idx_args, **idx_kwargs
+        )
+
+
+R = typing.TypeVar('R', bound=RepIdx)
+
+class RepFactory(typing.Generic[R]):
+
+    def __init__(self, rep_cls, col: str, f: typing.Callable[[str], R], emb, *args, **kwargs):
         """
-
         Args:
             rep (typing.Type[V]): _description_
         """
-        self.rep = rep
+        self.rep_cls = rep_cls
+        self.col = col
+        self.f = f
+        self.emb = emb
         self.args = args
         self.kwargs = kwargs
     
@@ -54,48 +99,7 @@ class RepFactory(typing.Generic[T]):
         Returns:
             V: 
         """
-        return self.rep
-
-
-class RepIdx(typing.Generic[T]):
-
-    def __init__(self, vk: faiss.Index, emb: typing.Callable[[T], np.ndarray]):
-
-        super().__init__()
-        self.vk = faiss.IndexIDMap2(vk)
-        self.emb = emb
-
-    def add(self, id, val: T):
-        
-        vb = self.emb(val)
-        self.vk.add_with_ids(vb, id)
-    
-    def columns(self, names: typing.List[str]=None):
-        
-        if names is None:
-            return self._columns
-
-    def remove(self, id):
-        
-        self.vk.remove_ids([id])
-
-    def like(
-        self, val: typing.List[T], k: int=1, subset=None
-    ) -> typing.List[int]:
-
-        # TODO: limit to the subset
-        x = self.emb(val)
-        D, I = self.vk.search(x=x, k=k)
-        return I
-    
-    # def F(cls, vk: faiss.Index, emb: typing.Callable[[T], np.ndarray]) -> RepFactory[Self]:
-
-    @classmethod
-    def F(cls, vk: faiss.Index, emb: typing.Callable[[T], np.ndarray]) -> RepFactory:
-
-        return RepFactory[Self](
-            vk, emb=emb
-        )
+        return self.rep_cls(self.col, self.f(*self.args, **self.kwargs), self.emb)
 
 
 class Concept(BaseModel):

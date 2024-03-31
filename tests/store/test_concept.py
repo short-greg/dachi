@@ -1,10 +1,22 @@
 import typing
 from dachi.store import _concept
-from dachi.store._concept import Col, Concept, ConceptManager
+from dachi.store._concept import (
+    Col, RepIdx, Concept, ConceptManager
+)
+import faiss
+import numpy as np
 import pandas as pd
 
 
 class Person(_concept.Concept):
+
+    manager: typing.ClassVar[_concept.ConceptManager] = _concept.concept_manager
+
+    name: str
+    age: int
+
+
+class PersonRep(_concept.Concept):
 
     manager: typing.ClassVar[_concept.ConceptManager] = _concept.concept_manager
 
@@ -47,7 +59,6 @@ class TestConcept:
         data = _concept.concept_manager.get_data(Person)
         assert data.loc[0, 'name'] == 'Z'
         assert len(data.index) == 1
-
 
     def test_filter_gets_correct_person(self):
 
@@ -145,3 +156,68 @@ class TestComp:
         comp = (Col('x') == 2) | (Col('y') == 9)
         df2 = comp(df)
         assert df2.iloc[0]['y'] == 4
+
+
+class TestRepIdx:
+
+    def test_rep_idx_creates_rep(self):
+
+        emb = lambda x: np.random.randn(len(x), 4)
+        idx = RepIdx('x', faiss.IndexFlatL2(4), emb)
+        
+        idx.add(0, 'hi')
+        assert len(idx) == 1
+
+    def test_rep_idx_removes_from_rep(self):
+
+        emb = lambda x: np.random.randn(len(x), 4)
+        idx = RepIdx('x', faiss.IndexFlatL2(4), emb)
+        
+        idx.add(0, 'hi')
+        idx.remove(0)
+        assert len(idx) == 0
+    
+    def test_rep_idx_adds_multiple(self):
+
+        emb = lambda x: np.random.randn(len(x), 4)
+        idx = RepIdx('x', faiss.IndexFlatL2(4), emb)
+        
+        idx.add(0, 'hi')
+        idx.add(1, 'bye')
+        assert len(idx) == 2
+
+    def test_rep_idx_gets_only_one_similar(self):
+
+        emb = lambda x: np.random.randn(len(x), 4)
+        idx = RepIdx('x', faiss.IndexFlatL2(4), emb)
+        
+        idx.add(0, 'hi')
+        idx.add(1, 'bye')
+        similar = idx.like(['x'], 1)
+        assert len(similar) == 1
+
+
+class TestRepFactory:
+
+    def test_rep_factory_creates_rep_idx(self):
+
+        emb = lambda x: np.random.randn(len(x), 4)
+        factory = RepIdx.F(
+            'x', faiss.IndexFlatL2, emb, 4
+        )
+        idx = factory()
+        
+        idx.add(0, 'hi')
+        assert len(idx) == 1
+
+    def test_rep_idx_removes_from_rep(self):
+
+        emb = lambda x: np.random.randn(len(x), 4)
+        factory = RepIdx.F(
+            'x', faiss.IndexFlatL2, emb, 4
+        )
+        idx = factory()
+        
+        idx.add(0, 'hi')
+        idx.remove(0)
+        assert len(idx) == 0
