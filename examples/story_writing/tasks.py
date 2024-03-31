@@ -1,11 +1,11 @@
-from dachi.behavior._status import TaskStatus
+from dachi.act._status import TaskStatus
 from dachi.storage import Prompt
 from dachi.comm import ProcessResponse, Processed
 import typing
 
 from dachi.storage import Conv, SRetrieve
 
-from dachi.behavior import Action
+from dachi.act import Action
 
 
 QUESTION_PROMPT = Prompt(

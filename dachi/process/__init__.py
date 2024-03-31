@@ -14,7 +14,7 @@ from ._nodes import (
     # nodemethod
 )
 from ._takos import (
-    TakoWrapper
+    Tako
 )
 from ._network import (
     Network

@@ -1,6 +1,8 @@
 from dachi.db import _core as core
 import datetime
 import pandas as pd
+import faiss
+import typing
 
 manager = core.DFConceptManager()
 
@@ -10,6 +12,12 @@ class SimpleConcept(manager.Concept):
 
     name: str
     time: int
+
+
+class SimpleRep(manager.Rep):
+
+    Concept = SimpleConcept
+    vk: core.TableIdx = core.TableRep(faiss.IndexFlatL2(16))
 
 
 class TestDFConceptManager:

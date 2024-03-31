@@ -1,5 +1,5 @@
-from dachi.behavior import _build as build
-from dachi.behavior import _tasks as tasks, Not, Sequence
+from dachi.act import _build as build
+from dachi.act import _tasks as tasks, Not, Sequence
 
 from .test_behavior import ATask
 

@@ -1,24 +1,24 @@
-from dachi import graph
+from dachi import process
 
 from .test_core import DummyNode, DummyNode2
 
 
 class NodeMethodTester(object):
 
-    @graph.nodedef(['x'], ['y'])
+    @process.nodedef(['x'], ['y'])
     def meth1(self, x):
         return x + 1
 
-    @graph.nodedef(['x'], ['y'])
+    @process.nodedef(['x'], ['y'])
     def meth2(self, x):
         return x + 2
 
 
-@graph.nodedef(['x'], ['y'])
+@process.nodedef(['x'], ['y'])
 def meth1(x):
     return x + 1
 
-@graph.nodedef(['x'], ['y'])
+@process.nodedef(['x'], ['y'])
 def meth2(x):
     return x + 2
 
@@ -27,10 +27,10 @@ class TestNodeFunc:
 
     def test_node_func_works_as_regular_node(self):
 
-        var = graph.Var("X", default=1)
+        var = process.Var("X", default=1)
 
-        y1 = graph.linkf(meth1, var)
-        y2 = graph.linkf(meth2, y1)
+        y1 = process.linkf(meth1, var)
+        y2 = process.linkf(meth2, y1)
 
         result = y2()
         assert result == 4
@@ -43,11 +43,11 @@ class TestAdapter:
         node1 = DummyNode("Node1")
         node2 = DummyNode2("Node2")
         
-        var = graph.Var("X", default=1)
+        var = process.Var("X", default=1)
 
         y1 = node1.link(var)
         y2 = node2.link(y1)
-        adapter = graph.Adapter(
+        adapter = process.Adapter(
             "Adapt", [var], [y1, (y2, 0)]
         )
         r1, r2 = adapter()

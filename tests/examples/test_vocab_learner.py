@@ -4,12 +4,12 @@ from examples.story_writing.tasks import ProcessComplete
 from dachi.comm import LLMQuery, UI, Request, Request
 from dachi.storage import PromptGen, Prompt
 from dachi.comm import _requests as requests
-from dachi.behavior import Converse, PromptCompleter
+from dachi.act import Converse, PromptCompleter
 
 from dachi import storage
 from time import sleep
 import threading
-from dachi.behavior import TaskStatus
+from dachi.act import TaskStatus
 from dachi.storage import Prompt, DRetrieve
 from copy import deepcopy
 import typing

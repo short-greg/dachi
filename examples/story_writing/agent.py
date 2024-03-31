@@ -1,7 +1,7 @@
 from abc import ABC
 
 from dachi.agents import Agent, AgentStatus
-from dachi import behavior, storage
+from dachi import act, storage
 from . import tasks
 from dachi.comm import UI, OpenAIQuery
 
@@ -36,25 +36,25 @@ class StoryWriter(Agent):
         self._prompt = tasks.QUESTION_PROMPT
         self._default = tasks.DEFAULT_PROMPT
 
-        with behavior.sango() as story_writer:
-            with behavior.select(story_writer) as teach:
+        with act.sango() as story_writer:
+            with act.select(story_writer) as teach:
                 # change "define question to 1 line
-                with behavior.sequence(teach) as define_question:
-                    define_question.add(behavior.CheckFalse(self._state.r('question_defined')))
-                    with behavior.select(define_question) as converse:
+                with act.sequence(teach) as define_question:
+                    define_question.add(act.CheckFalse(self._state.r('question_defined')))
+                    with act.select(define_question) as converse:
                         converse.add_tasks([
-                            behavior.Converse(
+                            act.Converse(
                                 self._define_question,  llm_query, ui_interface, 
                                 tasks.ProcessComplete('question_defined', self._state)
                             ),
-                            behavior.PromptCompleter(
+                            act.PromptCompleter(
                                 self._summary_conv, llm_query, ui_interface,
                                 post_processor=storage.Transfer(
                                     self._summary_conv.r('response'), self._state, 'conv_summary')
                             ),
                         ])
                 teach.add(
-                    behavior.Converse(
+                    act.Converse(
                         self._converse, llm_query, ui_interface
                     )
                 )

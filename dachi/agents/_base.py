@@ -1,10 +1,10 @@
-from ..behavior import TaskStatus
+from ..act import TaskStatus
 import threading
 import typing
 
 import time
 from enum import Enum
-from ..behavior import Sango
+from ..act import Sango
 
 
 class AgentStatus(Enum):

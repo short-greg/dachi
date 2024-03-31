@@ -11,7 +11,7 @@ from ..storage import (
     Struct, Retrieve, SRetrieve, 
     PromptConv, Completion,
 )
-from ..graph import TakoBase
+from ..process import TakoBase
 from ..comm import (
     Request, UIQuery, OpenAIRequest, UI
 )

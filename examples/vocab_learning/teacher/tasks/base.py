@@ -1,4 +1,4 @@
-from dachi.behavior import Action, TaskStatus
+from dachi.act import Action, TaskStatus
 from dachi.storage import Prompt, Conv, Retrieve
 from dachi.comm import Request, Request
 from ....tools.comm import UI

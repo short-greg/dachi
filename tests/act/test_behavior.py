@@ -1,6 +1,6 @@
-from dachi.behavior import _tasks as behavior
+from dachi.act import _tasks as behavior
 from dachi.comm import Signal
-from dachi.behavior._status import TaskStatus
+from dachi.act._status import TaskStatus
 
 
 class ATask(behavior.Action):

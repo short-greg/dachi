@@ -1,19 +1,19 @@
-from dachi import graph
+from dachi import process
 
 
-class DummyNode(graph.Node):
+class DummyNode(process.Node):
 
     def op(self, x: int=2):
         return x + 1
 
 
-class DummyNode2(graph.Node):
+class DummyNode2(process.Node):
 
     def op(self, x: int=2):
         return x + 1, x + 2
 
 
-class DummyNode3(graph.Node):
+class DummyNode3(process.Node):
 
     def op(self, x: int=2, y: int=3):
         return x + 1, y + 2
@@ -22,25 +22,25 @@ class DummyNode3(graph.Node):
 class TestVar:
 
     def test_var_returns_default_when_not_in_by(self):
-        var = graph.Var(
+        var = process.Var(
             "X", default=2
         )
         assert var.value == 2
 
     def test_var_returns_result_of_function(self):
-        var = graph.Var(
-            "X", default=graph.F(lambda: 2)
+        var = process.Var(
+            "X", default=process.F(lambda: 2)
         )
         assert var.value == 2
 
     def test_var_returns_result_of_by_if_defined(self):
-        var = graph.Var(
-            "X", default=graph.F(lambda: 2)
+        var = process.Var(
+            "X", default=process.F(lambda: 2)
         )
         assert var.__call__(by={var: 3}) == 3
 
     def test_clone_returns_var_with_value(self):
-        var = graph.Var("X", default=graph.F(lambda: 2))
+        var = process.Var("X", default=process.F(lambda: 2))
         var = var.clone()
         assert var.__call__(by={var: 3}) == 3
 
@@ -48,10 +48,10 @@ class TestVar:
 
         node1 = DummyNode("Node1")
         node2 = DummyNode3("Node2")
-        var = graph.Var(
-            "X", default=graph.F(lambda: 2)
+        var = process.Var(
+            "X", default=process.F(lambda: 2)
         )
-        var = graph.Var("X", default=1)
+        var = process.Var("X", default=1)
 
         y = node1.link(var)
         out = node2.link(y, var)
@@ -67,7 +67,7 @@ class TestNode:
         node1 = DummyNode("Node1")
         node2 = DummyNode2("Node2")
         
-        var = graph.Var("X", default=1)
+        var = process.Var("X", default=1)
 
         y = node1.link(var)
         y = node2.link(y)

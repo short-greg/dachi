@@ -1,6 +1,6 @@
-from dachi.behavior._status import TaskStatus
-from dachi.behavior import actionfunc
-from dachi.behavior._func_decorators import (
+from dachi.act._status import TaskStatus
+from dachi.act import actionfunc
+from dachi.act._func_decorators import (
     actionfunc, taskf, condfunc,
     selectorfunc, sequencefunc,
     parallelfunc
