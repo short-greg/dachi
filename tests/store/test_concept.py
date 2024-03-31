@@ -49,6 +49,35 @@ class TestConcept:
         assert len(data.index) == 1
 
 
+    def test_filter_gets_correct_person(self):
+
+        Person.build()
+        person = Person(name='X', age=10)
+        person.save()
+        person2 = Person(name='Y', age=20)
+        person2.save()
+        query = Person.filter(Col('age') == 20)
+        
+        persons = []
+        for c in query:
+            persons.append(c)
+        assert persons[0].age == 20
+
+    def test_exclude_gets_correct_person(self):
+
+        Person.build()
+        person = Person(name='X', age=10)
+        person.save()
+        person2 = Person(name='Y', age=20)
+        person2.save()
+        query = Person.exclude(Col('age') == 20)
+        
+        persons = []
+        for c in query:
+            persons.append(c)
+        assert persons[0].age == 10
+
+
 class TestCol:
 
     def test_eq_retrieves_less_than(self):

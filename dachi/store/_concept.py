@@ -163,16 +163,24 @@ class Concept(BaseModel):
 
     @conceptmethod
     def filter(cls, comp: 'Comp'):
-        return cls.manager.subset(cls, comp)
+        return ConceptQuery(
+            cls, comp
+        )
 
     @conceptmethod
     def exclude(cls, comp: 'Comp'):
-        return cls.manager.inverse_subset(cls, comp)
+        return ConceptQuery(
+            cls, ~comp
+        )
 
     @classmethod
     def model_name(cls):
 
         return cls.__name__
+    
+    @classmethod
+    def ctype(cls) -> typing.Type['Concept']:
+        return cls
 
 
 class Val(object):
@@ -218,6 +226,10 @@ class Comp(object):
     def __or__(self, other):
 
         return Comp(self, other, lambda lhs, rhs: lhs | rhs)
+    
+    def __invert__(self):
+
+        return Comp(None, self, lambda lhs, rhs: ~rhs)
 
 
 class Col(object):
@@ -255,17 +267,29 @@ class Col(object):
         return df[self.name]
 
 
-class ConceptQuery(object):
+C = typing.TypeVar('C', bound=Concept)
 
-    def __init__(self, concept_cls: Concept, comp: Comp):
+# Think about how to handle this
+
+class ConceptQuery(typing.Generic[C]):
+
+    def __init__(self, concept_cls: typing.Type[C], comp: Comp):
 
         self.concept = concept_cls
         self.comp = comp
 
-    def __call__(self) -> pd.DataFrame:
+    def filter(self, comp: Comp) -> Self:
 
-        df = self.concept.manager.get_data(self.concept)
-        return df[self.comp(df)]
+        return ConceptQuery[C](
+            self.comp & comp
+        )
+    
+    def __iter__(self) -> typing.Iterator[C]:
+
+        sub_df = self.comp(self.concept.manager.get_data(self.concept))
+
+        for _, row in sub_df.iterrows():
+            yield self.concept(**row.to_dict())
 
 
 class ConceptManager(object):
@@ -291,7 +315,7 @@ class ConceptManager(object):
         self._field_indices[concept.model_name()] = indices
         self._ids[concept.model_name()] = 0
 
-    def get_data(self, concept: typing.Type[Concept]):
+    def get_data(self, concept: typing.Type[Concept]) -> pd.DataFrame:
 
         return self._concepts[concept.model_name()]
     
@@ -311,6 +335,7 @@ class ConceptManager(object):
         
         df.loc[concept.id] = concept.to_dict()
         # self._concepts[concept.model_name()] = df
+
 
 concept_manager = ConceptManager()
 
