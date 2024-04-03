@@ -2,29 +2,12 @@ import pandas as pd
 import typing
 from dataclasses import dataclass, asdict, fields, field
 import pydantic
+from abc import abstractmethod
 
 
-# TODO: FINISH THIS
-class Style(object):
-
-    def __init__(self, template: str):
-
-        self.template = template
-
-    def __call__(self, **vars):
-
-        return self.template(**vars)
-
-    @classmethod
-    def create(self, style):
-
-        if isinstance(style, Style):
-            return style
-        elif isinstance(style, str):
-            return Style(style)
-
-        elif style is None:
-            pass
+import csv
+import pandas as pd
+from io import StringIO
 
 
 class Struct(pydantic.BaseModel):
@@ -180,18 +163,41 @@ class Body(Struct):
 # op = _Op()
 
 
-class CSVStyle(Style):
+
+S = typing.TypeVar('S', bound=Struct)
+
+
+# TODO: FINISH THIS
+class Style(typing.Generic[S]):
+
+    @abstractmethod
+    def write(self, text: str):
+        pass
+    
+    @abstractmethod
+    def read(self, text: str) -> S:
+        pass
+
+
+
+class CSVStyle(Style[StructList]):
 
     def __init__(self, delim: str=','):
 
         self.delim = delim
 
-    def read(self, struct_cls: typing.Type[Struct]):
-        pass
+    def read(self, text: str) -> StructList:
+        
+        io = StringIO(text)
+        df = pd.read_csv(io)
+        return StructList(structs=df.to_dict())
 
-    def write(self, struct: Struct):
+    def write(self, struct: StructList) -> str:
 
-        pass
+        d = struct.dict()
+        df = pd.DataFrame(d.structs)
+        io = StringIO()
+        return df.to_csv(io)
 
 
 class KVStyle(Style):
@@ -208,21 +214,26 @@ class KVStyle(Style):
         pass
 
 
-class ListStyle(Style):
+class ListStyle(Style, typing.Generic[S]):
 
     def __init__(self, sep: str='::'):
 
         self.sep = sep
 
-    def read(self, struct_cls: typing.Type[Struct]):
-        pass
+    def read(self, text: str):
+        
+        lines = text.split('\n')
+        for line in lines:
+            idx, value = line.split('::')
+            idx = int(idx)
+            value = value.strip()
 
     def write(self, struct: Struct):
 
         pass
 
 
-class MarkdownStyle(Style):
+class TextTemplateStyle(Style):
 
     def __init__(self, template: str):
 
@@ -236,12 +247,94 @@ class MarkdownStyle(Style):
         pass
 
 
+class Context(object):
+    
+    def __init__(self, struct: Struct, style: Style=None):
+
+        self.struct = struct
+        self.style = style
+
+    def __call__(self, style_override: Style=None):
+
+        if style_override is None:
+            return self.style.write(self.struct)
+        
+        return style_override.write(self.struct)
+
+
+C = typing.TypeVar('C', bound=Struct)
+
+
+class ContextF(typing.Generic[C]):
+    
+    def __init__(self, structf: typing.Callable[[], C], style: Style=None):
+
+        self.structf = structf
+        self.style = style
+
+    def __call__(self, *args: typing.Any, **kwargs: typing.Any) -> Context:
+        return Context(
+            self.structf(*args, **kwargs), self.style
+        )
+
+
+class Var(object):
+
+    def __init__(
+        self, producer, incoming: typing.Union['Var', typing.Tuple['Var']]=None
+    ):
+        self.producer = producer
+        self.incoming = incoming
+
+    def detach(self) -> 'Var':
+
+        return Var(self.producer)
+
+
+class Output(typing.Generic[S]):
+
+    def __init__(
+        self, producer, incoming: typing.Union['Var', typing.Tuple['Var']]=None,
+        style: Style=None
+    ):
+        self.producer = producer
+        self.style = style
+        self.incoming = incoming
+
+    def detach(self) -> 'Output':
+
+        return Output(self.producer)
+
+
+class Param(typing.Generic[S]):
+
+    def __init__(
+        self, struct: S
+    ):
+        self.struct = struct
+
+    def detach(self) -> 'Param':
+
+        return Param(self.struct)
+
+
+
+# TODO: Implement Input/Output, Var
+# # Parameters
 
 # 
-# YAML
-# CSV
-# List
-# Keyvals
+
+class Input(object):
+    # 
+    # 
+    pass
+
+class Output(object):
+    pass
+
+
+class Body(object):
+    pass
 
 
 def instrmethod(f):
@@ -261,6 +354,78 @@ def instr(f):
         output = f(*args, **kwargs)
 
     return _
+
+
+# .parameters() => 
+
+# can I inherit from "nn.Module?"
+# 
+# # Have to inherit from Tensor, text.Tensor (?)
+# # no grads
+# # Don't need backward()
+# # 
+
+# add in "ask", ""
+# input -> style what comes in
+# output -> 
+#   # self.output - use this to embed in the context
+#          return self.output(value)
+#   # # may have compound "output"
+#   # # self.output = 
+#   # forward decorator.. 
+#   # Could use a class decorator also
+#   self.forward = self.context.decorate(self.forward)
+# context
+#   - 
+# parameters -> how to get the parameters
+#   - make operations "member" variables
+#   - otherwise not treated as context
+#   - parameters converted to YAML
+
+# def forward(self, ):
+#    
+#    
+#    
+#    return self.context(do)
+
+# 
+
+# return self.context.embed([outputs])
+
+# Context
+#  - Instance: Defined on the instance. Set an instance variable
+#  - Class: Defined on the class. Does not update
+#  - Func: Receive a material in the function that it is set with
+#      - I think Func and Instance can be the same
+#      - 
+#   Context()  # 
+#   ContextF(...) # context factory 
+#   1. Defined on the instance
+#   2. Retrieved in the 
+#   # pass in the input
+#   x = self.contextf(x) # how about for outputs?
+#   # If there is no context it will still be used
+#       Example, Template, 
+#   Context
+#   ContextF() # instance conctext
+#   Body()
+#   Input() => 
+#   Output() => Show the template for the output
+#      
+#      self.output(...) # 
+#   # Ignore if not used
+    
+#    self.role  = self.role(...)
+#    role = self.role(...)
+#  -    If "split", the output of one function may also
+#       need a func material?
+
+
+# 
+# YAML
+# CSV
+# List
+# Keyvals
 
 
 # class Assistant(object):

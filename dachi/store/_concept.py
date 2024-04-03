@@ -77,11 +77,11 @@ class RepIdx(typing.Generic[T]):
         )
 
 
-R = typing.TypeVar('R', bound=RepIdx)
+QR = typing.TypeVar('QR', bound=RepIdx)
 
-class RepFactory(typing.Generic[R]):
+class RepFactory(typing.Generic[QR]):
 
-    def __init__(self, rep_cls, col: str, f: typing.Callable[[str], R], emb, *args, **kwargs):
+    def __init__(self, rep_cls, col: str, f: typing.Callable[[str], QR], emb, *args, **kwargs):
         """
         Args:
             rep (typing.Type[V]): _description_
@@ -271,10 +271,20 @@ class Col(object):
         return df[self.name]
 
 
+class Rep(object):
+
+    def __init__(self, name: str):
+
+        self.name = name
+
+    def query(self, df: pd.DataFrame) -> typing.Any:
+
+        return df[self.name]
+
+
 C = typing.TypeVar('C', bound=Concept)
 
 # Think about how to handle this
-
 class ConceptQuery(typing.Generic[C]):
 
     def __init__(self, concept_cls: typing.Type[C], comp: Comp):
