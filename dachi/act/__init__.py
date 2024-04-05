@@ -20,3 +20,4 @@ from ._func_decorators import (
     ActionFunc, actionfunc, 
     # TaskFuncWrapper
 )
+from ..act._agent import Agent, AgentStatus

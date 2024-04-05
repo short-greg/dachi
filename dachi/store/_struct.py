@@ -4,15 +4,87 @@ from dataclasses import dataclass, asdict, fields, field
 import pydantic
 from abc import abstractmethod
 
+from pydantic import BaseModel, validator, ValidationError
+from typing import Any, Dict
+
 
 import csv
 import pandas as pd
 from io import StringIO
 
 
+class Str(pydantic.BaseModel):
+
+    text: str
+    vars: typing.List[str]
+
+    def forward(self, **kwargs):
+
+        format = {}
+        remaining_vars = []
+        for var in self.vars:
+            if var in kwargs:
+                format[var] = kwargs[var]
+            else:
+                format[var] = f'{{var}}'
+                remaining_vars.append(var)
+        return Str(
+            self.text.format(**format),
+            remaining_vars
+        )
+
+
 class Struct(pydantic.BaseModel):
 
-    pass
+    @validator('*', pre=True, allow_reuse=True)
+    def convert_to_string_template(cls, v, values, field):
+        if field.outer_type_ is Str and not isinstance(v, Str):
+            v = Str(v)
+        return v
+
+    class Config:
+        validate_assignment = True
+        arbitrary_types_allowed = True
+
+    # fill in the "variables"
+    def forward(self, **kwargs) -> 'Struct':
+        pass
+
+
+T = typing.TypeVar('T', bound=Struct)
+
+
+class Message(Struct):
+
+    role: Str
+    text: Str
+
+    # {role}: {text}
+
+
+class Doc(Struct):
+
+    name: Str
+    text: Str
+
+
+class StructList(Struct[T]):
+
+    structs: typing.List[T]
+
+
+class Chat(StructList[Message]):
+
+    def filter(self, roles: typing.Iterable[str]) -> 'Chat[Message]':
+
+        roles = set(roles)
+        
+        return Chat(
+            s for s in self._structs if s.role in roles
+        )
+
+
+
 
     # def __post_init__(self, style: str=None):
 
@@ -60,300 +132,6 @@ class Struct(pydantic.BaseModel):
     #     pass
 
 
-@dataclass
-class Message(Struct):
-
-    role: str
-    text: str
-
-    # {role}: {text}
-
-
-@dataclass
-class Doc(Struct):
-
-    name: str
-    text: str
-
-
-T = typing.TypeVar('T', bound=Struct)
-
-
-class StructList(Struct[T]):
-
-    structs: typing.List[T]
-
-
-class Chat(StructList[Message]):
-
-    def filter(self, roles: typing.Iterable[str]) -> 'Chat[Message]':
-
-        roles = set(roles)
-        
-        return Chat(
-            s for s in self._structs if s.role in roles
-        )
-
-
-class InstructChat(Chat):
-
-    def __init__(self, structs: typing.List[Message] = None, instructor: str='system'):
-        super().__init__(structs)
-        self.instructor = instructor
-
-    def chat(self) -> Chat:
-
-        return Chat(
-
-            s for s in self._structs if s.role != self.instructor
-        )
-
-
-class Role(Struct):
-
-    name: str
-    descr: str = field(default_factory=lambda: '')
-
-
-class Text(Struct):
-
-    text: str = ''
-    descr: str = field(default_factory=lambda: '')
-
-
-class Body(Struct):
-
-    sep_before: str='-------'
-    sep_after: str='-------'
-
-    def fill(self, struct: Struct):
-        pass
-
-
-# class Instruct(Struct):
-
-#     name: str
-#     inputs: typing.List[Struct]
-#     descr: str
-
-
-# class Op(Instruct):
-
-#     output: Struct = field(default_factory=Text)
-
-
-# class OpFactory(object):
-
-#     def __init__(self, name: str):
-
-#         self.name = name
-
-#     def __call__(self, inputs, descr, output) -> Op:
-
-#         return Op(self.name, inputs, descr, output)
-
-
-# class _Op:
-
-#     def __getattr__(self, key):
-
-#         return OpFactory(key)
-
-
-# op = _Op()
-
-
-
-S = typing.TypeVar('S', bound=Struct)
-
-
-# TODO: FINISH THIS
-class Style(typing.Generic[S]):
-
-    @abstractmethod
-    def write(self, text: str):
-        pass
-    
-    @abstractmethod
-    def read(self, text: str) -> S:
-        pass
-
-
-
-class CSVStyle(Style[StructList]):
-
-    def __init__(self, delim: str=','):
-
-        self.delim = delim
-
-    def read(self, text: str) -> StructList:
-        
-        io = StringIO(text)
-        df = pd.read_csv(io)
-        return StructList(structs=df.to_dict())
-
-    def write(self, struct: StructList) -> str:
-
-        d = struct.dict()
-        df = pd.DataFrame(d.structs)
-        io = StringIO()
-        return df.to_csv(io)
-
-
-class KVStyle(Style):
-
-    def __init__(self, sep: str='::'):
-
-        self.sep = sep
-
-    def read(self, struct_cls: typing.Type[Struct]):
-        pass
-
-    def write(self, struct: Struct):
-
-        pass
-
-
-class ListStyle(Style, typing.Generic[S]):
-
-    def __init__(self, sep: str='::'):
-
-        self.sep = sep
-
-    def read(self, text: str):
-        
-        lines = text.split('\n')
-        for line in lines:
-            idx, value = line.split('::')
-            idx = int(idx)
-            value = value.strip()
-
-    def write(self, struct: Struct):
-
-        pass
-
-
-class TextTemplateStyle(Style):
-
-    def __init__(self, template: str):
-
-        self.template = template
-
-    def read(self, struct_cls: typing.Type[Struct]):
-        pass
-
-    def write(self, struct: Struct):
-
-        pass
-
-
-class Context(object):
-    
-    def __init__(self, struct: Struct, style: Style=None):
-
-        self.struct = struct
-        self.style = style
-
-    def __call__(self, style_override: Style=None):
-
-        if style_override is None:
-            return self.style.write(self.struct)
-        
-        return style_override.write(self.struct)
-
-
-C = typing.TypeVar('C', bound=Struct)
-
-
-class ContextF(typing.Generic[C]):
-    
-    def __init__(self, structf: typing.Callable[[], C], style: Style=None):
-
-        self.structf = structf
-        self.style = style
-
-    def __call__(self, *args: typing.Any, **kwargs: typing.Any) -> Context:
-        return Context(
-            self.structf(*args, **kwargs), self.style
-        )
-
-
-class Var(object):
-
-    def __init__(
-        self, producer, incoming: typing.Union['Var', typing.Tuple['Var']]=None
-    ):
-        self.producer = producer
-        self.incoming = incoming
-
-    def detach(self) -> 'Var':
-
-        return Var(self.producer)
-
-
-class Output(typing.Generic[S]):
-
-    def __init__(
-        self, producer, incoming: typing.Union['Var', typing.Tuple['Var']]=None,
-        style: Style=None
-    ):
-        self.producer = producer
-        self.style = style
-        self.incoming = incoming
-
-    def detach(self) -> 'Output':
-
-        return Output(self.producer)
-
-
-class Param(typing.Generic[S]):
-
-    def __init__(
-        self, struct: S
-    ):
-        self.struct = struct
-
-    def detach(self) -> 'Param':
-
-        return Param(self.struct)
-
-
-
-# TODO: Implement Input/Output, Var
-# # Parameters
-
-# 
-
-class Input(object):
-    # 
-    # 
-    pass
-
-class Output(object):
-    pass
-
-
-class Body(object):
-    pass
-
-
-def instrmethod(f):
-
-    def _(self, *args, **kwargs):
-
-        output = f(self, *args, **kwargs)
-
-    return _
-
-
-def instr(f):
-
-    def _(*args, **kwargs):
-
-        # 
-        output = f(*args, **kwargs)
-
-    return _
 
 
 # .parameters() => 
@@ -477,4 +255,38 @@ def instr(f):
 #     @classmethod
 #     def from_text(self):
 #         pass
+
+
+
+# class Instruct(Struct):
+
+#     name: str
+#     inputs: typing.List[Struct]
+#     descr: str
+
+
+# class Op(Instruct):
+
+#     output: Struct = field(default_factory=Text)
+
+
+# class OpFactory(object):
+
+#     def __init__(self, name: str):
+
+#         self.name = name
+
+#     def __call__(self, inputs, descr, output) -> Op:
+
+#         return Op(self.name, inputs, descr, output)
+
+
+# class _Op:
+
+#     def __getattr__(self, key):
+
+#         return OpFactory(key)
+
+
+# op = _Op()
 
