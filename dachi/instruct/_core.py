@@ -65,6 +65,15 @@ class Op(pydantic.BaseModel):
         )
 
 
+class Func(pydantic.BaseModel):
+
+    name: str
+    doc: str
+    signature: str
+    inputs: typing.List[Struct]
+    outputs: typing.List['Output']
+
+
 def output(*inputs, style: Style[S]) -> 'Output[S]':
 
     return Output[S](
