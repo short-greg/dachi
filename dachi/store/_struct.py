@@ -256,37 +256,3 @@ class Chat(StructList[Message]):
 #     def from_text(self):
 #         pass
 
-
-
-# class Instruct(Struct):
-
-#     name: str
-#     inputs: typing.List[Struct]
-#     descr: str
-
-
-# class Op(Instruct):
-
-#     output: Struct = field(default_factory=Text)
-
-
-# class OpFactory(object):
-
-#     def __init__(self, name: str):
-
-#         self.name = name
-
-#     def __call__(self, inputs, descr, output) -> Op:
-
-#         return Op(self.name, inputs, descr, output)
-
-
-# class _Op:
-
-#     def __getattr__(self, key):
-
-#         return OpFactory(key)
-
-
-# op = _Op()
-

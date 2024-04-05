@@ -148,36 +148,3 @@ def instr(f):
         output = f(*args, **kwargs)
 
     return _
-
-
-
-# class Context(object):
-    
-#     def __init__(self, struct: Struct, style: Style=None):
-
-#         self.struct = struct
-#         self.style = style
-
-#     def __call__(self, style_override: Style=None):
-
-#         if style_override is None:
-#             return self.style.write(self.struct)
-        
-#         return style_override.write(self.struct)
-
-
-
-# C = typing.TypeVar('C', bound=Struct)
-
-
-# class ContextF(typing.Generic[C]):
-    
-#     def __init__(self, structf: typing.Callable[[], C], style: Style=None):
-
-#         self.structf = structf
-#         self.style = style
-
-#     def __call__(self, *args: typing.Any, **kwargs: typing.Any) -> Context:
-#         return Context(
-#             self.structf(*args, **kwargs), self.style
-#         )
