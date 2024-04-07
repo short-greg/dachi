@@ -78,13 +78,6 @@ class Struct(pydantic.BaseModel):
         arbitrary_types_allowed=True
     )
 
-    # @validator('*', pre=True, allow_reuse=True)
-    # def convert_to_string_template(cls, v, values, field):
-    #     if field.outer_type_ is Str and not isinstance(v, Str):
-    #         v = Str(text=v)
-    #     return v
-
-    # def validate_choice(cls, v: str, info: ValidationInfo):
     @pydantic.field_validator('*', mode='before')
     def convert_to_string_template(cls, v, info: pydantic.ValidationInfo):
     
@@ -92,15 +85,7 @@ class Struct(pydantic.BaseModel):
         if (inspect.isclass(outer_type) and issubclass(outer_type, Str)) and not isinstance(v, Str):
             return Str(text=v)
         return v
-    
 
-    # from pydantic import 
-    # model_config = SettingsConfigDict(
-    # class Config:
-    #     validate_assignment = True
-    #     arbitrary_types_allowed = True
-
-    # fill in the "variables"
     def forward(self, **kwargs) -> 'Struct':
         
         new_args = {}
@@ -124,42 +109,38 @@ class Struct(pydantic.BaseModel):
 T = typing.TypeVar('T', bound=Struct)
 
 
-# {
-#    'x': {'type': ..., 'required': True/False, 'constraints': ...}
-# }
+class Message(Struct):
 
-# {
-#  
-# }
+    role: Str
+    text: Str
 
-# class Message(Struct):
 
-#     role: Str
-#     text: Str
+
+class Doc(Struct):
+
+    name: Str
+    text: Str
+
 
 #     # {role}: {text}
 
 
-# class Doc(Struct):
+class StructList(Struct, typing.Generic[T]):
 
-#     name: Str
-#     text: Str
-
-
-# class StructList(Struct[T]):
-
-#     structs: typing.List[T]
+    structs: typing.List[T]
 
 
-# class Chat(StructList[Message]):
+class Chat(Struct):
 
-#     def filter(self, roles: typing.Iterable[str]) -> 'Chat[Message]':
+    messages: typing.List[Message]
 
-#         roles = set(roles)
+    def filter(self, roles: typing.Iterable[str]) -> 'Chat[Message]':
+
+        roles = set(roles)
         
-#         return Chat(
-#             s for s in self._structs if s.role in roles
-#         )
+        return Chat(
+            s for s in self._structs if s.role in roles
+        )
 
 
 
