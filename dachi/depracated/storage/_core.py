@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from abc import abstractmethod, ABC
 
 # local
-from ..base import Storable
+from ...store import Storable
 
 T = typing.TypeVar("T")
 S = typing.TypeVar('S', bound='Struct')

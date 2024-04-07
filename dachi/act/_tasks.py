@@ -5,14 +5,15 @@ from dataclasses import dataclass
 import threading
 
 # 3rd party
-from ..base import Storable
+from ..store import Storable
 from ._status import TaskStatus
-from ..storage import (
+
+from ..depracated.storage  import (
     Struct, Retrieve, SRetrieve, 
     PromptConv, Completion,
 )
 from ..process import TakoBase
-from ..comm import (
+from ..depracated.comm import (
     Request, UIQuery, OpenAIRequest, UI
 )
 
