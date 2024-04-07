@@ -12,7 +12,6 @@ import pydantic
 from ..store import Struct, Str
 
 
-
 class Role(Struct):
 
     name: str
