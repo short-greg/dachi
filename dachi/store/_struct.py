@@ -13,8 +13,6 @@ import pandas as pd
 from io import StringIO
 
 
-
-
 class TextMixin(object):
 
     @abstractmethod
@@ -72,14 +70,8 @@ def model_template(model_cls: typing.Type[pydantic.BaseModel]) -> str:
     return template
 
 
-class Struct(pydantic.BaseModel, TextMixin):
+class ValidateStrMixin:
 
-    model_config = pydantic.ConfigDict(
-        validate_assignment=True,
-        arbitrary_types_allowed=True
-    )
-
-    #@pydantic.field_validator('*', mode='before')
     @pydantic.field_validator('*', mode='before')
     def convert_to_string_template(cls, v, info: pydantic.ValidationInfo):
     
@@ -88,6 +80,15 @@ class Struct(pydantic.BaseModel, TextMixin):
             return Str(text=v)
         return v
 
+
+class Struct(pydantic.BaseModel, TextMixin, ValidateStrMixin):
+
+    model_config = pydantic.ConfigDict(
+        validate_assignment=True,
+        arbitrary_types_allowed=True
+    )
+
+    #@pydantic.field_validator('*', mode='before')
     def forward(self, **kwargs) -> 'Struct':
         
         new_args = {}

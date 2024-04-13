@@ -6,6 +6,8 @@ from functools import wraps
 from abc import abstractmethod
 import faiss
 import numpy as np
+import inspect
+from dataclasses import dataclass, fields, MISSING
 
 from typing_extensions import Self
 # TODO: ad in a base class
@@ -36,6 +38,10 @@ def abstractconceptmethod(func: typing.Callable[..., T]) -> typing.Callable[...,
     return classmethod(wrapper)
 
 
+def null_emb(x):
+    return x
+
+
 class RepIdx(typing.Generic[T]):
 
     def __init__(self, col: str, vk: faiss.Index, emb: typing.Callable[[T], np.ndarray]):
@@ -43,12 +49,10 @@ class RepIdx(typing.Generic[T]):
         super().__init__()
         self.col = col
         self.vk = faiss.IndexIDMap2(vk)
-        self.emb = emb
+        self.emb = emb or null_emb
 
     def add(self, id, val: T):
-        
         vb = self.emb([val])
-
         self.vk.add_with_ids(vb, [id])
     
     def remove(self, id):
@@ -60,12 +64,12 @@ class RepIdx(typing.Generic[T]):
 
     def like(
         self, vals: typing.Union[T, typing.List[T]], k: int=1, subset=None
-    ) -> typing.List[int]:
+    ) -> 'Similarity':
 
         # TODO: limit to the subset
         x = self.emb(vals)
         D, I = self.vk.search(x=x, k=k)
-        return I
+        return Similarity(D, I)
     
     # def F(cls, vk: faiss.Index, emb: typing.Callable[[T], np.ndarray]) -> RepFactory[Self]:
 
@@ -102,34 +106,47 @@ class RepFactory(typing.Generic[QR]):
         return self.rep_cls(self.col, self.f(*self.args, **self.kwargs), self.emb)
 
 
+@dataclass
+class RepMap(object):
+
+    def __getitem__(self, key: str):
+        
+        value = getattr(self, key)
+        if not isinstance(value, RepIdx):
+            raise AttributeError(f'RepMap has no attribute named {key}')
+        return value
+
+
 class Concept(BaseModel):
 
-    manager: typing.ClassVar['ConceptManager'] = None
+    __manager__: typing.ClassVar['ConceptManager'] = None
 
     id: int = None
 
     # y_idx: typing.Optional[np.array] = None
 
-    class __rep__:
-        
-        @classmethod
-        def fields(cls):
-            
-            for key, val in cls.__dict__.items():
-                if isinstance(val, RepFactory):
-                    yield key, val
+    class __rep__(RepMap):
+        pass
 
     @classmethod
     def columns(cls, dtypes: bool=False) -> typing.List[str]:
-        schema = cls.schema()
+        schema = cls.model_json_schema()
 
         columns = list(schema['properties'].keys())
         if dtypes:
+            defaults, default_factories = [], []
+            for name, field in cls.model_fields.items():
+                defaults.append(field.default)
+                default_factories.append(field.default_factory)
             types = [cls.__annotations__[c] if c in cls.__annotations__ else None for c in columns]
 
-            return columns, types
+            return columns, types, defaults, default_factories
         
         return columns
+
+    @classmethod
+    def manager(cls) -> 'ConceptManager':
+        return cls.__manager__
 
     @conceptmethod
     def reps(cls) -> typing.List[str]:
@@ -138,12 +155,12 @@ class Concept(BaseModel):
 
     @conceptmethod
     def build(cls):
-        cls.manager.add_concept(cls)
+        cls.__manager__.add_concept(cls)
 
     @conceptmethod
     def get(cls, id) -> 'Concept':
 
-        df = cls.manager.get(
+        df = cls.__manager__.get(
             cls
         )
         return cls(
@@ -151,16 +168,16 @@ class Concept(BaseModel):
         )
 
     def save(self):
-        self.manager.add_row(self)
+        self.__manager__.add_row(self)
 
     @conceptmethod
     def to_df(cls) -> pd.DataFrame:
-        return cls.manager.get_data(
+        return cls.__manager__.get_data(
             cls, cls.columns()
         )
 
     def to_dict(self) -> typing.Dict:
-        return self.dict()
+        return self.model_dump()
 
     def to_series(self) -> pd.DataFrame:
         return pd.Series(self.to_dict())
@@ -179,12 +196,39 @@ class Concept(BaseModel):
 
     @classmethod
     def model_name(cls):
-
+        
         return cls.__name__
     
     @classmethod
     def ctype(cls) -> typing.Type['Concept']:
         return cls
+
+
+class RepMixin(object):
+
+    @conceptmethod
+    def like(cls, comp: 'Comp'):
+        return ConceptQuery(
+            cls, comp
+        )
+
+    @conceptmethod
+    def build(cls):
+        cls.manager().add_rep(cls)
+
+    @classmethod
+    def model_name(cls) -> str:
+        concept_cls = None
+        for base in cls.__bases__:
+            if inspect.isclass(base) and issubclass(base, Concept):
+                concept_cls = base
+                return concept_cls.model_name()
+        return None
+
+    @classmethod
+    def rep_name(cls):
+        
+        return cls.__name__
 
 
 class Val(object):
@@ -236,6 +280,70 @@ class Comp(object):
         return Comp(None, self, lambda lhs, rhs: ~rhs)
 
 
+class Rep(object):
+
+    def __init__(self, name: str):
+
+        self.name = name
+    
+    def get(self, rep_map: RepMap) -> RepIdx:
+
+        return rep_map[self.name]
+
+
+@dataclass
+class Similarity(object):
+
+    similarity: np.ndarray
+    indices: np.ndarray
+
+
+class Sim(object):
+
+    def __init__(self, rep: Rep, val, k: int=None):
+
+        # val could also be a column
+        # or a compare
+
+        self.rep = rep
+        self.val = val
+        self.k = k
+
+    def query(self, rep_map: RepMap, df: pd.DataFrame):
+
+        indices = df.index.tolist()
+
+        if isinstance(self.val, Col):
+            pass
+            # vals = self.val.query(df)
+        elif isinstance(self.val, typing.List):
+            val = self.val
+        else:
+            val = [self.val]
+        rep_idx = self.rep.get(rep_map)
+        
+        # How to get the rep index subset
+
+        # todo: Take into account k can 
+        return rep_idx.like(val, self.k, subset=indices)
+
+        # return RepSimilarity
+
+        # lhs = self.lhs.query(df)
+        # rhs = self.rhs.query(df)
+        # return self.f(lhs, rhs)
+
+    def __call__(self):
+        pass
+
+    def __call__(self, df: pd.DataFrame) -> typing.Any:
+
+        return df[self.query(df)]
+    
+    def query(self, rep_map: RepMap):
+        pass
+
+
 class Col(object):
 
     def __init__(self, name: str):
@@ -271,15 +379,16 @@ class Col(object):
         return df[self.name]
 
 
-class Rep(object):
 
-    def __init__(self, name: str):
+# class Rep(object):
 
-        self.name = name
+#     def __init__(self, name: str):
 
-    def query(self, df: pd.DataFrame) -> typing.Any:
+#         self.name = name
 
-        return df[self.name]
+#     def query(self, df: pd.DataFrame) -> typing.Any:
+
+#         return df[self.name]
 
 
 C = typing.TypeVar('C', bound=Concept)
@@ -300,7 +409,7 @@ class ConceptQuery(typing.Generic[C]):
     
     def __iter__(self) -> typing.Iterator[C]:
 
-        sub_df = self.comp(self.concept.manager.get_data(self.concept))
+        sub_df = self.comp(self.concept.__manager__.get_data(self.concept))
 
         for _, row in sub_df.iterrows():
             yield self.concept(**row.to_dict())
@@ -317,21 +426,39 @@ class ConceptManager(object):
 
     def add_concept(self, concept: typing.Type[Concept]):
 
-        columns, dtypes = concept.columns(dtypes=True)
+        columns, dtypes, _, _ = concept.columns(dtypes=True)
 
         df = pd.DataFrame(
             columns=columns
         )
         df = df.astype(dict(zip(columns, dtypes)))
 
-        indices = {key: ind() for key, ind in concept.__rep__.fields()}
         self._concepts[concept.model_name()] = df
-        self._field_indices[concept.model_name()] = indices
+        self._field_indices[concept.model_name()] = concept.__rep__()
         self._ids[concept.model_name()] = 0
+
+    def add_rep(self, rep: typing.Type[RepMixin]):
+
+        if not issubclass(rep, Concept):
+            raise ValueError('Cannot build Rep unless mixed with a concept.')
+        columns, dtypes, defaults, default_factories = rep.columns(True)
+        df = self.get_data(rep.model_name())
+
+        for c, dtype, default, default_factory, in zip(columns, dtypes, defaults, default_factories):
+            if default_factory is not None and default is None:
+                df[c] = default_factory()
+            elif default is not None:
+                df[c] = default
+            else:
+                df[c] = None
+        # add columns for the representation
+        df = df.astype(dict(zip(columns, dtypes)))
+        self._concepts[rep.model_name()] = df
+        self._field_indices[rep.rep_name()] = rep.__rep__()
 
     def get_data(self, concept: typing.Type[Concept]) -> pd.DataFrame:
 
-        return self._concepts[concept.model_name()]
+        return self._concepts[concept.model_name()][concept.columns()]
     
     def add_row(self, concept: Concept):
 

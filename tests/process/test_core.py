@@ -3,19 +3,19 @@ from dachi import process
 
 class DummyNode(process.Node):
 
-    def op(self, x: int=2):
+    def forward(self, x: int=2):
         return x + 1
 
 
 class DummyNode2(process.Node):
 
-    def op(self, x: int=2):
+    def forward(self, x: int=2):
         return x + 1, x + 2
 
 
 class DummyNode3(process.Node):
 
-    def op(self, x: int=2, y: int=3):
+    def forward(self, x: int=2, y: int=3):
         return x + 1, y + 2
 
 

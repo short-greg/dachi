@@ -40,7 +40,7 @@ class Adapter(Node):
         """
         return self._output_fields
 
-    def op(self, *args, **kwargs) -> typing.Any:
+    def forward(self, *args, **kwargs) -> typing.Any:
         
         stored = to_by(self._inputs, args, kwargs)
         by = {}
@@ -77,10 +77,10 @@ def nodefunc(inputs: typing.List[Field], outputs: typing.List[Field]):
                 self._inputs = inputs
                 self._outputs = outputs
                 self._instance = instance
-                self.op = functools.update_wrapper(self.op)
+                self.forward = functools.update_wrapper(self.forward)
 
             @functools.wraps(f)
-            def op(self, *args, **kwargs) -> typing.Any:
+            def forward(self, *args, **kwargs) -> typing.Any:
                 
                 if self._instance is not None:
                     return self.f(
@@ -124,7 +124,7 @@ class NodeFunc(Node):
         self._inputs = inputs
         self._outputs = outputs
 
-    def op(self, *args, **kwargs) -> typing.Any:
+    def forward(self, *args, **kwargs) -> typing.Any:
     
         return self.f(
             *args, **kwargs

@@ -334,7 +334,7 @@ class Node(ABC):
         return self._name
 
     @abstractmethod
-    def op(self) -> typing.Any:
+    def forward(self, *args, **kwargs) -> typing.Any:
         """The operation for the node. 
 
         Returns:
@@ -348,20 +348,20 @@ class Node(ABC):
         Returns:
             typing.Any: The output of op()
         """
-        return self.op(*args, **kwargs)
+        return self.forward(*args, **kwargs)
     
-    async def async_op(self, *args, **kwargs) -> typing.Any:
+    async def async_forward(self, *args, **kwargs) -> typing.Any:
         
-        return self.op(*args, **kwargs)
+        return self.forward(*args, **kwargs)
     
-    def stream(self, *args, **kwargs) -> typing.Iterator[OpStream]:
+    def stream_forward(self, *args, **kwargs) -> typing.Iterator[OpStream]:
         
-        result = self.op(*args, **kwargs)
+        result = self.forward(*args, **kwargs)
         yield SingleOpStream(result)
 
-    async def async_stream(self, *args, **kwargs) -> typing.AsyncGenerator[OpStream, None]:
+    async def async_stream_forward(self, *args, **kwargs) -> typing.AsyncGenerator[OpStream, None]:
         
-        for result in self.stream(*args, **kwargs):
+        for result in self.stream_forward(*args, **kwargs):
             yield result
 
     def link(self, *args, **kwargs) -> typing.Union[T, typing.Tuple[T], typing.Any, typing.Tuple[typing.Any]]:
@@ -388,7 +388,7 @@ class Node(ABC):
 
         args = [arg.value if isinstance(arg, T) else arg for arg in args]
         kwargs = {k: arg.value if isinstance(arg, T) else arg for k, arg in kwargs.items()}
-        result = self.op(*args, **kwargs)
+        result = self.forward(*args, **kwargs)
         if isinstance(result, typing.Tuple):
             return tuple(Output(self._name, result_i, self) for result_i in result)
         return Output(self._name, result, self)
@@ -414,7 +414,7 @@ class TakoBase(Node):
         pass
 
     @abstractmethod
-    def op(self, *args, **kwargs) -> typing.Any:
+    def forward(self, *args, **kwargs) -> typing.Any:
         """
         """
         pass
@@ -596,9 +596,8 @@ class TIdx(T):
         # i feel the easy approach 
 
         Args:
-            node (Node): Node to use 
-            args (typing.List): The args to pass to the node
-            kwargs (typing.Dict): The kwargs to pass to the node
+            t: T
+            idx: int
         """
         super().__init__(t.name + '_' + str(idx))
         self._idx = idx

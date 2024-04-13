@@ -1,15 +1,12 @@
 # 1st party
-from dataclasses import dataclass, field
+from dataclasses import field
 import typing
-from abc import abstractmethod
-from io import StringIO
 
 # 3rd party
-import pandas as pd
 import pydantic
 
 # local
-from ..store import Struct, Str
+from ..store import Struct, Str, ValidateStrMixin
 
 
 class Role(Struct):
@@ -31,3 +28,20 @@ class Body(Struct):
 
     def fill(self, struct: Struct):
         pass
+
+
+class Var(pydantic.BaseModel):
+
+    pass
+
+
+class Op(pydantic.BaseModel, ValidateStrMixin):
+
+    name: str
+    inputs: typing.List[Struct]
+    descr: str = ''
+
+    def forward(self, var: 'Var') -> 'Var':
+        return Var(
+            
+        )

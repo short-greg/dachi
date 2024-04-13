@@ -35,7 +35,7 @@ class Tako(TakoBase):
         # for result in traverse_ts(self._outputs, by, evaluate=False):
         #     yield result
 
-    def op(self, *args, **kwargs) -> typing.Any:
+    def forward(self, *args, **kwargs) -> typing.Any:
         """
         """
         by = to_by(self._inputs, args, kwargs)
