@@ -1,13 +1,10 @@
 # 1st party
-from dataclasses import dataclass, field
 import typing
 from abc import abstractmethod, ABC
-from io import StringIO
 
 # 3rd party
 import pandas as pd
 import pydantic
-from pydantic import Field, BaseModel
 
 # local
 from ..store import Struct, Str
@@ -22,30 +19,6 @@ class IVar(Struct):
 
     name: str
     text: str
-    data: Struct=None
-
-
-class IOut(Struct, typing.Generic[S]):
-
-    name: str
-    text: str
-    style: 'RevStyle' = None
-
-    def read(self, text: str) -> S:
-
-        if self.style is not None:
-            return self.style.load(text)
-        return S.load(text)
-
-
-class Op(Struct):
-    
-    descr: str
-    out_name: str
-
-    @abstractmethod
-    def forward(self, inputs: typing.List[IVar]) -> str:
-        pass
 
 
 class Style(pydantic.BaseModel, typing.Generic[S], ABC):
@@ -78,10 +51,61 @@ class Instruction(Struct):
     name: str
     style: Style = None
 
+    def update(self, **kwargs) -> 'Instruction':
+        
+        new_args = {}
+        for field in self.model_fields:
+            attr = getattr(self, field)
+            if isinstance(attr, Instruction):
+                new_args[field] = attr.update(**kwargs)
+            elif isinstance(attr, Str):
+                new_args[field] = attr(**kwargs)
+            else:
+                new_args[field] = attr
+        return self.__class__(**new_args)
+
+    def forward(self, **kwargs) -> str:
+
+        updated = self.update(**kwargs)
+        if self.style is None:
+            return updated.to_text()
+        return self.style(self)
+
 
 class Material(Instruction):
     
     data: Struct
+    style: 'RStyle' = None
+
+
+def mat(name: str, data: Struct, style: Style=None) -> Material:
+
+    return Material(
+        name=name, data=data, style=style
+    )
+
+
+class IOut(Struct, typing.Generic[S]):
+
+    name: str
+    text: str
+    style: 'RStyle' = None
+
+    def read(self, text: str) -> S:
+
+        if self.style is not None:
+            return self.style.load(text)
+        return S.load(text)
+
+
+class Op(Struct):
+    
+    descr: str
+    out_name: str
+
+    @abstractmethod
+    def forward(self, inputs: typing.List[IVar]) -> str:
+        pass
 
 
 def assist(f: typing.Callable[[Material], IOut]):
@@ -138,7 +162,6 @@ def assistmethod(f):
 #     outputs: typing.List['Output']
 
 
-
 def op(inputs: typing.List[IVar], descr: str, name: str) -> IVar:
 
     name_list = ','.join(input_.name for input_ in inputs)
@@ -151,7 +174,7 @@ def op(inputs: typing.List[IVar], descr: str, name: str) -> IVar:
 
 def out(
     inputs: typing.List[IVar], descr: str, 
-    name: str, style: 'RevStyle'=None
+    name: str, style: 'RStyle'=None
 ) -> IOut[S]:
     """
 
@@ -174,7 +197,9 @@ def out(
     )
 
 
-class RevStyle(Style[S]):
+class RStyle(Style[S]):
+    """Style with a verse method
+    """
 
     @abstractmethod
     def reverse(self, text: str) -> S:
@@ -184,7 +209,7 @@ class RevStyle(Style[S]):
         return self.reverse(text)
 
 
-class Instructor(object, ABC):
+class Instructor(object):
 
     @abstractmethod
     def forward(self, *args, **kwargs) -> str:
@@ -208,6 +233,18 @@ class Instructor(object, ABC):
 
         return self.forward(*args, **kwargs)
     
+
+class _op:
+
+    def __getattr__(self, key: str):
+
+        name = key
+        def _op_creator(descr: str) -> Op:
+            return Op(name=name, descr=descr)
+        return _op_creator
+
+
+# op = _op()        
 
 
 # class InstructChat(Chat):

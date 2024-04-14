@@ -2,6 +2,7 @@ from dachi.store import _struct
 from dachi.instruct import _core as instruct
 import json
 import typing
+import pydantic
 
 
 class SimpleStruct(_struct.Struct):
@@ -19,7 +20,7 @@ class Y(_struct.Struct):
     ts: typing.List[T]
 
 
-class JSONStyle(instruct.RevStyle[SimpleStruct]):
+class JSONStyle(instruct.RStyle[SimpleStruct]):
 
     def reverse(self, text: str) -> SimpleStruct:
 
@@ -31,7 +32,6 @@ class JSONStyle(instruct.RevStyle[SimpleStruct]):
 
         return struct.model_dump_json()
 
-import pydantic
 
 class Z(_struct.Struct):
 
@@ -57,3 +57,65 @@ class TestStyle(object):
 
         struct = style.reverse(json_)
         assert struct.x.text == "hi!"
+
+
+class TestIVar(object):
+
+    def test_name_equals_name(self):
+
+        name = 'I'
+        text = 'Text for var'
+        var = instruct.IVar(
+            name=name, text=text
+        )
+        assert name == var.name
+        assert text == var.text
+
+
+class TestInstruction(object):
+
+    def test_instruction(self):
+
+        name = 'X1'
+        style = JSONStyle()
+
+        instruction = instruct.Instruction(
+            name=name, style=style
+        )
+        assert instruction.name == 'X1'
+        assert isinstance(
+            instruction.style,
+            JSONStyle
+        )
+
+
+class TestMaterial(object):
+
+    def test_material(self):
+
+        name = 'X1'
+        style = JSONStyle()
+
+        instruction = instruct.Instruction(
+            name=name, style=style
+        )
+        assert instruction.name == 'X1'
+        assert isinstance(
+            instruction.style,
+            JSONStyle
+        )
+
+
+class TestOp(object):
+
+    def test_op_forward_outputs_string(self):
+
+        name = 'X1'
+        ivar = instruct.IVar(
+            name=name, text='hi'
+        )
+
+        instruction = instruct.op(
+            [ivar], 'list_outputs', 'out'
+        )
+        assert instruction.name == 'out'

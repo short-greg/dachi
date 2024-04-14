@@ -1,8 +1,7 @@
 # 1st party
-from abc import abstractmethod, ABC, abstractproperty
+from abc import abstractmethod, ABC
 import typing
 from dataclasses import dataclass
-import asyncio
 from ..utils import F
 
 # 3rd party
@@ -146,8 +145,8 @@ class T(ABC):
     def clone(self) -> 'T':
         pass
 
-    @abstractmethod
     @property
+    @abstractmethod
     def incoming(self) -> typing.List['Incoming']:
         pass
 
@@ -275,13 +274,13 @@ class OutStream:
     """A streamed result from a process
     """
     
-    @abstractmethod
     @property
+    @abstractmethod
     def result(self) -> typing.Any:
         pass
 
-    @abstractmethod
     @property
+    @abstractmethod
     def delta(self) -> typing.Any:
         pass
 

@@ -1,4 +1,3 @@
-import pandas as pd
 import typing
 from pydantic import Field
 import pydantic
@@ -89,20 +88,6 @@ class Struct(pydantic.BaseModel, TextMixin, ValidateStrMixin):
         validate_assignment=True,
         arbitrary_types_allowed=True
     )
-    
-
-    def forward(self, **kwargs) -> 'Struct':
-        
-        new_args = {}
-        for field in self.model_fields:
-            attr = getattr(self, field)
-            if isinstance(attr, Struct):
-                new_args[field] = attr(**kwargs)
-            elif isinstance(attr, Str):
-                new_args[field] = attr(**kwargs)
-            else:
-                new_args[field] = attr
-        return self.__class__(**new_args)
 
     @classmethod
     def template(cls) -> str:
@@ -127,7 +112,6 @@ class Message(Struct):
 
     role: Str
     text: Str
-
 
 
 class Doc(Struct):
