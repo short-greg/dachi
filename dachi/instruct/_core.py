@@ -128,6 +128,17 @@ def assistmethod(f):
 #         pass
 
 
+# class Func(pydantic.BaseModel):
+
+#     name: str
+#     doc: str
+#     signature: str
+#     code: str
+#     inputs: typing.List[Struct]
+#     outputs: typing.List['Output']
+
+
+
 def op(inputs: typing.List[IVar], descr: str, name: str) -> IVar:
 
     name_list = ','.join(input_.name for input_ in inputs)
@@ -213,106 +224,7 @@ class Instructor(object, ABC):
 #         )
 
 
-
-# class Context(pydantic.BaseModel):
-
-#     # contains structs
-#     # how to update structs with the inputs
-#     def forward(self, inputs, outputs) -> 'Context':
-#         # 1) add name fields
-#         # 
-#         # have to implement it something like this
-#         # need to know the names of the inputs, however
-#         # I can add the annotation
-#         pass
-#         # update all of the 
-#         # result = {}
-#         # for k, field in self.schema():
-
-#         #     attr = getattr(self, field)
-#         #     if isinstance(attr, Struct):
-#         #         result[k] = attr.forward()
-#         # return self.__class__(**result)
-
-
-# class Op(pydantic.BaseModel):
-    
-#     name: Str
-#     inputs: typing.List[str] = Field(default_factory=list)
-#     descr: Str = field(default='')
-
-#     def forward(self, *inputs: typing.Union['Var', 'Struct']) -> 'Var':
-        
-#         return Var(
-#             self, inputs
-#         )
-
-
-# # How about this?
-
-
-# # Have to specify the names of inputs here
-# # they are contained in the annotation
-
-# class Func(pydantic.BaseModel):
-
-#     name: str
-#     doc: str
-#     signature: str
-#     code: str
-#     inputs: typing.List[Struct]
-#     outputs: typing.List['Output']
-
-
-
-
-# class _op:
-
-#     def __getattr__(self, key: str):
-
-#         name = key
-#         def _op_creator(descr: str) -> Op:
-#             return Op(name=name, descr=descr)
-#         return _op_creator
-
-
-# op = _op()        
-
-
-# class Var(object):
-
-#     def __init__(
-#         self, producer, name: str, incoming: typing.Union['Var', typing.Tuple['Var']]
-
-#     ):
-#         """
-
-#         Args:
-#             producer : 
-#             incoming (typing.Union[Var, typing.Tuple[Var]], optional): _description_. Defaults to None.
-#         """
-#         self.producer = producer
-#         self.incoming = incoming
-#         self.name = name
-
-#     def detach(self) -> 'Var':
-
-#         return Var(self.producer)
-
-
-# class Output(typing.Generic[S]):
-
-#     def __init__(
-#         self, incoming: typing.Union['Var', typing.Tuple['Var']],
-#         style: Style=None
-#     ):
-#         self.style = style
-#         self.incoming = incoming
-
-#     def detach(self) -> 'Output':
-
-#         return Output(self.producer)
-
+# TODO: Decide how to implement this
 
 # class Param(typing.Generic[S]):
 
@@ -333,20 +245,9 @@ class Instructor(object, ABC):
 #         return Param(self.struct)
 
 
-# def instrmethod(f):
 
-#     def _(self, *args, **kwargs):
-
-#         output = f(self, *args, **kwargs)
-
-#     return _
+# # How about this?
 
 
-# def instr(f):
-
-#     def _(*args, **kwargs):
-
-#         # 
-#         output = f(*args, **kwargs)
-
-#     return _
+# # Have to specify the names of inputs here
+# # they are contained in the annotation
