@@ -1,11 +1,11 @@
 from ._core import (
-    T, Field, Var, FieldList,
-    F, Incoming, OpStream, SingleOpStream,
-    Process, Output, to_by, get_arg,
+    T, Field, TIn, FieldList,
+    F, Incoming, OutStream, SingleOutStream,
+    TMid, TOut, to_by, get_arg,
     TakoBase
 )
 from ._nodes import (
-    Adapter, Node, 
+    Adapter, Processor, 
     linkf, nodedef,
     NodeFunc
     # NodeFunc, 

@@ -7,17 +7,17 @@ class TestOutput:
 
     def test_output_value_returns_1(self):
 
-        output = process.Output("X", 1)
+        output = process.TOut("X", 1)
         assert output.value == 1
 
     def test_output_probe_returns_1(self):
 
-        output = process.Output("X", 1)
+        output = process.TOut("X", 1)
         assert output.__call__() == 1
 
     def test_output_probe_returns_1_after_probe(self):
 
-        output = process.Output("Y", 1)
+        output = process.TOut("Y", 1)
         output = output.clone()
         assert output.__call__() == 1
 

@@ -9,7 +9,7 @@ class TestNetwork:
         node1 = DummyNode("Node1")
         node2 = DummyNode2("Node2")
         
-        var = process.Var("X", default=1)
+        var = process.TIn("X", default=1)
 
         y = node1.link(var)
         y = node2.link(y)
@@ -24,7 +24,7 @@ class TestNetwork:
         node1 = DummyNode("Node1")
         node2 = DummyNode2("Node2")
         
-        var = process.Var("X", default=1)
+        var = process.TIn("X", default=1)
 
         y1 = node1.link(var)
         y = node2.link(y1)
@@ -41,7 +41,7 @@ class TestNetwork:
         node1 = DummyNode("Node1")
         node2 = DummyNode2("Node2")
         
-        var = process.Var("X", default=1)
+        var = process.TIn("X", default=1)
 
         y = node2.link(var)
         y = node1.link(y[0])

@@ -11,6 +11,8 @@ from abc import abstractmethod
 import csv
 import pandas as pd
 from io import StringIO
+from typing_extensions import Self
+import json
 
 
 class TextMixin(object):
@@ -87,8 +89,8 @@ class Struct(pydantic.BaseModel, TextMixin, ValidateStrMixin):
         validate_assignment=True,
         arbitrary_types_allowed=True
     )
+    
 
-    #@pydantic.field_validator('*', mode='before')
     def forward(self, **kwargs) -> 'Struct':
         
         new_args = {}
@@ -111,6 +113,12 @@ class Struct(pydantic.BaseModel, TextMixin, ValidateStrMixin):
     
     def to_text(self) -> str:
         return str(self.model_dump())
+    
+    @classmethod
+    def from_text(cls, text: str) -> Self:
+        return cls(
+            **json.loads(text)
+        )
 
 
 T = typing.TypeVar('T', bound=Struct)

@@ -3,7 +3,7 @@ import typing
 
 # 3rd party
 import networkx as nx
-from ._core import Incoming, T, Var, Out
+from ._core import Incoming, T, TIn, Out
 
 
 class Network(object):
@@ -57,13 +57,13 @@ class Network(object):
         for name in self._execution_order:
             yield self._ts[name]
     
-    def traverse(self, by: typing.Dict[Var, typing.Any]) -> typing.Iterator[typing.Any]:
+    def traverse(self, by: typing.Dict[TIn, typing.Any]) -> typing.Iterator[typing.Any]:
 
         stored = {}
         for t in self:
             yield t(by, stored, deep=False)
 
-    def exec(self, by: typing.Dict[Var, typing.Any]):
+    def exec(self, by: typing.Dict[TIn, typing.Any]):
 
         stored = {}
         for t in self:

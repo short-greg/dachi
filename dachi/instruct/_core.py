@@ -1,9 +1,8 @@
 # 1st party
 from dataclasses import dataclass, field
 import typing
-from abc import abstractmethod
+from abc import abstractmethod, ABC
 from io import StringIO
-
 
 # 3rd party
 import pandas as pd
@@ -14,18 +13,53 @@ from pydantic import Field, BaseModel
 from ..store import Struct, Str
 import inspect
 
-# https://www.city.amagasaki.hyogo.jp/map/1000379/1000416/1000814.html
 
 T = typing.TypeVar('T', bound=Struct)
 S = typing.TypeVar('S', bound=Struct)
 
 
-# TODO: FINISH THIS
-class Style(pydantic.BaseModel, typing.Generic[S]):
+class IVar(Struct):
+
+    name: str
+    text: str
+    data: Struct=None
+
+
+class IOut(Struct, typing.Generic[S]):
+
+    name: str
+    text: str
+    style: 'RevStyle' = None
+
+    def read(self, text: str) -> S:
+
+        if self.style is not None:
+            return self.style.load(text)
+        return S.load(text)
+
+
+class Op(Struct):
+    
+    descr: str
+    out_name: str
+
+    @abstractmethod
+    def forward(self, inputs: typing.List[IVar]) -> str:
+        pass
+
+
+class Style(pydantic.BaseModel, typing.Generic[S], ABC):
 
     @abstractmethod
     def forward(self, struct: S) -> str:
         pass
+
+    @abstractmethod
+    def reverse(self, text: str) -> S:
+        pass
+
+    def load(self, text: str) -> S:
+        return self.reverse(text)
 
     def __call__(self, struct: S) -> str:
         return self.forward(struct)
@@ -39,21 +73,130 @@ class Style(pydantic.BaseModel, typing.Generic[S]):
         return v
 
 
-class ReversibleStyle(Style[S]):
+class Instruction(Struct):
+
+    name: str
+    style: Style = None
+
+
+class Material(Instruction):
+    
+    data: Struct
+
+
+def assist(f: typing.Callable[[Material], IOut]):
+    """Use assist to have a "sub" function in the module. The subfunction
+    must output an IOut and take in one or more Materials. 
+
+    Args:
+        f (typing.Callable[[Material], IOut]): The sub function
+    """
+    # TODO: Make use of annotations or
+    # code contained in the function
+    def _(*args, **kwargs):
+        
+        out = f(*args, **kwargs)
+        return out
+
+    return _
+
+
+def assistmethod(f):
+    """Use assist to have a "sub" method for the instruction. The subfunction
+    must output an IOut and take in one or more Materials. 
+
+    Args:
+        f (typing.Callable[[Material], IOut]): The sub function
+    """
+    def _(self, *args, **kwargs):
+
+        out = f(self, *args, **kwargs)
+        return out
+
+    return _
+
+
+# class Assist(Struct):
+
+#     code: str
+#     doc: str
+#     inputs: typing.List[IVar]
+#     outputs: IOut
+#     signature: str
+
+#     def forward(self, inputs: typing.List[IVar]) -> str:
+#         pass
+
+
+def op(inputs: typing.List[IVar], descr: str, name: str) -> IVar:
+
+    name_list = ','.join(input_.name for input_ in inputs)
+    text = f'Compute {name} from {name_list} - {descr} \n'
+    return IVar(
+        name=name,
+        text=text
+    )
+
+
+def out(
+    inputs: typing.List[IVar], descr: str, 
+    name: str, style: 'RevStyle'=None
+) -> IOut[S]:
+    """
+
+    Args:
+        inputs (typing.List[IVar]): 
+        descr (str): 
+        name (str): 
+        style (RevStyle, optional): . Defaults to None.
+
+    Returns:
+        IOut[S]: 
+    """
+
+    name_list = ','.join(input_.name for input_ in inputs)
+    text = f'Output {name} using {name_list} - {descr} \n'
+    return IOut[S](
+        name=name,
+        text=text,
+        style=style
+    )
+
+
+class RevStyle(Style[S]):
 
     @abstractmethod
     def reverse(self, text: str) -> S:
         pass
 
+    def load(self, text: str) -> S:
+        return self.reverse(text)
 
-class Styled(Struct, typing.Generic[S]):
 
-    data: Struct
-    style: Style[S]
+class Instructor(object, ABC):
 
-    def to_text(self):
-        
-        return self.style(self.data)
+    @abstractmethod
+    def forward(self, *args, **kwargs) -> str:
+
+        # 1) # run operations
+        # 2) return out.to_text()
+
+        # 1) # run operations
+        # 2) return self.context(inputs, outputs)
+
+        # 1) # call "functions"
+        # 2) return self.context(**inputs, **outputs)
+
+        # 1) Nested 
+
+        # 1) output contains all of the input text
+        # 2) f
+        pass 
+
+    def __call__(self, *args, **kwargs) -> str:
+
+        return self.forward(*args, **kwargs)
+    
 
 
 # class InstructChat(Chat):
@@ -121,11 +264,6 @@ class Styled(Struct, typing.Generic[S]):
 #     outputs: typing.List['Output']
 
 
-# def output(*inputs, style: Style[S]) -> 'Output[S]':
-
-#     return Output[S](
-#         inputs, style
-#     )
 
 
 # class _op:

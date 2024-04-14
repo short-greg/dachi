@@ -3,7 +3,7 @@ import typing
 
 # local
 from ._core import (
-    TakoBase, Var, T, to_by
+    TakoBase, TIn, T, to_by
 )
 from ._network import Network
 
@@ -13,7 +13,7 @@ class Tako(TakoBase):
     """
 
     def __init__(
-        self, name: str, inputs: typing.List[Var], 
+        self, name: str, inputs: typing.List[TIn], 
         outputs: typing.List[typing.Union[typing.Tuple[T, int], T]]
     ):
         self._name = name

@@ -3,15 +3,15 @@ import typing
 import functools
 
 # local
-from ._core import Var, FieldList, Field, T, Node, to_by, Out
+from ._core import TIn, FieldList, Field, T, Processor, to_by, Out
 
 
-class Adapter(Node):
+class Adapter(Processor):
     """A Node which wraps a graph
     """
 
     def __init__(
-        self, name: str, inputs: typing.List[Var], 
+        self, name: str, inputs: typing.List[TIn], 
         outputs: typing.List[typing.Union[typing.Tuple[T, int], T]]
     ):
         """Instantiate a node which adaptas
@@ -59,7 +59,7 @@ def nodefunc(inputs: typing.List[Field], outputs: typing.List[Field]):
     """
     def _(f):
 
-        class NodeFunc(Node):
+        class NodeFunc(Processor):
             """A Node that wraps a function
             """
 
@@ -106,7 +106,7 @@ def nodefunc(inputs: typing.List[Field], outputs: typing.List[Field]):
     return _
 
 
-class NodeFunc(Node):
+class NodeFunc(Processor):
     """A Node that wraps a function
     """
 

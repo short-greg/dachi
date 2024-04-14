@@ -3,41 +3,10 @@ from abc import abstractmethod, ABC, abstractproperty
 import typing
 from dataclasses import dataclass
 import asyncio
+from ..utils import F
 
 # 3rd party
 import networkx as nx
-
-
-def _is_function(f) -> bool:
-    """ 
-    Args:
-        f: The value to check
-
-    Returns:
-        bool: whether f is a function
-    """
-    f_type = type(f)
-    return f_type == type(_is_function) or f_type == type(hasattr)
-
-
-class F(object):
-    """F is a functor that allows the user to set the args and kwargs
-    """
-
-    def __init__(self, f: typing.Callable[[], typing.Any], *args, **kwargs):
-        """Create a functor
-
-        Args:
-            f (typing.Callable[[], typing.Any]): The function called
-        """
-        super().__init__()
-        self.f = f
-        self.args = args
-        self.kwargs = kwargs
-
-    @property
-    def value(self) -> typing.Any:
-        return self.f(*self.args, **self.kwargs)
 
 
 class Field(object):
@@ -145,8 +114,9 @@ class T(ABC):
             str: The name of the transmission
         """
         return self._name
-
-    def __call__(self, by: typing.Dict['Var', typing.Any]=None, stored: typing.Dict[str, typing.Any]=None, deep: bool=True) -> typing.Any:
+    
+    @abstractmethod
+    def forward(self, by: typing.Dict['TIn', typing.Any]=None, stored: typing.Dict[str, typing.Any]=None, deep: bool=True) -> typing.Any:
         """Retrieve the value of the transmission
 
         Args:
@@ -158,16 +128,31 @@ class T(ABC):
         """
         pass
 
+    def __call__(self, by: typing.Dict['TIn', typing.Any]=None, stored: typing.Dict[str, typing.Any]=None, deep: bool=True) -> typing.Any:
+        """Retrieve the value of the transmission
+
+        Args:
+            by (typing.Dict[Var, typing.Any], optional): Storage of the values to use for the vars. Defaults to None.
+            stored (typing.Dict[str, typing.Any], optional): Storage of the outputs of the nodes in the graph. Defaults to None.
+
+        Returns:
+            Any: The output of the transmission
+        """
+        return self.forward(
+            by, stored, deep
+        )
+
     @abstractmethod
     def clone(self) -> 'T':
         pass
 
-    @abstractproperty
+    @abstractmethod
+    @property
     def incoming(self) -> typing.List['Incoming']:
         pass
 
 
-class Var(T):
+class TIn(T):
     """Create a variable transmission that will output a value to send to nodes
     """
 
@@ -202,7 +187,7 @@ class Var(T):
         """
         self._default = default
 
-    def validate(self, by: typing.Dict['Var', typing.Any]) -> typing.Any:
+    def validate(self, by: typing.Dict['TIn', typing.Any]) -> typing.Any:
         """Validate the value in by
 
         Args:
@@ -223,12 +208,12 @@ class Var(T):
             raise ValueError(f'Value must be of dtype {self.dtype}')
         return val        
 
-    def clone(self) -> 'Var':
-        return Var(
+    def clone(self) -> 'TIn':
+        return TIn(
             self.name, self.dtype, self._default
         )
 
-    def __call__(self, by: typing.Dict['Var', typing.Any]=None, stored: typing.Dict[str, typing.Any]=None, deep: bool=True) -> typing.Any:
+    def forward(self, by: typing.Dict['TIn', typing.Any]=None, stored: typing.Dict[str, typing.Any]=None, deep: bool=True) -> typing.Any:
         """Retrieve the value of the transmission
 
         Args:
@@ -256,7 +241,7 @@ class Incoming:
         return isinstance(self.val, T)
     
     @classmethod
-    def _process_arg(cls, t: T, by: typing.Dict[Var, typing.Any], 
+    def _process_arg(cls, t: T, by: typing.Dict[TIn, typing.Any], 
         stored: typing.Dict[str, typing.Any]):
         
         if not isinstance(t, T):
@@ -269,7 +254,7 @@ class Incoming:
         
     @classmethod
     def prepare_args(
-        cls, incoming: typing.List['Incoming'], by: typing.Dict[Var, typing.Any], 
+        cls, incoming: typing.List['Incoming'], by: typing.Dict[TIn, typing.Any], 
         stored: typing.Dict[str, typing.Any]
     ):
         args = []
@@ -286,18 +271,24 @@ class Incoming:
         return args, kwargs
 
 
-class OpStream:
+class OutStream:
+    """A streamed result from a process
+    """
     
-    @abstractproperty
+    @abstractmethod
+    @property
     def result(self) -> typing.Any:
         pass
 
-    @abstractproperty
+    @abstractmethod
+    @property
     def delta(self) -> typing.Any:
         pass
 
 
-class SingleOpStream:
+class SingleOutStream:
+
+    # TODO: What is this?
 
     def __init__(self, value):
         self.value = value
@@ -311,7 +302,7 @@ class SingleOpStream:
         return self.value
 
 
-class Node(ABC):
+class Processor(ABC):
     """Defines a node in the graph. Use it to implement an operation
     """
 
@@ -354,12 +345,12 @@ class Node(ABC):
         
         return self.forward(*args, **kwargs)
     
-    def stream_forward(self, *args, **kwargs) -> typing.Iterator[OpStream]:
+    def stream_forward(self, *args, **kwargs) -> typing.Iterator[OutStream]:
         
         result = self.forward(*args, **kwargs)
-        yield SingleOpStream(result)
+        yield SingleOutStream(result)
 
-    async def async_stream_forward(self, *args, **kwargs) -> typing.AsyncGenerator[OpStream, None]:
+    async def async_stream_forward(self, *args, **kwargs) -> typing.AsyncGenerator[OutStream, None]:
         
         for result in self.stream_forward(*args, **kwargs):
             yield result
@@ -384,23 +375,23 @@ class Node(ABC):
             op_kwargs[k] = arg
 
         if is_variable:
-            return Process(self, args, op_kwargs)
+            return TMid(self, args, op_kwargs)
 
         args = [arg.value if isinstance(arg, T) else arg for arg in args]
         kwargs = {k: arg.value if isinstance(arg, T) else arg for k, arg in kwargs.items()}
         result = self.forward(*args, **kwargs)
         if isinstance(result, typing.Tuple):
-            return tuple(Output(self._name, result_i, self) for result_i in result)
-        return Output(self._name, result, self)
+            return tuple(TOut(self._name, result_i, self) for result_i in result)
+        return TOut(self._name, result, self)
     
-    def clone(self) -> 'Node':
+    def clone(self) -> 'Processor':
         
         return self.__class__(
             self.name
         )
 
 
-class TakoBase(Node):
+class TakoBase(Processor):
     """Define a Graph Node that wraps multiple other nodes
     """
     
@@ -431,19 +422,19 @@ def get_arg(arg, is_variable: bool=False) -> typing.Tuple[typing.Any, bool]:
         typing.Tuple[typing.Any, bool]: The argument, whether it is a variable
     """
 
-    if isinstance(arg, Output):
+    if isinstance(arg, TOut):
         return arg.value, False or is_variable
     elif isinstance(arg, T):
         return arg, True
     return arg, False or is_variable
 
 
-class Output(T):
+class TOut(T):
     """An output transmission defines the result of an
     operation in a node
     """
 
-    def __init__(self, name: str, value, node: Node=None):
+    def __init__(self, name: str, value, node: Processor=None):
         """Create an output transmission
 
         Args:
@@ -468,7 +459,7 @@ class Output(T):
         return True
 
     @property
-    def node(self) -> 'Node':
+    def node(self) -> 'Processor':
         """
         Returns:
             Node: The node that generated the output
@@ -476,17 +467,17 @@ class Output(T):
         return self._node
 
     # TODO: use "deep copy?"
-    def clone(self) -> 'Output':
+    def clone(self) -> 'TOut':
         """Clone the output
 
         Returns:
             Output: _description_
         """
-        return Output(
+        return TOut(
             self.name, self._value
         )
 
-    def __call__(self, by: typing.Dict['Var', typing.Any]=None, stored: typing.Dict[str, typing.Any]=None, deep: bool=True) -> typing.Any:
+    def __call__(self, by: typing.Dict['TIn', typing.Any]=None, stored: typing.Dict[str, typing.Any]=None, deep: bool=True) -> typing.Any:
         """Retrieve the value of the transmission
 
         Args:
@@ -506,11 +497,11 @@ class Output(T):
         return []
 
 
-class Process(T):
+class TMid(T):
     """
     """
 
-    def __init__(self, node: 'Node', args: typing.List=None, kwargs: typing.Dict=None):
+    def __init__(self, node: 'Processor', args: typing.List=None, kwargs: typing.Dict=None):
         """Wraps a node in a graph. Each arg and kwargs will be used to define the graph
         # i feel the easy approach 
 
@@ -533,14 +524,14 @@ class Process(T):
         """
         return self.__call__()
     
-    def clone(self) -> 'Process':
+    def clone(self) -> 'TMid':
         """
         Returns:
             Process: The cloned process
         """
         args = [arg.clone() if isinstance(arg, T) else arg for arg in self._args]
         kwargs = {k: arg.clone() if isinstance(arg, T) else arg for k, arg in self._kwargs.items()}
-        return Process(
+        return TMid(
             self._node, args, kwargs
         )
 
@@ -554,7 +545,7 @@ class Process(T):
 
         return incoming
 
-    def __call__(self, by: typing.Dict['Var', typing.Any]=None, stored: typing.Dict[str, typing.Any]=None, deep: bool=True) -> typing.Any:
+    def forward(self, by: typing.Dict['TIn', typing.Any]=None, stored: typing.Dict[str, typing.Any]=None, deep: bool=True) -> typing.Any:
         """Retrieve the value of the transmission
 
         Args:
@@ -630,7 +621,7 @@ class TIdx(T):
     def is_output(self) -> bool:
         return self._t.is_output
 
-    def __call__(self, by: typing.Dict['Var', typing.Any]=None, stored: typing.Dict[str, typing.Any]=None, deep: bool=True) -> typing.Any:
+    def forward(self, by: typing.Dict['TIn', typing.Any]=None, stored: typing.Dict[str, typing.Any]=None, deep: bool=True) -> typing.Any:
         """Retrieve the value of the transmission
 
         Args:
@@ -653,6 +644,11 @@ class Out(object):
     def __init__(self, outputs: typing.Union[
         typing.Tuple[T, int], T, 
         typing.List[typing.Union[typing.Tuple[T, int], T]]]):
+        """Wraps all of the outputs from a Process graph to retrieve from them
+
+        Args:
+            outputs (typing.Union[ typing.Tuple[T, int], T, typing.List[typing.Union[typing.Tuple[T, int], T]]]): The outputs to probe from
+        """
 
         self._singular = not isinstance(outputs, typing.List)
         self._outputs = [outputs] if self._singular else outputs
@@ -684,7 +680,7 @@ class Out(object):
 
 
 # TODO: See if this is necessary still
-def to_by(trans: typing.List[Var], args: typing.List[str], kwargs: typing.Dict[str, typing.Any]) -> typing.Dict:
+def to_by(trans: typing.List[TIn], args: typing.List[str], kwargs: typing.Dict[str, typing.Any]) -> typing.Dict:
     """Convert the list of Vars to a 'by' dictionary
 
     Args:

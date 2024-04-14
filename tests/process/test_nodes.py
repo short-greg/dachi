@@ -27,7 +27,7 @@ class TestNodeFunc:
 
     def test_node_func_works_as_regular_node(self):
 
-        var = process.Var("X", default=1)
+        var = process.TIn("X", default=1)
 
         y1 = process.linkf(meth1, var)
         y2 = process.linkf(meth2, y1)
@@ -43,7 +43,7 @@ class TestAdapter:
         node1 = DummyNode("Node1")
         node2 = DummyNode2("Node2")
         
-        var = process.Var("X", default=1)
+        var = process.TIn("X", default=1)
 
         y1 = node1.link(var)
         y2 = node2.link(y1)

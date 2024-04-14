@@ -19,7 +19,7 @@ class Y(_struct.Struct):
     ts: typing.List[T]
 
 
-class JSONStyle(instruct.ReversibleStyle[SimpleStruct]):
+class JSONStyle(instruct.RevStyle[SimpleStruct]):
 
     def reverse(self, text: str) -> SimpleStruct:
 
