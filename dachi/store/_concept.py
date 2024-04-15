@@ -256,14 +256,40 @@ class Val(object):
 
 class BaseComp(object):
 
+    @abstractmethod
     def query(self, df: pd.DataFrame, rep_map: RepMap) -> pd.Series:
         pass
 
     def __call__(self, df: pd.DataFrame, rep_map: RepMap) -> pd.DataFrame:
-        pass
+        """
+
+        Args:
+            df (pd.DataFrame): The dataframe to retrieve from
+            rep_map (RepMap): The repmap to retrieve from
+
+        Returns:
+            pd.DataFrame: 
+        """
+        return df[self.query(df, rep_map)]
+
+    def __xor__(self, other) -> 'BinComp':
+
+        return BinComp(self, other, lambda lhs, rhs: lhs ^ rhs)
+
+    def __and__(self, other):
+
+        return BinComp(self, other, lambda lhs, rhs: lhs & rhs)
+
+    def __or__(self, other):
+
+        return BinComp(self, other, lambda lhs, rhs: lhs | rhs)
+    
+    def __invert__(self):
+
+        return BinComp(None, self, lambda lhs, rhs: ~rhs)
 
 
-class BinComp(object):
+class BinComp(BaseComp):
 
     def __init__(
         self, lhs: typing.Union['BinComp', 'Col', typing.Any], 
@@ -281,7 +307,7 @@ class BinComp(object):
         self.rhs = rhs
         self.f = f
 
-    def query(self, df: pd.DataFrame) -> pd.Series:
+    def query(self, df: pd.DataFrame, rep_map: RepMap) -> pd.Series:
         """
 
         Args:
@@ -293,48 +319,6 @@ class BinComp(object):
         lhs = self.lhs.query(df)
         rhs = self.rhs.query(df)
         return self.f(lhs, rhs)
-
-    def __call__(self, df: pd.DataFrame) -> typing.Any:
-
-        return df[self.query(df)]
-    
-    def __xor__(self, other):
-
-        return BinComp(self, other, lambda lhs, rhs: lhs ^ rhs)
-
-    def __and__(self, other):
-
-        return BinComp(self, other, lambda lhs, rhs: lhs & rhs)
-
-    def __or__(self, other):
-
-        return BinComp(self, other, lambda lhs, rhs: lhs | rhs)
-    
-    def __invert__(self):
-
-        return BinComp(None, self, lambda lhs, rhs: ~rhs)
-
-
-# class Rep(object):
-
-#     def __init__(self, name: str):
-#         """Create a reference to a representation in the Concept
-
-#         Args:
-#             name (str): The name of the representation
-#         """
-#         self.name = name
-    
-#     def get(self, rep_map: RepMap) -> RepIdx:
-#         """Retrieve the RepIdx from the RepMap
-
-#         Args:
-#             rep_map (RepMap): The RepMap to retrieve from
-
-#         Returns:
-#             RepIdx: The RepIdx 
-#         """
-#         return rep_map[self.name]
 
 
 class BaseSim(ABC):
@@ -352,7 +336,9 @@ class BaseSim(ABC):
         )
         series[similarity.indices] = True
 
-        return df.loc[self.query(rep_map, df)]
+        return series
+
+        # return df.loc[self.query(rep_map, df)]
 
     def __mul__(self, other) -> Self:
 
@@ -371,13 +357,19 @@ class BaseSim(ABC):
         return AggSim(
             self, other, lambda x, y: x - y
         )
-
     # How to limit the "similarity"
+
 
 class Sim(BaseSim):
 
     def __init__(self, name: str, val, k: int):
+        """
 
+        Args:
+            name (str): 
+            val (): 
+            k (int): 
+        """
         # val could also be a column
         # or a compare
         self.name = name
@@ -385,7 +377,14 @@ class Sim(BaseSim):
         self.k = k
 
     def query(self, rep_map: RepMap, df: pd.DataFrame) -> 'Similarity':
+        """
+        Args:
+            rep_map (RepMap): 
+            df (pd.DataFrame): 
 
+        Returns:
+            Similarity: 
+        """
         indices = df.index.tolist()
 
         if isinstance(self.val, Col):
@@ -397,19 +396,18 @@ class Sim(BaseSim):
         rep_idx = self.rep.get(rep_map)
         
         return rep_idx.like(val, self.k, subset=indices)
-        # How to get the rep index subset
-        # return series
-        # series = pd.Series(
-        #     np.full((len(indices)), False, np.bool_),
-        #     indices
-        # )
-        # series[rep_idx.like(val, self.k, subset=indices)] = True
-        # # How to get the rep index subset
 
 
 class AggSim(BaseSim):
 
     def __init__(self, lhs, rhs, f: typing.Callable[[typing.Any, typing.Any], 'Similarity']):
+        """Aggregate the similarity
+
+        Args:
+            lhs: The left hand side of the aggregation
+            rhs: The right hand side of the aggregation
+            f (typing.Callable[[typing.Any, typing.Any], Similarity;]): 
+        """
 
         # val could also be a column
         # or a compare
@@ -418,7 +416,14 @@ class AggSim(BaseSim):
         self.f = f
 
     def query(self, rep_map: RepMap, df: pd.DataFrame) -> 'Similarity':
+        """
+        Args:
+            rep_map (RepMap): 
+            df (pd.DataFrame): 
 
+        Returns:
+            Similarity: 
+        """
         if isinstance(self.lhs, BaseSim):
             lhs = self.lhs.query(rep_map, df)
         else:
@@ -429,6 +434,32 @@ class AggSim(BaseSim):
         else:
             rhs = self.rhs
         return self.f(lhs, rhs)
+
+
+class Like(BaseComp):
+
+    def __init__(self, sim: BaseSim):
+        """
+
+        Args:
+            sim (BaseSim): The similarities to use
+        """
+        self.sim = sim
+
+    def query(self, rep_map: RepMap, df: pd.DataFrame) -> pd.DataFrame:
+        """
+
+        Args:
+            rep_map (RepMap): The RepMap for the concept
+            df (pd.DataFrame): The DataFrame for the concept
+
+        Returns:
+            pd.DataFrame: 
+        """
+        return self.sim(rep_map, df)
+
+    def __call__(self, df: pd.DataFrame, rep_map: RepMap) -> pd.DataFrame:
+        return df[self.query(rep_map, df)]
 
 # TODO: Change this... Have the similarity
 # contain all indices + a "chosen"
@@ -441,7 +472,16 @@ class Similarity(object):
     value: np.ndarray
     indices: np.ndarray
 
-    def align(self, other: 'Similarity'):
+    def align(self, other: 'Similarity') -> typing.Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Align the indices of the two similarities
+
+        Args:
+            other (Similarity): The other similarity to align with
+
+        Returns:
+            typing.Tuple[np.ndarray, np.ndarray, np.ndarray]: The similarities 
+                for the left and right hand sides and new indices
+        """
         all_indices = np.union1d(self.indices, other.indices)
 
         # Hold all of the similarities
@@ -457,6 +497,15 @@ class Similarity(object):
         return new_sim_self, new_sim_other, all_indices
     
     def _op(self, other, f) -> Self:
+        """_summary_
+
+        Args:
+            other (_type_): _description_
+            f (_type_): _description_
+
+        Returns:
+            Self: _description_
+        """
 
         if isinstance(other, Similarity):
             v_self, v_other, indices = self.align(self, other)
@@ -465,35 +514,63 @@ class Similarity(object):
             f(self.value, other), indices
         )
     
+    # TODO: Implement
+    # Comp Op must remove any indices for results that
+    # are false
     def _comp_op(self, other, f) -> Self:
+        pass
 
-        if isinstance(other, Similarity):
-            v_self, v_other, indices = self.align(self, other)
-            result = f(v_self, v_other)
-        else:
-            indices = self.indices
-            result = f(self.value, other)
-        return Similarity(
-            result, indices
-        )
+        # if isinstance(other, Similarity):
+        #     v_self, v_other, indices = self.align(self, other)
+        #     result = f(v_self, v_other)
+        # else:
+        #     indices = self.indices
+        #     result = f(self.value, other)
+        # return Similarity(
+        #     result, indices
+        # )
 
     def __len__(self) -> int:
+        """
+        Returns:
+            int: The number of similarities
+        """
         return self.value.shape[0]
     
     def __mul__(self, other) -> Self:
+        """Multiply a value with the simlarity 
+        Args:
+            other: A similarity or a scalar value
 
+        Returns:
+            Self: The similarity multiplied with other
+        """
         return self._op(
             other, lambda x, y: x * y
         )
         
     def __add__(self, other) -> Self:
+        """Add a value to the simlarity 
 
+        Args:
+            other: A similarity or a scalar value
+
+        Returns:
+            Self: The similarity multiplied with other
+        """
         return self._op(
             other, lambda x, y: x + y
         )
 
     def __sub__(self, other) -> Self:
+        """Subtract a value from the simlarity 
 
+        Args:
+            other: A similarity or a scalar value
+
+        Returns:
+            Self: The similarity multiplied with other
+        """
         return self._op(
             other, lambda x, y: x - y
         )
@@ -543,29 +620,54 @@ class Col(object):
             other: The value to compare against
 
         Returns:
-            Comp: The comparison for equality
+            Comp: The comparison for less than
         """
 
         return BinComp(self, other, lambda lhs, rhs: lhs < rhs)
 
     def __le__(self, other) -> 'BinComp':
+        """Check whether column is less than or equal to another value
+
+        Args:
+            other: The value to compare against
+
+        Returns:
+            Comp: The comparison for less than or equal
+        """
 
         return BinComp(self, other, lambda lhs, rhs: lhs <= rhs)
 
     def __gt__(self, other) -> 'BinComp':
+        """Check whether column is greater than another value
 
+        Args:
+            other: The value to compare against
+
+        Returns:
+            Comp: The comparison for greater than
+        """
         return BinComp(self, other, lambda lhs, rhs: lhs > rhs)
 
     def __ge__(self, other) -> 'BinComp':
+        """Check whether column is greater than or equal to another value
 
-        return BinComp(self, other, lambda lhs, rhs: lhs > rhs)
+        Args:
+            other: The value to compare against
 
-    def __ge__(self, other) -> 'BinComp':
-
+        Returns:
+            Comp: The comparison for greater than or equal to
+        """
         return BinComp(self, other, lambda lhs, rhs: lhs >= rhs)
 
     def query(self, df: pd.DataFrame) -> typing.Any:
+        """Retrieve the column
 
+        Args:
+            df (pd.DataFrame): The DataFrame to retrieve from
+
+        Returns:
+            typing.Any: The 
+        """
         return df[self.name]
 
 
@@ -574,8 +676,13 @@ C = typing.TypeVar('C', bound=Concept)
 # Think about how to handle this
 class ConceptQuery(typing.Generic[C]):
 
-    def __init__(self, concept_cls: typing.Type[C], comp: BinComp):
+    def __init__(self, concept_cls: typing.Type[C], comp: BaseComp):
+        """
 
+        Args:
+            concept_cls (typing.Type[C]): 
+            comp (BaseComp): 
+        """
         self.concept = concept_cls
         self.comp = comp
 

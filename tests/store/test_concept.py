@@ -244,7 +244,6 @@ class PersonWRep(_concept.Concept):
         )
 
 
-
 class TestConceptWithRepField(object):
     
     def test_build_produces_new_person(self):
