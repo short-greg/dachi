@@ -7,10 +7,12 @@ from abc import abstractmethod
 import faiss
 import numpy as np
 import inspect
-from dataclasses import dataclass, fields, MISSING
-
+from dataclasses import dataclass, fields, MISSING, field
+from pydantic import Field
 from typing_extensions import Self
+from abc import ABC
 # TODO: ad in a base class
+import pydantic
 
 T = typing.TypeVar('T')
 
@@ -44,7 +46,11 @@ def null_emb(x):
 
 class RepIdx(typing.Generic[T]):
 
-    def __init__(self, col: str, vk: faiss.Index, emb: typing.Callable[[T], np.ndarray]):
+    def __init__(
+        self, col: str, 
+        vk: faiss.Index, 
+        emb: typing.Callable[[T], np.ndarray]
+    ):
 
         super().__init__()
         self.col = col
@@ -80,12 +86,18 @@ class RepIdx(typing.Generic[T]):
             cls, col, vk, emb, *idx_args, **idx_kwargs
         )
 
+    @classmethod
+    def field(cls, col: str, vk: typing.Type[faiss.Index], emb: typing.Callable[[T], np.ndarray], *idx_args, **idx_kwargs) -> 'RepFactory[RepIdx]':
+        
+        return field(
+            default_factory=cls.F(col, vk, emb, *idx_args, **idx_kwargs)
+        )
 
 QR = typing.TypeVar('QR', bound=RepIdx)
 
 class RepFactory(typing.Generic[QR]):
 
-    def __init__(self, rep_cls, col: str, f: typing.Callable[[str], QR], emb, *args, **kwargs):
+    def __init__(self, rep_cls: typing.Type[RepIdx], col: str, f: typing.Callable[[str], QR], emb, *args, **kwargs):
         """
         Args:
             rep (typing.Type[V]): _description_
@@ -96,15 +108,16 @@ class RepFactory(typing.Generic[QR]):
         self.emb = emb
         self.args = args
         self.kwargs = kwargs
-    
+        
     def __call__(self) -> T:
         """
 
         Returns:
             V: 
         """
-        return self.rep_cls(self.col, self.f(*self.args, **self.kwargs), self.emb)
-
+        return self.rep_cls(
+            self.col, self.f(*self.args, **self.kwargs), self.emb
+        )
 
 @dataclass
 class RepMap(object):
@@ -125,6 +138,7 @@ class Concept(BaseModel):
 
     # y_idx: typing.Optional[np.array] = None
 
+    @dataclass
     class __rep__(RepMap):
         pass
 
@@ -183,13 +197,13 @@ class Concept(BaseModel):
         return pd.Series(self.to_dict())
 
     @conceptmethod
-    def filter(cls, comp: 'Comp'):
+    def filter(cls, comp: 'BinComp'):
         return ConceptQuery(
             cls, comp
         )
 
     @conceptmethod
-    def exclude(cls, comp: 'Comp'):
+    def exclude(cls, comp: 'BinComp'):
         return ConceptQuery(
             cls, ~comp
         )
@@ -207,7 +221,7 @@ class Concept(BaseModel):
 class RepMixin(object):
 
     @conceptmethod
-    def like(cls, comp: 'Comp'):
+    def like(cls, comp: 'BinComp'):
         return ConceptQuery(
             cls, comp
         )
@@ -240,21 +254,42 @@ class Val(object):
         return self.val
 
 
-class Comp(object):
+class BaseComp(object):
 
-    def __init__(self, lhs: typing.Union['Comp', 'Col', typing.Any], rhs: typing.Union['Comp', 'Col', typing.Any], f: typing.Callable[[typing.Any, typing.Any], bool]) -> None:
+    def query(self, df: pd.DataFrame, rep_map: RepMap) -> pd.Series:
+        pass
+
+    def __call__(self, df: pd.DataFrame, rep_map: RepMap) -> pd.DataFrame:
+        pass
+
+
+class BinComp(object):
+
+    def __init__(
+        self, lhs: typing.Union['BinComp', 'Col', typing.Any], 
+        rhs: typing.Union['BinComp', 'Col', typing.Any], 
+        f: typing.Callable[[typing.Any, typing.Any], bool]
+    ) -> None:
         
-        if not isinstance(lhs, Comp) and not isinstance(lhs, Col):
+        if not isinstance(lhs, BinComp) and not isinstance(lhs, Col):
             lhs = Val(lhs)
 
-        if not isinstance(rhs, Comp) and not isinstance(rhs, Col):
+        if not isinstance(rhs, BinComp) and not isinstance(rhs, Col):
             rhs = Val(rhs)
         
         self.lhs = lhs
         self.rhs = rhs
         self.f = f
 
-    def query(self, df: pd.DataFrame):
+    def query(self, df: pd.DataFrame) -> pd.Series:
+        """
+
+        Args:
+            df (pd.DataFrame): 
+
+        Returns:
+            The filter by comparison: 
+        """
         lhs = self.lhs.query(df)
         rhs = self.rhs.query(df)
         return self.f(lhs, rhs)
@@ -265,130 +300,273 @@ class Comp(object):
     
     def __xor__(self, other):
 
-        return Comp(self, other, lambda lhs, rhs: lhs ^ rhs)
+        return BinComp(self, other, lambda lhs, rhs: lhs ^ rhs)
 
     def __and__(self, other):
 
-        return Comp(self, other, lambda lhs, rhs: lhs & rhs)
+        return BinComp(self, other, lambda lhs, rhs: lhs & rhs)
 
     def __or__(self, other):
 
-        return Comp(self, other, lambda lhs, rhs: lhs | rhs)
+        return BinComp(self, other, lambda lhs, rhs: lhs | rhs)
     
     def __invert__(self):
 
-        return Comp(None, self, lambda lhs, rhs: ~rhs)
+        return BinComp(None, self, lambda lhs, rhs: ~rhs)
 
 
-class Rep(object):
+# class Rep(object):
 
-    def __init__(self, name: str):
+#     def __init__(self, name: str):
+#         """Create a reference to a representation in the Concept
 
-        self.name = name
+#         Args:
+#             name (str): The name of the representation
+#         """
+#         self.name = name
     
-    def get(self, rep_map: RepMap) -> RepIdx:
+#     def get(self, rep_map: RepMap) -> RepIdx:
+#         """Retrieve the RepIdx from the RepMap
 
-        return rep_map[self.name]
+#         Args:
+#             rep_map (RepMap): The RepMap to retrieve from
+
+#         Returns:
+#             RepIdx: The RepIdx 
+#         """
+#         return rep_map[self.name]
 
 
-@dataclass
-class Similarity(object):
+class BaseSim(ABC):
 
-    similarity: np.ndarray
-    indices: np.ndarray
+    @abstractmethod
+    def query(self, rep_map: RepMap, df: pd.DataFrame) -> pd.Series:
+        pass
 
+    def __call__(self, rep_map: RepMap, df: pd.DataFrame) -> pd.DataFrame:
 
-class Sim(object):
+        similarity = self.query(rep_map, df)
+        series = pd.Series(
+            np.full((len(df.index)), False, np.bool_),
+            similarity.indices
+        )
+        series[similarity.indices] = True
 
-    def __init__(self, rep: Rep, val, k: int=None):
+        return df.loc[self.query(rep_map, df)]
+
+    def __mul__(self, other) -> Self:
+
+        return AggSim(
+            self, other, lambda x, y: x * y
+        )
+        
+    def __add__(self, other) -> Self:
+
+        return AggSim(
+            self, other, lambda x, y: x + y
+        )
+
+    def __sub__(self, other) -> Self:
+
+        return AggSim(
+            self, other, lambda x, y: x - y
+        )
+
+    # How to limit the "similarity"
+
+class Sim(BaseSim):
+
+    def __init__(self, name: str, val, k: int):
 
         # val could also be a column
         # or a compare
-
-        self.rep = rep
+        self.name = name
         self.val = val
         self.k = k
 
-    def query(self, rep_map: RepMap, df: pd.DataFrame):
+    def query(self, rep_map: RepMap, df: pd.DataFrame) -> 'Similarity':
 
         indices = df.index.tolist()
 
         if isinstance(self.val, Col):
-            pass
-            # vals = self.val.query(df)
+            val = self.val.query(df).index
         elif isinstance(self.val, typing.List):
             val = self.val
         else:
             val = [self.val]
         rep_idx = self.rep.get(rep_map)
         
-        # How to get the rep index subset
-
-        # todo: Take into account k can 
         return rep_idx.like(val, self.k, subset=indices)
+        # How to get the rep index subset
+        # return series
+        # series = pd.Series(
+        #     np.full((len(indices)), False, np.bool_),
+        #     indices
+        # )
+        # series[rep_idx.like(val, self.k, subset=indices)] = True
+        # # How to get the rep index subset
 
-        # return RepSimilarity
 
-        # lhs = self.lhs.query(df)
-        # rhs = self.rhs.query(df)
-        # return self.f(lhs, rhs)
+class AggSim(BaseSim):
 
-    def __call__(self):
-        pass
+    def __init__(self, lhs, rhs, f: typing.Callable[[typing.Any, typing.Any], 'Similarity']):
 
-    def __call__(self, df: pd.DataFrame) -> typing.Any:
+        # val could also be a column
+        # or a compare
+        self.lhs = lhs
+        self.rhs = rhs
+        self.f = f
 
-        return df[self.query(df)]
+    def query(self, rep_map: RepMap, df: pd.DataFrame) -> 'Similarity':
+
+        if isinstance(self.lhs, BaseSim):
+            lhs = self.lhs.query(rep_map, df)
+        else:
+            lhs = self.lhs
+        
+        if isinstance(self.rhs, BaseSim):
+            rhs = self.rhs.query((rep_map, df))
+        else:
+            rhs = self.rhs
+        return self.f(lhs, rhs)
+
+# TODO: Change this... Have the similarity
+# contain all indices + a "chosen"
+# if not "chosen" will be 0
+
+
+@dataclass
+class Similarity(object):
+
+    value: np.ndarray
+    indices: np.ndarray
+
+    def align(self, other: 'Similarity'):
+        all_indices = np.union1d(self.indices, other.indices)
+
+        # Hold all of the similarities
+        new_sim_self = np.zeros_like(all_indices, dtype=self.value.dtype)
+        new_sim_other = np.zeros_like(all_indices, dtype=other.value.dtype)
+
+        # 
+        self_pos = np.searchsorted(all_indices, self.indices)
+        other_pos = np.searchsorted(all_indices, other.indices)
+
+        new_sim_self[self_pos] = self.value
+        new_sim_other[other_pos] = other.value
+        return new_sim_self, new_sim_other, all_indices
     
-    def query(self, rep_map: RepMap):
-        pass
+    def _op(self, other, f) -> Self:
+
+        if isinstance(other, Similarity):
+            v_self, v_other, indices = self.align(self, other)
+            return Similarity(f(v_self, v_other), indices)
+        return Similarity(
+            f(self.value, other), indices
+        )
+    
+    def _comp_op(self, other, f) -> Self:
+
+        if isinstance(other, Similarity):
+            v_self, v_other, indices = self.align(self, other)
+            result = f(v_self, v_other)
+        else:
+            indices = self.indices
+            result = f(self.value, other)
+        return Similarity(
+            result, indices
+        )
+
+    def __len__(self) -> int:
+        return self.value.shape[0]
+    
+    def __mul__(self, other) -> Self:
+
+        return self._op(
+            other, lambda x, y: x * y
+        )
+        
+    def __add__(self, other) -> Self:
+
+        return self._op(
+            other, lambda x, y: x + y
+        )
+
+    def __sub__(self, other) -> Self:
+
+        return self._op(
+            other, lambda x, y: x - y
+        )
+    
+    # TODO: Add more such as "less than", max etc
+
+# like( )  <= 
+# Sim() <= I want this to return numerical values
+
+# This makes it a comparison
+# Sim() returns a "Similarity"
+# like(Sim() + Sim(), N=10))
+
+# # I want to make it something like this
+# like(0.5 * Sim('R', Comp) + 0.5 Sim()
+
+# Sim() + 
 
 
 class Col(object):
+    """A column in the model
+    """
 
     def __init__(self, name: str):
-
+        """
+        Args:
+            name (str): Name of the column
+        """
         self.name = name
     
-    def __eq__(self, other):
+    def __eq__(self, other) -> 'BinComp':
+        """Check the eqquality of two columns
 
-        return Comp(self, other, lambda lhs, rhs: lhs == rhs)
+        Args:
+            other (_type_): The other Col com compare with
+
+        Returns:
+            Comp: The comparison for equality
+        """
+
+        return BinComp(self, other, lambda lhs, rhs: lhs == rhs)
     
-    def __lt__(self, other):
+    def __lt__(self, other) -> 'BinComp':
+        """Check whether column is less than another value
 
-        return Comp(self, other, lambda lhs, rhs: lhs < rhs)
+        Args:
+            other: The value to compare against
 
-    def __le__(self, other):
+        Returns:
+            Comp: The comparison for equality
+        """
 
-        return Comp(self, other, lambda lhs, rhs: lhs <= rhs)
+        return BinComp(self, other, lambda lhs, rhs: lhs < rhs)
 
-    def __gt__(self, other):
+    def __le__(self, other) -> 'BinComp':
 
-        return Comp(self, other, lambda lhs, rhs: lhs > rhs)
+        return BinComp(self, other, lambda lhs, rhs: lhs <= rhs)
 
-    def __ge__(self, other):
+    def __gt__(self, other) -> 'BinComp':
 
-        return Comp(self, other, lambda lhs, rhs: lhs > rhs)
+        return BinComp(self, other, lambda lhs, rhs: lhs > rhs)
 
-    def __ge__(self, other):
+    def __ge__(self, other) -> 'BinComp':
 
-        return Comp(self, other, lambda lhs, rhs: lhs >= rhs)
+        return BinComp(self, other, lambda lhs, rhs: lhs > rhs)
+
+    def __ge__(self, other) -> 'BinComp':
+
+        return BinComp(self, other, lambda lhs, rhs: lhs >= rhs)
 
     def query(self, df: pd.DataFrame) -> typing.Any:
 
         return df[self.name]
-
-
-
-# class Rep(object):
-
-#     def __init__(self, name: str):
-
-#         self.name = name
-
-#     def query(self, df: pd.DataFrame) -> typing.Any:
-
-#         return df[self.name]
 
 
 C = typing.TypeVar('C', bound=Concept)
@@ -396,12 +574,12 @@ C = typing.TypeVar('C', bound=Concept)
 # Think about how to handle this
 class ConceptQuery(typing.Generic[C]):
 
-    def __init__(self, concept_cls: typing.Type[C], comp: Comp):
+    def __init__(self, concept_cls: typing.Type[C], comp: BinComp):
 
         self.concept = concept_cls
         self.comp = comp
 
-    def filter(self, comp: Comp) -> Self:
+    def filter(self, comp: BinComp) -> Self:
 
         return ConceptQuery[C](
             self.comp & comp
@@ -481,6 +659,19 @@ class ConceptManager(object):
 concept_manager = ConceptManager()
 
 
+
+
+
+# class Rep(object):
+
+#     def __init__(self, name: str):
+
+#         self.name = name
+
+#     def query(self, df: pd.DataFrame) -> typing.Any:
+
+#         return df[self.name]
+
 # class RepBase(object):
 #     pass
 
@@ -524,10 +715,6 @@ concept_manager = ConceptManager()
 # 4) If not passed in will retrieve the reference
 #  ... Does not add the vector to the index unless
 #  .. saved
-
-
-# class Rep(object):
-#     pass
 
 
 # class ValRep(Rep, typing.Generic[T]):
@@ -623,4 +810,9 @@ concept_manager = ConceptManager()
 #     def __init__(self, rep: TableRep, **data):
 #         self.rep = rep
 #         super().__init__(**data)
+
+
+# Sim should be a type of comparison?
+# Boolean comp
+# Similarity Comp
 

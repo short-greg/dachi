@@ -6,22 +6,26 @@ from dachi.store._concept import (
 import faiss
 import numpy as np
 import pandas as pd
+import pydantic
+
+from dataclasses import field
+from dataclasses import dataclass
 
 
 class Person(_concept.Concept):
 
-    manager: typing.ClassVar[_concept.ConceptManager] = _concept.concept_manager
+    __manager__: typing.ClassVar[_concept.ConceptManager] = _concept.concept_manager
 
     name: str
     age: int
 
 
-class PersonRep(_concept.Concept):
+# class PersonRep(_concept.Concept):
 
-    manager: typing.ClassVar[_concept.ConceptManager] = _concept.concept_manager
+#     manager: typing.ClassVar[_concept.ConceptManager] = _concept.concept_manager
 
-    name: str
-    age: int
+#     name: str
+#     age: int
 
 
 class TestConcept:
@@ -87,6 +91,7 @@ class TestConcept:
         for c in query:
             persons.append(c)
         assert persons[0].age == 10
+
 
 
 class TestCol:
@@ -194,6 +199,7 @@ class TestRepIdx:
         idx.add(0, 'hi')
         idx.add(1, 'bye')
         similar = idx.like(['x'], 1)
+
         assert len(similar) == 1
 
 
@@ -221,3 +227,39 @@ class TestRepFactory:
         idx.add(0, 'hi')
         idx.remove(0)
         assert len(idx) == 0
+
+
+class PersonWRep(_concept.Concept):
+
+    manager: typing.ClassVar[_concept.ConceptManager] = _concept.concept_manager
+    name: str
+    age: int
+
+    @dataclass
+    class __rep__(_concept.RepMap):
+
+        name: RepIdx = _concept.RepIdx.field(
+            'name', faiss.IndexFlatL2, 
+            lambda x: np.random.randn(len(x), 4), 4
+        )
+
+
+
+class TestConceptWithRepField(object):
+    
+    def test_build_produces_new_person(self):
+
+        Person.build()
+        person = Person(name='X', age=10)
+        person.save()
+        data = _concept.concept_manager.get_data(Person)
+        assert data.loc[0, 'age'] == 10
+
+
+# How do I incorportae similarity
+
+# Sim, Comp => both of these return 
+# How to 
+
+# for each index => set boolean to True
+# 
