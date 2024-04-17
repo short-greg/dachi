@@ -1,18 +1,21 @@
-# from ._struct import BaseStruct
+# 1st party
+from abc import abstractmethod
+from dataclasses import dataclass, fields, MISSING, field
+import typing
+from abc import ABC
+from typing_extensions import Self
+import inspect
+from functools import wraps
+
+# 3rd party
 from pydantic import BaseModel
 import pandas as pd
-import typing
-from functools import wraps
-from abc import abstractmethod
 import faiss
 import numpy as np
-import inspect
-from dataclasses import dataclass, fields, MISSING, field
 from pydantic import Field
-from typing_extensions import Self
-from abc import ABC
+
+
 # TODO: ad in a base class
-import pydantic
 
 T = typing.TypeVar('T')
 
@@ -44,7 +47,9 @@ def null_emb(x):
     return x
 
 
-class RepIdx(typing.Generic[T]):
+class Index(typing.Generic[T]):
+    """Base class for Index. 
+    """
 
     def __init__(
         self, col: str, 
@@ -68,6 +73,29 @@ class RepIdx(typing.Generic[T]):
     def __len__(self) -> int:
         return self.vk.ntotal
 
+    def max_values_per_index(self, values_2d, indices_2d):
+        # Flatten the arrays
+        indices = indices_2d.flatten()
+        values = values_2d.flatten()
+
+        # Get the unique indices and the inverse mapping
+        unique_indices, inverse = np.unique(indices, return_inverse=True)
+
+        # We will use a large negative value to ensure it doesn't interfere with the max calculation
+        # Ensure that the max cannot naturally be this low; adjust as necessary.
+        # The size of the output array is determined by the max index plus one
+        large_negative_value = np.full(unique_indices.shape, -np.inf)
+
+        # Use bincount to sum up the values placed at positions specified by 'inverse'
+        # The weights are the actual values to aggregate
+        # max_values = np.bincount(inverse, weights=values, minlength=len(unique_indices))
+
+        # However, since bincount sums, we must ensure each position is initialized properly
+        # First, we use np.maximum.at to place the max in an initialized array of large negatives
+        np.maximum.at(large_negative_value, inverse, values)
+
+        return large_negative_value, unique_indices
+
     def like(
         self, vals: typing.Union[T, typing.List[T]], k: int=1, subset=None
     ) -> 'Similarity':
@@ -75,32 +103,38 @@ class RepIdx(typing.Generic[T]):
         # TODO: limit to the subset
         x = self.emb(vals)
         D, I = self.vk.search(x=x, k=k)
+        D, I = self.max_values_per_index(D, I)
         return Similarity(D, I)
     
     # def F(cls, vk: faiss.Index, emb: typing.Callable[[T], np.ndarray]) -> RepFactory[Self]:
 
     @classmethod
-    def F(cls, col: str, vk: typing.Type[faiss.Index], emb: typing.Callable[[T], np.ndarray], *idx_args, **idx_kwargs) -> 'RepFactory[RepIdx]':
+    def F(cls, col: str, vk: typing.Type[faiss.Index], emb: typing.Callable[[T], np.ndarray], *idx_args, **idx_kwargs) -> 'IdxFactory[Index]':
 
-        return RepFactory[Self](
+        return IdxFactory[Self](
             cls, col, vk, emb, *idx_args, **idx_kwargs
         )
 
     @classmethod
-    def field(cls, col: str, vk: typing.Type[faiss.Index], emb: typing.Callable[[T], np.ndarray], *idx_args, **idx_kwargs) -> 'RepFactory[RepIdx]':
+    def field(cls, col: str, vk: typing.Type[faiss.Index], emb: typing.Callable[[T], np.ndarray], *idx_args, **idx_kwargs) -> 'IdxFactory[Index]':
         
         return field(
             default_factory=cls.F(col, vk, emb, *idx_args, **idx_kwargs)
         )
 
-QR = typing.TypeVar('QR', bound=RepIdx)
+QR = typing.TypeVar('QR', bound=Index)
 
-class RepFactory(typing.Generic[QR]):
 
-    def __init__(self, rep_cls: typing.Type[RepIdx], col: str, f: typing.Callable[[str], QR], emb, *args, **kwargs):
-        """
+class IdxFactory(typing.Generic[QR]):
+
+    def __init__(self, rep_cls: typing.Type[Index], col: str, f: typing.Callable[[str], QR], emb, *args, **kwargs):
+        """Factory for creating Indexes to use in a concept
+
         Args:
-            rep (typing.Type[V]): _description_
+            rep_cls (typing.Type[Index]): The class to create the index for
+            col (str): The name of the column the index uses
+            f (typing.Callable[[str], QR]): The function to create the actual index
+            emb (_type_): The embedding function
         """
         self.rep_cls = rep_cls
         self.col = col
@@ -120,12 +154,15 @@ class RepFactory(typing.Generic[QR]):
         )
 
 @dataclass
-class RepMap(object):
+class IdxMap(object):
+    """Class to define the indexes that are stored
+    """
 
     def __getitem__(self, key: str):
         
+        print(key)
         value = getattr(self, key)
-        if not isinstance(value, RepIdx):
+        if not isinstance(value, Index):
             raise AttributeError(f'RepMap has no attribute named {key}')
         return value
 
@@ -139,7 +176,7 @@ class Concept(BaseModel):
     # y_idx: typing.Optional[np.array] = None
 
     @dataclass
-    class __rep__(RepMap):
+    class __rep__(IdxMap):
         pass
 
     @classmethod
@@ -250,17 +287,17 @@ class Val(object):
     def __init__(self, val) -> None:
         self.val = val
 
-    def query(self, df: pd.DataFrame):
+    def query(self, df: pd.DataFrame, rep_map: IdxMap):
         return self.val
 
 
 class BaseComp(object):
 
     @abstractmethod
-    def query(self, df: pd.DataFrame, rep_map: RepMap) -> pd.Series:
+    def query(self, df: pd.DataFrame, rep_map: IdxMap) -> pd.Series:
         pass
 
-    def __call__(self, df: pd.DataFrame, rep_map: RepMap) -> pd.DataFrame:
+    def __call__(self, df: pd.DataFrame, rep_map: IdxMap) -> pd.DataFrame:
         """
 
         Args:
@@ -296,6 +333,13 @@ class BinComp(BaseComp):
         rhs: typing.Union['BinComp', 'Col', typing.Any], 
         f: typing.Callable[[typing.Any, typing.Any], bool]
     ) -> None:
+        """_summary_
+
+        Args:
+            lhs (typing.Union[BinComp;, Col;, typing.Any]): _description_
+            rhs (typing.Union[BinComp;, &#39;Col&#39;, typing.Any]): _description_
+            f (typing.Callable[[typing.Any, typing.Any], bool]): _description_
+        """
         
         if not isinstance(lhs, BinComp) and not isinstance(lhs, Col):
             lhs = Val(lhs)
@@ -307,7 +351,7 @@ class BinComp(BaseComp):
         self.rhs = rhs
         self.f = f
 
-    def query(self, df: pd.DataFrame, rep_map: RepMap) -> pd.Series:
+    def query(self, df: pd.DataFrame, rep_map: IdxMap) -> pd.Series:
         """
 
         Args:
@@ -316,29 +360,37 @@ class BinComp(BaseComp):
         Returns:
             The filter by comparison: 
         """
-        lhs = self.lhs.query(df)
-        rhs = self.rhs.query(df)
+        lhs = self.lhs.query(df, rep_map)
+        rhs = self.rhs.query(df, rep_map)
         return self.f(lhs, rhs)
 
 
 class BaseSim(ABC):
 
     @abstractmethod
-    def query(self, rep_map: RepMap, df: pd.DataFrame) -> pd.Series:
+    def query(self, df: pd.DataFrame, rep_map: IdxMap) -> 'Similarity':
         pass
+    
+    def __call__(self, df: pd.DataFrame, rep_map: IdxMap) -> pd.DataFrame:
 
-    def __call__(self, rep_map: RepMap, df: pd.DataFrame) -> pd.DataFrame:
-
-        similarity = self.query(rep_map, df)
+        similarity = self.query(df, rep_map)
+        # TODO: FIX!
         series = pd.Series(
             np.full((len(df.index)), False, np.bool_),
-            similarity.indices
+            df.index
         )
         series[similarity.indices] = True
-
         return series
+    
+    # def top(self, k: int, largest: bool=False):
+        
+    #     def _(self, other):
+    #         return self
 
-        # return df.loc[self.query(rep_map, df)]
+    #     return AggSim(
+    #         self, None, _
+    #     )
+
 
     def __mul__(self, other) -> Self:
 
@@ -376,7 +428,7 @@ class Sim(BaseSim):
         self.val = val
         self.k = k
 
-    def query(self, rep_map: RepMap, df: pd.DataFrame) -> 'Similarity':
+    def query(self, df: pd.DataFrame, rep_map: IdxMap) -> 'Similarity':
         """
         Args:
             rep_map (RepMap): 
@@ -393,7 +445,8 @@ class Sim(BaseSim):
             val = self.val
         else:
             val = [self.val]
-        rep_idx = self.rep.get(rep_map)
+
+        rep_idx = rep_map[self.name]
         
         return rep_idx.like(val, self.k, subset=indices)
 
@@ -415,25 +468,26 @@ class AggSim(BaseSim):
         self.rhs = rhs
         self.f = f
 
-    def query(self, rep_map: RepMap, df: pd.DataFrame) -> 'Similarity':
+    def query(self, df: pd.DataFrame, idx_map: IdxMap) -> 'Similarity':
         """
         Args:
-            rep_map (RepMap): 
+            idx_map (IdxMap): 
             df (pd.DataFrame): 
 
         Returns:
             Similarity: 
         """
         if isinstance(self.lhs, BaseSim):
-            lhs = self.lhs.query(rep_map, df)
+            lhs = self.lhs.query(df, idx_map)
         else:
             lhs = self.lhs
         
         if isinstance(self.rhs, BaseSim):
-            rhs = self.rhs.query((rep_map, df))
+            rhs = self.rhs.query(df, idx_map)
         else:
             rhs = self.rhs
-        return self.f(lhs, rhs)
+        s = self.f(lhs, rhs)
+        return s
 
 
 class Like(BaseComp):
@@ -446,7 +500,7 @@ class Like(BaseComp):
         """
         self.sim = sim
 
-    def query(self, rep_map: RepMap, df: pd.DataFrame) -> pd.DataFrame:
+    def query(self, df: pd.DataFrame, rep_map: IdxMap) -> pd.DataFrame:
         """
 
         Args:
@@ -458,8 +512,8 @@ class Like(BaseComp):
         """
         return self.sim(rep_map, df)
 
-    def __call__(self, df: pd.DataFrame, rep_map: RepMap) -> pd.DataFrame:
-        return df[self.query(rep_map, df)]
+    def __call__(self, df: pd.DataFrame, rep_map: IdxMap) -> pd.DataFrame:
+        return df[self.query(df, rep_map)]
 
 # TODO: Change this... Have the similarity
 # contain all indices + a "chosen"
@@ -494,21 +548,21 @@ class Similarity(object):
 
         new_sim_self[self_pos] = self.value
         new_sim_other[other_pos] = other.value
+        print(all_indices)
         return new_sim_self, new_sim_other, all_indices
     
     def _op(self, other, f) -> Self:
-        """_summary_
+        """Execute an operation between two similarities
 
         Args:
-            other (_type_): _description_
-            f (_type_): _description_
+            other: The value to update the similarity with
+            f: The function to use on two similarities
 
         Returns:
-            Self: _description_
+            Self: The resulting similarity
         """
-
         if isinstance(other, Similarity):
-            v_self, v_other, indices = self.align(self, other)
+            v_self, v_other, indices = self.align(other)
             return Similarity(f(v_self, v_other), indices)
         return Similarity(
             f(self.value, other), indices
@@ -659,7 +713,7 @@ class Col(object):
         """
         return BinComp(self, other, lambda lhs, rhs: lhs >= rhs)
 
-    def query(self, df: pd.DataFrame) -> typing.Any:
+    def query(self, df: pd.DataFrame, rep_map: IdxMap) -> typing.Any:
         """Retrieve the column
 
         Args:
@@ -694,7 +748,12 @@ class ConceptQuery(typing.Generic[C]):
     
     def __iter__(self) -> typing.Iterator[C]:
 
-        sub_df = self.comp(self.concept.__manager__.get_data(self.concept))
+        concept = self.concept.__manager__.get_data(self.concept)
+        idx = self.concept.__manager__.get_rep(self.concept)
+
+        sub_df = self.comp(
+            concept, idx
+        )
 
         for _, row in sub_df.iterrows():
             yield self.concept(**row.to_dict())
@@ -705,7 +764,7 @@ class ConceptManager(object):
     def __init__(self):
 
         self._concepts = {}
-        self._field_indices: typing.Dict[str, typing.List] = {}
+        self._field_reps: typing.Dict[str, typing.List] = {}
         self._concept_reps: typing.Dict[str, typing.List] = {}
         self._ids = {}
 
@@ -719,7 +778,7 @@ class ConceptManager(object):
         df = df.astype(dict(zip(columns, dtypes)))
 
         self._concepts[concept.model_name()] = df
-        self._field_indices[concept.model_name()] = concept.__rep__()
+        self._field_reps[concept.model_name()] = concept.__rep__()
         self._ids[concept.model_name()] = 0
 
     def add_rep(self, rep: typing.Type[RepMixin]):
@@ -739,7 +798,11 @@ class ConceptManager(object):
         # add columns for the representation
         df = df.astype(dict(zip(columns, dtypes)))
         self._concepts[rep.model_name()] = df
-        self._field_indices[rep.rep_name()] = rep.__rep__()
+        self._field_reps[rep.rep_name()] = rep.__rep__()
+
+    def get_rep(self, concept: typing.Type[Concept]) -> pd.DataFrame:
+
+        return self._field_reps[concept.model_name()]
 
     def get_data(self, concept: typing.Type[Concept]) -> pd.DataFrame:
 

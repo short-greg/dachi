@@ -1,7 +1,8 @@
 import typing
 from dachi.store import _concept
 from dachi.store._concept import (
-    Col, RepIdx, Concept, ConceptManager
+    Col, Index, Concept, ConceptManager,
+    IdxMap, Sim, AggSim
 )
 import faiss
 import numpy as np
@@ -20,12 +21,13 @@ class Person(_concept.Concept):
     age: int
 
 
-# class PersonRep(_concept.Concept):
+class DummyIdxMap(IdxMap):
 
-#     manager: typing.ClassVar[_concept.ConceptManager] = _concept.concept_manager
+    def __init__(self, n=2):
 
-#     name: str
-#     age: int
+        emb = lambda x: np.array(x)
+        idx = Index('x', faiss.IndexFlatL2(n), emb)
+        self.r = idx
 
 
 class TestConcept:
@@ -93,7 +95,6 @@ class TestConcept:
         assert persons[0].age == 10
 
 
-
 class TestCol:
 
     def test_eq_retrieves_less_than(self):
@@ -102,7 +103,7 @@ class TestCol:
             {'x': [1, 2], 'y': [3, 4]}
         )
         comp = Col('x') == 2
-        df2 = comp(df)
+        df2 = comp(df, None)
         assert df2.iloc[0]['y'] == 4
 
     def test_lt_retrieves_less_than(self):
@@ -111,7 +112,7 @@ class TestCol:
             {'x': [1, 2], 'y': [3, 4]}
         )
         comp = Col('x') < 2
-        df2 = comp(df)
+        df2 = comp(df, None)
         assert df2.iloc[0]['y'] == 3
 
     def test_gt_retrieves_greater_than(self):
@@ -120,7 +121,7 @@ class TestCol:
             {'x': [1, 2], 'y': [3, 4]}
         )
         comp = Col('x') > 1
-        df2 = comp(df)
+        df2 = comp(df, None)
         assert df2.iloc[0]['y'] == 4
 
     def test_ge_retrieves_greater_than_or_equal(self):
@@ -129,7 +130,7 @@ class TestCol:
             {'x': [1, 2], 'y': [3, 4]}
         )
         comp = Col('x') >= 2
-        df2 = comp(df)
+        df2 = comp(df, None)
         assert df2.iloc[0]['y'] == 4
 
     def test_ge_retrieves_greater_than_or_equal(self):
@@ -138,7 +139,7 @@ class TestCol:
             {'x': [1, 2], 'y': [3, 4]}
         )
         comp = Col('x') >= 2
-        df2 = comp(df)
+        df2 = comp(df, None)
         assert df2.iloc[0]['y'] == 4
 
 
@@ -150,7 +151,7 @@ class TestComp:
             {'x': [1, 2], 'y': [3, 4]}
         )
         comp = (Col('x') == 2) & (Col('y') == 4)
-        df2 = comp(df)
+        df2 = comp(df, None)
         assert df2.iloc[0]['y'] == 4
 
     def test_or_retrieves_correct_row(self):
@@ -159,16 +160,16 @@ class TestComp:
             {'x': [1, 2], 'y': [3, 4]}
         )
         comp = (Col('x') == 2) | (Col('y') == 9)
-        df2 = comp(df)
+        df2 = comp(df, None)
         assert df2.iloc[0]['y'] == 4
 
 
-class TestRepIdx:
+class TestIndex:
 
     def test_rep_idx_creates_rep(self):
 
         emb = lambda x: np.random.randn(len(x), 4)
-        idx = RepIdx('x', faiss.IndexFlatL2(4), emb)
+        idx = Index('x', faiss.IndexFlatL2(4), emb)
         
         idx.add(0, 'hi')
         assert len(idx) == 1
@@ -176,7 +177,7 @@ class TestRepIdx:
     def test_rep_idx_removes_from_rep(self):
 
         emb = lambda x: np.random.randn(len(x), 4)
-        idx = RepIdx('x', faiss.IndexFlatL2(4), emb)
+        idx = Index('x', faiss.IndexFlatL2(4), emb)
         
         idx.add(0, 'hi')
         idx.remove(0)
@@ -185,7 +186,7 @@ class TestRepIdx:
     def test_rep_idx_adds_multiple(self):
 
         emb = lambda x: np.random.randn(len(x), 4)
-        idx = RepIdx('x', faiss.IndexFlatL2(4), emb)
+        idx = Index('x', faiss.IndexFlatL2(4), emb)
         
         idx.add(0, 'hi')
         idx.add(1, 'bye')
@@ -194,7 +195,7 @@ class TestRepIdx:
     def test_rep_idx_gets_only_one_similar(self):
 
         emb = lambda x: np.random.randn(len(x), 4)
-        idx = RepIdx('x', faiss.IndexFlatL2(4), emb)
+        idx = Index('x', faiss.IndexFlatL2(4), emb)
         
         idx.add(0, 'hi')
         idx.add(1, 'bye')
@@ -203,12 +204,12 @@ class TestRepIdx:
         assert len(similar) == 1
 
 
-class TestRepFactory:
+class TestIdxFactory:
 
     def test_rep_factory_creates_rep_idx(self):
 
         emb = lambda x: np.random.randn(len(x), 4)
-        factory = RepIdx.F(
+        factory = Index.F(
             'x', faiss.IndexFlatL2, emb, 4
         )
         idx = factory()
@@ -219,7 +220,7 @@ class TestRepFactory:
     def test_rep_idx_removes_from_rep(self):
 
         emb = lambda x: np.random.randn(len(x), 4)
-        factory = RepIdx.F(
+        factory = Index.F(
             'x', faiss.IndexFlatL2, emb, 4
         )
         idx = factory()
@@ -236,9 +237,9 @@ class PersonWRep(_concept.Concept):
     age: int
 
     @dataclass
-    class __rep__(_concept.RepMap):
+    class __rep__(_concept.IdxMap):
 
-        name: RepIdx = _concept.RepIdx.field(
+        name: Index = _concept.Index.field(
             'name', faiss.IndexFlatL2, 
             lambda x: np.random.randn(len(x), 4), 4
         )
@@ -255,10 +256,49 @@ class TestConceptWithRepField(object):
         assert data.loc[0, 'age'] == 10
 
 
-# How do I incorportae similarity
+class TestSim:
 
-# Sim, Comp => both of these return 
-# How to 
+    def test_sim_returns_similarity_for_first(self):
 
-# for each index => set boolean to True
-# 
+        df = pd.DataFrame(
+            {'x': [1, 2], 'y': [3, 4]}
+        )
+        
+        idx_map = DummyIdxMap()
+        idx_map.r.add(0, np.array([1, 3]))
+        idx_map.r.add(1, np.array([3, 4]))
+        sim = Sim('r', np.array([3, 4]), 1)
+        series = sim(df, idx_map)
+        print(series)
+        assert series[1].item() is True
+        assert series[0].item() is False
+
+    def test_sim_returns_both_values(self):
+
+        df = pd.DataFrame(
+            {'x': [1, 2], 'y': [3, 4]}
+        )
+        
+        idx_map = DummyIdxMap()
+        idx_map.r.add(0, np.array([1, 3]))
+        idx_map.r.add(1, np.array([3, 4]))
+        sim = Sim('r', np.array([3, 4]), 2)
+        series = sim(df, idx_map)
+        assert series[1].item() is True
+        assert series[0].item() is True
+
+    def test_add_creates_agg_sim(self):
+
+        df = pd.DataFrame(
+            {'x': [1, 2], 'y': [3, 4]}
+        )
+        
+        idx_map = DummyIdxMap()
+        idx_map.r.add(0, np.array([1, 3]))
+        idx_map.r.add(1, np.array([3, 4]))
+        sim = Sim('r', np.array([3, 4]), 2)
+        sim2 = Sim('r', np.array([1, 3]), 2)
+        sim3 = sim + sim2
+        series = sim3(df, idx_map)
+        assert series[1].item() is True
+        assert series[0].item() is True
