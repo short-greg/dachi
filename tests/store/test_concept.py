@@ -2,7 +2,7 @@ import typing
 from dachi.store import _concept
 from dachi.store._concept import (
     Col, Index, Concept, ConceptManager,
-    IdxMap, Sim, AggSim
+    IdxMap, Sim, AggSim, Like
 )
 import faiss
 import numpy as np
@@ -26,7 +26,7 @@ class DummyIdxMap(IdxMap):
     def __init__(self, n=2):
 
         emb = lambda x: np.array(x)
-        idx = Index('x', faiss.IndexFlatL2(n), emb)
+        idx = Index('x', faiss.IndexFlatL2(n), emb, True)
         self.r = idx
 
 
@@ -169,7 +169,7 @@ class TestIndex:
     def test_rep_idx_creates_rep(self):
 
         emb = lambda x: np.random.randn(len(x), 4)
-        idx = Index('x', faiss.IndexFlatL2(4), emb)
+        idx = Index('x', faiss.IndexFlatL2(4), emb, True)
         
         idx.add(0, 'hi')
         assert len(idx) == 1
@@ -177,7 +177,7 @@ class TestIndex:
     def test_rep_idx_removes_from_rep(self):
 
         emb = lambda x: np.random.randn(len(x), 4)
-        idx = Index('x', faiss.IndexFlatL2(4), emb)
+        idx = Index('x', faiss.IndexFlatL2(4), emb, True)
         
         idx.add(0, 'hi')
         idx.remove(0)
@@ -186,7 +186,7 @@ class TestIndex:
     def test_rep_idx_adds_multiple(self):
 
         emb = lambda x: np.random.randn(len(x), 4)
-        idx = Index('x', faiss.IndexFlatL2(4), emb)
+        idx = Index('x', faiss.IndexFlatL2(4), emb, True)
         
         idx.add(0, 'hi')
         idx.add(1, 'bye')
@@ -195,7 +195,7 @@ class TestIndex:
     def test_rep_idx_gets_only_one_similar(self):
 
         emb = lambda x: np.random.randn(len(x), 4)
-        idx = Index('x', faiss.IndexFlatL2(4), emb)
+        idx = Index('x', faiss.IndexFlatL2(4), emb, True)
         
         idx.add(0, 'hi')
         idx.add(1, 'bye')
@@ -268,24 +268,22 @@ class TestSim:
         idx_map.r.add(0, np.array([1, 3]))
         idx_map.r.add(1, np.array([3, 4]))
         sim = Sim('r', np.array([3, 4]), 1)
-        series = sim(df, idx_map)
-        print(series)
-        assert series[1].item() is True
-        assert series[0].item() is False
+        similarity = sim(df, idx_map)
+        assert 1 in similarity.indices
+        assert 0 not in similarity.indices
 
     def test_sim_returns_both_values(self):
 
         df = pd.DataFrame(
             {'x': [1, 2], 'y': [3, 4]}
         )
-        
         idx_map = DummyIdxMap()
         idx_map.r.add(0, np.array([1, 3]))
         idx_map.r.add(1, np.array([3, 4]))
         sim = Sim('r', np.array([3, 4]), 2)
-        series = sim(df, idx_map)
-        assert series[1].item() is True
-        assert series[0].item() is True
+        similarity = sim(df, idx_map)
+        assert 1 in similarity.indices
+        assert 0 in similarity.indices
 
     def test_add_creates_agg_sim(self):
 
@@ -299,6 +297,89 @@ class TestSim:
         sim = Sim('r', np.array([3, 4]), 2)
         sim2 = Sim('r', np.array([1, 3]), 2)
         sim3 = sim + sim2
-        series = sim3(df, idx_map)
-        assert series[1].item() is True
-        assert series[0].item() is True
+        similarity = sim3(df, idx_map)
+        assert 1 in similarity.indices
+        assert 0 in similarity.indices
+
+    def test_add_results_in_best_getting_chosen(self):
+
+        df = pd.DataFrame(
+            {'x': [1, 2], 'y': [3, 4]}
+        )
+        
+        idx_map = DummyIdxMap()
+        idx_map.r.add(0, np.array([1, 3]))
+        idx_map.r.add(1, np.array([3, 4]))
+        sim = Sim('r', np.array([3, 4]), 1)
+        sim2 = Sim('r', np.array([3, 3.5]), 1)
+        sim3 = sim + sim2
+        similarity = sim3(df, idx_map)
+        assert 1 in similarity.indices
+        assert 0 not in similarity.indices
+
+    def test_add_results_in_both_getting_chosen(self):
+
+        df = pd.DataFrame(
+            {'x': [1, 2], 'y': [3, 4]}
+        )
+        
+        idx_map = DummyIdxMap()
+        idx_map.r.add(0, np.array([1, 3]))
+        idx_map.r.add(1, np.array([3, 4]))
+        sim = Sim('r', np.array([3, 4]), 1)
+        sim2 = Sim('r', np.array([1, 3]), 1)
+        sim3 = 0.1 * sim + 2.0 * sim2
+        similarity = sim3(df, idx_map)
+        assert 1 in similarity.indices
+        assert 0 in similarity.indices
+
+class TestLike:
+
+    def test_like_returns_similarity_for_first(self):
+
+        df = pd.DataFrame(
+            {'x': [1, 2], 'y': [3, 4]}
+        )
+        
+        idx_map = DummyIdxMap()
+        idx_map.r.add(0, np.array([1, 3]))
+        idx_map.r.add(1, np.array([3, 4]))
+        like = Like(Sim('r', np.array([3, 4]), 1), 1)
+        result = like(df, idx_map)
+        assert 1 in result.index
+        assert 0 not in result.index
+
+    def test_like_returns_similarity_for_first_when_topk(self):
+
+        df = pd.DataFrame(
+            {'x': [1, 2], 'y': [3, 4]}
+        )
+        
+        idx_map = DummyIdxMap()
+        idx_map.r.add(0, np.array([1, 3]))
+        idx_map.r.add(1, np.array([3, 4]))
+        like = Like(Sim('r', np.array([3, 4]), 2), 1)
+        result = like(df, idx_map)
+        print(result)
+        assert 1 in result.index
+        assert 0 not in result.index
+
+    def test_like_and_compare_can_both_be_used(self):
+
+        df = pd.DataFrame(
+            {'x': [1, 2], 'y': [3, 4]}
+        )
+        
+        idx_map = DummyIdxMap()
+        idx_map.r.add(0, np.array([1, 3]))
+        idx_map.r.add(1, np.array([3, 4]))
+
+        comp = Like(Sim('r', np.array([3, 4]), 2)) & (
+            Col('x') < 2
+        ) 
+        result = comp(df, idx_map)
+        assert 0 in result.index
+        assert 1 not in result.index
+
+# TODO: Modify similarity __call__ 
+

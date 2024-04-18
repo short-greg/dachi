@@ -6,6 +6,7 @@ from abc import ABC
 from typing_extensions import Self
 import inspect
 from functools import wraps
+import math
 
 # 3rd party
 from pydantic import BaseModel
@@ -54,13 +55,15 @@ class Index(typing.Generic[T]):
     def __init__(
         self, col: str, 
         vk: faiss.Index, 
-        emb: typing.Callable[[T], np.ndarray]
+        emb: typing.Callable[[T], np.ndarray],
+        maximize: bool=False
     ):
 
         super().__init__()
         self.col = col
         self.vk = faiss.IndexIDMap2(vk)
         self.emb = emb or null_emb
+        self.maximize = maximize
 
     def add(self, id, val: T):
         vb = self.emb([val])
@@ -104,6 +107,11 @@ class Index(typing.Generic[T]):
         x = self.emb(vals)
         D, I = self.vk.search(x=x, k=k)
         D, I = self.max_values_per_index(D, I)
+
+        # If to maximize the distance take
+        # the negative to get the "similarity"
+        if self.maximize:
+            D = -D
         return Similarity(D, I)
     
     # def F(cls, vk: faiss.Index, emb: typing.Callable[[T], np.ndarray]) -> RepFactory[Self]:
@@ -341,10 +349,10 @@ class BinComp(BaseComp):
             f (typing.Callable[[typing.Any, typing.Any], bool]): _description_
         """
         
-        if not isinstance(lhs, BinComp) and not isinstance(lhs, Col):
+        if not isinstance(lhs, BaseComp) and not isinstance(lhs, Col):
             lhs = Val(lhs)
 
-        if not isinstance(rhs, BinComp) and not isinstance(rhs, Col):
+        if not isinstance(rhs, BaseComp) and not isinstance(rhs, Col):
             rhs = Val(rhs)
         
         self.lhs = lhs
@@ -360,8 +368,11 @@ class BinComp(BaseComp):
         Returns:
             The filter by comparison: 
         """
+        print(type(self.lhs))
         lhs = self.lhs.query(df, rep_map)
+        print('Result: ', type(lhs))
         rhs = self.rhs.query(df, rep_map)
+        print('executing ', type(lhs), type(rhs))
         return self.f(lhs, rhs)
 
 
@@ -371,43 +382,44 @@ class BaseSim(ABC):
     def query(self, df: pd.DataFrame, rep_map: IdxMap) -> 'Similarity':
         pass
     
-    def __call__(self, df: pd.DataFrame, rep_map: IdxMap) -> pd.DataFrame:
+    def __call__(self, df: pd.DataFrame, rep_map: IdxMap) -> 'Similarity':
 
-        similarity = self.query(df, rep_map)
-        # TODO: FIX!
-        series = pd.Series(
-            np.full((len(df.index)), False, np.bool_),
-            df.index
-        )
-        series[similarity.indices] = True
-        return series
-    
-    # def top(self, k: int, largest: bool=False):
-        
-    #     def _(self, other):
-    #         return self
-
-    #     return AggSim(
-    #         self, None, _
-    #     )
-
+        return self.query(df, rep_map)
 
     def __mul__(self, other) -> Self:
 
         return AggSim(
             self, other, lambda x, y: x * y
         )
-        
+
+    def __rmul__(self, other) -> Self:
+
+        return AggSim(
+            self, other, lambda x, y: x * y
+        )        
+
     def __add__(self, other) -> Self:
 
         return AggSim(
             self, other, lambda x, y: x + y
         )
 
+    def __radd__(self, other) -> Self:
+
+        return AggSim(
+            self, other, lambda x, y: x + y
+        )
+    
     def __sub__(self, other) -> Self:
 
         return AggSim(
             self, other, lambda x, y: x - y
+        )
+    
+    def __rsub__(self, other) -> Self:
+
+        return AggSim(
+            self, other, lambda x, y: y - x
         )
     # How to limit the "similarity"
 
@@ -492,15 +504,16 @@ class AggSim(BaseSim):
 
 class Like(BaseComp):
 
-    def __init__(self, sim: BaseSim):
+    def __init__(self, sim: BaseSim, k: int=None):
         """
 
         Args:
             sim (BaseSim): The similarities to use
         """
         self.sim = sim
+        self.k = k
 
-    def query(self, df: pd.DataFrame, rep_map: IdxMap) -> pd.DataFrame:
+    def query(self, df: pd.DataFrame, rep_map: IdxMap) -> pd.Series:
         """
 
         Args:
@@ -508,17 +521,34 @@ class Like(BaseComp):
             df (pd.DataFrame): The DataFrame for the concept
 
         Returns:
-            pd.DataFrame: 
+            pd.Series: The 
         """
-        return self.sim(rep_map, df)
+        similarity = self.sim(df, rep_map)
+
+        # TODO: retrieve the top k
+
+        similarity = similarity.topk(self.k)
+
+        series = pd.Series(
+            np.full((len(df.index)), False, np.bool_),
+            df.index
+        )
+        series[similarity.indices] = True
+        return series
 
     def __call__(self, df: pd.DataFrame, rep_map: IdxMap) -> pd.DataFrame:
+        
+        
         return df[self.query(df, rep_map)]
 
 # TODO: Change this... Have the similarity
 # contain all indices + a "chosen"
 # if not "chosen" will be 0
 
+
+# TODO: Add in Maximize/Minimize into similarity
+#    These values must depend on the index used
+#    This will affect adding and subtracting the similarities
 
 @dataclass
 class Similarity(object):
@@ -551,6 +581,26 @@ class Similarity(object):
         print(all_indices)
         return new_sim_self, new_sim_other, all_indices
     
+    def topk(self, k: int=None) -> Self:
+
+        if k is None or k >= len(self.value):
+            return self
+        print(self.indices, self.value)
+        value = self.value * -1
+
+        k = min(k, len(value))
+        ind = np.argpartition(value, k, axis=0)
+        ind = np.take(ind, np.arange(k), axis=0) # k non-sorted indices
+        value = np.take_along_axis(value, ind, axis=0) # k non-sorted values
+
+        # sort within k elements
+        ind_part = np.argsort(value, axis=0)
+        ind = np.take_along_axis(ind, ind_part, axis=0)
+        value *= -1
+        value = np.take_along_axis(value, ind_part, axis=0) 
+
+        return Similarity(value, self.indices[ind])
+
     def _op(self, other, f) -> Self:
         """Execute an operation between two similarities
 
@@ -565,7 +615,7 @@ class Similarity(object):
             v_self, v_other, indices = self.align(other)
             return Similarity(f(v_self, v_other), indices)
         return Similarity(
-            f(self.value, other), indices
+            f(self.value, other), self.indices
         )
     
     # TODO: Implement
@@ -602,8 +652,33 @@ class Similarity(object):
         return self._op(
             other, lambda x, y: x * y
         )
-        
+
+    def __rmul__(self, other) -> Self:
+        """Multiply a value with the simlarity 
+        Args:
+            other: A similarity or a scalar value
+
+        Returns:
+            Self: The similarity multiplied with other
+        """
+        return self._op(
+            other, lambda x, y: x * y
+        )
+
     def __add__(self, other) -> Self:
+        """Add a value to the simlarity 
+
+        Args:
+            other: A similarity or a scalar value
+
+        Returns:
+            Self: The similarity multiplied with other
+        """
+        return self._op(
+            other, lambda x, y: x + y
+        )
+
+    def __radd__(self, other) -> Self:
         """Add a value to the simlarity 
 
         Args:
@@ -628,7 +703,19 @@ class Similarity(object):
         return self._op(
             other, lambda x, y: x - y
         )
-    
+
+    def __rsub__(self, other) -> Self:
+        """Subtract a value from the simlarity 
+
+        Args:
+            other: A similarity or a scalar value
+
+        Returns:
+            Self: The similarity multiplied with other
+        """
+        return self._op(
+            other, lambda x, y: y - x
+        )
     # TODO: Add more such as "less than", max etc
 
 # like( )  <= 
