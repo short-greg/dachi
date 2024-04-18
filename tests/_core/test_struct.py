@@ -1,12 +1,13 @@
-from dachi.store import _struct
+from dachi.instruct import _core as _instruct
+from dachi._core import _struct
 
 
-class SimpleStruct(_struct.Struct):
+class SimpleStruct(_instruct.Instruction):
 
-    x: _struct.Str
+    x: _instruct.Str
 
 
-class NestedStruct(_struct.Struct):
+class NestedStruct(_instruct.Instruction):
 
     simple: SimpleStruct
 
@@ -62,31 +63,31 @@ class TestStruct(object):
 
     def test_simple_struct_converts_to_Str(self):
 
-        struct = SimpleStruct(x="2")
+        struct = SimpleStruct(name='x', x="2")
         assert struct.x.text == '2'
 
     def test_simple_struct_pudates_text_on_forward(self):
 
-        struct = SimpleStruct(x=_struct.Str(text='{adj} job', vars=['adj']))
-        struct = struct(adj='great')
+        struct = SimpleStruct(name='x', x=_instruct.Str(text='{adj} job', vars=['adj']))
+        struct = struct.update(adj='great')
         assert struct.x.text == 'great job'
 
     def test_nested_struct_pudates_text_on_forward(self):
-        simple = SimpleStruct(x=_struct.Str(text='{adj} job', vars=['adj']))
-        struct = NestedStruct(simple=simple)
-        struct = struct(adj='great')
+        simple = SimpleStruct(name='x', x=_instruct.Str(text='{adj} job', vars=['adj']))
+        struct = NestedStruct(name='y', simple=simple)
+        struct = struct.update(adj='great')
         assert struct.simple.x.text == 'great job'
 
     def test_template_gives_correct_template(self):
 
-        struct = SimpleStruct(x="2")
+        struct = SimpleStruct(name='x', x="2")
         template = struct.template()
         assert template['x']['text']['is_required'] is True
         assert template['x']['text']['type'] == type('text')
 
     def test_template_gives_correct_template_with_nested(self):
 
-        struct = NestedStruct(simple=SimpleStruct(x="2"))
+        struct = NestedStruct(name='x', simple=SimpleStruct(name='x', x="2"))
         template = struct.template()
         assert template['simple']['x']['text']['is_required'] is True
         assert template['simple']['x']['text']['type'] == type('text')
@@ -121,6 +122,3 @@ class TestChat(object):
         )
         assert chat.messages[0].text.text == 'hi, how are you'
         assert chat.messages[1].text.text == "i'm fine and you?"
-
-
-

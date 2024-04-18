@@ -1,4 +1,4 @@
-from dachi.storage import Prompt, Conv, PromptConv
+from dachi.depracated.storage import Prompt, Conv, PromptConv
 import json
 
 

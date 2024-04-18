@@ -476,7 +476,7 @@ class TOut(T):
             self.name, self._value
         )
 
-    def __call__(self, by: typing.Dict['TIn', typing.Any]=None, stored: typing.Dict[str, typing.Any]=None, deep: bool=True) -> typing.Any:
+    def forward(self, by: typing.Dict['TIn', typing.Any]=None, stored: typing.Dict[str, typing.Any]=None, deep: bool=True) -> typing.Any:
         """Retrieve the value of the transmission
 
         Args:

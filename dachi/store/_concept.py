@@ -1,11 +1,10 @@
 # 1st party
-from abc import abstractmethod
+from abc import abstractmethod, ABC
 from dataclasses import dataclass, fields, MISSING, field
 import typing
-from abc import ABC
 from typing_extensions import Self
-import inspect
 from functools import wraps
+import inspect
 import math
 
 # 3rd party
@@ -16,10 +15,21 @@ import numpy as np
 from pydantic import Field
 
 
+
+# TODO: Change this... Have the similarity
+# contain all indices + a "chosen"
+# if not "chosen" will be 0
+
+
+# TODO: Add in Maximize/Minimize into similarity
+#    These values must depend on the index used
+#    This will affect adding and subtracting the similarities
+
+
+
 # TODO: ad in a base class
 
 T = typing.TypeVar('T')
-
 
 def conceptmethod(func: typing.Callable[..., T]) -> typing.Callable[..., T]:
 
@@ -541,14 +551,6 @@ class Like(BaseComp):
         
         return df[self.query(df, rep_map)]
 
-# TODO: Change this... Have the similarity
-# contain all indices + a "chosen"
-# if not "chosen" will be 0
-
-
-# TODO: Add in Maximize/Minimize into similarity
-#    These values must depend on the index used
-#    This will affect adding and subtracting the similarities
 
 @dataclass
 class Similarity(object):

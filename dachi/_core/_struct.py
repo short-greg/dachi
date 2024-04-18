@@ -1,17 +1,17 @@
+# 1st party
 import typing
-from pydantic import Field
-import pydantic
 from abc import abstractmethod
-
 from typing import get_type_hints
-import inspect
-from abc import abstractmethod
-
-import csv
-import pandas as pd
-from io import StringIO
 from typing_extensions import Self
+import inspect
 import json
+from io import StringIO
+import csv
+
+# 3rd party
+import pydantic
+from pydantic import Field
+import pandas as pd
 
 
 class TextMixin(object):
@@ -120,9 +120,6 @@ class Doc(Struct):
     text: Str
 
 
-#     # {role}: {text}
-
-
 class StructList(Struct, typing.Generic[T]):
 
     structs: typing.List[T]
@@ -139,3 +136,4 @@ class Chat(Struct):
         return Chat(
             s for s in self._structs if s.role in roles
         )
+

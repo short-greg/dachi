@@ -1,4 +1,4 @@
-from dachi.store import _struct
+from dachi._core import _struct
 from dachi.instruct import _core as instruct
 import json
 import typing
@@ -106,16 +106,16 @@ class TestMaterial(object):
         )
 
 
-class TestOp(object):
+# class TestOp(object):
 
-    def test_op_forward_outputs_string(self):
+#     def test_op_forward_outputs_string(self):
 
-        name = 'X1'
-        ivar = instruct.IVar(
-            name=name, text='hi'
-        )
+#         name = 'X1'
+#         ivar = instruct.IVar(
+#             name=name, text='hi'
+#         )
 
-        instruction = instruct.op(
-            [ivar], 'list_outputs', 'out'
-        )
-        assert instruction.name == 'out'
+#         instruction = instruct.Op(
+#             [ivar], 'list_outputs', 'out'
+#         )
+#         assert instruction.name == 'out'

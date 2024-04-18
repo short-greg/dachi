@@ -1,7 +1,7 @@
 from abc import ABC
 
-from dachi.agents import Agent, AgentStatus
-from dachi import act, storage
+from dachi.act._agent import Agent, AgentStatus
+from dachi.depracated.storage import act, storage
 from . import tasks
 from dachi.comm import UI, OpenAIQuery
 

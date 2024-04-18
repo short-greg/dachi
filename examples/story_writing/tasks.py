@@ -1,9 +1,9 @@
 from dachi.act._status import TaskStatus
-from dachi.storage import Prompt
-from dachi.comm import ProcessResponse, Processed
+from dachi.depracated.storage import Prompt
+from dachi.depracated.comm import ProcessResponse, Processed
 import typing
 
-from dachi.storage import Conv, SRetrieve
+from dachi.depracated.storage import Conv, SRetrieve
 
 from dachi.act import Action
 

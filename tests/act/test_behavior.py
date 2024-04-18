@@ -1,5 +1,4 @@
 from dachi.act import _tasks as behavior
-from dachi.comm import Signal
 from dachi.act._status import TaskStatus
 
 

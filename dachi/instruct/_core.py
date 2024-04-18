@@ -49,7 +49,7 @@ class Style(pydantic.BaseModel, typing.Generic[S], ABC):
 class Instruction(Struct):
 
     name: str
-    style: Style = None
+    style: typing.Optional[Style] = None
 
     def update(self, **kwargs) -> 'Instruction':
         
@@ -244,7 +244,9 @@ class _op:
         return _op_creator
 
 
-# op = _op()        
+op = _op()        
+
+
 
 
 # class InstructChat(Chat):
