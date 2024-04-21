@@ -8,6 +8,7 @@ import faiss
 import numpy as np
 import pandas as pd
 import pydantic
+import pytest
 
 from dataclasses import field
 from dataclasses import dataclass
@@ -376,10 +377,11 @@ class PersonWRep(_concept.Concept):
     @dataclass
     class __rep__(_concept.IdxMap):
 
-        name: Index = _concept.Index.field(
+        age: Index = _concept.Index.field(
             'age', faiss.IndexFlatL2, 
             lambda x: np.array([x], dtype=np.float32), 1
         )
+
 
 
 class TestConceptWithRepField:
@@ -394,7 +396,7 @@ class TestConceptWithRepField:
         # map_ = PersonWRep.__manager__._field_reps[PersonWRep.model_name()]
         
         result = PersonWRep.filter(
-            Like(Sim('name', 10, 2))
+            Like(Sim('age', 10, 2))
         ).df()
         assert len(result.index) == 2
 
@@ -407,7 +409,7 @@ class TestConceptWithRepField:
         person2.save()
         
         result = PersonWRep.filter(
-            Like(Sim('name', 15, 1))
+            Like(Sim('age', 15, 1))
         ).df()
         assert len(result.index) == 1
         assert 1 in result.index
@@ -418,10 +420,10 @@ class TestConceptWithRepField:
         PersonWRep.build()
         PersonWRep(name='X', age=10)
         PersonWRep(name='X2', age=15)
-        PersonWRep.__manager__._field_reps[PersonWRep.model_name()]
+        PersonWRep.__manager__._field_reps[PersonWRep.concept_name()]
         
         result = PersonWRep.filter(
-            Like(Sim('name', 2, 1))
+            Like(Sim('age', 2, 1))
         ).df()
         assert len(result.index) == 0
 
@@ -434,8 +436,109 @@ class TestConceptWithRepField:
         person2.save()
         
         result = PersonWRep.like(
-            Sim('name', 15, 1)
+            Sim('age', 15, 1)
         ).df()
         assert len(result.index) == 1
         assert 1 in result.index
         assert 0 not in result.index
+
+
+class BuyerWithRep(_concept.RepMixin, PersonWRep):
+
+    # __manager__: typing.ClassVar[_concept.ConceptManager] = _concept.concept_manager
+    purchaser: bool
+
+    @dataclass
+    class __rep__(_concept.IdxMap):
+
+        id: Index = _concept.Index.field(
+            'id', faiss.IndexFlatL2, 
+            lambda x: np.array([x], dtype=np.float32), 1
+        )
+
+        age: Index = _concept.Index.field(
+            'age', faiss.IndexFlatL2, 
+            lambda x: np.array([[x[0] * 0.5]], dtype=np.float32), 1
+        )
+
+
+class TestBuyerRep:
+
+    def test_representation_is_added(self):
+
+        PersonWRep.__manager__.reset()
+        PersonWRep.build()
+        BuyerWithRep.build()
+        assert BuyerWithRep.rep_name() in PersonWRep.__manager__._field_reps
+
+    def test_cannot_build_rep_if_no_concept(self):
+
+        PersonWRep.__manager__.reset()
+        with pytest.raises(RuntimeError):
+            BuyerWithRep.build()
+
+    def test_that_embeddings_are_added_if_saved(self):
+
+        PersonWRep.__manager__.reset()
+
+        PersonWRep.build()
+        BuyerWithRep.build()
+        buyer1 = BuyerWithRep(name='X', age=10, purchaser=True)
+        buyer2 = BuyerWithRep(name='X2', age=15, purchaser=False)
+        buyer1.save()
+        buyer2.save()
+        
+        result = BuyerWithRep.filter(
+            Like(Sim('age', 2, 1))
+        ).df()
+        assert len(result.index) == 1
+
+    def test_that_person_does_not_return_purchaser(self):
+
+        PersonWRep.__manager__.reset()
+
+        PersonWRep.build()
+        BuyerWithRep.build()
+        buyer1 = BuyerWithRep(name='X', age=10, purchaser=True)
+        buyer2 = BuyerWithRep(name='X2', age=15, purchaser=False)
+        buyer1.save()
+        buyer2.save()
+        
+        result = PersonWRep.filter(
+            Like(Sim('age', 2, 1))
+        ).df()
+        print(result.columns.values)
+        assert 'purchaser' not in result.columns.values
+
+    def test_that_buyer_does_return_purchaser(self):
+
+        PersonWRep.__manager__.reset()
+
+        PersonWRep.build()
+        BuyerWithRep.build()
+        buyer1 = BuyerWithRep(name='X', age=10, purchaser=True)
+        buyer2 = BuyerWithRep(name='X2', age=15, purchaser=False)
+        buyer1.save()
+        buyer2.save()
+        
+        result = BuyerWithRep.filter(
+            Like(Sim('age', 2, 1))
+        ).df()
+        print(result.columns.values)
+        assert 'purchaser' in result.columns.values
+
+    def test_that_id_rep_returns_one_row(self):
+
+        PersonWRep.__manager__.reset()
+
+        PersonWRep.build()
+        BuyerWithRep.build()
+        buyer1 = BuyerWithRep(name='X', age=10, purchaser=True)
+        buyer2 = BuyerWithRep(name='X2', age=15, purchaser=False)
+        buyer1.save()
+        buyer2.save()
+        
+        result = BuyerWithRep.filter(
+            Like(Sim('id', 1, 1))
+        ).df()
+        assert len(result.index) == 1

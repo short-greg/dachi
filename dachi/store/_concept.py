@@ -6,6 +6,7 @@ from typing_extensions import Self
 from functools import wraps
 import inspect
 import math
+from dataclasses import InitVar
 
 # 3rd party
 from pydantic import BaseModel
@@ -173,10 +174,17 @@ class IdxFactory(typing.Generic[QR]):
             self.col, self.f(*self.args, **self.kwargs), self.emb
         )
 
+
 @dataclass
 class IdxMap(object):
     """Class to define the indexes that are stored
     """
+
+    base_rep: InitVar['IdxMap'] = None
+
+    def __post_init__(self, base_rep: 'IdxMap'=None):
+
+        self.__base_rep__ = base_rep
 
     def __iter__(self) -> typing.Iterator[typing.Tuple[str, 'Index']]:
 
@@ -185,6 +193,19 @@ class IdxMap(object):
             if isinstance(v, Index):
                 yield k, v
 
+        if self.__base_rep__ is not None:
+            for k, v in self.__base_rep__:
+                if k not in self.__dict__:
+                    yield k, v
+
+    def __contains__(self, k: str):
+
+        return (
+            k in self.__dict__ 
+        ) or (
+            self.__base_rep__ is not None and
+            k in self.__base_rep__
+        )
 
     def add(self, row: typing.Dict[str, typing.Any]):
 
@@ -193,6 +214,12 @@ class IdxMap(object):
             index.add(
                 row['id'], value
             )
+
+    def __getattr__(self, key: str):
+
+        if self.__base_rep__ is not None:
+            return getattr(self.__base_rep__, key)
+        raise AttributeError(f'There is no attribute named {key} in IndexMap {str(self)}')
 
     def __getitem__(self, key: str):
         
@@ -287,10 +314,15 @@ class Concept(BaseModel):
         )
 
     @classmethod
-    def model_name(cls):
+    def concept_name(cls):
         
         return cls.__name__
     
+    @classmethod
+    def model_name(cls):
+        
+        return cls.__name__
+
     @classmethod
     def ctype(cls) -> typing.Type['Concept']:
         return cls
@@ -314,13 +346,31 @@ class RepMixin(object):
         for base in cls.__bases__:
             if inspect.isclass(base) and issubclass(base, Concept):
                 concept_cls = base
-                return concept_cls.model_name()
+                return concept_cls.concept_name()
         return None
 
     @classmethod
     def rep_name(cls):
         
         return cls.__name__
+
+    @classmethod
+    def concept_name(cls):
+        
+        return cls.concept().concept_name()
+    
+    @classmethod
+    def model_name(cls):
+        
+        return cls.__name__
+
+    @classmethod
+    def concept(cls) -> typing.Type[Concept]:
+
+        for base in cls.__bases__:
+            if issubclass(base, Concept):
+                return base
+        return None
 
 
 class Val(object):
@@ -893,6 +943,12 @@ class ConceptManager(object):
         self._concept_reps: typing.Dict[str, typing.List] = {}
         self._ids = {}
 
+    def reset(self):
+        self._concepts = {}
+        self._field_reps: typing.Dict[str, IdxMap] = {}
+        self._concept_reps: typing.Dict[str, typing.List] = {}
+        self._ids = {}
+
     def add_concept(self, concept: typing.Type[Concept]):
 
         columns, dtypes, _, _ = concept.columns(dtypes=True)
@@ -902,16 +958,19 @@ class ConceptManager(object):
         )
         df = df.astype(dict(zip(columns, dtypes)))
 
-        self._concepts[concept.model_name()] = df
-        self._field_reps[concept.model_name()] = concept.__rep__()
-        self._ids[concept.model_name()] = 0
+        self._concepts[concept.concept_name()] = df
+        self._field_reps[concept.concept_name()] = concept.__rep__()
+        self._ids[concept.concept_name()] = 0
 
     def add_rep(self, rep: typing.Type[RepMixin]):
 
         if not issubclass(rep, Concept):
             raise ValueError('Cannot build Rep unless mixed with a concept.')
         columns, dtypes, defaults, default_factories = rep.columns(True)
-        df = self.get_data(rep.model_name())
+        
+        if rep.concept_name() not in self._concepts:
+            raise RuntimeError(f'There is no concept named {rep.concept_name()} so the Rep {rep.model_name()} cannot be built')
+        df = self.get_data(rep.concept())
 
         for c, dtype, default, default_factory, in zip(columns, dtypes, defaults, default_factories):
             if default_factory is not None and default is None:
@@ -922,8 +981,9 @@ class ConceptManager(object):
                 df[c] = None
         # add columns for the representation
         df = df.astype(dict(zip(columns, dtypes)))
-        self._concepts[rep.model_name()] = df
-        self._field_reps[rep.rep_name()] = rep.__rep__()
+        self._concepts[rep.concept_name()] = df
+        base_rep = self._field_reps[rep.concept_name()]
+        self._field_reps[rep.model_name()] = rep.__rep__(base_rep=base_rep)
 
     def get_rep(self, concept: typing.Type[Concept]) -> pd.DataFrame:
 
@@ -931,27 +991,25 @@ class ConceptManager(object):
 
     def get_data(self, concept: typing.Type[Concept]) -> pd.DataFrame:
 
-        return self._concepts[concept.model_name()][concept.columns()]
+        return self._concepts[concept.concept_name()][concept.columns()]
     
     def add_row(self, concept: Concept):
 
         try:
-            df = self._concepts[concept.model_name()]
+            df = self._concepts[concept.concept_name()]
         except KeyError:
             raise KeyError(
-                f'No concept named {concept.model_name()}. '
+                f'No concept named {concept.concept_name()}. '
                 'Has it been built with Concept.build()?')
         if concept.id is None:
-            concept.id = self._ids[concept.model_name()]
+            concept.id = self._ids[concept.concept_name()]
 
             # Find a better way to handle this
-            self._ids[concept.model_name()] += 1
+            self._ids[concept.concept_name()] += 1
         
         rep = self._field_reps[concept.model_name()]
         df.loc[concept.id] = concept.to_dict()
         rep.add(concept.to_dict())
-
-        # self._concepts[concept.model_name()] = df
 
 
 concept_manager = ConceptManager()
