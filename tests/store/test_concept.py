@@ -391,7 +391,7 @@ class TestConceptWithRepField:
         person2 = PersonWRep(name='X2', age=15)
         person.save()
         person2.save()
-        map_ = PersonWRep.__manager__._field_reps[PersonWRep.model_name()]
+        # map_ = PersonWRep.__manager__._field_reps[PersonWRep.model_name()]
         
         result = PersonWRep.filter(
             Like(Sim('name', 10, 2))
@@ -405,7 +405,6 @@ class TestConceptWithRepField:
         person2 = PersonWRep(name='X2', age=15)
         person.save()
         person2.save()
-        map_ = PersonWRep.__manager__._field_reps[PersonWRep.model_name()]
         
         result = PersonWRep.filter(
             Like(Sim('name', 15, 1))
@@ -425,3 +424,18 @@ class TestConceptWithRepField:
             Like(Sim('name', 2, 1))
         ).df()
         assert len(result.index) == 0
+
+    def test_that_like_works_in_place_of_filter(self):
+
+        PersonWRep.build()
+        person = PersonWRep(name='X', age=10)
+        person2 = PersonWRep(name='X2', age=15)
+        person.save()
+        person2.save()
+        
+        result = PersonWRep.like(
+            Sim('name', 15, 1)
+        ).df()
+        assert len(result.index) == 1
+        assert 1 in result.index
+        assert 0 not in result.index

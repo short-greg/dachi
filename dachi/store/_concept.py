@@ -275,6 +275,12 @@ class Concept(BaseModel):
         )
 
     @conceptmethod
+    def like(cls, sim: 'BaseSim', k: int=None):
+        return ConceptQuery(
+            cls, Like(sim, k)
+        )
+
+    @conceptmethod
     def exclude(cls, comp: 'BinComp'):
         return ConceptQuery(
             cls, ~comp
