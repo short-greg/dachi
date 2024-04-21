@@ -230,21 +230,6 @@ class TestIdxFactory:
         assert len(idx) == 0
 
 
-class PersonWRep(_concept.Concept):
-
-    manager: typing.ClassVar[_concept.ConceptManager] = _concept.concept_manager
-    name: str
-    age: int
-
-    @dataclass
-    class __rep__(_concept.IdxMap):
-
-        name: Index = _concept.Index.field(
-            'name', faiss.IndexFlatL2, 
-            lambda x: np.random.randn(len(x), 4), 4
-        )
-
-
 class TestConceptWithRepField(object):
     
     def test_build_produces_new_person(self):
@@ -381,5 +366,62 @@ class TestLike:
         assert 0 in result.index
         assert 1 not in result.index
 
-# TODO: Modify similarity __call__ 
 
+class PersonWRep(_concept.Concept):
+
+    __manager__: typing.ClassVar[_concept.ConceptManager] = _concept.concept_manager
+    name: str
+    age: int
+
+    @dataclass
+    class __rep__(_concept.IdxMap):
+
+        name: Index = _concept.Index.field(
+            'age', faiss.IndexFlatL2, 
+            lambda x: np.array([x], dtype=np.float32), 1
+        )
+
+
+class TestConceptWithRepField:
+
+    def test_that_embeddings_are_added(self):
+
+        PersonWRep.build()
+        person = PersonWRep(name='X', age=10)
+        person2 = PersonWRep(name='X2', age=15)
+        person.save()
+        person2.save()
+        map_ = PersonWRep.__manager__._field_reps[PersonWRep.model_name()]
+        
+        result = PersonWRep.filter(
+            Like(Sim('name', 10, 2))
+        ).df()
+        assert len(result.index) == 2
+
+    def test_that_embeddings_are_added(self):
+
+        PersonWRep.build()
+        person = PersonWRep(name='X', age=10)
+        person2 = PersonWRep(name='X2', age=15)
+        person.save()
+        person2.save()
+        map_ = PersonWRep.__manager__._field_reps[PersonWRep.model_name()]
+        
+        result = PersonWRep.filter(
+            Like(Sim('name', 15, 1))
+        ).df()
+        assert len(result.index) == 1
+        assert 1 in result.index
+        assert 0 not in result.index
+
+    def test_that_embeddings_are_not_added_if_not_saved(self):
+
+        PersonWRep.build()
+        PersonWRep(name='X', age=10)
+        PersonWRep(name='X2', age=15)
+        PersonWRep.__manager__._field_reps[PersonWRep.model_name()]
+        
+        result = PersonWRep.filter(
+            Like(Sim('name', 2, 1))
+        ).df()
+        assert len(result.index) == 0

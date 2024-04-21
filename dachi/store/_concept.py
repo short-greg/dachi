@@ -113,6 +113,8 @@ class Index(typing.Generic[T]):
         self, vals: typing.Union[T, typing.List[T]], k: int=1, subset=None
     ) -> 'Similarity':
 
+        if self.vk.ntotal == 0:
+            return Similarity()
         # TODO: limit to the subset
         x = self.emb(vals)
         D, I = self.vk.search(x=x, k=k)
@@ -176,9 +178,24 @@ class IdxMap(object):
     """Class to define the indexes that are stored
     """
 
+    def __iter__(self) -> typing.Iterator[typing.Tuple[str, 'Index']]:
+
+        for k, v in self.__dict__.items():
+
+            if isinstance(v, Index):
+                yield k, v
+
+
+    def add(self, row: typing.Dict[str, typing.Any]):
+
+        for k, index in self:
+            value = row[index.col]
+            index.add(
+                row['id'], value
+            )
+
     def __getitem__(self, key: str):
         
-        print(key)
         value = getattr(self, key)
         if not isinstance(value, Index):
             raise AttributeError(f'RepMap has no attribute named {key}')
@@ -543,6 +560,7 @@ class Like(BaseComp):
             np.full((len(df.index)), False, np.bool_),
             df.index
         )
+        print(similarity.indices)
         series[similarity.indices] = True
         return series
 
@@ -555,8 +573,8 @@ class Like(BaseComp):
 @dataclass
 class Similarity(object):
 
-    value: np.ndarray
-    indices: np.ndarray
+    value: np.ndarray = field(default_factory=lambda: np.array([], dtype=np.float32))
+    indices: np.ndarray = field(default_factory=lambda: np.array([], dtype=np.int64))
 
     def align(self, other: 'Similarity') -> typing.Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Align the indices of the two similarities
@@ -587,7 +605,6 @@ class Similarity(object):
 
         if k is None or k >= len(self.value):
             return self
-        print(self.indices, self.value)
         value = self.value * -1
 
         k = min(k, len(value))
@@ -620,21 +637,26 @@ class Similarity(object):
             f(self.value, other), self.indices
         )
     
-    # TODO: Implement
-    # Comp Op must remove any indices for results that
-    # are false
     def _comp_op(self, other, f) -> Self:
-        pass
+        """Filter the similarity based on a condition
 
-        # if isinstance(other, Similarity):
-        #     v_self, v_other, indices = self.align(self, other)
-        #     result = f(v_self, v_other)
-        # else:
-        #     indices = self.indices
-        #     result = f(self.value, other)
-        # return Similarity(
-        #     result, indices
-        # )
+        Args:
+            other: The value to compare with
+            f: The function to compare with
+
+        Returns:
+            Self: The updated similarity after having filtered
+        """
+        if isinstance(other, Similarity):
+            v_self, v_other, indices = self.align(self, other)
+            chosen = f(v_self, v_other)
+            return Similarity(
+                v_self[chosen], indices[chosen]
+            )
+        chosen = f(self.value, other)
+        return Similarity(
+            self.value[chosen], self.indices[chosen]
+        )
 
     def __len__(self) -> int:
         """
@@ -846,6 +868,14 @@ class ConceptQuery(typing.Generic[C]):
 
         for _, row in sub_df.iterrows():
             yield self.concept(**row.to_dict())
+        
+    def df(self) -> pd.DataFrame:
+
+        concept = self.concept.__manager__.get_data(self.concept)
+        idx = self.concept.__manager__.get_rep(self.concept)
+        return self.comp(
+            concept, idx
+        )
 
 
 class ConceptManager(object):
@@ -853,7 +883,7 @@ class ConceptManager(object):
     def __init__(self):
 
         self._concepts = {}
-        self._field_reps: typing.Dict[str, typing.List] = {}
+        self._field_reps: typing.Dict[str, IdxMap] = {}
         self._concept_reps: typing.Dict[str, typing.List] = {}
         self._ids = {}
 
@@ -911,7 +941,10 @@ class ConceptManager(object):
             # Find a better way to handle this
             self._ids[concept.model_name()] += 1
         
+        rep = self._field_reps[concept.model_name()]
         df.loc[concept.id] = concept.to_dict()
+        rep.add(concept.to_dict())
+
         # self._concepts[concept.model_name()] = df
 
 
