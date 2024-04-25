@@ -1,8 +1,8 @@
 import typing
 from dachi.store import _concept
 from dachi.store._concept import (
-    Col, Index, Concept, ConceptManager,
-    IdxMap, Sim, AggSim, Like
+    Col, RepLookup, Concept, ConceptManager,
+    Rep, R, AggR, Like
 )
 import faiss
 import numpy as np
@@ -22,12 +22,12 @@ class Person(_concept.Concept):
     age: int
 
 
-class DummyIdxMap(IdxMap):
+class DummyIdxMap(Rep):
 
     def __init__(self, n=2):
 
         emb = lambda x: np.array(x)
-        idx = Index('x', faiss.IndexFlatL2(n), emb, True)
+        idx = RepLookup('x', faiss.IndexFlatL2(n), emb, True)
         self.r = idx
 
 
@@ -170,7 +170,7 @@ class TestIndex:
     def test_rep_idx_creates_rep(self):
 
         emb = lambda x: np.random.randn(len(x), 4)
-        idx = Index('x', faiss.IndexFlatL2(4), emb, True)
+        idx = RepLookup('x', faiss.IndexFlatL2(4), emb, True)
         
         idx.add(0, 'hi')
         assert len(idx) == 1
@@ -178,7 +178,7 @@ class TestIndex:
     def test_rep_idx_removes_from_rep(self):
 
         emb = lambda x: np.random.randn(len(x), 4)
-        idx = Index('x', faiss.IndexFlatL2(4), emb, True)
+        idx = RepLookup('x', faiss.IndexFlatL2(4), emb, True)
         
         idx.add(0, 'hi')
         idx.remove(0)
@@ -187,7 +187,7 @@ class TestIndex:
     def test_rep_idx_adds_multiple(self):
 
         emb = lambda x: np.random.randn(len(x), 4)
-        idx = Index('x', faiss.IndexFlatL2(4), emb, True)
+        idx = RepLookup('x', faiss.IndexFlatL2(4), emb, True)
         
         idx.add(0, 'hi')
         idx.add(1, 'bye')
@@ -196,7 +196,7 @@ class TestIndex:
     def test_rep_idx_gets_only_one_similar(self):
 
         emb = lambda x: np.random.randn(len(x), 4)
-        idx = Index('x', faiss.IndexFlatL2(4), emb, True)
+        idx = RepLookup('x', faiss.IndexFlatL2(4), emb, True)
         
         idx.add(0, 'hi')
         idx.add(1, 'bye')
@@ -210,7 +210,7 @@ class TestIdxFactory:
     def test_rep_factory_creates_rep_idx(self):
 
         emb = lambda x: np.random.randn(len(x), 4)
-        factory = Index.F(
+        factory = RepLookup.F(
             'x', faiss.IndexFlatL2, emb, 4
         )
         idx = factory()
@@ -221,7 +221,7 @@ class TestIdxFactory:
     def test_rep_idx_removes_from_rep(self):
 
         emb = lambda x: np.random.randn(len(x), 4)
-        factory = Index.F(
+        factory = RepLookup.F(
             'x', faiss.IndexFlatL2, emb, 4
         )
         idx = factory()
@@ -253,7 +253,7 @@ class TestSim:
         idx_map = DummyIdxMap()
         idx_map.r.add(0, np.array([1, 3]))
         idx_map.r.add(1, np.array([3, 4]))
-        sim = Sim('r', np.array([3, 4]), 1)
+        sim = R('r', np.array([3, 4]), 1)
         similarity = sim(df, idx_map)
         assert 1 in similarity.indices
         assert 0 not in similarity.indices
@@ -266,7 +266,7 @@ class TestSim:
         idx_map = DummyIdxMap()
         idx_map.r.add(0, np.array([1, 3]))
         idx_map.r.add(1, np.array([3, 4]))
-        sim = Sim('r', np.array([3, 4]), 2)
+        sim = R('r', np.array([3, 4]), 2)
         similarity = sim(df, idx_map)
         assert 1 in similarity.indices
         assert 0 in similarity.indices
@@ -280,8 +280,8 @@ class TestSim:
         idx_map = DummyIdxMap()
         idx_map.r.add(0, np.array([1, 3]))
         idx_map.r.add(1, np.array([3, 4]))
-        sim = Sim('r', np.array([3, 4]), 2)
-        sim2 = Sim('r', np.array([1, 3]), 2)
+        sim = R('r', np.array([3, 4]), 2)
+        sim2 = R('r', np.array([1, 3]), 2)
         sim3 = sim + sim2
         similarity = sim3(df, idx_map)
         assert 1 in similarity.indices
@@ -296,8 +296,8 @@ class TestSim:
         idx_map = DummyIdxMap()
         idx_map.r.add(0, np.array([1, 3]))
         idx_map.r.add(1, np.array([3, 4]))
-        sim = Sim('r', np.array([3, 4]), 1)
-        sim2 = Sim('r', np.array([3, 3.5]), 1)
+        sim = R('r', np.array([3, 4]), 1)
+        sim2 = R('r', np.array([3, 3.5]), 1)
         sim3 = sim + sim2
         similarity = sim3(df, idx_map)
         assert 1 in similarity.indices
@@ -312,8 +312,8 @@ class TestSim:
         idx_map = DummyIdxMap()
         idx_map.r.add(0, np.array([1, 3]))
         idx_map.r.add(1, np.array([3, 4]))
-        sim = Sim('r', np.array([3, 4]), 1)
-        sim2 = Sim('r', np.array([1, 3]), 1)
+        sim = R('r', np.array([3, 4]), 1)
+        sim2 = R('r', np.array([1, 3]), 1)
         sim3 = 0.1 * sim + 2.0 * sim2
         similarity = sim3(df, idx_map)
         assert 1 in similarity.indices
@@ -330,7 +330,7 @@ class TestLike:
         idx_map = DummyIdxMap()
         idx_map.r.add(0, np.array([1, 3]))
         idx_map.r.add(1, np.array([3, 4]))
-        like = Like(Sim('r', np.array([3, 4]), 1), 1)
+        like = Like(R('r', np.array([3, 4]), 1), 1)
         result = like(df, idx_map)
         assert 1 in result.index
         assert 0 not in result.index
@@ -344,7 +344,7 @@ class TestLike:
         idx_map = DummyIdxMap()
         idx_map.r.add(0, np.array([1, 3]))
         idx_map.r.add(1, np.array([3, 4]))
-        like = Like(Sim('r', np.array([3, 4]), 2), 1)
+        like = Like(R('r', np.array([3, 4]), 2), 1)
         result = like(df, idx_map)
         print(result)
         assert 1 in result.index
@@ -360,7 +360,7 @@ class TestLike:
         idx_map.r.add(0, np.array([1, 3]))
         idx_map.r.add(1, np.array([3, 4]))
 
-        comp = Like(Sim('r', np.array([3, 4]), 2)) & (
+        comp = Like(R('r', np.array([3, 4]), 2)) & (
             Col('x') < 2
         ) 
         result = comp(df, idx_map)
@@ -375,9 +375,9 @@ class PersonWRep(_concept.Concept):
     age: int
 
     @dataclass
-    class __rep__(_concept.IdxMap):
+    class __rep__(_concept.Rep):
 
-        age: Index = _concept.Index.field(
+        age: RepLookup = _concept.RepLookup.field(
             'age', faiss.IndexFlatL2, 
             lambda x: np.array([x], dtype=np.float32), 1
         )
@@ -396,7 +396,7 @@ class TestConceptWithRepField:
         # map_ = PersonWRep.__manager__._field_reps[PersonWRep.model_name()]
         
         result = PersonWRep.filter(
-            Like(Sim('age', 10, 2))
+            Like(R('age', 10, 2))
         ).df()
         assert len(result.index) == 2
 
@@ -409,7 +409,7 @@ class TestConceptWithRepField:
         person2.save()
         
         result = PersonWRep.filter(
-            Like(Sim('age', 15, 1))
+            Like(R('age', 15, 1))
         ).df()
         assert len(result.index) == 1
         assert 1 in result.index
@@ -423,7 +423,7 @@ class TestConceptWithRepField:
         PersonWRep.__manager__._field_reps[PersonWRep.concept_name()]
         
         result = PersonWRep.filter(
-            Like(Sim('age', 2, 1))
+            Like(R('age', 2, 1))
         ).df()
         assert len(result.index) == 0
 
@@ -436,27 +436,27 @@ class TestConceptWithRepField:
         person2.save()
         
         result = PersonWRep.like(
-            Sim('age', 15, 1)
+            R('age', 15, 1)
         ).df()
         assert len(result.index) == 1
         assert 1 in result.index
         assert 0 not in result.index
 
 
-class BuyerWithRep(_concept.RepMixin, PersonWRep):
+class BuyerWithRep(_concept.ConceptRepMixin, PersonWRep):
 
     # __manager__: typing.ClassVar[_concept.ConceptManager] = _concept.concept_manager
     purchaser: bool
 
     @dataclass
-    class __rep__(_concept.IdxMap):
+    class __rep__(_concept.Rep):
 
-        id: Index = _concept.Index.field(
+        id: RepLookup = _concept.RepLookup.field(
             'id', faiss.IndexFlatL2, 
             lambda x: np.array([x], dtype=np.float32), 1
         )
 
-        age: Index = _concept.Index.field(
+        age: RepLookup = _concept.RepLookup.field(
             'age', faiss.IndexFlatL2, 
             lambda x: np.array([[x[0] * 0.5]], dtype=np.float32), 1
         )
@@ -489,7 +489,7 @@ class TestBuyerRep:
         buyer2.save()
         
         result = BuyerWithRep.filter(
-            Like(Sim('age', 2, 1))
+            Like(R('age', 2, 1))
         ).df()
         assert len(result.index) == 1
 
@@ -505,7 +505,7 @@ class TestBuyerRep:
         buyer2.save()
         
         result = PersonWRep.filter(
-            Like(Sim('age', 2, 1))
+            Like(R('age', 2, 1))
         ).df()
         print(result.columns.values)
         assert 'purchaser' not in result.columns.values
@@ -522,7 +522,7 @@ class TestBuyerRep:
         buyer2.save()
         
         result = BuyerWithRep.filter(
-            Like(Sim('age', 2, 1))
+            Like(R('age', 2, 1))
         ).df()
         print(result.columns.values)
         assert 'purchaser' in result.columns.values
@@ -539,6 +539,6 @@ class TestBuyerRep:
         buyer2.save()
         
         result = BuyerWithRep.filter(
-            Like(Sim('id', 1, 1))
+            Like(R('id', 1, 1))
         ).df()
         assert len(result.index) == 1

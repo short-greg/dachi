@@ -59,10 +59,9 @@ def null_emb(x):
     return x
 
 
-class Index(typing.Generic[T]):
+class RepLookup(typing.Generic[T]):
     """Base class for Index. 
     """
-
     def __init__(
         self, col: str, 
         vk: faiss.Index, 
@@ -112,10 +111,10 @@ class Index(typing.Generic[T]):
 
     def like(
         self, vals: typing.Union[T, typing.List[T]], k: int=1, subset=None
-    ) -> 'Similarity':
+    ) -> 'Sim':
 
         if self.vk.ntotal == 0:
-            return Similarity()
+            return Sim()
         # TODO: limit to the subset
         x = self.emb(vals)
         D, I = self.vk.search(x=x, k=k)
@@ -125,30 +124,30 @@ class Index(typing.Generic[T]):
         # the negative to get the "similarity"
         if self.maximize:
             D = -D
-        return Similarity(D, I)
+        return Sim(D, I)
     
     # def F(cls, vk: faiss.Index, emb: typing.Callable[[T], np.ndarray]) -> RepFactory[Self]:
 
     @classmethod
-    def F(cls, col: str, vk: typing.Type[faiss.Index], emb: typing.Callable[[T], np.ndarray], *idx_args, **idx_kwargs) -> 'IdxFactory[Index]':
+    def F(cls, col: str, vk: typing.Type[faiss.Index], emb: typing.Callable[[T], np.ndarray], *idx_args, **idx_kwargs) -> 'RepFactory[RepLookup]':
 
-        return IdxFactory[Self](
+        return RepFactory[Self](
             cls, col, vk, emb, *idx_args, **idx_kwargs
         )
 
     @classmethod
-    def field(cls, col: str, vk: typing.Type[faiss.Index], emb: typing.Callable[[T], np.ndarray], *idx_args, **idx_kwargs) -> 'IdxFactory[Index]':
+    def field(cls, col: str, vk: typing.Type[faiss.Index], emb: typing.Callable[[T], np.ndarray], *idx_args, **idx_kwargs) -> 'RepFactory[RepLookup]':
         
         return field(
             default_factory=cls.F(col, vk, emb, *idx_args, **idx_kwargs)
         )
 
-QR = typing.TypeVar('QR', bound=Index)
+QR = typing.TypeVar('QR', bound=RepLookup)
 
 
-class IdxFactory(typing.Generic[QR]):
+class RepFactory(typing.Generic[QR]):
 
-    def __init__(self, rep_cls: typing.Type[Index], col: str, f: typing.Callable[[str], QR], emb, *args, **kwargs):
+    def __init__(self, rep_cls: typing.Type[RepLookup], col: str, f: typing.Callable[[str], QR], emb, *args, **kwargs):
         """Factory for creating Indexes to use in a concept
 
         Args:
@@ -164,7 +163,7 @@ class IdxFactory(typing.Generic[QR]):
         self.args = args
         self.kwargs = kwargs
         
-    def __call__(self) -> T:
+    def __call__(self) -> RepLookup:
         """
 
         Returns:
@@ -176,21 +175,21 @@ class IdxFactory(typing.Generic[QR]):
 
 
 @dataclass
-class IdxMap(object):
+class Rep(object):
     """Class to define the indexes that are stored
     """
 
-    base_rep: InitVar['IdxMap'] = None
+    base_rep: InitVar['Rep'] = None
 
-    def __post_init__(self, base_rep: 'IdxMap'=None):
+    def __post_init__(self, base_rep: 'Rep'=None):
 
         self.__base_rep__ = base_rep
 
-    def __iter__(self) -> typing.Iterator[typing.Tuple[str, 'Index']]:
+    def __iter__(self) -> typing.Iterator[typing.Tuple[str, 'RepLookup']]:
 
         for k, v in self.__dict__.items():
 
-            if isinstance(v, Index):
+            if isinstance(v, RepLookup):
                 yield k, v
 
         if self.__base_rep__ is not None:
@@ -224,7 +223,7 @@ class IdxMap(object):
     def __getitem__(self, key: str):
         
         value = getattr(self, key)
-        if not isinstance(value, Index):
+        if not isinstance(value, RepLookup):
             raise AttributeError(f'RepMap has no attribute named {key}')
         return value
 
@@ -238,7 +237,7 @@ class Concept(BaseModel):
     # y_idx: typing.Optional[np.array] = None
 
     @dataclass
-    class __rep__(IdxMap):
+    class __rep__(Rep):
         pass
 
     @classmethod
@@ -296,20 +295,20 @@ class Concept(BaseModel):
         return pd.Series(self.to_dict())
 
     @conceptmethod
-    def filter(cls, comp: 'BinComp'):
-        return ConceptQuery(
+    def filter(cls, comp: 'Comp'):
+        return Query(
             cls, comp
         )
 
     @conceptmethod
-    def like(cls, sim: 'BaseSim', k: int=None):
-        return ConceptQuery(
+    def like(cls, sim: 'BaseR', k: int=None):
+        return Query(
             cls, Like(sim, k)
         )
 
     @conceptmethod
-    def exclude(cls, comp: 'BinComp'):
-        return ConceptQuery(
+    def exclude(cls, comp: 'Comp'):
+        return Query(
             cls, ~comp
         )
 
@@ -328,11 +327,11 @@ class Concept(BaseModel):
         return cls
 
 
-class RepMixin(object):
+class ConceptRepMixin(object):
 
     @conceptmethod
-    def like(cls, comp: 'BinComp'):
-        return ConceptQuery(
+    def like(cls, comp: 'Comp'):
+        return Query(
             cls, comp
         )
 
@@ -378,17 +377,17 @@ class Val(object):
     def __init__(self, val) -> None:
         self.val = val
 
-    def query(self, df: pd.DataFrame, rep_map: IdxMap):
+    def query(self, df: pd.DataFrame, rep_map: Rep):
         return self.val
 
 
-class BaseComp(object):
+class Filter(object):
 
     @abstractmethod
-    def query(self, df: pd.DataFrame, rep_map: IdxMap) -> pd.Series:
+    def query(self, df: pd.DataFrame, rep_map: Rep) -> pd.Series:
         pass
 
-    def __call__(self, df: pd.DataFrame, rep_map: IdxMap) -> pd.DataFrame:
+    def __call__(self, df: pd.DataFrame, rep_map: Rep) -> pd.DataFrame:
         """
 
         Args:
@@ -400,28 +399,28 @@ class BaseComp(object):
         """
         return df[self.query(df, rep_map)]
 
-    def __xor__(self, other) -> 'BinComp':
+    def __xor__(self, other) -> 'Comp':
 
-        return BinComp(self, other, lambda lhs, rhs: lhs ^ rhs)
+        return Comp(self, other, lambda lhs, rhs: lhs ^ rhs)
 
     def __and__(self, other):
 
-        return BinComp(self, other, lambda lhs, rhs: lhs & rhs)
+        return Comp(self, other, lambda lhs, rhs: lhs & rhs)
 
     def __or__(self, other):
 
-        return BinComp(self, other, lambda lhs, rhs: lhs | rhs)
+        return Comp(self, other, lambda lhs, rhs: lhs | rhs)
     
     def __invert__(self):
 
-        return BinComp(None, self, lambda lhs, rhs: ~rhs)
+        return Comp(None, self, lambda lhs, rhs: ~rhs)
 
 
-class BinComp(BaseComp):
+class Comp(Filter):
 
     def __init__(
-        self, lhs: typing.Union['BinComp', 'Col', typing.Any], 
-        rhs: typing.Union['BinComp', 'Col', typing.Any], 
+        self, lhs: typing.Union['Comp', 'Col', typing.Any], 
+        rhs: typing.Union['Comp', 'Col', typing.Any], 
         f: typing.Callable[[typing.Any, typing.Any], bool]
     ) -> None:
         """_summary_
@@ -432,17 +431,17 @@ class BinComp(BaseComp):
             f (typing.Callable[[typing.Any, typing.Any], bool]): _description_
         """
         
-        if not isinstance(lhs, BaseComp) and not isinstance(lhs, Col):
+        if not isinstance(lhs, Filter) and not isinstance(lhs, Col):
             lhs = Val(lhs)
 
-        if not isinstance(rhs, BaseComp) and not isinstance(rhs, Col):
+        if not isinstance(rhs, Filter) and not isinstance(rhs, Col):
             rhs = Val(rhs)
         
         self.lhs = lhs
         self.rhs = rhs
         self.f = f
 
-    def query(self, df: pd.DataFrame, rep_map: IdxMap) -> pd.Series:
+    def query(self, df: pd.DataFrame, rep_map: Rep) -> pd.Series:
         """
 
         Args:
@@ -459,55 +458,55 @@ class BinComp(BaseComp):
         return self.f(lhs, rhs)
 
 
-class BaseSim(ABC):
+class BaseR(ABC):
 
     @abstractmethod
-    def query(self, df: pd.DataFrame, rep_map: IdxMap) -> 'Similarity':
+    def query(self, df: pd.DataFrame, rep_map: Rep) -> 'Sim':
         pass
     
-    def __call__(self, df: pd.DataFrame, rep_map: IdxMap) -> 'Similarity':
+    def __call__(self, df: pd.DataFrame, rep_map: Rep) -> 'Sim':
 
         return self.query(df, rep_map)
 
     def __mul__(self, other) -> Self:
 
-        return AggSim(
+        return AggR(
             self, other, lambda x, y: x * y
         )
 
     def __rmul__(self, other) -> Self:
 
-        return AggSim(
+        return AggR(
             self, other, lambda x, y: x * y
         )        
 
     def __add__(self, other) -> Self:
 
-        return AggSim(
+        return AggR(
             self, other, lambda x, y: x + y
         )
 
     def __radd__(self, other) -> Self:
 
-        return AggSim(
+        return AggR(
             self, other, lambda x, y: x + y
         )
     
     def __sub__(self, other) -> Self:
 
-        return AggSim(
+        return AggR(
             self, other, lambda x, y: x - y
         )
     
     def __rsub__(self, other) -> Self:
 
-        return AggSim(
+        return AggR(
             self, other, lambda x, y: y - x
         )
     # How to limit the "similarity"
 
 
-class Sim(BaseSim):
+class R(BaseR):
 
     def __init__(self, name: str, val, k: int):
         """
@@ -523,7 +522,7 @@ class Sim(BaseSim):
         self.val = val
         self.k = k
 
-    def query(self, df: pd.DataFrame, rep_map: IdxMap) -> 'Similarity':
+    def query(self, df: pd.DataFrame, rep_map: Rep) -> 'Sim':
         """
         Args:
             rep_map (RepMap): 
@@ -546,9 +545,9 @@ class Sim(BaseSim):
         return rep_idx.like(val, self.k, subset=indices)
 
 
-class AggSim(BaseSim):
+class AggR(BaseR):
 
-    def __init__(self, lhs, rhs, f: typing.Callable[[typing.Any, typing.Any], 'Similarity']):
+    def __init__(self, lhs, rhs, f: typing.Callable[[typing.Any, typing.Any], 'Sim']):
         """Aggregate the similarity
 
         Args:
@@ -563,7 +562,7 @@ class AggSim(BaseSim):
         self.rhs = rhs
         self.f = f
 
-    def query(self, df: pd.DataFrame, idx_map: IdxMap) -> 'Similarity':
+    def query(self, df: pd.DataFrame, idx_map: Rep) -> 'Sim':
         """
         Args:
             idx_map (IdxMap): 
@@ -572,12 +571,12 @@ class AggSim(BaseSim):
         Returns:
             Similarity: 
         """
-        if isinstance(self.lhs, BaseSim):
+        if isinstance(self.lhs, BaseR):
             lhs = self.lhs.query(df, idx_map)
         else:
             lhs = self.lhs
         
-        if isinstance(self.rhs, BaseSim):
+        if isinstance(self.rhs, BaseR):
             rhs = self.rhs.query(df, idx_map)
         else:
             rhs = self.rhs
@@ -585,9 +584,9 @@ class AggSim(BaseSim):
         return s
 
 
-class Like(BaseComp):
+class Like(Filter):
 
-    def __init__(self, sim: BaseSim, k: int=None):
+    def __init__(self, sim: BaseR, k: int=None):
         """
 
         Args:
@@ -596,7 +595,7 @@ class Like(BaseComp):
         self.sim = sim
         self.k = k
 
-    def query(self, df: pd.DataFrame, rep_map: IdxMap) -> pd.Series:
+    def query(self, df: pd.DataFrame, rep_map: Rep) -> pd.Series:
         """
 
         Args:
@@ -620,19 +619,19 @@ class Like(BaseComp):
         series[similarity.indices] = True
         return series
 
-    def __call__(self, df: pd.DataFrame, rep_map: IdxMap) -> pd.DataFrame:
+    def __call__(self, df: pd.DataFrame, rep_map: Rep) -> pd.DataFrame:
         
         
         return df[self.query(df, rep_map)]
 
 
 @dataclass
-class Similarity(object):
+class Sim(object):
 
     value: np.ndarray = field(default_factory=lambda: np.array([], dtype=np.float32))
     indices: np.ndarray = field(default_factory=lambda: np.array([], dtype=np.int64))
 
-    def align(self, other: 'Similarity') -> typing.Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    def align(self, other: 'Sim') -> typing.Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Align the indices of the two similarities
 
         Args:
@@ -674,7 +673,7 @@ class Similarity(object):
         value *= -1
         value = np.take_along_axis(value, ind_part, axis=0) 
 
-        return Similarity(value, self.indices[ind])
+        return Sim(value, self.indices[ind])
 
     def _op(self, other, f) -> Self:
         """Execute an operation between two similarities
@@ -686,10 +685,10 @@ class Similarity(object):
         Returns:
             Self: The resulting similarity
         """
-        if isinstance(other, Similarity):
+        if isinstance(other, Sim):
             v_self, v_other, indices = self.align(other)
-            return Similarity(f(v_self, v_other), indices)
-        return Similarity(
+            return Sim(f(v_self, v_other), indices)
+        return Sim(
             f(self.value, other), self.indices
         )
     
@@ -703,14 +702,14 @@ class Similarity(object):
         Returns:
             Self: The updated similarity after having filtered
         """
-        if isinstance(other, Similarity):
+        if isinstance(other, Sim):
             v_self, v_other, indices = self.align(self, other)
             chosen = f(v_self, v_other)
-            return Similarity(
+            return Sim(
                 v_self[chosen], indices[chosen]
             )
         chosen = f(self.value, other)
-        return Similarity(
+        return Sim(
             self.value[chosen], self.indices[chosen]
         )
 
@@ -822,7 +821,7 @@ class Col(object):
         """
         self.name = name
     
-    def __eq__(self, other) -> 'BinComp':
+    def __eq__(self, other) -> 'Comp':
         """Check the eqquality of two columns
 
         Args:
@@ -832,9 +831,9 @@ class Col(object):
             Comp: The comparison for equality
         """
 
-        return BinComp(self, other, lambda lhs, rhs: lhs == rhs)
+        return Comp(self, other, lambda lhs, rhs: lhs == rhs)
     
-    def __lt__(self, other) -> 'BinComp':
+    def __lt__(self, other) -> 'Comp':
         """Check whether column is less than another value
 
         Args:
@@ -844,9 +843,9 @@ class Col(object):
             Comp: The comparison for less than
         """
 
-        return BinComp(self, other, lambda lhs, rhs: lhs < rhs)
+        return Comp(self, other, lambda lhs, rhs: lhs < rhs)
 
-    def __le__(self, other) -> 'BinComp':
+    def __le__(self, other) -> 'Comp':
         """Check whether column is less than or equal to another value
 
         Args:
@@ -856,9 +855,9 @@ class Col(object):
             Comp: The comparison for less than or equal
         """
 
-        return BinComp(self, other, lambda lhs, rhs: lhs <= rhs)
+        return Comp(self, other, lambda lhs, rhs: lhs <= rhs)
 
-    def __gt__(self, other) -> 'BinComp':
+    def __gt__(self, other) -> 'Comp':
         """Check whether column is greater than another value
 
         Args:
@@ -867,9 +866,9 @@ class Col(object):
         Returns:
             Comp: The comparison for greater than
         """
-        return BinComp(self, other, lambda lhs, rhs: lhs > rhs)
+        return Comp(self, other, lambda lhs, rhs: lhs > rhs)
 
-    def __ge__(self, other) -> 'BinComp':
+    def __ge__(self, other) -> 'Comp':
         """Check whether column is greater than or equal to another value
 
         Args:
@@ -878,9 +877,9 @@ class Col(object):
         Returns:
             Comp: The comparison for greater than or equal to
         """
-        return BinComp(self, other, lambda lhs, rhs: lhs >= rhs)
+        return Comp(self, other, lambda lhs, rhs: lhs >= rhs)
 
-    def query(self, df: pd.DataFrame, rep_map: IdxMap) -> typing.Any:
+    def query(self, df: pd.DataFrame, rep_map: Rep) -> typing.Any:
         """Retrieve the column
 
         Args:
@@ -895,9 +894,9 @@ class Col(object):
 C = typing.TypeVar('C', bound=Concept)
 
 # Think about how to handle this
-class ConceptQuery(typing.Generic[C]):
+class Query(typing.Generic[C]):
 
-    def __init__(self, concept_cls: typing.Type[C], comp: BaseComp):
+    def __init__(self, concept_cls: typing.Type[C], comp: Filter):
         """
 
         Args:
@@ -907,9 +906,9 @@ class ConceptQuery(typing.Generic[C]):
         self.concept = concept_cls
         self.comp = comp
 
-    def filter(self, comp: BinComp) -> Self:
+    def filter(self, comp: Comp) -> Self:
 
-        return ConceptQuery[C](
+        return Query[C](
             self.comp & comp
         )
     
@@ -939,13 +938,13 @@ class ConceptManager(object):
     def __init__(self):
 
         self._concepts = {}
-        self._field_reps: typing.Dict[str, IdxMap] = {}
+        self._field_reps: typing.Dict[str, Rep] = {}
         self._concept_reps: typing.Dict[str, typing.List] = {}
         self._ids = {}
 
     def reset(self):
         self._concepts = {}
-        self._field_reps: typing.Dict[str, IdxMap] = {}
+        self._field_reps: typing.Dict[str, Rep] = {}
         self._concept_reps: typing.Dict[str, typing.List] = {}
         self._ids = {}
 
@@ -962,7 +961,7 @@ class ConceptManager(object):
         self._field_reps[concept.concept_name()] = concept.__rep__()
         self._ids[concept.concept_name()] = 0
 
-    def add_rep(self, rep: typing.Type[RepMixin]):
+    def add_rep(self, rep: typing.Type[ConceptRepMixin]):
 
         if not issubclass(rep, Concept):
             raise ValueError('Cannot build Rep unless mixed with a concept.')
