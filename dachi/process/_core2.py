@@ -82,6 +82,8 @@ class Var(Src):
         self.default_factory = default_factory
 
     def incoming(self) -> typing.Iterator[T]:
+
+        # hack to ensure it is a generator
         if False:
             yield False
         
@@ -148,6 +150,16 @@ class Args(object):
     def kwargs(self) -> typing.Dict:
         return self._kwargs
     
+    def incoming(self) -> typing.Iterator['T']:
+
+        for arg in self._args:
+            if isinstance(arg, T):
+                yield arg
+
+        for k, arg in self._kwargs:
+            if isinstance(arg, T):
+                yield arg
+    
     def forward(self, by: typing.Dict['T', typing.Any]) -> Self:
 
         args = []
@@ -181,7 +193,7 @@ class FSrc(Src):
 
     def incoming(self) -> typing.Iterator['T']:
         
-        for t in self.args.ts:
+        for t in self.args.incoming():
             yield t
 
     def forward(self, by: typing.Dict[T, typing.Any]) -> typing.Any:
