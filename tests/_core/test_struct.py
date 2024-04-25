@@ -2,12 +2,12 @@ from dachi.instruct import _core as _instruct
 from dachi._core import _struct
 
 
-class SimpleStruct(_instruct.Instruction):
+class SimpleStruct(_instruct.Instruct):
 
     x: _instruct.Str
 
 
-class NestedStruct(_instruct.Instruction):
+class NestedStruct(_instruct.Instruct):
 
     simple: SimpleStruct
 

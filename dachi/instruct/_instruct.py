@@ -30,18 +30,18 @@ class Body(Struct):
         pass
 
 
-class Var(pydantic.BaseModel):
+# class Var(pydantic.BaseModel):
 
-    pass
+#     pass
 
 
-class Op(pydantic.BaseModel, ValidateStrMixin):
+# class Op(pydantic.BaseModel, ValidateStrMixin):
 
-    name: str
-    inputs: typing.List[Struct]
-    descr: str = ''
+#     name: str
+#     inputs: typing.List[Struct]
+#     descr: str = ''
 
-    def forward(self, var: 'Var') -> 'Var':
-        return Var(
+#     def forward(self, var: 'Var') -> 'Var':
+#         return Var(
             
-        )
+#         )

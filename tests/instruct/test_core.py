@@ -78,7 +78,7 @@ class TestInstruction(object):
         name = 'X1'
         style = JSONStyle()
 
-        instruction = instruct.Instruction(
+        instruction = instruct.Instruct(
             name=name, style=style
         )
         assert instruction.name == 'X1'
@@ -95,7 +95,7 @@ class TestMaterial(object):
         name = 'X1'
         style = JSONStyle()
 
-        instruction = instruct.Instruction(
+        instruction = instruct.Instruct(
             name=name, style=style
         )
         assert instruction.name == 'X1'
