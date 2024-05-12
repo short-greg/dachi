@@ -932,6 +932,7 @@ class Query(typing.Generic[C]):
             concept, idx
         )
 
+# TODO: 
 
 class ConceptManager(object):
 
