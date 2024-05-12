@@ -8,25 +8,34 @@ from typing_extensions import Self
 import networkx as nx
 import functools
 import time
+from enum import Enum
 
 from dataclasses import dataclass
 import uuid
 
 
-class _UndefinedType:
-    def __repr__(self):
-        return 'UNDEFINED'
+class _Types(Enum):
 
-# Create a singleton instance of UndefinedType
-UNDEFINED = _UndefinedType()
+    UNDEFINED = 'UNDEFINED'
+    WAITING = 'WAITING'
+
+UNDEFINED = _Types.UNDEFINED
+WAITING = _Types.WAITING
+
+# class _UndefinedType:
+#     def __repr__(self):
+#         return 'UNDEFINED'
+
+# # Create a singleton instance of UndefinedType
+# UNDEFINED = _UndefinedType()
 
 
-class _WaitingType:
-    def __repr__(self):
-        return 'WAITING'
+# class _WaitingType:
+#     def __repr__(self):
+#         return 'WAITING'
 
-# Create a singleton instance of UndefinedType
-WAITING = _WaitingType()
+# # Create a singleton instance of UndefinedType
+# WAITING = _WaitingType()
 
 
 class Src(ABC):
