@@ -69,10 +69,10 @@ class StreamSrc(object):
 
         if self in by:
             value: Streamer = by[self]
-            return value()
+            return value
     
         args = self._args.iterate(by)        
-        streamer = by[self] = self._module.stream(*args.args, **args.kwargs)
+        streamer = by[self] = self._module.forward(*args.args, **args.kwargs)
         return streamer
     
     def __call__(self, by: typing.Dict['T', typing.Any]) -> typing.Any:
@@ -141,14 +141,16 @@ class T(object):
         if self._val is not UNDEFINED:
             return self._val
 
-        if self in by and not isinstance(by[self], Partial):
+        if self in by and not isinstance(by[self], Streamer) and not isinstance(by[self], Partial):
             return by[self]
     
         if self._src is not None:
             for incoming in self._src.incoming():
                 incoming.probe(by)
-            by[self] = self.src(by)
-            return by[self]
+            val = by[self] = self.src(by)
+            if isinstance(val, Streamer):
+                val = val()
+            return val
         
         raise RuntimeError('Val has not been defined and no source for t')
 
@@ -233,8 +235,28 @@ class Args(object):
 
         if self._undefined:
             return None
-        args = [a.val if isinstance(a, T) else a for a in self._args]
-        kwargs = {k: a.val if isinstance(a, T) else a for k, a in self._kwargs.items()}
+        args = []
+        kwargs = {}
+        for a in self._args:
+            if isinstance(a, T):
+                a = a.val
+            if isinstance(a, Streamer):
+                a = a().cur
+            if isinstance(a, Partial):
+                a = a.cur
+            args.append(a)
+        
+        for k, a in self._kwargs.items():
+            if isinstance(a, T):
+                a = a.val
+            if isinstance(a, Streamer):
+                a = a()
+            if isinstance(a, Partial):
+                a = a.cur
+            kwargs[k] = a
+
+        # args = [a.val if isinstance(a, T) else a for a in self._args]
+        # kwargs = {k: a.val if isinstance(a, T) else a for k, a in self._kwargs.items()}
         return Args(*args, **kwargs)
     
     @property
@@ -259,10 +281,15 @@ class Args(object):
     def has_partial(self) -> bool:
 
         for a in self._args:
-            if isinstance(a, Partial) and not a.complete:
+            if isinstance(a, T):
+                a = a.val
+            if (isinstance(a, Partial)  or isinstance(a, Streamer) and not a.complete):
+                
                 return True
         for k, a in self._kwargs.items():
-            if isinstance(a, Partial) and not a.complete:
+            if isinstance(a, T):
+                a = a.val
+            if (isinstance(a, Partial) or isinstance(a, Streamer)and not a.complete):
                 return True
         return False
     
@@ -343,6 +370,10 @@ class Streamer(object):
         self._prev = None
         self._dx = None
 
+    @property
+    def complete(self) -> bool:
+        return self._output is not UNDEFINED
+
     def __call__(self) -> typing.Union[typing.Any, Partial]:
 
         try:
@@ -384,12 +415,16 @@ class Module(ABC):
 
         args = Args(*args, **kwargs)
         if not args.undefined:
+            partial = args.has_partial()
             args = args.eval()
+            res = self.forward(*args.args, **args.kwargs)
+            if partial:
+                res = Partial(res)
             return T(
-                self.forward(*args.args, **args.kwargs),
+                res,
                 FSrc(self, args, stream_partial=stream_partial), self._multi_out
             )
-        
+  
         return T(
             UNDEFINED, FSrc(self, args, stream_partial=stream_partial), self._multi_out
         )
@@ -440,7 +475,7 @@ class StreamableModule(Module, ABC):
             )
 
         return T(
-            None, StreamSrc(self, args), self._multi_out
+            UNDEFINED, StreamSrc(self, args), self._multi_out
         )
 
 

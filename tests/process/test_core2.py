@@ -101,3 +101,20 @@ class TestStreamable:
         partial = t.val()
         assert partial.cur == 'x'
         assert partial.dx == 'x'
+
+    def test_call_returns_undefined_if_t_undefined(self):
+
+        writer = WriteOut()
+        print(writer._multi_out)
+        t = writer(_core2.T())
+        print(t.val)
+        assert t.undefined
+
+    # TODO* make this return partial
+    def test_chained_after_stream_appends(self):
+
+        writer = WriteOut()
+        append = Append('_t')
+        t = writer(_core2.T('xyz'))
+        t = append(t)
+        assert t.val.cur == 'x_t'
