@@ -1,10 +1,10 @@
-from ._core import (
+from .depracated._core import (
     T, Field, TIn, FieldList,
     F, Incoming, OutStream, SingleOutStream,
     TMid, TOut, to_by, get_arg,
     TakoBase
 )
-from ._nodes import (
+from .to_update._nodes import (
     Adapter, Processor, 
     linkf, nodedef,
     NodeFunc
@@ -13,9 +13,9 @@ from ._nodes import (
     # nodefunc, 
     # nodemethod
 )
-from ._takos import (
+from .to_update._takos import (
     Tako
 )
-from ._network import (
+from .to_update._network import (
     Network
 )

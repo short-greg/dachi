@@ -3,7 +3,7 @@ import typing
 
 # 3rd party
 import networkx as nx
-from ._core import Incoming, T, TIn, Out
+from ..depracated._core import Incoming, T, TIn, Out
 
 
 class Network(object):

@@ -2,7 +2,7 @@
 import typing
 
 # local
-from ._core import (
+from ..depracated._core import (
     TakoBase, TIn, T, to_by
 )
 from ._network import Network

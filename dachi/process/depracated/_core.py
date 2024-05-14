@@ -2,7 +2,7 @@
 from abc import abstractmethod, ABC
 import typing
 from dataclasses import dataclass
-from ..utils import F
+from ...utils import F
 
 # 3rd party
 import networkx as nx

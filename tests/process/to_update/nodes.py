@@ -1,6 +1,6 @@
 from dachi import process
 
-from .test_core import DummyNode, DummyNode2
+from ..depracated.core import DummyNode, DummyNode2
 
 
 class NodeMethodTester(object):

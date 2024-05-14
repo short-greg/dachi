@@ -3,7 +3,7 @@ import typing
 import functools
 
 # local
-from ._core import TIn, FieldList, Field, T, Processor, to_by, Out
+from ..depracated._core import TIn, FieldList, Field, T, Processor, to_by, Out
 
 
 class Adapter(Processor):
