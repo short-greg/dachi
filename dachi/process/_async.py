@@ -12,103 +12,36 @@ import functools
 import uuid
 
 
-from ._core2 import Module, Args, T, Src, WrapSrc, WrapIdxSrc, MultiT
-
-
-class Asyncable(object):
-
-    @abstractmethod
-    def __async_call__(self, args: Args) -> 'T':
-        pass
-
-
-class ParallelModule(ABC):
-
-    def __init__(self, modules: typing.List[Module]):
-
-        self._modules = modules
-
-    @abstractmethod
-    def forward(self, args: typing.List[Args]) -> typing.Tuple:
-        pass
-
-    def __getitem__(self, idx: int) -> 'Module':
-
-        return self._modules[idx]
-
-    def __iter__(self) -> typing.Iterator['Module']:
-
-        for module_i in self._modules:
-            yield module_i
-
-    @abstractmethod
-    def __call__(self, args: typing.List[Args]) -> 'MultiT':
-        pass
+from ._core2 import Module, Args, T, Src, ParallelModule
 
 
 class AsyncModule(ParallelModule):
 
-    def forward(self, args: typing.List[Args]) -> typing.Tuple:
-        
+    async def _forward(self, args: typing.List[Args]) -> typing.Tuple:
+
         tasks = []
-        with asyncio.TaskGroup() as tg:
+        async with asyncio.TaskGroup() as tg:
             
             for module_i, args_i in zip(self._modules, args):
                 
                 tasks.append(
                     tg.create_task(module_i.async_forward(args_i))
                 )
-        
+
         return tuple(
             t.result() for t in tasks
         )
 
-    def __call__(self, args: typing.List[Args]) -> typing.Tuple:
-        
-        tasks = []
-        with asyncio.TaskGroup() as tg:
-            
-            for module_i, args_i in zip(self._modules, args):
-                
-                tasks.append(
-                    tg.create_task(module_i.__async_call__(args_i))
-                )
-        
-        return tuple(
-            t.result() for t in tasks
-        )
-
-
-class ParallelSrc(WrapSrc):
-
-    def __init__(self, module: 'ParallelModule', args: typing.List['Args']) -> None:
-        super().__init__()
-        self._module = module
-        self._args = args
-
-    def incoming(self) -> typing.Iterator['T']:
-        
-        for arg in self._args:
-            for incoming in arg.incoming:
-                yield incoming
-
-    def forward(self, by: typing.Dict['T', typing.Any]) -> typing.Any:
-        
-        args = [arg(by) for arg in self.args]
-        return self._module(args)
+    def forward(self, *args: Args) -> typing.Tuple:
     
-    def __getitem__(self, idx) -> 'Module':
+        return asyncio.run(self._forward(args))
 
-        return self._module[idx]
-
-    def __iter__(self) -> typing.Iterator['Module']:
-
-        for mod_i in self._module:
-            yield mod_i
-
-    def __call__(self, by: typing.Dict['T', typing.Any]) -> typing.Any:
+    def forward(self, *args: Args) -> typing.Tuple:
         
-        return self.forward(by)
+        return tuple(
+            module_i.forward(*arg_i.args, **arg_i.kwargs)
+            for module_i, arg_i in zip(self._modules, args)
+        )
 
 
 class AsyncGroup(object):
@@ -135,7 +68,11 @@ class AsyncGroup(object):
         )
         self._t = module(self._args)
 
-    def t(self) -> 'MultiT':
+    def t(self) -> T:
+
+        if not self._exited:
+            return None
+
         return self._t
 
 
@@ -146,7 +83,7 @@ class async_group(object):
         
         self._group = AsyncGroup()
 
-    def __enter__(self):
+    def __enter__(self) -> AsyncGroup:
         
         return self._group
 
@@ -157,4 +94,3 @@ class async_group(object):
 
         if exc_type is not None:
             raise exc_val
-

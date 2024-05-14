@@ -22,20 +22,10 @@ class _Types(Enum):
 UNDEFINED = _Types.UNDEFINED
 WAITING = _Types.WAITING
 
-# class _UndefinedType:
-#     def __repr__(self):
-#         return 'UNDEFINED'
 
-# # Create a singleton instance of UndefinedType
-# UNDEFINED = _UndefinedType()
+def is_undefined(val):
 
-
-# class _WaitingType:
-#     def __repr__(self):
-#         return 'WAITING'
-
-# # Create a singleton instance of UndefinedType
-# WAITING = _WaitingType()
+    return val is UNDEFINED or val is WAITING
 
 
 class Src(ABC):
@@ -93,14 +83,20 @@ class T(object):
 
     def __init__(
         self, val=UNDEFINED, src: Src=None,
-        multi: bool=False, use_partial: bool=False, name: str=None, annotation: str=None
+        name: str=None, annotation: str=None
     ):
+        """
+
+        Args:
+            val (optional): . Defaults to UNDEFINED.
+            src (Src, optional): . Defaults to None.
+            name (str, optional): . Defaults to None.
+            annotation (str, optional): . Defaults to None.
+        """
         self._val = val
         self._src = src
-        self._multi = multi
         self._name = name
         self._annnotation = annotation
-        self._use_partial = use_partial
 
     @property
     def src(self) -> 'Src':
@@ -119,26 +115,24 @@ class T(object):
     def val(self) -> typing.Any:
         return self._val
 
-    @property
-    def undefined(self) -> bool:
+    def is_undefined(self) -> bool:
 
         return self._val is UNDEFINED
 
     def __getitem__(self, idx: int) -> 'T':
-        
-        if not self._multi:
-            raise RuntimeError(
-                'Object T does not have multiple objects'
+
+        if is_undefined(self._val):
+            return T(
+                self._val, IdxSrc(self, idx)
             )
-        else:
-            val = None
+
         return T(
-            val, IdxSrc(self, idx)
+            self._val[idx], IdxSrc(self, idx)
         )
     
     def probe(self, by: typing.Dict['T', typing.Any]) -> typing.Any:
         
-        if self._val is not UNDEFINED:
+        if not is_undefined(self._val):
             return self._val
 
         if self in by and not isinstance(by[self], Streamer) and not isinstance(by[self], Partial):
@@ -156,10 +150,10 @@ class T(object):
 
     def detach(self):
         return T(
-            self._val, None, self._multi
+            self._val, None
         )
 
- 
+
 class Var(Src):
     
     def __init__(self, default=None, default_factory=None):
@@ -200,7 +194,7 @@ class IdxSrc(Src):
         if self in by:
             return by[self]
         val = self.t.probe(by)
-        if val is UNDEFINED:
+        if is_undefined(val):
             return val
         return val[self.idx]
 
@@ -214,21 +208,21 @@ class Args(object):
         for arg in args:
             
             if isinstance(arg, T):
-                if arg.undefined:
+                if is_undefined(arg.val):
                     undefined = True
                     break
+                
         for k, arg in kwargs.items():
             
             if isinstance(arg, T):
-                if arg.undefined:
+                if is_undefined(arg.val):
                     undefined = True
                     break
         self._args = args
         self._undefined = undefined
         self._kwargs = kwargs
     
-    @property
-    def undefined(self) -> bool:
+    def is_undefined(self) -> bool:
         return self._undefined
     
     def eval(self) -> Self:
@@ -254,9 +248,6 @@ class Args(object):
             if isinstance(a, Partial):
                 a = a.cur
             kwargs[k] = a
-
-        # args = [a.val if isinstance(a, T) else a for a in self._args]
-        # kwargs = {k: a.val if isinstance(a, T) else a for k, a in self._kwargs.items()}
         return Args(*args, **kwargs)
     
     @property
@@ -283,13 +274,13 @@ class Args(object):
         for a in self._args:
             if isinstance(a, T):
                 a = a.val
-            if (isinstance(a, Partial)  or isinstance(a, Streamer) and not a.complete):
+            if (isinstance(a, Partial) or isinstance(a, Streamer) and not a.complete):
                 
                 return True
         for k, a in self._kwargs.items():
             if isinstance(a, T):
                 a = a.val
-            if (isinstance(a, Partial) or isinstance(a, Streamer)and not a.complete):
+            if (isinstance(a, Partial) or isinstance(a, Streamer) and not a.complete):
                 return True
         return False
     
@@ -298,7 +289,6 @@ class Args(object):
         by = by or {}
         args = []
         kwargs = {}
-        # partial = False
         for arg in self._args:
             if isinstance(arg, T) and arg in by:
                 val = by[arg]
@@ -334,12 +324,11 @@ class Args(object):
 
 class FSrc(Src):
 
-    def __init__(self, mod: 'Module', args: Args, stream_partial: bool=False):
+    def __init__(self, mod: 'Module', args: Args):
 
         super().__init__()
         self.mod = mod
         self._args = args
-        self._stream_partial = stream_partial
 
     def incoming(self) -> typing.Iterator['T']:
         
@@ -352,7 +341,7 @@ class FSrc(Src):
         if self in by:
             return by[self]
         
-        if self._stream_partial or not self._args.has_partial():
+        if not self._args.has_partial():
             args = self._args(by)
         else:
             args = self._args.iterate(by)
@@ -385,36 +374,62 @@ class Streamer(object):
             return Partial(self._cur, self._prev, self._dx, True) 
 
 
-def stream(module: 'Module', *args, **kwargs) -> 'T':
+class WaitSrc(Src):
 
-    return module(*args, stream_partial=True, **kwargs)
+    def __init__(self, incoming: T):
+
+        super().__init__()
+        self._incoming = incoming
+
+    def incoming(self) -> typing.Iterator['T']:
+        
+        yield self._incoming
+
+    def forward(self, by: typing.Dict[T, typing.Any]) -> typing.Any:
+        
+        # what if "by" is partial
+        if self in by:
+            return by[self]
+        
+        if isinstance(self._incoming.val, Partial) or isinstance(self._incoming.val, Streamer):
+            return WAITING
+        return self._incoming.val
+    
+
+def wait(t: T) -> T:
+
+    if isinstance(t.val, Partial) or isinstance(t.val, Streamer):
+        val = WAITING
+    else:
+        val = t.val
+    
+    return T(val, WaitSrc(t))
+
+
+def stream(module: 'StreamableModule', *args, interval: float=None, **kwargs) -> typing.Iterator[T]:
+
+    if not isinstance(module, StreamableModule):
+        raise RuntimeError('Stream only works for streamable modules')
+    t = module(*args, **kwargs)
+    yield t
+
+    if isinstance(t.val, Streamer):
+        while not t.val.complete:
+            if interval is not None:
+                time.sleep(interval)
+            yield t
 
 
 class Module(ABC):
 
-    def __init__(self, multi_out: bool=False, stream_partial: bool=False):
-        """
-
-        Args:
-            multi_out (bool, optional): . Defaults to False.
-            stream_partial (bool, optional): . Defaults to False.
-        """
-        self._multi_out = multi_out
-        self._stream_partial = stream_partial
-
-    @property
-    def stream_partial(self) -> bool:
-
-        return self._stream_partial
-    
     @abstractmethod
     def forward(self, *args, **kwargs) -> typing.Any:
         pass
 
-    def __call__(self, *args, stream_partial: bool=False, **kwargs) -> T:
+    def __call__(self, *args, **kwargs) -> T:
 
         args = Args(*args, **kwargs)
-        if not args.undefined:
+        if not args.is_undefined():
             partial = args.has_partial()
             args = args.eval()
             res = self.forward(*args.args, **args.kwargs)
@@ -422,11 +437,11 @@ class Module(ABC):
                 res = Partial(res)
             return T(
                 res,
-                FSrc(self, args, stream_partial=stream_partial), self._multi_out
+                FSrc(self, args)
             )
   
         return T(
-            UNDEFINED, FSrc(self, args, stream_partial=stream_partial), self._multi_out
+            UNDEFINED, FSrc(self, args)
         )
     
     async def async_forward(self, *args, **kwargs) -> typing.Any:
@@ -437,9 +452,23 @@ class Module(ABC):
         """
         return self.forward(*args, **kwargs)
     
-    async def __async_call__(self, *args, **kwargs) -> T:
+    # async def __async_call__(self, *args, **kwargs) -> T:
 
-        return self(*args, **kwargs)
+    #     args = Args(*args, **kwargs)
+    #     if not args.undefined:
+    #         partial = args.has_partial()
+    #         args = args.eval()
+    #         res = await self.async_forward(*args.args, **args.kwargs)
+    #         if partial:
+    #             res = Partial(res)
+    #         return T(
+    #             res,
+    #             FSrc(self, args)
+    #         )
+  
+    #     return T(
+    #         UNDEFINED, FSrc(self, args)
+    #     )
 
 
 class StreamableModule(Module, ABC):
@@ -449,13 +478,6 @@ class StreamableModule(Module, ABC):
         typing.Tuple[typing.Any, typing.Any]
     ]:
         pass 
-
-    # def stream(self, *args, **kwargs) -> 'T':
-        
-    #     return T(
-    #         UNDEFINED, StreamSrc(self, Args(*args, **kwargs)),
-    #         self._multi_out
-    #     )
 
     def forward(self, *args, **kwargs) -> Streamer:
 
@@ -467,94 +489,87 @@ class StreamableModule(Module, ABC):
 
         args = Args(*args, **kwargs)
         
-        if not args.undefined:
+        if not args.is_undefined():
             args = args.eval()
             return T(
                 self.forward(*args.args, **args.kwargs),
-                StreamSrc(self, args), self._multi_out
+                StreamSrc(self, args)
             )
 
         return T(
-            UNDEFINED, StreamSrc(self, args), self._multi_out
+            UNDEFINED, StreamSrc(self, args)
         )
 
 
-class WrapIdxSrc(Src):
+class ParallelModule(Module, ABC):
 
-    def __init__(self, t: 'MultiT', idx):
+    def __init__(self, modules: typing.List[Module]):
 
-        self.t = t
-        self.idx = idx
+        self._modules = modules
 
-    def incoming(self) -> typing.Iterator['T']:
-        yield self.t
+    def __getitem__(self, idx: int) -> 'Module':
 
-    def forward(self, by: typing.Dict[T, typing.Any]) -> typing.Any:
-        
-        if self in by:
-            return by[self]
-        val = self.t.probe(by)
-        if val is UNDEFINED:
-            return val
-        return val[self.idx]
+        return self._modules[idx]
 
+    def __iter__(self) -> typing.Iterator['Module']:
 
-class WrapSrc(ABC):
+        for module_i in self._modules:
+            yield module_i
 
-    @abstractmethod
-    def incoming(self) -> typing.Iterator['T']:
-        pass
+    def __call__(self, *args: Args) -> T:
 
-    @abstractmethod
-    def forward(self, by: typing.Dict['T', typing.Any]) -> typing.Any:
-        pass
+        undefined = False
+        has_partial = False
+        for a in args:
+            undefined = a.is_undefined() or undefined
+            has_partial = a.has_partial() or has_partial
 
-    @abstractmethod
-    def __call__(self, by: typing.Dict['T', typing.Any]) -> typing.Any:
-        pass
-
-
-class MultiT(T):
-
-    def __init__(self, vals: typing.Tuple, src: 'WrapSrc'):
-        
-        self._vals = vals
-        self._src = src
-
-    @property
-    def undefined(self) -> bool:
-
-        return functools.reduce(lambda x, y: x and y.undefined, self._ts)
-
-    def __getitem__(self, idx: int) -> 'T':
-        
+        if not undefined:
+            
+            args = [a.eval() for a in args]
+            res = self.forward(*args)
+            if has_partial:
+                res = Partial(res)
+            return T(
+                res,
+                ParallelSrc(self, args)
+            )
+  
         return T(
-            self._vals[idx], WrapIdxSrc(self, idx),
-            self._src[idx].multi
+            UNDEFINED, ParallelSrc(self, args)
         )
 
-    def probe(self, by: typing.Dict['T', typing.Any]) -> typing.Any:
-        
-        if self._vals is not None:
-            return self._vals
 
-        if self in by:
-            return by[self]
+class ParallelSrc(Src):
+
+    def __init__(self, module: 'ParallelModule', args: typing.List['Args']) -> None:
+        super().__init__()
+        self._module = module
+        self._args = args
+
+    def incoming(self) -> typing.Iterator['T']:
+        
+        for arg in self._args:
+            for incoming in arg.incoming():
+                yield incoming
+
+    def forward(self, by: typing.Dict['T', typing.Any]) -> typing.Any:
+        
+        args = [arg(by) for arg in self._args]
+        return self._module(*args).val
     
-        if self._src is not None:
-            for incoming in self._src.incoming():
-                incoming.probe(by)
-            by[self] = self.src(by)
-            return by[self]
+    def __getitem__(self, idx) -> 'Module':
+
+        return self._module[idx]
+
+    def __iter__(self) -> typing.Iterator['Module']:
+
+        for mod_i in self._module:
+            yield mod_i
+
+    def __call__(self, by: typing.Dict['T', typing.Any]) -> typing.Any:
         
-        raise RuntimeError('Val has not been defined and no source for t')
-
-    def detach(self):
-        return MultiT(
-            self._vals, None
-        )
-
-
+        return self.forward(by)
 
 # with stream()
 #    ... # set these ones to "use partial"

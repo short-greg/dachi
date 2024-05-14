@@ -5,8 +5,8 @@ from dachi.process import _core2
 
 class Append(_core2.Module):
 
-    def __init__(self, append: str, multi_out: bool = False, stream_partial: bool = False):
-        super().__init__(multi_out, stream_partial)
+    def __init__(self, append: str):
+        super().__init__()
         self._append = append
 
     def forward(self, name: str='') -> Any:
@@ -76,7 +76,6 @@ class TestStreamable:
     def test_streamable_streams_characters(self):
 
         writer = WriteOut()
-        print(writer._multi_out)
         streamer = writer.forward('xyz')
         partial = streamer()
         assert partial.cur == 'x'
@@ -85,7 +84,6 @@ class TestStreamable:
     def test_streamable_streams_characters_to_end(self):
 
         writer = WriteOut()
-        print(writer._multi_out)
         streamer = writer.forward('xyz')
         partial = streamer()
         partial = streamer()
@@ -96,7 +94,6 @@ class TestStreamable:
     def test_call_returns_t_with_streamer(self):
 
         writer = WriteOut()
-        print(writer._multi_out)
         t = writer(_core2.T('xyz'))
         partial = t.val()
         assert partial.cur == 'x'
@@ -105,12 +102,10 @@ class TestStreamable:
     def test_call_returns_undefined_if_t_undefined(self):
 
         writer = WriteOut()
-        print(writer._multi_out)
         t = writer(_core2.T())
-        print(t.val)
         assert t.undefined
 
-    # TODO* make this return partial
+#     # TODO* make this return partial
     def test_chained_after_stream_appends(self):
 
         writer = WriteOut()
@@ -118,3 +113,36 @@ class TestStreamable:
         t = writer(_core2.T('xyz'))
         t = append(t)
         assert t.val.cur == 'x_t'
+
+    def test_stream_completes_the_stream(self):
+
+        writer = WriteOut()
+        append = Append('_t')
+
+        for t in _core2.stream(writer, _core2.T('xyz')):
+            t = append(t)
+        
+        assert t.val.cur == 'xyz_t'
+
+
+class TestWait:
+
+    def test_wait_results_in_waiting(self):
+
+        writer = WriteOut()
+        t = writer(_core2.T('xyz'))
+        t = _core2.wait(
+            t
+        )
+
+        assert t.val is _core2.WAITING
+
+    def test_wait(self):
+
+        append = Append('_t')
+        t = append(_core2.T('xyz'))
+        t = _core2.wait(
+            t
+        )
+
+        assert t.val == 'xyz_t'
