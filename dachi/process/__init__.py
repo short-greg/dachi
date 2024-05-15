@@ -16,6 +16,6 @@ from .to_update._nodes import (
 from .to_update._takos import (
     Tako
 )
-from .to_update._network import (
+from ._network import (
     Network
 )

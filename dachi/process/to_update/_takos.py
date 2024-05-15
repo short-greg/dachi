@@ -5,7 +5,7 @@ import typing
 from ..depracated._core import (
     TakoBase, TIn, T, to_by
 )
-from ._network import Network
+from .._network import Network
 
 
 class Tako(TakoBase):

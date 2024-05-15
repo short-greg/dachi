@@ -45,13 +45,14 @@ class TestAsyncModule:
         t1 = core.T(core.UNDEFINED)
         t2 = core.T('xyz')
 
-        t = module(core.Args(t1), core.Args(t2))
+        t = module([core.Args(t1), core.Args(t2)])
         assert t[0].val is core.UNDEFINED
         assert t[1].val is core.UNDEFINED
 
 
     def test_probe_returns_tuple_of_values(self):
-
+        """_summary_
+        """
         module = _async.AsyncModule([
             Append('_t'),
             Append('_x')
@@ -60,7 +61,7 @@ class TestAsyncModule:
         t1 = core.T(core.UNDEFINED)
         t2 = core.T('xyz')
 
-        t = module(core.Args(t1), core.Args(t2))
+        t = module([core.Args(t1), core.Args(t2)])
         
         res = t.probe(
             {t1: 'abc'}
