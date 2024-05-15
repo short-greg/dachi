@@ -437,22 +437,6 @@ class Args(object):
                 kwargs[k] = arg
         
         return Args(*args, **kwargs)
-    
-    # def iterate(self, by: typing.Dict['T', typing.Any], interval=0.01) -> Self:
-    #     """Iterate over the streamer
-
-    #     Args:
-    #         by (typing.Dict[T, typing.Any]): _description_
-    #         interval (float, optional): _description_. Defaults to 0.01.
-
-    #     Returns:
-    #         Self: _description_
-    #     """
-    #     args = self
-    #     while args.has_partial():
-    #         args = args(by)
-    #         time.sleep(interval)
-    #     return args
         
     def __call__(self, by: typing.Dict['T', typing.Any]) -> Self:
         return self.forward(by)
@@ -491,14 +475,8 @@ class ModSrc(Src):
         Returns:
             typing.Any: The value output by the module
         """
-        # what if "by" is partial
-        # if self in by:
-        #     return by[self]
         
         args = self._args(by)
-        # if not self._args.has_partial():
-        # else:
-        #     args = self._args.iterate(by)
 
         return self.mod(*args.args, **args.kwargs).val
 
@@ -653,24 +631,6 @@ class Module(ABC):
             typing.Any: 
         """
         return self.forward(*args, **kwargs)
-    
-    # async def __async_call__(self, *args, **kwargs) -> T:
-
-    #     args = Args(*args, **kwargs)
-    #     if not args.undefined:
-    #         partial = args.has_partial()
-    #         args = args.eval()
-    #         res = await self.async_forward(*args.args, **args.kwargs)
-    #         if partial:
-    #             res = Partial(res)
-    #         return T(
-    #             res,
-    #             FSrc(self, args)
-    #         )
-  
-    #     return T(
-    #         UNDEFINED, FSrc(self, args)
-    #     )
 
 
 class StreamableModule(Module, ABC):
@@ -835,78 +795,3 @@ class ParallelSrc(Src):
     def __call__(self, by: typing.Dict['T', typing.Any]) -> typing.Any:
         
         return self.forward(by)
-
-# with stream()
-#    ... # set these ones to "use partial"
-#    ... # when probing if it is 
-# # execute the stream afterward if possible
-# # normally "use partial" is false
-
-# complete 1) probes if there is "partial" input
-# if undefined input, will not probe
-# val is set to an "iterator" if the value is
-# valid. if iterator "complete" will replace
-
-
-# How to handle everything outside the loop?
-# and konw it 
-# with stream()
-#    ...
-# # execute the loop if not "UNDEFINED"
-# # If UNDEFINED => 
-
-# use MultiT
-# ParallelSrc inherits from WrapSrc 
-# 
-
-
-# TODO: 
-#  - Add Stream
-#  - Add DocStrings
-#  - Add tests
-#  1) use a thread
-#  2) Know when it has completed
-#  3) t = stream(t)
-#     
-#  4) t.completed == False
-#  5) t = x(t)
-#  6) t.completed == False
-#  7) t = complete(t)
-#  8) t.completed = True
-#   1) t.completed == False if not probed yet
-#   2) t.completed == False if not finished yet
-#   3) t.val == UNDEFINED if not 
-
-#   t.val is automatically updated
-
-#   return whether streaming
-
-
-#   if t.streaming is False:
-#      probe again
-#   y = t.val 
-#     1) check if copmleted, 
-#     2) if not completed probe again
-#   # cannot stack "streamed" unless completed
-
-# class Graph:
-    
-#     def __init__(self, in_: typing.Union[typing.List[T], T], out_: typing.Union[typing.List[T], T]):
-
-#         self._in = in_
-#         self._out = out_
-
-#     def forward(self, by: typing.Dict[T, typing.Any]) -> typing.Any:
-#         pass
-
-
-# class StreamSrc(Src):
-#     # use to nest streaming operations
-
-#     def __init__(self, graph: Graph):
-        
-#         super().__init__()
-#         self.graph = graph
-
-#     def forward(self, by: typing.Dict[T, typing.Any]) -> typing.Any:
-#         return super().forward(by)
