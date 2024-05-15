@@ -50,7 +50,7 @@ class TestModule:
         t = _core2.T()
         t = append(t)
         t = append(t)
-        assert t.undefined is True
+        assert t.is_undefined() is True
 
     def test_it_probes_the_input(self):
 
@@ -103,7 +103,7 @@ class TestStreamable:
 
         writer = WriteOut()
         t = writer(_core2.T())
-        assert t.undefined
+        assert t.is_undefined()
 
 #     # TODO* make this return partial
     def test_chained_after_stream_appends(self):

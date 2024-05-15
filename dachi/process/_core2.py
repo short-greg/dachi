@@ -757,10 +757,10 @@ class ParallelModule(Module, ABC):
         if not undefined:
             
             if isinstance(args, Args):
-                args = [a.eval() for a in args]
-            else:
                 args = a.eval()
                 args = [a] * len(self._modules)
+            else:
+                args = [a.eval() for a in args]
 
             res = self.forward(*args)
             if has_partial:

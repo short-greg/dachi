@@ -31,7 +31,7 @@ class TestAsyncModule:
             Append('_x')
         ])
 
-        t = module(core.Args('xyz'), core.Args('xyz'))
+        t = module([core.Args('xyz'), core.Args('xyz')])
         assert t.val[0] == 'xyz_t'
         assert t.val[1] == 'xyz_x'
 
@@ -79,7 +79,7 @@ class TestAsyncModule:
         t1 = core.T(core.UNDEFINED)
         t2 = core.T('xyz')
 
-        t = module(core.Args(t1), core.Args(t2))
+        t = module([core.Args(t1), core.Args(t2)])
         t = t[0]
         res = t.probe(
             {t1: 'abc'}
