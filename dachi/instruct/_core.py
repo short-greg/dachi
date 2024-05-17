@@ -200,7 +200,7 @@ def instruct(f: typing.Callable[[Struct], Func]):
 
 
 def instructmethod(f: typing.Callable[[Struct], Func]):
-    """Use assist to have a "sub" method for the instruction. The subfunction
+    """Use instructmethod to have a "sub" method for the instruction. The subfunction
     must output an IOut and take in one or more Materials. 
 
     Args:
@@ -215,7 +215,7 @@ def instructmethod(f: typing.Callable[[Struct], Func]):
 
 
 class RStyle(Style[S]):
-    """Style with a verse method
+    """Style with a reverse method
     """
 
     @abstractmethod
