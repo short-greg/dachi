@@ -1,20 +1,17 @@
 # 1st party
 import typing
+from typing_extensions import Self
 from abc import abstractmethod, ABC
 
 # 3rd party
 import pandas as pd
 import pydantic
+from pydantic import Field
 
 # local
 from ..store import Struct, Str
 import inspect
 
-
-# Do I want to inherit from
-# pydantic.BaseModel
-
-# pydantic.Struct
 
 S = typing.TypeVar('S', bound=Struct)
 
@@ -30,78 +27,83 @@ class Description(Struct):
         pass
 
     @abstractmethod
-    def update(self, **kwargs) -> 'Description':
+    def update(self, **kwargs) -> Self:
         pass
 
 
-class Ref(Description):
+# Do i want this to be a Pydantic model
+
+class Ref(Struct):
     """Reference to another description.
     Useful when one only wants to include the 
     name of a description in part of the prompt
     """
-    description: Description
+    reference: Description
+
+    @property
+    def name(self) -> str:
+        return self.reference.name
 
     @property
     def text(self) -> str:
         return ""
 
-    def update(self, **kwargs) -> 'Description':
+    def update(self, **kwargs) -> Self:
         # doesn't do anything since
         # it is a reference
-        pass
+        return self
 
 
 class Instruction(Description):
     """Specific instruction for the model to use
     """
-    name: str
-    text: typing.Union[str, Str]
-    incoming: typing.List['Description']
+    instr: typing.Union[str, Str]
+    incoming: typing.List['Description'] = Field(default_factory=list)
 
     @property
     def text(self) -> str:
-        return self._text
-    
-    def incoming(self) -> typing.Iterator['Description']:
-
-        for inc in self._incoming:
-            yield inc
+        return self.instr
 
     def traverse(self, visited: typing.Set=None) -> typing.Iterator['Description']:
 
         visited = visited or set()
 
-        if self in visited:
+        if id(self) in visited:
             return
 
         yield self
-        visited.add(self)
+        visited.add(id(self))
 
-        for inc in self._incoming:
+        if self.incoming is None:
+            return
+
+        for inc in self.incoming:
             for inc_i in inc.traverse(visited):
                 yield inc_i
     
     def update(self, **kwargs) -> 'Instruction':
 
-        text = self._text(**kwargs)
+        text = self.instr(**kwargs)
         return Instruction(
-            self._name, text, self._incoming
+            self._name, text, self.incoming
+        )
+
+
+class InstructionSet(Description):
+
+    instructions: typing.List[Instruction]
+
+    def update(self, **kwargs) -> 'InstructionSet':
+        
+        return InstructionSet(
+            [instruction.update(**kwargs) for instruction in self.instructions]
         )
     
-    def list_up(self) -> typing.List['Description']:
-
-        return [i for i in self.traverse()]
-
-
-class InstructionSet(Instruction):
-
-    # TODO: Update this
-    
-    def __init__(self, instructions: typing.List[Instruction], name: str):
-
-        super().__init__(name, '\n\n'.join(
-            i.text for i in instructions
-        ), instructions)
+    @property
+    def text(self) -> str:
+        return '\n\n'.join(
+            i.text for i in self.instructions
+        )
 
 
 def traverse(*instructions: Instruction) -> typing.Iterator[Description]:
@@ -120,16 +122,15 @@ class Operation(object):
         pass
 
 
-
 def op(x: typing.Union[typing.List[Description], Description], intruction: str, name: str) -> Instruction:
 
-    if isinstance(x, Description):
+    if isinstance(x, Description) or isinstance(x, Ref):
         x = [x]
     
     resources = ', '.join(x_i.name for x_i in x)
     text = f'{intruction} . Use {resources}'
     return Instruction(
-        name, text, x
+        name=name, instr=text, incoming=x
     )
 
 
@@ -158,46 +159,99 @@ class Style(pydantic.BaseModel, typing.Generic[S], ABC):
         return v
 
 
-class Output(Struct, typing.Generic[S]):
+def generic_class(t: typing.TypeVar, idx: int=0):
+
+    return t.__orig_class__.__args__[idx]
+
+
+class Output(typing.Generic[S], Struct):
     
     instruction: Instruction
+    name: str
     style: Style = None
 
     def read(self, text: str) -> S:
 
         if self.style is not None:
             return self.style.load(text)
-        return S.load(text)
+        
+        Scls = generic_class(self)
+        return Scls.from_text(text)
     
     @property
     def text(self) -> str:
-        return self.instruction.text
+
+        Scls = generic_class(self)
+        return f"""
+        {self.instruction.text}
+
+        ===JSON OUTPUT TEMPLATE BELOW===
+
+        {Scls.template()}
+        """
 
 
 class OutputList(Struct):
     
-    header: Instruction
     outputs: typing.List[Output]
-    footer: Instruction
+    header: Instruction = None
+    footer: Instruction = None
 
-    def read(self, text: str) -> S:
+    def read(self, text: str) -> typing.List:
 
-        if self.style is not None:
-            return self.style.load(text)
-        return S.load(text)
+        results = []
+        # 1) split by header
+        func_locs = []
 
-    # TODO: Not finished. Have to have to 
-    #  indicate where one output starts
-    #  and another begins etc
+        for output in self.outputs:
+            cur = f"::OUT::{output.name}::"
+            loc = text.find(cur)
+            func_locs.append(
+                (loc, loc + len(cur))
+            )
+        func_locs.append((-1, -1))
+
+        for output, p1, p2 in zip(self.outputs, func_locs[:-1], func_locs[1:]):
+            
+            print(p1, p2)
+            _ = text[p1[0]:p1[1]]
+            func_response = text[p1[1]:p2[0]]
+            print(func_response)
+            results.append(
+                output.read(func_response)
+            )
+        
+        return results        
+
     @property
     def text(self) -> str:
-        return (
-            f"""
+        
+        output_templates = []
+        for output in self.outputs:
+            output_templates.append(
+                f"""
+                ===OUTPUT TEMPLATE {output.name}===
+
+                :::OUT:::{output.name}
+
+                {output.text}
+                """
+            )
+
+        out_text = ''
+        if self.header is not None:
+            out_text = f"""
             {self.header.text}
 
-            {'\n\n'.join(output.text for output in self.outputs)}
-
-            {self.footer.text}            
             """
-        )
+        out_text = f"""
+        {'\n\n'.join(output_templates)}
+        """
 
+        if self.footer is not None:
+            out_text = f"""
+            {out_text}
+
+            {self.footer.text}
+            """
+        return out_text
