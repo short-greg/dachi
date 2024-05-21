@@ -6,7 +6,7 @@ import typing
 import pydantic
 
 # local
-from .._core._struct import Struct, Str, ValidateStrMixin
+from ..._core._struct import Struct, Str, ValidateStrMixin
 
 
 class Role(Struct):

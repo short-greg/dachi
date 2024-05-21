@@ -1,4 +1,4 @@
-from dachi.instruct import _core as _instruct
+from dachi.instruct.depracate import _core as _instruct
 from dachi._core import _struct
 
 

@@ -7,7 +7,7 @@ import pandas as pd
 import pydantic
 
 # local
-from ..store import Struct, Str
+from ...store import Struct, Str
 import inspect
 
 

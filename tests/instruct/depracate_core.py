@@ -1,5 +1,5 @@
 from dachi._core import _struct
-from dachi.instruct import _core as instruct
+from dachi.instruct.depracate import _core as instruct
 import json
 import typing
 

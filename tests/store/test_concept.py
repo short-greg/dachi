@@ -383,7 +383,6 @@ class PersonWRep(_concept.Concept):
         )
 
 
-
 class TestConceptWithRepField:
 
     def test_that_embeddings_are_added(self):
