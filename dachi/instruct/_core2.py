@@ -128,7 +128,7 @@ def op(x: typing.Union[typing.List[Description], Description], intruction: str, 
         x = [x]
     
     resources = ', '.join(x_i.name for x_i in x)
-    text = f'{intruction} . Use {resources}'
+    text = f'Do: {intruction} --- With Inputs: {resources}'
     return Instruction(
         name=name, instr=text, incoming=x
     )

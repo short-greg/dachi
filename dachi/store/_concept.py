@@ -17,6 +17,25 @@ from pydantic import Field
 
 
 
+# like( )  <= 
+# Sim() <= I want this to return numerical values
+
+# This makes it a comparison
+# Sim() returns a "Similarity"
+# like(Sim() + Sim(), N=10))
+
+# # I want to make it something like this
+# like(0.5 * Sim('R', Comp) + 0.5 Sim()
+
+# Sim() + 
+
+
+# Think about how to handle this
+# Have ConceptQuery
+# And DerivedQuery
+# 
+
+
 # TODO: Change this... Have the similarity
 # contain all indices + a "chosen"
 # if not "chosen" will be 0
@@ -178,7 +197,6 @@ class RepFactory(typing.Generic[QR]):
 class Rep(object):
     """Class to define the indexes that are stored
     """
-
     base_rep: InitVar['Rep'] = None
 
     def __post_init__(self, base_rep: 'Rep'=None):
@@ -214,6 +232,11 @@ class Rep(object):
                 row['id'], value
             )
 
+    def drop(self, id):
+
+        for k, index in self:
+            index.remove(id)
+
     def __getattr__(self, key: str):
 
         if self.__base_rep__ is not None:
@@ -228,7 +251,11 @@ class Rep(object):
         return value
 
 
-class Concept(BaseModel):
+class BaseConcept(BaseModel):
+    pass
+
+
+class Concept(BaseConcept):
 
     __manager__: typing.ClassVar['ConceptManager'] = None
 
@@ -255,6 +282,14 @@ class Concept(BaseModel):
             return columns, types, defaults, default_factories
         
         return columns
+
+    @conceptmethod
+    def get_data(cls) -> pd.DataFrame:
+        return cls.__manager__.get_data(cls)
+
+    @conceptmethod
+    def get_rep(cls) -> Rep:
+        return cls.__manager__.get_rep(cls)
 
     @classmethod
     def manager(cls) -> 'ConceptManager':
@@ -296,19 +331,19 @@ class Concept(BaseModel):
 
     @conceptmethod
     def filter(cls, comp: 'Comp'):
-        return Query(
+        return ConceptQuery(
             cls, comp
         )
 
     @conceptmethod
     def like(cls, sim: 'BaseR', k: int=None):
-        return Query(
+        return ConceptQuery(
             cls, Like(sim, k)
         )
 
     @conceptmethod
     def exclude(cls, comp: 'Comp'):
-        return Query(
+        return ConceptQuery(
             cls, ~comp
         )
 
@@ -327,11 +362,23 @@ class Concept(BaseModel):
         return cls
 
 
+class Derived(BaseConcept):
+
+    data: typing.Dict[str, typing.Any]
+    
+    def __getattr__(self, key: str) -> typing.Any:
+
+        if key not in self.data:
+            raise AttributeError(f'{key} is not a member of the derived concept.')
+        return self.data[key]
+
+
+
 class ConceptRepMixin(object):
 
     @conceptmethod
     def like(cls, comp: 'Comp'):
-        return Query(
+        return ConceptQuery(
             cls, comp
         )
 
@@ -555,7 +602,6 @@ class AggR(BaseR):
             rhs: The right hand side of the aggregation
             f (typing.Callable[[typing.Any, typing.Any], Similarity;]): 
         """
-
         # val could also be a column
         # or a compare
         self.lhs = lhs
@@ -620,7 +666,6 @@ class Like(Filter):
         return series
 
     def __call__(self, df: pd.DataFrame, rep_map: Rep) -> pd.DataFrame:
-        
         
         return df[self.query(df, rep_map)]
 
@@ -797,17 +842,6 @@ class Sim(object):
         )
     # TODO: Add more such as "less than", max etc
 
-# like( )  <= 
-# Sim() <= I want this to return numerical values
-
-# This makes it a comparison
-# Sim() returns a "Similarity"
-# like(Sim() + Sim(), N=10))
-
-# # I want to make it something like this
-# like(0.5 * Sim('R', Comp) + 0.5 Sim()
-
-# Sim() + 
 
 
 class Col(object):
@@ -825,12 +859,11 @@ class Col(object):
         """Check the eqquality of two columns
 
         Args:
-            other (_type_): The other Col com compare with
+            other : The other Col com compare with
 
         Returns:
             Comp: The comparison for equality
         """
-
         return Comp(self, other, lambda lhs, rhs: lhs == rhs)
     
     def __lt__(self, other) -> 'Comp':
@@ -842,7 +875,6 @@ class Col(object):
         Returns:
             Comp: The comparison for less than
         """
-
         return Comp(self, other, lambda lhs, rhs: lhs < rhs)
 
     def __le__(self, other) -> 'Comp':
@@ -891,48 +923,295 @@ class Col(object):
         return df[self.name]
 
 
-C = typing.TypeVar('C', bound=Concept)
+class F(ABC):
+    
+    @abstractmethod
+    def __call__(self, df: pd.DataFrame) -> pd.DataFrame:
+        pass
 
-# Think about how to handle this
-class Query(typing.Generic[C]):
 
-    def __init__(self, concept_cls: typing.Type[C], comp: Filter):
+class Selector(ABC):
+    
+    def __init__(self, alias: str, to_select: typing.Union[Col, str, F]):
+
+        self.alias = alias
+        self.to_select = to_select
+
+    def annotate(self, df: pd.DataFrame, rep_map) -> pd.DataFrame:
+        self.to_select
+
+    def select(
+        self, cur_df: typing.Union[pd.DataFrame, None], 
+        df: pd.DataFrame
+    ) -> pd.DataFrame:
+        
+        if cur_df is None:
+            cur_df = pd.DataFrame()
+        cur_df[self.alias] = df[self.to_select]
+        return cur_df
+
+
+class ColSelector(Selector):
+    
+    def __init__(self, alias: str, to_select: Col):
+
+        self.alias = alias
+        self.to_select = to_select
+
+    def annotate(self, df: pd.DataFrame, rep_map) -> pd.DataFrame:
+        
+        if self.alias in df.columns.values:
+            raise ValueError('')
+        
+        df[self.alias] = self.to_select.query(df, rep_map)
+        return df
+
+
+class StrSelector(Selector):
+    
+    def __init__(self, alias: str, to_select: str):
+
+        self.alias = alias
+        self.to_select = to_select
+
+    def annotate(self, df: pd.DataFrame, rep_map) -> pd.DataFrame:
+
+        if self.alias in df.columns.values:
+            raise ValueError('')
+
+        df[self.alias] = df[self.to_select]
+        return df
+
+
+class FSelector(Selector):
+    
+    def __init__(self, alias: str, to_select: F):
+
+        self.alias = alias
+        self.to_select = to_select
+
+    def annotate(self, df: pd.DataFrame, rep_map) -> pd.DataFrame:
+        if self.alias in df.columns.values:
+            raise ValueError('')
+
+        df[self.alias] = F(df)
+        return df
+
+
+class Selection(object):
+
+    def __init__(self, selectors: typing.List[Selector]=None):
+
+        self.selectors = selectors or []
+
+    def annotate(self, df: pd.DataFrame, rep_map) -> pd.DataFrame:
+        
+        cur_df = None
+        for selector in self.selectors:
+            cur_df = selector.annotate(df, rep_map)
+        return cur_df
+
+    def select(self, df: pd.DataFrame) -> pd.DataFrame:
+        
+        cur_df = None
+        for selector in self.selectors:
+            cur_df = selector.select(df, cur_df)
+
+        return cur_df
+
+
+C = typing.TypeVar('C', bound=BaseConcept)
+
+
+class BaseQuery(ABC):
+
+    @abstractmethod
+    def filter(self, comp: Comp) -> Self:
+        pass
+
+    @abstractmethod
+    def select(self, **kwargs) -> 'DerivedQuery':
+        pass
+    
+    @abstractmethod
+    def __iter__(self) -> typing.Iterator['BaseConcept']:
+        pass
+        
+    @abstractmethod
+    def df(self) -> pd.DataFrame:
+        pass
+
+    @abstractmethod
+    def join(self, query: 'BaseQuery', alias: str, on_: str, how: str='inner') -> 'DerivedQuery':
+        pass
+
+    def inner(self, query: 'BaseQuery', alias: str, on_: str) -> Self:
+        return self.join(query, alias, on_, 'inner')
+
+    def left(self, query: 'BaseQuery', alias: str, on_: str) -> Self:
+        return self.join(query, alias, on_, 'left')
+
+    def right(self, query: 'BaseQuery', alias: str, on_: str) -> Self:
+        return self.join(query, alias, on_, 'right')
+
+
+class Join(object):
+
+    def __init__(self, alias: str, query: BaseQuery, on_: str, how: str='inner'):
+
+        self.query = query
+        self.on_ = on_
+        self.alias = alias
+        self.how = how
+
+    def join(self, df: pd.DataFrame) -> pd.DataFrame:
+        
+        join_df = self.query.df()
+        join_df = join_df.copy()
+
+        columns = [f'{self.alias}.{column}' for column in join_df.columns.values]
+
+        join_df = join_df.set_axis(columns, axis=1)
+
+        return df.merge(
+            join_df, on=self.on_, how=self.how
+        )
+
+
+class ConceptQuery(BaseQuery, typing.Generic[C]):
+
+    def __init__(
+        self, concept_cls: typing.Type[C], 
+        comp: Filter, joined: typing.Dict[str, Join]=None
+    ):
         """
-
         Args:
             concept_cls (typing.Type[C]): 
             comp (BaseComp): 
         """
         self.concept = concept_cls
         self.comp = comp
+        self.joined: typing.Dict[str, Join] = joined or {}
 
     def filter(self, comp: Comp) -> Self:
 
-        return Query[C](
-            self.comp & comp
+        return ConceptQuery[C](self.comp & comp)
+    
+    def join(self, query: BaseQuery, alias: str, on_: str, how: str='inner') -> 'ConceptQuery[C]':
+        
+        if alias in joined:
+            raise KeyError(f'Already  {alias} already defined.')
+        joined = {
+            alias: Join(alias, query, on_, how=how)
+            **self.joined
+        }
+        return ConceptQuery[C](
+            self.concept, self.comp, joined
         )
+
+    def select(self, **kwargs) -> 'DerivedQuery':
+        # 1) uses an alias.. a='x', y=Col(['x', 'y']), x=F('x') + F('y')
+        # 1) if it is a 
+        # selection = [*self.selection.selectors]
+        selection = []
+        for k, v in kwargs.items():
+            selection.append(Selector(k, v))
+        return DerivedQuery(self.concept, self.comp, Selection(selection))
     
     def __iter__(self) -> typing.Iterator[C]:
 
-        concept = self.concept.__manager__.get_data(self.concept)
-        idx = self.concept.__manager__.get_rep(self.concept)
+        concept = self.concept.get_data()
+        idx = self.concept.get_rep()
 
-        sub_df = self.comp(
-            concept, idx
-        )
+        sub_df = self.comp(concept, idx)
 
         for _, row in sub_df.iterrows():
             yield self.concept(**row.to_dict())
         
     def df(self) -> pd.DataFrame:
 
-        concept = self.concept.__manager__.get_data(self.concept)
-        idx = self.concept.__manager__.get_rep(self.concept)
-        return self.comp(
-            concept, idx
+        concept = self.concept.get_data()
+        idx = self.concept.get_rep()
+        return self.comp(concept, idx)
+
+
+class DerivedQuery(BaseQuery):
+
+    def __init__(
+        self, base: typing.Type[BaseConcept], 
+        comp: Filter, selection: Selection
+    ):
+        """
+        Args:
+            concept_cls (typing.Type[C]): 
+            comp (BaseComp): 
+        """
+        self.base = base
+        self.comp = comp
+        self.selection = selection
+
+    def filter(self, comp: Comp) -> Self:
+
+        return DerivedQuery(self.comp & comp)
+    
+    def join(self, query: BaseQuery, alias: str, on_: str, how: str='inner') -> 'DerivedQuery':
+        
+        if alias in joined:
+            raise KeyError(f'Already  {alias} already defined.')
+        joined = {
+            alias: Join(alias, query, on_, how=how)
+            **self.joined
+        }
+        return DerivedQuery(
+            self.concept, self.comp, joined
         )
 
-# TODO: 
+    def select(self, **kwargs) -> Self:
+        # 1) uses an alias.. 
+        # a='x', y=Col(['x', 'y']), x=F('x') + F('y')
+        # 1) if it is a 
+        selection = [*self.selection.selection]
+        for k, v in kwargs.items():
+            selection.append(Selector(k, v))
+        return DerivedQuery(self.base, self.comp, selection)
+    
+    def __iter__(self) -> typing.Iterator[C]:
+        # else create the concept
+        # How to handle selections?
+        concept = self.base.get_data()
+        idx = self.base.get_rep()
+        concept = self.selection.annotate(concept, idx)
+
+        sub_df = self.comp(concept, idx)
+        sub_df = self.selection.select(sub_df)
+
+        for _, row in sub_df.iterrows():
+            yield Derived(row.to_dict())
+        
+    def df(self) -> pd.DataFrame:
+
+        concept = self.base.get_data()
+        idx = self.base.get_rep()
+        concept = self.selection.annotate(concept, idx)
+        # How to handle it if the user 
+        # i think the easiest way to is to prevent
+        # overwriting a field name in annotate
+        concept = self.comp(concept, idx)
+        return self.selection.select(concept)
+
+
+""" 
+# query.join(query, on=.., name=...)
+# # # how about select?? Selet determines some aliases
+# # # query.select(...) # create
+# sub_query (.joined)
+# annotations (.annotations)
+# selection (.select)
+#    .select twice will add multiple selections
+# if there are selections or annotations it will not return the
+# base concept class
+
+"""
 
 class ConceptManager(object):
 
@@ -985,7 +1264,7 @@ class ConceptManager(object):
         base_rep = self._field_reps[rep.concept_name()]
         self._field_reps[rep.model_name()] = rep.__rep__(base_rep=base_rep)
 
-    def get_rep(self, concept: typing.Type[Concept]) -> pd.DataFrame:
+    def get_rep(self, concept: typing.Type[Concept]) -> Rep:
 
         return self._field_reps[concept.model_name()]
 
@@ -1010,6 +1289,25 @@ class ConceptManager(object):
         rep = self._field_reps[concept.model_name()]
         df.loc[concept.id] = concept.to_dict()
         rep.add(concept.to_dict())
+    
+    def delete_row(self, concept: Concept):
+
+        try:
+            df: pd.DataFrame = self._concepts[concept.concept_name()]
+        except KeyError:
+            raise KeyError(
+                f'No concept named {concept.concept_name()}. '
+                'Has it been built with Concept.build()?')
+
+        if concept.id is None:
+            # TODO: decide how to handle this
+            return
+        
+        rep = self._field_reps[concept.model_name()]
+        df.drop(index=concept.id)
+        rep.drop(concept.id)
+        concept.id = None
+
 
 
 concept_manager = ConceptManager()
