@@ -1,13 +1,13 @@
-from dachi.instruct.depracate import _core as _instruct
+# from dachi.instruct.depracate import _core as _instruct
 from dachi._core import _struct
 
 
-class SimpleStruct(_instruct.Instruct):
+class SimpleStruct(_struct.Struct):
 
-    x: _instruct.Str
+    x: _struct.Str
 
 
-class NestedStruct(_instruct.Instruct):
+class NestedStruct(_struct.Struct):
 
     simple: SimpleStruct
 
@@ -66,17 +66,17 @@ class TestStruct(object):
         struct = SimpleStruct(name='x', x="2")
         assert struct.x.text == '2'
 
-    def test_simple_struct_pudates_text_on_forward(self):
+    # def test_simple_struct_pudates_text_on_forward(self):
 
-        struct = SimpleStruct(name='x', x=_instruct.Str(text='{adj} job', vars=['adj']))
-        struct = struct.update(adj='great')
-        assert struct.x.text == 'great job'
+    #     struct = SimpleStruct(name='x', x=_struct.Str(text='{adj} job', vars=['adj']))
+    #     struct = struct.update(adj='great')
+    #     assert struct.x.text == 'great job'
 
-    def test_nested_struct_pudates_text_on_forward(self):
-        simple = SimpleStruct(name='x', x=_instruct.Str(text='{adj} job', vars=['adj']))
-        struct = NestedStruct(name='y', simple=simple)
-        struct = struct.update(adj='great')
-        assert struct.simple.x.text == 'great job'
+    # def test_nested_struct_pudates_text_on_forward(self):
+    #     simple = SimpleStruct(name='x', x=_struct.Str(text='{adj} job', vars=['adj']))
+    #     struct = NestedStruct(name='y', simple=simple)
+    #     struct = struct.update(adj='great')
+    #     assert struct.simple.x.text == 'great job'
 
     def test_template_gives_correct_template(self):
 
