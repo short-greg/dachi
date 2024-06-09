@@ -334,6 +334,12 @@ class Concept(BaseConcept):
         return ConceptQuery(
             cls, comp
         )
+    
+    @conceptmethod
+    def all(cls):
+        return ConceptQuery(
+            cls
+        )
 
     @conceptmethod
     def like(cls, sim: 'BaseR', k: int=None):
@@ -937,8 +943,9 @@ class Selector(ABC):
         self.alias = alias
         self.to_select = to_select
 
+    @abstractmethod
     def annotate(self, df: pd.DataFrame, rep_map) -> pd.DataFrame:
-        self.to_select
+        pass
 
     def select(
         self, cur_df: typing.Union[pd.DataFrame, None], 
@@ -947,7 +954,7 @@ class Selector(ABC):
         
         if cur_df is None:
             cur_df = pd.DataFrame()
-        cur_df[self.alias] = df[self.to_select]
+        cur_df[self.alias] = df[self.alias]
         return cur_df
 
 
@@ -962,8 +969,12 @@ class ColSelector(Selector):
         
         if self.alias in df.columns.values:
             raise ValueError('')
-        
-        df[self.alias] = self.to_select.query(df, rep_map)
+
+        try:        
+            df[self.alias] = self.to_select.query(df, rep_map)
+        except KeyError:
+            raise KeyError(f'The key {self.to_select} is not present in the dataframe being annotated.')
+
         return df
 
 
@@ -979,8 +990,23 @@ class StrSelector(Selector):
         if self.alias in df.columns.values:
             raise ValueError('')
 
-        df[self.alias] = df[self.to_select]
+        try:
+            df[self.alias] = df[self.to_select]
+        except KeyError:
+            raise KeyError(f'The key {self.to_select} is not present in the dataframe being annotated.')
         return df
+
+def create_selector(alias: str, select):
+
+    if isinstance(select, Col):
+        return ColSelector(alias, select)
+    if isinstance(select, str):
+        return StrSelector(alias, select)
+    if isinstance(select, F):
+        return FSelector(alias, select)
+    raise ValueError(
+        f'Cannot create selector for an object of type {type(select)}'
+    )
 
 
 class FSelector(Selector):
@@ -1015,7 +1041,7 @@ class Selection(object):
         
         cur_df = None
         for selector in self.selectors:
-            cur_df = selector.select(df, cur_df)
+            cur_df = selector.select(cur_df, df)
 
         return cur_df
 
@@ -1072,9 +1098,8 @@ class Join(object):
         columns = [f'{self.alias}.{column}' for column in join_df.columns.values]
 
         join_df = join_df.set_axis(columns, axis=1)
-
         return df.merge(
-            join_df, on=self.on_, how=self.how
+            join_df, left_on=self.on_, right_on=f'{self.alias}.{self.on_}', how=self.how
         )
 
 
@@ -1082,7 +1107,8 @@ class ConceptQuery(BaseQuery, typing.Generic[C]):
 
     def __init__(
         self, concept_cls: typing.Type[C], 
-        comp: Filter, joined: typing.Dict[str, Join]=None
+        comp: Filter=None, 
+        joined: typing.Dict[str, Join]=None
     ):
         """
         Args:
@@ -1095,14 +1121,21 @@ class ConceptQuery(BaseQuery, typing.Generic[C]):
 
     def filter(self, comp: Comp) -> Self:
 
-        return ConceptQuery[C](self.comp & comp)
+        if self.comp is None:
+            comp = comp
+        else:
+            comp = comp & comp
+        return ConceptQuery[C](
+            self.concept, comp,
+            self.joined
+        )
     
     def join(self, query: BaseQuery, alias: str, on_: str, how: str='inner') -> 'ConceptQuery[C]':
         
-        if alias in joined:
+        if alias in self.joined:
             raise KeyError(f'Already  {alias} already defined.')
         joined = {
-            alias: Join(alias, query, on_, how=how)
+            alias: Join(alias, query, on_, how=how),
             **self.joined
         }
         return ConceptQuery[C](
@@ -1115,15 +1148,29 @@ class ConceptQuery(BaseQuery, typing.Generic[C]):
         # selection = [*self.selection.selectors]
         selection = []
         for k, v in kwargs.items():
-            selection.append(Selector(k, v))
-        return DerivedQuery(self.concept, self.comp, Selection(selection))
+            if not isinstance(v, Selector):
+                selector = create_selector(k, v)
+
+            selection.append(selector)
+        return DerivedQuery(
+            self.concept, Selection(selection), 
+            self.comp, self.joined
+        )
     
     def __iter__(self) -> typing.Iterator[C]:
 
         concept = self.concept.get_data()
         idx = self.concept.get_rep()
 
-        sub_df = self.comp(concept, idx)
+        for k, to_join in self.joined.items():
+            concept = to_join.join(
+                concept
+            )
+        
+        if self.comp is not None:
+            sub_df = self.comp(concept, idx)
+        else:
+            sub_df = concept
 
         for _, row in sub_df.iterrows():
             yield self.concept(**row.to_dict())
@@ -1132,6 +1179,15 @@ class ConceptQuery(BaseQuery, typing.Generic[C]):
 
         concept = self.concept.get_data()
         idx = self.concept.get_rep()
+
+        for k, to_join in self.joined.items():
+            concept = to_join.join(
+                concept
+            )
+
+        if self.comp is None:
+            return concept
+
         return self.comp(concept, idx)
 
 
@@ -1139,7 +1195,8 @@ class DerivedQuery(BaseQuery):
 
     def __init__(
         self, base: typing.Type[BaseConcept], 
-        comp: Filter, selection: Selection
+        selection: Selection, comp: Comp=None,
+        joined: Join=None
     ):
         """
         Args:
@@ -1149,10 +1206,19 @@ class DerivedQuery(BaseQuery):
         self.base = base
         self.comp = comp
         self.selection = selection
+        self.joined: typing.Dict[str, Join] = joined or {}
 
     def filter(self, comp: Comp) -> Self:
 
-        return DerivedQuery(self.comp & comp)
+        if self.comp is None:
+            comp = comp
+        else:
+            comp = comp & comp
+        return DerivedQuery(
+            self.base, 
+            self.selection, 
+            comp, self.joined
+        )
     
     def join(self, query: BaseQuery, alias: str, on_: str, how: str='inner') -> 'DerivedQuery':
         
@@ -1163,7 +1229,8 @@ class DerivedQuery(BaseQuery):
             **self.joined
         }
         return DerivedQuery(
-            self.concept, self.comp, joined
+            self.concept, self.selection, 
+            self.comp, joined
         )
 
     def select(self, **kwargs) -> Self:
@@ -1173,7 +1240,9 @@ class DerivedQuery(BaseQuery):
         selection = [*self.selection.selection]
         for k, v in kwargs.items():
             selection.append(Selector(k, v))
-        return DerivedQuery(self.base, self.comp, selection)
+        return DerivedQuery(
+            self.base, selection, self.comp, self.joined
+        )
     
     def __iter__(self) -> typing.Iterator[C]:
         # else create the concept
@@ -1186,7 +1255,7 @@ class DerivedQuery(BaseQuery):
         sub_df = self.selection.select(sub_df)
 
         for _, row in sub_df.iterrows():
-            yield Derived(row.to_dict())
+            yield Derived(data=row.to_dict())
         
     def df(self) -> pd.DataFrame:
 

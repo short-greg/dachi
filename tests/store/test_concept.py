@@ -1,13 +1,14 @@
 import typing
 from dachi.store import _concept
 from dachi.store._concept import (
-    Col, RepLookup, Concept, ConceptManager,
-    Rep, R, AggR, Like
+    Col, RepLookup, 
+    Rep, R, Like, ColSelector,
+    StrSelector, FSelector, Selection,
+    Join, Derived
 )
 import faiss
 import numpy as np
 import pandas as pd
-import pydantic
 import pytest
 
 from dataclasses import field
@@ -319,6 +320,139 @@ class TestSim:
         assert 1 in similarity.indices
         assert 0 in similarity.indices
 
+
+class TestColSelector:
+
+    def test_annotate_adds_columns_to_a_df(self):
+
+        selector = ColSelector(
+            'z', Col('x')
+        )
+        
+        df = pd.DataFrame(
+            {'x': [1, 2], 'y': [3, 4]}
+        )
+        annotated = selector.annotate(df, None)
+        assert (
+            (annotated['x'] == annotated['z']).all()
+        )
+
+    def test_annotate_adds_columns_to_a_df(self):
+
+        selector = ColSelector(
+            'z', Col('b')
+        )
+        
+        df = pd.DataFrame(
+            {'x': [1, 2], 'y': [3, 4]}
+        )
+        with pytest.raises(KeyError):
+            selector.annotate(df, None)
+
+    def test_select_has_added_z_and_removed_x(self):
+
+        selector = ColSelector(
+            'z', Col('x')
+        )
+        
+        df = pd.DataFrame(
+            {'x': [1, 2], 'y': [3, 4]}
+        )
+        annotated = selector.annotate(df, None)
+        annotated = selector.select(None, df)
+        assert (annotated['z'] == df['x']).all()
+        assert 'x' not in annotated.columns.values
+
+
+class TestSelection:
+
+    def test_annotate_adds_columns(self):
+
+        selection = Selection(
+            [StrSelector('z', 'x'),
+             StrSelector('a', 'y')]
+        )
+        df = pd.DataFrame(
+            {'x': [1, 2], 'y': [3, 4]}
+        )
+        annotated = selection.annotate(
+            df, None
+        )
+        assert (
+            annotated['a'] == annotated['y']
+        ).all()
+        assert (
+            annotated['x'] == annotated['z']
+        ).all()
+
+    def test_select_creates_fresh_df(self):
+
+        selection = Selection(
+            [StrSelector('z', 'x'),
+             StrSelector('a', 'y')]
+        )
+        df = pd.DataFrame(
+            {'x': [1, 2], 'y': [3, 4]}
+        )
+        annotated = selection.annotate(
+            df, None
+        )
+        annotated = selection.select(
+            df
+        )
+        assert (
+            annotated['a'] == df['y']
+        ).all()
+        assert (
+            annotated['z'] == df['x']
+        ).all()
+        assert 'x' not in annotated.columns.values
+        assert 'y' not in annotated.columns.values
+
+
+class TestStrSelector:
+
+    def test_annotate_adds_columns_to_a_df(self):
+
+        selector = StrSelector(
+            'z', 'x'
+        )
+        
+        df = pd.DataFrame(
+            {'x': [1, 2], 'y': [3, 4]}
+        )
+        annotated = selector.annotate(df, None)
+        assert (
+            (annotated['x'] == annotated['z']).all()
+        )
+
+    def test_annotate_adds_columns_to_a_df(self):
+
+        selector = StrSelector(
+            'z', 'b'
+        )
+        
+        df = pd.DataFrame(
+            {'x': [1, 2], 'y': [3, 4]}
+        )
+        with pytest.raises(KeyError):
+            selector.annotate(df, None)
+
+    def test_select_has_added_z_and_removed_x(self):
+
+        selector = StrSelector(
+            'z', 'x'
+        )
+        
+        df = pd.DataFrame(
+            {'x': [1, 2], 'y': [3, 4]}
+        )
+        annotated = selector.annotate(df, None)
+        annotated = selector.select(None, df)
+        assert (annotated['z'] == df['x']).all()
+        assert 'x' not in annotated.columns.values
+
+
 class TestLike:
 
     def test_like_returns_similarity_for_first(self):
@@ -383,6 +517,55 @@ class PersonWRep(_concept.Concept):
         )
 
 
+class Purchaser(_concept.Concept):
+
+    __manager__: typing.ClassVar[_concept.ConceptManager] = _concept.concept_manager
+    name: str
+    amount: float
+
+    @dataclass
+    class __rep__(_concept.Rep):
+        pass
+
+
+def build_person():
+
+    PersonWRep.build()
+    person = PersonWRep(name='X', age=10)
+    person2 = PersonWRep(name='X2', age=15)
+    person.save()
+    person2.save()
+
+
+def build_purchaser():
+
+    Purchaser.build()
+    person = Purchaser(name='X', amount=15)
+    person2 = Purchaser(name='X2', amount=30)
+    person3 = Purchaser(name='Y', amount=30)
+    person.save()
+    person2.save()
+    person3.save()
+
+
+class TestJoin:
+
+    def test_join_adds_two_dataframes_together(self):
+
+        df = pd.DataFrame(
+            {'name': ['X', 'Y'], 'y': [3, 4]}
+        )
+        query = PersonWRep.all()
+        join = Join(
+            'person', query, 'name'
+        )
+        joined = join.join(df)
+        print(joined)
+        assert joined['name'].isin(['X']).any()
+        assert not joined['name'].isin(['X2']).any()
+        assert joined['person.age'].isin([10]).any()
+        
+
 class TestConceptWithRepField:
 
     def test_that_embeddings_are_added(self):
@@ -440,6 +623,61 @@ class TestConceptWithRepField:
         assert len(result.index) == 1
         assert 1 in result.index
         assert 0 not in result.index
+
+    def test_join_two_concepts(self):
+
+        build_person()
+        build_purchaser()
+
+        query = PersonWRep.all()
+        query2 = Purchaser.all()
+        query2 = query2.join(
+            query, 'person', on_='name'
+        )
+        df = query2.df()
+        assert not df['name'].isin(['Y']).any()
+        assert df['name'].isin(['X']).any()
+
+    def test_join_two_concepts_with_filter(self):
+
+        build_person()
+        build_purchaser()
+
+        query = PersonWRep.all()
+        query2 = Purchaser.all()
+        query2 = query2.join(
+            query, 'person', on_='name'
+        )
+        query2 = query2.filter(Col('person.age') > 10)
+        df = query2.df()
+        assert not df['name'].isin(['Y']).any()
+        assert not df['name'].isin(['X']).any()
+        assert df['name'].isin(['X2']).any()
+
+class TestDerivedConcept:
+
+    def test_that_select_gets_df(self):
+
+        build_person()
+
+        query = PersonWRep.filter(
+            Like(R('age', 10, 2))
+        )
+        query = query.select(person_age='age')
+        df = query.df()
+        assert 'name' not in df.columns.values
+        assert 'person_age' in df.columns.values
+
+    def test_that_select_produces_derived_concepts(self):
+
+        build_person()
+
+        query = PersonWRep.filter(
+            Like(R('age', 10, 2))
+        )
+        query = query.select(person_age='age')
+        for c in query:
+            assert isinstance(c, Derived)
 
 
 class BuyerWithRep(_concept.ConceptRepMixin, PersonWRep):
