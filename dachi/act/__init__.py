@@ -4,10 +4,12 @@ from ._tasks import (
     Sequence, Selector, 
     Parallel, Action,
     Condition, Sango,
-    Check, Not, While, Until,
-    CheckReady, Reset, CheckTrue,
-    CheckFalse,
-    Converse, PromptCompleter
+    # Check, 
+    Not, 
+    While, Until,
+    # CheckReady, Reset, CheckTrue,
+    # CheckFalse,
+    # Converse, PromptCompleter
 )
 from ._status import (
     TaskStatus

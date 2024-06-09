@@ -8,14 +8,14 @@ import threading
 from ..store import Storable
 from ._status import TaskStatus
 
-from ..depracated.storage  import (
-    Struct, Retrieve, SRetrieve, 
-    PromptConv, Completion,
-)
-from ..process import TakoBase
-from ..depracated.comm import (
-    Request, UIQuery, OpenAIRequest, UI
-)
+# from ..depracated.storage  import (
+#     Struct, Retrieve, SRetrieve, 
+#     PromptConv, Completion,
+# )
+# from ..process import TakoBase
+# from ..depracated.comm import (
+#     Request, UIQuery, OpenAIRequest, UI
+# )
 
 @dataclass
 class TaskMessage:
@@ -482,188 +482,188 @@ class Not(Decorator):
         return status
 
 
-class Check(Condition):
+# class Check(Condition):
 
-    def __init__(self, data: Retrieve, f: Retrieve):
-        super().__init__()
-        self.data = data
-        self.f = f
+#     def __init__(self, data: Retrieve, f: Retrieve):
+#         super().__init__()
+#         self.data = data
+#         self.f = f
 
-    def condition(self) -> bool:
-        return self.f(self.data())
-
-
-class CheckReady(Check):
-
-    def __init__(self, r: SRetrieve):
-        super().__init__(r, lambda r: r() is not None)
+#     def condition(self) -> bool:
+#         return self.f(self.data())
 
 
-class CheckTrue(Check):
+# class CheckReady(Check):
 
-    def __init__(self, r: SRetrieve):
-        super().__init__(r, lambda r: r is True)
-
-
-class CheckFalse(Check):
-
-    def __init__(self, r: SRetrieve):
-        super().__init__(r, lambda r: r is False or r is None)
+#     def __init__(self, r: SRetrieve):
+#         super().__init__(r, lambda r: r() is not None)
 
 
-class Reset(Action):
+# class CheckTrue(Check):
 
-    def __init__(self, data: Retrieve[Struct], on_condition: typing.Callable[[], None]=None):
-
-        super().__init__()
-        self._data = data
-        self._cond = on_condition
-
-    def act(self) -> TaskStatus:
-        data = self._data()
-
-        if self._cond is None or self._cond():
-            data.reset()
-            return TaskStatus.SUCCESS
-        return TaskStatus.FAILURE
+#     def __init__(self, r: SRetrieve):
+#         super().__init__(r, lambda r: r is True)
 
 
-class TakoTask(Action):
+# class CheckFalse(Check):
 
-    def __init__(self, tako: TakoBase):
+#     def __init__(self, r: SRetrieve):
+#         super().__init__(r, lambda r: r is False or r is None)
 
-        super().__init__()
-        self._tako = tako
-        self._executed = False
 
-    def exec(self):
-        self._tako()
+# class Reset(Action):
 
-    def act(self) -> TaskStatus:
+#     def __init__(self, data: Retrieve[Struct], on_condition: typing.Callable[[], None]=None):
+
+#         super().__init__()
+#         self._data = data
+#         self._cond = on_condition
+
+#     def act(self) -> TaskStatus:
+#         data = self._data()
+
+#         if self._cond is None or self._cond():
+#             data.reset()
+#             return TaskStatus.SUCCESS
+#         return TaskStatus.FAILURE
+
+
+# class TakoTask(Action):
+
+#     def __init__(self, tako: TakoBase):
+
+#         super().__init__()
+#         self._tako = tako
+#         self._executed = False
+
+#     def exec(self):
+#         self._tako()
+
+#     def act(self) -> TaskStatus:
         
-        if self._status == self.READY:
-            thread = threading.Thread(target=self.exec, args=[])
-            thread.start()
+#         if self._status == self.READY:
+#             thread = threading.Thread(target=self.exec, args=[])
+#             thread.start()
 
-        if self._executed:
-            return self.SUCCESS
+#         if self._executed:
+#             return self.SUCCESS
         
-        return self.RUNNING
+#         return self.RUNNING
 
 
-class Converse(Action):
+# class Converse(Action):
 
-    def __init__(
-        self, prompt_conv: PromptConv, llm: OpenAIRequest, user_interface: UI,
-        **prompt_components: Struct
-    ):
-        # Use to send a message from the LLM
-        super().__init__()
-        self._conv = prompt_conv
-        self._llm_query = llm
-        self._ui_query = UIQuery(user_interface)
-        self._ui = user_interface
-        self._request = Request()
-        self._components = prompt_components
+#     def __init__(
+#         self, prompt_conv: PromptConv, llm: OpenAIRequest, user_interface: UI,
+#         **prompt_components: Struct
+#     ):
+#         # Use to send a message from the LLM
+#         super().__init__()
+#         self._conv = prompt_conv
+#         self._llm_query = llm
+#         self._ui_query = UIQuery(user_interface)
+#         self._ui = user_interface
+#         self._request = Request()
+#         self._components = prompt_components
 
-    def converse_turn(self):
+#     def converse_turn(self):
 
-        self._request = Request()
-        conv = self._conv.with_components(**self._components)
-        response = self._llm_query(conv, asynchronous=False)
-        self._processed  = self._response_processor.process(response)
+#         self._request = Request()
+#         conv = self._conv.with_components(**self._components)
+#         response = self._llm_query(conv, asynchronous=False)
+#         self._processed  = self._response_processor.process(response)
 
-        if self._processed.to_interrupt:
-            return
-        self._ui.post_message('assistant', self._processed.text)
+#         if self._processed.to_interrupt:
+#             return
+#         self._ui.post_message('assistant', self._processed.text)
 
-        self._conv.add_turn(
-            'assistant', self._processed.text
-        )
-        self._request.contents = self._conv
-        self._ui_query.post(self._request)
+#         self._conv.add_turn(
+#             'assistant', self._processed.text
+#         )
+#         self._request.contents = self._conv
+#         self._ui_query.post(self._request)
 
-    def act(self) -> TaskStatus:
+#     def act(self) -> TaskStatus:
         
-        if self._status == TaskStatus.READY:
-            # use threading here
-            thread = threading.Thread(
-                target=self.converse_turn, args=[]
-            )
-            thread.start()
+#         if self._status == TaskStatus.READY:
+#             # use threading here
+#             thread = threading.Thread(
+#                 target=self.converse_turn, args=[]
+#             )
+#             thread.start()
 
-        if self._processed is not None and (
-            self._request.responded is True or self._processed.to_interrupt
-        ):
+#         if self._processed is not None and (
+#             self._request.responded is True or self._processed.to_interrupt
+#         ):
             
-            if not self._processed.to_interrupt and self._request.success is True:
-                self._conv.add_turn(
-                    'user', self._request.response
-                )
-            if self._processed.succeeded:
-                print('SUCCEEDED!')
-                return TaskStatus.SUCCESS
-            else:
-                print('FAILED!')
-                return TaskStatus.FAILURE
+#             if not self._processed.to_interrupt and self._request.success is True:
+#                 self._conv.add_turn(
+#                     'user', self._request.response
+#                 )
+#             if self._processed.succeeded:
+#                 print('SUCCEEDED!')
+#                 return TaskStatus.SUCCESS
+#             else:
+#                 print('FAILED!')
+#                 return TaskStatus.FAILURE
         
-        return TaskStatus.RUNNING
+#         return TaskStatus.RUNNING
 
-    def reset(self):
-        super().reset()
-        self._interrupt = False
-        self._request = Request()
+#     def reset(self):
+#         super().reset()
+#         self._interrupt = False
+#         self._request = Request()
 
 
-class PromptCompleter(Action):
-    # Use to send a message from the LLM
+# class PromptCompleter(Action):
+#     # Use to send a message from the LLM
 
-    def __init__(
-        self, completion: Completion, llm: OpenAIRequest, user_interface: UI,
-        post_processor: typing.Callable=None, **prompt_components: Struct
-    ):
-        """
+#     def __init__(
+#         self, completion: Completion, llm: OpenAIRequest, user_interface: UI,
+#         post_processor: typing.Callable=None, **prompt_components: Struct
+#     ):
+#         """
 
-        Args:
-            completion (Completion): 
-            llm (Query): 
-            user_interface (UI): 
-        """
-        super().__init__()
-        self._completion = completion
-        self._llm_query = llm
-        self._ui = user_interface
-        self._request = Request()
-        self._post_processor = post_processor
-        self._components = prompt_components
+#         Args:
+#             completion (Completion): 
+#             llm (Query): 
+#             user_interface (UI): 
+#         """
+#         super().__init__()
+#         self._completion = completion
+#         self._llm_query = llm
+#         self._ui = user_interface
+#         self._request = Request()
+#         self._post_processor = post_processor
+#         self._components = prompt_components
 
-    def respond(self):
+#     def respond(self):
 
-        self._request = Request()
-        completion = self._completion.with_components(**self._components)
-        response = self._llm_query(completion, asynchronous=False)
-        self._ui.post_message('assistant', response)
-        self._completion.response = response
-        if self._post_processor is not None:
-            self._post_processor()
-        self._request.respond(response)
+#         self._request = Request()
+#         completion = self._completion.with_components(**self._components)
+#         response = self._llm_query(completion, asynchronous=False)
+#         self._ui.post_message('assistant', response)
+#         self._completion.response = response
+#         if self._post_processor is not None:
+#             self._post_processor()
+#         self._request.respond(response)
 
-    def act(self) -> TaskStatus:
+#     def act(self) -> TaskStatus:
         
-        if self._status == TaskStatus.READY:
-            # use threading here
-            thread = threading.Thread(target=self.respond, args=[])
-            thread.start()
+#         if self._status == TaskStatus.READY:
+#             # use threading here
+#             thread = threading.Thread(target=self.respond, args=[])
+#             thread.start()
 
-        if self._request.responded is True:
-            # self._request.status # wouldn't this be easier? 
-            if self._request.success is True:
-                return TaskStatus.SUCCESS
-            else:
-                return TaskStatus.FAILURE
+#         if self._request.responded is True:
+#             # self._request.status # wouldn't this be easier? 
+#             if self._request.success is True:
+#                 return TaskStatus.SUCCESS
+#             else:
+#                 return TaskStatus.FAILURE
         
-        return TaskStatus.RUNNING
+#         return TaskStatus.RUNNING
 
-    def reset(self):
-        super().reset()
-        self._request = Request()
+#     def reset(self):
+#         super().reset()
+#         self._request = Request()

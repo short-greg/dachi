@@ -673,11 +673,7 @@ class StreamableModule(Module, ABC):
 
 
 class ParallelModule(Module, ABC):
-    """Module that allows for 
-
-    Args:
-        Module (_type_): _description_
-        ABC (_type_): _description_
+    """Module that allows 
     """
 
     def __init__(self, modules: typing.List[Module]):
