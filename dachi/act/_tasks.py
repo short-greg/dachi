@@ -5,7 +5,7 @@ from dataclasses import dataclass
 import threading
 
 # 3rd party
-from ..store import Storable
+from .._core import Storable
 from ._status import TaskStatus
 
 # from ..depracated.storage  import (

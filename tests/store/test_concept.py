@@ -1,11 +1,15 @@
 import typing
 from dachi.store import _concept
 from dachi.store._concept import (
-    Col, RepLookup, 
-    Rep, R, Like, ColSelector,
+    Col, 
+    Like, ColSelector, R,
     StrSelector, FSelector, Selection,
     Join, Derived
 )
+from dachi.store._rep import (
+    Rep, RepFactory, RepLookup
+)
+from dachi.store import _rep
 import faiss
 import numpy as np
 import pandas as pd
@@ -509,9 +513,9 @@ class PersonWRep(_concept.Concept):
     age: int
 
     @dataclass
-    class __rep__(_concept.Rep):
+    class __rep__(_rep.Rep):
 
-        age: RepLookup = _concept.RepLookup.field(
+        age: RepLookup = _rep.RepLookup.field(
             'age', faiss.IndexFlatL2, 
             lambda x: np.array([x], dtype=np.float32), 1
         )
@@ -524,7 +528,7 @@ class Purchaser(_concept.Concept):
     amount: float
 
     @dataclass
-    class __rep__(_concept.Rep):
+    class __rep__(_rep.Rep):
         pass
 
 
@@ -686,14 +690,14 @@ class BuyerWithRep(_concept.ConceptRepMixin, PersonWRep):
     purchaser: bool
 
     @dataclass
-    class __rep__(_concept.Rep):
+    class __rep__(_rep.Rep):
 
-        id: RepLookup = _concept.RepLookup.field(
+        id: RepLookup = _rep.RepLookup.field(
             'id', faiss.IndexFlatL2, 
             lambda x: np.array([x], dtype=np.float32), 1
         )
 
-        age: RepLookup = _concept.RepLookup.field(
+        age: RepLookup = _rep.RepLookup.field(
             'age', faiss.IndexFlatL2, 
             lambda x: np.array([[x[0] * 0.5]], dtype=np.float32), 1
         )
