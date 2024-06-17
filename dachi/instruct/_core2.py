@@ -8,7 +8,7 @@ import pydantic
 from pydantic import Field
 
 # local
-from ..store import Struct, Str
+from .._core import Struct, Str
 import inspect
 
 
@@ -127,10 +127,9 @@ class Composition(Description):
 
     def update(self, **kwargs) -> Self:
         
-        descriptions = [
-            for description in self.descriptions:
-            description.update(**kwargs)
-        ]
+        descriptions = []
+        for description in self.descriptions: 
+            descriptions.append(description.update(**kwargs))
         return Composition(
             descriptions=descriptions, name=self.name
         )
@@ -279,8 +278,49 @@ class OutputList(Struct):
         return out_text
 
 
-class Instructor(ABC):
+class Parameter(Description):
 
+    description: Description
+    value: str = None
+
+    @property
+    def text(self) -> str:
+        
+        if self.value is None:
+            return self.description.text
+        return self.value
+
+    def update(self, **kwargs) -> Self:
+        
+        return Parameter(
+            name=self.name,
+            description=self.description.update(**kwargs),
+            value=None
+        )
+
+    def to_dict(self) -> typing.Dict:
+        return {
+            self.name: {
+                'name': self.description.name,
+                'base': self.description.text,
+                'value': (
+                    self.value 
+                    if self.value is not None 
+                    else self.description.text
+                )
+            }
+        }
+
+
+class Instructor(Struct):
+
+    def parameters(self) -> typing.Iterator[Parameter]:
+
+        for _, val in iter(self):
+            if isinstance(val, Parameter):
+                yield val
+
+    @abstractmethod
     def forward(self, *args, **kwargs) -> Output:
         pass
 

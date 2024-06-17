@@ -91,9 +91,6 @@ class Struct(pydantic.BaseModel, TextMixin, ValidateStrMixin):
     @classmethod
     def template(cls) -> str:
         return model_template(cls)
-
-    def __call__(self, **kwargs) -> 'Struct':
-        return self.forward(**kwargs)
     
     def to_text(self) -> str:
         return str(self.model_dump())
