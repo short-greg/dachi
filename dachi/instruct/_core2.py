@@ -4,7 +4,6 @@ from typing_extensions import Self
 from abc import abstractmethod, ABC
 
 # 3rd party
-import pandas as pd
 import pydantic
 from pydantic import Field
 
@@ -17,7 +16,7 @@ S = typing.TypeVar('S', bound=Struct)
 
 
 class Description(Struct):
-    """Provide context in the promptt
+    """Provide context in the prompt
     """
     name: str
 
@@ -112,6 +111,29 @@ def traverse(*instructions: Instruction) -> typing.Iterator[Description]:
     for instruction in instructions:
         for description in instruction.traverse(visited):
             yield description
+
+
+class Composition(Description):
+    """
+    """
+    descriptions: typing.List[Description]
+
+    @property
+    def text(self) -> str:
+
+        return "\n".join(
+            description.text for description in self.descriptions
+        )
+
+    def update(self, **kwargs) -> Self:
+        
+        descriptions = [
+            for description in self.descriptions:
+            description.update(**kwargs)
+        ]
+        return Composition(
+            descriptions=descriptions, name=self.name
+        )
 
 
 class Operation(object):
@@ -255,3 +277,12 @@ class OutputList(Struct):
             {self.footer.text}
             """
         return out_text
+
+
+class Instructor(ABC):
+
+    def forward(self, *args, **kwargs) -> Output:
+        pass
+
+    def __call__(self, *args, **kwargs) -> Output:
+        return self.forward(*args, **kwargs)

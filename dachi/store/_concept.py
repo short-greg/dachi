@@ -208,7 +208,7 @@ class Filter(object):
     def query(self, df: pd.DataFrame, rep_map: Rep) -> pd.Series:
         pass
 
-    def __call__(self, df: pd.DataFrame, rep_map: Rep) -> pd.DataFrame:
+    def __call__(self, df: pd.DataFrame, rep_map: Rep, with_rep: bool=False) -> pd.DataFrame:
         """
 
         Args:
@@ -218,7 +218,10 @@ class Filter(object):
         Returns:
             pd.DataFrame: 
         """
-        return df[self.query(df, rep_map)]
+        indices = self.query(df, rep_map)
+        if with_rep:
+            return df[indices], rep_map[indices]
+        return df[indices]
 
     def __xor__(self, other) -> 'Comp':
 
@@ -244,7 +247,7 @@ class Comp(Filter):
         rhs: typing.Union['Comp', 'Col', typing.Any], 
         f: typing.Callable[[typing.Any, typing.Any], bool]
     ) -> None:
-        """_summary_
+        """
 
         Args:
             lhs (typing.Union[BinComp;, Col;, typing.Any]): _description_
@@ -632,11 +635,11 @@ class Selection(object):
             cur_df = selector.annotate(df, rep_map)
         return cur_df
 
-    def select(self, df: pd.DataFrame) -> pd.DataFrame:
+    def select(self, df: pd.DataFrame, with_rep: bool=False) -> pd.DataFrame:
         
         cur_df = None
         for selector in self.selectors:
-            cur_df = selector.select(cur_df, df)
+            cur_df = selector.select(cur_df, df, with_rep)
 
         return cur_df
 
@@ -659,7 +662,11 @@ class BaseQuery(ABC):
         pass
         
     @abstractmethod
-    def df(self) -> pd.DataFrame:
+    def data(self) -> pd.DataFrame:
+        pass
+
+    @abstractmethod
+    def rep_map(self) -> 'Rep':
         pass
 
     @abstractmethod
@@ -678,23 +685,42 @@ class BaseQuery(ABC):
 
 class Join(object):
 
-    def __init__(self, alias: str, query: BaseQuery, on_: str, how: str='inner'):
+    def __init__(
+        self, alias: str, query: BaseQuery, on_left: str, 
+        on_right: str, is_rep: bool=False, how: str='inner'
+    ):
+        """
+
+        Args:
+            alias (str): 
+            query (BaseQuery): 
+            on_left (str): 
+            on_right (str): 
+            is_rep (bool, optional): . Defaults to False.
+            how (str, optional): . Defaults to 'inner'.
+        """
 
         self.query = query
-        self.on_ = on_
+        self.on_right = on_right
+        self.on_left = on_left
         self.alias = alias
         self.how = how
+        self.is_rep = is_rep
 
-    def join(self, df: pd.DataFrame) -> pd.DataFrame:
+    def join(self, df: pd.DataFrame, rep_map: Rep) -> pd.DataFrame:
         
-        join_df = self.query.df()
+        join_df = self.query.data()
         join_df = join_df.copy()
 
         columns = [f'{self.alias}.{column}' for column in join_df.columns.values]
 
         join_df = join_df.set_axis(columns, axis=1)
+
+        if self.is_rep:
+            pass
+
         return df.merge(
-            join_df, left_on=self.on_, right_on=f'{self.alias}.{self.on_}', how=self.how
+            join_df, left_on=self.on_left, right_on=f'{self.alias}.{self.on_right}', how=self.how
         )
 
 
@@ -725,12 +751,15 @@ class ConceptQuery(BaseQuery, typing.Generic[C]):
             self.joined
         )
     
-    def join(self, query: BaseQuery, alias: str, on_: str, how: str='inner') -> 'ConceptQuery[C]':
+    def join(
+        self, query: BaseQuery, alias: str, on_left: str, 
+        on_right: str, rep_join: bool=False, how: str='inner'
+    ) -> 'ConceptQuery[C]':
         
         if alias in self.joined:
             raise KeyError(f'Already  {alias} already defined.')
         joined = {
-            alias: Join(alias, query, on_, how=how),
+            alias: Join(alias, query, on_left, on_right, rep_join=rep_join, how=how),
             **self.joined
         }
         return ConceptQuery[C](
@@ -759,7 +788,7 @@ class ConceptQuery(BaseQuery, typing.Generic[C]):
 
         for k, to_join in self.joined.items():
             concept = to_join.join(
-                concept
+                concept, idx
             )
         
         if self.comp is not None:
@@ -770,7 +799,7 @@ class ConceptQuery(BaseQuery, typing.Generic[C]):
         for _, row in sub_df.iterrows():
             yield self.concept(**row.to_dict())
         
-    def df(self) -> pd.DataFrame:
+    def data(self, with_rep: bool=False) -> typing.Union[pd.DataFrame, typing.Tuple[pd.DataFrame, Rep]]:
 
         concept = self.concept.get_data()
         idx = self.concept.get_rep()
@@ -781,9 +810,9 @@ class ConceptQuery(BaseQuery, typing.Generic[C]):
             )
 
         if self.comp is None:
-            return concept
+            return concept, idx
 
-        return self.comp(concept, idx)
+        return self.comp(concept, idx, with_rep)
 
 
 class DerivedQuery(BaseQuery):
@@ -852,7 +881,7 @@ class DerivedQuery(BaseQuery):
         for _, row in sub_df.iterrows():
             yield Derived(data=row.to_dict())
         
-    def df(self) -> pd.DataFrame:
+    def data(self, with_rep: bool=False) -> typing.Union[pd.DataFrame, typing.Tuple[pd.DataFrame, Rep]]:
 
         concept = self.base.get_data()
         idx = self.base.get_rep()
@@ -861,7 +890,7 @@ class DerivedQuery(BaseQuery):
         # i think the easiest way to is to prevent
         # overwriting a field name in annotate
         concept = self.comp(concept, idx)
-        return self.selection.select(concept)
+        return self.selection.select(concept, with_rep)
 
 
 class ConceptManager(object):

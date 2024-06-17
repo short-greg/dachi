@@ -32,23 +32,23 @@ class RepLookup(typing.Generic[T]):
         emb: typing.Callable[[T], np.ndarray],
         maximize: bool=False
     ):
-
         super().__init__()
         self.col = col
-        self.vk = faiss.IndexIDMap2(vk)
+        self._base_vk = vk
+        self._vk = faiss.IndexIDMap2(vk)
         self.emb = emb or null_emb
         self.maximize = maximize
 
     def add(self, id, val: T):
         vb = self.emb([val])
-        self.vk.add_with_ids(vb, [id])
+        self._vk.add_with_ids(vb, [id])
     
     def remove(self, id):
         id_selector = faiss.IDSelectorBatch(1, faiss.swig_ptr(np.array([id], dtype=np.int64)))
-        self.vk.remove_ids(id_selector)
+        self._vk.remove_ids(id_selector)
 
     def __len__(self) -> int:
-        return self.vk.ntotal
+        return self._vk.ntotal
 
     def max_values_per_index(self, values_2d, indices_2d):
         # Flatten the arrays
@@ -77,11 +77,11 @@ class RepLookup(typing.Generic[T]):
         self, vals: typing.Union[T, typing.List[T]], k: int=1, subset=None
     ) -> 'Sim':
 
-        if self.vk.ntotal == 0:
+        if self._vk.ntotal == 0:
             return Sim()
         # TODO: limit to the subset
         x = self.emb(vals)
-        D, I = self.vk.search(x=x, k=k)
+        D, I = self._vk.search(x=x, k=k)
         D, I = self.max_values_per_index(D, I)
 
         # If to maximize the distance take
@@ -105,6 +105,7 @@ class RepLookup(typing.Generic[T]):
         return field(
             default_factory=cls.F(col, vk, emb, *idx_args, **idx_kwargs)
         )
+
 
 QR = typing.TypeVar('QR', bound=RepLookup)
 
@@ -282,7 +283,6 @@ class Sim(object):
     # TODO: Add more such as "less than", max etc
 
 
-
 class RepFactory(typing.Generic[QR]):
 
     def __init__(self, rep_cls: typing.Type[RepLookup], col: str, f: typing.Callable[[str], QR], emb, *args, **kwargs):
@@ -362,9 +362,56 @@ class Rep(object):
             return getattr(self.__base_rep__, key)
         raise AttributeError(f'There is no attribute named {key} in IndexMap {str(self)}')
 
-    def __getitem__(self, key: str):
+    def __getitem__(self, key: typing.Union[str, typing.Series, np.ndarray]):
         
+        if isinstance(key, pd.Series):
+            key = key.values
+
         value = getattr(self, key)
         if not isinstance(value, RepLookup):
             raise AttributeError(f'RepMap has no attribute named {key}')
         return value
+
+
+# This needs to limit those that are chosen too
+
+class DerivedRep(object):
+    """Class to define the indexes that are stored
+    """
+
+    def __init__(
+        self, base_rep: typing.Union['Rep', 'DerivedRep'], 
+        alias_map: typing.Dict[str, str], ids: np.ndarray
+    ):
+
+        self._rep = base_rep
+        self._alias_map = alias_map
+        self._rev_alias_map = {alias: k for k, alias in alias_map.items()}
+        self._ids = ids
+
+    def __iter__(self) -> typing.Iterator[typing.Tuple[str, 'RepLookup']]:
+
+        for k, v in self._rep:
+            if k in self._alias_map:
+                return self._alias_map[k], v
+
+    def __contains__(self, k: str):
+
+        return k in self._rev_alias_map
+
+    def __getattr__(self, key: str):
+
+        return getattr(self._rep, key)
+
+    def __getitem__(self, key: typing.Union[str, typing.Series, np.ndarray]):
+        
+        if isinstance(key, pd.Series):
+            key = key.values
+
+        # TODO: Need to limit!
+
+        value = getattr(self, key)
+        if not isinstance(value, RepLookup):
+            raise AttributeError(f'RepMap has no attribute named {key}')
+        return value
+

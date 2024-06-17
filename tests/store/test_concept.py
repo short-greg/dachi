@@ -561,7 +561,7 @@ class TestJoin:
         )
         query = PersonWRep.all()
         join = Join(
-            'person', query, 'name'
+            'person', query, 'name', 'name'
         )
         joined = join.join(df)
         print(joined)
@@ -583,7 +583,7 @@ class TestConceptWithRepField:
         
         result = PersonWRep.filter(
             Like(R('age', 10, 2))
-        ).df()
+        ).data()
         assert len(result.index) == 2
 
     def test_that_embeddings_are_added(self):
@@ -596,7 +596,7 @@ class TestConceptWithRepField:
         
         result = PersonWRep.filter(
             Like(R('age', 15, 1))
-        ).df()
+        ).data()
         assert len(result.index) == 1
         assert 1 in result.index
         assert 0 not in result.index
@@ -610,7 +610,7 @@ class TestConceptWithRepField:
         
         result = PersonWRep.filter(
             Like(R('age', 2, 1))
-        ).df()
+        ).data()
         assert len(result.index) == 0
 
     def test_that_like_works_in_place_of_filter(self):
@@ -623,7 +623,7 @@ class TestConceptWithRepField:
         
         result = PersonWRep.like(
             R('age', 15, 1)
-        ).df()
+        ).data()
         assert len(result.index) == 1
         assert 1 in result.index
         assert 0 not in result.index
@@ -636,9 +636,9 @@ class TestConceptWithRepField:
         query = PersonWRep.all()
         query2 = Purchaser.all()
         query2 = query2.join(
-            query, 'person', on_='name'
+            query, 'person', on_left='name', on_right='name'
         )
-        df = query2.df()
+        df = query2.data()
         assert not df['name'].isin(['Y']).any()
         assert df['name'].isin(['X']).any()
 
@@ -650,7 +650,7 @@ class TestConceptWithRepField:
         query = PersonWRep.all()
         query2 = Purchaser.all()
         query2 = query2.join(
-            query, 'person', on_='name'
+            query, 'person', on_='name', on_right='name'
         )
         query2 = query2.filter(Col('person.age') > 10)
         df = query2.df()
@@ -668,7 +668,7 @@ class TestDerivedConcept:
             Like(R('age', 10, 2))
         )
         query = query.select(person_age='age')
-        df = query.df()
+        df = query.data()
         assert 'name' not in df.columns.values
         assert 'person_age' in df.columns.values
 
@@ -731,7 +731,7 @@ class TestBuyerRep:
         
         result = BuyerWithRep.filter(
             Like(R('age', 2, 1))
-        ).df()
+        ).data()
         assert len(result.index) == 1
 
     def test_that_person_does_not_return_purchaser(self):
@@ -747,7 +747,7 @@ class TestBuyerRep:
         
         result = PersonWRep.filter(
             Like(R('age', 2, 1))
-        ).df()
+        ).data()
         print(result.columns.values)
         assert 'purchaser' not in result.columns.values
 
@@ -764,7 +764,7 @@ class TestBuyerRep:
         
         result = BuyerWithRep.filter(
             Like(R('age', 2, 1))
-        ).df()
+        ).data()
         print(result.columns.values)
         assert 'purchaser' in result.columns.values
 
@@ -781,5 +781,5 @@ class TestBuyerRep:
         
         result = BuyerWithRep.filter(
             Like(R('id', 1, 1))
-        ).df()
+        ).data()
         assert len(result.index) == 1
