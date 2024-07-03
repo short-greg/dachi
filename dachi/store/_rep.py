@@ -333,6 +333,15 @@ class Rep(object):
             for k, v in self.__base_rep__:
                 if k not in self.__dict__:
                     yield k, v
+    
+    def fields(self) -> typing.Iterator[str]:
+        """Get the names of the representations
+
+        Yields:
+            Iterator[typing.Iterator[str]]: Each name
+        """
+        for k, _ in self.__base_rep__:
+            yield k
 
     def __contains__(self, k: str):
 

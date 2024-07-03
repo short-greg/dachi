@@ -5,8 +5,6 @@ from typing import get_type_hints
 from typing_extensions import Self
 import inspect
 import json
-from io import StringIO
-import csv
 
 # 3rd party
 import pydantic
@@ -95,9 +93,47 @@ class Struct(pydantic.BaseModel, TextMixin, ValidateStrMixin):
     def to_text(self) -> str:
         return str(self.model_dump())
     
+    def __getitem__(self, key) -> typing.Any:
+        """Get an attribute in 
+
+        Args:
+            key: The key to get
+
+        Returns:
+            typing.Any: Get attribute specified by key
+        """
+        return getattr(self, key)
+    
+    def __setitem__(self, key, value) -> typing.Any:
+        """Update a member of the Struct
+
+        Args:
+            key: The name of the value to update
+            value: The value to update. 
+                If it is a string and the member is a Str, it will be cast to a
+                Str
+
+        Returns:
+            typing.Any: The value to set
+        """
+        if not hasattr(self, key):
+            raise AttributeError('There is no')
+        if isinstance(getattr(key), Str) and isinstance(value, str):
+            value = Str(text=value)
+        setattr(self, key, value)
+        return value
+    
+    @classmethod
+    def load(cls, data: typing.Dict) -> Self:
+        return cls(**data)
+    
+    def dump(self) -> typing.Dict:
+        return self.model_dump()
+
     @classmethod
     def from_text(cls, text: str) -> Self:
         return cls(
             **json.loads(text)
         )
+    
 

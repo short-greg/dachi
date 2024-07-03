@@ -1,21 +1,15 @@
 # 1st party
 from abc import abstractmethod, ABC
-from dataclasses import dataclass, fields, MISSING, field
+from dataclasses import dataclass
 import typing
 from typing_extensions import Self
-from functools import wraps
 import inspect
-import math
-from dataclasses import InitVar
 
 # 3rd party
 from pydantic import BaseModel
 import pandas as pd
-import faiss
 import numpy as np
-from pydantic import Field
 from ._base import conceptmethod
-
 from ._rep import Rep, Sim
 
 
@@ -340,8 +334,6 @@ class R(BaseR):
             val (): 
             k (int): 
         """
-        # val could also be a column
-        # or a compare
         self.name = name
         self.val = val
         self.k = k
@@ -592,6 +584,101 @@ class StrSelector(Selector):
         except KeyError:
             raise KeyError(f'The key {self.to_select} is not present in the dataframe being annotated.')
         return df
+
+
+# 1) 
+
+class RepView(object):
+    """Use to filter the RepView
+    """
+
+    def __init__(
+        self, rep: typing.Union[Rep, 'RepView'], 
+        alias_map: typing.List[str, str] = None,
+        filtered_ids: typing.List[str] = None
+    ):
+        """Create a view of the representation so it can be filtered
+
+        Args:
+            rep (typing.Union[Rep, &#39;RepView&#39;]): The representation view
+            alias_map (typing.List[str, str], optional): The alias map which indicates which fields
+             from rep are selected and what the alias is. 
+              None indicates all fields are selected by their names. Defaults to None.
+            filtered_ids (typing.List[str], optional): _description_. Defaults to None.
+        """
+        self.rep = rep
+        if alias_map is None:
+            alias_map = {
+                k: k for k in rep.fields()
+            }
+        self.alias_map = alias_map
+        self.rev_alias_map = {
+            v: k
+            for k, v in self.alias_map.items()
+        }
+        self.filtered_ids = filtered_ids
+
+    def fields(self) -> typing.Iterator:
+
+        for name in self.rep.fields():
+            yield name
+
+    def filter(self, indices: typing.Iterable) -> 'RepView':
+
+        return RepView(
+            self.rep, self.alias_map,
+            np.array(
+                set(self.filtered_ids).intersection(indices)
+            )
+        )
+    
+    def select(self, name: str, alias: str=None, extend: str=True) -> 'RepView':
+        """Select fields from the Rep
+
+        Args:
+            name: The name of the field to select
+            alias: the alias to give it if applicable
+            extend: whether to extend the current rep view or 
+
+
+        Returns:
+            RepView: 
+        """
+
+        if alias is None:
+            alias = name
+        if name not in self.rev_alias_map:
+            raise ValueError(
+                f'Cannot select field {name} as it is not in the Rep'
+            )
+        if extend:
+            self.alias_map[alias] = name
+            self.rev_alias_map[name] = alias
+            return self
+        
+        return RepView(
+            self.rep,
+            {alias: name},
+            self.filtered_ids
+        )
+
+
+
+# @dataclass
+# class ConceptView(object):
+
+#     df: pd.DataFrame
+#     rep: RepView
+
+#     def select(self, field: str, alias: str=None, clear: bool=):
+
+#         df = self.df.copy()
+#         df[alias] = df[field]
+#         rep = self.rep.select(field, alias)
+#         return ConceptView(
+#             df, rep
+#         )
+
 
 
 def create_selector(alias: str, select):
@@ -1039,4 +1126,3 @@ concept_manager = ConceptManager()
 
 
 # TODO: ad in a base class
-

@@ -12,6 +12,7 @@ from enum import Enum
 
 from dataclasses import dataclass
 import uuid
+from .._core import Struct
 
 
 class _Types(Enum):
@@ -190,7 +191,7 @@ class T(object):
         )
     
     def probe(self, by: typing.Dict['T', typing.Any]) -> typing.Any:
-        """
+        """Probe the graph using the values specified in by
 
         Args:
             by (typing.Dict[&#39;T&#39;, typing.Any]): The inputs to the network
@@ -789,5 +790,29 @@ class ParallelSrc(Src):
             yield mod_i
 
     def __call__(self, by: typing.Dict['T', typing.Any]) -> typing.Any:
-        
+        """
+
+        Args:
+            by (typing.Dict[&#39;T&#39;, typing.Any]): 
+
+        Returns:
+            typing.Any: 
+        """
         return self.forward(by)
+
+
+class StructModule(Struct, Module):
+
+    def forward(self, key: str, value: typing.Any=UNDEFINED, get_struct: bool=False) -> typing.Any:
+        
+        if value is UNDEFINED:
+            if get_struct:
+                # No reason for the person to use this but
+                # since the option is provided, added this
+                return self
+            return self[key]
+        
+        self[key] = value
+        if get_struct:
+            return self
+        return value
