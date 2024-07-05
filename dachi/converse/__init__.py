@@ -1,3 +1,3 @@
 from ._structs import (
-    Message, Chat, Doc
+    Message, MessageList, Doc
 )

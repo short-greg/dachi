@@ -1,12 +1,6 @@
 # 1st party
 import typing
-from abc import abstractmethod
-from typing import get_type_hints
-from typing_extensions import Self
-import inspect
-import json
-from io import StringIO
-import csv
+
 from ..process import StructModule
 
 from .._core import Struct, Str
@@ -17,7 +11,29 @@ T = typing.TypeVar('T', bound=Struct)
 class Message(StructModule):
 
     role: Str
-    text: Str
+    content: typing.Dict[str, str]
+
+    def __getitem__(self, key: str):
+        if hasattr(self, key):
+            return getattr(self, key)
+        if key in self.content:
+            return self.content[key]
+        raise KeyError(f'{key}')
+
+    def __setitem__(self, key: str, value):
+        if hasattr(self, key):
+            setattr(self, key, value)
+        if key in self.content:
+            self.content[key] = value
+        raise KeyError(f'{key}')
+    
+    @classmethod
+    def create(cls, role: Str, **kwargs) -> 'Message':
+
+        return Message(
+            role=role,
+            content=kwargs
+        )
 
 
 class ImageMessage(StructModule):
@@ -50,20 +66,12 @@ class StructList(Struct, typing.Generic[T]):
         return value
 
 
-class Chat(StructModule):
+class MessageList(StructList[Message]):
 
-    messages: typing.List[Message]
-
-    def filter(self, roles: typing.Iterable[str]) -> 'Chat[Message]':
+    def filter(self, roles: typing.Iterable[str]) -> 'MessageList[Message]':
 
         roles = set(roles)
         
-        return Chat(
+        return MessageList(
             s for s in self._structs if s.role in roles
         )
-    
-    def __getitem__(self, key) -> typing.Any:
-        return super().__getitem__(key)
-    
-    def __setitem__(self, key, value) -> typing.Any:
-        return super().__setitem__(key, value)

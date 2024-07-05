@@ -1,6 +1,6 @@
 # from dachi.instruct.depracate import _core as _instruct
 from dachi._core import _struct
-from dachi.converse import Message, Doc, Chat
+from dachi.converse import Message, Doc, MessageList
 
 class TestMessage(object):
 
