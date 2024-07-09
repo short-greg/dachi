@@ -8,14 +8,6 @@ import threading
 from .._core import Storable
 from ._status import TaskStatus
 
-# from ..depracated.storage  import (
-#     Struct, Retrieve, SRetrieve, 
-#     PromptConv, Completion,
-# )
-# from ..process import TakoBase
-# from ..depracated.comm import (
-#     Request, UIQuery, OpenAIRequest, UI
-# )
 
 @dataclass
 class TaskMessage:

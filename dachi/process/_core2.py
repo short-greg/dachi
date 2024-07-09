@@ -604,7 +604,11 @@ class Module(ABC):
     def forward(self, *args, **kwargs) -> typing.Any:
         pass
 
-    def __call__(self, *args, **kwargs) -> T:
+    def __call__(self, *args, **kwargs) -> typing.Any:
+
+        return self.forward(*args, **kwargs)
+
+    def link(self, *args, **kwargs) -> T:
         """
         Returns:
             T: The transmission output by the module
@@ -654,7 +658,8 @@ class StreamableModule(Module, ABC):
             self.stream_iter(*args, **kwargs)
         )
 
-    def __call__(self, *args, **kwargs) -> T:
+    # TDOO: add async_link?
+    def link(self, *args, **kwargs) -> T:
         """
         Returns:
             T: The Streamable transmission
@@ -690,7 +695,7 @@ class ParallelModule(Module, ABC):
         for module_i in self._modules:
             yield module_i
 
-    def __call__(self, args: typing.Union[typing.List[Args], Args]) -> T:
+    def link(self, args: typing.Union[typing.List[Args], Args]) -> T:
         """
         Args:
             args (typing.Union[typing.List[Args], Args]): Either a list of args or
@@ -803,16 +808,50 @@ class ParallelSrc(Src):
 
 class StructModule(Struct, Module):
 
-    def forward(self, key: str, value: typing.Any=UNDEFINED, get_struct: bool=False) -> typing.Any:
+    def forward(self, key: str, value: typing.Any) -> typing.Any:
         
-        if value is UNDEFINED:
-            if get_struct:
-                # No reason for the person to use this but
-                # since the option is provided, added this
-                return self
-            return self[key]
+        copy = self.model_copy()
+        copy[key] = value
+        return copy
+
+
+class Get(Module):
+
+    def forward(self, struct: Struct, key) -> typing.Any:
         
-        self[key] = value
-        if get_struct:
-            return self
+        return struct[key]
+
+
+class Set(Module):
+
+    def forward(self, struct: Struct, key, value) -> typing.Any:
+        
+        struct[key] = value
         return value
+
+
+get = Get()
+set = Set()
+
+
+class _DecMethod(Module):
+
+    def __init__(self, f: typing.Callable, instance=None):
+        self.f = f
+        self.instance = instance
+
+    def forward(self, *args, **kwargs) -> typing.Any:
+        if self.instance:
+            return self.f(self.instance, *args, **kwargs)
+        return self.f(*args, **kwargs)
+
+    def link(self, *args, **kwargs) -> typing.Any:
+        return self.forward(*args, **kwargs)
+
+    def __get__(self, instance, owner):
+        # Bind the method to the instance
+        return _DecMethod(self.f, instance)
+
+
+def process(f):
+    return _DecMethod(f)

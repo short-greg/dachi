@@ -9,6 +9,7 @@ from pydantic import Field
 
 # local
 from .._core import Struct, Str
+from ..process import Module
 import inspect
 
 
@@ -312,7 +313,7 @@ class Parameter(Description):
         }
 
 
-class Instructor(Struct):
+class Instructor(Module):
 
     def parameters(self) -> typing.Iterator[Parameter]:
 
@@ -323,6 +324,3 @@ class Instructor(Struct):
     @abstractmethod
     def forward(self, *args, **kwargs) -> Output:
         pass
-
-    def __call__(self, *args, **kwargs) -> Output:
-        return self.forward(*args, **kwargs)

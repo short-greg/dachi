@@ -1,5 +1,8 @@
 # 1st party
 import typing
+from abc import abstractmethod, ABC
+
+from dachi.process._core2 import UNDEFINED
 
 from ..process import StructModule
 
@@ -36,13 +39,6 @@ class Message(StructModule):
         )
 
 
-class ImageMessage(StructModule):
-
-    role: Str
-    text: Str
-    images: typing.List[Str]
-
-
 class Doc(StructModule):
 
     name: Str
@@ -68,6 +64,10 @@ class StructList(Struct, typing.Generic[T]):
 
 class MessageList(StructList[Message]):
 
+    @property
+    def messages(self) -> typing.List[Message]:
+        return self.messages
+
     def filter(self, roles: typing.Iterable[str]) -> 'MessageList[Message]':
 
         roles = set(roles)
@@ -75,3 +75,37 @@ class MessageList(StructList[Message]):
         return MessageList(
             s for s in self._structs if s.role in roles
         )
+
+
+class Lookup(StructModule, ABC):
+
+    score: float
+    content: typing.Dict[str, typing.Any]
+    meta: typing.Dict[str, typing.Any]
+
+    @abstractmethod
+    def forward(self, key: str, value: typing.Any = ..., get_struct: bool = False) -> typing.Any:
+        return super().forward(key, value, get_struct)
+
+
+class LookupList(StructList[Lookup]):
+
+    @property
+    def lookups(self) -> typing.List[Lookup]:
+        return self.structs
+
+    def filter(self, threshold: float):
+
+        return LookupList(
+            lookup for lookup in self.lookups 
+            if lookup.score >= threshold
+        )
+
+
+
+
+# class ImageMessage(StructModule):
+
+#     role: Str
+#     text: Str
+#     images: typing.List[Str]

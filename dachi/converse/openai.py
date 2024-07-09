@@ -2,7 +2,7 @@ from typing import Coroutine
 import pkg_resources
 
 from ._structs import Message, MessageList
-from ._base import PromptCompletion, ChatCompletion
+from ._base import PromptModel, ChatModel
 
 # TODO: add utility for this
 required = {'openai'}
@@ -14,9 +14,8 @@ if len(missing) > 0:
 
 import openai
 
-# TODO
 
-class OpenAIPromptCompletion(PromptCompletion):
+class OpenAIPrompModel(PromptModel):
 
     def __init__(self, model: str='gpt-4-turbo', name: str='Assistant'):
         super().__init__()
@@ -48,7 +47,7 @@ class OpenAIPromptCompletion(PromptCompletion):
         )
 
 
-class OpenAIChatCompletion(ChatCompletion):
+class OpenAIChatModel(ChatModel):
 
     def __init__(self, model: str='gpt-4-turbo', name: str='Assistant'):
         super().__init__()
