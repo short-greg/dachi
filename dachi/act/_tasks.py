@@ -433,7 +433,7 @@ class Until(Decorator):
         return status
 
 
-class While(Decorator):
+class Unless(Decorator):
     """Loop while a condition is met
     """
 

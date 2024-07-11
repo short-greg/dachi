@@ -1,15 +1,15 @@
 import typing
-from dachi.store import _concept
-from dachi.store._concept import (
+from dachi.store1 import _concept
+from dachi.store1._concept import (
     Col, 
     Like, ColSelector, R,
     StrSelector, FSelector, Selection,
     Join, Derived
 )
-from dachi.store._rep import (
+from dachi.store1._rep import (
     Rep, RepFactory, RepLookup
 )
-from dachi.store import _rep
+from dachi.store1 import _rep
 import faiss
 import numpy as np
 import pandas as pd

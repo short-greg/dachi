@@ -116,6 +116,48 @@ def selector(f):
 
 fallback = selector
 
+
+class UntilFunc(TaskFuncDecorator, tasks.Until):
+
+    def __init__(self, f, instance=None):
+        super().__init__(f, instance)
+        task = tasks.FTask(f)
+        tasks.Until.__init__(self, task)
+
+
+def until(f):
+
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        return f(*args, **kwargs)
+
+    if hasattr(f, '__self__') or '__self__' in dir(f):
+        return UntilFunc(f)
+    else:
+        return UntilFunc(wrapper)
+
+
+
+class UnlessFunc(TaskFuncDecorator, tasks.Unless):
+
+    def __init__(self, f, instance=None):
+        super().__init__(f, instance)
+        task = tasks.FTask(f)
+        tasks.Until.__init__(self, task)
+
+
+def unless(f):
+
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        return f(*args, **kwargs)
+
+    if hasattr(f, '__self__') or '__self__' in dir(f):
+        return UnlessFunc(f)
+    else:
+        return UnlessFunc(wrapper)
+
+
 # TODO: Add in until and while
 
 

@@ -183,7 +183,7 @@ class while_(decorate):
             decorated: The task to loop over
             parent (Task, optional): The parent task. Defaults to None.
         """
-        super().__init__(behavior.While, decorated, parent)
+        super().__init__(behavior.Unless, decorated, parent)
 
 
 class until_(decorate):

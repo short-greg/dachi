@@ -243,7 +243,7 @@ class TestWhile:
 
         action1 = SetStorageActionCounter(0)
         action1.count = -1
-        while_ = behavior.While(action1)
+        while_ = behavior.Unless(action1)
 
         while_.tick()
         action1.value = 1
@@ -255,7 +255,7 @@ class TestWhile:
         action1 = SetStorageActionCounter(1)
         action1.count = 1
         action1.value = 1
-        while_ = behavior.While(action1)
+        while_ = behavior.Unless(action1)
 
         while_.tick()
         action1.value = 0
