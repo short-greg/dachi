@@ -371,7 +371,7 @@ class Rep(object):
             return getattr(self.__base_rep__, key)
         raise AttributeError(f'There is no attribute named {key} in IndexMap {str(self)}')
 
-    def __getitem__(self, key: typing.Union[str, typing.Series, np.ndarray]):
+    def __getitem__(self, key: typing.Union[str, pd.Series, np.ndarray]):
         
         if isinstance(key, pd.Series):
             key = key.values
@@ -412,7 +412,7 @@ class DerivedRep(object):
 
         return getattr(self._rep, key)
 
-    def __getitem__(self, key: typing.Union[str, typing.Series, np.ndarray]):
+    def __getitem__(self, key: typing.Union[str, pd.Series, np.ndarray]):
         
         if isinstance(key, pd.Series):
             key = key.values

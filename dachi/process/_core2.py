@@ -1,8 +1,8 @@
 # 1st party
 from abc import abstractmethod, ABC
-import asyncio
 import typing
 from typing_extensions import Self
+from functools import wraps
 
 # 3rd party
 import networkx as nx
@@ -479,7 +479,7 @@ class ModSrc(Src):
         
         args = self._args(by)
 
-        return self.mod(*args.args, **args.kwargs).val
+        return self.mod.link(*args.args, **args.kwargs).val
 
 
 class Streamer(object):
@@ -586,7 +586,7 @@ def stream(module: 'StreamableModule', *args, interval: float=None, **kwargs) ->
     """
     if not isinstance(module, StreamableModule):
         raise RuntimeError('Stream only works for streamable modules')
-    t = module(*args, **kwargs)
+    t = module.link(*args, **kwargs)
     yield t
 
     if isinstance(t.val, Streamer):
@@ -839,19 +839,28 @@ class _DecMethod(Module):
     def __init__(self, f: typing.Callable, instance=None):
         self.f = f
         self.instance = instance
+        self._stored = None
 
     def forward(self, *args, **kwargs) -> typing.Any:
         if self.instance:
             return self.f(self.instance, *args, **kwargs)
         return self.f(*args, **kwargs)
 
-    def link(self, *args, **kwargs) -> typing.Any:
-        return self.forward(*args, **kwargs)
-
     def __get__(self, instance, owner):
-        # Bind the method to the instance
-        return _DecMethod(self.f, instance)
+
+        if self._stored is not None and instance is self._stored:
+            return self._stored
+        self._stored = _DecMethod(self.f, instance)
+        return self._stored
 
 
 def process(f):
-    return _DecMethod(f)
+
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        return f(*args, **kwargs)
+
+    if hasattr(f, '__self__') or '__self__' in dir(f):
+        return _DecMethod(f)
+    else:
+        return _DecMethod(wrapper)

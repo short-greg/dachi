@@ -33,31 +33,31 @@ class TestModule:
     def test_module_outputs_t_with_correct_value(self):
 
         append = Append('_t')
-        t = append('x')
+        t = append.link('x')
         assert t.val == 'x_t'
         assert t.src.mod is append
 
     def test_chaining_appends_produces_correct_value(self):
 
         append = Append('_t')
-        t = append('x')
-        t = append(t)
+        t = append.link('x')
+        t = append.link(t)
         assert t.val == 'x_t_t'
 
     def test_it_is_undefined_if_val_not_defined(self):
 
         append = Append('_t')
         t = _core2.T()
-        t = append(t)
-        t = append(t)
+        t = append.link(t)
+        t = append.link(t)
         assert t.is_undefined() is True
 
     def test_it_probes_the_input(self):
 
         append = Append('_t')
         t1 = _core2.T()
-        t = append(t1)
-        t = append(t)
+        t = append.link(t1)
+        t = append.link(t)
         res = t.probe(by={t1: 'x'})
         assert res == 'x_t_t'
 
@@ -65,8 +65,8 @@ class TestModule:
 
         append = Append('_t')
         t1 = _core2.T()
-        t = append(t1)
-        t = append(t)
+        t = append.link(t1)
+        t = append.link(t)
         with pytest.raises(RuntimeError):
             t.probe({})
 
@@ -94,7 +94,7 @@ class TestStreamable:
     def test_call_returns_t_with_streamer(self):
 
         writer = WriteOut()
-        t = writer(_core2.T('xyz'))
+        t = writer.link(_core2.T('xyz'))
         partial = t.val()
         assert partial.cur == 'x'
         assert partial.dx == 'x'
@@ -102,7 +102,7 @@ class TestStreamable:
     def test_call_returns_undefined_if_t_undefined(self):
 
         writer = WriteOut()
-        t = writer(_core2.T())
+        t = writer.link(_core2.T())
         assert t.is_undefined()
 
 #     # TODO* make this return partial
@@ -110,8 +110,8 @@ class TestStreamable:
 
         writer = WriteOut()
         append = Append('_t')
-        t = writer(_core2.T('xyz'))
-        t = append(t)
+        t = writer.link(_core2.T('xyz'))
+        t = append.link(t)
         assert t.val.cur == 'x_t'
 
     def test_stream_completes_the_stream(self):
@@ -120,7 +120,7 @@ class TestStreamable:
         append = Append('_t')
 
         for t in _core2.stream(writer, _core2.T('xyz')):
-            t = append(t)
+            t = append.link(t)
         
         assert t.val.cur == 'xyz_t'
 
@@ -130,7 +130,7 @@ class TestWait:
     def test_wait_results_in_waiting(self):
 
         writer = WriteOut()
-        t = writer(_core2.T('xyz'))
+        t = writer.link(_core2.T('xyz'))
         t = _core2.wait(
             t
         )
@@ -140,9 +140,62 @@ class TestWait:
     def test_wait(self):
 
         append = Append('_t')
-        t = append(_core2.T('xyz'))
+        t = append.link(_core2.T('xyz'))
         t = _core2.wait(
             t
         )
 
         assert t.val == 'xyz_t'
+
+
+class MyProcess:
+
+    @_core2.process
+    def process_test_method(self, x, y):
+        return x + y
+
+@_core2.process
+def process_test_func(x, y):
+    return x + y
+
+
+class TestProcessDecorator:
+
+    def test_process_decorator_with_method(self):
+
+        process = MyProcess()
+        result = process.process_test_method(2, 3)
+        assert result == 5
+
+    def test_process_decorator_with_function(self):
+
+        result = process_test_func(2, 3)
+        assert result == 5
+
+    def test_process_decorator_with_function_after_two(self):
+
+        result = process_test_func(2, 3)
+        result = process_test_func(2, 3)
+        assert result == 5
+
+    def test_process_decorator_with_method_after_two(self):
+
+        process = MyProcess()
+        result = process.process_test_method(2, 3)
+        result = process.process_test_method(2, 3)
+        assert result == 5
+
+    def test_process_decorator_with_method_link(self):
+
+        process = MyProcess()
+        t1 = _core2.T(val=2)
+        result = process.process_test_method.link(t1, 3)
+        assert result.val == 5
+
+    def test_process_decorator_with_function_after_two(self):
+
+        t1 = _core2.T(val=2)
+        result = process_test_func.link(t1, 3)
+        result = process_test_func.link(t1, 3)
+        assert result.val == 5
+
