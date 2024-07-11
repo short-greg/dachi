@@ -77,29 +77,29 @@ class MessageList(StructList[Message]):
         )
 
 
-class Lookup(StructModule, ABC):
+# class Lookup(StructModule, ABC):
 
-    score: float
-    content: typing.Dict[str, typing.Any]
-    meta: typing.Dict[str, typing.Any]
+#     score: float
+#     content: typing.Dict[str, typing.Any]
+#     meta: typing.Dict[str, typing.Any]
 
-    @abstractmethod
-    def forward(self, key: str, value: typing.Any = ..., get_struct: bool = False) -> typing.Any:
-        return super().forward(key, value, get_struct)
+#     @abstractmethod
+#     def forward(self, key: str, value: typing.Any = ..., get_struct: bool = False) -> typing.Any:
+#         return super().forward(key, value, get_struct)
 
 
-class LookupList(StructList[Lookup]):
+# class LookupList(StructList[Lookup]):
 
-    @property
-    def lookups(self) -> typing.List[Lookup]:
-        return self.structs
+#     @property
+#     def lookups(self) -> typing.List[Lookup]:
+#         return self.structs
 
-    def filter(self, threshold: float):
+#     def filter(self, threshold: float):
 
-        return LookupList(
-            lookup for lookup in self.lookups 
-            if lookup.score >= threshold
-        )
+#         return LookupList(
+#             lookup for lookup in self.lookups 
+#             if lookup.score >= threshold
+#         )
 
 
 

@@ -27,9 +27,3 @@ class ChatModel(process.Module):
     async def async_forward(self, *args, **kwargs) -> Any:
         return await super().async_forward(*args, **kwargs)
 
-
-class VectorDB(process.Module):
-
-    @abstractmethod
-    def forward(self, query, filter):
-        pass
