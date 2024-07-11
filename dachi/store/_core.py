@@ -13,6 +13,15 @@ from ..process import Module
 # 5) Exclude
 
 
+# Use Key to replace column
+class Key(object):
+    pass
+
+
+class Comp(object):
+    pass
+
+
 class Query(ABC):
 
     # def annotate
@@ -38,12 +47,35 @@ class Query(ABC):
 class Store(ABC):
 
     @abstractmethod
-    def query(self) -> Query:
+    def limit(self) -> Query:
+        pass
+
+    @abstractmethod
+    def include(self) -> Query:
+        pass
+
+    @abstractmethod
+    def exclude(self) -> Query:
         pass
 
     @abstractmethod
     def retrieve(self) -> typing.Any:
         pass
+
+
+class VectorStore(Store):
+
+    @abstractmethod
+    def like(self) -> Query:
+        pass
+
+
+class VectorQuery(Query):
+
+    @abstractmethod
+    def like(self) -> 'VectorQuery':
+        pass
+
 
 
 class Retrieve(Module):

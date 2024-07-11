@@ -7,6 +7,9 @@ from ..process import Module
 # 2) Score
 # 3) Evaluate module
 
+class Param()
+
+
 class Learner(Module):
 
     @abstractmethod
