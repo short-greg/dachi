@@ -11,6 +11,7 @@ import pydantic
 from pydantic import Field
 
 
+
 class TextMixin(object):
 
     @abstractmethod
@@ -51,7 +52,6 @@ class Str(pydantic.BaseModel, TextMixin):
     
     def __call__(self, **kwargs):
         return self.forward(**kwargs)
-
 
 def model_template(model_cls: typing.Type[pydantic.BaseModel]) -> str:
     
@@ -135,5 +135,23 @@ class Struct(pydantic.BaseModel, TextMixin, ValidateStrMixin):
         return cls(
             **json.loads(text)
         )
+
+
+T = typing.TypeVar('T', bound=Struct)
+
+class StructList(Struct, typing.Generic[T]):
+
+    structs: typing.List[T]
+
+    def __getitem__(self, key) -> typing.Any:
+        
+        return self.structs[key]
     
+    def __setitem__(self, key, value) -> typing.Any:
+        
+        if key is None:
+            self.structs.append(value)
+        else:
+            self.structs[key] = value
+        return value
 

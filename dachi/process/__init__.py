@@ -10,3 +10,10 @@ from ._core2 import (
     WaitSrc, stream, Module, StreamableModule, ParallelModule,
     ParallelSrc,  StructModule
 )
+
+from ._structs import (
+    Message, MessageList, Doc, StructModule
+)
+from ._ai import (
+    ChatModel, PromptModel
+)
