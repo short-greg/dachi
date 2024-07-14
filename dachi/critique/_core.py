@@ -5,6 +5,9 @@ from .._core import Struct
 
 
 class Assessment(Struct):
+    """Evaluate the output of an AI model
+    Typically with some kind of language output
+    """
 
     name: str
     evaluation: typing.Any
@@ -12,16 +15,35 @@ class Assessment(Struct):
 
 
 class JointAssessment(Assessment):
+    """Store multiple assessments by an AI model 
 
-    evaluation: typing.Dict[str, Assessment]
+    """
 
-    def __getitem__(self, key: str):
+    assessments: typing.Dict[str, Assessment]
+
+    def __getitem__(self, key: str) -> Assessment:
+        """Get the assessement associated with a string
+
+        Args:
+            key (str): the name of the assessment
+
+        Returns:
+            Assessment: the assessment for that name
+        """
         
-        return self.evaluation[key]
+        return self.assessments[key]
     
-    def __setitem__(self, key: str, value: Assessment) -> typing.Any:
+    def __setitem__(self, key: str, value: Assessment) -> Assessment:
+        """Set the 
 
-        self.evaluation[key] = value
+        Args:
+            key (str): _description_
+            value (Assessment): _description_
+
+        Returns:
+            Assessment: The value passed in
+        """
+        self.assessments[key] = value
         return value
 
 

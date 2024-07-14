@@ -840,11 +840,18 @@ class _DecMethod(Module):
         self.f = f
         self.instance = instance
         self._stored = None
+        self._async_f = None
 
     def forward(self, *args, **kwargs) -> typing.Any:
         if self.instance:
             return self.f(self.instance, *args, **kwargs)
         return self.f(*args, **kwargs)
+
+    async def async_forward(self, *args, **kwargs) -> typing.Any:
+        
+        if self._async_f:
+            self._async_f(*args, **kwargs)
+        return self.forward(*args, **kwargs)
 
     def __get__(self, instance, owner):
 
@@ -852,6 +859,11 @@ class _DecMethod(Module):
             return self._stored
         self._stored = _DecMethod(self.f, instance)
         return self._stored
+    
+    @classmethod
+    def async_(cls, f):
+
+        cls._async_f = f
 
 
 def process(f):

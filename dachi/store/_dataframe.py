@@ -1,8 +1,7 @@
-from abc import ABC, abstractmethod
 from typing import Self
 import typing
-from ..process import Module
-from ._core import Query, Store
+from ..process import Module, T
+from ._core import Query, Store, Comp, Key
 import pandas as pd
 
 # 1) "Store" [dataframe, etc]
@@ -16,34 +15,88 @@ import pandas as pd
 
 
 class DFQuery(Query):
+    """Queries the values of a dataframe
+    """
 
     # def annotate
     # def join
 
-    def __init__(self, store: 'DFStore', limit: int=None):
-        
+    def __init__(
+        self, store: 'DFStore', 
+        limit: int=None, 
+        where: Comp=None
+    ):
+        """_summary_
+
+        Args:
+            store (DFStore): 
+            limit (int, optional): . Defaults to None.
+            where (Comp, optional): . Defaults to None.
+        """
         self._store = store
         self._limit = limit
+        self._where = where or None
 
-    def limit(self) -> Self:
-        pass
+    def limit(self, n: int) -> Self:
+        return DFQuery(
+            self._store, n, self._where
+        )
 
-    def include(self) -> Self:
-        pass
+    def where(self, comp: Comp) -> Self:
+        where = self._where & comp
+        return DFQuery(
+            self._store, self._limit, where
+        )
+    
+    def _filter(self, comp: Comp) -> pd.DataFrame:
+        """
 
-    def exclude(self) -> Self:
-        pass
+        Args:
+            comp (Comp): 
+
+        Returns:
+            pd.DataFrame: 
+        """
+        if isinstance(comp.lhs, Comp):
+            lhs = self._filter(comp.lhs)
+        elif isinstance(comp.lhs, Key):
+            lhs = self._store.df[comp.lhs.name]
+        else:
+            lhs = comp.lhs
+
+        if isinstance(comp.rhs, Comp):
+            rhs = self._filter(comp.rhs)
+        elif isinstance(comp.rhs, Key):
+            rhs = self._store.df[comp.rhs.name]
+        else:
+            rhs = comp.rhs
+
+        return self._store.df[comp.compare(lhs, rhs)]
 
     def retrieve(self) -> pd.DataFrame:
+        """Run all of the operations
 
-        df = self._store.df
-        return df.iloc[:self._limit]
+        Returns:
+            pd.DataFrame: _description_
+        """
+
+        if self._where is not None:
+            store = self._filter(self._where)
+        else:
+            store = self._store.df
+        if self._limit is not None:
+            store = store.iloc[:self._limit]
+        return store
 
 
 class DFStore(Store):
 
     def __init__(self, df: pd.DataFrame):
+        """
 
+        Args:
+            df (pd.DataFrame): 
+        """
         super().__init__()
         self._df = df
 
@@ -51,14 +104,21 @@ class DFStore(Store):
     def df(self) -> pd.DataFrame:
         return self._df
 
-    def limit(self) -> Query:
-        pass
+    def limit(self, n: int) -> Query:
+        return DFQuery(
+            self, n, None
+        )
 
-    def include(self) -> Query:
-        pass
+    def where(self, comp: Comp) -> Query:
+        """Use to filter the dataframe
 
-    def exclude(self) -> Query:
-        pass
+        Args:
+            comp (Comp): The comparison to use
+
+        Returns:
+            Query: The query to filter the dataframe with
+        """
+        return DFQuery(self, None, comp)
 
     def retrieve(self) -> pd.DataFrame:
         return self._df
