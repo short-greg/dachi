@@ -121,7 +121,6 @@ class DFStore(Store):
         if where is not None:
             store = store[df_filter(store, where)]
 
-        # TODO: Add in the selection
         if order_by is not None:
             store = df_sort(store, order_by)
         if limit is not None:
