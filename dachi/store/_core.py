@@ -8,14 +8,18 @@ from dataclasses import dataclass
 import pandas as pd
 
 
-# 1) "Store" [dataframe, etc]
-#   the store needs to have 
-# 2) "Query"
-#   Query is specific to the store
-#   Can specify anything on it
-# 3) Retrieve
-# 4) Include
-# 5) Exclude
+class _Types(Enum):
+
+    UNCHANGED = 'UNCHANGED'
+
+UNCHANGED = _Types.UNCHANGED
+
+
+def coalesce(change, cur) -> typing.Any:
+
+    if change is UNCHANGED:
+        return cur
+    return change
 
 
 # Use Key to replace column
@@ -154,9 +158,11 @@ class Comp(object):
         return Comp(None, self, CompF.NOT)
 
 
-class QF(object):
-    pass
-
+class QF(ABC):
+    
+    @abstractmethod
+    def __call__(self, store: 'Store') -> 'Store':
+        pass
 
 
 @dataclass
@@ -199,32 +205,33 @@ class Query(ABC):
         self._joins = joins or []
 
     def limit(self, n: int) -> Self:
-        kwargs = {
-            **self.kwargs(),
-            'limit': n
-        }
-        return Query(
-            self._store, **kwargs
+
+        return self.spawn(
+            limit=n
         )
 
     def where(self, comp: Comp) -> Self:
         where = self._where & comp
-        kwargs = {
-            **self.kwargs(),
-            'where': where
-        }
-        return Query(
-            self._store, **kwargs
+        return self.spawn(
+            where=where
         )
-
-    def kwargs(self):
-        return {
-            'limit': self._limit,
-            'where': self._where,
-            'joins': self._joins,
-            'order_by': self._order_by,
-            'select': self._select
-        }
+    
+    def spawn(
+        self, 
+        select: typing.Dict[str, typing.UNION[QF, str]]=UNCHANGED, 
+        joins: typing.List[Join]=UNCHANGED, 
+        where: Comp=UNCHANGED, 
+        order_by: typing.List[str]=UNCHANGED,
+        limit: int=UNCHANGED
+    ):
+        return self.__class__(
+            self._store, 
+            select=coalesce(select, select), 
+            joins=coalesce(joins, self._joins), 
+            where=coalesce(where, self._where),
+            order_by=coalesce(order_by, self._order_by),
+            coalesce=coalesce(limit, self._limit), 
+        )
 
     def select(self, **kwargs: typing.Union[str, QF]) -> Self:
 
@@ -244,10 +251,9 @@ class Query(ABC):
         right: str, comp: Comp, 
         alias: typing.Dict[str, str]=None, how: str='inner'
     ) -> Self:
-        kwargs = self.kwargs()
-        kwargs['joins'] = [*self._joins, Join(query, left, right, comp, alias, how)]
-        return Query(
-            self._store, **kwargs
+        joins = [*self._joins, Join(query, left, right, comp, alias, how)]
+        return self.spawn(
+            self._store, joins=joins
         )
                 
     def retrieve(self) -> pd.DataFrame:
@@ -263,12 +269,8 @@ class Query(ABC):
 
     def order_by(self, keys: typing.List[str]) -> Self:
 
-        kwargs = {
-            **self.kwargs(),
-            'select': kwargs
-        }
-        return Query(
-            self._store, self._limit, self._where, keys
+        return self.spawn(
+            order_by=keys
         )
 
 
@@ -351,6 +353,7 @@ class VectorStore(Store):
     def rep(self) -> Rep:
         pass
 
+
 @dataclass
 class Like(object):
 
@@ -366,21 +369,43 @@ class VectorQuery(Query):
         order_by: typing.List[str] = None, limit: int = None,
         like: Like=None
     ):
+        """
+
+        Args:
+            store (VectorStore): 
+            select (typing.Dict[str, str  |  QF], optional): . Defaults to None.
+            joins (typing.List[Join], optional): . Defaults to None.
+            where (Comp, optional): . Defaults to None.
+            order_by (typing.List[str], optional): . Defaults to None.
+            limit (int, optional): . Defaults to None.
+            like (Like, optional): . Defaults to None.
+        """
         super().__init__(store, select, joins, where, order_by, limit)
         self._like = like
 
-    def kwargs(self):
-        return {
-            **super().kwargs(),
-            'like': self._like
-        }
-
+    def spawn(
+        self, 
+        select: typing.Dict[str, typing.UNION[QF, str]]=UNCHANGED, 
+        joins: typing.List[Join]=UNCHANGED, 
+        where: Comp=UNCHANGED, 
+        order_by: typing.List[str]=UNCHANGED,
+        limit: int=UNCHANGED,
+        like: Like=None
+    ):
+        return self.__class__(
+            self._store, 
+            select=coalesce(select, select), 
+            joins=coalesce(joins, self._joins), 
+            where=coalesce(where, self._where),
+            order_by=coalesce(order_by, self._order_by),
+            coalesce=coalesce(limit, self._limit), 
+            like=coalesce(like, self._like)
+        )
+    
     def like(self, like: typing.Union[typing.List, typing.Any], n: int) -> 'VectorQuery':
 
-        kwargs = self.kwargs()
-        kwargs['like'] = Like(like, n)
-        return VectorQuery(
-            self._store, **kwargs
+        return self.spawn(
+            like=Like(like, n)
         )
 
     def rep(self) -> Rep:
@@ -396,3 +421,13 @@ class Retrieve(Module):
 
 
 retrieve = Retrieve()
+
+
+# 1) "Store" [dataframe, etc]
+#   the store needs to have 
+# 2) "Query"
+#   Query is specific to the store
+#   Can specify anything on it
+# 3) Retrieve
+# 4) Include
+# 5) Exclude
