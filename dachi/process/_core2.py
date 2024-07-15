@@ -476,9 +476,7 @@ class ModSrc(Src):
         Returns:
             typing.Any: The value output by the module
         """
-        
         args = self._args(by)
-
         return self.mod.link(*args.args, **args.kwargs).val
 
 

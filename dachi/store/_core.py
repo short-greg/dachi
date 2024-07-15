@@ -4,6 +4,8 @@ import typing
 from ..process import Module, T
 from enum import Enum
 import numpy as np
+from dataclasses import dataclass
+import pandas as pd
 
 
 # 1) "Store" [dataframe, etc]
@@ -156,68 +158,179 @@ class QF(object):
     pass
 
 
+
+@dataclass
+class Join(object):
+
+    query: 'Query'
+    left: str
+    right: str
+    comp: Comp=None
+    alias: typing.Dict[str, str]=None
+    how: str='inner'
+
+# Join(query, left, right, comp)
+
 class Query(ABC):
 
     # def annotate
     # def join
 
-    @abstractmethod
-    def limit(self) -> Self:
-        pass
+    def __init__(
+        self, store: 'Store', 
+        select: typing.Dict[str, typing.Union[str, QF]]=None,
+        joins: typing.List[Join]=None,
+        where: Comp=None,
+        order_by: typing.List[str]=None,
+        limit: int=None, 
+    ):
+        """
 
-    @abstractmethod
+        Args:
+            store (DFStore): 
+            limit (int, optional): . Defaults to None.
+            where (Comp, optional): . Defaults to None.
+        """
+        self._store = store
+        self._limit = limit
+        self._select = select
+        self._where = where or None
+        self._order_by = order_by or None
+        self._joins = joins or []
+
+    def limit(self, n: int) -> Self:
+        kwargs = {
+            **self.kwargs(),
+            'limit': n
+        }
+        return Query(
+            self._store, **kwargs
+        )
+
     def where(self, comp: Comp) -> Self:
-        pass
+        where = self._where & comp
+        kwargs = {
+            **self.kwargs(),
+            'where': where
+        }
+        return Query(
+            self._store, **kwargs
+        )
 
-    @abstractmethod
-    def join(self, query: 'Query', left: str, right: str, comp: Comp) -> Self:
-        pass
+    def kwargs(self):
+        return {
+            'limit': self._limit,
+            'where': self._where,
+            'joins': self._joins,
+            'order_by': self._order_by,
+            'select': self._select
+        }
 
-    @abstractmethod
-    def select(self, **kwargs: typing.Union[str, QF]):
-        pass
+    def select(self, **kwargs: typing.Union[str, QF]) -> Self:
 
-    @abstractmethod
-    def retrieve(self) -> typing.Any:
-        pass
+        for k, v in kwargs.items():
+            if isinstance(v, QF):
+                # TODO: Confirm it is a valid function
+                pass
+        
+        kwargs = {
+            **self.kwargs(),
+            'select': kwargs
+        }
+        return Query(self._store, **kwargs)
+    
+    def join(
+        self, query: 'Query', left: str, 
+        right: str, comp: Comp, 
+        alias: typing.Dict[str, str]=None, how: str='inner'
+    ) -> Self:
+        kwargs = self.kwargs()
+        kwargs['joins'] = [*self._joins, Join(query, left, right, comp, alias, how)]
+        return Query(
+            self._store, **kwargs
+        )
+                
+    def retrieve(self) -> pd.DataFrame:
+        """Run all of the operations
 
-    @abstractmethod
-    def order_by(self) -> Self:
-        pass
+        Returns:
+            pd.DataFrame: 
+        """
+        return self._store.retrieve(
+            self._select, self._joins, self._where,
+            self._order_by, self._limit
+        )
+
+    def order_by(self, keys: typing.List[str]) -> Self:
+
+        kwargs = {
+            **self.kwargs(),
+            'select': kwargs
+        }
+        return Query(
+            self._store, self._limit, self._where, keys
+        )
 
 
 class Store(ABC):
     """Store 
     """
 
-    @abstractmethod
-    def limit(self) -> Query:
-        """Limit the number of results
+    def limit(self, n: int) -> Query:
+        return Query(
+            self, limit=n
+        )
+
+    def where(self, comp: Comp) -> Query:
+        """Use to filter the dataframe
+
+        Args:
+            comp (Comp): The comparison to use
 
         Returns:
-            Query: _description_
+            Query: The query to filter the dataframe with
         """
-        pass
+        return Query(self, where=comp)
 
     @abstractmethod
-    def where(self, comp: Comp) -> Query:
+    def retrieve(
+        self,
+        select: typing.Dict[str, typing.Union[str, QF]]=None,
+        joins: typing.List[Join]=None,
+        where: Comp=None,
+        order_by: typing.List[str]=None,
+        limit: int=None, 
+    ) -> typing.Any:
         pass
 
-    @abstractmethod
-    def retrieve(self) -> typing.Any:
-        pass
+    def join(
+        self, query: 'Query', left: str, 
+        right: str, comp: Comp, 
+        alias: typing.Dict[str, str]=None, how: str='inner'
+    ) -> Self:
+        kwargs = self.kwargs()
+        kwargs['joins'] = [*self._joins, Join(query, left, right, comp, alias, how)]
+        return Query(
+            self, **kwargs
+        )
 
-    @abstractmethod
-    def join(self, other: 'Query', left: str, right: str, comp: Comp) -> Self:
-        pass
+    def select(self, **kwargs: typing.Union[str, QF]) -> Query:
 
-    @abstractmethod
-    def select(self, **kwargs: typing.Union[str, QF]):
-        pass
+        for k, v in kwargs.items():
+            if isinstance(v, QF):
+                # TODO: Confirm it is a valid function
+                pass
+        
+        kwargs = {
+            **self.kwargs(),
+            'select': kwargs
+        }
+        return Query(self._store, **kwargs)
 
-    @abstractmethod
     def order_by(self, keys: typing.List[str]) -> Self:
-        pass
+        return Query(
+            self, order_by=keys
+        )
 
 
 class Rep(object):
@@ -231,7 +344,6 @@ class Rep(object):
 
 class VectorStore(Store):
 
-    @abstractmethod
     def like(self) -> Query:
         pass
 
@@ -239,16 +351,42 @@ class VectorStore(Store):
     def rep(self) -> Rep:
         pass
 
+@dataclass
+class Like(object):
+
+    like: typing.List
+    n: int
+
 
 class VectorQuery(Query):
 
-    @abstractmethod
-    def like(self) -> 'VectorQuery':
-        pass
+    def __init__(
+        self, store: VectorStore, select: typing.Dict[str, str | QF] = None, 
+        joins: typing.List[Join] = None, where: Comp = None, 
+        order_by: typing.List[str] = None, limit: int = None,
+        like: Like=None
+    ):
+        super().__init__(store, select, joins, where, order_by, limit)
+        self._like = like
 
-    @abstractmethod
+    def kwargs(self):
+        return {
+            **super().kwargs(),
+            'like': self._like
+        }
+
+    def like(self, like: typing.Union[typing.List, typing.Any], n: int) -> 'VectorQuery':
+
+        kwargs = self.kwargs()
+        kwargs['like'] = Like(like, n)
+        return VectorQuery(
+            self._store, **kwargs
+        )
+
     def rep(self) -> Rep:
-        pass
+        return self._store.rep(
+            # same as retrieve
+        )
 
 
 class Retrieve(Module):
