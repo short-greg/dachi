@@ -3,6 +3,8 @@ from typing import Self
 import typing
 from ..process import Module, T
 from enum import Enum
+import numpy as np
+
 
 # 1) "Store" [dataframe, etc]
 #   the store needs to have 
@@ -137,17 +139,21 @@ class Comp(object):
         self.rhs = rhs
         self.f = f
 
-    def __and__(self, other):
+    def __and__(self, other) -> 'Comp':
 
         return Comp(self, other, CompF.AND)
 
-    def __or__(self, other):
+    def __or__(self, other) -> 'Comp':
 
         return Comp(self, other, CompF.OR)
     
-    def __invert__(self):
+    def __invert__(self) -> 'Comp':
 
         return Comp(None, self, CompF.NOT)
+
+
+class QF(object):
+    pass
 
 
 class Query(ABC):
@@ -164,14 +170,33 @@ class Query(ABC):
         pass
 
     @abstractmethod
+    def join(self, query: 'Query', left: str, right: str, comp: Comp) -> Self:
+        pass
+
+    @abstractmethod
+    def select(self, **kwargs: typing.Union[str, QF]):
+        pass
+
+    @abstractmethod
     def retrieve(self) -> typing.Any:
+        pass
+
+    @abstractmethod
+    def order_by(self) -> Self:
         pass
 
 
 class Store(ABC):
+    """Store 
+    """
 
     @abstractmethod
     def limit(self) -> Query:
+        """Limit the number of results
+
+        Returns:
+            Query: _description_
+        """
         pass
 
     @abstractmethod
@@ -182,6 +207,27 @@ class Store(ABC):
     def retrieve(self) -> typing.Any:
         pass
 
+    @abstractmethod
+    def join(self, other: 'Query', left: str, right: str, comp: Comp) -> Self:
+        pass
+
+    @abstractmethod
+    def select(self, **kwargs: typing.Union[str, QF]):
+        pass
+
+    @abstractmethod
+    def order_by(self, keys: typing.List[str]) -> Self:
+        pass
+
+
+class Rep(object):
+
+    def __init__(self, ids, vectors: np.ndarray):
+
+        super().__init__()
+        self.ids = ids
+        self.vectors = vectors
+
 
 class VectorStore(Store):
 
@@ -189,11 +235,19 @@ class VectorStore(Store):
     def like(self) -> Query:
         pass
 
+    @abstractmethod
+    def rep(self) -> Rep:
+        pass
+
 
 class VectorQuery(Query):
 
     @abstractmethod
     def like(self) -> 'VectorQuery':
+        pass
+
+    @abstractmethod
+    def rep(self) -> Rep:
         pass
 
 
