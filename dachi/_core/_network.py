@@ -4,7 +4,11 @@ import typing
 # 3rd party
 import networkx as nx
 
-from ._core2 import T
+from ._core2 import T, Module
+# # 1st party
+import typing
+import functools
+
 
 
 class Network(object):
@@ -62,3 +66,51 @@ class Network(object):
     def incoming(self, t: T) -> typing.List[T]:
     
         return self._incoming[id(t)]
+
+
+class Adapter(Module):
+    """A Node which wraps a graph
+    """
+
+    def __init__(
+        self, inputs: typing.List[typing.Tuple[str, T]], 
+        outputs: typing.List[typing.Union[typing.Tuple[T, int], T]]
+    ):
+        """Instantiate a node which adaptas
+
+        Args:
+            name (str): Name of the Adapter
+            inputs (typing.List[Var]): Inputs 
+            outputs (typing.List[typing.Union[typing.Tuple[T, int], T]]): 
+        """
+        super().__init__()
+        self._inputs = inputs
+        self._outputs = outputs
+
+    def forward(self, *args, **kwargs) -> typing.Any:
+        
+        by = {}
+        defined = {}
+        for arg, t in zip(args, self._inputs):
+            by[t[1]] = arg
+            defined[t[0]] = arg
+
+        for k, v in kwargs.items():
+            if k in defined:
+                raise RuntimeError(f'Arg {k} has already been specified in the args')
+            by[k] = arg 
+        results = []
+        for t in self._outputs:
+            if isinstance(t, typing.Tuple):
+                t, ind = t
+            else:
+                ind = None
+            result = t.probe(
+                by
+            )
+            if ind is not None:
+                results.append(result[ind])
+            else:
+                results.append(result)
+
+        return tuple(results)
