@@ -1,4 +1,4 @@
-from dachi import process
+from dachi import converse
 from ..depracated.core import DummyNode, DummyNode2
 
 
@@ -9,12 +9,12 @@ class TestNetwork:
         node1 = DummyNode("Node1")
         node2 = DummyNode2("Node2")
         
-        var = process.TIn("X", default=1)
+        var = converse.TIn("X", default=1)
 
         y = node1.link(var)
         y = node2.link(y)
         
-        network = process.Network((y, 0))
+        network = converse.Network((y, 0))
 
         result = network.exec(by={var: 2})
         assert result == 4
@@ -24,12 +24,12 @@ class TestNetwork:
         node1 = DummyNode("Node1")
         node2 = DummyNode2("Node2")
         
-        var = process.TIn("X", default=1)
+        var = converse.TIn("X", default=1)
 
         y1 = node1.link(var)
         y = node2.link(y1)
         
-        network = process.Network([(y, 0), y1])
+        network = converse.Network([(y, 0), y1])
 
         result = network.exec(by={var: 2})
         assert result[0] == 4
@@ -41,12 +41,12 @@ class TestNetwork:
         node1 = DummyNode("Node1")
         node2 = DummyNode2("Node2")
         
-        var = process.TIn("X", default=1)
+        var = converse.TIn("X", default=1)
 
         y = node2.link(var)
         y = node1.link(y[0])
         
-        network = process.Network(y)
+        network = converse.Network(y)
 
         result = network.exec(by={var: 2})
         assert result == 4

@@ -1,6 +1,6 @@
 from typing import Any, Iterator, Tuple
 import pytest
-from dachi.process import _core2
+from dachi._core import _core2
 
 
 class Append(_core2.Module):

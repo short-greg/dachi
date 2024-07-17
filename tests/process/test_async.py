@@ -1,5 +1,6 @@
 from typing import Any
-from dachi.process import _core2 as core, _async
+from dachi._core import _core2 as core
+from dachi._core import _async
 
 
 class Append(core.Module):

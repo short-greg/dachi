@@ -1,6 +1,6 @@
 from typing import Any
 from abc import ABC, abstractmethod
-from ..process import Module
+from ..converse import Module
 
 
 # 1) Parameters

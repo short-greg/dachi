@@ -2,9 +2,9 @@
 import typing
 from abc import abstractmethod, ABC
 from .._core import StructList
-from dachi.process._core2 import UNDEFINED
+from dachi._core._core2 import UNDEFINED
 
-from ..process import StructModule
+from ..converse import StructModule
 
 from .._core import Struct, Str
 

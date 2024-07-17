@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from typing import Any, Coroutine
 
 from . import _structs
-from ._core2 import Module
+from .._core._core2 import Module
 from ._structs import Message, MessageList
 
 

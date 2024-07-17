@@ -2,7 +2,7 @@ from typing import Self
 import typing
 
 from dachi.store._core import QF
-from ..process import Module, T
+from ..converse import Module, T
 from ._core import Query, Store, Comp, Key, Join
 import pandas as pd
 

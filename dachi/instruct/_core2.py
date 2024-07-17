@@ -9,7 +9,7 @@ from pydantic import Field
 
 # local
 from .._core import Struct, Str
-from ..process import Module
+from ..converse import Module
 import inspect
 
 

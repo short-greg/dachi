@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from .. import process
+from .. import converse
 import typing
 from .._core import Struct
 
@@ -58,7 +58,7 @@ class AssessmentList(object):
         pass
 
 
-class Assessor(process.Module, ABC):
+class Assessor(converse.Module, ABC):
 
     @abstractmethod
     def forward(self, *args, **kwargs) -> JointAssessment:

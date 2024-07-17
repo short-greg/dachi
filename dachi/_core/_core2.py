@@ -12,7 +12,7 @@ from enum import Enum
 
 from dataclasses import dataclass
 import uuid
-from .._core import Struct
+from . import Struct
 
 
 class _Types(Enum):
