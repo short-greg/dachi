@@ -111,9 +111,8 @@ class Partial(object):
 
 
 class T(object):
-    """Trans
     """
-
+    """
     def __init__(
         self, val=UNDEFINED, src: Src=None,
         name: str=None, annotation: str=None

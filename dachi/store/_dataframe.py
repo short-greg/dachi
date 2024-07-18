@@ -138,8 +138,16 @@ class DFStore(Store):
     @property
     def df(self) -> pd.DataFrame:
         return self._df
-    
+
     def store(
+        self, index=None, **kwargs
+    ):
+        if index is None:
+            self._df.iloc[len(self._df.index)] = kwargs
+        else:
+            self._df.loc[max(self._df.index)] = kwargs
+
+    def bulk_store(
         self, index=None, **kwargs
     ):
         df = pd.DataFrame(kwargs, index)

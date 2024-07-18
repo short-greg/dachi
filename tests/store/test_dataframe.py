@@ -64,7 +64,6 @@ class TestDFStore(object):
         retrieved = store.retrieve(
             select={'t': 'x', 'w': 'w'}
         )
-
         assert 't' in retrieved.columns.values
         assert 'y' not in retrieved.columns.values
         assert 'x' not in retrieved.columns.values

@@ -1,8 +1,8 @@
-from typing import Coroutine
+from typing import AsyncIterator, Coroutine, Dict
 import pkg_resources
 
-from ._structs import Message, MessageList
-from ._base import PromptModel, ChatModel
+from ._core import APIAdapter
+# from ._base import PromptModel, ChatModel
 
 # TODO: add utility for this
 required = {'openai'}
@@ -15,65 +15,156 @@ if len(missing) > 0:
 import openai
 
 
-class OpenAIPrompModel(PromptModel):
+class OpenAIChatAdapter(APIAdapter):
 
-    def __init__(self, model: str='gpt-4-turbo', name: str='Assistant'):
+    def __init__(self, model: str, **kwargs) -> None:
         super().__init__()
         self.model = model
-        self.name = name
+        self.kwargs = kwargs
 
-    def forward(self, message: Message) -> Message:
+    def query(self, data, **kwarg_override) -> Dict:
+
+        kwargs = {
+            **self._kwargs,
+            **kwarg_override
+        }
+        client = openai.OpenAI()
+        response = client.chat.completions.create(
+            model=self.model,
+            messages=data,
+            **kwargs
+        )
+        return {
+            'message': response.choices[0].message,
+            'response': response
+        }
+    
+    def stream_query(self, data, **kwarg_override) -> pkg_resources.Iterator[Dict]:
+
+        kwargs = {
+            **self._kwargs,
+            **kwarg_override
+        }
         
         client = openai.OpenAI()
-        result = client.chat.completions.create(
+        query = client.chat.completions.create(
             model=self.model,
-            messages=message.dump()
+            messages=data,
+            stream=True,
+            **kwargs
         )
-        return Message.Text(
-            self.name,
-            result.choices[0].message
-        )
+        message = ''
+        for chunk in query:
+            delta = chunk.choices[0].delta
+            message = message + delta
+            yield {
+                'message': message,
+                'delta': delta,
+                'response': chunk
+            }
     
-    async def async_forward(self, message: Message) -> Message:
-
+    async def async_query(self, data, **kwarg_override) -> Dict:
         client = openai.AsyncOpenAI()
-        result = client.chat.completions.create(
+
+        kwargs = {
+            **self._kwargs,
+            **kwarg_override
+        }
+
+        response = await client.chat.completions.create(
             model=self.model,
-            messages=message.dump()
-        )
-        return Message.Text(
-            self.name,
-            result.choices[0].message
+            messages=data,
+            **kwargs
         )
 
+        return {
+            'message': response.choices[0].message,
+            'response': response
+        }
+    
+    async def async_stream_query(self, data, **kwarg_override) -> AsyncIterator[Dict]:
 
-class OpenAIChatModel(ChatModel):
+        kwargs = {
+            **self._kwargs,
+            **kwarg_override
+        }
+        client = openai.AsyncOpenAI()
+        query = await client.chat.completions.create(
+            model=self.model,
+            messages=data,
+            stream=True,
+            **kwargs
+        )
 
-    def __init__(self, model: str='gpt-4-turbo', name: str='Assistant'):
-        super().__init__()
-        self.model = model
-        self.name = name
+        async for chunk in query:
+            delta = chunk.choices[0].delta
+            message = message + delta
+            yield {
+                'message': message,
+                'delta': delta,
+                'response': chunk
+            }
 
-    def forward(self, messages: MessageList) -> Message:
+
+# class OpenAIPrompModel(PromptModel):
+
+#     def __init__(self, model: str='gpt-4-turbo', name: str='Assistant'):
+#         super().__init__()
+#         self.model = model
+#         self.name = name
+
+#     def forward(self, message: Message) -> Message:
         
-        client = openai.OpenAI()
-        result = client.chat.completions.create(
-            model=self.model,
-            messages=messages.dump()
-        )
-        return Message.Text(
-            self.name,
-            result.choices[0].message
-        )
+#         client = openai.OpenAI()
+#         result = client.chat.completions.create(
+#             model=self.model,
+#             messages=message.dump()
+#         )
+#         return Message.Text(
+#             self.name,
+#             result.choices[0].message
+#         )
     
-    async def async_forward(self, messages: Message) -> Message:
+#     async def async_forward(self, message: Message) -> Message:
 
-        client = openai.AsyncOpenAI()
-        result = client.chat.completions.create(
-            model=self.model,
-            messages=messages.dump()
-        )
-        return Message.Text(
-            self.name,
-            result.choices[0].message
-        )
+#         client = openai.AsyncOpenAI()
+#         result = client.chat.completions.create(
+#             model=self.model,
+#             messages=message.dump()
+#         )
+#         return Message.Text(
+#             self.name,
+#             result.choices[0].message
+#         )
+
+
+# class OpenAIChatModel(ChatModel):
+
+#     def __init__(self, model: str='gpt-4-turbo', name: str='Assistant'):
+#         super().__init__()
+#         self.model = model
+#         self.name = name
+
+#     def forward(self, messages: MessageList) -> Message:
+        
+#         client = openai.OpenAI()
+#         result = client.chat.completions.create(
+#             model=self.model,
+#             messages=messages.dump()
+#         )
+#         return Message.Text(
+#             self.name,
+#             result.choices[0].message
+#         )
+    
+#     async def async_forward(self, messages: Message) -> Message:
+
+#         client = openai.AsyncOpenAI()
+#         result = client.chat.completions.create(
+#             model=self.model,
+#             messages=messages.dump()
+#         )
+#         return Message.Text(
+#             self.name,
+#             result.choices[0].message
+#         )
