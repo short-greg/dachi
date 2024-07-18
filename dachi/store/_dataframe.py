@@ -1,9 +1,8 @@
 from typing import Self
 import typing
 
-from dachi.store._core import QF
-from ..converse import Module, T
-from ._core import Query, Store, Comp, Key, Join
+from ._core import QF
+from ._core import Store, Comp, Key, Join, CompF, Val
 import pandas as pd
 
 # 1) "Store" [dataframe, etc]
@@ -17,16 +16,47 @@ def df_sort(df: pd.DataFrame, order_by: typing.List[str]):
     ascending = []
     sort_by = []
     for criterion in order_by:
-        if criterion.startswith('+'):
-            sort_by.append(criterion[1:])
-            ascending.append(True)
-        elif criterion.startswith('-'):
+        if criterion.startswith('-'):
             sort_by.append(criterion[1:])
             ascending.append(False)
+        elif criterion.startswith('+'):
+            sort_by.append(criterion[1:])
+            ascending.append(True)
+        else:
+            sort_by.append(criterion)
+            ascending.append(True)
+
     return df.sort_values(
         by=sort_by, 
         ascending=ascending
     )
+
+
+def df_compare(compf: CompF, val1, val2):
+    
+    print(compf)
+    if compf == CompF.OR:
+        return val1 | val2
+    if compf == CompF.AND:
+        return val1 & val2
+    if compf == CompF.XOR:
+        return val1 ^ val2
+    if compf == CompF.LE:
+        return val1 <= val2
+    if compf == CompF.LT:
+        return val1 < val2
+    if compf == CompF.GE:
+        return val1 >= val2
+    if compf == CompF.GT:
+        return val1 > val2
+    if compf == CompF.EQ:
+        return val1 == val2
+    if compf == CompF.NOT:
+        assert val2 is None
+        return ~val1
+    
+    raise RuntimeError
+
 
 def df_filter(
     df: pd.DataFrame, comp: Comp, 
@@ -39,11 +69,12 @@ def df_filter(
     Returns:
         pd.DataFrame: 
     """
-
     if isinstance(comp.lhs, Comp):
         lhs = df_filter(comp.lhs, df)
     elif isinstance(comp.lhs, Key):
         lhs = df[comp.lhs.name]
+    elif isinstance(comp.lhs, Val):
+        lhs = comp.lhs.val
     else:
         lhs = comp.lhs
 
@@ -51,10 +82,14 @@ def df_filter(
         rhs = df_filter(comp.rhs, df)
     elif isinstance(comp.rhs, Key):
         rhs = df[comp.rhs.name]
+    elif isinstance(comp.rhs, Val):
+        rhs = comp.rhs.val
     else:
         rhs = comp.rhs
 
-    return comp.compare(lhs, rhs)
+    compared = df_compare(comp.f, lhs, rhs)
+    print(compared)
+    return compared
 
 def df_join(df: pd.DataFrame, join: Join) -> Self:
     # TODO: Add the alias
@@ -79,14 +114,13 @@ def df_select(df: pd.DataFrame, select: typing.Union[None, typing.Dict]=None) ->
     if select is None:
         return df
     for k, v in select.items():
-
         if isinstance(v, QF):
             df_new[k] = v(df)
         elif v in df.columns.values:
             df_new[k] = df[v]
         elif v in df.index.values:
             df_new[k] = df.index[k]
-        
+    
     return df_new
 
 
@@ -115,6 +149,7 @@ class DFStore(Store):
     ) -> pd.DataFrame:
         store = self._df
 
+        joins = joins or []
         for join in joins:
             store = df_join(store, join)
 
@@ -126,5 +161,5 @@ class DFStore(Store):
         if limit is not None:
             store = store.iloc[:limit]
         if select is not None:
-            df_select(store, select)
+            store = df_select(store, select)
         return store

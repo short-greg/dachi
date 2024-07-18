@@ -97,8 +97,21 @@ def batch(data: typing.Iterable, n_samples: int, shuffle: bool, drop_last: bool=
 
 
 @process
-def reduce(data: typing.Iterable, module: Module, *args, init=None, **kwargs) -> asyncio.Any:
+def reduce(
+    data: typing.Iterable, 
+    module: Module, 
+    *args, init=None, **kwargs
+) -> typing.Any:
+    """
 
+    Args:
+        data (typing.Iterable): 
+        module (Module): 
+        init (_type_, optional): . Defaults to None.
+
+    Returns:
+        typing.Any: 
+    """
     cur = init
     for data_i in data:
         cur = module(cur, data_i)
@@ -106,7 +119,7 @@ def reduce(data: typing.Iterable, module: Module, *args, init=None, **kwargs) ->
 
 
 @process
-def map(data: typing.Iterable, module: Module, *args, init=None, **kwargs) -> asyncio.Any:
+def map(data: typing.Iterable, module: Module, *args, init=None, **kwargs) -> typing.Any:
     
     results = []
     for data_i in data:
@@ -116,7 +129,7 @@ def map(data: typing.Iterable, module: Module, *args, init=None, **kwargs) -> as
 
 # # TODO: figure out how to do this
 @map.async_
-async def async_map(data: typing.Iterable, module: Module, *args, init=None, **kwargs) -> asyncio.Coroutine[asyncio.Any, asyncio.Any, asyncio.Any]:
+async def async_map(data: typing.Iterable, module: Module, *args, init=None, **kwargs):
     
     tasks: asyncio.Task = []
     async with asyncio.TaskGroup() as tg:

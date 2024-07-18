@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Self
 import typing
-from ..converse import Module, T
+from .._core import Module, T
 from enum import Enum
 import numpy as np
 from dataclasses import dataclass
@@ -41,7 +41,7 @@ class Key(object):
         Returns:
             Comp: The comparison for equality
         """
-        return Comp(self, other, lambda lhs, rhs: lhs == rhs)
+        return Comp(self, other, CompF.EQ) # lambda lhs, rhs: lhs == rhs)
     
     def __lt__(self, other) -> 'Comp':
         """Check whether column is less than another value
@@ -52,7 +52,7 @@ class Key(object):
         Returns:
             Comp: The comparison for less than
         """
-        return Comp(self, other, lambda lhs, rhs: lhs < rhs)
+        return Comp(self, other,  CompF.LT)# lambda lhs, rhs: lhs < rhs)
 
     def __le__(self, other) -> 'Comp':
         """Check whether column is less than or equal to another value
@@ -64,7 +64,7 @@ class Key(object):
             Comp: The comparison for less than or equal
         """
 
-        return Comp(self, other, lambda lhs, rhs: lhs <= rhs)
+        return Comp(self, other, CompF.LE) # lambda lhs, rhs: lhs <= rhs)
 
     def __gt__(self, other) -> 'Comp':
         """Check whether column is greater than another value
@@ -75,7 +75,7 @@ class Key(object):
         Returns:
             Comp: The comparison for greater than
         """
-        return Comp(self, other, lambda lhs, rhs: lhs > rhs)
+        return Comp(self, other, CompF.GT) # lambda lhs, rhs: lhs > rhs)
 
     def __ge__(self, other) -> 'Comp':
         """Check whether column is greater than or equal to another value
@@ -86,7 +86,7 @@ class Key(object):
         Returns:
             Comp: The comparison for greater than or equal to
         """
-        return Comp(self, other, lambda lhs, rhs: lhs >= rhs)
+        return Comp(self, other,  CompF.GE) #  lambda lhs, rhs: lhs >= rhs)
 
 
 class CompF(Enum):
@@ -94,6 +94,7 @@ class CompF(Enum):
     OR = 'or'
     AND = 'and'
     NOT = 'not'
+    XOR = 'xor'
     GT = 'gt'
     GE = 'ge'
     LT = 'lt'
@@ -218,7 +219,7 @@ class Query(ABC):
     
     def spawn(
         self, 
-        select: typing.Dict[str, typing.UNION[QF, str]]=UNCHANGED, 
+        select: typing.Dict[str, typing.Union[QF, str]]=UNCHANGED, 
         joins: typing.List[Join]=UNCHANGED, 
         where: Comp=UNCHANGED, 
         order_by: typing.List[str]=UNCHANGED,
@@ -385,7 +386,7 @@ class VectorQuery(Query):
 
     def spawn(
         self, 
-        select: typing.Dict[str, typing.UNION[QF, str]]=UNCHANGED, 
+        select: typing.Dict[str, typing.Union[QF, str]]=UNCHANGED, 
         joins: typing.List[Join]=UNCHANGED, 
         where: Comp=UNCHANGED, 
         order_by: typing.List[str]=UNCHANGED,

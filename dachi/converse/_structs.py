@@ -4,9 +4,7 @@ from abc import abstractmethod, ABC
 from .._core import StructList
 from dachi._core._core2 import UNDEFINED
 
-from ..converse import StructModule
-
-from .._core import Struct, Str
+from .._core import Struct, Str, StructModule
 
 T = typing.TypeVar('T', bound=Struct)
 
