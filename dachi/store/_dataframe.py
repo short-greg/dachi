@@ -138,6 +138,18 @@ class DFStore(Store):
     @property
     def df(self) -> pd.DataFrame:
         return self._df
+    
+    def store(
+        self, index=None, **kwargs
+    ):
+        df = pd.DataFrame(kwargs, index)
+        if index is None:
+            self._df = pd.concat(
+                [self._df, df]
+            )
+        else:
+            self._df = self._df.reindex(df.index.union(df.index))
+            self._df.update(df)
 
     def retrieve(
         self,
