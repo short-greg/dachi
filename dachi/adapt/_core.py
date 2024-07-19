@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 import typing
+import asyncio
 
 
 class APIAdapter(ABC):
@@ -47,7 +48,7 @@ class APIAdapter(ABC):
         result['delta'] = None
         yield result
     
-    async def async_query(self, data) -> typing.Dict:
+    async def async_query(self, data, **kwarg_override) -> typing.Dict:
         """Run this query for asynchronous operations
         The default behavior is simply to call the query
 
@@ -57,9 +58,29 @@ class APIAdapter(ABC):
         Returns:
             typing.Any: 
         """
-        return self.query(data)
+        return self.query(data, **kwarg_override)
     
-    async def async_stream_query(self, data) -> typing.AsyncIterator[typing.Dict]:
+    async def bulk_async_query(self, data, **kwarg_override) -> typing.List[typing.Dict]:
+        """
+
+        Args:
+            data (_type_): 
+
+        Returns:
+            typing.List[typing.Dict]: 
+        """
+        tasks = []
+        async with asyncio.TaskGroup() as tg:
+
+            for data_i in data:
+                tasks.append(
+                    tg.create_task(self.async_query(data_i, **kwarg_override))
+                )
+        return tuple(
+            task.result() for task in tasks
+        )
+    
+    async def async_stream_query(self, data, **kwarg_override) -> typing.AsyncIterator[typing.Dict]:
         """Run this query for asynchronous streaming operations
         The default behavior is simply to call the query
 
@@ -69,6 +90,36 @@ class APIAdapter(ABC):
         Yields:
             typing.Dict: The data returned from the API
         """
-        result = self.query(data)
+        result = self.query(data, **kwarg_override)
         result['delta'] = None
         yield result
+
+    async def _collect_results(generator, index, results, queue):
+        async for item in generator:
+            results[index] = item
+            await queue.put(results[:])  # Put a copy of the current results
+        results[index] = None  # Mark this generator as completed
+
+    async def bulk_async_stream_query(self, data, **kwarg_override) -> typing.AsyncIterator[typing.List[typing.Dict]]:
+        """
+
+        Args:
+            data (_type_): 
+
+        Returns:
+            typing.List[typing.Dict]: 
+        """
+        results = [None] * len(data)
+        queue = asyncio.Queue()
+
+        async with asyncio.TaskGroup() as tg:
+            for index, data_i in enumerate(data):
+                tg.create_task(self._collect_results(
+                    self.async_stream_query(data_i, **kwarg_override), index, results, queue)
+                )
+
+        active_generators = len(data)
+        while active_generators > 0:
+            current_results = await queue.get()
+            yield current_results
+            active_generators = sum(result is not None for result in current_results)

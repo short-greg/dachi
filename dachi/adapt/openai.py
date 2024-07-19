@@ -1,8 +1,8 @@
 from typing import AsyncIterator, Coroutine, Dict
 import pkg_resources
+import asyncio
 
 from ._core import APIAdapter
-# from ._base import PromptModel, ChatModel
 
 # TODO: add utility for this
 required = {'openai'}
@@ -63,7 +63,7 @@ class OpenAIChatAdapter(APIAdapter):
                 'response': chunk
             }
     
-    async def async_query(self, data, **kwarg_override) -> Dict:
+    async def async_query(self, data, bulk: bool=False, **kwarg_override) -> Dict:
         client = openai.AsyncOpenAI()
 
         kwargs = {
