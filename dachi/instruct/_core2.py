@@ -2,6 +2,7 @@
 import typing
 from typing_extensions import Self
 from abc import abstractmethod, ABC
+from .._core._core2 import Param
 
 # 3rd party
 import pydantic
@@ -17,7 +18,7 @@ S = typing.TypeVar('S', bound=Struct)
 
 
 class Description(Struct):
-    """Provide context in the prompt
+    """Provide context in the prompt template
     """
     name: str
 
@@ -54,15 +55,11 @@ class Ref(Struct):
         return self
 
 
-class Instruction(Description):
+class I(Struct):
     """Specific instruction for the model to use
     """
     instr: typing.Union[str, Str]
     incoming: typing.List['Description'] = Field(default_factory=list)
-
-    @property
-    def text(self) -> str:
-        return self.instr
 
     def traverse(self, visited: typing.Set=None) -> typing.Iterator['Description']:
 
@@ -81,32 +78,33 @@ class Instruction(Description):
             for inc_i in inc.traverse(visited):
                 yield inc_i
     
-    def update(self, **kwargs) -> 'Instruction':
+    def __call__(self, **kwargs) -> str:
 
-        text = self.instr(**kwargs)
-        return Instruction(
-            self._name, text, self.incoming
-        )
+        return self.instr(**kwargs).text
 
 
-class InstructionSet(Description):
+class ISet(Struct):
 
-    instructions: typing.List[Instruction]
+    i_list: typing.List[I]
 
-    def update(self, **kwargs) -> 'InstructionSet':
+    # def update(self, **kwargs) -> 'ISet':
         
-        return InstructionSet(
-            [instruction.update(**kwargs) for instruction in self.instructions]
-        )
+    #     return ISet(
+    #         [instruction.update(**kwargs) for instruction in self.instructions]
+    #     )
     
-    @property
-    def text(self) -> str:
-        return '\n\n'.join(
-            i.text for i in self.instructions
-        )
+    # @property
+    # def text(self) -> str:
+    #     return '\n\n'.join(
+    #         i.text for i in self.instructions
+    #     )
+    def __call__(self, **kwargs) -> typing.List['str']:
+        
+        return [i(**kwargs) for i in self.i_list]
+        # return self.instr(**kwargs)
 
 
-def traverse(*instructions: Instruction) -> typing.Iterator[Description]:
+def traverse(*instructions: I) -> typing.Iterator[Description]:
 
     visited = set()
     for instruction in instructions:
@@ -140,18 +138,18 @@ class Operation(object):
 
     def forward(
         self, *x: Description, **kwargs
-    ) -> Instruction:
+    ) -> I:
         pass
 
 
-def op(x: typing.Union[typing.List[Description], Description], intruction: str, name: str) -> Instruction:
+def op(x: typing.Union[typing.List[Description], Description], intruction: str, name: str) -> I:
 
     if isinstance(x, Description) or isinstance(x, Ref):
         x = [x]
     
     resources = ', '.join(x_i.name for x_i in x)
     text = f'Do: {intruction} --- With Inputs: {resources}'
-    return Instruction(
+    return I(
         name=name, instr=text, incoming=x
     )
 
@@ -188,7 +186,7 @@ def generic_class(t: typing.TypeVar, idx: int=0):
 
 class Output(typing.Generic[S], Struct):
     
-    instruction: Instruction
+    instruction: I
     name: str
     style: Style = None
 
@@ -216,8 +214,8 @@ class Output(typing.Generic[S], Struct):
 class OutputList(Struct):
     
     outputs: typing.List[Output]
-    header: Instruction = None
-    footer: Instruction = None
+    header: I = None
+    footer: I = None
 
     def read(self, text: str) -> typing.List:
 
@@ -279,48 +277,44 @@ class OutputList(Struct):
         return out_text
 
 
-class Parameter(Description):
-
-    description: Description
-    value: str = None
-
-    @property
-    def text(self) -> str:
-        
-        if self.value is None:
-            return self.description.text
-        return self.value
-
-    def update(self, **kwargs) -> Self:
-        
-        return Parameter(
-            name=self.name,
-            description=self.description.update(**kwargs),
-            value=None
-        )
-
-    def to_dict(self) -> typing.Dict:
-        return {
-            self.name: {
-                'name': self.description.name,
-                'base': self.description.text,
-                'value': (
-                    self.value 
-                    if self.value is not None 
-                    else self.description.text
-                )
-            }
-        }
-
-
 class Instructor(Module):
-
-    def parameters(self) -> typing.Iterator[Parameter]:
-
-        for _, val in iter(self):
-            if isinstance(val, Parameter):
-                yield val
 
     @abstractmethod
     def forward(self, *args, **kwargs) -> Output:
         pass
+
+
+# class Parameter(Description):
+
+#     description: Description
+#     value: str = None
+
+#     @property
+#     def text(self) -> str:
+        
+#         if self.value is None:
+#             return self.description.text
+#         return self.value
+
+#     def update(self, **kwargs) -> Self:
+        
+#         return Parameter(
+#             name=self.name,
+#             description=self.description.update(**kwargs),
+#             value=None
+#         )
+
+#     def to_dict(self) -> typing.Dict:
+#         return {
+#             self.name: {
+#                 'name': self.description.name,
+#                 'base': self.description.text,
+#                 'value': (
+#                     self.value 
+#                     if self.value is not None 
+#                     else self.description.text
+#                 )
+#             }
+#         }
+
+

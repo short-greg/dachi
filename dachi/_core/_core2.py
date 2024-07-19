@@ -24,6 +24,21 @@ UNDEFINED = _Types.UNDEFINED
 WAITING = _Types.WAITING
 
 
+from abc import ABC, abstractmethod
+from ._core2 import Module
+
+
+class Param(object):
+
+    def __init__(self, **p):
+        """
+        """
+        self.p = p
+
+    def update(self, **kwargs):
+        self.p.update(kwargs)
+
+
 def is_undefined(val) -> bool:
     """
     Args:
@@ -626,6 +641,39 @@ class Module(ABC):
             UNDEFINED, ModSrc(self, args)
         )
     
+
+    def parameters(self, recurse: bool=True) -> typing.Iterator[Param]:
+        
+        yielded = set()
+        for k, v in self.__dict__.items():
+            if isinstance(v, Param):
+                if id(v) in yielded:
+                    continue
+                yielded.add(id(v))
+                
+                yield v
+            if recurse and isinstance(v, Module):
+                for v in v.parameters(True):
+                    if id(v) in yielded:
+                        continue
+                    yielded.add(id(v))
+                    yield v
+
+    def children(self, recurse: bool=True) -> typing.Iterator[Module]:
+        
+        yielded = set()
+        for k, v in self.__dict__.items():
+            if isinstance(v, Module):
+                if id(v) in yielded:
+                    continue
+                yielded.add(id(v))
+                if recurse:
+                    for v in v.children(True):
+                        if id(v) in yielded:
+                            continue
+                        yielded.add(id(v))
+                        yield v
+    
     async def async_forward(self, *args, **kwargs) -> typing.Any:
         """
 
@@ -873,3 +921,50 @@ def process(f):
         return _DecMethod(f)
     else:
         return _DecMethod(wrapper)
+
+
+# # 1st party
+# import typing
+
+# # local
+# # from ..depracated._core import (
+# #     TakoBase, TIn, T, to_by
+# # )
+# from .._network import Network
+
+
+# class Tako(TakoBase):
+#     """Define a Graph Node that wraps multiple other nodes
+#     """
+
+#     def __init__(
+#         self, name: str, inputs: typing.List[TIn], 
+#         outputs: typing.List[typing.Union[typing.Tuple[T, int], T]]
+#     ):
+#         self._name = name
+#         self._inputs = inputs
+#         self._outputs = outputs
+#         self._network = Network(outputs)
+    
+#     def traverse(self, *args, **kwargs) -> typing.Iterator[T]:
+#         """Traverse each node in the Tako
+
+#         Returns:
+#             typing.Iterator[T]: An iterator which iterates over all the nodes
+#         """
+#         by = to_by(self._inputs, args, kwargs)
+#         for result in self._network.traverse(by):
+#             yield result
+        
+#         # TODO: USE NETWORK
+#         # for result in traverse_ts(self._outputs, by, evaluate=False):
+#         #     yield result
+
+#     def forward(self, *args, **kwargs) -> typing.Any:
+#         """
+#         """
+#         by = to_by(self._inputs, args, kwargs)
+#         return self._network.exec(by)
+#         # return probe_ts(self._outputs, by)
+#         # TODO: Use network
+

@@ -70,7 +70,7 @@ class TestInstruction:
     def test_instruction_text_is_correct(self):
 
         text = 'Evaluate the quality of the CSV'
-        instruction = core.Instruction(
+        instruction = core.I(
             name='Evaluate', 
             instr=text
         )
@@ -80,17 +80,17 @@ class TestInstruction:
 
         text = 'Evaluate the quality of the CSV'
 
-        instruction1 = core.Instruction(
+        instruction1 = core.I(
             name='Evaluate1', 
             instr=text
         )
 
-        instruction2 = core.Instruction(
+        instruction2 = core.I(
             name='Evaluate2', 
             instr=text
         )
 
-        instruction = core.Instruction(
+        instruction = core.I(
             name='Evaluate',
             instr=text,
             incoming=[instruction1, instruction2]
@@ -102,23 +102,23 @@ class TestInstruction:
 
         text = 'Evaluate the quality of the CSV'
 
-        instruction1 = core.Instruction(
+        instruction1 = core.I(
             name='Evaluate1', 
             instr=text
         )
 
-        instruction2 = core.Instruction(
+        instruction2 = core.I(
             name='Evaluate2', 
             instr=text
         )
 
-        instruction3 = core.Instruction(
+        instruction3 = core.I(
             name='Evaluate',
             instr=text,
             incoming=[instruction1, instruction2]
         )
 
-        instruction4 = core.Instruction(
+        instruction4 = core.I(
             name='Evaluate',
             instr=text,
             incoming=[instruction3]
