@@ -221,6 +221,17 @@ def bullet(xs: typing.Iterable[Instruction], bullets: str='-') -> 'Instruction':
     )
 
 
+def formatted(x: Instruction, format: str) -> 'Instruction':
+
+    text = x.text()
+    if text[:len(format)] == format and text[-len(format):] == format:
+        return x
+    return Instruction(
+        f'{format}{text}{format}',
+        out=x.out
+    )
+
+
 def numbered(xs: typing.Iterable[Instruction], starting: str=1) -> 'Instruction':
 
     out = None
