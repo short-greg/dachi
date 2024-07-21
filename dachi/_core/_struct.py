@@ -139,6 +139,7 @@ class Struct(pydantic.BaseModel, TextMixin, ValidateStrMixin):
 
 T = typing.TypeVar('T', bound=Struct)
 
+
 class StructList(Struct, typing.Generic[T]):
 
     structs: typing.List[T]

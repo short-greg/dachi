@@ -1,4 +1,4 @@
-from dachi.instruct import _core2 as core
+from dachi._core import _instruct as core
 from dachi._core._struct import Struct, Str
 
 
@@ -70,9 +70,9 @@ class TestInstruction:
     def test_instruction_text_is_correct(self):
 
         text = 'Evaluate the quality of the CSV'
-        instruction = core.I(
+        instruction = core.Instruction(
             name='Evaluate', 
-            instr=text
+            text=text
         )
         assert instruction.text == text
 
@@ -80,19 +80,19 @@ class TestInstruction:
 
         text = 'Evaluate the quality of the CSV'
 
-        instruction1 = core.I(
+        instruction1 = core.Instruction(
             name='Evaluate1', 
-            instr=text
+            text=text
         )
 
-        instruction2 = core.I(
+        instruction2 = core.Instruction(
             name='Evaluate2', 
-            instr=text
+            text=text
         )
 
-        instruction = core.I(
+        instruction = core.Instruction(
             name='Evaluate',
-            instr=text,
+            text=text,
             incoming=[instruction1, instruction2]
         )
         assert instruction1 in instruction.incoming
@@ -102,25 +102,25 @@ class TestInstruction:
 
         text = 'Evaluate the quality of the CSV'
 
-        instruction1 = core.I(
+        instruction1 = core.Instruction(
             name='Evaluate1', 
-            instr=text
+            text=text
         )
 
-        instruction2 = core.I(
+        instruction2 = core.Instruction(
             name='Evaluate2', 
-            instr=text
+            text=text
         )
 
-        instruction3 = core.I(
+        instruction3 = core.Instruction(
             name='Evaluate',
-            instr=text,
+            text=text,
             incoming=[instruction1, instruction2]
         )
 
-        instruction4 = core.I(
+        instruction4 = core.Instruction(
             name='Evaluate',
-            instr=text,
+            text=text,
             incoming=[instruction3]
         )
         instructions = list(instruction4.traverse())

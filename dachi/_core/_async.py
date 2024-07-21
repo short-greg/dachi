@@ -3,7 +3,7 @@ from abc import abstractmethod, ABC
 import asyncio
 import typing
 from typing_extensions import Self
-from ._core2 import process
+from ._core2 import processf
 
 # 3rd party
 import networkx as nx
@@ -88,7 +88,7 @@ class Batch(object):
             start = upto
             upto += self.n_samples
 
-@process
+@processf
 def batch(data: typing.Iterable, n_samples: int, shuffle: bool, drop_last: bool=True):
     
     return Batch(
@@ -96,7 +96,7 @@ def batch(data: typing.Iterable, n_samples: int, shuffle: bool, drop_last: bool=
     )
 
 
-@process
+@processf
 def reduce(
     data: typing.Iterable, 
     module: Module, 
@@ -118,7 +118,7 @@ def reduce(
     return cur
 
 
-@process
+@processf
 def map(data: typing.Iterable, module: Module, *args, init=None, **kwargs) -> typing.Any:
     
     results = []

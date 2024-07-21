@@ -150,11 +150,11 @@ class TestWait:
 
 class MyProcess:
 
-    @_core2.process
+    @_core2.processf
     def process_test_method(self, x, y):
         return x + y
 
-@_core2.process
+@_core2.processf
 def process_test_func(x, y):
     return x + y
 
