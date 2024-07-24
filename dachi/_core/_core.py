@@ -10,6 +10,7 @@ import string
 import json
 import re
 
+
 # 3rd party
 import pydantic
 
@@ -43,36 +44,67 @@ class _PartialFormatter(string.Formatter):
     def __init__(self):
         super().__init__()
 
-    def format(self, format_string, **kwargs):
+    def format(self, format_string, *args, **kwargs):
+        if args and kwargs:
+            raise ValueError("Cannot mix positional and keyword arguments")
+
+        self.args = args
         self.kwargs = kwargs
         return super().format(format_string)
 
     def get_value(self, key, args, kwargs):
         if isinstance(key, str):
             return self.kwargs.get(key, '{' + key + '}')
+        if isinstance(key, int):
+            return self.args[key] if key < len(self.args) else '{' + str(key) + '}'
         return super().get_value(key, args, kwargs)
 
-    def __call__(self, format_string, **kwargs):
-        return self.format(format_string, **kwargs)
+    def __call__(self, format_string, *args, **kwargs):
+        return self.format(format_string, *args, **kwargs)
+
+# def get_variables(format_string) -> typing.List[str]:
+#     # Ensure only named variables are used
+#     if re.search(r'\{\d*\}', format_string):
+#         raise ValueError("Only named variables are allowed")
+
+#     # Extract named variables
+#     variables = re.findall(r'\{([a-zA-Z_]\w*)\}', format_string)
+    
+#     return variables
 
 
-str_formatter = _PartialFormatter()
+# def get_str_variables(format_string):
+#     # This regex matches anything inside curly braces { }
+#     return re.findall(r'\{(.*?)\}', format_string)
 
+def get_str_variables(format_string):
+    has_positional = re.search(r'\{\d*\}', format_string)
+    has_named = re.search(r'\{[a-zA-Z_]\w*\}', format_string)
+    
+    if has_positional and has_named:
+        raise ValueError("Cannot mix positional and named variables")
 
-def get_variables(format_string) -> typing.List[str]:
-    # Ensure only named variables are used
-    if re.search(r'\{\d*\}', format_string):
-        raise ValueError("Only named variables are allowed")
-
-    # Extract named variables
-    variables = re.findall(r'\{([a-zA-Z_]\w*)\}', format_string)
+    # Extract variables
+    if has_positional:
+        variables = [int(var) if var.isdigit() else None for var in re.findall(r'\{(\d*)\}', format_string)]
+        if None in variables:
+            variables = list(range(len(variables)))
+    else:
+        variables = re.findall(r'\{([a-zA-Z_]\w*)\}', format_string)
     
     return variables
 
+    # # Ensure only named variables are used
+    # if re.search(r'\{\d*\}', format_string):
+    #     raise ValueError("Only named variables are allowed")
 
-def get_str_variables(format_string):
-    # This regex matches anything inside curly braces { }
-    return re.findall(r'\{(.*?)\}', format_string)
+    # # Extract named variables
+    # variables = re.findall(r'\{([a-zA-Z_]\w*)\}', format_string)
+    
+    # return variables
+
+
+str_formatter = _PartialFormatter()
 
 
 def model_template(model_cls: typing.Type[pydantic.BaseModel]) -> str:

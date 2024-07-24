@@ -9,7 +9,7 @@ from ._network import (
 )
 
 from ._core import (
-    str_formatter, get_variables, get_str_variables,
+    str_formatter, get_str_variables,
     model_template, Struct, StructList,
     is_undefined, Storable, Description, 
     to_text, Ref, generic_class, Out,
