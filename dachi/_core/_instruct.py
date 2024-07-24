@@ -5,7 +5,7 @@ import inspect
 import string
 
 # local
-from ._core import Struct, Out, str_formatter, to_text
+from ._core import Struct, Out, str_formatter, render
 
 from ._process import Module
 from ._process import Param
@@ -35,7 +35,7 @@ def bullet(xs: typing.Iterable[X], bullets: str='-', indent: int=0) -> 'Instruct
     text = f'\n{indent}{bullets}'
     out = validate_out(xs)
     text = text + f'\n{indent}{bullets}'.join(
-        to_text(x_i) for x_i in xs
+        render(x_i) for x_i in xs
     )
     return Instruction(
         text=text, out=out
@@ -44,7 +44,7 @@ def bullet(xs: typing.Iterable[X], bullets: str='-', indent: int=0) -> 'Instruct
 
 def formatted(x: X, format: str) -> 'Instruction':
 
-    text = to_text(x)
+    text = render(x)
     if text[:len(format)] == format and text[-len(format):] == format:
         return x
     return Instruction(
@@ -82,7 +82,7 @@ def numbered(xs: typing.Iterable[X], indent: int=0, numbering: str='arabic') -> 
     numbers = generate_numbered_list(len(xs), numbering)
     out = validate_out(xs)
     for i, (x_i, number) in enumerate(zip(xs, numbers)):
-        text = f'{indent}{number}. {to_text(x_i)}'
+        text = f'{indent}{number}. {render(x_i)}'
         if i < (len(numbers) - 1):
             text += "\n"
 
@@ -108,9 +108,9 @@ def validate_out(instructions: typing.List[X]) -> Out:
 def fill(x_instr: X, **kwargs) -> 'Instruction':
 
     out = validate_out([x_instr])
-    print(to_text(x_instr))
+    print(render(x_instr))
     return Instruction(
-        text=str_formatter(to_text(x_instr), **kwargs), out=out
+        text=str_formatter(render(x_instr), **kwargs), out=out
     )
 
 
@@ -119,7 +119,7 @@ def head(x: X, size: int=1) -> 'Instruction':
     out = validate_out([x])
     heading = '#' * size
     return Instruction(
-        f'{heading} {to_text(x)}', out=out
+        f'{heading} {render(x)}', out=out
     )
 
 
@@ -127,7 +127,7 @@ def section(name: X, details: X, size: int=1) -> 'Instruction':
 
     heading = '#' * size
     out = validate_out([name, details])
-    text = f'{heading} {to_text(name)}\n\n' + to_text(details)
+    text = f'{heading} {render(name)}\n\n' + render(details)
 
     return Instruction(
         text=text, out=out
@@ -150,7 +150,7 @@ def cat(by: str, xs: typing.List[Instruction]) -> Instruction:
     out = validate_out(xs)
 
     return Instruction(f'{by}'.format(
-        to_text(x_i) for x_i in xs
+        render(x_i) for x_i in xs
     ), out=out)
 
 
@@ -167,7 +167,7 @@ def join(x1: X, x2: X, delim: str='\n') -> Instruction:
     """
     out = validate_out([x1, x2])
     return Instruction(
-        to_text(x1) + delim + to_text(x2),
+        render(x1) + delim + render(x2),
         out=out
     )
 
@@ -191,12 +191,12 @@ class Operation(Module):
         Returns:
             Instruction: 
         """
-        instruction = to_text(self.instruction)
+        instruction = render(self.instruction)
         out = validate_out(
             [*kwargs.values(), self.instruction]
         )
 
-        kwargs = to_text(kwargs.values(), ref=True)
+        kwargs = render(kwargs.values(), ref=True)
 
         return Instruction(
             text=fill(instruction, **kwargs), out=out
@@ -209,9 +209,9 @@ def op(x: typing.Union[typing.Iterable[X], X], instruction: X) -> Instruction:
         x = [x]
 
     out = validate_out([*x, instruction])
-    resources = ', '.join(to_text(x, ref=True))
+    resources = ', '.join(render(x, ref=True))
     # resources = ', '.join(x_i.name for x_i in x)
-    text = f'Do: {to_text(instruction)} --- With Inputs: {resources}'
+    text = f'Do: {render(instruction)} --- With Inputs: {resources}'
     return Instruction(
         text=text, out=out
     )
@@ -247,14 +247,14 @@ class OutF(Module, typing.Generic[S]):
             
             filled_docstring = filled_docstring.replace(
                 f'{{{param.name}}}', 
-                str(value) if not isinstance(value, Instruction) else to_text(value)
+                str(value) if not isinstance(value, Instruction) else render(value)
             )
             filled.add(param.name)
         for k, value in kwargs.items():
             param = self.parameters[k]
             filled_docstring = filled_docstring.replace(
                 f'{{{param.name}}}', # str(param.default)
-                str(value) if not isinstance(value, Instruction) else to_text(value)
+                str(value) if not isinstance(value, Instruction) else render(value)
             )
             filled.add(param.name)
         for param in self.parameters.values():

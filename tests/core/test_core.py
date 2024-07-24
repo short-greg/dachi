@@ -101,7 +101,7 @@ class TestRef:
         role = Role(name='Assistant', duty='You are a helpful {role}')
         ref = _core.Ref(reference=role)
         ref = ref.update(role='Helpful Assistant')
-        assert ref.render() == ''
+        assert ref.render() == role.name
 
 
 class TestInstruction:
@@ -188,3 +188,102 @@ class TestStrFormatter(object):
         assert _core.get_str_variables(
             '{x} {y}'
         ) == ['x', 'y']
+
+
+class TestIsUndefined(object):
+
+    def test_is_undefined(self):
+
+        assert _core.is_undefined(
+            _core.UNDEFINED
+        )
+
+    def test_not_is_undefined(self):
+
+        assert not _core.is_undefined(
+            1
+        )
+
+
+class TestOut(object):
+
+    # def test_out_name_is_correct(self):
+
+    #     out = _core.Out(
+    #         name='Role', out_cls=SimpleStruct
+    #     )
+    #     assert out.name == 'Role'
+
+    def test_out_reads_in_the_class(self):
+
+        out = _core.Out(
+            out_cls=SimpleStruct
+        )
+
+        simple = SimpleStruct(x='2')
+        assert out.read(simple.dump()).x == '2'
+
+    def test_out_reads_in_the_class_with_str(self):
+
+        out = _core.Out(
+            out_cls=SimpleStruct
+        )
+
+        simple = SimpleStruct(x='2')
+        assert out.reads(simple.dumps()).x == '2'
+
+
+class TestInstruction(object):
+
+    def test_instruction_renders_with_text(self):
+
+        instruction = _core.Instruction(
+            text='x'
+        )
+        assert instruction.render() == 'x'
+
+    def test_read_(self):
+
+        instruction = _core.Instruction(
+            text='x', out=_core.Out(
+                out_cls=SimpleStruct
+            )
+        )
+        simple = SimpleStruct(x='2')
+        assert instruction.reads(simple.dumps()).x == '2'
+
+
+class TestParam(object):
+
+    def test_get_x_from_param(self):
+
+        instruction = _core.Param(
+            name='X', instruction='x'
+        )
+        assert instruction.render() == 'x'
+
+    def test_param_with_instruction_passed_in(self):
+
+        instruction = _core.Instruction(
+            text='x', out=_core.Out(
+                out_cls=SimpleStruct
+            )
+        )
+
+        param = _core.Param(
+            name='X', instruction=instruction
+        )
+        assert param.render() == 'x'
+
+    def test_read_reads_the_object(self):
+
+        instruction = _core.Instruction(
+            text='x', out=_core.Out(
+                out_cls=SimpleStruct
+            )
+        )
+        param = _core.Param(
+            name='X', instruction=instruction
+        )
+        simple = SimpleStruct(x='2')
+        assert param.reads(simple.dumps()).x == '2'

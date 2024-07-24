@@ -40,6 +40,13 @@ S = typing.TypeVar('S', bound='Struct')
 X = typing.Union[str, 'Description', 'Instruction']
 
 
+class Renderable(ABC):
+
+    @abstractmethod
+    def render(self) -> str:
+        pass
+
+
 class _PartialFormatter(string.Formatter):
     def __init__(self):
         super().__init__()
@@ -175,7 +182,7 @@ class Struct(pydantic.BaseModel):
     
     @classmethod
     def load(cls, data: typing.Dict) -> Self:
-        return cls(**json.loads(data))
+        return cls(**data)
     
     def dump(self) -> typing.Dict:
         return self.model_dump()
@@ -264,21 +271,23 @@ class Storable(ABC):
         return cur
 
 
-class Description(Struct):
+class Description(Struct, Renderable, ABC):
     """Provide context in the prompt template
     """
     name: str
 
     @abstractmethod
-    def render(self) -> str:
-        pass
-
-    @abstractmethod
     def update(self, **kwargs) -> Self:
         pass
 
+_primitives = (bool, str, int, float, type(None))
 
-def to_text(x: X) -> str:
+
+def is_primitive(obj):
+    return type(obj) in _primitives
+
+
+def render(x: X) -> str:
     """Convert an input to text. Will use the text for an instruction,
     the render() method for a description and convert any other value to
     text with str()
@@ -289,14 +298,25 @@ def to_text(x: X) -> str:
     Returns:
         str: The resulting text
     """
-    if isinstance(x, Instruction):
-        return x.text
-    if isinstance(x, Description):
+    if isinstance(x, Renderable):
         return x.render()
-    return str(x)
+    elif is_primitive(x):
+        return str(x)
+    
+    raise ValueError(
+        f'Cannot render value of type {type(x)}'
+    )
+    # if isinstance(x, Instruction):
+    #     return x.text
+    # if isinstance(x, Description):
+    #     return x.render()
+    # if isinstance(x, Ref):
+    #     return x.render()
+    
+    
 
 
-class Ref(Struct):
+class Ref(Struct, Renderable):
     """Reference to another description.
     Useful when one only wants to include the 
     name of a description in part of the prompt
@@ -308,7 +328,7 @@ class Ref(Struct):
         return self.reference.name
 
     def render(self) -> str:
-        return ""
+        return self.reference.name
 
     def update(self, **kwargs) -> Self:
         # doesn't do anything since
@@ -321,18 +341,15 @@ def generic_class(t: typing.TypeVar, idx: int=0):
     return t.__orig_class__.__args__[idx]
 
 
-
 class Out(Struct):
 
-    name: str
-    signature: str
     out_cls: typing.Type[Struct]
 
     def read(self, data: typing.Dict) -> S:
-        return self.out_cls(**data)
+        return self.out_cls.load(data)
 
     def reads(self, data: str) -> S:
-        return self.out_cls(**json.loads(data))
+        return self.out_cls.loads(data)
 
     def out_template(self) -> str:
         return self.out_cls.template()
@@ -355,22 +372,65 @@ class Style(Struct, typing.Generic[S], ABC):
         return self.data.to_text()
 
 
-class Instruction(Struct):
+class Instruction(Struct, Renderable, typing.Generic[S]):
     """Specific instruction for the model to use
     """
 
     text: str
     out: typing.Optional[Out] = None
 
+    @pydantic.field_validator('text', mode='before')
+    def convert_renderable_to_string(cls, v):
+        if isinstance(v, Renderable):
+            return v.render()
+        if is_primitive(v):
+            return str(v)
+        return v
+
     def render(self) -> str:
         return self.text
 
+    def read(self, data: typing.Dict) -> S:
+        if self.out is None:
+            raise RuntimeError(
+                "Out has not been specified so can't read it"
+            )
+        return self.out.read(data)
 
-class Param(Instruction):
+    def reads(self, data: str) -> S:
+        if self.out is None:
+            raise RuntimeError(
+                "Out has not been specified so can't read it"
+            )
+        return self.out.reads(data)
+    
+
+class Param(Struct, Renderable):
 
     name: str
+    instruction: Instruction
     training: bool=False
+
+    @pydantic.field_validator('instruction', mode='before')
+    def convert_renderable_to_string(cls, v):
+        if isinstance(v, Instruction):
+            return v
+        if isinstance(v, Renderable):
+            return Instruction(text=v.render())
+        if is_primitive(v):
+            return Instruction(text=str(v))
+        return v
 
     def update(self, text: str):
         if self.training:
-            self.text = text
+            self.instruction.text = text
+
+    def render(self) -> str:
+
+        return self.instruction.render()
+
+    def read(self, data: typing.Dict) -> S:
+        return self.instruction.read(data)
+
+    def reads(self, data: str) -> S:
+        return self.instruction.reads(data)

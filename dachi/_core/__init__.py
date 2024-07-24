@@ -12,7 +12,7 @@ from ._core import (
     str_formatter, get_str_variables,
     model_template, Struct, StructList,
     is_undefined, Storable, Description, 
-    to_text, Ref, generic_class, Out,
+    render, Ref, generic_class, Out,
     Style, Instruction, Param, 
 )
 
