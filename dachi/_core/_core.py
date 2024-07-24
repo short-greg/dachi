@@ -287,7 +287,7 @@ def is_primitive(obj):
     return type(obj) in _primitives
 
 
-def render(x: X) -> str:
+def render(x: typing.Union[X, typing.Iterable[X]]) -> typing.Union[str, typing.List[str]]:
     """Convert an input to text. Will use the text for an instruction,
     the render() method for a description and convert any other value to
     text with str()
@@ -313,7 +313,21 @@ def render(x: X) -> str:
     # if isinstance(x, Ref):
     #     return x.render()
     
-    
+def render_multi(xs: typing.Iterable[X]) -> typing.List[str]:
+    """Convert an input to text. Will use the text for an instruction,
+    the render() method for a description and convert any other value to
+    text with str()
+
+    Args:
+        value (X): The input
+
+    Returns:
+        str: The resulting text
+    """
+
+    return [
+        render(x) for x in xs
+    ]
 
 
 class Ref(Struct, Renderable):
@@ -321,14 +335,14 @@ class Ref(Struct, Renderable):
     Useful when one only wants to include the 
     name of a description in part of the prompt
     """
-    reference: Description
+    desc: Description
 
     @property
     def name(self) -> str:
-        return self.reference.name
+        return self.desc.name
 
     def render(self) -> str:
-        return self.reference.name
+        return self.desc.name
 
     def update(self, **kwargs) -> Self:
         # doesn't do anything since
@@ -341,7 +355,7 @@ def generic_class(t: typing.TypeVar, idx: int=0):
     return t.__orig_class__.__args__[idx]
 
 
-class Out(Struct):
+class Out(Struct, typing.Generic[S]):
 
     out_cls: typing.Type[Struct]
 

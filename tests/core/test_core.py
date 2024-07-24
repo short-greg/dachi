@@ -43,7 +43,7 @@ class Role(_core.Description):
     def render(self) -> str:
 
         return f"""
-        # Role
+        # Role {self.name}
 
         {self.duty}
         """
@@ -66,7 +66,7 @@ class TestDescription:
         text = role.render()
 
         assert text == f"""
-        # Role
+        # Role Assistant
 
         {role.duty}
         """
@@ -85,21 +85,21 @@ class TestRef:
     def test_ref_does_not_output_text(self):
 
         role = Role(name='Assistant', duty='You are a helpful {role}')
-        ref = _core.Ref(reference=role)
+        ref = _core.Ref(desc=role)
         ref = ref.update(role='Helpful Assistant')
-        assert 'Helpful Assistant' not in ref.reference.render()
+        assert 'Helpful Assistant' not in ref.desc.render()
 
     def test_name_returns_name_of_reference(self):
 
         role = Role(name='Assistant', duty='You are a helpful {role}')
-        ref = _core.Ref(reference=role)
+        ref = _core.Ref(desc=role)
         ref = ref.update(role='Helpful Assistant')
         assert ref.name == 'Assistant'
 
     def test_text_is_empty_string(self):
 
         role = Role(name='Assistant', duty='You are a helpful {role}')
-        ref = _core.Ref(reference=role)
+        ref = _core.Ref(desc=role)
         ref = ref.update(role='Helpful Assistant')
         assert ref.render() == role.name
 

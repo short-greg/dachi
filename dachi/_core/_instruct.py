@@ -5,13 +5,13 @@ import inspect
 import string
 
 # local
-from ._core import Struct, Out, str_formatter, render
+from ._core import Struct, Out, str_formatter, render, render_multi
 
 from ._process import Module
 from ._process import Param
 import roman
 
-from ._core import Instruction, Description
+from ._core import Instruction, Description, render
 
 
 S = typing.TypeVar('S', bound=Struct)
@@ -105,12 +105,14 @@ def validate_out(instructions: typing.List[X]) -> Out:
     return out
 
 
-def fill(x_instr: X, **kwargs) -> 'Instruction':
+def fill(x_instr: X, *args: X, **kwargs: X) -> 'Instruction':
 
     out = validate_out([x_instr])
-    print(render(x_instr))
+
+    kwargs = dict(zip(kwargs.keys(), render_multi(kwargs.values())))
+    args = render_multi(args)
     return Instruction(
-        text=str_formatter(render(x_instr), **kwargs), out=out
+        text=str_formatter(render(x_instr), *args, **kwargs), out=out
     )
 
 
@@ -119,22 +121,23 @@ def head(x: X, size: int=1) -> 'Instruction':
     out = validate_out([x])
     heading = '#' * size
     return Instruction(
-        f'{heading} {render(x)}', out=out
+        text=f'{heading} {render(x)}', out=out
     )
 
 
-def section(name: X, details: X, size: int=1) -> 'Instruction':
+def section(name: X, details: X, size: int=1, linebreak: int=1) -> 'Instruction':
 
     heading = '#' * size
     out = validate_out([name, details])
-    text = f'{heading} {render(name)}\n\n' + render(details)
+    linebreak = '\n' * linebreak
+    text = f'{heading} {render(name)}{linebreak}' + render(details)
 
     return Instruction(
         text=text, out=out
     )
 
 
-def cat(by: str, xs: typing.List[Instruction]) -> Instruction:
+def cat(xs: typing.List[Instruction], delim: str=' ') -> Instruction:
     """
 
     Args:
@@ -149,12 +152,12 @@ def cat(by: str, xs: typing.List[Instruction]) -> Instruction:
     """
     out = validate_out(xs)
 
-    return Instruction(f'{by}'.format(
+    return Instruction(text=f'{delim}'.join(
         render(x_i) for x_i in xs
     ), out=out)
 
 
-def join(x1: X, x2: X, delim: str='\n') -> Instruction:
+def join(x1: X, x2: X, delim: str=' ') -> Instruction:
     """
 
     Args:
@@ -167,7 +170,7 @@ def join(x1: X, x2: X, delim: str='\n') -> Instruction:
     """
     out = validate_out([x1, x2])
     return Instruction(
-        render(x1) + delim + render(x2),
+        text=render(x1) + delim + render(x2),
         out=out
     )
 
@@ -180,11 +183,15 @@ class Operation(Module):
         Args:
             name (str): 
         """
+        if not isinstance(instruction, Instruction):
+            instruction = Instruction(
+                text=render(instruction)
+            )
         self.name = name
         self.instruction = instruction
         
     def forward(
-        self, **kwargs: X
+        self, *args: X, **kwargs: X
     ) -> Instruction:
         """Fill in the instruction with the inputs
 
@@ -193,13 +200,11 @@ class Operation(Module):
         """
         instruction = render(self.instruction)
         out = validate_out(
-            [*kwargs.values(), self.instruction]
+            [*args, *kwargs.values(), self.instruction]
         )
 
-        kwargs = render(kwargs.values(), ref=True)
-
         return Instruction(
-            text=fill(instruction, **kwargs), out=out
+            text=fill(instruction, *args, **kwargs), out=out
         )
 
 
@@ -209,7 +214,7 @@ def op(x: typing.Union[typing.Iterable[X], X], instruction: X) -> Instruction:
         x = [x]
 
     out = validate_out([*x, instruction])
-    resources = ', '.join(render(x, ref=True))
+    resources = ', '.join(render_multi(x))
     # resources = ', '.join(x_i.name for x_i in x)
     text = f'Do: {render(instruction)} --- With Inputs: {resources}'
     return Instruction(
@@ -225,6 +230,7 @@ class OutF(Module, typing.Generic[S]):
         signature: str, 
         docstring: str, 
         parameters: typing.Dict,
+        is_method: bool=False,
         out_cls: typing.Optional[typing.Type[S]] = None, 
         train: bool=True
     ):
@@ -233,17 +239,24 @@ class OutF(Module, typing.Generic[S]):
         
         self.docstring = Param(
             train=train, name=name, 
-            text=docstring
+            instruction=docstring
         )
         self.out_cls = out_cls
         self.parameters = parameters
+        self._is_method = is_method
 
     def forward(self, *args, **kwargs) -> Instruction:
-        filled_docstring = self.docstring
+        filled_docstring = self.docstring.render()
 
         filled = set()
 
-        for value, param in zip(args, self.parameters.values()):
+        param_values = list(self.parameters.values())
+        print(param_values)
+        if self._is_method:
+            param_values = param_values[1:]
+
+        for value, param in zip(args, param_values):
+            
             
             filled_docstring = filled_docstring.replace(
                 f'{{{param.name}}}', 
@@ -252,12 +265,13 @@ class OutF(Module, typing.Generic[S]):
             filled.add(param.name)
         for k, value in kwargs.items():
             param = self.parameters[k]
+            
             filled_docstring = filled_docstring.replace(
                 f'{{{param.name}}}', # str(param.default)
                 str(value) if not isinstance(value, Instruction) else render(value)
             )
             filled.add(param.name)
-        for param in self.parameters.values():
+        for param in param_values:
             if param.name in filled:
                 continue
             if param.default == inspect.Parameter.empty:
@@ -296,22 +310,46 @@ class FunctionDetails:
                 return origin, args[0] if args else None
         return None, None
     
-    def out(self, train: bool=True) -> Out:        
+    def out(self, is_method: bool=False, train: bool=True) -> Out:        
         
         origin, generic_type = self.get_generic_type()
         if origin:
             if generic_type:
-                return OutF(signature=self.signature, docstring=self.docstring, out_cls=self.return_annotation)
+                return OutF(
+                    name=self.name,
+                    signature=self.signature,
+                    docstring=self.docstring, 
+                    parameters=self.parameters,
+                    out_cls=self.return_annotation,
+                    train=train,
+                    is_method=is_method
+                )
             else:
-                return OutF(signature=self.signature, docstring=self.docstring, out_cls=origin)
-        return OutF(signature=self.signature, docstring=self.docstring, out_cls=None, train=train)
+                return OutF(
+                    name=self.name,
+                    signature=self.signature, 
+                    docstring=self.docstring, 
+                    out_cls=origin,
+                    parameters=self.parameters,
+                    train=train,
+                    is_method=is_method
+                )
+        return OutF(
+            name=self.name,
+            signature=self.signature,
+            docstring=self.docstring, 
+            parameters=self.parameters,
+            out_cls=None, 
+            train=train,
+            is_method=is_method
+        )
 
 
 class _SignatureMethod(Module):
 
     def __init__(
         self, f: typing.Callable, details: FunctionDetails, 
-        train: bool=True, instance=None
+        train: bool=True, is_method: bool=False, instance=None
     ):
         """
 
@@ -329,11 +367,13 @@ class _SignatureMethod(Module):
         """
         self.f = f
         self._details = details
-        self._out = details.out(train)
+        self._train = train
+        self._out = details.out(is_method, train)
 
         update_wrapper(self, f) 
         self.instance = instance
         self._stored = None
+        self._is_method = is_method
 
     def forward(self, *args, **kwargs) -> typing.Any:        
 
@@ -347,7 +387,10 @@ class _SignatureMethod(Module):
 
         if self._stored is not None and instance is self._stored:
             return self._stored
-        self._stored = _SignatureMethod(self.f, instance)
+        self._stored = _SignatureMethod(
+            self.f, self._details, self._train,
+            instance
+        )
         return self._stored
     
 
@@ -367,3 +410,4 @@ def instructf(train: bool=True):
             return _SignatureMethod(f, details, train)
         else:
             return _SignatureMethod(wrapper, details, train)
+    return _
