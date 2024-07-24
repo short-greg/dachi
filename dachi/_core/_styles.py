@@ -1,8 +1,12 @@
+# 1st party
 import typing
 
-from ._core import Style, StructList, Struct
+# 3rd party
 from io import StringIO
-from pandas import pd
+import pandas as pd
+
+# local
+from ._core import Style, StructList, Struct
 
 
 S = typing.TypeVar('S', bound=Struct)

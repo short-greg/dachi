@@ -1,25 +1,16 @@
 # 1st party
 from abc import abstractmethod, ABC
 import typing
+import time
+from typing import Any
+import asyncio
 from typing_extensions import Self
 from functools import wraps
-from abc import ABC, abstractmethod
-
-from ._core import is_undefined, Param, Struct
-
-from typing import Any
-from ._process import Module
-import asyncio
-
-import typing
-
+from enum import Enum
+from dataclasses import dataclass
 
 # 3rd party
-# import networkx as nx
-import time
-from enum import Enum
-
-from dataclasses import dataclass
+from ._core import is_undefined, Param, Struct
 
 
 class _Types(Enum):
@@ -30,18 +21,6 @@ class _Types(Enum):
 UNDEFINED = _Types.UNDEFINED
 WAITING = _Types.WAITING
 
-
-# 1st party
-import typing
-from typing import get_type_hints
-from typing_extensions import Self
-import inspect
-import json
-import re
-import string
-
-# 3rd party
-import pydantic
 
 
 class Src(ABC):

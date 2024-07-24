@@ -13,6 +13,7 @@ import roman
 
 from ._core import Instruction, Description
 
+
 S = typing.TypeVar('S', bound=Struct)
 X = typing.Union[str, Description, Instruction]
 

@@ -1,50 +1,17 @@
 # 1st party
-from abc import abstractmethod, ABC
-import typing
-from typing_extensions import Self
-from functools import wraps
-from abc import ABC, abstractmethod
-
-
-# 1st party
 import typing
 from typing import get_type_hints
 from typing_extensions import Self
+from abc import ABC, abstractmethod
+from uuid import uuid4
+from enum import Enum
 import inspect
+import string
 import json
 import re
-import string
-
-from abc import ABC
-from uuid import uuid4
-import typing
 
 # 3rd party
 import pydantic
-
-
-# 1st party
-import typing
-from typing_extensions import Self
-from abc import abstractmethod, ABC
-from functools import wraps, update_wrapper
-import inspect
-import string
-from io import StringIO
-import json
-import pandas as pd
-
-# local
-from . import Struct, StructList, to_text
-from ._process import Module, str_formatter
-from ._process import Param
-import roman
-
-
-
-# 3rd party
-# import networkx as nx
-from enum import Enum
 
 
 class _Types(Enum):
@@ -55,34 +22,6 @@ class _Types(Enum):
 UNDEFINED = _Types.UNDEFINED
 WAITING = _Types.WAITING
 
-
-# 1st party
-import typing
-from typing import get_type_hints
-from typing_extensions import Self
-import inspect
-import json
-import re
-import string
-
-# 3rd party
-import pydantic
-
-
-# 1st party
-from abc import abstractmethod, ABC
-import typing
-from typing_extensions import Self
-from functools import wraps
-from abc import ABC, abstractmethod
-
-# 3rd party
-# import networkx as nx
-import time
-from enum import Enum
-
-from dataclasses import dataclass
-#from ._struct import Struct, Param
 
 
 class _Types(Enum):
