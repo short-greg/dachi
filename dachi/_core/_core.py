@@ -25,16 +25,6 @@ WAITING = _Types.WAITING
 
 
 
-class _Types(Enum):
-
-    UNDEFINED = 'UNDEFINED'
-    WAITING = 'WAITING'
-
-UNDEFINED = _Types.UNDEFINED
-WAITING = _Types.WAITING
-
-
-
 # S = typing.TypeVar('S', bound=Struct)
 S = typing.TypeVar('S', bound='Struct')
 X = typing.Union[str, 'Description', 'Instruction']
@@ -227,7 +217,7 @@ def is_undefined(val) -> bool:
     Returns:
         bool: Whether the value is undefined or not
     """
-    return val is UNDEFINED or val is WAITING
+    return val == UNDEFINED or val == WAITING
 
 
 class Storable(ABC):

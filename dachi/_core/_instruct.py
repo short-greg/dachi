@@ -246,6 +246,7 @@ class OutF(Module, typing.Generic[S]):
         self._is_method = is_method
 
     def forward(self, *args, **kwargs) -> Instruction:
+    
         filled_docstring = self.docstring.render()
 
         filled = set()
@@ -271,6 +272,7 @@ class OutF(Module, typing.Generic[S]):
                 str(value) if not isinstance(value, Instruction) else render(value)
             )
             filled.add(param.name)
+
         for param in param_values:
             if param.name in filled:
                 continue

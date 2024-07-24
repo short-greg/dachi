@@ -9,18 +9,9 @@ from functools import wraps
 from enum import Enum
 from dataclasses import dataclass
 
-# 3rd party
+# local
 from ._core import is_undefined, Param, Struct
-
-
-class _Types(Enum):
-
-    UNDEFINED = 'UNDEFINED'
-    WAITING = 'WAITING'
-
-UNDEFINED = _Types.UNDEFINED
-WAITING = _Types.WAITING
-
+from ._core import UNDEFINED, WAITING
 
 
 class Src(ABC):
@@ -302,18 +293,19 @@ class Args(object):
         undefined = False
 
         for arg in args:
-            
             if isinstance(arg, T):
                 if is_undefined(arg.val):
                     undefined = True
                     break
                 
-        for k, arg in kwargs.items():
-            
-            if isinstance(arg, T):
-                if is_undefined(arg.val):
-                    undefined = True
-                    break
+        if not undefined:
+            for k, arg in kwargs.items():
+                
+                if isinstance(arg, T):
+                    if is_undefined(arg.val):
+                        undefined = True
+                        break
+
         self._args = args
         self._undefined = undefined
         self._kwargs = kwargs
@@ -407,20 +399,37 @@ class Args(object):
         by = by or {}
         args = []
         kwargs = {}
+        print('Stage 1')
+        print(by)
         for arg in self._args:
+            is_t = isinstance(arg, T)
+            print('k: ', arg, arg in by)
+
             if isinstance(arg, T) and arg in by:
                 val = by[arg]
                 if isinstance(val, Partial):
                     # partial = True
                     args.append(val.cur)
+
                 else:
                     args.append(val)
+            elif is_t and arg.val is not UNDEFINED:
+                args.append(arg.val)
+            elif is_t:
+                raise ValueError(f'Arg has not been defined')  
             else:
                 args.append(arg)
             
+        print('Stage 2')
         for k, arg in self._kwargs.items():
-            if isinstance(arg, T) and arg in by:
+            print('k: ', arg, arg in by)
+            is_t = isinstance(arg, T)
+            if is_t and arg in by:
                 kwargs[k] = by[arg]
+            elif is_t and arg.val is not UNDEFINED:
+                kwargs[k] = arg.val
+            elif is_t:
+                raise ValueError(f'Arg {k} has not been defined')  
             else:
                 kwargs[k] = arg
         
@@ -740,7 +749,7 @@ class ParallelModule(Module, ABC):
             else:
                 args = [a.eval() for a in args]
 
-            res = self.forward(*args)
+            res = self.forward(args)
             if has_partial:
                 res = Partial(res)
             return T(
@@ -787,10 +796,10 @@ class ParallelSrc(Src):
         """
         if isinstance(self._args, Args):
             args = args(by)
-            return self._module(args).val
+            return self._module(args) # .val
 
         args = [arg(by) for arg in self._args]
-        return self._module(args).val
+        return self._module(args) #.val
     
     def __getitem__(self, idx) -> 'Module':
         """

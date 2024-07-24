@@ -18,7 +18,6 @@ class AsyncModule(ParallelModule):
     """A type of Parallel module that makes use of 
     Python's Async
     """
-
     async def _forward(self, args: typing.List[Args]) -> typing.Tuple:
         """The asynchronous method to use for inputs
 
@@ -34,20 +33,27 @@ class AsyncModule(ParallelModule):
             for module_i, args_i in zip(self._modules, args):
                 
                 tasks.append(
-                    tg.create_task(module_i.async_forward(args_i))
+                    tg.create_task(module_i.async_forward(
+                        *args_i.args, **args_i.kwargs
+                    ))
                 )
 
         return tuple(
             t.result() for t in tasks
         )
 
-    def forward(self, *args: Args) -> typing.Tuple:
+    def forward(self, args: Args) -> typing.Tuple:
         """
         Returns:
             typing.Tuple: The output for the paralell module
         """
         return asyncio.run(self._forward(args))
 
+
+class MultiModule(ParallelModule):
+    """A type of Parallel module that simply
+    makes multiple calls
+    """
     def forward(self, *args: Args) -> typing.Tuple:
         """
 
