@@ -4,7 +4,7 @@ import typing
 # 3rd party
 import networkx as nx
 
-from ._core2 import T, Module
+from ._process import T, Module
 # # 1st party
 import typing
 import functools

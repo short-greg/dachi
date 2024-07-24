@@ -3,7 +3,7 @@ from abc import abstractmethod, ABC
 import asyncio
 import typing
 from typing_extensions import Self
-from ._core2 import processf
+from ._process import processf
 
 # 3rd party
 import networkx as nx
@@ -11,7 +11,7 @@ import functools
 import numpy as np
 
 # local
-from ._core2 import Module, Args, T, Src, ParallelModule
+from ._process import Module, Args, T, Src, ParallelModule
 
 
 class AsyncModule(ParallelModule):

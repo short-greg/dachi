@@ -34,7 +34,7 @@ class JointAssessment(Assessment):
         return self.assessments[key]
     
     def __setitem__(self, key: str, value: Assessment) -> Assessment:
-        """Set the 
+        """Set 
 
         Args:
             key (str): _description_

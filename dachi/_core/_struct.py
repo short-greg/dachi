@@ -1,158 +1,39 @@
-# 1st party
-import typing
-from abc import abstractmethod
-from typing import get_type_hints
-from typing_extensions import Self
-import inspect
-import json
-
-# 3rd party
-import pydantic
-from pydantic import Field
 
 
+# class ValidateStrMixin:
 
-class TextMixin(object):
-
-    @abstractmethod
-    def to_text(self) -> str:
-        pass
-
-
-def to_text(value):
-
-    if isinstance(value, TextMixin):
-        return value.to_text()
-    return str(value)
-
-
-class Str(pydantic.BaseModel, TextMixin):
-
-    text: str
-    vars: typing.List[str] = Field(default_factory=list)
-
-    def forward(self, **kwargs):
-
-        format = {}
-        remaining_vars = []
-        for var in self.vars:
-            if var in kwargs:
-                format[var] = to_text(kwargs[var])
-            else:
-                format[var] = '{' + var + '}' 
-                remaining_vars.append(var)
-        return Str(
-            text=self.text.format(**format),
-            vars=remaining_vars
-        )
+#     @pydantic.field_validator('*', mode='before')
+#     def convert_to_string_template(cls, v, info: pydantic.ValidationInfo):
     
-    def to_text(self):
+#         outer_type = cls.model_fields[info.field_name].annotation
+#         if (inspect.isclass(outer_type) and issubclass(outer_type, Str)) and not isinstance(v, Str) and not isinstance(v, typing.Dict):
+#             return Str(text=v)
+#         return v
 
-        return self.text
+
+# class Str(pydantic.BaseModel, TextMixin):
+
+#     text: str
+#     vars: typing.List[str] = Field(default_factory=list)
+
+#     def forward(self, **kwargs):
+
+#         format = {}
+#         remaining_vars = []
+#         for var in self.vars:
+#             if var in kwargs:
+#                 format[var] = to_text(kwargs[var])
+#             else:
+#                 format[var] = '{' + var + '}' 
+#                 remaining_vars.append(var)
+#         return Str(
+#             text=self.text.format(**format),
+#             vars=remaining_vars
+#         )
     
-    def __call__(self, **kwargs):
-        return self.forward(**kwargs)
+#     def to_text(self):
 
-def model_template(model_cls: typing.Type[pydantic.BaseModel]) -> str:
+#         return self.text
     
-    template = {}
-    for name, field_type in get_type_hints(model_cls).items():
-        
-        if inspect.isclass(field_type) and issubclass(field_type, pydantic.BaseModel):
-            template[name] = model_template(field_type)
-        else:
-            template[name] = {
-                "is_required": model_cls.model_fields[name].is_required(),
-                "type": field_type
-            }
-    return template
-
-
-class ValidateStrMixin:
-
-    @pydantic.field_validator('*', mode='before')
-    def convert_to_string_template(cls, v, info: pydantic.ValidationInfo):
-    
-        outer_type = cls.model_fields[info.field_name].annotation
-        if (inspect.isclass(outer_type) and issubclass(outer_type, Str)) and not isinstance(v, Str) and not isinstance(v, typing.Dict):
-            return Str(text=v)
-        return v
-
-
-class Struct(pydantic.BaseModel, TextMixin, ValidateStrMixin):
-
-    model_config = pydantic.ConfigDict(
-        validate_assignment=True,
-        arbitrary_types_allowed=True
-    )
-
-    @classmethod
-    def template(cls) -> str:
-        return model_template(cls)
-    
-    def to_text(self) -> str:
-        return str(self.model_dump())
-    
-    def __getitem__(self, key) -> typing.Any:
-        """Get an attribute in 
-
-        Args:
-            key: The key to get
-
-        Returns:
-            typing.Any: Get attribute specified by key
-        """
-        return getattr(self, key)
-    
-    def __setitem__(self, key, value) -> typing.Any:
-        """Update a member of the Struct
-
-        Args:
-            key: The name of the value to update
-            value: The value to update. 
-                If it is a string and the member is a Str, it will be cast to a
-                Str
-
-        Returns:
-            typing.Any: The value to set
-        """
-        if not hasattr(self, key):
-            raise AttributeError('There is no')
-        if isinstance(getattr(key), Str) and isinstance(value, str):
-            value = Str(text=value)
-        setattr(self, key, value)
-        return value
-    
-    @classmethod
-    def load(cls, data: typing.Dict) -> Self:
-        return cls(**data)
-    
-    def dump(self) -> typing.Dict:
-        return self.model_dump()
-
-    @classmethod
-    def from_text(cls, text: str) -> Self:
-        return cls(
-            **json.loads(text)
-        )
-
-
-T = typing.TypeVar('T', bound=Struct)
-
-
-class StructList(Struct, typing.Generic[T]):
-
-    structs: typing.List[T]
-
-    def __getitem__(self, key) -> typing.Any:
-        
-        return self.structs[key]
-    
-    def __setitem__(self, key, value) -> typing.Any:
-        
-        if key is None:
-            self.structs.append(value)
-        else:
-            self.structs[key] = value
-        return value
-
+#     def __call__(self, **kwargs):
+#         return self.forward(**kwargs)

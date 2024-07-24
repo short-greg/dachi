@@ -3,16 +3,16 @@ from abc import abstractmethod, ABC
 import typing
 from typing_extensions import Self
 from functools import wraps
+from abc import ABC, abstractmethod
+
+from ._core import is_undefined, Param, Struct
 
 # 3rd party
-import networkx as nx
-import functools
+# import networkx as nx
 import time
 from enum import Enum
 
 from dataclasses import dataclass
-import uuid
-from . import Struct
 
 
 class _Types(Enum):
@@ -24,30 +24,28 @@ UNDEFINED = _Types.UNDEFINED
 WAITING = _Types.WAITING
 
 
-from abc import ABC, abstractmethod
-from ._core2 import Module
+# 1st party
+import typing
+from typing import get_type_hints
+from typing_extensions import Self
+import inspect
+import json
+import re
+import string
+
+# 3rd party
+import pydantic
 
 
-class Param(object):
+# def is_undefined(val) -> bool:
+#     """
+#     Args:
+#         val : The value to check
 
-    def __init__(self, **p):
-        """
-        """
-        self.p = p
-
-    def update(self, **kwargs):
-        self.p.update(kwargs)
-
-
-def is_undefined(val) -> bool:
-    """
-    Args:
-        val : The value to check
-
-    Returns:
-        bool: Whether the value is undefined or not
-    """
-    return val is UNDEFINED or val is WAITING
+#     Returns:
+#         bool: Whether the value is undefined or not
+#     """
+#     return val is UNDEFINED or val is WAITING
 
 
 class Src(ABC):
@@ -659,7 +657,7 @@ class Module(ABC):
                     yielded.add(id(v))
                     yield v
 
-    def children(self, recurse: bool=True) -> typing.Iterator[Module]:
+    def children(self, recurse: bool=True) -> typing.Iterator['Module']:
         
         yielded = set()
         for k, v in self.__dict__.items():
@@ -921,6 +919,80 @@ def processf(f):
         return _DecMethod(f)
     else:
         return _DecMethod(wrapper)
+
+from typing import Any
+from ._process import Module
+import asyncio
+
+import typing
+
+
+class Multi(Module):
+    
+    def __init__(self, module: Module, split_args: typing.Set[str]) -> None:
+        super().__init__()
+
+        self.module = module
+        self.split_args = split_args
+
+    def forward(self, n_splits: int, **kwargs) -> Any:
+        
+        result = []
+        for i in range(n_splits):
+            kw = {}
+            for k, v in kwargs.items():
+                if k in self.split_args:
+                    count = (len(v) // n_splits)
+                    if i == n_splits - 1:
+                        kw[k] = v[i * count:]
+                    else:
+                        kw[k] = v[i * count:(i + 1) * count]
+                else:
+                    kw[k] = v
+            result.append(self.module(**kw))
+        return result
+    
+    async def async_forward(self, n_splits: int, **kwargs) -> Any:
+        
+        results = []
+        async with asyncio.TaskGroup() as tg:
+            tasks = []
+            for i in range(n_splits):
+                kw = {}
+                for k, v in kwargs.items():
+                    if k in self.split_args:
+                        count = (len(v) // n_splits)
+                        if i == n_splits - 1:
+                            kw[k] = v[i * count:]
+                        else:
+                            kw[k] = v[i * count:(i + 1) * count]
+                    else:
+                        kw[k] = v
+                
+                tasks.append(tg.create_task(self.module.async_forward(**kw)))
+            for task in tasks:
+                result = await task
+                results.append(result)
+        return result
+
+
+class Sequential(Module):
+    
+    def __init__(self, *module) -> None:
+        super().__init__()
+
+        self.modules = module
+
+    def forward(self, *x) -> Any:
+        
+        first = False
+        for module in self.modules:
+            if first:
+                x = module(*x)
+            else:
+                x = module(x)
+        return x
+
 
 
 # # 1st party

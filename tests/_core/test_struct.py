@@ -1,10 +1,9 @@
-# from dachi.instruct.depracate import _core as _instruct
 from dachi._core import _struct
 
 
 class SimpleStruct(_struct.Struct):
 
-    x: _struct.Str
+    x: str
 
 
 class NestedStruct(_struct.Struct):
@@ -12,51 +11,51 @@ class NestedStruct(_struct.Struct):
     simple: SimpleStruct
 
 
-class TestStr(object):
+# class TestStr(object):
 
-    def test_str_formats_the_string(self):
+#     def test_str_formats_the_string(self):
 
-        str_ = _struct.Str(text='Here is the text {field}', vars=['field'])
-        result = str_(
-            field=1
-        )
-        assert result.text == 'Here is the text 1'
+#         str_ = _struct.Str(text='Here is the text {field}', vars=['field'])
+#         result = str_(
+#             field=1
+#         )
+#         assert result.text == 'Here is the text 1'
 
-    def test_str_formats_the_string_with_str(self):
+#     def test_str_formats_the_string_with_str(self):
 
-        str_ = _struct.Str(text='Here is the text {field}', vars=['field'])
-        str2 = _struct.Str(text='1', vars=[])
-        result = str_(
-            field=str2
-        )
-        assert result.text == 'Here is the text 1'
+#         str_ = _struct.Str(text='Here is the text {field}', vars=['field'])
+#         str2 = _struct.Str(text='1', vars=[])
+#         result = str_(
+#             field=str2
+#         )
+#         assert result.text == 'Here is the text 1'
 
-    def test_str_does_not_format_if_var_not_available(self):
+#     def test_str_does_not_format_if_var_not_available(self):
 
-        str_ = _struct.Str(text='Here is the text {field}', vars=['field'])
-        result = str_(
-            field2="1"
-        )
-        assert result.text == 'Here is the text {field}'
+#         str_ = _struct.Str(text='Here is the text {field}', vars=['field'])
+#         result = str_(
+#             field2="1"
+#         )
+#         assert result.text == 'Here is the text {field}'
 
-    def test_can_format_str_after_fails_once(self):
+#     def test_can_format_str_after_fails_once(self):
 
-        str_ = _struct.Str(text='Here is the text {field}', vars=['field'])
-        result = str_(
-            field2="1"
-        )
-        result = result(
-            field="1"
-        )
-        assert result.text == 'Here is the text 1'
+#         str_ = _struct.Str(text='Here is the text {field}', vars=['field'])
+#         result = str_(
+#             field2="1"
+#         )
+#         result = result(
+#             field="1"
+#         )
+#         assert result.text == 'Here is the text 1'
 
-    def test_vars_remaining_after_format(self):
+#     def test_vars_remaining_after_format(self):
 
-        str_ = _struct.Str(text='Here is the text {field}', vars=['field'])
-        result = str_(
-            field2="1"
-        )
-        assert result.vars == ['field']
+#         str_ = _struct.Str(text='Here is the text {field}', vars=['field'])
+#         result = str_(
+#             field2="1"
+#         )
+#         assert result.vars == ['field']
 
 
 class TestStruct(object):

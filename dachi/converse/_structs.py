@@ -2,16 +2,16 @@
 import typing
 from abc import abstractmethod, ABC
 from .._core import StructList
-from dachi._core._core2 import UNDEFINED
+from .._core._process import UNDEFINED
 
-from .._core import Struct, Str, StructModule
+from .._core import Struct, StructModule
 
 T = typing.TypeVar('T', bound=Struct)
 
 
 class Message(StructModule):
 
-    role: Str
+    role: str
     content: typing.Dict[str, str]
 
     def __getitem__(self, key: str):
@@ -29,7 +29,7 @@ class Message(StructModule):
         raise KeyError(f'{key}')
     
     @classmethod
-    def create(cls, role: Str, **kwargs) -> 'Message':
+    def create(cls, role: str, **kwargs) -> 'Message':
 
         return Message(
             role=role,
@@ -39,8 +39,8 @@ class Message(StructModule):
 
 class Doc(StructModule):
 
-    name: Str
-    text: Str
+    name: str
+    text: str
 
 
 class MessageList(StructList[Message]):

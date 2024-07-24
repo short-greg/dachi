@@ -5,225 +5,71 @@ from abc import abstractmethod, ABC
 from functools import wraps, update_wrapper
 import inspect
 import string
-
-
-# 3rd party
-import pydantic
-from pydantic import Field
+from io import StringIO
+import json
+import pandas as pd
 
 # local
-from . import Struct, Str, StructList
-from ..converse import Module
-from ._core2 import Param, processf, _DecMethod
+from ._core import Struct, StructList, Out, str_formatter, to_text
 
+from ._process import Module
+from ._process import Param
+import roman
+
+from ._core import Instruction, Description
 
 S = typing.TypeVar('S', bound=Struct)
+X = typing.Union[str, Description, Instruction]
 
-X = typing.Union[Str, str, 'Instruction']
+
+# class _PartialFormatter(string.Formatter):
+#     def __init__(self):
+#         super().__init__()
+
+#     def format(self, format_string, **kwargs):
+#         self.kwargs = kwargs
+#         return super().format(format_string)
+
+#     def get_value(self, key, args, kwargs):
+#         if isinstance(key, str):
+#             return self.kwargs.get(key, '{' + key + '}')
+#         return super().get_value(key, args, kwargs)
+
+#     def __call__(self, format_string, **kwargs):
+#         return self.format(format_string, **kwargs)
 
 
-class Description(Struct):
-    """Provide context in the prompt template
+# str_formatter = _PartialFormatter()
+
+
+
+def bullet(xs: typing.Iterable[X], bullets: str='-', indent: int=0) -> 'Instruction':
     """
-    name: str
 
-    @property
-    @abstractmethod
-    def text(self) -> str:
-        pass
+    Args:
+        xs (typing.Iterable[Instruction]): 
+        bullets (str, optional): . Defaults to '-'.
 
-    @abstractmethod
-    def update(self, **kwargs) -> Self:
-        pass
+    Raises:
+        RuntimeError: 
 
-
-# Do i want this to be a Pydantic model
-
-class Ref(Struct):
-    """Reference to another description.
-    Useful when one only wants to include the 
-    name of a description in part of the prompt
+    Returns:
+        Instruction: 
     """
-    reference: Description
-
-    @property
-    def name(self) -> str:
-        return self.reference.name
-
-    @property
-    def text(self) -> str:
-        return ""
-
-    def update(self, **kwargs) -> Self:
-        # doesn't do anything since
-        # it is a reference
-        return self
-
-
-class Style(pydantic.BaseModel, typing.Generic[S], ABC):
-
-    @abstractmethod
-    def forward(self, struct: S) -> str:
-        pass
-
-    @abstractmethod
-    def reverse(self, text: str) -> S:
-        pass
-
-    def load(self, text: str) -> S:
-        return self.reverse(text)
-
-    def __call__(self, struct: S) -> str:
-        return self.forward(struct)
-
-    @pydantic.field_validator('*', mode='before')
-    def convert_to_string_template(cls, v, info: pydantic.ValidationInfo):
-    
-        outer_type = cls.model_fields[info.field_name].annotation
-        if (inspect.isclass(outer_type) and issubclass(outer_type, Str)) and not isinstance(v, Str):
-            return Str(text=v)
-        return v
-
-
-def generic_class(t: typing.TypeVar, idx: int=0):
-
-    return t.__orig_class__.__args__[idx]
-
-
-class _PartialFormatter(string.Formatter):
-    def __init__(self):
-        super().__init__()
-
-    def format(self, format_string, **kwargs):
-        self.kwargs = kwargs
-        return super().format(format_string)
-
-    def get_value(self, key, args, kwargs):
-        if isinstance(key, str):
-            return self.kwargs.get(key, '{' + key + '}')
-        return super().get_value(key, args, kwargs)
-
-    def __call__(self, format_string, **kwargs):
-        return self.format(format_string, **kwargs)
-
-str_formatter = _PartialFormatter()
-
-
-class Out(Struct, ABC):
-
-    name: str
-    data: S
-
-    @abstractmethod
-    def read(self, data) -> S:
-        pass
-
-    @abstractmethod
-    def write(self, data) -> str:
-        pass
-
-    @abstractmethod
-    def template(self) -> str:
-        pass
-
-
-class JSON(Out[S]):
-
-    fields: typing.List[str] = None
-
-    def read(self, data) -> S:
-        pass
-
-    def write(self, data) -> str:
-        pass
-
-    def template(self) -> str:
-        
-        if self.fields is not None:
-            pass
-
-
-class CSV(Out[S]):
-
-    fields: typing.List[str] = None
-
-    def read(self, data) -> S:
-        pass
-
-    def write(self, data) -> str:
-        pass
-
-    def template(self) -> str:
-
-        if self.fields is not None:
-            pass
-
-
-class Merged(Out['StructList']):
-
-    conn: str = '===={name}===='
-    
-    def read(self, data) -> 'StructList':
-        return StructList.load(data)
-
-    def write(self, data) -> str:
-        struct_list = StructList.load(data)
-        return struct_list.dump()
-
-    def template(self) -> str:
-        pass
-
-
-class Instruction(Struct):
-    """Specific instruction for the model to use
-    """
-    text: typing.Union[str, Str]
-    out: Out = None
-    # incoming: typing.List['Description'] = Field(default_factory=list)
-
-    def traverse(self, visited: typing.Set=None) -> typing.Iterator['Description']:
-
-        visited = visited or set()
-
-        if id(self) in visited:
-            return
-
-        yield self
-        visited.add(id(self))
-
-        if self.incoming is None:
-            return
-
-        for inc in self.incoming:
-            for inc_i in inc.traverse(visited):
-                yield inc_i
-    
-    def __call__(self, **kwargs) -> str:
-
-        return self.text(**kwargs).text
-
-
-def bullet(xs: typing.Iterable[Instruction], bullets: str='-') -> 'Instruction':
-
-    out = None
-    text = f'\n {bullets}'
-    for x_i in xs:
-        if x_i.out is not None and out is None:
-            out = x_i.out
-        elif x_i.out is not None:
-            raise RuntimeError('The output has already been defined')
-    text = text + f'\n {bullets}'.join(
-        x_i.to_text() for x_i in xs
+    indent = ' ' * indent
+    text = f'\n{indent}{bullets}'
+    out = validate_out(xs)
+    text = text + f'\n{indent}{bullets}'.join(
+        to_text(x_i) for x_i in xs
     )
-    
     return Instruction(
         text=text, out=out
     )
 
 
-def formatted(x: Instruction, format: str) -> 'Instruction':
+def formatted(x: X, format: str) -> 'Instruction':
 
-    text = x.text()
+    text = to_text(x)
     if text[:len(format)] == format and text[-len(format):] == format:
         return x
     return Instruction(
@@ -232,44 +78,51 @@ def formatted(x: Instruction, format: str) -> 'Instruction':
     )
 
 
-def numbered(xs: typing.Iterable[Instruction], starting: str=1) -> 'Instruction':
+def generate_numbered_list(n, numbering_type='arabic'):
+    if numbering_type == 'arabic':
+        return [str(i) for i in range(1, n + 1)]
+    elif numbering_type == 'roman':
+        return [roman.toRoman(i).lower() for i in range(1, n + 1)]
+    elif numbering_type == 'alphabet':
+        if n > 26:
+            raise ValueError("Alphabetic numbering can only handle up to 26 items")
+        return [string.ascii_uppercase[i] for i in range(n)]
+    else:
+        raise ValueError("Unsupported numbering type")
 
-    out = None
+
+def numbered(xs: typing.Iterable[X], indent: int=0, numbering: str='arabic') -> 'Instruction':
+    """
+
+    Args:
+        xs (typing.Iterable[Instruction]): 
+        indent (int, optional): . Defaults to 0.
+        numbering (str, optional): . Defaults to 'arabic'.
+
+    Returns:
+        Instruction: 
+    """
     text = ''
-    cur = starting
-    for i, x_i in enumerate(xs):
-        if x_i.out is not None and out is None:
-            out = x_i.out
-        elif x_i.out is not None:
-            raise RuntimeError('The output has already been defined')
-        text = f' {cur}. {x_i.text()}'
-        cur += 1
-    
+    indent = ' ' * indent
+    numbers = generate_numbered_list(len(xs), numbering)
+    out = validate_out(xs)
+    for i, (x_i, number) in enumerate(zip(xs, numbers)):
+        text = f'{indent}{number}. {to_text(x_i)}'
+        if i < (len(numbers) - 1):
+            text += "\n"
+
     return Instruction(
         text=text, 
         out=out
     )
 
 
-def fill(x: Instruction, **kwargs) -> 'Instruction':
-
-    return Instruction(
-        str_formatter(x.text, **kwargs), 
-    )
-
-
-def head(x: Instruction, size: int=1) -> 'Instruction':
-
-    heading = '#' * size
-    return Instruction(
-        f'{heading} {x.text()}', out=x.out
-    )
-
-
-def validate_out(instructions: typing.List[Instruction]) -> Out:
+def validate_out(instructions: typing.List[X]) -> Out:
 
     out = None
     for instruction in instructions:
+        if not isinstance(instruction, Instruction):
+            continue
         if out is None and instruction.out is not None:
             out = instruction.out
         elif instruction.out is not None:
@@ -277,18 +130,36 @@ def validate_out(instructions: typing.List[Instruction]) -> Out:
     return out
 
 
-def section(name: Instruction, details: Instruction, size: int=1) -> 'Instruction':
+def fill(x_instr: X, **kwargs) -> 'Instruction':
+
+    out = validate_out([x_instr])
+    print(to_text(x_instr))
+    return Instruction(
+        text=str_formatter(to_text(x_instr), **kwargs), out=out
+    )
+
+
+def head(x: X, size: int=1) -> 'Instruction':
+
+    out = validate_out([x])
+    heading = '#' * size
+    return Instruction(
+        f'{heading} {to_text(x)}', out=out
+    )
+
+
+def section(name: X, details: X, size: int=1) -> 'Instruction':
 
     heading = '#' * size
     out = validate_out([name, details])
-    text = f'{heading} {name.text()}\n\n' + details.text()
+    text = f'{heading} {to_text(name)}\n\n' + to_text(details)
 
     return Instruction(
         text=text, out=out
     )
 
 
-def join(by: str, xs: typing.List[Instruction]) -> Instruction:
+def cat(by: str, xs: typing.List[Instruction]) -> Instruction:
     """
 
     Args:
@@ -304,70 +175,194 @@ def join(by: str, xs: typing.List[Instruction]) -> Instruction:
     out = validate_out(xs)
 
     return Instruction(f'{by}'.format(
-        x_i.text() for x_i in xs
+        to_text(x_i) for x_i in xs
     ), out=out)
 
 
-def join(instruction1: Instruction, instruction2: Instruction, delim: str='\n') -> Instruction:
+def join(x1: X, x2: X, delim: str='\n') -> Instruction:
     """
 
     Args:
-        instruction1 : 
-        instruction2 : 
+        x1 : 
+        x2 : 
         delim (str): 
 
     Returns:
         Instruction: 
     """
-    out = validate_out([instruction1, instruction2])
+    out = validate_out([x1, x2])
     return Instruction(
-        instruction1.text() + delim + instruction2.text(),
+        to_text(x1) + delim + to_text(x2),
         out=out
     )
 
 
 class Operation(Module):
 
-    def __init__(self):
-        pass
+    def __init__(self, name: str, instruction: X):
+        """
 
+        Args:
+            name (str): 
+        """
+        self.name = name
+        self.instruction = instruction
+        
     def forward(
-        self, *x: Description, **kwargs
+        self, **kwargs: X
     ) -> Instruction:
-        pass
+        """Fill in the instruction with the inputs
+
+        Returns:
+            Instruction: 
+        """
+        instruction = to_text(self.instruction)
+        out = validate_out(
+            [*kwargs.values(), self.instruction]
+        )
+
+        kwargs = to_text(kwargs.values(), ref=True)
+
+        return Instruction(
+            text=fill(instruction, **kwargs), out=out
+        )
 
 
-def op(x: typing.Union[typing.List[Description], Description], intruction: str, name: str) -> Instruction:
+def op(x: typing.Union[typing.Iterable[X], X], instruction: X) -> Instruction:
 
-    if isinstance(x, Description) or isinstance(x, Ref):
+    if not isinstance(x, typing.Iterable):
         x = [x]
-    
-    resources = ', '.join(x_i.name for x_i in x)
-    text = f'Do: {intruction} --- With Inputs: {resources}'
+
+    out = validate_out([*x, instruction])
+    resources = ', '.join(to_text(x, ref=True))
+    # resources = ', '.join(x_i.name for x_i in x)
+    text = f'Do: {to_text(instruction)} --- With Inputs: {resources}'
     return Instruction(
-        name=name, text=text, incoming=x
+        text=text, out=out
     )
+
+
+class OutF(Module, typing.Generic[S]):
+
+    def __init__(
+        self,
+        name: str, 
+        signature: str, 
+        docstring: str, 
+        parameters: typing.Dict,
+        out_cls: typing.Optional[typing.Type[S]] = None, 
+        train: bool=True
+    ):
+        self.signature = signature
+        self.docstring = docstring
+        
+        self.docstring = Param(
+            train=train, name=name, 
+            text=docstring
+        )
+        self.out_cls = out_cls
+        self.parameters = parameters
+
+    def forward(self, *args, **kwargs) -> Instruction:
+        filled_docstring = self.docstring
+
+        filled = set()
+
+        for value, param in zip(args, self.parameters.values()):
+            
+            filled_docstring = filled_docstring.replace(
+                f'{{{param.name}}}', 
+                str(value) if not isinstance(value, Instruction) else to_text(value)
+            )
+            filled.add(param.name)
+        for k, value in kwargs.items():
+            param = self.parameters[k]
+            filled_docstring = filled_docstring.replace(
+                f'{{{param.name}}}', # str(param.default)
+                str(value) if not isinstance(value, Instruction) else to_text(value)
+            )
+            filled.add(param.name)
+        for param in self.parameters.values():
+            if param.name in filled:
+                continue
+            if param.default == inspect.Parameter.empty:
+                raise RuntimeError('Param has not been defined and no value')
+            filled_docstring = filled_docstring.replace(
+                f'{{{param.name}}}', str(param.default)
+            )
+            filled.add(param.name)
+
+        return Instruction(
+            text=filled_docstring,
+            out=self.out_cls
+        )
+
+
+class FunctionDetails:
+
+    def __init__(self, func: typing.Callable):
+        self.func = func
+        self.name = func.__name__
+        self.docstring = inspect.getdoc(func)
+        self.signature = str(inspect.signature(func))
+        self.parameters = inspect.signature(func).parameters
+        self.return_annotation = inspect.signature(func).return_annotation
+        if (
+            self.return_annotation is not inspect.Signature.empty 
+            and not issubclass(self.return_annotation, Out)
+        ):
+            raise TypeError(f"Expected return type {Out}, got {type(self.return_annotation)} instead")
+
+    def get_generic_type(self):
+        if self.return_annotation is not inspect.Signature.empty:
+            origin = getattr(self.return_annotation, '__origin__', None)
+            if origin and issubclass(origin, Out):
+                args = self.return_annotation.__args__ if hasattr(self.return_annotation, '__args__') else ()
+                return origin, args[0] if args else None
+        return None, None
+    
+    def out(self, train: bool=True) -> Out:        
+        
+        origin, generic_type = self.get_generic_type()
+        if origin:
+            if generic_type:
+                return OutF(signature=self.signature, docstring=self.docstring, out_cls=self.return_annotation)
+            else:
+                return OutF(signature=self.signature, docstring=self.docstring, out_cls=origin)
+        return OutF(signature=self.signature, docstring=self.docstring, out_cls=None, train=train)
 
 
 class _SignatureMethod(Module):
 
-    def __init__(self, f: typing.Callable, details: typing.Dict, train: bool=True, instance=None):
+    def __init__(
+        self, f: typing.Callable, details: FunctionDetails, 
+        train: bool=True, instance=None
+    ):
+        """
+
+        Args:
+            f (typing.Callable): 
+            details (FunctionDetails): 
+            train (bool, optional): . Defaults to True.
+            instance (_type_, optional): . Defaults to None.
+
+        Raises:
+            TypeError: 
+
+        Returns:
+            _type_: 
+        """
         self.f = f
-        self.details = get_function_details(f)
-        update_wrapper(self, f) 
         self._details = details
+        self._out = details.out(train)
+
+        update_wrapper(self, f) 
         self.instance = instance
-        self._train = train
         self._stored = None
-        return_annotation = self.details["return_annotation"]
-        if (
-            return_annotation is not inspect.Signature.empty 
-            and not issubclass(return_annotation, Out)
-        ):
-            raise TypeError(f"Expected return type {Out}, got {type(return_annotation)} instead")
 
     def forward(self, *args, **kwargs) -> typing.Any:        
-        pass
+
+        return self._out(*args, **kwargs)
 
     async def async_forward(self, *args, **kwargs) -> typing.Any:
 
@@ -380,43 +375,72 @@ class _SignatureMethod(Module):
         self._stored = _SignatureMethod(self.f, instance)
         return self._stored
     
-    @classmethod
-    def async_(cls, f):
 
-        cls._async_f = f
+def instructf(train: bool=True):
+    """Decorator for using a function signature
 
-
-def get_function_details(func: typing.Callable):
-    docstring = inspect.getdoc(func)
-    signature = inspect.signature(func)
-    
-    parameters = signature.parameters
-    return_annotation = signature.return_annotation
-    
-    func_name = func.__name__
-    
-    return {
-        "name": func_name,
-        "docstring": docstring,
-        "parameters": parameters,
-        "return_annotation": return_annotation
-    }
-
-
-def signaturef(train: bool=True):
-
+    Args:
+        train (bool, optional): Whether to train the function or not. Defaults to True.
+    """
     def _(f):
+        details = FunctionDetails(f)
 
-        details = get_function_details(f)
         @wraps(f)
         def wrapper(*args, **kwargs):
             return f(*args, **kwargs)
-
         if hasattr(f, '__self__') or '__self__' in dir(f):
             return _SignatureMethod(f, details, train)
         else:
             return _SignatureMethod(wrapper, details, train)
 
+
+    # # Instruction
+    # incoming: typing.List['Description'] = Field(default_factory=list)    
+    # def __call__(self, **kwargs) -> str:
+
+    #     return self.text(**kwargs).text
+
+    # def traverse(
+    #     self, 
+    #     visited: typing.Set=None
+    # ) -> typing.Iterator['Description']:
+    #     """_summary_
+
+    #     Yields:
+    #         Description: 
+    #     """
+
+    #     visited = visited or set()
+
+    #     if id(self) in visited:
+    #         return
+
+    #     yield self
+    #     visited.add(id(self))
+
+    #     if self.incoming is None:
+    #         return
+
+    #     for inc in self.incoming:
+    #         for inc_i in inc.traverse(visited):
+    #             yield inc_i
+
+
+# def get_function_details(func: typing.Callable):
+#     docstring = inspect.getdoc(func)
+#     signature = inspect.signature(func)
+    
+#     parameters = signature.parameters
+#     return_annotation = signature.return_annotation
+    
+#     func_name = func.__name__
+    
+#     return {
+#         "name": func_name,
+#         "docstring": docstring,
+#         "parameters": parameters,
+#         "return_annotation": return_annotation
+#     }
 
 # CSV[S]
 # class Output(typing.Generic[S], Struct):
@@ -441,7 +465,6 @@ def signaturef(train: bool=True):
 
 #         {Scls.template()}
 #         """
-
 
 
 # class InstructionSet(Struct):
@@ -606,4 +629,22 @@ def signaturef(train: bool=True):
 #             }
 #         }
 
+
+
+
+# class JSON(Style[S]):
+
+#     fields: typing.List[str] = None
+
+#     def dumps(self) -> str:
+#         pass
+
+#     @classmethod
+#     def loads(cls, data: str) -> Self:
+#         return cls(**data)
+
+#     def template(self) -> str:
+        
+#         if self.fields is not None:
+#             pass
 
