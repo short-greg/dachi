@@ -5,13 +5,46 @@ from typing_extensions import Self
 from functools import wraps
 from abc import ABC, abstractmethod
 
+
+# 1st party
+import typing
+from typing import get_type_hints
+from typing_extensions import Self
+import inspect
+import json
+import re
+import string
+
+from abc import ABC
+from uuid import uuid4
+import typing
+
+# 3rd party
+import pydantic
+
+
+# 1st party
+import typing
+from typing_extensions import Self
+from abc import abstractmethod, ABC
+from functools import wraps, update_wrapper
+import inspect
+import string
+from io import StringIO
+import json
+import pandas as pd
+
+# local
+from . import Struct, StructList, to_text
+from ._process import Module, str_formatter
+from ._process import Param
+import roman
+
+
+
 # 3rd party
 # import networkx as nx
-import time
 from enum import Enum
-
-from dataclasses import dataclass
-#from ._struct import Struct, Param
 
 
 class _Types(Enum):
@@ -61,18 +94,10 @@ UNDEFINED = _Types.UNDEFINED
 WAITING = _Types.WAITING
 
 
-# 1st party
-import typing
-from typing import get_type_hints
-from typing_extensions import Self
-import inspect
-import json
-import re
-import string
 
-# 3rd party
-import pydantic
-
+# S = typing.TypeVar('S', bound=Struct)
+S = typing.TypeVar('S', bound='Struct')
+X = typing.Union[str, 'Description', 'Instruction']
 
 
 class _PartialFormatter(string.Formatter):
@@ -191,9 +216,6 @@ class Struct(pydantic.BaseModel):
         )
 
 
-S = typing.TypeVar('S', bound=Struct)
-
-
 class StructList(Struct, typing.Generic[S]):
 
     structs: typing.List[S]
@@ -228,12 +250,6 @@ def is_undefined(val) -> bool:
         bool: Whether the value is undefined or not
     """
     return val is UNDEFINED or val is WAITING
-
-from abc import ABC
-from uuid import uuid4
-import typing
-
-T = typing.TypeVar('T')
 
 
 class Storable(ABC):
@@ -275,29 +291,6 @@ class Storable(ABC):
             else:
                 cur[k] = v
         return cur
-
-
-
-# 1st party
-import typing
-from typing_extensions import Self
-from abc import abstractmethod, ABC
-from functools import wraps, update_wrapper
-import inspect
-import string
-from io import StringIO
-import json
-import pandas as pd
-
-# local
-from . import Struct, StructList, to_text
-from ._process import Module, str_formatter
-from ._process import Param
-import roman
-
-
-S = typing.TypeVar('S', bound=Struct)
-X = typing.Union[str, 'Description', 'Instruction']
 
 
 class Description(Struct):
@@ -410,5 +403,3 @@ class Param(Instruction):
     def update(self, text: str):
         if self.training:
             self.text = text
-
-

@@ -89,7 +89,7 @@ class Batch(object):
             upto += self.n_samples
 
 @processf
-def batch(data: typing.Iterable, n_samples: int, shuffle: bool, drop_last: bool=True):
+def batchf(data: typing.Iterable, n_samples: int, shuffle: bool, drop_last: bool=True):
     
     return Batch(
         data, n_samples, shuffle, drop_last

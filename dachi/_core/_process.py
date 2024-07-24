@@ -44,17 +44,6 @@ import string
 import pydantic
 
 
-# def is_undefined(val) -> bool:
-#     """
-#     Args:
-#         val : The value to check
-
-#     Returns:
-#         bool: Whether the value is undefined or not
-#     """
-#     return val is UNDEFINED or val is WAITING
-
-
 class Src(ABC):
     """Base class for Src. Use to specify how the
     Transmission (T) was generated
@@ -461,8 +450,6 @@ class Args(object):
     def __call__(self, by: typing.Dict['T', typing.Any]) -> Self:
         return self.forward(by)
 
-
-# use partial goes in the module
 
 class ModSrc(Src):
 

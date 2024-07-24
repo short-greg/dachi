@@ -4,6 +4,7 @@ from ._core import Style, StructList, Struct
 from io import StringIO
 from pandas import pd
 
+
 S = typing.TypeVar('S', bound=Struct)
 
 

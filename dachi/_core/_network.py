@@ -66,7 +66,7 @@ class Network(object):
         return self._incoming[id(t)]
 
 
-class Adapter(Module):
+class TAdapter(Module):
     """A Node which wraps a graph
     """
 
