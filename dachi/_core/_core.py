@@ -59,20 +59,6 @@ class _PartialFormatter(string.Formatter):
     def __call__(self, format_string, *args, **kwargs):
         return self.format(format_string, *args, **kwargs)
 
-# def get_variables(format_string) -> typing.List[str]:
-#     # Ensure only named variables are used
-#     if re.search(r'\{\d*\}', format_string):
-#         raise ValueError("Only named variables are allowed")
-
-#     # Extract named variables
-#     variables = re.findall(r'\{([a-zA-Z_]\w*)\}', format_string)
-    
-#     return variables
-
-
-# def get_str_variables(format_string):
-#     # This regex matches anything inside curly braces { }
-#     return re.findall(r'\{(.*?)\}', format_string)
 
 def get_str_variables(format_string):
     has_positional = re.search(r'\{\d*\}', format_string)
@@ -119,7 +105,7 @@ def model_template(model_cls: typing.Type[pydantic.BaseModel]) -> str:
     return template
 
 
-class Struct(pydantic.BaseModel):
+class Struct(pydantic.BaseModel, Renderable):
 
     model_config = pydantic.ConfigDict(
         validate_assignment=True,
@@ -127,11 +113,22 @@ class Struct(pydantic.BaseModel):
     )
 
     @classmethod
-    def template(cls) -> str:
-        return model_template(cls)
-    
-    def to_text(self) -> str:
-        return str(self.model_dump())
+    def template(cls) -> typing.Dict:
+        template = {}
+        
+        base_template = model_template(cls)
+        for field_name, field in cls.model_fields.items():
+            field_type = field.annotation
+            if isinstance(field_type, type) and issubclass(field_type, Struct):
+                template[field_name] = field_type.template()
+            else:
+                template[field_name] = {
+                    "type": field.annotation,
+                    "description": field.description,
+                    "default": field.default if field.default is not None else None,
+                    "is_required": base_template[field_name]['is_required']
+                }
+        return template
     
     def __getitem__(self, key) -> typing.Any:
         """Get an attribute in 
@@ -182,7 +179,43 @@ class Struct(pydantic.BaseModel):
         return cls(
             **json.loads(text)
         )
+    
+    def _escape_curly_braces(self, value: typing.Any) -> str:
+        """Escape curly braces for dictionary-like structures."""
+        if isinstance(value, str):
+            return value
+        if isinstance(value, typing.Dict):
+            items = ', '.join(f"'{k}': {self._escape_curly_braces(v)}" for k, v in value.items())
+            return f"{{{{{items}}}}}"
+        if isinstance(value, typing.List):
+            return '[{}]'.format(', '.join(self._escape_curly_braces(v) for v in value))
+        return str(value)
 
+    def to_text(self) -> str:
+        model_dict = self.model_dump()
+        escaped_str = self._escape_curly_braces(model_dict)
+        return escaped_str
+    
+    def render(self) -> str:
+        return self.to_text()
+
+    
+    # def to_text(self) -> str:
+    #     return str(self.model_dump())
+
+class StructLoadException(Exception):
+
+    def __init__(self, message="Struct loading failed.", errors=None):
+        super().__init__(message)
+        self.errors = errors
+
+
+def is_nested_model(pydantic_model_cls: typing.Type[Struct]) -> bool:
+    for field in pydantic_model_cls.model_fields.values():
+        
+        if isinstance(field.annotation, type) and issubclass(field.annotation, Struct):
+            return True
+    return False
 
 class StructList(Struct, typing.Generic[S]):
 
@@ -207,6 +240,17 @@ class StructList(Struct, typing.Generic[S]):
         else:
             self.structs[key] = value
         return value
+    
+    @classmethod
+    def load_records(cls, records) -> 'StructList[S]':
+
+        structs = []
+        struct_cls: typing.Type[Struct] = generic_class(S)
+        for record in records:
+            structs.append(struct_cls.load(record))
+        return StructList[S](
+            structs=structs
+        )
 
 
 def is_undefined(val) -> bool:
@@ -264,11 +308,16 @@ class Storable(ABC):
 class Description(Struct, Renderable, ABC):
     """Provide context in the prompt template
     """
-    name: str
+    name: str = pydantic.Field(description='The name of the description.')
 
     @abstractmethod
     def update(self, **kwargs) -> Self:
         pass
+
+    @abstractmethod
+    def render(self) -> str:
+        pass
+
 
 _primitives = (bool, str, int, float, type(None))
 
@@ -320,7 +369,7 @@ def render_multi(xs: typing.Iterable[X]) -> typing.List[str]:
     ]
 
 
-class Ref(Struct, Renderable):
+class Ref(Struct):
     """Reference to another description.
     Useful when one only wants to include the 
     name of a description in part of the prompt
@@ -345,38 +394,231 @@ def generic_class(t: typing.TypeVar, idx: int=0):
     return t.__orig_class__.__args__[idx]
 
 
-class Out(Struct, typing.Generic[S]):
+class Result(Struct, ABC):
 
-    out_cls: typing.Type[Struct]
+    @abstractmethod
+    def write(self, data: Struct) -> str:
+        pass
 
-    def read(self, data: typing.Dict) -> S:
-        return self.out_cls.load(data)
+    @abstractmethod
+    def read(self, data: str) -> S:
+        pass
 
-    def reads(self, data: str) -> S:
+    @abstractmethod
+    def stream_from_text(self, data: str) -> S:
+        pass
+
+    @abstractmethod
+    def out_template(self) -> str:
+        pass
+
+
+class Out(Result, typing.Generic[S]):
+
+    out_cls: typing.Type[S]
+
+    def to_text(self, data: S) -> str:
+        return data.to_text()
+
+    def write(self, data: S) -> str:
+        return data.dumps()
+
+    def read(self, data: str) -> S:
+        return self.out_cls.loads(data)
+
+    def stream_read(self, data: str) -> S:
         return self.out_cls.loads(data)
 
     def out_template(self) -> str:
         return self.out_cls.template()
 
 
-class Style(Struct, typing.Generic[S], ABC):
+class ListOut(Result, typing.Generic[S]):
 
-    data: S
+    out_cls: typing.Type[S]
 
-    @abstractmethod
-    def dumps(self) -> str:
-        pass
+    def write(self, data: StructList[S]) -> str:
+        return json.dumps(data)
 
-    @classmethod
-    @abstractmethod
-    def loads(cls, data: str) -> Self:
-        pass
+    def read(self, data: str) -> StructList[S]:
+        return StructList.load_cls(
+            self.out_cls, data
+        )
 
-    def to_text(self) -> str:
-        return self.data.to_text()
+    def to_text(self, data: StructList[S]) -> str:
+        return data.to_text()
+
+    def stream_read(self, data: str) -> S:
+        return StructList.load_cls(
+            self.out_cls, data
+        )
+    
+    def out_template(self) -> str:
+        return self.out_cls.template()
 
 
-class Instruction(Struct, Renderable, typing.Generic[S]):
+class MultiOut(Result):
+    
+    outs: typing.List[Out]
+    names: typing.List[str]
+    conn: str = '::OUT::{name}::\n'
+    signal: str = '\u241E'
+    
+    @pydantic.field_validator('names', 'outs', mode='before')
+    def validate_names_types_data(cls, values):
+        names = values.get('names', [])
+        outs = values.get('outs', [])
+        
+        if len(names) != len(outs):
+            raise ValueError("The number of names must match the number of types")
+
+        return values
+
+    def write(self, data: typing.List[Struct]) -> str:
+        result = ''
+        for struct, name in zip(data, self.names):
+            result = result + '\n' + self.signal + self.conn.format(name=name)
+            result = f'{result}\n{struct.render()}'
+
+        return result
+
+    def read(self, data: str) -> typing.List[Struct]:
+
+        structs = []
+
+        d = data
+        for t, name in zip(self.outs, self.names):
+            from_loc = d.find('\u241E')
+            to_loc = d[from_loc + 1:].find('\u241E')
+            cur = self.conn.format(name=name)
+            data_loc = from_loc + len(cur)
+            data_str = d[data_loc:to_loc]
+            structs.append(t.read(data_str))
+            d = d[to_loc:]
+
+        return structs
+
+    def to_text(self, data: typing.List[S]) -> str:
+
+        text = ""
+        for data_i, out, name in zip(data, self.outs, self.names):
+            cur = out.render(data_i)
+            cur_conn = self.conn.format(name)
+            text += f"""
+            {self.signal}{cur_conn}
+            {cur}
+            """
+        return text
+
+    def stream_read(self, data: str) -> typing.Tuple[S, bool, str]:
+        structs = []
+
+        d = data
+        for i, (t, name) in enumerate(zip(self.outs, self.names)):
+            from_loc = d.find('\u241E')
+            to_loc = d[from_loc + 1:].find('\u241E')
+            cur = self.conn.format(name=name)
+            data_loc = from_loc + len(cur)
+            data_str = d[data_loc:to_loc]
+            try: 
+                structs.append(t.read(data_str))
+            except StructLoadException as e:
+                return structs, i
+            d = d[to_loc:]
+
+        return structs, None
+    
+    def out_template(self) -> str:
+
+        text = ""
+        for out, name in zip(self.outs, self.names):
+            cur = out.out_template()
+            cur_conn = self.conn.format(name)
+            text += f"""
+            {self.signal}{cur_conn}
+            {cur}
+            """
+        return text
+
+    # @classmethod
+    # def reads(cls, data: str) -> 'MultiOut':
+
+
+    # @classmethod
+    # def stream_reads(cls, stream: typing.Iterable[str], types: typing.List[S]) -> typing.Tuple['MultiOut', int, bool]:
+    #     names = []
+    #     structs = StructList(structs=[])
+    #     lines = []
+    #     read_count = 0
+    #     ended_in_failure = False
+        
+    #     i = 0
+    #     for line in stream:
+    #         lines.append(line.strip())
+    #         if len(lines) == 2:
+    #             try:
+    #                 conn_line, struct_line = lines
+    #                 try:
+    #                     name = conn_line.split('::')[1]
+    #                     names.append(name)
+    #                 except IndexError:
+    #                     raise ValueError("Invalid format for connection line")
+
+    #                 # Create a Struct object from the struct line
+    #                 types[i].reads()
+    #                 struct = Struct.from_text(struct_line)
+    #                 structs.add_struct(struct)
+
+    #                 read_count += 1
+    #                 lines = []
+    #             except Exception as e:
+    #                 ended_in_failure = True
+    #                 break
+
+    #     instance = cls()
+    #     instance.names = names
+    #     instance.data = structs
+    #     return instance, read_count, ended_in_failure
+
+    # def writes(self) -> str:
+    #     result = ''
+    #     if self.names is None:
+    #         names = []
+    #     else:
+    #         names = self.names
+    #     if len(names) < self.data.structs:
+    #         residual = range(len(names), len(self.data.structs))
+    #         names = [*names, *residual]
+    #     for struct, name in zip(self.data.structs, names):
+    #         result = result + self.conn.format(name=name)
+    #         result = f'{result}\n{struct.render()}'
+
+    #     return result
+
+
+class JSONOut(Out):
+
+    def stream_read(self, text: str) -> typing.Tuple[
+        typing.Optional[typing.Dict], bool
+    ]:
+        try: 
+            result = json.loads(text)
+            return result, True
+        except json.JSONDecodeError:
+            return None, False
+
+    def read(self, text: str) -> typing.Dict:
+        result = json.loads(text)
+        return result
+
+    def write(self, data: Struct) -> str:
+        return data.dumps()
+    
+    def template(self, out_cls: Struct) -> str:
+        return out_cls.template()
+
+
+class Instruction(Struct, typing.Generic[S]):
     """Specific instruction for the model to use
     """
 
@@ -409,7 +651,7 @@ class Instruction(Struct, Renderable, typing.Generic[S]):
         return self.out.reads(data)
     
 
-class Param(Struct, Renderable):
+class Param(Struct):
 
     name: str
     instruction: Instruction
@@ -438,3 +680,39 @@ class Param(Struct, Renderable):
 
     def reads(self, data: str) -> S:
         return self.instruction.reads(data)
+
+# def get_variables(format_string) -> typing.List[str]:
+#     # Ensure only named variables are used
+#     if re.search(r'\{\d*\}', format_string):
+#         raise ValueError("Only named variables are allowed")
+
+#     # Extract named variables
+#     variables = re.findall(r'\{([a-zA-Z_]\w*)\}', format_string)
+    
+#     return variables
+
+
+# def get_str_variables(format_string):
+#     # This regex matches anything inside curly braces { }
+#     return re.findall(r'\{(.*?)\}', format_string)
+
+
+# class IO(Struct):
+
+#     @abstractmethod
+#     def stream_read(self, text: str) -> typing.Dict:
+#         pass
+
+#     @abstractmethod
+#     def read(self, text: str) -> typing.Dict:
+#         pass
+
+#     @abstractmethod
+#     def write(self, data: typing.Dict) -> str:
+#         pass
+
+#     @abstractmethod
+#     def template(self, out_cls: Struct) -> str:
+#         return out_cls.template()
+
+

@@ -2,6 +2,7 @@ from dachi._core import _core
 # from dachi._core import _instruct as core
 from dachi._core._core import Struct, str_formatter
 import pytest
+from pydantic import Field
 
 
 class SimpleStruct(_core.Struct):
@@ -25,6 +26,7 @@ class TestStruct(object):
 
         struct = SimpleStruct(name='x', x="2")
         template = struct.template()
+        print(template)
         assert template['x']['is_required'] is True
         assert template['x']['type'] == type('text')
 
@@ -35,10 +37,28 @@ class TestStruct(object):
         assert template['simple']['x']['is_required'] is True
         assert template['simple']['x']['type'] == type('text')
 
+    def test_to_text_converts_to_text(self):
+        struct = SimpleStruct(name='x', x="2")
+        text = struct.to_text()
+        assert "2" in text
+
+    def test_to_text_doubles_the_braces(self):
+        struct = SimpleStruct(name='x', x="2")
+        text = struct.to_text()
+        print(text)
+        assert "{{" in text
+        assert "}}" in text
+
+    def test_to_text_works_for_nested(self):
+        struct = NestedStruct(simple=SimpleStruct(name='x', x="2"))
+        text = struct.to_text()
+        assert text.count('{{') == 2
+        assert text.count("}}") == 2
+
 
 class Role(_core.Description):
 
-    duty: str
+    duty: str = Field(description='The duty of the role')
 
     def render(self) -> str:
 
@@ -206,13 +226,6 @@ class TestIsUndefined(object):
 
 
 class TestOut(object):
-
-    # def test_out_name_is_correct(self):
-
-    #     out = _core.Out(
-    #         name='Role', out_cls=SimpleStruct
-    #     )
-    #     assert out.name == 'Role'
 
     def test_out_reads_in_the_class(self):
 

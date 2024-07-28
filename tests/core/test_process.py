@@ -3,7 +3,6 @@ import pytest
 from dachi._core import _process
 
 
-
 class Append(_process.Module):
 
     def __init__(self, append: str):

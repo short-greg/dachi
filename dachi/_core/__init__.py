@@ -31,6 +31,6 @@ from ._process import (
     Set, get, set, processf, Multi, Sequential
 )
 
-from ._styles import (
+from ._io import (
     CSV, Merged
 )
