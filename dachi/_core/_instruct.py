@@ -413,3 +413,4 @@ def instructf(train: bool=True):
         else:
             return _SignatureMethod(wrapper, details, train)
     return _
+

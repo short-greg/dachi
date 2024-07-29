@@ -1,6 +1,8 @@
 # 1st party
 import typing
 import csv
+import pydantic
+
 
 # 3rd party
 from io import StringIO
@@ -69,33 +71,21 @@ class CSV(ListOut, typing.Generic[S]):
         return '\n'.join(result)
 
 
-# class KV(Out, typing.Generic[S]):
+class KV(Out, typing.Generic[S]):
 
-#     out_cls: StructList[S]
-#     delim: str = '::'
+    delim: str = '::'
     
-#     def write(self, data: StructList[S]) -> str:
-#         pass
+    def read(self, data: str) -> 'StructList[S]':
+        pass
+    
+    def stream_read(self, data: str) -> 'StructList[S]':
+        pass
 
-#     def write(self, data: str) -> typing.Dict:
-#         pass
+    def write(self, data: StructList[S]) -> StructList[S]:
+        pass
 
-#     def writes(self, data: S) -> str:
-#         pass
-
-#     def reads(self, data: str) -> S:
-#         pass
-
-#     def stream_reads(self, data: str) -> S:
-#         pass
-
-#     def loads(self, data: str) -> 'StructList[S]':
-#         pass
-
-#     def out_template(self) -> str:
-#         pass
-
-# import pydantic
+    def out_template(self) -> str:
+        pass
 
 
 # class Out(object):

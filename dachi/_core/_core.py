@@ -104,6 +104,17 @@ def model_template(model_cls: typing.Type[pydantic.BaseModel]) -> str:
             }
     return template
 
+def escape_curly_braces(value: typing.Any) -> str:
+    """Escape curly braces for dictionary-like structures."""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, typing.Dict):
+        items = ', '.join(f"'{k}': {escape_curly_braces(v)}" for k, v in value.items())
+        return f"{{{{{items}}}}}"
+    if isinstance(value, typing.List):
+        return '[{}]'.format(', '.join(escape_curly_braces(v) for v in value))
+    return str(value)
+
 
 class Struct(pydantic.BaseModel, Renderable):
 
@@ -179,21 +190,10 @@ class Struct(pydantic.BaseModel, Renderable):
         return cls(
             **json.loads(text)
         )
-    
-    def _escape_curly_braces(self, value: typing.Any) -> str:
-        """Escape curly braces for dictionary-like structures."""
-        if isinstance(value, str):
-            return value
-        if isinstance(value, typing.Dict):
-            items = ', '.join(f"'{k}': {self._escape_curly_braces(v)}" for k, v in value.items())
-            return f"{{{{{items}}}}}"
-        if isinstance(value, typing.List):
-            return '[{}]'.format(', '.join(self._escape_curly_braces(v) for v in value))
-        return str(value)
 
     def to_text(self) -> str:
         model_dict = self.model_dump()
-        escaped_str = self._escape_curly_braces(model_dict)
+        escaped_str = escape_curly_braces(model_dict)
         return escaped_str
     
     def render(self) -> str:
@@ -649,7 +649,9 @@ class Instruction(Struct, typing.Generic[S]):
                 "Out has not been specified so can't read it"
             )
         return self.out.reads(data)
-    
+
+
+
 
 class Param(Struct):
 

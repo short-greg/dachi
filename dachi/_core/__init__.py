@@ -13,7 +13,7 @@ from ._core import (
     model_template, Struct, StructList,
     is_undefined, Storable, Description, 
     render, Ref, generic_class, Out,
-    Style, Instruction, Param, 
+    Style, Instruction, Param, escape_curly_braces
 )
 
 from ._instruct import (
