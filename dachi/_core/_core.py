@@ -60,7 +60,19 @@ class _PartialFormatter(string.Formatter):
         return self.format(format_string, *args, **kwargs)
 
 
-def get_str_variables(format_string):
+def get_str_variables(format_string: str) -> typing.List[str]:
+    """Get the variables in a string to format
+
+    Args:
+        format_string (str): The string to get variables for 
+
+    Raises:
+        ValueError: If the string has both positional and named
+        variables
+
+    Returns:
+        typing.List[str]: The list of variables
+    """
     has_positional = re.search(r'\{\d*\}', format_string)
     has_named = re.search(r'\{[a-zA-Z_]\w*\}', format_string)
     
@@ -77,21 +89,19 @@ def get_str_variables(format_string):
     
     return variables
 
-    # # Ensure only named variables are used
-    # if re.search(r'\{\d*\}', format_string):
-    #     raise ValueError("Only named variables are allowed")
-
-    # # Extract named variables
-    # variables = re.findall(r'\{([a-zA-Z_]\w*)\}', format_string)
-    
-    # return variables
-
 
 str_formatter = _PartialFormatter()
 
 
 def model_template(model_cls: typing.Type[pydantic.BaseModel]) -> str:
-    
+    """Get the template for a pydantic.Model
+
+    Args:
+        model_cls (typing.Type[pydantic.BaseModel]): The model to retrieve for
+
+    Returns:
+        str: The model template string
+    """
     template = {}
     for name, field_type in get_type_hints(model_cls).items():
         
@@ -104,7 +114,8 @@ def model_template(model_cls: typing.Type[pydantic.BaseModel]) -> str:
             }
     return template
 
-def escape_curly_braces(value: typing.Any) -> str:
+
+def escape_curly_braces(value: typing.Any, render: bool=False) -> str:
     """Escape curly braces for dictionary-like structures."""
     if isinstance(value, str):
         return value
@@ -113,11 +124,21 @@ def escape_curly_braces(value: typing.Any) -> str:
         return f"{{{{{items}}}}}"
     if isinstance(value, typing.List):
         return '[{}]'.format(', '.join(escape_curly_braces(v) for v in value))
+    if render:
+        return render(value)
     return str(value)
 
 
-class Struct(pydantic.BaseModel, Renderable):
+def unescape_curly_braces(value: typing.Any) -> str:
+    """Invert the escaping of curly braces."""
+    if isinstance(value, str):
+        return value.replace('{{', '{').replace('}}', '}')
+    return value
 
+
+class Struct(pydantic.BaseModel, Renderable):
+    """Struct is used to contain data that is used
+    """
     model_config = pydantic.ConfigDict(
         validate_assignment=True,
         arbitrary_types_allowed=True
@@ -125,6 +146,11 @@ class Struct(pydantic.BaseModel, Renderable):
 
     @classmethod
     def template(cls) -> typing.Dict:
+        """Get the template for the Struct
+
+        Returns:
+            typing.Dict: The template 
+        """
         template = {}
         
         base_template = model_template(cls)
@@ -173,35 +199,78 @@ class Struct(pydantic.BaseModel, Renderable):
     
     @classmethod
     def loads(cls, data: str) -> Self:
+        """Load the struct from a string
+
+        Args:
+            data (str): The data for the struct
+
+        Returns:
+            Self: The loaded struct
+        """
         return cls(**json.loads(data))
     
     def dumps(self) -> str:
+        """Dump the struct to a string
+
+        Returns:
+            str: The string
+        """
         return self.model_dump_json()
     
     @classmethod
     def load(cls, data: typing.Dict) -> Self:
+        """Load the struct from a dictionary
+
+        Args:
+            data (typing.Dict): The dictionary containing the values
+
+        Returns:
+            Self: The result
+        """
         return cls(**data)
     
     def dump(self) -> typing.Dict:
+        """Convert the model to a dictionary
+
+        Returns:
+            typing.Dict: The model dumped
+        """
         return self.model_dump()
 
     @classmethod
     def from_text(cls, text: str) -> Self:
+        """Create the struct from text that has been
+        escaped with curly braces
+
+        Args:
+            text (str): 
+
+        Returns:
+            Self: 
+        """
         return cls(
-            **json.loads(text)
+            **json.loads(unescape_curly_braces(text))
         )
 
     def to_text(self) -> str:
+        """Convert the struct to text with escaped curly
+        braces
+
+        Returns:
+            str: The text for the model
+        """
         model_dict = self.model_dump()
         escaped_str = escape_curly_braces(model_dict)
         return escaped_str
     
     def render(self) -> str:
+        """Render the struct for display
+
+        Returns:
+            str: The text version of the struct
+        """
         return self.to_text()
 
-    
-    # def to_text(self) -> str:
-    #     return str(self.model_dump())
 
 class StructLoadException(Exception):
 
@@ -540,61 +609,6 @@ class MultiOut(Result):
             """
         return text
 
-    # @classmethod
-    # def reads(cls, data: str) -> 'MultiOut':
-
-
-    # @classmethod
-    # def stream_reads(cls, stream: typing.Iterable[str], types: typing.List[S]) -> typing.Tuple['MultiOut', int, bool]:
-    #     names = []
-    #     structs = StructList(structs=[])
-    #     lines = []
-    #     read_count = 0
-    #     ended_in_failure = False
-        
-    #     i = 0
-    #     for line in stream:
-    #         lines.append(line.strip())
-    #         if len(lines) == 2:
-    #             try:
-    #                 conn_line, struct_line = lines
-    #                 try:
-    #                     name = conn_line.split('::')[1]
-    #                     names.append(name)
-    #                 except IndexError:
-    #                     raise ValueError("Invalid format for connection line")
-
-    #                 # Create a Struct object from the struct line
-    #                 types[i].reads()
-    #                 struct = Struct.from_text(struct_line)
-    #                 structs.add_struct(struct)
-
-    #                 read_count += 1
-    #                 lines = []
-    #             except Exception as e:
-    #                 ended_in_failure = True
-    #                 break
-
-    #     instance = cls()
-    #     instance.names = names
-    #     instance.data = structs
-    #     return instance, read_count, ended_in_failure
-
-    # def writes(self) -> str:
-    #     result = ''
-    #     if self.names is None:
-    #         names = []
-    #     else:
-    #         names = self.names
-    #     if len(names) < self.data.structs:
-    #         residual = range(len(names), len(self.data.structs))
-    #         names = [*names, *residual]
-    #     for struct, name in zip(self.data.structs, names):
-    #         result = result + self.conn.format(name=name)
-    #         result = f'{result}\n{struct.render()}'
-
-    #     return result
-
 
 class JSONOut(Out):
 
@@ -717,4 +731,62 @@ class Param(Struct):
 #     def template(self, out_cls: Struct) -> str:
 #         return out_cls.template()
 
+
+
+# # Old functionality for MultiOut
+
+# @classmethod
+# def reads(cls, data: str) -> 'MultiOut':
+
+
+# @classmethod
+# def stream_reads(cls, stream: typing.Iterable[str], types: typing.List[S]) -> typing.Tuple['MultiOut', int, bool]:
+#     names = []
+#     structs = StructList(structs=[])
+#     lines = []
+#     read_count = 0
+#     ended_in_failure = False
+    
+#     i = 0
+#     for line in stream:
+#         lines.append(line.strip())
+#         if len(lines) == 2:
+#             try:
+#                 conn_line, struct_line = lines
+#                 try:
+#                     name = conn_line.split('::')[1]
+#                     names.append(name)
+#                 except IndexError:
+#                     raise ValueError("Invalid format for connection line")
+
+#                 # Create a Struct object from the struct line
+#                 types[i].reads()
+#                 struct = Struct.from_text(struct_line)
+#                 structs.add_struct(struct)
+
+#                 read_count += 1
+#                 lines = []
+#             except Exception as e:
+#                 ended_in_failure = True
+#                 break
+
+#     instance = cls()
+#     instance.names = names
+#     instance.data = structs
+#     return instance, read_count, ended_in_failure
+
+# def writes(self) -> str:
+#     result = ''
+#     if self.names is None:
+#         names = []
+#     else:
+#         names = self.names
+#     if len(names) < self.data.structs:
+#         residual = range(len(names), len(self.data.structs))
+#         names = [*names, *residual]
+#     for struct, name in zip(self.data.structs, names):
+#         result = result + self.conn.format(name=name)
+#         result = f'{result}\n{struct.render()}'
+
+#     return result
 

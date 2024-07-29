@@ -56,11 +56,11 @@ class EvaluatorBase(Description, Module):
             self.out_format()
         )
         return f"""
-        {
+        {{
             0: {base_out},
             ...
             N: {base_out}
-        }
+        }}
         """
 
     @abstractmethod
@@ -88,7 +88,7 @@ class EvaluatorBase(Description, Module):
 
         {criteria}
 
-        # 
+        # Data
         {data}
 
         Output with this format.
@@ -141,8 +141,8 @@ class Evaluator(EvaluatorBase, Module):
     def criteria(self) -> typing.Dict:
         pass
 
-    def additional(self) -> typing.Dict:
-        return {}
+    def additional(self) -> typing.List[typing.List[str]]:
+        return []
 
     def render(self) -> str:
         return escape_curly_braces(self.out_format_str())
@@ -158,12 +158,12 @@ class CompositeEvaluate(EvaluatorBase):
         
         self.evaluators = evaluators
 
-    def out_format_str(self) -> typing.Dict:
+    def out_format(self) -> typing.Dict:
         
         format = {}
         for evaluator in self.evaluators:
             format.update(
-                evaluator.out_format_str()
+                evaluator.out_format()
             )
         return format
 
@@ -214,8 +214,6 @@ class Supervised(Evaluator):
                        f'according to: {self.how}'
         }
     
-    def render(self) -> str:
-        return super().render()
 
     def forward(self, y: Data, t: Data) -> typing.Any:
         
@@ -226,18 +224,14 @@ class Supervised(Evaluator):
 
 class Quality(Evaluator):
 
-    def out_format_str(self) -> typing.Dict:
+    def out_format(self) -> typing.Dict:
         
-        return {
-            self.name: f'Evaluate the input y according to '
-                       f'this regularzation. {self.regularization}'
-        }
+        return {self.name: '<Evaluation>'}
     
     def criteria(self) -> typing.Dict:
         return {
-            self.name: {
-
-            }
+            self.name: f'Evaluate the input y according to '
+                       f'this regularzation. {self.regularization}'
         }
 
     def forward(self, y: Data, t: Data=None) -> typing.Any:
@@ -249,15 +243,23 @@ class Quality(Evaluator):
 
 class Style(Evaluator):
 
-    def render(self) -> str:
-        return super().render()
+    out_examples: typing.List[Struct]
 
-    @abstractmethod
+    def additional(self) -> typing.List[typing.List[str]]:
+        return [[
+            escape_curly_braces(example)
+            for example in self.examples
+        ]]
+
+    def out_format(self) -> typing.Dict:
+        
+        return {self.name: '<Evaluation>'}
+
     def criteria(self) -> typing.Dict:
-        pass
-
-    def additional(self) -> typing.Dict:
-        return {}
+        return {
+            self.name: f'{self.name}: how well the output matches the target'
+                       f'according to: {self.how}'
+        }
 
     def forward(self, y: Data, t: Data=None) -> typing.Any:
         
