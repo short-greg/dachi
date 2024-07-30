@@ -116,9 +116,9 @@ def model_template(model_cls: typing.Type[pydantic.BaseModel]) -> str:
 def escape_curly_braces(value: typing.Any, render: bool=False) -> str:
     """Escape curly braces for dictionary-like structures."""
     if isinstance(value, str):
-        return value
+        return f'"{value}"'
     if isinstance(value, typing.Dict):
-        items = ', '.join(f"'{k}': {escape_curly_braces(v)}" for k, v in value.items())
+        items = ', '.join(f'"{k}": {escape_curly_braces(v)}' for k, v in value.items())
         return f"{{{{{items}}}}}"
     if isinstance(value, typing.List):
         return '[{}]'.format(', '.join(escape_curly_braces(v) for v in value))
@@ -218,7 +218,6 @@ class Struct(pydantic.BaseModel, Renderable):
         if escape:  
             return escape_curly_braces(self.to_dict())
         return self.model_dump_json()
-        
     
     @classmethod
     def from_dict(cls, data: typing.Dict) -> Self:
@@ -483,6 +482,7 @@ class Result(Struct, ABC):
 
 class Out(Result):
 
+    name: str
     _out_cls: typing.Type[S] = pydantic.PrivateAttr()
 
     def __init__(self, out_cls: S, **data):
@@ -490,16 +490,16 @@ class Out(Result):
         self._out_cls = out_cls
 
     def to_text(self, data: S) -> str:
-        return data.to_text()
+        return data.to_text(True)
 
     def write(self, data: S) -> str:
-        return data.to_text()
+        return data.to_text(True)
 
     def read(self, data: str) -> S:
-        return self._out_cls.from_text(data)
+        return self._out_cls.from_text(data, True)
 
     def stream_read(self, data: str) -> S:
-        return self._out_cls.from_text(data)
+        return self._out_cls.from_text(data, True)
 
     def out_template(self) -> str:
         return self._out_cls.template()
@@ -509,6 +509,7 @@ class ListOut(Result, typing.Generic[S]):
     """A list of outputs
     """
 
+    name: str
     _out_cls: typing.Type[S] = pydantic.PrivateAttr()
 
     def __init__(self, out_cls: S, **data):
@@ -542,7 +543,6 @@ class ListOut(Result, typing.Generic[S]):
 
         d = json.loads(data)
         structs = []
-        print(d)
         for cur in d['structs']:
             structs.append(self._out_cls.from_dict(cur))
 
@@ -557,25 +557,24 @@ class MultiOut(Result):
     """
     
     outs: typing.List[Out]
-    names: typing.List[str]
     conn: str = '::OUT::{name}::\n'
     signal: str = '\u241E'
     
-    @pydantic.field_validator('names', 'outs', mode='before')
-    def validate_names_types_data(cls, values):
-        names = values.get('names', [])
-        outs = values.get('outs', [])
+    # @pydantic.field_validator('outs', mode='before')
+    # def validate_names_types_data(cls, values):
+    #     outs = values.get('outs', [])
         
-        if len(names) != len(outs):
-            raise ValueError("The number of names must match the number of types")
+    #     if len(names) != len(outs):
+    #         raise ValueError("The number of names must match the number of types")
 
-        return values
+    #     return values
 
     def write(self, data: typing.List[Struct]) -> str:
 
         result = ''
-        for struct, name in zip(data, self.names):
-            result = result + '\n' + self.signal + self.conn.format(name=name)
+        for struct, out in zip(data, self.outs):
+            print(struct)
+            result = result + '\n' + self.signal + self.conn.format(name=out.name)
             result = f'{result}\n{struct.render()}'
 
         return result
@@ -585,23 +584,28 @@ class MultiOut(Result):
         structs = []
 
         d = data
-        for t, name in zip(self.outs, self.names):
+        for out in self.outs:
             from_loc = d.find('\u241E')
             to_loc = d[from_loc + 1:].find('\u241E')
-            cur = self.conn.format(name=name)
-            data_loc = from_loc + len(cur)
-            data_str = d[data_loc:to_loc]
-            structs.append(t.read(data_str))
-            d = d[to_loc:]
+            cur = self.conn.format(name=out.name)
+            data_loc = from_loc + len(cur) + 1
+            if to_loc != -1:
+                data_end_loc = from_loc + 1 + to_loc
+            else:
+                data_end_loc = None
+
+            data_str = d[data_loc:data_end_loc]
+            structs.append(out.read(data_str))
+            d = d[data_end_loc:]
 
         return structs
 
     def to_text(self, data: typing.List[S]) -> str:
 
         text = ""
-        for data_i, out, name in zip(data, self.outs, self.names):
-            cur = out.render(data_i)
-            cur_conn = self.conn.format(name)
+        for data_i, out in zip(data, self.outs):
+            cur = data_i.render()
+            cur_conn = self.conn.format(out.name)
             text += f"""
             {self.signal}{cur_conn}
             {cur}
@@ -612,26 +616,33 @@ class MultiOut(Result):
         structs = []
 
         d = data
-        for i, (t, name) in enumerate(zip(self.outs, self.names)):
+        for i, t in enumerate(self.outs):
             from_loc = d.find('\u241E')
             to_loc = d[from_loc + 1:].find('\u241E')
-            cur = self.conn.format(name=name)
-            data_loc = from_loc + len(cur)
-            data_str = d[data_loc:to_loc]
+            cur = self.conn.format(name=t.name)
+            data_loc = from_loc + len(cur) + 1
+
+            if to_loc != -1:
+                data_end_loc = from_loc + 1 + to_loc
+            else:
+                data_end_loc = None
+
+            data_str = d[data_loc:data_end_loc]
             try: 
+                print(data_str)
                 structs.append(t.read(data_str))
             except StructLoadException as e:
                 return structs, i
-            d = d[to_loc:]
+            d = d[data_end_loc:]
 
         return structs, None
     
     def out_template(self) -> str:
 
         text = ""
-        for out, name in zip(self.outs, self.names):
+        for out in self.outs:
             cur = out.out_template()
-            cur_conn = self.conn.format(name)
+            cur_conn = self.conn.format(out.name)
             text += f"""
             {self.signal}{cur_conn}
             {cur}
