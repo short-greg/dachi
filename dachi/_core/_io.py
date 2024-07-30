@@ -17,9 +17,8 @@ from ._core import (
 S = typing.TypeVar('S', bound=Struct)
 
 
-class CSV(ListOut, typing.Generic[S]):
+class CSV(ListOut):
 
-    out_cls: StructList[S]
     indexed: bool = True
     delim: str = ','
 
@@ -71,7 +70,7 @@ class CSV(ListOut, typing.Generic[S]):
         return '\n'.join(result)
 
 
-class KV(Out, typing.Generic[S]):
+class KV(Out):
 
     delim: str = '::'
     

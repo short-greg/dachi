@@ -24,8 +24,6 @@ UNDEFINED = _Types.UNDEFINED
 WAITING = _Types.WAITING
 
 
-
-# S = typing.TypeVar('S', bound=Struct)
 S = typing.TypeVar('S', bound='Struct')
 X = typing.Union[str, 'Description', 'Instruction']
 
@@ -198,7 +196,7 @@ class Struct(pydantic.BaseModel, Renderable):
         return value
     
     @classmethod
-    def loads(cls, data: str) -> Self:
+    def from_text(cls, data: str, escaped: bool=False) -> Self:
         """Load the struct from a string
 
         Args:
@@ -207,18 +205,23 @@ class Struct(pydantic.BaseModel, Renderable):
         Returns:
             Self: The loaded struct
         """
+        if escaped:
+            data = unescape_curly_braces(data)
         return cls(**json.loads(data))
     
-    def dumps(self) -> str:
+    def to_text(self, escape: bool=False) -> str:
         """Dump the struct to a string
 
         Returns:
             str: The string
         """
+        if escape:  
+            return escape_curly_braces(self.to_dict())
         return self.model_dump_json()
+        
     
     @classmethod
-    def load(cls, data: typing.Dict) -> Self:
+    def from_dict(cls, data: typing.Dict) -> Self:
         """Load the struct from a dictionary
 
         Args:
@@ -229,39 +232,13 @@ class Struct(pydantic.BaseModel, Renderable):
         """
         return cls(**data)
     
-    def dump(self) -> typing.Dict:
+    def to_dict(self) -> typing.Dict:
         """Convert the model to a dictionary
 
         Returns:
             typing.Dict: The model dumped
         """
         return self.model_dump()
-
-    @classmethod
-    def from_text(cls, text: str) -> Self:
-        """Create the struct from text that has been
-        escaped with curly braces
-
-        Args:
-            text (str): 
-
-        Returns:
-            Self: 
-        """
-        return cls(
-            **json.loads(unescape_curly_braces(text))
-        )
-
-    def to_text(self) -> str:
-        """Convert the struct to text with escaped curly
-        braces
-
-        Returns:
-            str: The text for the model
-        """
-        model_dict = self.model_dump()
-        escaped_str = escape_curly_braces(model_dict)
-        return escaped_str
     
     def render(self) -> str:
         """Render the struct for display
@@ -269,7 +246,7 @@ class Struct(pydantic.BaseModel, Renderable):
         Returns:
             str: The text version of the struct
         """
-        return self.to_text()
+        return self.to_text(True)
 
 
 class StructLoadException(Exception):
@@ -286,6 +263,7 @@ def is_nested_model(pydantic_model_cls: typing.Type[Struct]) -> bool:
             return True
     return False
 
+
 class StructList(Struct, typing.Generic[S]):
 
     structs: typing.List[S]
@@ -299,11 +277,18 @@ class StructList(Struct, typing.Generic[S]):
         Returns:
             typing.Any: 
         """
-        
         return self.structs[key]
     
-    def __setitem__(self, key, value) -> typing.Any:
-        
+    def __setitem__(self, key: typing.Optional[int], value: S) -> typing.Any:
+        """Set a value in the 
+
+        Args:
+            key (str): The key for the value to set
+            value : The value to set
+
+        Returns:
+            S: the value that was set
+        """
         if key is None:
             self.structs.append(value)
         else:
@@ -311,8 +296,15 @@ class StructList(Struct, typing.Generic[S]):
         return value
     
     @classmethod
-    def load_records(cls, records) -> 'StructList[S]':
+    def load_records(cls, records: typing.List[typing.Dict]) -> 'StructList[S]':
+        """Load the struct list from records
 
+        Args:
+            records (typing.List[typing.Dict]): The list of records to load
+
+        Returns:
+            StructList[S]: The list of structs
+        """
         structs = []
         struct_cls: typing.Type[Struct] = generic_class(S)
         for record in records:
@@ -336,7 +328,6 @@ def is_undefined(val) -> bool:
 class Storable(ABC):
     """Object to serialize objects to make them easy to recover
     """
-
     def __init__(self):
         """Create the storable object
         """
@@ -395,7 +386,7 @@ def is_primitive(obj):
     return type(obj) in _primitives
 
 
-def render(x: typing.Union[X, typing.Iterable[X]]) -> typing.Union[str, typing.List[str]]:
+def render(x: X) -> typing.Union[str, typing.List[str]]:
     """Convert an input to text. Will use the text for an instruction,
     the render() method for a description and convert any other value to
     text with str()
@@ -414,13 +405,7 @@ def render(x: typing.Union[X, typing.Iterable[X]]) -> typing.Union[str, typing.L
     raise ValueError(
         f'Cannot render value of type {type(x)}'
     )
-    # if isinstance(x, Instruction):
-    #     return x.text
-    # if isinstance(x, Description):
-    #     return x.render()
-    # if isinstance(x, Ref):
-    #     return x.render()
-    
+
 def render_multi(xs: typing.Iterable[X]) -> typing.List[str]:
     """Convert an input to text. Will use the text for an instruction,
     the render() method for a description and convert any other value to
@@ -447,19 +432,33 @@ class Ref(Struct):
 
     @property
     def name(self) -> str:
+        """Get the name of the ref
+
+        Returns:
+            str: The name of the ref
+        """
         return self.desc.name
 
     def render(self) -> str:
+        """Generate the text rendering of the ref
+
+        Returns:
+            str: The name for the ref
+        """
         return self.desc.name
 
-    def update(self, **kwargs) -> Self:
-        # doesn't do anything since
-        # it is a reference
-        return self
 
+def generic_class(t: typing.TypeVar, idx: int=0) -> typing.Type:
+    """Gets the generic type for a class assuming that it only has 
+    one.
 
-def generic_class(t: typing.TypeVar, idx: int=0):
+    Args:
+        t (typing.TypeVar): The class to get the generic type for
+        idx (int, optional): . Defaults to 0.
 
+    Returns:
+        typing.Type: the type specified by the generic class
+    """
     return t.__orig_class__.__args__[idx]
 
 
@@ -474,7 +473,7 @@ class Result(Struct, ABC):
         pass
 
     @abstractmethod
-    def stream_from_text(self, data: str) -> S:
+    def stream_read(self, data: str) -> S:
         pass
 
     @abstractmethod
@@ -482,51 +481,74 @@ class Result(Struct, ABC):
         pass
 
 
-class Out(Result, typing.Generic[S]):
+class Out(Result):
 
-    out_cls: typing.Type[S]
+    _out_cls: typing.Type[S] = pydantic.PrivateAttr()
+
+    def __init__(self, out_cls: S, **data):
+        super().__init__(**data)
+        self._out_cls = out_cls
 
     def to_text(self, data: S) -> str:
         return data.to_text()
 
     def write(self, data: S) -> str:
-        return data.dumps()
+        return data.to_text()
 
     def read(self, data: str) -> S:
-        return self.out_cls.loads(data)
+        return self._out_cls.from_text(data)
 
     def stream_read(self, data: str) -> S:
-        return self.out_cls.loads(data)
+        return self._out_cls.from_text(data)
 
     def out_template(self) -> str:
-        return self.out_cls.template()
+        return self._out_cls.template()
 
 
-class ListOut(Result, typing.Generic[S]):
+class ListOut(Result):
+    """A list of outputs
+    """
 
-    out_cls: typing.Type[S]
+    _out_cls: typing.Type[S] = pydantic.PrivateAttr()
+
+    def __init__(self, out_cls: S, **data):
+        super().__init__(**data)
+        self._out_cls = out_cls
 
     def write(self, data: StructList[S]) -> str:
+        """
+
+        Args:
+            data (StructList[S]): _description_
+
+        Returns:
+            str: the data written
+        """
         return json.dumps(data)
 
     def read(self, data: str) -> StructList[S]:
+        out_cls = generic_class(S)
         return StructList.load_cls(
-            self.out_cls, data
+            out_cls, data
         )
 
     def to_text(self, data: StructList[S]) -> str:
         return data.to_text()
 
     def stream_read(self, data: str) -> S:
+        out_cls = generic_class(S)
         return StructList.load_cls(
-            self.out_cls, data
+            out_cls, data
         )
     
     def out_template(self) -> str:
-        return self.out_cls.template()
+        out_cls = generic_class(S)
+        return out_cls.template()
 
 
 class MultiOut(Result):
+    """Concatenates multiple outputs Out into one output
+    """
     
     outs: typing.List[Out]
     names: typing.List[str]
@@ -544,6 +566,7 @@ class MultiOut(Result):
         return values
 
     def write(self, data: typing.List[Struct]) -> str:
+
         result = ''
         for struct, name in zip(data, self.names):
             result = result + '\n' + self.signal + self.conn.format(name=name)
@@ -611,10 +634,19 @@ class MultiOut(Result):
 
 
 class JSONOut(Out):
-
+    """
+    """
     def stream_read(self, text: str) -> typing.Tuple[
         typing.Optional[typing.Dict], bool
     ]:
+        """
+
+        Args:
+            text (str): 
+
+        Returns:
+            typing.Tuple[ typing.Optional[typing.Dict], bool ]: 
+        """
         try: 
             result = json.loads(text)
             return result, True
@@ -626,7 +658,7 @@ class JSONOut(Out):
         return result
 
     def write(self, data: Struct) -> str:
-        return data.dumps()
+        return data.to_text()
     
     def template(self, out_cls: Struct) -> str:
         return out_cls.template()
@@ -635,7 +667,6 @@ class JSONOut(Out):
 class Instruction(Struct, typing.Generic[S]):
     """Specific instruction for the model to use
     """
-
     text: str
     out: typing.Optional[Out] = None
 
@@ -662,13 +693,12 @@ class Instruction(Struct, typing.Generic[S]):
             raise RuntimeError(
                 "Out has not been specified so can't read it"
             )
-        return self.out.reads(data)
-
-
+        return self.out.read(data)
 
 
 class Param(Struct):
-
+    """Param is used to wrap an instruction
+    """
     name: str
     instruction: Instruction
     training: bool=False
@@ -688,7 +718,11 @@ class Param(Struct):
             self.instruction.text = text
 
     def render(self) -> str:
+        """
 
+        Returns:
+            str: 
+        """
         return self.instruction.render()
 
     def read(self, data: typing.Dict) -> S:
@@ -696,41 +730,6 @@ class Param(Struct):
 
     def reads(self, data: str) -> S:
         return self.instruction.reads(data)
-
-# def get_variables(format_string) -> typing.List[str]:
-#     # Ensure only named variables are used
-#     if re.search(r'\{\d*\}', format_string):
-#         raise ValueError("Only named variables are allowed")
-
-#     # Extract named variables
-#     variables = re.findall(r'\{([a-zA-Z_]\w*)\}', format_string)
-    
-#     return variables
-
-
-# def get_str_variables(format_string):
-#     # This regex matches anything inside curly braces { }
-#     return re.findall(r'\{(.*?)\}', format_string)
-
-
-# class IO(Struct):
-
-#     @abstractmethod
-#     def stream_read(self, text: str) -> typing.Dict:
-#         pass
-
-#     @abstractmethod
-#     def read(self, text: str) -> typing.Dict:
-#         pass
-
-#     @abstractmethod
-#     def write(self, data: typing.Dict) -> str:
-#         pass
-
-#     @abstractmethod
-#     def template(self, out_cls: Struct) -> str:
-#         return out_cls.template()
-
 
 
 # # Old functionality for MultiOut
