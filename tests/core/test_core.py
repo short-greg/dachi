@@ -222,27 +222,6 @@ class TestIsUndefined(object):
         )
 
 
-# class TestListOut(object):
-
-#     def test_out_reads_in_the_class(self):
-
-#         out = _core.ListOut(
-#             out_cls=SimpleStruct
-#         )
-
-#         simple = SimpleStruct(x='2')
-#         assert out.read(simple.to_dict()).x == '2'
-
-#     def test_out_reads_in_the_class_with_str(self):
-
-#         out = _core.Out(
-#             out_cls=SimpleStruct
-#         )
-
-#         simple = SimpleStruct(x='2')
-#         assert out.reads(simple.to_text()).x == '2'
-
-
 class TestInstruction(object):
 
     def test_instruction_renders_with_text(self):
@@ -260,40 +239,67 @@ class TestInstruction(object):
             )
         )
         simple = SimpleStruct(x='2')
-        assert instruction.reads(simple.to_text()).x == '2'
+        assert instruction.read_out(simple.to_text()).x == '2'
 
 
-# class TestParam(object):
+class TestParam(object):
 
-#     def test_get_x_from_param(self):
+    def test_get_x_from_param(self):
 
-#         instruction = _core.Param(
-#             name='X', instruction='x'
-#         )
-#         assert instruction.render() == 'x'
+        instruction = _core.Param(
+            name='X', instruction='x'
+        )
+        assert instruction.render() == 'x'
 
-#     def test_param_with_instruction_passed_in(self):
+    def test_param_with_instruction_passed_in(self):
 
-#         instruction = _core.Instruction(
-#             text='x', out=_core.Out(
-#                 out_cls=SimpleStruct
-#             )
-#         )
+        instruction = _core.Instruction(
+            text='x', out=_core.Out(
+                out_cls=SimpleStruct
+            )
+        )
 
-#         param = _core.Param(
-#             name='X', instruction=instruction
-#         )
-#         assert param.render() == 'x'
+        param = _core.Param(
+            name='X', instruction=instruction
+        )
+        assert param.render() == 'x'
 
-#     def test_read_reads_the_object(self):
+    def test_read_reads_the_object(self):
 
-#         instruction = _core.Instruction(
-#             text='x', out=_core.Out(
-#                 out_cls=SimpleStruct
-#             )
-#         )
-#         param = _core.Param(
-#             name='X', instruction=instruction
-#         )
-#         simple = SimpleStruct(x='2')
-#         assert param.reads(simple.to_text()).x == '2'
+        instruction = _core.Instruction(
+            text='x', out=_core.Out(
+                out_cls=SimpleStruct
+            )
+        )
+        param = _core.Param(
+            name='X', instruction=instruction
+        )
+        simple = SimpleStruct(x='2')
+        assert param.reads(simple.to_text()).x == '2'
+
+
+class TestListOut(object):
+
+    def test_out_reads_in_the_class(self):
+
+        struct_list = _core.StructList(
+            structs=[
+                SimpleStruct(x='2'),
+                SimpleStruct(x='3')
+            ]
+        )
+
+        out = _core.ListOut(
+            out_cls=SimpleStruct
+        )
+
+        assert out.read(struct_list.to_text())[0].x == '2'
+
+    def test_out_reads_in_the_class_with_str(self):
+
+        out = _core.Out(
+            out_cls=SimpleStruct
+        )
+
+        simple = SimpleStruct(x='2')
+        assert out.stream_read(simple.to_text()).x == '2'

@@ -505,7 +505,7 @@ class Out(Result):
         return self._out_cls.template()
 
 
-class ListOut(Result):
+class ListOut(Result, typing.Generic[S]):
     """A list of outputs
     """
 
@@ -527,23 +527,29 @@ class ListOut(Result):
         return json.dumps(data)
 
     def read(self, data: str) -> StructList[S]:
-        out_cls = generic_class(S)
-        return StructList.load_cls(
-            out_cls, data
-        )
+        print(data)
+        d = json.loads(data)
+        structs = []
+        for cur in d['structs']:
+            structs.append(self._out_cls.from_dict(cur))
+
+        return StructList(structs=structs)
 
     def to_text(self, data: StructList[S]) -> str:
         return data.to_text()
 
     def stream_read(self, data: str) -> S:
-        out_cls = generic_class(S)
-        return StructList.load_cls(
-            out_cls, data
-        )
+
+        d = json.loads(data)
+        structs = []
+        print(d)
+        for cur in d['structs']:
+            structs.append(self._out_cls.from_dict(cur))
+
+        return StructList(structs=structs)
     
     def out_template(self) -> str:
-        out_cls = generic_class(S)
-        return out_cls.template()
+        return self._out_cls.template()
 
 
 class MultiOut(Result):
@@ -681,14 +687,7 @@ class Instruction(Struct, typing.Generic[S]):
     def render(self) -> str:
         return self.text
 
-    def read(self, data: typing.Dict) -> S:
-        if self.out is None:
-            raise RuntimeError(
-                "Out has not been specified so can't read it"
-            )
-        return self.out.read(data)
-
-    def reads(self, data: str) -> S:
+    def read_out(self, data: str) -> S:
         if self.out is None:
             raise RuntimeError(
                 "Out has not been specified so can't read it"
@@ -729,7 +728,7 @@ class Param(Struct):
         return self.instruction.read(data)
 
     def reads(self, data: str) -> S:
-        return self.instruction.reads(data)
+        return self.instruction.read_out(data)
 
 
 # # Old functionality for MultiOut
