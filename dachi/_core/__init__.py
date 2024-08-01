@@ -16,7 +16,7 @@ from ._core import (
     MultiOut, render_multi, Renderable,
     Instruction, Param, escape_curly_braces,
     unescape_curly_braces, UNDEFINED, WAITING,
-    ListOut
+    ListOut, Data
 )
 
 from ._instruct import (

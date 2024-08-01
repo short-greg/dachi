@@ -91,6 +91,37 @@ def get_str_variables(format_string: str) -> typing.List[str]:
 str_formatter = _PartialFormatter()
 
 
+
+# from functools import singledispatch
+# import typing
+
+# @singledispatch
+# def add_quotes(data: typing.Any) -> typing.Any:
+#     """Generic function that adds quotes to string variables."""
+#     return data
+
+# @add_quotes.register
+# def _(data: str) -> str:
+
+#     return f'"{data}"'
+
+# @add_quotes.register
+# def _(data: dict) -> typing.Dict:
+#     result = {}
+#     for key, value in data.items():
+#         result[add_quotes(key)] = add_quotes(value)
+#     return result
+
+
+# @add_quotes.register
+# def _(data: list) -> typing.List:
+
+#     result = []
+#     for data_i in data:
+#         result.append(add_quotes(data_i))
+#     return result
+
+
 def model_template(model_cls: typing.Type[pydantic.BaseModel]) -> str:
     """Get the template for a pydantic.Model
 
@@ -248,6 +279,8 @@ class Struct(pydantic.BaseModel, Renderable):
         return self.to_text(True)
 
 
+Data = typing.Union[Struct, typing.List[Struct]]
+
 class StructLoadException(Exception):
 
     def __init__(self, message="Struct loading failed.", errors=None):
@@ -369,9 +402,9 @@ class Description(Struct, Renderable, ABC):
     """
     name: str = pydantic.Field(description='The name of the description.')
 
-    @abstractmethod
-    def update(self, **kwargs) -> Self:
-        pass
+    # @abstractmethod
+    # def update(self, **kwargs) -> Self:
+    #     pass
 
     @abstractmethod
     def render(self) -> str:
@@ -559,15 +592,6 @@ class MultiOut(Result):
     outs: typing.List[Out]
     conn: str = '::OUT::{name}::\n'
     signal: str = '\u241E'
-    
-    # @pydantic.field_validator('outs', mode='before')
-    # def validate_names_types_data(cls, values):
-    #     outs = values.get('outs', [])
-        
-    #     if len(names) != len(outs):
-    #         raise ValueError("The number of names must match the number of types")
-
-    #     return values
 
     def write(self, data: typing.List[Struct]) -> str:
 

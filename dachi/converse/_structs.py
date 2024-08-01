@@ -1,9 +1,6 @@
 # 1st party
 import typing
-from abc import abstractmethod, ABC
 from .._core import StructList
-from .._core._process import UNDEFINED
-
 from .._core import Struct, StructModule
 
 T = typing.TypeVar('T', bound=Struct)

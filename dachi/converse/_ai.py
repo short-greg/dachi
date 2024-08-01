@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Any, Coroutine
+from typing import Any
 
 from .._core._process import Module
 from ._structs import Message, MessageList
@@ -12,16 +12,16 @@ class PromptModel(Module, ABC):
         pass
 
     @abstractmethod
-    def async_forward(self, *args, **kwargs) -> Coroutine[Any, Any, Any]:
-        return super().async_forward(*args, **kwargs)
+    def async_forward(self, message: Message) -> Message: # Coroutine[Any, Any, Any]:
+        return self.forward(message)
 
 
 class ChatModel(Module):
     
     @abstractmethod
-    def forward(self, message: MessageList) -> Message:
+    def forward(self, messages: MessageList) -> Message:
         pass
 
     @abstractmethod
-    async def async_forward(self, *args, **kwargs) -> Any:
-        return await super().async_forward(*args, **kwargs)
+    async def async_forward(self, messages: MessageList) -> Any:
+        return self.forward(messages)

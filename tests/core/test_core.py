@@ -386,7 +386,6 @@ class TestMultiOut(object):
         structs = out.read(text)
         assert structs[0].x == struct_list[0].x
 
-
     def test_out_stream_read_in_the_class(self):
 
         struct_list = [

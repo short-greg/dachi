@@ -620,7 +620,6 @@ class Module(ABC):
         return T(
             UNDEFINED, ModSrc(self, args)
         )
-    
 
     def parameters(self, recurse: bool=True) -> typing.Iterator[Param]:
         
