@@ -15,7 +15,7 @@ from .._core import (
 
 class Evaluation(Struct):
 
-    data: typing.List[
+    values: typing.List[
         typing.Dict[str, typing.Any]
     ]
 
@@ -33,7 +33,7 @@ class Criterion(Struct, ABC):
         pass
 
 
-class Textual(Criterion):
+class TextualCriterion(Criterion):
 
     desc: str
 
@@ -53,7 +53,6 @@ class Textual(Criterion):
 class CriterionViewBase(Module, ABC):
     """Module responsible for rendering the criteria
     """
-
     def __init__(self, criterion: Criterion):
         self.criterion = criterion
 
@@ -69,8 +68,8 @@ class HeaderView(CriterionViewBase):
     def criteria_str(self) -> typing.Dict[str, str]:
         
         criteria = []
-        for name, criterion in self.criteria().items():
-            criteria.add(f"""
+        for name, criterion in self.criterion.criteria().items():
+            criteria.append(f"""
             # Criterion: {name}
 
             {criterion}
@@ -79,7 +78,7 @@ class HeaderView(CriterionViewBase):
 
     def out_format_str(self) -> typing.Dict:
 
-        out_format_dict = self.out_format()
+        out_format_dict = self.criterion.out_format()
 
         out_format = escape_curly_braces({
             name: escape_curly_braces(criterion)
@@ -120,7 +119,7 @@ class HeaderView(CriterionViewBase):
         Output: y
         Target: t
 
-        # {self.name}
+        # {self.criterion.name}
 
         {self.criteria_str()}
 

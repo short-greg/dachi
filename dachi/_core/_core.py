@@ -286,6 +286,7 @@ class Struct(pydantic.BaseModel, Renderable):
 
 Data = typing.Union[Struct, typing.List[Struct]]
 
+
 class StructLoadException(Exception):
 
     def __init__(self, message="Struct loading failed.", errors=None):
