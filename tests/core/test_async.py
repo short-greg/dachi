@@ -1,5 +1,5 @@
 from typing import Any
-from dachi.converse import _convert as core
+from dachi._core import _process as core
 from dachi._core import _async
 
 

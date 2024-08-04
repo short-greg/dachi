@@ -44,7 +44,7 @@ class MessageList(StructList[Message]):
 
     @property
     def messages(self) -> typing.List[Message]:
-        return self.messages
+        return self.structs
 
     def filter(self, roles: typing.Iterable[str]) -> 'MessageList[Message]':
 

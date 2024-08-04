@@ -36,6 +36,7 @@ class Renderable(ABC):
 
 
 class _PartialFormatter(string.Formatter):
+
     def __init__(self):
         super().__init__()
 
@@ -43,6 +44,10 @@ class _PartialFormatter(string.Formatter):
         if args and kwargs:
             raise ValueError("Cannot mix positional and keyword arguments")
 
+        if kwargs:
+            difference = set(kwargs.keys()).difference(set(get_str_variables(format_string)))
+            if difference:
+                raise ValueError(f'Variables specified that are not in the string {difference}')
         self.args = args
         self.kwargs = kwargs
         return super().format(format_string)
@@ -513,7 +518,7 @@ class Result(Struct, ABC):
         pass
 
 
-class Out(Result):
+class Out(Result, typing.Generic[S]):
 
     name: str
     _out_cls: typing.Type[S] = pydantic.PrivateAttr()

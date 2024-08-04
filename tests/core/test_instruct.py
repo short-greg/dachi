@@ -210,7 +210,6 @@ class TestInstructF:
 
         assert 'x: 2' in result.text
 
-
     def test_inserts_into_docstring_with_method(self):
 
         class X(object):
