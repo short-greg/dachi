@@ -2,7 +2,7 @@
 from abc import abstractmethod, ABC
 import asyncio
 import typing
-from typing_extensions import Self
+from typing import Self
 from ._process import processf
 
 # 3rd party
@@ -11,7 +11,7 @@ import functools
 import numpy as np
 
 # local
-from ._process import Module, Args, T, Src, ParallelModule
+from ._process import Module, Args, ParallelModule
 
 
 class AsyncModule(ParallelModule):
@@ -89,10 +89,11 @@ class Batch(object):
         start = 0
         upto = self.n_samples
         for _ in range(n_iterations):
-            cur_data = self.data[start:upto]
+            cur_data = self.data[order[start:upto]]
             yield cur_data
             start = upto
             upto += self.n_samples
+
 
 @processf
 def batchf(data: typing.Iterable, n_samples: int, shuffle: bool, drop_last: bool=True):

@@ -4,7 +4,7 @@ import typing
 import time
 from typing import Any
 import asyncio
-from typing_extensions import Self
+from typing import Self
 from functools import wraps
 from enum import Enum
 from dataclasses import dataclass

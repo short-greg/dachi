@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Any
 
-from .._core._process import Module
+from ._convert import Module
 from ._structs import Message, MessageList
 
 

@@ -2,43 +2,42 @@ from ._structs import Message
 from .._core import Module, processf
 import pandas as pd
 import json
-import io
-import string
 
 
 class CSV2DF(Module):
 
-    def __init__(self, delim: str=','):
+    def __init__(self, delim: str=',', key: str='text'):
 
         self.delim = delim
+        self.key = key
 
     def forward(self, message: Message) -> pd.DataFrame:
         
         return pd.read_csv(
-            message.content, sep=self.delim
+            message.content[self.key], sep=self.delim
         )
 
 
 @processf
-def json_to_dict(message: Message, text_field: str='text') -> pd.DataFrame:
+def json_to_dict(message: Message, key: str='text') -> pd.DataFrame:
     
     return json.loads(
-        message.content[text_field]
+        message.content[key]
     )
 
 
 @processf
-def csv_to_df(message: Message, sep: str=',', text_field: str='text') -> pd.DataFrame:
+def csv_to_df(message: Message, sep: str=',', key: str='text') -> pd.DataFrame:
 
     return pd.read_csv(
-        message.content[text_field], sep=sep
+        message.content[key], sep=sep
     )
 
 
 @processf
-def kv_to_dict(message: Message, sep: str='::', text_field: str='text') -> pd.DataFrame:
+def kv_to_dict(message: Message, sep: str='::', key: str='text') -> pd.DataFrame:
 
-    text = message.content[text_field]
+    text = message.content[key]
     lines = text.splitlines()
     result = {}
     for line in lines:
