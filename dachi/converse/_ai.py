@@ -25,3 +25,8 @@ class ChatModel(Module):
     @abstractmethod
     async def async_forward(self, messages: MessageList) -> Any:
         return self.forward(messages)
+
+
+class Prompt(Module):
+
+    pass

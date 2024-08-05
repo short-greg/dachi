@@ -3,7 +3,7 @@ import typing
 
 # 3rd party
 import networkx as nx
-from ._process import T, Module
+from .._core._process import T, Module
 
 
 class Network(object):

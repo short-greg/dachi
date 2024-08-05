@@ -4,9 +4,6 @@ from ._async import (
     batchf, reduce,
     map, async_map
 )
-from ._network import (
-    Network, TAdapter
-)
 
 from ._core import (
     str_formatter, get_str_variables,
@@ -27,10 +24,10 @@ from ._instruct import (
 )
 
 from ._process import (
-    Src, StreamSrc, Partial, T, Var, IdxSrc,
-    Args, ModSrc, Streamer, WaitSrc, 
-    wait, stream, Module, StreamableModule,
-    ParallelModule, ParallelSrc, StructModule, Get,
+    Partial, 
+    Args, Streamer,
+    Module, StreamableModule,
+    ParallelModule, StructModule, Get,
     Set, get, set, processf, Multi, Sequential
 )
 

@@ -1,7 +1,7 @@
 # 1st party
 import typing
 from typing import get_type_hints
-from typing_extensions import Self
+from typing import Self
 from abc import ABC, abstractmethod
 from uuid import uuid4
 from enum import Enum
@@ -94,37 +94,6 @@ def get_str_variables(format_string: str) -> typing.List[str]:
 
 
 str_formatter = _PartialFormatter()
-
-
-
-# from functools import singledispatch
-# import typing
-
-# @singledispatch
-# def add_quotes(data: typing.Any) -> typing.Any:
-#     """Generic function that adds quotes to string variables."""
-#     return data
-
-# @add_quotes.register
-# def _(data: str) -> str:
-
-#     return f'"{data}"'
-
-# @add_quotes.register
-# def _(data: dict) -> typing.Dict:
-#     result = {}
-#     for key, value in data.items():
-#         result[add_quotes(key)] = add_quotes(value)
-#     return result
-
-
-# @add_quotes.register
-# def _(data: list) -> typing.List:
-
-#     result = []
-#     for data_i in data:
-#         result.append(add_quotes(data_i))
-#     return result
 
 
 def model_template(model_cls: typing.Type[pydantic.BaseModel]) -> str:
@@ -770,6 +739,38 @@ class Param(Struct):
 
     def reads(self, data: str) -> S:
         return self.instruction.read_out(data)
+
+
+
+
+# from functools import singledispatch
+# import typing
+
+# @singledispatch
+# def add_quotes(data: typing.Any) -> typing.Any:
+#     """Generic function that adds quotes to string variables."""
+#     return data
+
+# @add_quotes.register
+# def _(data: str) -> str:
+
+#     return f'"{data}"'
+
+# @add_quotes.register
+# def _(data: dict) -> typing.Dict:
+#     result = {}
+#     for key, value in data.items():
+#         result[add_quotes(key)] = add_quotes(value)
+#     return result
+
+
+# @add_quotes.register
+# def _(data: list) -> typing.List:
+
+#     result = []
+#     for data_i in data:
+#         result.append(add_quotes(data_i))
+#     return result
 
 
 # # Old functionality for MultiOut
