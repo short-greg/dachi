@@ -38,6 +38,21 @@ class Message(StructModule):
         )
 
 
+class TextMessage(Message):
+
+    def __init__(self, role: str, text: str) -> 'Message':
+
+        super().__init__(
+            source={
+                'role': role,
+            },
+            content={
+                'text': text
+            }
+
+        )
+
+
 class Doc(StructModule):
 
     name: str

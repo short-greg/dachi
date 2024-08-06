@@ -5,7 +5,7 @@ class TestMessage(object):
 
     def test_message_role_is_a_string(self):
 
-        message = _struct.Message.text(role='assistant', text='hi, how are you')
+        message = _struct.TextMessage(role='assistant', text='hi, how are you')
         assert message.source['role'] == 'assistant'
         assert message.content['text'] == 'hi, how are you'
 

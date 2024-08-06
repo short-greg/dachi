@@ -35,5 +35,5 @@ from ._io import (
     CSV, KV
 )
 from .._core._structs_doc import (
-    Message, Doc, StructModule
+    Message, Doc, StructModule, TextMessage
 )
