@@ -46,16 +46,11 @@ class TestHeaderView:
             name='Accuracy',
             desc='Evaluate how close the output is to the target'
         )
-        view = _core.HeaderView(
-            criterion
-        )
-        text = view(
-            x, t
-        )
-        print(text)
+        view = _core.HeaderView(criterion)
+        text = view(x, t)
         # TODO: test the output
-        # assert False
-
+        assert 'N' in text
+        assert '"<Result>"' in text
 
 
 # class TestSample:

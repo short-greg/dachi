@@ -128,8 +128,10 @@ def model_template(model_cls: typing.Type[pydantic.BaseModel]) -> str:
 
 def escape_curly_braces(value: typing.Any, render: bool=False) -> str:
     """Escape curly braces for dictionary-like structures."""
+
     if isinstance(value, str):
-        return f'"{value}"'
+        result = f'"{value}"'
+        return result
     if isinstance(value, typing.Dict):
         items = ', '.join(f'"{k}": {escape_curly_braces(v)}' for k, v in value.items())
         return f"{{{{{items}}}}}"
@@ -544,7 +546,6 @@ class ListOut(Result, typing.Generic[S]):
         return json.dumps(data)
 
     def read(self, data: str) -> StructList[S]:
-        print(data)
         d = json.loads(data)
         structs = []
         for cur in d['structs']:
@@ -580,7 +581,6 @@ class MultiOut(Result):
 
         result = ''
         for struct, out in zip(data, self.outs):
-            print(struct)
             result = result + '\n' + self.signal + self.conn.format(name=out.name)
             result = f'{result}\n{struct.render()}'
 
@@ -636,7 +636,6 @@ class MultiOut(Result):
 
             data_str = d[data_loc:data_end_loc]
             try: 
-                print(data_str)
                 structs.append(t.read(data_str))
             except StructLoadException as e:
                 return structs, i

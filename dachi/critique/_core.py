@@ -78,10 +78,11 @@ class HeaderView(CriterionViewBase):
 
         out_format_dict = self.criterion.out_format()
 
-        out_format = escape_curly_braces({
-            name: escape_curly_braces(criterion)
+        pre = {
+            name: criterion
             for name, criterion in out_format_dict.items()
-        })
+        }
+        out_format = escape_curly_braces(pre)
         
         return f"""
         {{
