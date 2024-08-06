@@ -60,18 +60,3 @@ class Doc(StructModule):
 
 
 # TODO: Do I need this?
-
-# class MessageList(StructList[Message]):
-
-#     @property
-#     def messages(self) -> typing.List[Message]:
-#         return self.structs
-
-#     def filter(self, roles: typing.Iterable[str]) -> 'MessageList[Message]':
-
-#         roles = set(roles)
-        
-#         return MessageList(
-#             s for s in self._structs if s.role in roles
-#         )
-
