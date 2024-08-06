@@ -1,25 +1,25 @@
 from abc import ABC, abstractmethod
 import typing
 import asyncio
+from dataclasses import dataclass
+from .._core import Message, Struct
 
 
-class APIAdapter(ABC):
+@dataclass
+class Response(object):
+
+    message: typing.Any
+    source: typing.Dict
+    delta: typing.Any = None
+    
+
+class AIModel(ABC):
     """APIAdapter allows one to adapt various WebAPI or otehr
     API for a consistent interface
     """
 
-    @property
     @abstractmethod
-    def output_schema(self) -> typing.Dict:
-        pass
-
-    @property
-    @abstractmethod
-    def input_schema(self) -> typing.Dict:
-        pass
-
-    @abstractmethod
-    def query(self, data) -> typing.Dict:
+    def query(self, data) -> Response:
         """Run a standard query to the API
 
         Args:
@@ -30,7 +30,7 @@ class APIAdapter(ABC):
         """
         pass
 
-    def stream_query(self, data) -> typing.Iterator[typing.Dict]:
+    def stream_query(self, data) -> typing.Iterator[Response]:
         """API that allows for streaming the response
 
         Args:
@@ -45,10 +45,9 @@ class APIAdapter(ABC):
             typing.Dict: The data
         """
         result = self.query(data)
-        result['delta'] = None
         yield result
     
-    async def async_query(self, data, **kwarg_override) -> typing.Dict:
+    async def async_query(self, data, **kwarg_override) -> Response:
         """Run this query for asynchronous operations
         The default behavior is simply to call the query
 
@@ -60,7 +59,7 @@ class APIAdapter(ABC):
         """
         return self.query(data, **kwarg_override)
     
-    async def bulk_async_query(self, data, **kwarg_override) -> typing.List[typing.Dict]:
+    async def bulk_async_query(self, data, **kwarg_override) -> typing.List[Response]:
         """
 
         Args:
@@ -76,11 +75,11 @@ class APIAdapter(ABC):
                 tasks.append(
                     tg.create_task(self.async_query(data_i, **kwarg_override))
                 )
-        return tuple(
+        return list(
             task.result() for task in tasks
         )
     
-    async def async_stream_query(self, data, **kwarg_override) -> typing.AsyncIterator[typing.Dict]:
+    async def async_stream_query(self, data, **kwarg_override) -> typing.AsyncIterator[Response]:
         """Run this query for asynchronous streaming operations
         The default behavior is simply to call the query
 
@@ -91,7 +90,6 @@ class APIAdapter(ABC):
             typing.Dict: The data returned from the API
         """
         result = self.query(data, **kwarg_override)
-        result['delta'] = None
         yield result
 
     async def _collect_results(generator, index, results, queue):
@@ -100,7 +98,7 @@ class APIAdapter(ABC):
             await queue.put(results[:])  # Put a copy of the current results
         results[index] = None  # Mark this generator as completed
 
-    async def bulk_async_stream_query(self, data, **kwarg_override) -> typing.AsyncIterator[typing.List[typing.Dict]]:
+    async def bulk_async_stream_query(self, data, **kwarg_override) -> typing.AsyncIterator[typing.List[Response]]:
         """
 
         Args:
@@ -123,3 +121,14 @@ class APIAdapter(ABC):
             current_results = await queue.get()
             yield current_results
             active_generators = sum(result is not None for result in current_results)
+
+
+    # @property
+    # @abstractmethod
+    # def output_schema(self) -> typing.Dict:
+    #     pass
+
+    # @property
+    # @abstractmethod
+    # def input_schema(self) -> typing.Dict:
+    #     pass

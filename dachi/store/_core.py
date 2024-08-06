@@ -1,7 +1,8 @@
 from abc import ABC, abstractmethod
 from typing import Self
 import typing
-from .._core import Module, T
+from .._core import Module
+from ..graph import T
 from enum import Enum
 import numpy as np
 from dataclasses import dataclass

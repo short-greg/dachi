@@ -8,16 +8,16 @@ from typing import Self
 # local
 from .._core import (
     is_undefined, Partial, Streamer,
-    Src, StreamableModule, Module, ParallelModule
+    Module, ParallelModule
 )
-from ._core import UNDEFINED, WAITING
+from .._core import UNDEFINED, WAITING
 
 
 class T(object):
     """
     """
     def __init__(
-        self, val=UNDEFINED, src: Src=None,
+        self, val=UNDEFINED, src: 'Src'=None,
         name: str=None, annotation: str=None
     ):
         """Create a "Transmission" object to pass
@@ -130,6 +130,7 @@ class T(object):
             self._val, None
         )
 
+
 class Src(ABC):
     """Base class for Src. Use to specify how the
     Transmission (T) was generated
@@ -152,11 +153,11 @@ class StreamSrc(Src):
     as streaming from an LLM
     """
 
-    def __init__(self, module: 'StreamableModule', args: 'Args') -> None:
+    def __init__(self, module: 'Module', args: 'TArgs') -> None:
         """Create a Src which will handle the streaming of inputs
 
         Args:
-            module (StreamableModule): The module to stream
+            module (Module): The module to stream
             args (Args): The arguments passed into the streamer
         """
         super().__init__()
@@ -187,7 +188,7 @@ class StreamSrc(Src):
             return value
     
         args = self._args.iterate(by)        
-        streamer = by[self] = self._module.forward(*args.args, **args.kwargs)
+        streamer = by[self] = self._module.stream_forward(*args.args, **args.kwargs)
         return streamer
     
     def __call__(self, by: typing.Dict['T', typing.Any]) -> typing.Any:
@@ -195,7 +196,7 @@ class StreamSrc(Src):
         return self.forward(by)
 
 
-class Args(object):
+class TArgs(object):
 
     def __init__(self, *args, **kwargs):
         """Create a storage for the arguments to a module
@@ -259,7 +260,7 @@ class Args(object):
             if isinstance(a, Partial):
                 a = a.cur
             kwargs[k] = a
-        return Args(*args, **kwargs)
+        return TArgs(*args, **kwargs)
     
     @property
     def args(self) -> typing.List:
@@ -346,7 +347,7 @@ class Args(object):
             else:
                 kwargs[k] = arg
         
-        return Args(*args, **kwargs)
+        return TArgs(*args, **kwargs)
         
     def __call__(self, by: typing.Dict['T', typing.Any]) -> Self:
         return self.forward(by)
@@ -355,7 +356,7 @@ class ParallelSrc(Src):
     """Create a Src for processing Parallel modules
     """
 
-    def __init__(self, module: 'ParallelModule', args: typing.Union[Args, typing.List['Args']]) -> None:
+    def __init__(self, module: 'ParallelModule', args: typing.Union[TArgs, typing.List['TArgs']]) -> None:
         """_summary_
 
         Args:
@@ -368,7 +369,7 @@ class ParallelSrc(Src):
 
     def incoming(self) -> typing.Iterator['T']:
         
-        args = self._args if not isinstance(self._args, Args) else [self._args]
+        args = self._args if not isinstance(self._args, TArgs) else [self._args]
         
         for arg in args:
             for incoming in arg.incoming():
@@ -383,7 +384,7 @@ class ParallelSrc(Src):
         Returns:
             typing.Any: _description_
         """
-        if isinstance(self._args, Args):
+        if isinstance(self._args, TArgs):
             args = args(by)
             return self._module(args) # .val
 
@@ -422,7 +423,7 @@ class ParallelSrc(Src):
 
 class ModSrc(Src):
 
-    def __init__(self, mod: 'Module', args: Args):
+    def __init__(self, mod: 'Module', args: TArgs):
         """Create a Src for the transmission output by a module
 
         Args:
@@ -452,7 +453,7 @@ class ModSrc(Src):
             typing.Any: The value output by the module
         """
         args = self._args(by)
-        return self.mod.link(*args.args, **args.kwargs).val
+        return link(self.mod, *args.args, **args.kwargs).val
 
 
 class WaitSrc(Src):
@@ -645,7 +646,7 @@ def link(module: Module, *args, **kwargs) -> T:
         T: The transmission output by the module
     """
 
-    args = Args(*args, **kwargs)
+    args = TArgs(*args, **kwargs)
     if not args.is_undefined():
         partial = args.has_partial()
         args = args.eval()
@@ -663,7 +664,7 @@ def link(module: Module, *args, **kwargs) -> T:
 
 
 # Parallel
-def paraellel_link(module: ParallelModule, args: typing.Union[typing.List[Args], Args]) -> T:
+def paraellel_link(module: ParallelModule, args: typing.Union[typing.List[TArgs], TArgs]) -> T:
     """
     Args:
         args (typing.Union[typing.List[Args], Args]): Either a list of args or
@@ -676,7 +677,7 @@ def paraellel_link(module: ParallelModule, args: typing.Union[typing.List[Args],
     undefined = False
     has_partial = False
 
-    if isinstance(args, Args):
+    if isinstance(args, TArgs):
         undefined = args.is_undefined()
         has_partial = args.has_partial()
     else:
@@ -686,7 +687,7 @@ def paraellel_link(module: ParallelModule, args: typing.Union[typing.List[Args],
 
     if not undefined:
         
-        if isinstance(args, Args):
+        if isinstance(args, TArgs):
             args = a.eval()
             args = [a] * len(module._modules)
         else:
@@ -708,17 +709,18 @@ def paraellel_link(module: ParallelModule, args: typing.Union[typing.List[Args],
 # TODO: Combine the following two
 # TDOO: add async_link?
 # streamable
-def stream_link(module: 'StreamableModule', *args, **kwargs) -> T:
+def stream_link(module: 'Module', *args, **kwargs) -> T:
     """
     Returns:
         T: The Streamable transmission
     """
-    args = Args(*args, **kwargs)
+    args = TArgs(*args, **kwargs)
     
     if not args.is_undefined():
         args = args.eval()
+
         return T(
-            module.forward(*args.args, **args.kwargs),
+            module.stream_forward(*args.args, **args.kwargs),
             StreamSrc(module, args)
         )
 
@@ -727,11 +729,11 @@ def stream_link(module: 'StreamableModule', *args, **kwargs) -> T:
     )
 
 
-def stream(module: 'StreamableModule', *args, interval: float=None, **kwargs) -> typing.Iterator[T]:
+def stream(module: 'Module', *args, interval: float=None, **kwargs) -> typing.Iterator[T]:
     """Use to loop over a streamable module until complete
 
     Args:
-        module (StreamableModule): The module to stream over
+        module (Module): The module to stream over
         interval (float, optional): The interval to stream over. Defaults to None.
 
     Raises:
@@ -740,9 +742,9 @@ def stream(module: 'StreamableModule', *args, interval: float=None, **kwargs) ->
     Yields:
         Iterator[typing.Iterator[T]]: _description_
     """
-    if not isinstance(module, StreamableModule):
+    if not isinstance(module, Module):
         raise RuntimeError('Stream only works for streamable modules')
-    t = module.link(*args, **kwargs)
+    t = stream_link(module, *args, **kwargs)
     yield t
 
     if isinstance(t.val, Streamer):
@@ -752,11 +754,11 @@ def stream(module: 'StreamableModule', *args, interval: float=None, **kwargs) ->
             yield t
 
 
-# def stream(module: 'StreamableModule', *args, interval: float=None, **kwargs) -> typing.Iterator[T]:
+# def stream(module: 'Module', *args, interval: float=None, **kwargs) -> typing.Iterator[T]:
 #     """Use to loop over a streamable module until complete
 
 #     Args:
-#         module (StreamableModule): The module to stream over
+#         module (Module): The module to stream over
 #         interval (float, optional): The interval to stream over. Defaults to None.
 
 #     Raises:
@@ -765,7 +767,7 @@ def stream(module: 'StreamableModule', *args, interval: float=None, **kwargs) ->
 #     Yields:
 #         Iterator[typing.Iterator[T]]: _description_
 #     """
-#     if not isinstance(module, StreamableModule):
+#     if not isinstance(module, Module):
 #         raise RuntimeError('Stream only works for streamable modules')
 #     t = module.link(*args, **kwargs)
 #     yield t

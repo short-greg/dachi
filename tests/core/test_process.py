@@ -13,7 +13,7 @@ class Append(p.Module):
         return name + self._append
 
 
-class WriteOut(p.StreamableModule):
+class WriteOut(p.StreamModule):
 
     def stream_iter(self, x: str) -> Iterator[Tuple[Any, Any]]:
         
@@ -36,7 +36,7 @@ class TestStreamable:
     def test_streamable_streams_characters(self):
 
         writer = WriteOut()
-        streamer = writer.forward('xyz')
+        streamer = writer.stream_forward('xyz')
         partial = streamer()
         assert partial.cur == 'x'
         assert partial.dx == 'x'
@@ -44,7 +44,7 @@ class TestStreamable:
     def test_streamable_streams_characters_to_end(self):
 
         writer = WriteOut()
-        streamer = writer.forward('xyz')
+        streamer = writer.stream_forward('xyz')
         partial = streamer()
         partial = streamer()
         partial = streamer()

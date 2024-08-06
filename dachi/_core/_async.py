@@ -1,8 +1,6 @@
 # 1st party
-from abc import abstractmethod, ABC
 import asyncio
 import typing
-from typing import Self
 from ._process import processf
 
 # 3rd party
@@ -11,7 +9,8 @@ import functools
 import numpy as np
 
 # local
-from ._process import Module, Args, ParallelModule
+from ._core import Args
+from ._process import Module, ParallelModule
 
 
 class AsyncModule(ParallelModule):

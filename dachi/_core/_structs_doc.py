@@ -1,14 +1,14 @@
 # 1st party
 import typing
-from .._core import StructList
-from .._core import Struct, StructModule
+from ._core import StructList
+from ._process import Struct, StructModule
 
 T = typing.TypeVar('T', bound=Struct)
 
 
 class Message(StructModule):
 
-    role: str
+    source: typing.Dict[str, str]
     content: typing.Dict[str, str]
 
     def __getitem__(self, key: str):
@@ -24,13 +24,17 @@ class Message(StructModule):
         if key in self.content:
             self.content[key] = value
         raise KeyError(f'{key}')
-    
+
     @classmethod
-    def create(cls, role: str, **kwargs) -> 'Message':
+    def text(cls, role: str, text: str) -> 'Message':
 
         return Message(
-            role=role,
-            content=kwargs
+            source={
+                'role': role,
+            },
+            content={
+                'text': text
+            }
         )
 
 
@@ -40,17 +44,19 @@ class Doc(StructModule):
     text: str
 
 
-class MessageList(StructList[Message]):
+# TODO: Do I need this?
 
-    @property
-    def messages(self) -> typing.List[Message]:
-        return self.structs
+# class MessageList(StructList[Message]):
 
-    def filter(self, roles: typing.Iterable[str]) -> 'MessageList[Message]':
+#     @property
+#     def messages(self) -> typing.List[Message]:
+#         return self.structs
 
-        roles = set(roles)
+#     def filter(self, roles: typing.Iterable[str]) -> 'MessageList[Message]':
+
+#         roles = set(roles)
         
-        return MessageList(
-            s for s in self._structs if s.role in roles
-        )
+#         return MessageList(
+#             s for s in self._structs if s.role in roles
+#         )
 

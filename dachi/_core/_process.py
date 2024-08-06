@@ -109,19 +109,13 @@ class Module(ABC):
         """
         return self.forward(*args, **kwargs)
 
-
-class StreamableModule(Module, ABC):
-    """Module that defines a "stream_iter" method which
-    allows for streaming outputs
-    """
-
-    @abstractmethod
     def stream_iter(self, *args, **kwargs) -> typing.Iterator[
         typing.Tuple[typing.Any, typing.Any]
     ]:
-        pass 
+        # default behavior doesn't actually stream
+        yield self.forward(*args, **kwargs) 
 
-    def forward(self, *args, **kwargs) -> Streamer:
+    def stream_forward(self, *args, **kwargs) -> Streamer:
         """
         Returns:
             Streamer: The Streamer to loop over
@@ -129,6 +123,37 @@ class StreamableModule(Module, ABC):
         return Streamer(
             self.stream_iter(*args, **kwargs)
         )
+
+class StreamModule(Module):
+    # Use for modules that rely on stream
+
+    def forward(self, x: str) -> Any:
+        
+        out = None
+        for out, c in self.stream_iter(x):
+            pass
+        return out
+
+
+# class StreamableModule(Module, ABC):
+#     """Module that defines a "stream_iter" method which
+#     allows for streaming outputs
+#     """
+
+    # @abstractmethod
+    # def stream_iter(self, *args, **kwargs) -> typing.Iterator[
+    #     typing.Tuple[typing.Any, typing.Any]
+    # ]:
+    #     pass 
+
+    # def forward(self, *args, **kwargs) -> Streamer:
+    #     """
+    #     Returns:
+    #         Streamer: The Streamer to loop over
+    #     """
+    #     return Streamer(
+    #         self.stream_iter(*args, **kwargs)
+    #     )
 
 
 class ParallelModule(Module, ABC):

@@ -15,6 +15,14 @@ import re
 import pydantic
 
 
+class Args(object):
+
+    def __init__(self, *args, **kwargs):
+
+        self.args = args
+        self.kwargs = kwargs
+
+
 class _Types(Enum):
 
     UNDEFINED = 'UNDEFINED'

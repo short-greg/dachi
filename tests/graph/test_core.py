@@ -1,8 +1,9 @@
-from typing import Any, Iterator, Tuple
 import pytest
-from dachi._core import _process as p
+from dachi._core import _process as p, WAITING
 from dachi.graph import _core as g
-from ..core.test_process import Append, WriteOut, MyProcess, process_test_func
+from ..core.test_process import (
+    Append, WriteOut, MyProcess, process_test_func
+)
 
 
 class TestLink:
@@ -32,7 +33,7 @@ class TestLink:
     def test_it_probes_the_input(self):
 
         append = Append('_t')
-        t1 = p.T()
+        t1 = g.T()
         t = g.link(append, t1)
         t = g.link(append, t)
         res = t.probe(by={t1: 'x'})
@@ -41,7 +42,7 @@ class TestLink:
     def test_t_probes_UNDEFINED_if_not_defined(self):
 
         append = Append('_t')
-        t1 = p.T()
+        t1 = g.T()
         t = g.link(append, t1)
         t = g.link(append, t)
         with pytest.raises(RuntimeError):
@@ -53,7 +54,7 @@ class TestStreamLink:
     def test_call_returns_t_with_streamer(self):
 
         writer = WriteOut()
-        t = g.link(writer, p.T('xyz'))
+        t = g.stream_link(writer, g.T('xyz'))
         partial = t.val()
         assert partial.cur == 'x'
         assert partial.dx == 'x'
@@ -61,15 +62,15 @@ class TestStreamLink:
     def test_call_returns_undefined_if_t_undefined(self):
 
         writer = WriteOut()
-        t = g.link(writer, p.T())
+        t = g.stream_link(writer, g.T())
         assert t.is_undefined()
 
-#     # TODO* make this return partial
+# #     # TODO* make this return partial
     def test_chained_after_stream_appends(self):
 
         writer = WriteOut()
         append = Append('_t')
-        t = g.link(writer, p.T('xyz'))
+        t = g.stream_link(writer, g.T('xyz'))
         t = g.link(append, t)
         assert t.val.cur == 'x_t'
 
@@ -78,8 +79,8 @@ class TestStreamLink:
         writer = WriteOut()
         append = Append('_t')
 
-        for t in p.stream(writer, p.T('xyz')):
-            t = append.link(t)
+        for t in g.stream(writer, g.T('xyz')):
+            t = g.link(append, t)
         
         assert t.val.cur == 'xyz_t'
 
@@ -89,16 +90,16 @@ class TestWait:
     def test_wait_results_in_waiting(self):
 
         writer = WriteOut()
-        t = writer.link(p.T('xyz'))
-        t = p.wait(t)
+        t = g.stream_link(writer, g.T('xyz'))
+        t = g.wait(t)
 
-        assert t.val is p.WAITING
+        assert t.val is WAITING
 
     def test_wait(self):
 
         append = Append('_t')
-        t = append.link(p.T('xyz'))
-        t = p.wait(t)
+        t = g.link(append, g.T('xyz'))
+        t = g.wait(t)
 
         assert t.val == 'xyz_t'
 
@@ -108,15 +109,15 @@ class TestDecorator:
     def test_process_decorator_with_method_link(self):
 
         process = MyProcess()
-        t1 = p.T(val=2)
+        t1 = g.T(val=2)
         result = g.link(process.process_test_method, t1, 3)
         assert result.val == 5
 
     def test_process_decorator_with_function_after_two(self):
 
-        t1 = p.T(val=2)
+        t1 = g.T(val=2)
         result = g.link(process_test_func, t1, 3)
         result = g.link(process_test_func, t1, 3)
         assert result.val == 5
 
-# TODO: Add more tests
+# # TODO: Add more tests

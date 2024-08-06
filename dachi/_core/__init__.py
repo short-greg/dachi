@@ -13,7 +13,7 @@ from ._core import (
     MultiOut, render_multi, Renderable,
     Instruction, Param, escape_curly_braces,
     unescape_curly_braces, UNDEFINED, WAITING,
-    ListOut, Data
+    ListOut, Data, Args
 )
 
 from ._instruct import (
@@ -25,12 +25,15 @@ from ._instruct import (
 
 from ._process import (
     Partial, 
-    Args, Streamer,
-    Module, StreamableModule,
+    Streamer,
+    Module, 
     ParallelModule, StructModule, Get,
     Set, get, set, processf, Multi, Sequential
 )
 
 from ._io import (
     CSV, KV
+)
+from .._core._structs_doc import (
+    Message, Doc, StructModule
 )

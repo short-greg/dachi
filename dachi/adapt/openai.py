@@ -1,8 +1,10 @@
-from typing import AsyncIterator, Coroutine, Dict
+from typing import AsyncIterator, Dict
 import pkg_resources
-import asyncio
+import openai
+import typing
+from .._core import Message
 
-from ._core import APIAdapter
+from ._core import AIModel, Response
 
 # TODO: add utility for this
 required = {'openai'}
@@ -12,10 +14,8 @@ missing = required - installed
 if len(missing) > 0:
     raise RuntimeError(f'To use this module openai must be installed.')
 
-import openai
 
-
-class OpenAIChatAdapter(APIAdapter):
+class OpenAIChatModel(AIModel):
 
     def __init__(self, model: str, **kwargs) -> None:
         super().__init__()
@@ -34,12 +34,12 @@ class OpenAIChatAdapter(APIAdapter):
             messages=data,
             **kwargs
         )
-        return {
-            'message': response.choices[0].message,
-            'response': response
-        }
-    
-    def stream_query(self, data, **kwarg_override) -> pkg_resources.Iterator[Dict]:
+        return Response(
+            response.choices[0].message,
+            response
+        )
+
+    def stream_query(self, data, **kwarg_override) -> typing.Iterator[typing.Tuple[Message, Message, typing.Dict]]:
 
         kwargs = {
             **self._kwargs,
@@ -53,17 +53,16 @@ class OpenAIChatAdapter(APIAdapter):
             stream=True,
             **kwargs
         )
-        message = ''
+        cur_message = ''
         for chunk in query:
             delta = chunk.choices[0].delta
-            message = message + delta
-            yield {
-                'message': message,
-                'delta': delta,
-                'response': chunk
-            }
+
+            cur_message = cur_message + delta
+            yield Response(
+                cur_message, chunk, delta
+            )
     
-    async def async_query(self, data, bulk: bool=False, **kwarg_override) -> Dict:
+    async def async_query(self, data, bulk: bool=False, **kwarg_override) -> typing.Tuple[str, typing.Dict]:
         client = openai.AsyncOpenAI()
 
         kwargs = {
@@ -77,12 +76,12 @@ class OpenAIChatAdapter(APIAdapter):
             **kwargs
         )
 
-        return {
-            'message': response.choices[0].message,
-            'response': response
-        }
-    
-    async def async_stream_query(self, data, **kwarg_override) -> AsyncIterator[Dict]:
+        return Response(
+            response.choices[0].message,
+            response
+        )
+
+    async def async_stream_query(self, data, **kwarg_override) -> AsyncIterator[Response]:
 
         kwargs = {
             **self._kwargs,
@@ -96,17 +95,17 @@ class OpenAIChatAdapter(APIAdapter):
             **kwargs
         )
 
+        cur_message = ''
+
         async for chunk in query:
             delta = chunk.choices[0].delta
-            message = message + delta
-            yield {
-                'message': message,
-                'delta': delta,
-                'response': chunk
-            }
+            cur_message = cur_message + delta
+            yield Response(
+                cur_message,
+                chunk,
+                delta
+            )
 
-
-# class OpenAIPrompModel(PromptModel):
 
 #     def __init__(self, model: str='gpt-4-turbo', name: str='Assistant'):
 #         super().__init__()

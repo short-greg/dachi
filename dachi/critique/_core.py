@@ -1,15 +1,13 @@
 from abc import ABC, abstractmethod
 import typing
 import json
-from ..converse import PromptModel, Message
-
-
+from ..converse import Prompt
+from .._core import Message
 from .._core import (
-    Struct, Module, 
+    Struct, Module,
     escape_curly_braces, Data,
     render
 )
-
 # TODO: Add quotations
 
 
@@ -143,7 +141,7 @@ class Critic(Module, ABC):
 
 class LLMCritic(Module, ABC):
 
-    def __init__(self, llm: PromptModel, criterion: Criterion):
+    def __init__(self, llm: Prompt, criterion: Criterion):
 
         self.llm = llm
         self.criterion_view = HeaderView(criterion)
