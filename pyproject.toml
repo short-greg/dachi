@@ -19,6 +19,7 @@ packages = [
     {include="dachi/act"},
     {include="dachi/learn"},
     {include="dachi/adapt"},
+    {include="dachi/graph"},
     {include="dachi/critique"}
 ]
 
