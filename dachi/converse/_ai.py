@@ -16,6 +16,12 @@ class Assistant(Module, ABC):
     def forward(self, *args, **kwargs) -> Any:
         pass
 
+    def stream_text(self, message: Message) -> typing.Iterator[str]:
+
+        streamer = self.stream_forward(message)
+        for _, dx in streamer:
+            yield dx.content['text']
+
 
 class Prompt(Assistant):
 
@@ -46,7 +52,7 @@ class Prompt(Assistant):
         return response.message
 
 
-class Chat(Module):
+class Chat(Assistant):
 
     def __init__(self, model: AIModel, init_messages: typing.List[Message]):
 
@@ -62,7 +68,7 @@ class Chat(Module):
         return response.message
 
     def stream_iter(self, message: Message) -> typing.Iterator[
-        Message
+        typing.Tuple[Message, Message]
     ]:
         # default behavior doesn't actually stream
         self.messages.append(message)
@@ -81,7 +87,6 @@ class Chat(Module):
         )
         self.messages.append(response.message)
         return response.message
-
 
 
 

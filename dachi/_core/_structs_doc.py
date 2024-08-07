@@ -49,14 +49,11 @@ class TextMessage(Message):
             content={
                 'text': text
             }
-
         )
 
+# TODO: Improve document similar to message
 
 class Doc(StructModule):
 
     name: str
     text: str
-
-
-# TODO: Do I need this?
