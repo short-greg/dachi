@@ -8,34 +8,21 @@ T = typing.TypeVar('T', bound=Struct)
 
 class Message(StructModule):
 
-    source: typing.Dict[str, str]
-    content: typing.Dict[str, str]
+    data: typing.Dict[str, str]
 
     def __getitem__(self, key: str):
         if hasattr(self, key):
             return getattr(self, key)
-        if key in self.content:
-            return self.content[key]
+        if key in self.data:
+            return self.data[key]
         raise KeyError(f'{key}')
 
     def __setitem__(self, key: str, value):
         if hasattr(self, key):
             setattr(self, key, value)
-        if key in self.content:
-            self.content[key] = value
+        if key in self.data:
+            self.data[key] = value
         raise KeyError(f'{key}')
-
-    @classmethod
-    def text(cls, role: str, text: str) -> 'Message':
-
-        return Message(
-            source={
-                'role': role,
-            },
-            content={
-                'text': text
-            }
-        )
 
 
 class TextMessage(Message):
@@ -43,10 +30,8 @@ class TextMessage(Message):
     def __init__(self, role: str, text: str) -> 'Message':
 
         super().__init__(
-            source={
+            data={
                 'role': role,
-            },
-            content={
                 'text': text
             }
         )

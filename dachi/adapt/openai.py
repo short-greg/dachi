@@ -27,8 +27,8 @@ def to_openai(messages: typing.List[Message]) -> typing.List[typing.Dict]:
     result = []
     for message in messages:
         result.append({
-            'role': message.source['role'],
-            'content': message.content['text']
+            'role': message.data['role'],
+            'content': message.data['text']
         })
 
     return result

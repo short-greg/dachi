@@ -14,7 +14,7 @@ class CSV2DF(Module):
     def forward(self, message: Message) -> pd.DataFrame:
         
         return pd.read_csv(
-            message.content[self.key], sep=self.delim
+            message.data[self.key], sep=self.delim
         )
 
 
@@ -22,7 +22,7 @@ class CSV2DF(Module):
 def json_to_dict(message: Message, key: str='text') -> pd.DataFrame:
     
     return json.loads(
-        message.content[key]
+        message.data[key]
     )
 
 
@@ -30,14 +30,14 @@ def json_to_dict(message: Message, key: str='text') -> pd.DataFrame:
 def csv_to_df(message: Message, sep: str=',', key: str='text') -> pd.DataFrame:
 
     return pd.read_csv(
-        message.content[key], sep=sep
+        message.data[key], sep=sep
     )
 
 
 @processf
 def kv_to_dict(message: Message, sep: str='::', key: str='text') -> pd.DataFrame:
 
-    text = message.content[key]
+    text = message.data[key]
     lines = text.splitlines()
     result = {}
     for line in lines:
