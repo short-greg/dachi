@@ -55,6 +55,15 @@ class Streamer(object):
         except StopIteration:
             self._output = Partial(self._cur, self._prev, self._dx, True) 
             return self._output
+        
+    def __iter__(self) -> typing.Iterator[Partial]:
+
+        while True:
+
+            cur = self()
+            if cur.complete:
+                break
+            yield cur
 
 
 class Module(ABC):
@@ -113,7 +122,8 @@ class Module(ABC):
         typing.Tuple[typing.Any, typing.Any]
     ]:
         # default behavior doesn't actually stream
-        yield self.forward(*args, **kwargs) 
+        res = self.forward(*args, **kwargs) 
+        yield res, None
 
     def stream_forward(self, *args, **kwargs) -> Streamer:
         """
@@ -124,6 +134,7 @@ class Module(ABC):
             self.stream_iter(*args, **kwargs)
         )
 
+
 class StreamModule(Module):
     # Use for modules that rely on stream
 
@@ -133,27 +144,6 @@ class StreamModule(Module):
         for out, c in self.stream_iter(x):
             pass
         return out
-
-
-# class StreamableModule(Module, ABC):
-#     """Module that defines a "stream_iter" method which
-#     allows for streaming outputs
-#     """
-
-    # @abstractmethod
-    # def stream_iter(self, *args, **kwargs) -> typing.Iterator[
-    #     typing.Tuple[typing.Any, typing.Any]
-    # ]:
-    #     pass 
-
-    # def forward(self, *args, **kwargs) -> Streamer:
-    #     """
-    #     Returns:
-    #         Streamer: The Streamer to loop over
-    #     """
-    #     return Streamer(
-    #         self.stream_iter(*args, **kwargs)
-    #     )
 
 
 class ParallelModule(Module, ABC):
@@ -311,6 +301,27 @@ class Sequential(Module):
             else:
                 x = module(x)
         return x
+
+
+# class StreamableModule(Module, ABC):
+#     """Module that defines a "stream_iter" method which
+#     allows for streaming outputs
+#     """
+
+    # @abstractmethod
+    # def stream_iter(self, *args, **kwargs) -> typing.Iterator[
+    #     typing.Tuple[typing.Any, typing.Any]
+    # ]:
+    #     pass 
+
+    # def forward(self, *args, **kwargs) -> Streamer:
+    #     """
+    #     Returns:
+    #         Streamer: The Streamer to loop over
+    #     """
+    #     return Streamer(
+    #         self.stream_iter(*args, **kwargs)
+    #     )
 
 
 # class WaitSrc(Src):

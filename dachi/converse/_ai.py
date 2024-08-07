@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from typing import Any
 
 from .._core import Module
-from .._core._structs_doc import Message
+from .._core._structs_doc import Message, TextMessage
 from ..adapt import AIModel
 import typing
 
@@ -19,8 +19,9 @@ class Assistant(Module, ABC):
     def stream_text(self, message: Message) -> typing.Iterator[str]:
 
         streamer = self.stream_forward(message)
-        for _, dx in streamer:
-            yield dx.content['text']
+        for partial in streamer:
+            
+            yield partial.dx['text']
 
 
 class Prompt(Assistant):
@@ -29,27 +30,27 @@ class Prompt(Assistant):
 
         self.init_messages = init_messages
         self.model = model
+        self.role = 'assistant'
 
     def forward(self, message: Message) -> Message:
 
         response = self.model.query([*self.init_messages, message])
-        return response.message
+        return TextMessage(self.role, response.message)
 
     def stream_iter(self, message: Message) -> typing.Iterator[
         typing.Tuple[Message, Message]
     ]:
-        # default behavior doesn't actually stream
         for response in self.model.stream_query([
             *self.init_messages, message
         ]):
-            yield response.message, response.delta
+            yield TextMessage(self.role, response.message), TextMessage(self.role, response.delta)
 
     async def async_forward(self, message: Message) -> typing.Any:
 
         response = await self.model.async_query(
             [*self.init_messages, message]
         )
-        return response.message
+        return TextMessage(self.role, response.message)
 
 
 class Chat(Assistant):
@@ -58,6 +59,7 @@ class Chat(Assistant):
 
         self.messages = init_messages
         self.model = model
+        self.role = 'assistant'
 
     def forward(self, message: Message) -> Message:
 
@@ -65,18 +67,20 @@ class Chat(Assistant):
 
         response = self.model.query(self.messages)
         self.messages.append(response.message)
-        return response.message
+        return TextMessage(role=self.role, text=response.message)
 
     def stream_iter(self, message: Message) -> typing.Iterator[
         typing.Tuple[Message, Message]
     ]:
-        # default behavior doesn't actually stream
+        
         self.messages.append(message)
 
         for response in self.model.stream_query(self.messages):
-            yield response.message, response.delta
-
-        self.messages.append(response)
+            cur_message = TextMessage(role=self.role, text=response.message)
+            cur_dx = TextMessage(role=self.role, text=response.delta)
+            yield cur_message, cur_dx 
+        else:
+            self.messages.append(cur_message)
 
     async def async_forward(self, message: Message) -> typing.Any:
 
@@ -86,7 +90,7 @@ class Chat(Assistant):
             [*self.init_messages, message]
         )
         self.messages.append(response.message)
-        return response.message
+        return TextMessage(role=self.role, text=response.message)
 
     def loop(self, include: typing.Callable[[Message], bool]=None) -> typing.Iterator[Message]:
 

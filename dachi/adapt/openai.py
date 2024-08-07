@@ -78,6 +78,9 @@ class OpenAIChatModel(AIModel):
         for chunk in query:
             delta = chunk.choices[0].delta.content
 
+            if delta is None:
+                delta = ''
+
             cur_message = cur_message + delta
             yield Response(
                 cur_message, chunk, delta
@@ -120,6 +123,8 @@ class OpenAIChatModel(AIModel):
 
         async for chunk in query:
             delta = chunk.choices[0].delta.content
+            if delta is None:
+                delta = ''
             cur_message = cur_message + delta
             yield Response(
                 cur_message,

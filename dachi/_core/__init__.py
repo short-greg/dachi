@@ -1,10 +1,8 @@
-
 from ._async import (
     AsyncModule, Batch,
     batchf, reduce,
     map, async_map
 )
-
 from ._core import (
     str_formatter, get_str_variables,
     model_template, Struct, StructList,
@@ -35,5 +33,6 @@ from ._io import (
     CSV, KV
 )
 from .._core._structs_doc import (
-    Message, Doc, StructModule, TextMessage
+    Message, Doc, 
+    StructModule, TextMessage
 )
