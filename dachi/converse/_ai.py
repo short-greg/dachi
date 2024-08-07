@@ -88,6 +88,11 @@ class Chat(Assistant):
         self.messages.append(response.message)
         return response.message
 
+    def loop(self, include: typing.Callable[[Message], bool]=None) -> typing.Iterator[Message]:
+
+        for message in self.messages:
+            if include is None or include(message):
+                yield message
 
 
 # 1) Streamble
