@@ -72,7 +72,6 @@ class Chat(Assistant):
     def stream_iter(self, message: Message) -> typing.Iterator[
         typing.Tuple[Message, Message]
     ]:
-        
         self.messages.append(message)
 
         for response in self.model.stream_query(self.messages):
