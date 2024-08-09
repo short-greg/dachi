@@ -34,7 +34,6 @@ def df_sort(df: pd.DataFrame, order_by: typing.List[str]):
 
 def df_compare(compf: CompF, val1, val2):
     
-    print(compf)
     if compf == CompF.OR:
         return val1 | val2
     if compf == CompF.AND:
