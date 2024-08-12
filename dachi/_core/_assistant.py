@@ -1,9 +1,9 @@
 from abc import ABC, abstractmethod
 from typing import Any
 
-from .._core import Module
-from .._core._structs_doc import Message, TextMessage
-from ..adapt import AIModel
+from . import Module
+from ._structs_doc import Message, TextMessage
+from ._ai import AIModel
 import typing
 
 

@@ -4,7 +4,7 @@ import openai
 import typing
 
 from .._core import Message
-from ._core import AIModel, Response
+from .._core._ai import AIModel, Response
 
 # TODO: add utility for this
 required = {'openai'}

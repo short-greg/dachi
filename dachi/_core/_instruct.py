@@ -12,6 +12,7 @@ from ._process import Param
 import roman
 
 from ._core import Instruction, Description, render
+from ._assistant import Assistant
 
 
 S = typing.TypeVar('S', bound=Struct)
@@ -312,7 +313,7 @@ class FunctionDetails:
                 return origin, args[0] if args else None
         return None, None
     
-    def out(self, is_method: bool=False, train: bool=True) -> Out:        
+    def out(self, is_method: bool=False, train: bool=True) -> OutF:        
         
         origin, generic_type = self.get_generic_type()
         if origin:
@@ -350,7 +351,7 @@ class FunctionDetails:
 class _SignatureMethod(Module):
 
     def __init__(
-        self, f: typing.Callable, details: FunctionDetails, 
+        self, f: typing.Callable, engine: Assistant, details: FunctionDetails, 
         train: bool=True, is_method: bool=False, instance=None
     ):
         """
@@ -371,15 +372,21 @@ class _SignatureMethod(Module):
         self._details = details
         self._train = train
         self._out = details.out(is_method, train)
+        self.engine = engine
 
         update_wrapper(self, f) 
         self.instance = instance
         self._stored = None
         self._is_method = is_method
 
+    def i(self, *args, **kwargs) -> Instruction:
+        return self._out(*args, **kwargs)
+
     def forward(self, *args, **kwargs) -> typing.Any:        
 
-        return self._out(*args, **kwargs)
+        instruction = self.i(*args, **kwargs)
+        result = self.engine(instruction)
+        return result.process()
 
     async def async_forward(self, *args, **kwargs) -> typing.Any:
 
@@ -396,7 +403,78 @@ class _SignatureMethod(Module):
         return self._stored
     
 
-def instructf(train: bool=True):
+class _InstructMethod(Module):
+
+    def __init__(
+        self, f: typing.Callable, engine: Assistant,
+        train: bool=True, is_method: bool=False, instance=None
+    ):
+        """
+
+        Args:
+            f (typing.Callable): 
+            details (FunctionDetails): 
+            train (bool, optional): . Defaults to True.
+            instance (, optional): . Defaults to None.
+
+        Raises:
+            TypeError: 
+
+        Returns:
+            _type_: 
+        """
+        self.f = f
+        self._train = train
+
+        self.engine = engine
+        update_wrapper(self, f) 
+        self.instance = instance
+        self._stored = None
+        self._is_method = is_method
+
+    def i(self, *args, **kwargs) -> Instruction:
+        return self.f(*args, **kwargs)
+
+    def forward(self, *args, **kwargs) -> typing.Any:        
+
+        instruction = self.i(*args, **kwargs)
+        result = self.engine(instruction)
+        return result.process()
+
+    async def async_forward(self, *args, **kwargs) -> typing.Any:
+
+        return self.forward(*args, **kwargs)
+
+    def __get__(self, instance, owner):
+
+        if self._stored is not None and instance is self._stored:
+            return self._stored
+        self._stored = _SignatureMethod(
+            self.f, self._details, self._train,
+            instance
+        )
+        return self._stored
+    
+
+def instructf(engine: Assistant, train: bool=True):
+    """Decorator for using a function signature
+
+    Args:
+        train (bool, optional): Whether to train the function or not. Defaults to True.
+    """
+    def _(f):
+
+        @wraps(f)
+        def wrapper(*args, **kwargs):
+            return f(*args, **kwargs)
+        if hasattr(f, '__self__') or '__self__' in dir(f):
+            return _InstructMethod(f, engine, train)
+        else:
+            return _InstructMethod(wrapper, engine, train)
+    return _
+
+
+def signaturef(engine: Assistant, train: bool=True):
     """Decorator for using a function signature
 
     Args:
@@ -409,8 +487,7 @@ def instructf(train: bool=True):
         def wrapper(*args, **kwargs):
             return f(*args, **kwargs)
         if hasattr(f, '__self__') or '__self__' in dir(f):
-            return _SignatureMethod(f, details, train)
+            return _SignatureMethod(f, engine, details, train)
         else:
-            return _SignatureMethod(wrapper, details, train)
+            return _SignatureMethod(wrapper, engine, details, train)
     return _
-

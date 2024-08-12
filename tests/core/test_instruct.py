@@ -192,7 +192,7 @@ class TestInstructF:
 
     def test_inserts_into_docstring(self):
 
-        @core.instructf(True)
+        @core.signaturef(True)
         def signaturep(x: str) -> Out[SimpleStruct]:
             """Output the value of x
             
@@ -213,7 +213,7 @@ class TestInstructF:
     def test_inserts_into_docstring_with_method(self):
 
         class X(object):
-            @core.instructf(True)
+            @core.signaturef(True)
             def signaturep(self, x: str) -> Out[SimpleStruct]:
                 """Output the value of x
                 

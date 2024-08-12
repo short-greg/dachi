@@ -18,7 +18,7 @@ from ._instruct import (
     bullet, formatted, generate_numbered_list,
     numbered, validate_out, fill, head,
     section, cat, join, Operation, op,
-    OutF, FunctionDetails, instructf
+    OutF, FunctionDetails, signaturef
 )
 
 from ._process import (
@@ -35,4 +35,11 @@ from ._io import (
 from .._core._structs_doc import (
     Message, Doc, 
     StructModule, TextMessage
+)
+from ._ai import (
+    AIModel, 
+    Response
+)
+from ._assistant import (
+    Assistant, Prompt, Chat
 )

@@ -3,7 +3,6 @@ from ._core import (
     Val, QF, Join, Query, Store,
     Rep, VectorQuery, VectorStore,
     Like, Retrieve, retrieve,
-
 )
 from ._dataframe import (
     df_sort, df_compare,
@@ -13,4 +12,3 @@ from ._dataframe import (
 from ._faiss import (
     FAISSStore
 )
-

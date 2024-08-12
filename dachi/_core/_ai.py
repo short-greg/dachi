@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 import typing
 import asyncio
 from dataclasses import dataclass
-from .._core import Message, Struct
+from . import Message, Struct
 
 
 @dataclass
@@ -132,3 +132,4 @@ class AIModel(ABC):
     # @abstractmethod
     # def input_schema(self) -> typing.Dict:
     #     pass
+
