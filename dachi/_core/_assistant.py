@@ -13,7 +13,7 @@ class Assistant(Module, ABC):
         self.model = model
 
     @abstractmethod
-    def forward(self, *args, **kwargs) -> Any:
+    def forward(self, message: Message) -> Message:
         pass
 
     def stream_text(self, message: Message) -> typing.Iterator[str]:
@@ -67,7 +67,7 @@ class Chat(Assistant):
 
         response = self.model.query(self.messages)
         self.messages.append(response.message)
-        return TextMessage(role=self.role, text=response.message)
+        return TextMessage(source=self.role, text=response.message)
 
     def stream_iter(self, message: Message) -> typing.Iterator[
         typing.Tuple[Message, Message]
@@ -75,8 +75,8 @@ class Chat(Assistant):
         self.messages.append(message)
 
         for response in self.model.stream_query(self.messages):
-            cur_message = TextMessage(role=self.role, text=response.message)
-            cur_dx = TextMessage(role=self.role, text=response.delta)
+            cur_message = TextMessage(source=self.role, text=response.message)
+            cur_dx = TextMessage(source=self.role, text=response.delta)
             yield cur_message, cur_dx 
         else:
             self.messages.append(cur_message)
@@ -89,7 +89,7 @@ class Chat(Assistant):
             [*self.init_messages, message]
         )
         self.messages.append(response.message)
-        return TextMessage(role=self.role, text=response.message)
+        return TextMessage(source=self.role, text=response.message)
 
     def loop(self, include: typing.Callable[[Message], bool]=None) -> typing.Iterator[Message]:
 

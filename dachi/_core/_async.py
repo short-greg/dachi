@@ -7,6 +7,7 @@ from ._process import processf
 import networkx as nx
 import functools
 import numpy as np
+from ._process import Batch, batchf
 
 # local
 from ._core import Args
@@ -65,43 +66,6 @@ class MultiModule(ParallelModule):
         )
 
 
-class Batch(object):
-
-    def __init__(self, data: typing.Iterable, n_samples: int, shuffle: bool, drop_last: bool=True):
-
-        self.data = data
-        self.shuffle = shuffle
-        self.n_samples = n_samples
-        self.drop_last = drop_last
-
-    def __iter__(self) -> typing.Iterator[typing.Any]:
-
-        if self.shuffle:
-            order = np.random.permutation(len(self.data))
-        else:
-            order = np.linspace(0, len(self.data))
-        
-        n_iterations = len(self.data) // self.n_samples
-        if len(self.data) % self.n_samples != 0 and not self.drop_last:
-            n_iterations += 1
-
-        start = 0
-        upto = self.n_samples
-        for _ in range(n_iterations):
-            cur_data = self.data[order[start:upto]]
-            yield cur_data
-            start = upto
-            upto += self.n_samples
-
-
-@processf
-def batchf(data: typing.Iterable, n_samples: int, shuffle: bool, drop_last: bool=True):
-    
-    return Batch(
-        data, n_samples, shuffle, drop_last
-    )
-
-
 @processf
 def reduce(
     data: typing.Iterable, 
@@ -145,3 +109,8 @@ async def async_map(data: typing.Iterable, module: Module, *args, init=None, **k
             )
     
         return tuple(task.result() for task in tasks)
+
+
+def parallel(m: Module, *args, **kwargs) -> typing.List:
+    pass
+

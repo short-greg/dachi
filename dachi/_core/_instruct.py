@@ -9,6 +9,7 @@ from ._core import Struct, Out, str_formatter, render, render_multi
 
 from ._process import Module
 from ._process import Param
+from ._structs_doc import TextMessage
 import roman
 
 from ._core import Instruction, Description, render
@@ -348,10 +349,11 @@ class FunctionDetails:
         )
 
 
-class _SignatureMethod(Module):
+class SignatureMethod(Module):
 
     def __init__(
-        self, f: typing.Callable, engine: Assistant, details: FunctionDetails, 
+        self, f: typing.Callable, engine: Assistant, 
+        details: FunctionDetails, source: str='system',
         train: bool=True, is_method: bool=False, instance=None
     ):
         """
@@ -360,13 +362,13 @@ class _SignatureMethod(Module):
             f (typing.Callable): 
             details (FunctionDetails): 
             train (bool, optional): . Defaults to True.
-            instance (_type_, optional): . Defaults to None.
+            instance (, optional): . Defaults to None.
 
         Raises:
             TypeError: 
 
         Returns:
-            _type_: 
+            : 
         """
         self.f = f
         self._details = details
@@ -377,6 +379,7 @@ class _SignatureMethod(Module):
         update_wrapper(self, f) 
         self.instance = instance
         self._stored = None
+        self.source = source
         self._is_method = is_method
 
     def i(self, *args, **kwargs) -> Instruction:
@@ -385,8 +388,13 @@ class _SignatureMethod(Module):
     def forward(self, *args, **kwargs) -> typing.Any:        
 
         instruction = self.i(*args, **kwargs)
-        result = self.engine(instruction)
-        return result.process()
+        text = instruction.render()
+        message = TextMessage(
+            self.source, text
+        )
+        result = self.engine(message)
+
+        return instruction.read_out(result.text)
 
     async def async_forward(self, *args, **kwargs) -> typing.Any:
 
@@ -396,17 +404,17 @@ class _SignatureMethod(Module):
 
         if self._stored is not None and instance is self._stored:
             return self._stored
-        self._stored = _SignatureMethod(
+        self._stored = SignatureMethod(
             self.f, self._details, self._train,
             instance
         )
         return self._stored
     
 
-class _InstructMethod(Module):
+class InstructMethod(Module):
 
     def __init__(
-        self, f: typing.Callable, engine: Assistant,
+        self, f: typing.Callable, engine: Assistant, source: str='system',
         train: bool=True, is_method: bool=False, instance=None
     ):
         """
@@ -430,6 +438,7 @@ class _InstructMethod(Module):
         update_wrapper(self, f) 
         self.instance = instance
         self._stored = None
+        self.source = source
         self._is_method = is_method
 
     def i(self, *args, **kwargs) -> Instruction:
@@ -438,8 +447,12 @@ class _InstructMethod(Module):
     def forward(self, *args, **kwargs) -> typing.Any:        
 
         instruction = self.i(*args, **kwargs)
-        result = self.engine(instruction)
-        return result.process()
+        text = instruction.render()
+        message = TextMessage(
+            self.source, text
+        )
+        result = self.engine(message)
+        return instruction.read_out(result.text)
 
     async def async_forward(self, *args, **kwargs) -> typing.Any:
 
@@ -449,14 +462,14 @@ class _InstructMethod(Module):
 
         if self._stored is not None and instance is self._stored:
             return self._stored
-        self._stored = _SignatureMethod(
+        self._stored = SignatureMethod(
             self.f, self._details, self._train,
             instance
         )
         return self._stored
     
 
-def instructf(engine: Assistant, train: bool=True):
+def instructf(engine: Assistant):
     """Decorator for using a function signature
 
     Args:
@@ -468,9 +481,9 @@ def instructf(engine: Assistant, train: bool=True):
         def wrapper(*args, **kwargs):
             return f(*args, **kwargs)
         if hasattr(f, '__self__') or '__self__' in dir(f):
-            return _InstructMethod(f, engine, train)
+            return InstructMethod(f, engine)
         else:
-            return _InstructMethod(wrapper, engine, train)
+            return InstructMethod(wrapper, engine)
     return _
 
 
@@ -487,7 +500,7 @@ def signaturef(engine: Assistant, train: bool=True):
         def wrapper(*args, **kwargs):
             return f(*args, **kwargs)
         if hasattr(f, '__self__') or '__self__' in dir(f):
-            return _SignatureMethod(f, engine, details, train)
+            return SignatureMethod(f, engine, details, train)
         else:
-            return _SignatureMethod(wrapper, engine, details, train)
+            return SignatureMethod(wrapper, engine, details, train)
     return _
