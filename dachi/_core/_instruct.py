@@ -9,7 +9,7 @@ from ._core import Struct, Out, str_formatter, render, render_multi
 
 from ._process import Module
 from ._process import Param
-from ._structs_doc import TextMessage
+from ._structs_doc import Dialog
 import roman
 
 from ._core import Instruction, Description, render
@@ -228,21 +228,21 @@ class OutF(Module, typing.Generic[S]):
 
     def __init__(
         self,
-        name: str, 
+        name: str,
         signature: str, 
         docstring: str, 
         parameters: typing.Dict,
         is_method: bool=False,
+        train: bool=False,
         out_cls: typing.Optional[typing.Type[S]] = None, 
-        train: bool=True
     ):
         self.signature = signature
-        self.docstring = docstring
-        
         self.docstring = Param(
-            train=train, name=name, 
-            instruction=docstring
+            name=name,
+            instruction=docstring,
+            training=train
         )
+
         self.out_cls = out_cls
         self.parameters = parameters
         self._is_method = is_method
@@ -254,7 +254,6 @@ class OutF(Module, typing.Generic[S]):
         filled = set()
 
         param_values = list(self.parameters.values())
-        print(param_values)
         if self._is_method:
             param_values = param_values[1:]
 
@@ -314,37 +313,37 @@ class FunctionDetails:
                 return origin, args[0] if args else None
         return None, None
     
-    def out(self, is_method: bool=False, train: bool=True) -> OutF:        
+    def out(self, is_method: bool=False, train: bool=False) -> OutF:        
         
         origin, generic_type = self.get_generic_type()
         if origin:
             if generic_type:
                 return OutF(
                     name=self.name,
+                    train=train,
                     signature=self.signature,
                     docstring=self.docstring, 
                     parameters=self.parameters,
                     out_cls=self.return_annotation,
-                    train=train,
                     is_method=is_method
                 )
             else:
                 return OutF(
                     name=self.name,
+                    train=train,
                     signature=self.signature, 
                     docstring=self.docstring, 
                     out_cls=origin,
                     parameters=self.parameters,
-                    train=train,
                     is_method=is_method
                 )
         return OutF(
             name=self.name,
+            train=train,
             signature=self.signature,
             docstring=self.docstring, 
             parameters=self.parameters,
             out_cls=None, 
-            train=train,
             is_method=is_method
         )
 
@@ -353,8 +352,9 @@ class SignatureMethod(Module):
 
     def __init__(
         self, f: typing.Callable, engine: Assistant, 
-        details: FunctionDetails, source: str='system',
-        train: bool=True, is_method: bool=False, instance=None
+        dialog_factory: typing.Optional[typing.Callable[[], Dialog]]=None,
+        train: bool=False,
+        is_method: bool=False, instance=None
     ):
         """
 
@@ -371,51 +371,79 @@ class SignatureMethod(Module):
             : 
         """
         self.f = f
-        self._details = details
-        self._train = train
-        self._out = details.out(is_method, train)
+        self._details = FunctionDetails(f)
+        self._out = self._details.out(is_method, train)
         self.engine = engine
 
         update_wrapper(self, f) 
         self.instance = instance
         self._stored = None
-        self.source = source
+        self.dialog_factory = dialog_factory or Dialog
         self._is_method = is_method
 
-    def i(self, *args, **kwargs) -> Instruction:
-        return self._out(*args, **kwargs)
-
-    def forward(self, *args, **kwargs) -> typing.Any:        
-
-        instruction = self.i(*args, **kwargs)
-        text = instruction.render()
-        message = TextMessage(
-            self.source, text
+    def spawn(
+        self, 
+        engine: Assistant=None, 
+        dialog_factory: typing.Optional[typing.Callable[[], Dialog]]=None,
+        train: bool=False
+    ):
+        return SignatureMethod(
+            f=self.f,
+            engine=engine or self.engine,
+            dialog_factory=dialog_factory or self.dialog_factory,
+            train=train
         )
-        result = self.engine(message)
+
+    def i(self, *args, **kwargs) -> Instruction:
+        return self._out(
+            *args, 
+            **kwargs
+        )
+
+    def forward(
+        self, *args,
+        _engine: Assistant=None, _dialog: Dialog=None, **kwargs
+    ) -> typing.Any:        
+
+        engine = _engine or self.engine
+        dialog = _dialog or self.dialog_factory()
+
+        instruction = self.i(*args,  **kwargs)
+        dialog.instruct(instruction)
+        result = engine(dialog)
 
         return instruction.read_out(result.text)
 
-    async def async_forward(self, *args, **kwargs) -> typing.Any:
+    async def async_forward(
+        self, *args, 
+        _dialog: Dialog=None, 
+        **kwargs
+    ) -> typing.Any:
 
-        return self.forward(*args, **kwargs)
+        return self.forward(
+            *args, 
+            _dialog=_dialog, 
+            **kwargs
+        )
 
     def __get__(self, instance, owner):
 
         if self._stored is not None and instance is self._stored:
             return self._stored
         self._stored = SignatureMethod(
-            self.f, self._details, self._train,
+            self.f, 
+            self._details,
             instance
         )
         return self._stored
-    
+
 
 class InstructMethod(Module):
 
     def __init__(
-        self, f: typing.Callable, engine: Assistant, source: str='system',
-        train: bool=True, is_method: bool=False, instance=None
+        self, f: typing.Callable, engine: Assistant, 
+        dialog_factory: typing.Optional[typing.Callable[[], Dialog]]=None,
+        is_method: bool=False, instance=None
     ):
         """
 
@@ -432,26 +460,25 @@ class InstructMethod(Module):
             _type_: 
         """
         self.f = f
-        self._train = train
 
         self.engine = engine
         update_wrapper(self, f) 
         self.instance = instance
         self._stored = None
-        self.source = source
+        self.dialog_factory = dialog_factory or Dialog
         self._is_method = is_method
 
     def i(self, *args, **kwargs) -> Instruction:
         return self.f(*args, **kwargs)
 
-    def forward(self, *args, **kwargs) -> typing.Any:        
+    def forward(self, *args, _engine: Assistant=None, _dialog: Dialog=None, **kwargs) -> typing.Any:        
+
+        engine = _engine or self.engine
+        dialog = _dialog or self.dialog_factory()
 
         instruction = self.i(*args, **kwargs)
-        text = instruction.render()
-        message = TextMessage(
-            self.source, text
-        )
-        result = self.engine(message)
+        dialog.instruct(instruction)
+        result = engine(dialog)
         return instruction.read_out(result.text)
 
     async def async_forward(self, *args, **kwargs) -> typing.Any:
@@ -462,14 +489,14 @@ class InstructMethod(Module):
 
         if self._stored is not None and instance is self._stored:
             return self._stored
-        self._stored = SignatureMethod(
-            self.f, self._details, self._train,
-            instance
+        self._stored = InstructMethod(
+            self.f, self.engine, self.dialog_factory, self._is_method,
+            instance=instance
         )
         return self._stored
     
 
-def instructf(engine: Assistant):
+def instructf(engine: Assistant=None):
     """Decorator for using a function signature
 
     Args:
@@ -487,20 +514,19 @@ def instructf(engine: Assistant):
     return _
 
 
-def signaturef(engine: Assistant, train: bool=True):
+def signaturef(engine: Assistant=None, train: bool=True):
     """Decorator for using a function signature
 
     Args:
         train (bool, optional): Whether to train the function or not. Defaults to True.
     """
     def _(f):
-        details = FunctionDetails(f)
 
         @wraps(f)
         def wrapper(*args, **kwargs):
             return f(*args, **kwargs)
         if hasattr(f, '__self__') or '__self__' in dir(f):
-            return SignatureMethod(f, engine, details, train)
+            return SignatureMethod(f, engine, train)
         else:
-            return SignatureMethod(wrapper, engine, details, train)
+            return SignatureMethod(wrapper, engine, train)
     return _

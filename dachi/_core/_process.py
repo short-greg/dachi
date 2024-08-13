@@ -344,90 +344,9 @@ def batchf(data: typing.Iterable, n_samples: int, shuffle: bool, drop_last: bool
     )
 
 
-
 def stream(m: Module, *args, **kwargs) -> typing.Iterator[typing.Any, typing.Any]:
 
     streamer = m.stream_forward(*args, **kwargs)
 
     for partial in streamer:
         yield partial.cur, partial.dx
-
-
-
-# class WaitSrc(Src):
-#     """Indicates to wait until completed
-#     """
-
-#     def __init__(self, incoming: T):
-#         """
-
-#         Args:
-#             incoming (T): 
-#         """
-#         super().__init__()
-#         self._incoming = incoming
-
-#     def incoming(self) -> typing.Iterator['T']:
-#         """
-#         Yields:
-#             T: The incoming Transmission
-#         """
-#         yield self._incoming
-
-#     def forward(self, by: typing.Dict[T, typing.Any]) -> typing.Any:
-#         """
-#         Args:
-#             by (typing.Dict[T, typing.Any]): The input to the network
-
-#         Returns:
-#             typing.Any: The output of the Src
-#         """
-#         if isinstance(self._incoming.val, Partial) and not self._incoming.val.complete:
-#             return WAITING
-
-#         if isinstance(self._incoming.val, Streamer) and not self._incoming.val.complete:
-#             return WAITING
-#         return self._incoming.val
-    
-
-# def wait(t: T) -> T:
-#     """Specify to wait for a streamed Transmission to complete before executing
-
-#     Args:
-#         t (T): The transmission
-
-#     Returns:
-#         T: The T to wait for the output
-#     """
-
-#     if isinstance(t.val, Partial) or isinstance(t.val, Streamer):
-#         val = WAITING
-#     else:
-#         val = t.val
-    
-#     return T(val, WaitSrc(t))
-
-
-# def stream(module: 'StreamableModule', *args, interval: float=None, **kwargs) -> typing.Iterator[T]:
-#     """Use to loop over a streamable module until complete
-
-#     Args:
-#         module (StreamableModule): The module to stream over
-#         interval (float, optional): The interval to stream over. Defaults to None.
-
-#     Raises:
-#         RuntimeError: If the module is not "Streamable"
-
-#     Yields:
-#         Iterator[typing.Iterator[T]]: _description_
-#     """
-#     if not isinstance(module, StreamableModule):
-#         raise RuntimeError('Stream only works for streamable modules')
-#     t = module.link(*args, **kwargs)
-#     yield t
-
-#     if isinstance(t.val, Streamer):
-#         while not t.val.complete:
-#             if interval is not None:
-#                 time.sleep(interval)
-#             yield t

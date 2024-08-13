@@ -2,6 +2,8 @@
 import typing
 from ._process import Struct, StructModule
 
+import pydantic
+
 T = typing.TypeVar('T', bound=Struct)
 
 
@@ -49,11 +51,10 @@ class TextMessage(Message):
 
 # Can extend the dialog to provide more functionality
 
-_f_type = 
 
 class Dialog(Struct):
 
-    messages: typing.List[Message]
+    messages: typing.List[Message] = pydantic.Field(default_factory=list)
 
     def __iter__(self) -> typing.Iterator[Message]:
 
@@ -99,15 +100,22 @@ class Dialog(Struct):
         
         self.messages.extend(dialog)
 
-    def source(self, source: str, text: str=None, **kwargs):
+    def source(self, source: str, text: typing.Optional[str]=None, _index: typing.Optional[int]=None, _replace: bool=False, **kwargs):
         if len(kwargs) == 0 and text is not None:
-            self.messages.append(
-                TextMessage(source, text)
-            )
+            message = TextMessage(source, text)
         elif text is not None:
-            self.messages.append(TextMessage(source, text))
+            message = Message(text=text, **kwargs)
+        elif text is None:
+            message = Message(**kwargs)
         else:
             raise ValueError('No message has been passed. The text and kwargs are empty')
+
+        if _index is None:
+            self.messages.append(message)
+        elif not _replace:
+            self.messages.insert(_index, message)
+        else:
+            self.messages[_index] = message
 
     def user(self, text: str=None, **kwargs):
         self.source('user', text, **kwargs)
@@ -117,6 +125,10 @@ class Dialog(Struct):
 
     def system(self, text: str=None, **kwargs):
         self.source('system', text, **kwargs)
+
+    def instruct(self, text: str=None, **kwargs):
+        to_replace = len(self.messages) > 0 and self.messages[0].source != 'system'
+        self.source('system', text, 0, to_replace, **kwargs)
 
 
     # def squash(self, source: str='system') -> 'Message':
