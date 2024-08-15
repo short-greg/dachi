@@ -4,15 +4,21 @@ from functools import wraps, update_wrapper
 import inspect
 import string
 
-# local
-from ._core import Struct, Out, str_formatter, render, render_multi, Dialog
-
-from ._process import Module
-from ._process import Param
+import pydantic
 import roman
 
-from ._core import Instruction, Description, render
-from ._assistant import Assistant
+# local
+from ._utils import (
+    str_formatter
+)
+from ._structs import Dialog
+from ._core import (
+    Struct, Out, 
+    render, render_multi
+)
+from ._process import Module, Assistant
+from ._structs import Description
+from ._core import Instruction, render, Param
 
 
 S = typing.TypeVar('S', bound=Struct)
@@ -276,7 +282,7 @@ def op(x: typing.Union[typing.Iterable[X], X], instruction: X) -> Instruction:
     )
 
 
-class FunctionDetails(Module):
+class FunctionOut(Module):
     """FunctionDetails are used to convert the user input into an instruction 
     """
 
@@ -402,7 +408,7 @@ class SignatureFunc(Module):
         """
         self.f = f
         self._is_method = is_method
-        self._details = FunctionDetails(f, self._is_method, train)
+        self._details = FunctionOut(f, self._is_method, train)
         # self._out = self._details.out(is_method, train)
         self.engine = engine
         self._train = train
@@ -666,6 +672,7 @@ def signaturef(engine: Assistant=None):
         return SignatureFunc(f, engine, None, False)
 
     return _
+
 
 
 # class OutF(Module, typing.Generic[S]):

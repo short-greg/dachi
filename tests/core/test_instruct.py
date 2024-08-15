@@ -1,6 +1,6 @@
 from dachi._core import _instruct as core
-from .test_core import Role
-from dachi._core._core import Struct, str_formatter, Ref, Out
+from .test_structs import Role
+from dachi._core import Struct, str_formatter, Ref, Out
 from .test_core import SimpleStruct
 import pytest
 

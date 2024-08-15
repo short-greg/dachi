@@ -1,17 +1,16 @@
 # 1st party
 import asyncio
 import typing
-from ._process import processf
+
+# local
+from ._utils import Args
+from ._process import Module, ParallelModule, processf
 
 # 3rd party
 # import networkx as nx
 # import functools
 # import numpy as np
 # from ._process import Batch, batchf
-
-# local
-from ._core import Args
-from ._process import Module, ParallelModule
 
 
 class AsyncModule(ParallelModule):

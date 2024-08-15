@@ -4,7 +4,7 @@ import openai
 import typing
 
 from .._core import Message
-from .._core._ai import AIModel, Response
+from .._core import AIModel, AIResponse
 
 # TODO: add utility for this
 required = {'openai'}
@@ -55,7 +55,7 @@ class OpenAIChatModel(AIModel):
             messages=to_openai(messages),
             **kwargs
         )
-        return Response(
+        return AIResponse(
             response.choices[0].message.content,
             response
         )
@@ -82,7 +82,7 @@ class OpenAIChatModel(AIModel):
                 delta = ''
 
             cur_message = cur_message + delta
-            yield Response(
+            yield AIResponse(
                 cur_message, chunk, delta
             )
     
@@ -100,12 +100,12 @@ class OpenAIChatModel(AIModel):
             **kwargs
         )
 
-        return Response(
+        return AIResponse(
             response.choices[0].message.content,
             response
         )
 
-    async def async_stream_query(self, messages: typing.List[Message], **kwarg_override) -> AsyncIterator[Response]:
+    async def async_stream_query(self, messages: typing.List[Message], **kwarg_override) -> AsyncIterator[AIResponse]:
 
         kwargs = {
             **self.kwargs,
@@ -126,7 +126,7 @@ class OpenAIChatModel(AIModel):
             if delta is None:
                 delta = ''
             cur_message = cur_message + delta
-            yield Response(
+            yield AIResponse(
                 cur_message,
                 chunk,
                 delta

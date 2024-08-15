@@ -1,28 +1,27 @@
 # 1st party
 import typing
+from abc import ABC, abstractmethod
 from typing import get_type_hints
 from typing import Self
-from abc import ABC, abstractmethod
+import typing
+
 from uuid import uuid4
 from enum import Enum
+import asyncio
+from dataclasses import dataclass
+
 import inspect
-import string
 import json
-import re
 
 # 3rd party
 import pydantic
 
-
-class Args(object):
-    """Encapsulates args and kwargs into an object
-    """
-
-    def __init__(self, *args, **kwargs):
-        """Create the Args object
-        """
-        self.args = args
-        self.kwargs = kwargs
+# local
+from ._utils import (
+    is_primitive, escape_curly_braces, 
+    unescape_curly_braces,
+    generic_class
+)
 
 
 class _Types(Enum):
@@ -36,7 +35,7 @@ WAITING = _Types.WAITING
 
 
 S = typing.TypeVar('S', bound='Struct')
-X = typing.Union[str, 'Description', 'Instruction']
+# X = typing.Union[str, 'Description', 'Instruction']
 
 
 class Renderable(ABC):
@@ -44,67 +43,6 @@ class Renderable(ABC):
     @abstractmethod
     def render(self) -> str:
         pass
-
-
-class _PartialFormatter(string.Formatter):
-
-    def __init__(self):
-        super().__init__()
-
-    def format(self, format_string, *args, **kwargs):
-        if args and kwargs:
-            raise ValueError("Cannot mix positional and keyword arguments")
-
-        if kwargs:
-            difference = set(kwargs.keys()).difference(set(get_str_variables(format_string)))
-            if difference:
-                raise ValueError(f'Variables specified that are not in the string {difference}')
-        self.args = args
-        self.kwargs = kwargs
-        return super().format(format_string)
-
-    def get_value(self, key, args, kwargs):
-        if isinstance(key, str):
-            return self.kwargs.get(key, '{' + key + '}')
-        if isinstance(key, int):
-            return self.args[key] if key < len(self.args) else '{' + str(key) + '}'
-        return super().get_value(key, args, kwargs)
-
-    def __call__(self, format_string, *args, **kwargs):
-        return self.format(format_string, *args, **kwargs)
-
-
-def get_str_variables(format_string: str) -> typing.List[str]:
-    """Get the variables in a string to format
-
-    Args:
-        format_string (str): The string to get variables for 
-
-    Raises:
-        ValueError: If the string has both positional and named
-        variables
-
-    Returns:
-        typing.List[str]: The list of variables
-    """
-    has_positional = re.search(r'\{\d*\}', format_string)
-    has_named = re.search(r'\{[a-zA-Z_]\w*\}', format_string)
-    
-    if has_positional and has_named:
-        raise ValueError("Cannot mix positional and named variables")
-
-    # Extract variables
-    if has_positional:
-        variables = [int(var) if var.isdigit() else None for var in re.findall(r'\{(\d*)\}', format_string)]
-        if None in variables:
-            variables = list(range(len(variables)))
-    else:
-        variables = re.findall(r'\{([a-zA-Z_]\w*)\}', format_string)
-    
-    return variables
-
-
-str_formatter = _PartialFormatter()
 
 
 def model_template(model_cls: typing.Type[pydantic.BaseModel]) -> str:
@@ -127,29 +65,6 @@ def model_template(model_cls: typing.Type[pydantic.BaseModel]) -> str:
                 "type": field_type
             }
     return template
-
-
-def escape_curly_braces(value: typing.Any, render: bool=False) -> str:
-    """Escape curly braces for dictionary-like structures."""
-
-    if isinstance(value, str):
-        result = f'"{value}"'
-        return result
-    if isinstance(value, typing.Dict):
-        items = ', '.join(f'"{k}": {escape_curly_braces(v)}' for k, v in value.items())
-        return f"{{{{{items}}}}}"
-    if isinstance(value, typing.List):
-        return '[{}]'.format(', '.join(escape_curly_braces(v) for v in value))
-    if render:
-        return render(value)
-    return str(value)
-
-
-def unescape_curly_braces(value: typing.Any) -> str:
-    """Invert the escaping of curly braces."""
-    if isinstance(value, str):
-        return value.replace('{{', '{').replace('}}', '}')
-    return value
 
 
 class Struct(pydantic.BaseModel, Renderable):
@@ -354,6 +269,50 @@ class StructList(Struct, typing.Generic[S]):
         )
 
 
+class Result(Struct, ABC):
+
+    @abstractmethod
+    def write(self, data: Struct) -> str:
+        pass
+
+    @abstractmethod
+    def read(self, data: str) -> S:
+        pass
+
+    @abstractmethod
+    def stream_read(self, data: str) -> S:
+        pass
+
+    @abstractmethod
+    def out_template(self) -> str:
+        pass
+
+
+class Out(Result, typing.Generic[S]):
+
+    name: str
+    _out_cls: typing.Type[S] = pydantic.PrivateAttr()
+
+    def __init__(self, out_cls: S, **data):
+        super().__init__(**data)
+        self._out_cls = out_cls
+
+    def to_text(self, data: S) -> str:
+        return data.to_text(True)
+
+    def write(self, data: S) -> str:
+        return data.to_text(True)
+
+    def read(self, data: str) -> S:
+        return self._out_cls.from_text(data, True)
+
+    def stream_read(self, data: str) -> S:
+        return self._out_cls.from_text(data, True)
+
+    def out_template(self) -> str:
+        return self._out_cls.template()
+
+
 def is_undefined(val) -> bool:
     """
     Args:
@@ -405,36 +364,7 @@ class Storable(ABC):
         return cur
 
 
-class Description(Struct, Renderable, ABC):
-    """Provide context in the prompt template
-    """
-    name: str = pydantic.Field(description='The name of the description.')
-
-    # @abstractmethod
-    # def update(self, **kwargs) -> Self:
-    #     pass
-
-    @abstractmethod
-    def render(self) -> str:
-        pass
-
-
-_primitives = (bool, str, int, float, type(None))
-
-
-def is_primitive(obj) -> bool:
-    """Utility to check if a value is a primitive
-
-    Args:
-        obj: Value to check
-
-    Returns:
-        bool: If it is a "primitive"
-    """
-    return type(obj) in _primitives
-
-
-def render(x: X) -> typing.Union[str, typing.List[str]]:
+def render(x: typing.Any) -> typing.Union[str, typing.List[str]]:
     """Convert an input to text. Will use the text for an instruction,
     the render() method for a description and convert any other value to
     text with str()
@@ -454,7 +384,8 @@ def render(x: X) -> typing.Union[str, typing.List[str]]:
         f'Cannot render value of type {type(x)}'
     )
 
-def render_multi(xs: typing.Iterable[X]) -> typing.List[str]:
+
+def render_multi(xs: typing.Iterable[typing.Any]) -> typing.List[str]:
     """Convert an input to text. Will use the text for an instruction,
     the render() method for a description and convert any other value to
     text with str()
@@ -471,251 +402,265 @@ def render_multi(xs: typing.Iterable[X]) -> typing.List[str]:
     ]
 
 
-class Ref(Struct):
-    """Reference to another description.
-    Useful when one only wants to include the 
-    name of a description in part of the prompt
+@dataclass
+class AIResponse(object):
+
+    message: typing.Any
+    source: typing.Dict
+    delta: typing.Any = None
+    
+
+class AIModel(ABC):
+    """APIAdapter allows one to adapt various WebAPI or otehr
+    API for a consistent interface
     """
-    desc: Description
+
+    @abstractmethod
+    def query(self, data) -> AIResponse:
+        """Run a standard query to the API
+
+        Args:
+            data : Data to pass to the API
+
+        Returns:
+            typing.Dict: The result of the API call
+        """
+        pass
+
+    def stream_query(self, data) -> typing.Iterator[AIResponse]:
+        """API that allows for streaming the response
+
+        Args:
+            data: Data to pass to the API
+
+        Returns:
+            typing.Iterator: Data representing the streamed response
+            Uses 'delta' for the difference. Since the default
+            behavior doesn't truly stream. This must be overridden 
+
+        Yields:
+            typing.Dict: The data
+        """
+        result = self.query(data)
+        yield result
+    
+    async def async_query(self, data, **kwarg_override) -> AIResponse:
+        """Run this query for asynchronous operations
+        The default behavior is simply to call the query
+
+        Args:
+            data: Data to pass to the API
+
+        Returns:
+            typing.Any: 
+        """
+        return self.query(data, **kwarg_override)
+    
+    async def bulk_async_query(self, data, **kwarg_override) -> typing.List[AIResponse]:
+        """
+
+        Args:
+            data (_type_): 
+
+        Returns:
+            typing.List[typing.Dict]: 
+        """
+        tasks = []
+        async with asyncio.TaskGroup() as tg:
+
+            for data_i in data:
+                tasks.append(
+                    tg.create_task(self.async_query(data_i, **kwarg_override))
+                )
+        return list(
+            task.result() for task in tasks
+        )
+    
+    async def async_stream_query(self, data, **kwarg_override) -> typing.AsyncIterator[AIResponse]:
+        """Run this query for asynchronous streaming operations
+        The default behavior is simply to call the query
+
+        Args:
+            data: The data to pass to the API
+
+        Yields:
+            typing.Dict: The data returned from the API
+        """
+        result = self.query(data, **kwarg_override)
+        yield result
+
+    async def _collect_results(generator, index, results, queue):
+        async for item in generator:
+            results[index] = item
+            await queue.put(results[:])  # Put a copy of the current results
+        results[index] = None  # Mark this generator as completed
+
+    async def bulk_async_stream_query(self, data, **kwarg_override) -> typing.AsyncIterator[typing.List[AIResponse]]:
+        """
+
+        Args:
+            data (_type_): 
+
+        Returns:
+            typing.List[typing.Dict]: 
+        """
+        results = [None] * len(data)
+        queue = asyncio.Queue()
+
+        async with asyncio.TaskGroup() as tg:
+            for index, data_i in enumerate(data):
+                tg.create_task(self._collect_results(
+                    self.async_stream_query(data_i, **kwarg_override), index, results, queue)
+                )
+
+        active_generators = len(data)
+        while active_generators > 0:
+            current_results = await queue.get()
+            yield current_results
+            active_generators = sum(result is not None for result in current_results)
+
+    # @property
+    # @abstractmethod
+    # def output_schema(self) -> typing.Dict:
+    #     pass
+
+    # @property
+    # @abstractmethod
+    # def input_schema(self) -> typing.Dict:
+    #     pass
+
+
+
+@dataclass
+class Partial(object):
+    """Class for storing a partial output from a streaming process
+    """
+    cur: typing.Any
+    prev: typing.Any = None
+    dx: typing.Any = None
+    complete: bool = False
+
+
+class Streamer(object):
+
+    def __init__(self, stream: typing.Iterator):
+        """The Stream to loop over
+
+        Args:
+            stream: The stream to loop over in generating the stream
+        """
+        self._stream = stream
+        self._cur = None
+        self._output = UNDEFINED
+        self._prev = None
+        self._dx = None
 
     @property
-    def name(self) -> str:
-        """Get the name of the ref
+    def complete(self) -> bool:
+        return self._output is not UNDEFINED
+
+    def __call__(self) -> typing.Union[typing.Any, Partial]:
+        """Query the streamer and returned updated value if updated
 
         Returns:
-            str: The name of the ref
+            typing.Union[typing.Any, Partial]: Get the next value in the stream
         """
-        return self.desc.name
+        if self._output is not UNDEFINED:
+            return self._output
+        try:
+            self._prev = self._cur
+            self._cur, self._dx = next(self._stream)
+            return Partial(self._cur, self._prev, self._dx, False)    
+        except StopIteration:
+            self._output = Partial(self._cur, self._prev, self._dx, True) 
+            return self._output
+        
+    def __iter__(self) -> typing.Iterator[Partial]:
 
-    def render(self) -> str:
-        """Generate the text rendering of the ref
+        while True:
+
+            cur = self()
+            if cur.complete:
+                break
+            yield cur
+
+
+class Module(ABC):
+    """Base class for Modules
+    """
+
+    @abstractmethod
+    def forward(self, *args, **kwargs) -> typing.Any:
+        pass
+
+    def __call__(self, *args, **kwargs) -> typing.Any:
+
+        return self.forward(*args, **kwargs)
+
+    def parameters(self, recurse: bool=True) -> typing.Iterator['Param']:
+        
+        yielded = set()
+        for k, v in self.__dict__.items():
+            if isinstance(v, Param):
+                if id(v) in yielded:
+                    continue
+                yielded.add(id(v))
+                
+                yield v
+            if recurse and isinstance(v, Module):
+                for v in v.parameters(True):
+                    if id(v) in yielded:
+                        continue
+                    yielded.add(id(v))
+                    yield v
+
+    def children(self, recurse: bool=True) -> typing.Iterator['Module']:
+        
+        yielded = set()
+        for k, v in self.__dict__.items():
+            if isinstance(v, Module):
+                if id(v) in yielded:
+                    continue
+                yielded.add(id(v))
+                if recurse:
+                    for v in v.children(True):
+                        if id(v) in yielded:
+                            continue
+                        yielded.add(id(v))
+                        yield v
+    
+    async def async_forward(self, *args, **kwargs) -> typing.Any:
+        """
 
         Returns:
-            str: The name for the ref
+            typing.Any: 
         """
-        return self.desc.name
+        return self.forward(*args, **kwargs)
 
-
-def generic_class(t: typing.TypeVar, idx: int=0) -> typing.Type:
-    """Gets the generic type for a class assuming that it only has 
-    one.
-
-    Args:
-        t (typing.TypeVar): The class to get the generic type for
-        idx (int, optional): . Defaults to 0.
-
-    Returns:
-        typing.Type: the type specified by the generic class
-    """
-    return t.__orig_class__.__args__[idx]
-
-
-class Result(Struct, ABC):
-
-    @abstractmethod
-    def write(self, data: Struct) -> str:
-        pass
-
-    @abstractmethod
-    def read(self, data: str) -> S:
-        pass
-
-    @abstractmethod
-    def stream_read(self, data: str) -> S:
-        pass
-
-    @abstractmethod
-    def out_template(self) -> str:
-        pass
-
-
-class Out(Result, typing.Generic[S]):
-
-    name: str
-    _out_cls: typing.Type[S] = pydantic.PrivateAttr()
-
-    def __init__(self, out_cls: S, **data):
-        super().__init__(**data)
-        self._out_cls = out_cls
-
-    def to_text(self, data: S) -> str:
-        return data.to_text(True)
-
-    def write(self, data: S) -> str:
-        return data.to_text(True)
-
-    def read(self, data: str) -> S:
-        return self._out_cls.from_text(data, True)
-
-    def stream_read(self, data: str) -> S:
-        return self._out_cls.from_text(data, True)
-
-    def out_template(self) -> str:
-        return self._out_cls.template()
-
-
-class ListOut(Result, typing.Generic[S]):
-    """A list of outputs
-    """
-
-    name: str
-    _out_cls: typing.Type[S] = pydantic.PrivateAttr()
-
-    def __init__(self, out_cls: S, **data):
-        super().__init__(**data)
-        self._out_cls = out_cls
-
-    def write(self, data: StructList[S]) -> str:
-        """
-
-        Args:
-            data (StructList[S]): _description_
-
-        Returns:
-            str: the data written
-        """
-        return json.dumps(data)
-
-    def read(self, data: str) -> StructList[S]:
-        d = json.loads(data)
-        structs = []
-        for cur in d['structs']:
-            structs.append(self._out_cls.from_dict(cur))
-
-        return StructList(structs=structs)
-
-    def to_text(self, data: StructList[S]) -> str:
-        return data.to_text()
-
-    def stream_read(self, data: str) -> S:
-
-        d = json.loads(data)
-        structs = []
-        for cur in d['structs']:
-            structs.append(self._out_cls.from_dict(cur))
-
-        return StructList(structs=structs)
-    
-    def out_template(self) -> str:
-        return self._out_cls.template()
-
-
-class MultiOut(Result):
-    """Concatenates multiple outputs Out into one output
-    """
-    
-    outs: typing.List[Out]
-    conn: str = '::OUT::{name}::\n'
-    signal: str = '\u241E'
-
-    def write(self, data: typing.List[Struct]) -> str:
-
-        result = ''
-        for struct, out in zip(data, self.outs):
-            result = result + '\n' + self.signal + self.conn.format(name=out.name)
-            result = f'{result}\n{struct.render()}'
-
-        return result
-
-    def read(self, data: str) -> typing.List[Struct]:
-
-        structs = []
-
-        d = data
-        for out in self.outs:
-            from_loc = d.find('\u241E')
-            to_loc = d[from_loc + 1:].find('\u241E')
-            cur = self.conn.format(name=out.name)
-            data_loc = from_loc + len(cur) + 1
-            if to_loc != -1:
-                data_end_loc = from_loc + 1 + to_loc
-            else:
-                data_end_loc = None
-
-            data_str = d[data_loc:data_end_loc]
-            structs.append(out.read(data_str))
-            d = d[data_end_loc:]
-
-        return structs
-
-    def to_text(self, data: typing.List[S]) -> str:
-
-        text = ""
-        for data_i, out in zip(data, self.outs):
-            cur = data_i.render()
-            cur_conn = self.conn.format(out.name)
-            text += f"""
-            {self.signal}{cur_conn}
-            {cur}
-            """
-        return text
-
-    def stream_read(self, data: str) -> typing.Tuple[S, bool, str]:
-        structs = []
-
-        d = data
-        for i, t in enumerate(self.outs):
-            from_loc = d.find('\u241E')
-            to_loc = d[from_loc + 1:].find('\u241E')
-            cur = self.conn.format(name=t.name)
-            data_loc = from_loc + len(cur) + 1
-
-            if to_loc != -1:
-                data_end_loc = from_loc + 1 + to_loc
-            else:
-                data_end_loc = None
-
-            data_str = d[data_loc:data_end_loc]
-            try: 
-                structs.append(t.read(data_str))
-            except StructLoadException as e:
-                return structs, i
-            d = d[data_end_loc:]
-
-        return structs, None
-    
-    def out_template(self) -> str:
-
-        text = ""
-        for out in self.outs:
-            cur = out.out_template()
-            cur_conn = self.conn.format(out.name)
-            text += f"""
-            {self.signal}{cur_conn}
-            {cur}
-            """
-        return text
-
-
-class JSONOut(Out):
-    """
-    """
-    def stream_read(self, text: str) -> typing.Tuple[
-        typing.Optional[typing.Dict], bool
+    def stream_iter(self, *args, **kwargs) -> typing.Iterator[
+        typing.Tuple[typing.Any, typing.Any]
     ]:
+        # default behavior doesn't actually stream
+        res = self.forward(*args, **kwargs) 
+        yield res, None
+
+    def stream_forward(self, *args, **kwargs) -> Streamer:
         """
-
-        Args:
-            text (str): 
-
         Returns:
-            typing.Tuple[ typing.Optional[typing.Dict], bool ]: 
+            Streamer: The Streamer to loop over
         """
-        try: 
-            result = json.loads(text)
-            return result, True
-        except json.JSONDecodeError:
-            return None, False
+        return Streamer(
+            self.stream_iter(*args, **kwargs)
+        )
 
-    def read(self, text: str) -> typing.Dict:
-        result = json.loads(text)
-        return result
 
-    def write(self, data: Struct) -> str:
-        return data.to_text()
-    
-    def template(self, out_cls: Struct) -> str:
-        return out_cls.template()
+class StructModule(Struct, Module):
+
+    def forward(self, key: str, value: typing.Any) -> typing.Any:
+        
+        copy = self.model_copy()
+        copy[key] = value
+        return copy
 
 
 class Instruction(Struct, typing.Generic[S]):
@@ -777,130 +722,3 @@ class Param(Struct):
 
     def reads(self, data: str) -> S:
         return self.instruction.read_out(data)
-
-
-T = typing.TypeVar('T', bound=Struct)
-
-
-class Media:
-
-    descr: str
-    data: str
-
-
-Content = typing.Union[Media, str, typing.List[typing.Union[Media, str]]]
-
-
-class Message(Struct):
-
-    source: str
-    data: typing.Dict[str, Content]
-
-    def __getitem__(self, key: str):
-        if hasattr(self, key):
-            return getattr(self, key)
-        if key in self.data:
-            return self.data[key]
-        raise KeyError(f'{key}')
-
-    def __setitem__(self, key: str, value: Content):
-        if hasattr(self, key):
-            setattr(self, key, value)
-        if key in self.data:
-            self.data[key] = value
-        raise KeyError(f'{key}')
-
-
-class TextMessage(Message):
-
-    def __init__(self, source: str, text: str) -> 'Message':
-
-        super().__init__(
-            source=source,
-            data={
-                'text': text
-            }
-        )
-
-# TODO: Improve document similar to message
-
-# Can extend the dialog to provide more functionality
-
-
-class Dialog(Struct):
-
-    messages: typing.List[Message] = pydantic.Field(default_factory=list)
-
-    def __iter__(self) -> typing.Iterator[Message]:
-
-        for message in self.messages:
-            yield message
-
-    def __add__(self, other: 'Dialog'):
-
-        return Dialog(
-            self.messages + other.messages
-        )
-
-    def __getitem__(self, idx) -> 'Dialog':
-
-        return Dialog(
-            messages=self.messages[idx]
-        )
-
-    def __setitem__(self, idx, message) -> 'Dialog':
-
-        self.messages[idx] = message
-
-    def insert(self, index: int, message: Message):
-
-        self.messages.insert(index, message)
-
-    def pop(self, index: int):
-
-        self.messages.pop(index)
-
-    def remove(self, message: Message):
-
-        self.messages.remove(message)
-
-    def append(self, message: Message):
-
-        self.messages.append(message)
-
-    def extend(self, dialog: typing.Union['Dialog', typing.List[Message]]):
-
-        if isinstance(dialog, Dialog):
-            dialog = dialog.messages
-        
-        self.messages.extend(dialog)
-
-    def source(self, source: str, text: typing.Optional[str]=None, _index: typing.Optional[int]=None, _replace: bool=False, **kwargs):
-        if len(kwargs) == 0 and text is not None:
-            message = TextMessage(source, text)
-        elif text is not None:
-            message = Message(text=text, **kwargs)
-        elif text is None:
-            message = Message(**kwargs)
-        else:
-            raise ValueError('No message has been passed. The text and kwargs are empty')
-
-        if _index is None:
-            self.messages.append(message)
-        elif not _replace:
-            self.messages.insert(_index, message)
-        else:
-            self.messages[_index] = message
-
-    def user(self, text: str=None, **kwargs):
-        self.source('user', text, **kwargs)
-
-    def assistant(self, text: str=None, **kwargs):
-        self.source('assistant', text, **kwargs)
-
-    def system(self, text: str=None, **kwargs):
-        self.source('system', text, **kwargs)
-
-    def instruct(self, text: str=None, **kwargs):
-        to_replace = len(self.messages) > 0 and self.messages[0].source != 'system'
-        self.source('system', text, 0, to_replace, **kwargs)

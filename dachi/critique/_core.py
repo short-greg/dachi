@@ -1,8 +1,7 @@
 from abc import ABC, abstractmethod
 import typing
 import json
-from ..converse import Prompt
-from .._core import Message
+from .._core import Message, Prompt
 from .._core import (
     Struct, Module,
     escape_curly_braces, Data,

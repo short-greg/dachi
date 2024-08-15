@@ -1,8 +1,8 @@
 # 1st party
 from abc import abstractmethod, ABC
 import typing
-import time
 from typing import Any
+import typing
 import asyncio
 from functools import wraps
 from dataclasses import dataclass
@@ -11,8 +11,8 @@ from dataclasses import dataclass
 import numpy as np
 
 # local
-from ._core import Param, Struct
-from ._core import UNDEFINED
+from ._core import UNDEFINED, Param, Struct, AIModel
+from ._structs import Message, TextMessage
 
 
 @dataclass
@@ -138,6 +138,15 @@ class Module(ABC):
         )
 
 
+class StructModule(Struct, Module):
+
+    def forward(self, key: str, value: typing.Any) -> typing.Any:
+        
+        copy = self.model_copy()
+        copy[key] = value
+        return copy
+
+
 class StreamModule(Module):
     # Use for modules that rely on stream
 
@@ -167,15 +176,6 @@ class ParallelModule(Module, ABC):
             yield module_i
 
 
-class StructModule(Struct, Module):
-
-    def forward(self, key: str, value: typing.Any) -> typing.Any:
-        
-        copy = self.model_copy()
-        copy[key] = value
-        return copy
-
-
 class Get(Module):
 
     def forward(self, struct: Struct, key) -> typing.Any:
@@ -195,7 +195,7 @@ get = Get()
 set = Set()
 
 
-class _DecMethod(Module):
+class _ProcessMethod(Module):
 
     def __init__(self, f: typing.Callable, instance=None):
         self.f = f
@@ -218,7 +218,7 @@ class _DecMethod(Module):
 
         if self._stored is not None and instance is self._stored:
             return self._stored
-        self._stored = _DecMethod(self.f, instance)
+        self._stored = _ProcessMethod(self.f, instance)
         return self._stored
     
     @classmethod
@@ -234,9 +234,9 @@ def processf(f):
         return f(*args, **kwargs)
 
     if hasattr(f, '__self__') or '__self__' in dir(f):
-        return _DecMethod(f)
+        return _ProcessMethod(f)
     else:
-        return _DecMethod(wrapper)
+        return _ProcessMethod(wrapper)
 
 
 class Multi(Module):
@@ -306,7 +306,6 @@ class Sequential(Module):
         return x
 
 
-
 class Batch(object):
 
     def __init__(self, data: typing.Iterable, n_samples: int, shuffle: bool, drop_last: bool=True):
@@ -350,3 +349,94 @@ def stream(m: Module, *args, **kwargs) -> typing.Iterator[typing.Tuple[typing.An
 
     for partial in streamer:
         yield partial.cur, partial.dx
+
+
+class Assistant(Module, ABC):
+
+    def __init__(self, model: AIModel):
+        self.model = model
+
+    @abstractmethod
+    def forward(self, message: Message) -> Message:
+        pass
+
+    def stream_text(self, message: Message) -> typing.Iterator[str]:
+
+        streamer = self.stream_forward(message)
+        for partial in streamer:
+            
+            yield partial.dx['text']
+
+
+class Prompt(Assistant):
+
+    def __init__(self, model: AIModel, init_messages: typing.List[Message]):
+
+        self.init_messages = init_messages
+        self.model = model
+        self.role = 'assistant'
+
+    def forward(self, message: Message) -> Message:
+
+        response = self.model.query([*self.init_messages, message])
+        return TextMessage(self.role, response.message)
+
+    def stream_iter(self, message: Message) -> typing.Iterator[
+        typing.Tuple[Message, Message]
+    ]:
+        for response in self.model.stream_query([
+            *self.init_messages, message
+        ]):
+            yield TextMessage(self.role, response.message), TextMessage(self.role, response.delta)
+
+    async def async_forward(self, message: Message) -> typing.Any:
+
+        response = await self.model.async_query(
+            [*self.init_messages, message]
+        )
+        return TextMessage(self.role, response.message)
+
+
+class Chat(Assistant):
+
+    def __init__(self, model: AIModel, init_messages: typing.List[Message]):
+
+        self.messages = init_messages
+        self.model = model
+        self.role = 'assistant'
+
+    def forward(self, message: Message) -> Message:
+
+        self.messages.append(message)
+
+        response = self.model.query(self.messages)
+        self.messages.append(response.message)
+        return TextMessage(source=self.role, text=response.message)
+
+    def stream_iter(self, message: Message) -> typing.Iterator[
+        typing.Tuple[Message, Message]
+    ]:
+        self.messages.append(message)
+
+        for response in self.model.stream_query(self.messages):
+            cur_message = TextMessage(source=self.role, text=response.message)
+            cur_dx = TextMessage(source=self.role, text=response.delta)
+            yield cur_message, cur_dx 
+        else:
+            self.messages.append(cur_message)
+
+    async def async_forward(self, message: Message) -> typing.Any:
+
+        self.messages.append(message)
+
+        response = await self.model.async_query(
+            [*self.init_messages, message]
+        )
+        self.messages.append(response.message)
+        return TextMessage(source=self.role, text=response.message)
+
+    def loop(self, include: typing.Callable[[Message], bool]=None) -> typing.Iterator[Message]:
+
+        for message in self.messages:
+            if include is None or include(message):
+                yield message

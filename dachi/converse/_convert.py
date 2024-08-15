@@ -1,4 +1,4 @@
-from .._core._core import Message
+from .._core._structs import Message
 from .._core import Module, processf
 import pandas as pd
 import json

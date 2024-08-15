@@ -3,24 +3,29 @@ from ._async import (
     map, async_map
 )
 from ._core import (
-    str_formatter, get_str_variables,
-    model_template, Struct, StructList,
-    is_undefined, Storable, Description, 
-    render, Ref, generic_class, Out,
-    MultiOut, render_multi, Renderable,
-    Instruction, Param, escape_curly_braces,
-    unescape_curly_braces, UNDEFINED, WAITING,
-    ListOut, Data, Args, 
-    Message, Media, Dialog, 
-    TextMessage
+    Renderable, model_template,
+    Struct, StructLoadException,
+    is_nested_model, StructList,
+    Result, Out, is_undefined,
+    Storable, render,
+    render_multi, AIResponse,
+    AIModel, Partial, Streamer,
+    Module, StructModule, Instruction,
+    Param, Data, UNDEFINED, WAITING
 )
 
 from ._instruct import (
     bullet, formatted, generate_numbered_list,
     numbered, validate_out, fill, head,
     section, cat, join, Operation, op,
-    FunctionDetails, signaturef,
-    # OutF,
+    FunctionOut, signaturef, SignatureFunc, 
+    signaturemethod,
+    InstructFunc, instructf, instructmethod
+)
+from ._structs import (
+    Description, Ref,
+    Media, Message, TextMessage,
+    Dialog
 )
 
 from ._process import (
@@ -29,18 +34,15 @@ from ._process import (
     Module, 
     ParallelModule, StructModule, Get,
     Set, get, set, processf, Multi, Sequential, Batch,
-    batchf, 
+    batchf, stream, 
+    Assistant, Prompt, Chat
 )
 
 from ._io import (
-    CSV, KV
+    CSV, KV, ListOut, MultiOut, JSONOut
 )
-# from .._core._structs_doc import (
-# )
-from ._ai import (
-    AIModel, 
-    Response
-)
-from ._assistant import (
-    Assistant, Prompt, Chat
+from ._utils import (
+    get_str_variables, escape_curly_braces,
+    unescape_curly_braces, is_primitive,
+    generic_class, Args, str_formatter
 )
