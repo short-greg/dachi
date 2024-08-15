@@ -15,6 +15,14 @@ class NestedStruct(_core.Struct):
     simple: SimpleStruct
 
 
+class TestMessage(object):
+
+    def test_message_role_is_a_string(self):
+
+        message = _core.TextMessage(source='assistant', text='hi, how are you')
+        assert message.data['role'] == 'assistant'
+        assert message.data['text'] == 'hi, how are you'
+
 class TestStruct(object):
 
     def test_simple_struct_gets_string(self):

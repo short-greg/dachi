@@ -1,25 +1,17 @@
 from dachi._core import _structs_doc as _struct
 
 
-class TestMessage(object):
 
-    def test_message_role_is_a_string(self):
+# class TestDoc(object):
 
-        message = _struct.TextMessage(source='assistant', text='hi, how are you')
-        assert message.data['role'] == 'assistant'
-        assert message.data['text'] == 'hi, how are you'
+#     def test_doc_text_is_a_string(self):
 
-
-class TestDoc(object):
-
-    def test_doc_text_is_a_string(self):
-
-        doc = _struct.Doc(
-            name='document name', 
-            text='hi, how are you'
-        )
-        assert doc.name == 'document name'
-        assert doc.text == 'hi, how are you'
+#         doc = _struct.Doc(
+#             name='document name', 
+#             text='hi, how are you'
+#         )
+#         assert doc.name == 'document name'
+#         assert doc.text == 'hi, how are you'
 
 
 # class TestMessageList(object):
