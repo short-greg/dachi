@@ -2,7 +2,6 @@ from abc import ABC, abstractmethod
 import typing
 import asyncio
 from dataclasses import dataclass
-from . import Message, Struct
 
 
 @dataclass

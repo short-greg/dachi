@@ -5,11 +5,10 @@ import inspect
 import string
 
 # local
-from ._core import Struct, Out, str_formatter, render, render_multi
+from ._core import Struct, Out, str_formatter, render, render_multi, Dialog
 
 from ._process import Module
 from ._process import Param
-from ._structs_doc import Dialog
 import roman
 
 from ._core import Instruction, Description, render
@@ -21,17 +20,14 @@ X = typing.Union[str, Description, Instruction]
 
 
 def bullet(xs: typing.Iterable[X], bullets: str='-', indent: int=0) -> 'Instruction':
-    """
+    """Create a bullet list based on the instructions
 
     Args:
-        xs (typing.Iterable[Instruction]): 
-        bullets (str, optional): . Defaults to '-'.
-
-    Raises:
-        RuntimeError: 
+        xs (typing.Iterable[X]): The instructions to bullet
+        bullets (str, optional): The string to use for the bullet. Defaults to '-'.
 
     Returns:
-        Instruction: 
+        Instruction: The resulting instruction
     """
     indent = ' ' * indent
     text = f'\n{indent}{bullets}'
@@ -45,6 +41,19 @@ def bullet(xs: typing.Iterable[X], bullets: str='-', indent: int=0) -> 'Instruct
 
 
 def formatted(x: X, format: str) -> 'Instruction':
+    """Format the X with a format. The format string will encapsulate it
+
+    Example:
+
+    formatted('Name', '*') => '*Name*'
+
+    Args:
+        x (X): The data to format
+        format (str): The format to use
+
+    Returns:
+        Instruction: The resulting instruction
+    """
 
     text = render(x)
     if text[:len(format)] == format and text[-len(format):] == format:
@@ -69,15 +78,15 @@ def generate_numbered_list(n, numbering_type='arabic'):
 
 
 def numbered(xs: typing.Iterable[X], indent: int=0, numbering: str='arabic') -> 'Instruction':
-    """
+    """Create a numbered list
 
     Args:
-        xs (typing.Iterable[Instruction]): 
-        indent (int, optional): . Defaults to 0.
-        numbering (str, optional): . Defaults to 'arabic'.
+        xs (typing.Iterable[Instruction]): A list of strings
+        indent (int, optional): The number to start with indenting. Defaults to 0.
+        numbering (str, optional): The type of numbering system to use. Defaults to 'arabic'.
 
     Returns:
-        Instruction: 
+        Instruction: The resulting Instruction
     """
     text = ''
     indent = ' ' * indent
@@ -95,6 +104,14 @@ def numbered(xs: typing.Iterable[X], indent: int=0, numbering: str='arabic') -> 
 
 
 def validate_out(instructions: typing.List[X]) -> Out:
+    """Validate an Out based on several instructions
+
+    Args:
+        instructions (typing.List[X]): The instructions 
+
+    Returns:
+        Out: The resulting "Out" to use from the instructions
+    """
 
     out = None
     for instruction in instructions:
@@ -108,7 +125,14 @@ def validate_out(instructions: typing.List[X]) -> Out:
 
 
 def fill(x_instr: X, *args: X, **kwargs: X) -> 'Instruction':
+    """Format a string with variables
 
+    Args:
+        x_instr (X): The value to format
+
+    Returns:
+        Instruction: The resulting instruction
+    """
     out = validate_out([x_instr])
 
     kwargs = dict(zip(kwargs.keys(), render_multi(kwargs.values())))
@@ -119,7 +143,15 @@ def fill(x_instr: X, *args: X, **kwargs: X) -> 'Instruction':
 
 
 def head(x: X, size: int=1) -> 'Instruction':
+    """Add a header to the instruction
 
+    Args:
+        x (X): The input to add to
+        size (int, optional): The size of the heading. Defaults to 1.
+
+    Returns:
+        Instruction: The resulting instruction
+    """
     out = validate_out([x])
     heading = '#' * size
     return Instruction(
@@ -128,23 +160,32 @@ def head(x: X, size: int=1) -> 'Instruction':
 
 
 def section(name: X, details: X, size: int=1, linebreak: int=1) -> 'Instruction':
+    """Add a section
 
+    Args:
+        name (X): The name of the section
+        details (X): The details for the section
+        size (int, optional): The size of the heading. Defaults to 1.
+        linebreak (int, optional): How many linebreaks to put between the heading and the details. Defaults to 1.
+
+    Returns:
+        Instruction: The inst
+    """
     heading = '#' * size
     out = validate_out([name, details])
     linebreak = '\n' * linebreak
     text = f'{heading} {render(name)}{linebreak}' + render(details)
-
     return Instruction(
         text=text, out=out
     )
 
 
-def cat(xs: typing.List[Instruction], delim: str=' ') -> Instruction:
-    """
+def cat(xs: typing.List[Instruction], sep: str=' ') -> Instruction:
+    """Concatenate multiple instructions together
 
     Args:
-        by (str): 
-        xs (typing.List[Instruction]): 
+        xs (typing.List[Instruction]): THe instructions 
+        sep (str): The delimiter to use for the sections
 
     Raises:
         RuntimeError: 
@@ -154,36 +195,39 @@ def cat(xs: typing.List[Instruction], delim: str=' ') -> Instruction:
     """
     out = validate_out(xs)
 
-    return Instruction(text=f'{delim}'.join(
+    return Instruction(text=f'{sep}'.join(
         render(x_i) for x_i in xs
     ), out=out)
 
 
-def join(x1: X, x2: X, delim: str=' ') -> Instruction:
-    """
+def join(x1: X, x2: X, sep: str=' ') -> Instruction:
+    """Join two instructions together
 
     Args:
-        x1 : 
-        x2 : 
-        delim (str): 
+        x1 : Instruction 1
+        x2 : Instruction 2
+        sep (str): The separator between the two instructions
 
     Returns:
-        Instruction: 
+        Instruction: The joined instructions
     """
     out = validate_out([x1, x2])
     return Instruction(
-        text=render(x1) + delim + render(x2),
+        text=render(x1) + sep + render(x2),
         out=out
     )
 
 
 class Operation(Module):
+    """An operation acts on an instruction to produce a new instruction
+    """
 
     def __init__(self, name: str, instruction: X):
-        """
+        """Create an operation specifying the name
 
         Args:
-            name (str): 
+            name (str): The name of the operation
+            instruction (X): The instruction for the operation
         """
         if not isinstance(instruction, Instruction):
             instruction = Instruction(
@@ -211,7 +255,15 @@ class Operation(Module):
 
 
 def op(x: typing.Union[typing.Iterable[X], X], instruction: X) -> Instruction:
+    """Execute an operation on an instruction
 
+    Args:
+        x (typing.Union[typing.Iterable[X], X]): The input
+        instruction (X): The instruction for the operation
+
+    Returns:
+        Instruction: The resulting instruction
+    """
     if not isinstance(x, typing.Iterable):
         x = [x]
 
@@ -224,41 +276,69 @@ def op(x: typing.Union[typing.Iterable[X], X], instruction: X) -> Instruction:
     )
 
 
-class OutF(Module, typing.Generic[S]):
+class FunctionDetails(Module):
+    """FunctionDetails are used to convert the user input into an instruction 
+    """
 
     def __init__(
-        self,
-        name: str,
-        signature: str, 
-        docstring: str, 
-        parameters: typing.Dict,
-        is_method: bool=False,
-        train: bool=False,
-        out_cls: typing.Optional[typing.Type[S]] = None, 
+        self, func: typing.Callable, 
+        is_method: bool=False, 
+        train: bool=False
     ):
-        self.signature = signature
-        self.docstring = Param(
-            name=name,
-            instruction=docstring,
+        """Create FunctionDetails based on the signature of that method or fucntion
+
+        Args:
+            func (typing.Callable): The function to get the details for
+            is_method (bool, optional): Whether it is a method or not. Defaults to False.
+            train (bool, optional): Whether to train or not train. Defaults to False.
+        """
+        # TODO: I don't want the return type to Out
+
+        self.func = func
+        self.name = func.__name__
+        self._docstring = inspect.getdoc(func)
+        self.signature = str(inspect.signature(func))
+        self.parameters = inspect.signature(func).parameters
+        self.return_annotation = inspect.signature(func).return_annotation
+        # if (
+        #     self.return_annotation is not inspect.Signature.empty 
+        #     and not issubclass(self.return_annotation, Out)
+        # ):
+        #     raise TypeError(f"Expected return type {Out}, got {type(self.return_annotation)} instead")
+
+        self._docstring_p = Param(
+            name=self.name,
+            instruction=self._docstring,
             training=train
         )
 
-        self.out_cls = out_cls
-        self.parameters = parameters
+        # origin, generic_type = self.get_generic_type()
+        self.out_cls = (
+            self.return_annotation if self.return_annotation is not None 
+            else str 
+        )# origin
+        # self.parameters = parameters
         self._is_method = is_method
 
     def forward(self, *args, **kwargs) -> Instruction:
-    
-        filled_docstring = self.docstring.render()
+        """Get the instruction based on the input arguments
+
+        Raises:
+            RuntimeError: If a parameter is not defined or has no value
+
+        Returns:
+            Instruction: The resulting instruction
+        """
+        filled_docstring = self._docstring_p.render()
 
         filled = set()
 
         param_values = list(self.parameters.values())
-        if self._is_method:
+
+        if self._is_method:            
             param_values = param_values[1:]
 
         for value, param in zip(args, param_values):
-            
             
             filled_docstring = filled_docstring.replace(
                 f'{{{param.name}}}', 
@@ -286,125 +366,101 @@ class OutF(Module, typing.Generic[S]):
 
         return Instruction(
             text=filled_docstring,
-            out=self.out_cls
+            out=Out(name=self.name, out_cls=self.out_cls)
         )
 
-
-class FunctionDetails:
-
-    def __init__(self, func: typing.Callable):
-        self.func = func
-        self.name = func.__name__
-        self.docstring = inspect.getdoc(func)
-        self.signature = str(inspect.signature(func))
-        self.parameters = inspect.signature(func).parameters
-        self.return_annotation = inspect.signature(func).return_annotation
-        if (
-            self.return_annotation is not inspect.Signature.empty 
-            and not issubclass(self.return_annotation, Out)
-        ):
-            raise TypeError(f"Expected return type {Out}, got {type(self.return_annotation)} instead")
-
-    def get_generic_type(self):
-        if self.return_annotation is not inspect.Signature.empty:
-            origin = getattr(self.return_annotation, '__origin__', None)
-            if origin and issubclass(origin, Out):
-                args = self.return_annotation.__args__ if hasattr(self.return_annotation, '__args__') else ()
-                return origin, args[0] if args else None
-        return None, None
-    
-    def out(self, is_method: bool=False, train: bool=False) -> OutF:        
-        
-        origin, generic_type = self.get_generic_type()
-        if origin:
-            if generic_type:
-                return OutF(
-                    name=self.name,
-                    train=train,
-                    signature=self.signature,
-                    docstring=self.docstring, 
-                    parameters=self.parameters,
-                    out_cls=self.return_annotation,
-                    is_method=is_method
-                )
-            else:
-                return OutF(
-                    name=self.name,
-                    train=train,
-                    signature=self.signature, 
-                    docstring=self.docstring, 
-                    out_cls=origin,
-                    parameters=self.parameters,
-                    is_method=is_method
-                )
-        return OutF(
-            name=self.name,
-            train=train,
-            signature=self.signature,
-            docstring=self.docstring, 
-            parameters=self.parameters,
-            out_cls=None, 
-            is_method=is_method
-        )
+    # def get_generic_type(self):
+    #     if self.return_annotation is not inspect.Signature.empty:
+    #         origin = getattr(self.return_annotation, '__origin__', None)
+    #         return origin
+    #         # if origin and issubclass(origin, Out):
+    #         #     args = self.return_annotation.__args__ if hasattr(self.return_annotation, '__args__') else ()
+    #         #     return origin, args[0] if args else None
+    #     return None #, None
 
 
-class SignatureMethod(Module):
-
+class SignatureFunc(Module):
+    """SignatureMethod is a method where you define the instruction in
+    the function signature
+    """
     def __init__(
         self, f: typing.Callable, engine: Assistant, 
         dialog_factory: typing.Optional[typing.Callable[[], Dialog]]=None,
-        train: bool=False,
-        is_method: bool=False, instance=None
+        is_method: bool=False,
+        train: bool=False, instance=None
     ):
-        """
+        """Wrap the signature method with a particular engine and
+        dialog factory
 
         Args:
-            f (typing.Callable): 
-            details (FunctionDetails): 
-            train (bool, optional): . Defaults to True.
-            instance (, optional): . Defaults to None.
-
-        Raises:
-            TypeError: 
-
-        Returns:
-            : 
+            f (typing.Callable): The function to wrap
+            engine (Assistant): The engine to use for getting the response
+            dialog_factory (typing.Optional[typing.Callable[[], Dialog]], optional): The dialog to use. Defaults to None.
+            train (bool, optional): Whether to train the instructions or not. Defaults to False.
+            is_method (bool, optional): Whether it is a method or not. Defaults to False.
+            instance (_type_, optional): The instance. Defaults to None.
         """
         self.f = f
-        self._details = FunctionDetails(f)
-        self._out = self._details.out(is_method, train)
+        self._is_method = is_method
+        self._details = FunctionDetails(f, self._is_method, train)
+        # self._out = self._details.out(is_method, train)
         self.engine = engine
+        self._train = train
 
         update_wrapper(self, f) 
         self.instance = instance
         self._stored = None
         self.dialog_factory = dialog_factory or Dialog
-        self._is_method = is_method
 
     def spawn(
         self, 
         engine: Assistant=None, 
         dialog_factory: typing.Optional[typing.Callable[[], Dialog]]=None,
         train: bool=False
-    ):
-        return SignatureMethod(
+    ) -> 'SignatureFunc':
+        """Spawn a new SignatureMethod. Especially use to create a trainable one
+
+        Args:
+            engine (Assistant, optional): Spawn a new . Defaults to None.
+            dialog_factory (typing.Optional[typing.Callable[[], Dialog]], optional): _description_. Defaults to None.
+            train (bool, optional): _description_. Defaults to False.
+
+        Returns:
+            SignatureMethod: _description_
+        """
+        return SignatureFunc(
             f=self.f,
             engine=engine or self.engine,
+            is_method=self._is_method,
             dialog_factory=dialog_factory or self.dialog_factory,
             train=train
         )
 
     def i(self, *args, **kwargs) -> Instruction:
-        return self._out(
+        """Get the instruction
+
+        Returns:
+            Instruction: Get the instruction
+        """
+        return self._details(
             *args, 
             **kwargs
         )
 
     def forward(
         self, *args,
-        _engine: Assistant=None, _dialog: Dialog=None, **kwargs
-    ) -> typing.Any:        
+        _engine: Assistant=None, 
+        _dialog: Dialog=None, **kwargs
+    ) -> typing.Any:
+        """Execute the instruction and get the output 
 
+        Args:
+            _engine (Assistant, optional): The engine to override with. Defaults to None.
+            _dialog (Dialog, optional): The dialog to use. Defaults to None.
+
+        Returns:
+            typing.Any: The result of processing the instruction
+        """
         engine = _engine or self.engine
         dialog = _dialog or self.dialog_factory()
 
@@ -416,63 +472,97 @@ class SignatureMethod(Module):
 
     async def async_forward(
         self, *args, 
+        _engine: Assistant=None, 
         _dialog: Dialog=None, 
         **kwargs
     ) -> typing.Any:
+        """Execute the instruction and get the output
 
+        Args:
+            _engine (Assistant, optional): The engine to override with. Defaults to None.
+            _dialog (Dialog, optional): The dialog to use. Defaults to None.
+
+        Returns:
+            typing.Any: The result of processing the instruction
+        """
         return self.forward(
             *args, 
+            _engine=_engine,
             _dialog=_dialog, 
             **kwargs
         )
 
     def __get__(self, instance, owner):
+        """Get the SignatureMethod with a 
 
+        Args:
+            instance (_type_): The instance to use
+            owner (_type_): 
+
+        Returns:
+            SignatureMethod
+        """
         if self._stored is not None and instance is self._stored:
             return self._stored
-        self._stored = SignatureMethod(
-            self.f, 
-            self._details,
+        self._stored = SignatureFunc(
+            self.f,
+            self.engine,
+            self.dialog_factory,
+            self._is_method,
+            self._train,
             instance
         )
         return self._stored
 
 
-class InstructMethod(Module):
+class InstructFunc(Module):
+    """InstructMethod is a method where you define the instruction by
+    doing operations on that instructions
+    """
 
     def __init__(
         self, f: typing.Callable, engine: Assistant, 
         dialog_factory: typing.Optional[typing.Callable[[], Dialog]]=None,
-        is_method: bool=False, instance=None
+        is_method: bool=False,
+        instance=None
     ):
-        """
+        """Create an InstructMethod that decorates a function that returns 
+        an instruction
 
         Args:
-            f (typing.Callable): 
-            details (FunctionDetails): 
-            train (bool, optional): . Defaults to True.
-            instance (, optional): . Defaults to None.
+            f (typing.Callable): The function to decorate
+            details (FunctionDetails): The details for the function
+            train (bool, optional): Whether to train . Defaults to True.
+            instance (, optional): The instance to use. Defaults to None.
 
-        Raises:
-            TypeError: 
-
-        Returns:
-            _type_: 
         """
         self.f = f
+        self._is_method = is_method
 
         self.engine = engine
         update_wrapper(self, f) 
         self.instance = instance
         self._stored = None
         self.dialog_factory = dialog_factory or Dialog
-        self._is_method = is_method
 
     def i(self, *args, **kwargs) -> Instruction:
+        """Get the instruction based on the arguments
+
+        Returns:
+            Instruction: Get the instruction
+        """
         return self.f(*args, **kwargs)
 
     def forward(self, *args, _engine: Assistant=None, _dialog: Dialog=None, **kwargs) -> typing.Any:        
+        """Execute the instruct method and then process the output
 
+        Args:
+            _engine (Assistant, optional): Engine to override with. Defaults to None.
+            _dialog (Dialog, optional): The dialog to use, if not specified will create a new one. Defaults to None.
+
+        Returns:
+            typing.Any: The resulting
+        """
         engine = _engine or self.engine
         dialog = _dialog or self.dialog_factory()
 
@@ -482,15 +572,30 @@ class InstructMethod(Module):
         return instruction.read_out(result.text)
 
     async def async_forward(self, *args, **kwargs) -> typing.Any:
+        """
 
+        Returns:
+            typing.Any: 
+        """
         return self.forward(*args, **kwargs)
 
     def __get__(self, instance, owner):
+        """Get the SignatureMethod with the instance specified
 
+        Args:
+            instance (): The instance to use
+            owner (): 
+
+        Returns:
+            SignatureMethod
+        """
         if self._stored is not None and instance is self._stored:
             return self._stored
-        self._stored = InstructMethod(
-            self.f, self.engine, self.dialog_factory, self._is_method,
+        self._stored = InstructFunc(
+            self.f, 
+            self.engine, 
+            self.dialog_factory, 
+            self._is_method,
             instance=instance
         )
         return self._stored
@@ -507,14 +612,13 @@ def instructf(engine: Assistant=None):
         @wraps(f)
         def wrapper(*args, **kwargs):
             return f(*args, **kwargs)
-        if hasattr(f, '__self__') or '__self__' in dir(f):
-            return InstructMethod(f, engine)
-        else:
-            return InstructMethod(wrapper, engine)
+        
+        # TODO: Use wrapper
+        return InstructFunc(f, engine, None, False, None)
     return _
 
 
-def signaturef(engine: Assistant=None, train: bool=True):
+def instructmethod(engine: Assistant=None):
     """Decorator for using a function signature
 
     Args:
@@ -525,8 +629,142 @@ def signaturef(engine: Assistant=None, train: bool=True):
         @wraps(f)
         def wrapper(*args, **kwargs):
             return f(*args, **kwargs)
-        if hasattr(f, '__self__') or '__self__' in dir(f):
-            return SignatureMethod(f, engine, train)
-        else:
-            return SignatureMethod(wrapper, engine, train)
+        
+        # TODO: Use wrapper
+        return InstructFunc(f, engine, None, True, None)
     return _
+
+
+def signaturemethod(engine: Assistant=None):
+    """Decorator for using a function signature
+
+    Args:
+        train (bool, optional): Whether to train the function or not. Defaults to True.
+    """
+    def _(f):
+
+        @wraps(f)
+        def wrapper(*args, **kwargs):
+            return f(*args, **kwargs)
+        return SignatureFunc(f, engine, None, True)
+
+    return _
+
+
+def signaturef(engine: Assistant=None):
+    """Decorator for using a function signature
+
+    Args:
+        train (bool, optional): Whether to train the function or not. Defaults to True.
+    """
+    def _(f):
+
+        @wraps(f)
+        def wrapper(*args, **kwargs):
+            return f(*args, **kwargs)
+        # print(is_method, f)
+        return SignatureFunc(f, engine, None, False)
+
+    return _
+
+
+# class OutF(Module, typing.Generic[S]):
+
+#     def __init__(
+#         self,
+#         name: str,
+#         signature: str, 
+#         docstring: str, 
+#         parameters: typing.Dict,
+#         is_method: bool=False,
+#         train: bool=False,
+#         out_cls: typing.Optional[typing.Type[S]] = None, 
+#     ):
+#         self.signature = signature
+#         self.docstring = Param(
+#             name=name,
+#             instruction=docstring,
+#             training=train
+#         )
+
+#         self.out_cls = out_cls
+#         self.parameters = parameters
+#         self._is_method = is_method
+
+#     def forward(self, *args, **kwargs) -> Instruction:
+    
+#         filled_docstring = self.docstring.render()
+
+#         filled = set()
+
+#         param_values = list(self.parameters.values())
+#         if self._is_method:
+#             param_values = param_values[1:]
+
+#         for value, param in zip(args, param_values):
+            
+            
+#             filled_docstring = filled_docstring.replace(
+#                 f'{{{param.name}}}', 
+#                 str(value) if not isinstance(value, Instruction) else render(value)
+#             )
+#             filled.add(param.name)
+#         for k, value in kwargs.items():
+#             param = self.parameters[k]
+            
+#             filled_docstring = filled_docstring.replace(
+#                 f'{{{param.name}}}', # str(param.default)
+#                 str(value) if not isinstance(value, Instruction) else render(value)
+#             )
+#             filled.add(param.name)
+
+#         for param in param_values:
+#             if param.name in filled:
+#                 continue
+#             if param.default == inspect.Parameter.empty:
+#                 raise RuntimeError('Param has not been defined and no value')
+#             filled_docstring = filled_docstring.replace(
+#                 f'{{{param.name}}}', str(param.default)
+#             )
+#             filled.add(param.name)
+
+#         return Instruction(
+#             text=filled_docstring,
+#             out=self.out_cls
+#         )
+
+
+    # def out(self, is_method: bool=False, train: bool=False) -> OutF:        
+        
+    #     origin, generic_type = self.get_generic_type()
+    #     if origin:
+    #         if generic_type:
+    #             return OutF(
+    #                 name=self.name,
+    #                 train=train,
+    #                 signature=self.signature,
+    #                 docstring=self.docstring, 
+    #                 parameters=self.parameters,
+    #                 out_cls=self.return_annotation,
+    #                 is_method=is_method
+    #             )
+    #         else:
+    #             return OutF(
+    #                 name=self.name,
+    #                 train=train,
+    #                 signature=self.signature, 
+    #                 docstring=self.docstring, 
+    #                 out_cls=origin,
+    #                 parameters=self.parameters,
+    #                 is_method=is_method
+    #             )
+    #     return OutF(
+    #         name=self.name,
+    #         train=train,
+    #         signature=self.signature,
+    #         docstring=self.docstring, 
+    #         parameters=self.parameters,
+    #         out_cls=None, 
+    #         is_method=is_method
+    #     )
+

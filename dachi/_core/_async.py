@@ -4,10 +4,10 @@ import typing
 from ._process import processf
 
 # 3rd party
-import networkx as nx
-import functools
-import numpy as np
-from ._process import Batch, batchf
+# import networkx as nx
+# import functools
+# import numpy as np
+# from ._process import Batch, batchf
 
 # local
 from ._core import Args

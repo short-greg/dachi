@@ -1,6 +1,5 @@
 from ._async import (
-    AsyncModule, Batch,
-    batchf, reduce,
+    AsyncModule, reduce,
     map, async_map
 )
 from ._core import (
@@ -11,14 +10,17 @@ from ._core import (
     MultiOut, render_multi, Renderable,
     Instruction, Param, escape_curly_braces,
     unescape_curly_braces, UNDEFINED, WAITING,
-    ListOut, Data, Args
+    ListOut, Data, Args, 
+    Message, Media, Dialog, 
+    TextMessage
 )
 
 from ._instruct import (
     bullet, formatted, generate_numbered_list,
     numbered, validate_out, fill, head,
     section, cat, join, Operation, op,
-    OutF, FunctionDetails, signaturef
+    FunctionDetails, signaturef,
+    # OutF,
 )
 
 from ._process import (
@@ -26,16 +28,15 @@ from ._process import (
     Streamer,
     Module, 
     ParallelModule, StructModule, Get,
-    Set, get, set, processf, Multi, Sequential
+    Set, get, set, processf, Multi, Sequential, Batch,
+    batchf, 
 )
 
 from ._io import (
     CSV, KV
 )
-from .._core._structs_doc import (
-    Message, Doc, 
-    StructModule, TextMessage
-)
+# from .._core._structs_doc import (
+# )
 from ._ai import (
     AIModel, 
     Response

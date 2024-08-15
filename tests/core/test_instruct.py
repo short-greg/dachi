@@ -188,12 +188,12 @@ class TestOperation(object):
         assert operation(x='x').text == 'Translate the input x'
 
 
-class TestInstructF:
+class TestSignatureF:
 
     def test_inserts_into_docstring(self):
 
-        @core.signaturef(True)
-        def signaturep(x: str) -> Out[SimpleStruct]:
+        @core.signaturef()
+        def signaturep(x: str) -> SimpleStruct:
             """Output the value of x
             
             x: {x}
@@ -202,19 +202,21 @@ class TestInstructF:
                 x (str): The input
 
             Returns:
-                Out[SimpleStruct]: The value of x
+                SimpleStruct: The value of x
             """
             pass
 
-        result = signaturep(2)
+        result = signaturep.i(2)
+
+        print(result.text)
 
         assert 'x: 2' in result.text
 
     def test_inserts_into_docstring_with_method(self):
 
         class X(object):
-            @core.signaturef(True)
-            def signaturep(self, x: str) -> Out[SimpleStruct]:
+            @core.signaturemethod()
+            def signaturep(self, x: str) -> SimpleStruct:
                 """Output the value of x
                 
                 x: {x}
@@ -223,11 +225,11 @@ class TestInstructF:
                     x (str): The input
 
                 Returns:
-                    Out[SimpleStruct]: The value of x
+                    SimpleStruct: The value of x
                 """
                 pass
 
         x = X()
-        result = x.signaturep(2)
+        result = x.signaturep.i(2)
 
         assert 'x: 2' in result.text

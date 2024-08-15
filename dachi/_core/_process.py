@@ -344,7 +344,7 @@ def batchf(data: typing.Iterable, n_samples: int, shuffle: bool, drop_last: bool
     )
 
 
-def stream(m: Module, *args, **kwargs) -> typing.Iterator[typing.Any, typing.Any]:
+def stream(m: Module, *args, **kwargs) -> typing.Iterator[typing.Tuple[typing.Any, typing.Any]]:
 
     streamer = m.stream_forward(*args, **kwargs)
 

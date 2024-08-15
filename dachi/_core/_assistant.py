@@ -1,8 +1,8 @@
 from abc import ABC, abstractmethod
 from typing import Any
 
-from . import Module
-from ._structs_doc import Message, TextMessage
+from ._process import Module
+from ._core import Message, TextMessage
 from ._ai import AIModel
 import typing
 
