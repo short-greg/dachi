@@ -10,7 +10,7 @@ from ._core import (
     Storable, render,
     render_multi, AIResponse,
     AIModel, Partial, Streamer,
-    Module, StructModule, Instruction,
+    Module, Instruction,
     Param, Data, UNDEFINED, WAITING
 )
 
@@ -31,8 +31,7 @@ from ._structs import (
 from ._process import (
     Partial, 
     Streamer,
-    Module, 
-    ParallelModule, StructModule, Get,
+    ParallelModule, Get,
     Set, get, set, processf, Multi, Sequential, Batch,
     batchf, stream, 
     Assistant, Prompt, Chat

@@ -98,36 +98,6 @@ class Struct(pydantic.BaseModel, Renderable):
                 }
         return template
     
-    def __getitem__(self, key) -> typing.Any:
-        """Get an attribute in 
-
-        Args:
-            key: The key to get
-
-        Returns:
-            typing.Any: Get attribute specified by key
-        """
-        return getattr(self, key)
-    
-    def __setitem__(
-        self, key, value
-    ) -> typing.Any:
-        """Update a member of the Struct
-
-        Args:
-            key: The name of the value to update
-            value: The value to update. 
-                If it is a string and the member is a Str, it will be cast to a
-                Str
-
-        Returns:
-            typing.Any: The value to set
-        """
-        if not hasattr(self, key):
-            raise AttributeError('There is no')
-        setattr(self, key, value)
-        return value
-    
     @classmethod
     def from_text(cls, data: str, escaped: bool=False) -> Self:
         """Load the struct from a string
@@ -179,6 +149,44 @@ class Struct(pydantic.BaseModel, Renderable):
             str: The text version of the struct
         """
         return self.to_text(True)
+    
+    def forward(self, key, value) -> Self:
+
+        if not hasattr(self, key):
+            raise AttributeError(f'There is no attribute named {key}')
+        setattr(self, key, value)
+        return self
+
+    # def __getitem__(self, key) -> typing.Any:
+    #     """Get an attribute in 
+
+    #     Args:
+    #         key: The key to get
+
+    #     Returns:
+    #         typing.Any: Get attribute specified by key
+    #     """
+    #     return getattr(self, key)
+    
+    # def __setitem__(
+    #     self, key, value
+    # ) -> typing.Any:
+    #     """Update a member of the Struct
+
+    #     Args:
+    #         key: The name of the value to update
+    #         value: The value to update. 
+    #             If it is a string and the member is a Str, it will be cast to a
+    #             Str
+
+    #     Returns:
+    #         typing.Any: The value to set
+    #     """
+    #     if not hasattr(self, key):
+    #         raise AttributeError(f'There is no attribute named {key}')
+    #     setattr(self, key, value)
+    #     return value
+
 
 
 Data = typing.Union[Struct, typing.List[Struct]]
@@ -222,6 +230,10 @@ class StructList(Struct, typing.Generic[S]):
     """
 
     structs: typing.List[S]
+
+    def __init__(self, structs: typing.Iterable):
+
+        super().__init__(structs=structs)
 
     def __getitem__(self, key) -> typing.Any:
         """
@@ -559,7 +571,7 @@ class Streamer(object):
     def complete(self) -> bool:
         return self._output is not UNDEFINED
 
-    def __call__(self) -> typing.Union[typing.Any, Partial]:
+    def __call__(self) -> typing.Union[Partial]:
         """Query the streamer and returned updated value if updated
 
         Returns:
@@ -654,15 +666,6 @@ class Module(ABC):
         )
 
 
-class StructModule(Struct, Module):
-
-    def forward(self, key: str, value: typing.Any) -> typing.Any:
-        
-        copy = self.model_copy()
-        copy[key] = value
-        return copy
-
-
 class Instruction(Struct, typing.Generic[S]):
     """Specific instruction for the model to use
     """
@@ -722,3 +725,12 @@ class Param(Struct):
 
     def reads(self, data: str) -> S:
         return self.instruction.read_out(data)
+
+
+# class StructModule(Struct, Module):
+
+#     def forward(self, key: str, value: typing.Any) -> typing.Any:
+        
+#         copy = self.model_copy()
+#         copy[key] = value
+#         return copy
