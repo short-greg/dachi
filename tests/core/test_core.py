@@ -20,8 +20,9 @@ class TestMessage(object):
     def test_message_role_is_a_string(self):
 
         message = _core.TextMessage(source='assistant', text='hi, how are you')
-        assert message.data['role'] == 'assistant'
+        assert message.source == 'assistant'
         assert message.data['text'] == 'hi, how are you'
+
 
 class TestStruct(object):
 

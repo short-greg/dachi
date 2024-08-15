@@ -816,8 +816,8 @@ class TextMessage(Message):
     def __init__(self, source: str, text: str) -> 'Message':
 
         super().__init__(
+            source=source,
             data={
-                'source': source,
                 'text': text
             }
         )
