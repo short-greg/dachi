@@ -82,7 +82,6 @@ class Description(Struct, Renderable, ABC):
         pass
 
 
-
 class Ref(Struct):
     """Reference to another description.
     Useful when one only wants to include the 

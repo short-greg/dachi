@@ -216,6 +216,19 @@ class Message(Struct):
             self.data[key] = value
         raise KeyError(f'{key}')
 
+    # def instruct(self, instruction: 'Instruction', ai_model: 'AIModel', **kwargs) -> 'AIResponse':
+        
+    #     response = ai_model.forward(self.messages)
+    #     response = self.process(response)
+    #     self.assistant(response.content)
+    #     return response
+
+    # def prompt(self, ai_model: 'AIModel') -> 'AIResponse':
+        
+    #     response = ai_model.forward(self.mesages)
+    #     self.assistant(response.content)
+    #     return self.process(response)
+
 
 Data = typing.Union[Struct, typing.List[Struct]]
 
