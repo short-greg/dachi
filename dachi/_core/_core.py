@@ -188,6 +188,34 @@ class Struct(pydantic.BaseModel, Renderable):
     #     return value
 
 
+class Media:
+
+    descr: str
+    data: str
+
+
+Content = typing.Union[Media, str, typing.List[typing.Union[Media, str]]]
+
+
+class Message(Struct):
+
+    source: str
+    data: typing.Dict[str, typing.Any]
+
+    def __getitem__(self, key: str):
+        if hasattr(self, key):
+            return getattr(self, key)
+        if key in self.data:
+            return self.data[key]
+        raise KeyError(f'{key}')
+
+    def __setitem__(self, key: str, value: typing.Any):
+        if hasattr(self, key):
+            setattr(self, key, value)
+        if key in self.data:
+            self.data[key] = value
+        raise KeyError(f'{key}')
+
 
 Data = typing.Union[Struct, typing.List[Struct]]
 
@@ -315,8 +343,8 @@ class Out(Result, typing.Generic[S]):
     def write(self, data: S) -> str:
         return data.to_text(True)
 
-    def read(self, data: str) -> S:
-        return self._out_cls.from_text(data, True)
+    def read(self, message: Message) -> S:
+        return self._out_cls.from_text(message, True)
 
     def stream_read(self, data: str) -> S:
         return self._out_cls.from_text(data, True)
@@ -417,185 +445,11 @@ def render_multi(xs: typing.Iterable[typing.Any]) -> typing.List[str]:
 @dataclass
 class AIResponse(object):
 
-    message: typing.Any
+    content: typing.Any
     source: typing.Dict
+    val: typing.Any = None
     delta: typing.Any = None
     
-
-class AIModel(ABC):
-    """APIAdapter allows one to adapt various WebAPI or otehr
-    API for a consistent interface
-    """
-
-    @abstractmethod
-    def query(self, data) -> AIResponse:
-        """Run a standard query to the API
-
-        Args:
-            data : Data to pass to the API
-
-        Returns:
-            typing.Dict: The result of the API call
-        """
-        pass
-
-    def stream_query(self, data) -> typing.Iterator[AIResponse]:
-        """API that allows for streaming the response
-
-        Args:
-            data: Data to pass to the API
-
-        Returns:
-            typing.Iterator: Data representing the streamed response
-            Uses 'delta' for the difference. Since the default
-            behavior doesn't truly stream. This must be overridden 
-
-        Yields:
-            typing.Dict: The data
-        """
-        result = self.query(data)
-        yield result
-    
-    async def async_query(self, data, **kwarg_override) -> AIResponse:
-        """Run this query for asynchronous operations
-        The default behavior is simply to call the query
-
-        Args:
-            data: Data to pass to the API
-
-        Returns:
-            typing.Any: 
-        """
-        return self.query(data, **kwarg_override)
-    
-    async def bulk_async_query(self, data, **kwarg_override) -> typing.List[AIResponse]:
-        """
-
-        Args:
-            data (_type_): 
-
-        Returns:
-            typing.List[typing.Dict]: 
-        """
-        tasks = []
-        async with asyncio.TaskGroup() as tg:
-
-            for data_i in data:
-                tasks.append(
-                    tg.create_task(self.async_query(data_i, **kwarg_override))
-                )
-        return list(
-            task.result() for task in tasks
-        )
-    
-    async def async_stream_query(self, data, **kwarg_override) -> typing.AsyncIterator[AIResponse]:
-        """Run this query for asynchronous streaming operations
-        The default behavior is simply to call the query
-
-        Args:
-            data: The data to pass to the API
-
-        Yields:
-            typing.Dict: The data returned from the API
-        """
-        result = self.query(data, **kwarg_override)
-        yield result
-
-    async def _collect_results(generator, index, results, queue):
-        async for item in generator:
-            results[index] = item
-            await queue.put(results[:])  # Put a copy of the current results
-        results[index] = None  # Mark this generator as completed
-
-    async def bulk_async_stream_query(self, data, **kwarg_override) -> typing.AsyncIterator[typing.List[AIResponse]]:
-        """
-
-        Args:
-            data (_type_): 
-
-        Returns:
-            typing.List[typing.Dict]: 
-        """
-        results = [None] * len(data)
-        queue = asyncio.Queue()
-
-        async with asyncio.TaskGroup() as tg:
-            for index, data_i in enumerate(data):
-                tg.create_task(self._collect_results(
-                    self.async_stream_query(data_i, **kwarg_override), index, results, queue)
-                )
-
-        active_generators = len(data)
-        while active_generators > 0:
-            current_results = await queue.get()
-            yield current_results
-            active_generators = sum(result is not None for result in current_results)
-
-    # @property
-    # @abstractmethod
-    # def output_schema(self) -> typing.Dict:
-    #     pass
-
-    # @property
-    # @abstractmethod
-    # def input_schema(self) -> typing.Dict:
-    #     pass
-
-
-
-@dataclass
-class Partial(object):
-    """Class for storing a partial output from a streaming process
-    """
-    cur: typing.Any
-    prev: typing.Any = None
-    dx: typing.Any = None
-    complete: bool = False
-
-
-class Streamer(object):
-
-    def __init__(self, stream: typing.Iterator):
-        """The Stream to loop over
-
-        Args:
-            stream: The stream to loop over in generating the stream
-        """
-        self._stream = stream
-        self._cur = None
-        self._output = UNDEFINED
-        self._prev = None
-        self._dx = None
-
-    @property
-    def complete(self) -> bool:
-        return self._output is not UNDEFINED
-
-    def __call__(self) -> typing.Union[Partial]:
-        """Query the streamer and returned updated value if updated
-
-        Returns:
-            typing.Union[typing.Any, Partial]: Get the next value in the stream
-        """
-        if self._output is not UNDEFINED:
-            return self._output
-        try:
-            self._prev = self._cur
-            self._cur, self._dx = next(self._stream)
-            return Partial(self._cur, self._prev, self._dx, False)    
-        except StopIteration:
-            self._output = Partial(self._cur, self._prev, self._dx, True) 
-            return self._output
-        
-    def __iter__(self) -> typing.Iterator[Partial]:
-
-        while True:
-
-            cur = self()
-            if cur.complete:
-                break
-            yield cur
-
 
 class Module(ABC):
     """Base class for Modules
@@ -656,7 +510,7 @@ class Module(ABC):
         res = self.forward(*args, **kwargs) 
         yield res, None
 
-    def stream_forward(self, *args, **kwargs) -> Streamer:
+    def stream_forward(self, *args, **kwargs) -> 'Streamer':
         """
         Returns:
             Streamer: The Streamer to loop over
@@ -664,6 +518,174 @@ class Module(ABC):
         return Streamer(
             self.stream_iter(*args, **kwargs)
         )
+
+
+class AIModel(ABC, Module):
+    """APIAdapter allows one to adapt various WebAPI or otehr
+    API for a consistent interface
+    """
+
+    @abstractmethod
+    def forward(self, messages: typing.List[Message]) -> AIResponse:
+        """Run a standard query to the API
+
+        Args:
+            data : Data to pass to the API
+
+        Returns:
+            typing.Dict: The result of the API call
+        """
+        pass
+
+    @abstractmethod
+    def convert(self, messages: typing.List[Message]) -> typing.List[typing.Dict]:
+        pass
+
+    def stream_iter(self, messages: typing.List[Message]) -> typing.Iterator[AIResponse]:
+        """API that allows for streaming the response
+
+        Args:
+            data: Data to pass to the API
+
+        Returns:
+            typing.Iterator: Data representing the streamed response
+            Uses 'delta' for the difference. Since the default
+            behavior doesn't truly stream. This must be overridden 
+
+        Yields:
+            typing.Dict: The data
+        """
+        result = self.forward(messages)
+        yield result, None
+    
+    async def async_forward(self, messages: typing.List[Message], **kwarg_override) -> AIResponse:
+        """Run this query for asynchronous operations
+        The default behavior is simply to call the query
+
+        Args:
+            data: Data to pass to the API
+
+        Returns:
+            typing.Any: 
+        """
+        return self.forward(messages, **kwarg_override)
+    
+    async def bulk_async_forward(self, messages: typing.List[typing.List[Message]], **kwarg_override) -> typing.List[AIResponse]:
+        """
+
+        Args:
+            data (_type_): 
+
+        Returns:
+            typing.List[typing.Dict]: 
+        """
+        tasks = []
+        async with asyncio.TaskGroup() as tg:
+
+            for messages_i in messages:
+                tasks.append(
+                    tg.create_task(self.async_forward(messages_i, **kwarg_override))
+                )
+        return list(
+            task.result() for task in tasks
+        )
+    
+    async def async_stream_iter(self, data, **kwarg_override) -> typing.AsyncIterator[AIResponse]:
+        """Run this query for asynchronous streaming operations
+        The default behavior is simply to call the query
+
+        Args:
+            data: The data to pass to the API
+
+        Yields:
+            typing.Dict: The data returned from the API
+        """
+        result = self.forward(data, **kwarg_override)
+        yield result
+
+    async def _collect_results(generator, index, results, queue):
+        async for item in generator:
+            results[index] = item
+            await queue.put(results[:])  # Put a copy of the current results
+        results[index] = None  # Mark this generator as completed
+
+    async def bulk_async_stream_iter(self, data, **kwarg_override) -> typing.AsyncIterator[typing.List[AIResponse]]:
+        """
+
+        Args:
+            data (_type_): 
+
+        Returns:
+            typing.List[typing.Dict]: 
+        """
+        results = [None] * len(data)
+        queue = asyncio.Queue()
+
+        async with asyncio.TaskGroup() as tg:
+            for index, data_i in enumerate(data):
+                tg.create_task(self._collect_results(
+                    self.async_stream_iter(data_i, **kwarg_override), index, results, queue)
+                )
+
+        active_generators = len(data)
+        while active_generators > 0:
+            current_results = await queue.get()
+            yield current_results
+            active_generators = sum(result is not None for result in current_results)
+
+
+@dataclass
+class Partial(object):
+    """Class for storing a partial output from a streaming process
+    """
+    cur: typing.Any
+    prev: typing.Any = None
+    dx: typing.Any = None
+    complete: bool = False
+
+
+class Streamer(object):
+
+    def __init__(self, stream: typing.Iterator):
+        """The Stream to loop over
+
+        Args:
+            stream: The stream to loop over in generating the stream
+        """
+        self._stream = stream
+        self._cur = None
+        self._output = UNDEFINED
+        self._prev = None
+        self._dx = None
+
+    @property
+    def complete(self) -> bool:
+        return self._output is not UNDEFINED
+
+    def __call__(self) -> typing.Union[Partial]:
+        """Query the streamer and returned updated value if updated
+
+        Returns:
+            typing.Union[typing.Any, Partial]: Get the next value in the stream
+        """
+        if self._output is not UNDEFINED:
+            return self._output
+        try:
+            self._prev = self._cur
+            self._cur, self._dx = next(self._stream)
+            return Partial(self._cur, self._prev, self._dx, False)    
+        except StopIteration:
+            self._output = Partial(self._cur, self._prev, self._dx, True) 
+            return self._output
+        
+    def __iter__(self) -> typing.Iterator[Partial]:
+
+        while True:
+
+            cur = self()
+            if cur.complete:
+                break
+            yield cur
 
 
 class Instruction(Struct, typing.Generic[S]):

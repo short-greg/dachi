@@ -17,9 +17,13 @@ from ._core import (
     render, render_multi
 )
 from ._process import Module, Assistant
-from ._structs import Description
+from ._structs import Description, Message, TextMessage
 from ._core import Instruction, render, Param
 
+from ._core import (
+    Struct, AIModel, AIResponse,
+    Instruction
+)
 
 S = typing.TypeVar('S', bound=Struct)
 X = typing.Union[str, Description, Instruction]
@@ -607,6 +611,9 @@ class InstructFunc(Module):
         return self._stored
     
 
+Instructor = typing.Union[InstructFunc, SignatureFunc, Instruction]
+
+
 def instructf(engine: Assistant=None):
     """Decorator for using a function signature
 
@@ -672,3 +679,130 @@ def signaturef(engine: Assistant=None):
         return SignatureFunc(f, engine, None, False)
 
     return _
+
+
+class Dialog(Struct):
+
+    messages: typing.List[Message] = pydantic.Field(default_factory=list)
+
+    def __iter__(self) -> typing.Iterator[Message]:
+
+        for message in self.messages:
+            yield message
+
+    def __add__(self, other: 'Dialog'):
+
+        return Dialog(
+            self.messages + other.messages
+        )
+
+    def __getitem__(self, idx) -> 'Dialog':
+
+        return Dialog(
+            messages=self.messages[idx]
+        )
+
+    def __setitem__(self, idx, message) -> 'Dialog':
+
+        self.messages[idx] = message
+
+    def insert(self, index: int, message: Message):
+
+        self.messages.insert(index, message)
+
+    def pop(self, index: int):
+
+        self.messages.pop(index)
+
+    def remove(self, message: Message):
+
+        self.messages.remove(message)
+
+    def append(self, message: Message):
+
+        self.messages.append(message)
+
+    def add(self, message: Message, ind: typing.Optional[int]=None, replace: bool=False):
+        if ind < 0:
+            ind = max(len(self.messages) + ind, 0)
+
+        if ind is None or ind == len(self.messages):
+            if not replace or ind == len(self.messages):
+                self.messages.append(message)
+            else:
+                self.messages[-1] = message
+        elif ind > len(self.messages):
+            raise ValueError(
+                f'The index {ind} is out of bounds '
+                f'for size {len(self.messages)}')
+        elif replace:
+            self.messages[ind] = message
+        else:
+            self.messages.insert(ind, message)
+        
+    def spawn(self) -> typing.Self:
+
+        return Dialog(messages=[*self.messages])
+
+    def extend(self, dialog: typing.Union['Dialog', typing.List[Message]]):
+
+        if isinstance(dialog, Dialog):
+            dialog = dialog.messages
+        
+        self.messages.extend(dialog)
+
+    def source(self, source: str, text: typing.Optional[str]=None, _ind: typing.Optional[int]=None, _replace: bool=False, **kwargs):
+        if len(kwargs) == 0 and text is not None:
+            message = TextMessage(source, text)
+        elif text is not None:
+            message = Message(text=text, **kwargs)
+        elif text is None:
+            message = Message(**kwargs)
+        else:
+            raise ValueError('No message has been passed. The text and kwargs are empty')
+
+        self.add(message, _ind, _replace)
+
+    def user(self, text: str=None, _ind=None, _replace: bool=False, **kwargs):
+        self.source('user', text, _ind, _replace, **kwargs)
+
+    def assistant(self, text: str=None, _ind=None, _replace: bool=False, **kwargs):
+        self.source('assistant', text, _ind, _replace, **kwargs)
+
+    def system(self, text: str=None, _ind=None, _replace: bool=False, **kwargs):
+        self.source('system', text, _ind, _replace, **kwargs)
+
+    def out(self) -> Out:
+
+        for r in reversed(self.messages):
+            if  isinstance(r, Instruction):
+                return r.out
+        return None
+            
+    def process(self, response: AIResponse) -> AIResponse:
+
+        response = response.clone()
+        out = self.out()
+        if out is None:
+            response.val = response.content
+        else:
+            # Not sure about this
+            response.val = out.read(response.content['text'])
+        return response
+
+    def instruct(self, instructor: Instructor, ai_model: AIModel, ind: int=0, replace: bool=True) -> AIResponse:
+        
+        if isinstance(instructor, SignatureFunc) or isinstance(instructor, InstructFunc):
+            instructor = instructor.i()
+        
+        self.system(instructor, ind)
+        response = ai_model.forward(self.messages)
+        response = self.process(response)
+        self.assistant(response.content)
+        return response
+
+    def prompt(self, ai_model: AIModel) -> AIResponse:
+        
+        response = ai_model.forward(self.mesages)
+        self.assistant(response.content)
+        return self.process(response)
