@@ -6,12 +6,14 @@ from ._core import (
     Renderable, model_template,
     Struct, StructLoadException,
     is_nested_model, StructList,
-    Result, Out, is_undefined,
+    Formatter, StructFormatter, is_undefined,
     Storable, render,
     render_multi, AIResponse,
     AIModel, Partial, Streamer,
-    Module, Instruction,
-    Param, Data, UNDEFINED, WAITING
+    Module, Instruction, Dialog, AIPrompt,
+    Param, Data, UNDEFINED, WAITING, 
+    NullFormatter, PrimitiveFormatter,
+    is_primitive
 )
 
 from ._instruct import (
@@ -19,26 +21,25 @@ from ._instruct import (
     numbered, validate_out, fill, head,
     section, cat, join, Operation, op,
     FunctionOut, signaturef, SignatureFunc, 
-    signaturemethod,
+    signaturemethod, TextMessage,
     InstructFunc, instructf, instructmethod
 )
 from ._structs import (
     Description, Ref,
-    Media, Message, TextMessage,
-    Dialog
+    Media, Message,
 )
 
 from ._process import (
     Partial, 
     Streamer,
-    ParallelModule, Get,
+    ParallelModule, 
+    Get,
     Set, get, set, processf, Multi, Sequential, Batch,
     batchf, stream, 
-    Assistant, Prompt, Chat
 )
 
 from ._io import (
-    CSV, KV, ListOut, MultiOut, JSONOut
+    CSV, KV, ListOut, MultiFormatter, JSONFormatter
 )
 from ._utils import (
     get_str_variables, escape_curly_braces,

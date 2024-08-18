@@ -11,8 +11,7 @@ from dataclasses import dataclass
 import numpy as np
 
 # local
-from ._core import UNDEFINED, Param, Struct, AIModel
-from ._structs import Message, TextMessage
+from ._core import UNDEFINED, Param, Struct
 
 
 @dataclass

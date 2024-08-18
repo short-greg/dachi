@@ -3,8 +3,8 @@ import pkg_resources
 import openai
 import typing
 
-from .._core import Message
-from .._core import AIModel, AIResponse, Instruction
+from .._core import Message, AIPrompt
+from .._core import AIModel, AIResponse, Instruction, TextMessage
 
 # TODO: add utility for this
 required = {'openai'}
@@ -24,7 +24,7 @@ class OpenAIChatModel(AIModel):
         self.model = model
         self.kwargs = kwargs
 
-    def convert(self, messages: typing.List[Message]) -> typing.List[typing.Dict]:
+    def convert(self, message: Message) -> typing.Dict:
         """Convert the messages to a format to use for the OpenAI API
 
         Args:
@@ -33,19 +33,15 @@ class OpenAIChatModel(AIModel):
         Returns:
             typing.List[typing.Dict]: The input to the API
         """
-        result = []
-        for message in messages:
-            text = message.text
-            if isinstance(text, Instruction):
-                text = text.render()
-            result.append({
-                'role': message.source,
-                'content': text
-            })
+        text = message['text']
+        if isinstance(text, Instruction):
+            text = text.render()
+        return {
+            'role': message.source,
+            'content': text
+        }
 
-        return result
-
-    def forward(self, messages: typing.List[Message], **kwarg_override) -> Dict:
+    def forward(self, prompt: AIPrompt, **kwarg_override) -> Dict:
 
         kwargs = {
             **self.kwargs,
@@ -55,18 +51,24 @@ class OpenAIChatModel(AIModel):
 
         response = client.chat.completions.create(
             model=self.model,
-            messages=self.convert(messages),
+            messages=self.convert_messages(prompt.aslist()),
             **kwargs
         )
+        p = prompt.out()
+        text = response.choices[0].message.content
+        message = TextMessage('assistant', text)
+        
+        val = p.read(text)
         return AIResponse(
-            response.choices[0].message.content,
-            response
+            message,
+            response,
+            val
         )
 
-    def stream_iter(
-        self, messages: typing.List[Message], 
+    def stream_forward(
+        self, prompt: AIPrompt, 
         **kwarg_override
-    ) -> typing.Iterator[typing.Tuple[Message, Message, typing.Dict]]:
+    ) -> typing.Iterator[typing.Tuple[AIResponse, AIResponse]]:
 
         kwargs = {
             **self.kwargs,
@@ -76,11 +78,12 @@ class OpenAIChatModel(AIModel):
         client = openai.OpenAI()
         query = client.chat.completions.create(
             model=self.model,
-            messages=self.convert(messages),
+            messages=self.convert_messages(prompt.aslist()),
             stream=True,
             **kwargs
         )
         cur_message = ''
+        p = prompt.out()
         for chunk in query:
             delta = chunk.choices[0].delta.content
 
@@ -88,12 +91,18 @@ class OpenAIChatModel(AIModel):
                 delta = ''
 
             cur_message = cur_message + delta
+            
+            message = TextMessage('assistant', cur_message)
+            dx = TextMessage('assistant', delta)
+
             yield AIResponse(
-                cur_message, chunk, None, delta
+                message, chunk, p.stream_read(cur_message)
+            ), AIResponse(
+                dx, chunk, None
             )
     
     async def async_forward(
-        self, messages: typing.List[Message], 
+        self, prompt: AIPrompt, 
         **kwarg_override
     ) -> typing.Tuple[str, typing.Dict]:
         client = openai.AsyncOpenAI()
@@ -102,19 +111,21 @@ class OpenAIChatModel(AIModel):
             **self.kwargs,
             **kwarg_override
         }
+        p = prompt.out()
 
         response = await client.chat.completions.create(
             model=self.model,
-            messages=self.convert(messages),
+            messages=self.convert(prompt),
             **kwargs
         )
-
+        text = response.choices[0].message.content
         return AIResponse(
-            response.choices[0].message.content,
-            response
+            TextMessage('assistant', text),
+            response,
+            p.read(text)
         )
 
-    async def async_stream_iter(self, messages: typing.List[Message], **kwarg_override) -> AsyncIterator[AIResponse]:
+    async def async_stream_iter(self, prompt: AIPrompt, **kwarg_override) -> AsyncIterator[typing.Tuple[AIResponse, AIResponse]]:
 
         kwargs = {
             **self.kwargs,
@@ -123,10 +134,11 @@ class OpenAIChatModel(AIModel):
         client = openai.AsyncOpenAI()
         query = await client.chat.completions.create(
             model=self.model,
-            messages=self.convert(messages),
+            messages=self.convert(prompt.aslist()),
             stream=True,
             **kwargs
         )
+        p = prompt.out()
 
         cur_message = ''
         async for chunk in query:
@@ -134,9 +146,23 @@ class OpenAIChatModel(AIModel):
             if delta is None:
                 delta = ''
             cur_message = cur_message + delta
+
             yield AIResponse(
-                cur_message,
+                TextMessage('assistant', cur_message),
                 chunk,
-                None,
-                delta
+                p.stream_read(cur_message),
+            ), AIResponse(
+                TextMessage('assistant', delta),
+                chunk,
+                None
             )
+
+
+class OpenAIMessage(TextMessage):
+    
+    def prompt(self, model: typing.Union[AIModel, str], **kwarg_overrides) -> AIResponse:
+        
+        if isinstance(model, str):
+            model = OpenAIChatModel(model, **kwarg_overrides)
+
+        return super().prompt(model, **kwarg_overrides)

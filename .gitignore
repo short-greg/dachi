@@ -160,4 +160,5 @@ cython_debug/
 #.idea/
 
 local/*
+local_notebooks/*
 .env

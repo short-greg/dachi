@@ -1,11 +1,10 @@
 from abc import ABC, abstractmethod
 import typing
 import json
-from .._core import Message, Prompt
 from .._core import (
     Struct, Module,
     escape_curly_braces, Data,
-    render
+    render, AIModel, TextMessage
 )
 # TODO: Add quotations
 
@@ -141,9 +140,9 @@ class Critic(Module, ABC):
 
 class LLMCritic(Module, ABC):
 
-    def __init__(self, llm: Prompt, criterion: Criterion):
+    def __init__(self, ai_model: AIModel, criterion: Criterion):
 
-        self.llm = llm
+        self.ai_model = ai_model
         self.criterion_view = HeaderView(criterion)
     
     def forward(self, y: Data, t: Data=None) -> Evaluation:
@@ -151,5 +150,5 @@ class LLMCritic(Module, ABC):
         instructions = self.criterion_view(
             y, t
         )
-        result = self.llm(Message('System', instructions))
+        result = self.ai_model(TextMessage('system', instructions))
         return Evaluation(data=json.loads(result))

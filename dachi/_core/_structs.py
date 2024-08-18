@@ -107,18 +107,6 @@ class Ref(Struct):
         return self.desc.name
 
 
-class TextMessage(Message):
-
-    def __init__(self, source: str, text: typing.Union[str, Instruction]) -> 'Message':
-
-        super().__init__(
-            source=source,
-            data={
-                'text': text
-            }
-        )
-
-
 class MediaMessage(Message):
 
     def __init__(self, source: str, media: typing.List[Media]) -> 'Message':

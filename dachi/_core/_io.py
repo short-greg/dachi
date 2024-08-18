@@ -9,23 +9,23 @@ import pandas as pd
 
 # local
 from ._core import (
-    Out, StructList, 
+    StructFormatter, StructList, 
     Struct, generic_class
 )
 
 from ._core import (
     Struct, 
-    StructList, Result, 
+    StructList, 
+    Formatter, 
     StructLoadException
 )
 
 S = typing.TypeVar('S', bound=Struct)
 
 
-class ListOut(Result, typing.Generic[S]):
+class ListOut(Formatter, typing.Generic[S]):
     """A list of outputs
     """
-
     name: str
     _out_cls: typing.Type[S] = pydantic.PrivateAttr()
 
@@ -33,7 +33,7 @@ class ListOut(Result, typing.Generic[S]):
         super().__init__(**data)
         self._out_cls = out_cls
 
-    def write(self, data: StructList[S]) -> str:
+    def example(self, data: StructList[S]) -> str:
         """
 
         Args:
@@ -44,8 +44,8 @@ class ListOut(Result, typing.Generic[S]):
         """
         return json.dumps(data)
 
-    def read(self, data: str) -> StructList[S]:
-        d = json.loads(data)
+    def read(self, message: str) -> StructList[S]:
+        d = json.loads(message)
         structs = []
         for cur in d['structs']:
             structs.append(self._out_cls.from_dict(cur))
@@ -55,16 +55,16 @@ class ListOut(Result, typing.Generic[S]):
     def to_text(self, data: StructList[S]) -> str:
         return data.to_text()
 
-    def stream_read(self, data: str) -> S:
+    def stream_read(self, message: str) -> S:
 
-        d = json.loads(data)
+        d = json.loads(message)
         structs = []
         for cur in d['structs']:
             structs.append(self._out_cls.from_dict(cur))
 
         return StructList(structs=structs)
     
-    def out_template(self) -> str:
+    def template(self) -> str:
         return self._out_cls.template()
 
 
@@ -73,21 +73,21 @@ class CSV(ListOut):
     indexed: bool = True
     delim: str = ','
 
-    def read(self, data: str) -> 'StructList[S]':
-        io = StringIO(data)
+    def read(self, message: str) -> 'StructList[S]':
+        io = StringIO(message)
         df = pd.read_csv(io, sep=self.delim)
         records = df.to_dict(orient='records', index=False)
 
         return StructList[S].load_records(records)
     
-    def stream_read(self, data: str) -> 'StructList[S]':
-        io = StringIO(data)
+    def stream_read(self, message: str) -> 'StructList[S]':
+        io = StringIO(message)
         df = pd.read_csv(io, sep=self.delim)
         records = df.to_dict(orient='records', index=False)
 
         return StructList[S].load_records(records)
 
-    def write(self, data: StructList[S]) -> StructList[S]:
+    def example(self, data: StructList[S]) -> StructList[S]:
         io = StringIO()
         data = [
             d_i.dump()
@@ -100,7 +100,7 @@ class CSV(ListOut):
         io.seek(0)
         return io.read()
 
-    def out_template(self) -> str:
+    def template(self) -> str:
         s_cls: typing.Type[Struct] = generic_class(S)
         template = s_cls.template()
 
@@ -121,32 +121,32 @@ class CSV(ListOut):
         return '\n'.join(result)
 
 
-class KV(Out):
+class KV(StructFormatter):
 
     delim: str = '::'
     
-    def read(self, data: str) -> 'StructList[S]':
+    def read(self, message: str) -> 'StructList[S]':
         pass
     
-    def stream_read(self, data: str) -> 'StructList[S]':
+    def stream_read(self, message: str) -> 'StructList[S]':
         pass
 
-    def write(self, data: StructList[S]) -> StructList[S]:
+    def example(self, data: StructList[S]) -> StructList[S]:
         pass
 
-    def out_template(self) -> str:
+    def template(self) -> str:
         pass
 
 
-class MultiOut(Result):
+class MultiFormatter(Formatter):
     """Concatenates multiple outputs Out into one output
     """
     
-    outs: typing.List[Out]
+    outs: typing.List[StructFormatter]
     conn: str = '::OUT::{name}::\n'
     signal: str = '\u241E'
 
-    def write(self, data: typing.List[Struct]) -> str:
+    def example(self, data: typing.List[Struct]) -> str:
 
         result = ''
         for struct, out in zip(data, self.outs):
@@ -155,11 +155,11 @@ class MultiOut(Result):
 
         return result
 
-    def read(self, data: str) -> typing.List[Struct]:
+    def read(self, message: str) -> typing.List[Struct]:
 
         structs = []
 
-        d = data
+        d = message
         for out in self.outs:
             from_loc = d.find('\u241E')
             to_loc = d[from_loc + 1:].find('\u241E')
@@ -188,10 +188,10 @@ class MultiOut(Result):
             """
         return text
 
-    def stream_read(self, data: str) -> typing.Tuple[S, bool, str]:
+    def stream_read(self, message: str) -> typing.Tuple[S, bool, str]:
         structs = []
 
-        d = data
+        d = message
         for i, t in enumerate(self.outs):
             from_loc = d.find('\u241E')
             to_loc = d[from_loc + 1:].find('\u241E')
@@ -212,11 +212,11 @@ class MultiOut(Result):
 
         return structs, None
     
-    def out_template(self) -> str:
+    def template(self) -> str:
 
         text = ""
         for out in self.outs:
-            cur = out.out_template()
+            cur = out.template()
             cur_conn = self.conn.format(out.name)
             text += f"""
             {self.signal}{cur_conn}
@@ -225,10 +225,10 @@ class MultiOut(Result):
         return text
 
 
-class JSONOut(Out):
+class JSONFormatter(StructFormatter):
     """
     """
-    def stream_read(self, text: str) -> typing.Tuple[
+    def stream_read(self, message: str) -> typing.Tuple[
         typing.Optional[typing.Dict], bool
     ]:
         """
@@ -240,16 +240,16 @@ class JSONOut(Out):
             typing.Tuple[ typing.Optional[typing.Dict], bool ]: 
         """
         try: 
-            result = json.loads(text)
+            result = json.loads(message)
             return result, True
         except json.JSONDecodeError:
             return None, False
 
-    def read(self, text: str) -> typing.Dict:
-        result = json.loads(text)
+    def read(self, message: str) -> typing.Dict:
+        result = json.loads(message)
         return result
 
-    def write(self, data: Struct) -> str:
+    def example(self, data: Struct) -> str:
         return data.to_text()
     
     def template(self, out_cls: Struct) -> str:

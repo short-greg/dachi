@@ -11,14 +11,13 @@ import roman
 from ._utils import (
     str_formatter
 )
-from ._structs import Dialog
 from ._core import (
-    Struct, Out, 
-    render, render_multi
+    Struct, StructFormatter, 
+    render, render_multi, Dialog, TextMessage
 )
-from ._process import Module, Assistant
-from ._structs import Description, Message, TextMessage
-from ._core import Instruction, render, Param
+from ._process import Module
+from ._structs import Description
+from ._core import Instruction, render, Param, Instruct, Formatter, NullFormatter
 
 from ._core import (
     Struct, AIModel, AIResponse,
@@ -113,7 +112,7 @@ def numbered(xs: typing.Iterable[X], indent: int=0, numbering: str='arabic') -> 
     )
 
 
-def validate_out(instructions: typing.List[X]) -> Out:
+def validate_out(instructions: typing.List[X]) -> StructFormatter:
     """Validate an Out based on several instructions
 
     Args:
@@ -376,7 +375,8 @@ class FunctionOut(Module):
 
         return Instruction(
             text=filled_docstring,
-            out=Out(name=self.name, out_cls=self.out_cls)
+            out=NullFormatter(name=self.name)
+            # out=StructFormatter(name=self.name, out_cls=self.out_cls)
         )
 
     # def get_generic_type(self):
@@ -389,14 +389,15 @@ class FunctionOut(Module):
     #     return None #, None
 
 
-class SignatureFunc(Module):
+class SignatureFunc(Module, Instruct):
     """SignatureMethod is a method where you define the instruction in
     the function signature
     """
     def __init__(
-        self, f: typing.Callable, engine: Assistant, 
+        self, f: typing.Callable, engine: AIModel, 
         dialog_factory: typing.Optional[typing.Callable[[], Dialog]]=None,
         is_method: bool=False,
+        resp_p: Formatter=None,
         train: bool=False, instance=None
     ):
         """Wrap the signature method with a particular engine and
@@ -404,7 +405,7 @@ class SignatureFunc(Module):
 
         Args:
             f (typing.Callable): The function to wrap
-            engine (Assistant): The engine to use for getting the response
+            engine (AIModel): The engine to use for getting the response
             dialog_factory (typing.Optional[typing.Callable[[], Dialog]], optional): The dialog to use. Defaults to None.
             train (bool, optional): Whether to train the instructions or not. Defaults to False.
             is_method (bool, optional): Whether it is a method or not. Defaults to False.
@@ -416,6 +417,7 @@ class SignatureFunc(Module):
         # self._out = self._details.out(is_method, train)
         self.engine = engine
         self._train = train
+        self.resp_p = resp_p or NullFormatter(name=f.__name__)
 
         update_wrapper(self, f) 
         self.instance = instance
@@ -424,14 +426,14 @@ class SignatureFunc(Module):
 
     def spawn(
         self, 
-        engine: Assistant=None, 
+        engine: AIModel=None, 
         dialog_factory: typing.Optional[typing.Callable[[], Dialog]]=None,
         train: bool=False
     ) -> 'SignatureFunc':
         """Spawn a new SignatureMethod. Especially use to create a trainable one
 
         Args:
-            engine (Assistant, optional): Spawn a new . Defaults to None.
+            engine (AIModel, optional): Spawn a new . Defaults to None.
             dialog_factory (typing.Optional[typing.Callable[[], Dialog]], optional): _description_. Defaults to None.
             train (bool, optional): _description_. Defaults to False.
 
@@ -443,6 +445,7 @@ class SignatureFunc(Module):
             engine=engine or self.engine,
             is_method=self._is_method,
             dialog_factory=dialog_factory or self.dialog_factory,
+            resp_p=self.resp_p,
             train=train
         )
 
@@ -459,38 +462,32 @@ class SignatureFunc(Module):
 
     def forward(
         self, *args,
-        _engine: Assistant=None, 
-        _dialog: Dialog=None, **kwargs
+        _engine: AIModel=None, **kwargs
     ) -> typing.Any:
         """Execute the instruction and get the output 
 
         Args:
-            _engine (Assistant, optional): The engine to override with. Defaults to None.
-            _dialog (Dialog, optional): The dialog to use. Defaults to None.
+            _engine (AIModel, optional): The engine to override with. Defaults to None.
 
         Returns:
             typing.Any: The result of processing the instruction
         """
         engine = _engine or self.engine
-        dialog = _dialog or self.dialog_factory()
 
         instruction = self.i(*args,  **kwargs)
-        dialog.instruct(instruction)
-        result = engine(dialog)
+        return engine(TextMessage('system', instruction)).val
 
-        return instruction.read_out(result.text)
+        # return instruction.read_out(result.text)
 
     async def async_forward(
         self, *args, 
-        _engine: Assistant=None, 
-        _dialog: Dialog=None, 
+        _engine: AIModel=None, 
         **kwargs
     ) -> typing.Any:
         """Execute the instruction and get the output
 
         Args:
-            _engine (Assistant, optional): The engine to override with. Defaults to None.
-            _dialog (Dialog, optional): The dialog to use. Defaults to None.
+            _engine (AIModel, optional): The engine to override with. Defaults to None.
 
         Returns:
             typing.Any: The result of processing the instruction
@@ -498,7 +495,6 @@ class SignatureFunc(Module):
         return self.forward(
             *args, 
             _engine=_engine,
-            _dialog=_dialog, 
             **kwargs
         )
 
@@ -506,8 +502,8 @@ class SignatureFunc(Module):
         """Get the SignatureMethod with a 
 
         Args:
-            instance (_type_): The instance to use
-            owner (_type_): 
+            instance (): The instance to use
+            owner (): 
 
         Returns:
             SignatureMethod
@@ -525,15 +521,16 @@ class SignatureFunc(Module):
         return self._stored
 
 
-class InstructFunc(Module):
+class InstructFunc(Module, Instruct):
     """InstructMethod is a method where you define the instruction by
     doing operations on that instructions
     """
 
     def __init__(
-        self, f: typing.Callable, engine: Assistant, 
+        self, f: typing.Callable, engine: AIModel, 
         dialog_factory: typing.Optional[typing.Callable[[], Dialog]]=None,
         is_method: bool=False,
+        resp_p: Formatter=None,
         instance=None
     ):
         """Create an InstructMethod that decorates a function that returns 
@@ -555,6 +552,10 @@ class InstructFunc(Module):
         self._stored = None
         self.dialog_factory = dialog_factory or Dialog
 
+        # make it so it can automatically set this up
+        # rather than using the "Null version"
+        self.resp_p = resp_p or NullFormatter(f.__name__)
+
     def i(self, *args, **kwargs) -> Instruction:
         """Get the instruction based on the arguments
 
@@ -563,24 +564,21 @@ class InstructFunc(Module):
         """
         return self.f(*args, **kwargs)
 
-    def forward(self, *args, _engine: Assistant=None, _dialog: Dialog=None, **kwargs) -> typing.Any:        
+    def forward(self, *args, _engine: AIModel=None, **kwargs) -> typing.Any:        
         """Execute the instruct method and then process the output
 
         Args:
-            _engine (Assistant, optional): Engine to override with. Defaults to None.
-            _dialog (Dialog, optional): The dialog to use, if not specified will create a new one. Defaults to None.
+            _engine (AIModel, optional): Engine to override with. Defaults to None.
 
         Returns:
             typing.Any: The resulting
         """
         engine = _engine or self.engine
-        dialog = _dialog or self.dialog_factory()
 
         instruction = self.i(*args, **kwargs)
-        dialog.instruct(instruction)
-        result = engine(dialog)
-        return instruction.read_out(result.text)
-
+        return engine(TextMessage('system', instruction)).val
+        # return result
+    
     async def async_forward(self, *args, **kwargs) -> typing.Any:
         """
 
@@ -606,15 +604,16 @@ class InstructFunc(Module):
             self.engine, 
             self.dialog_factory, 
             self._is_method,
+            resp_p=self.resp_p,
             instance=instance
         )
         return self._stored
-    
-
-Instructor = typing.Union[InstructFunc, SignatureFunc, Instruction]
 
 
-def instructf(engine: Assistant=None):
+def instructf(
+    engine: AIModel=None, 
+    resp_proc: Formatter=None
+):
     """Decorator for using a function signature
 
     Args:
@@ -627,11 +626,14 @@ def instructf(engine: Assistant=None):
             return f(*args, **kwargs)
         
         # TODO: Use wrapper
-        return InstructFunc(f, engine, None, False, None)
+        return InstructFunc(f, engine, None, False, None, resp_p=resp_proc)
     return _
 
 
-def instructmethod(engine: Assistant=None):
+def instructmethod(
+    engine: AIModel=None, 
+    resp_p: Formatter=None
+):
     """Decorator for using a function signature
 
     Args:
@@ -644,11 +646,14 @@ def instructmethod(engine: Assistant=None):
             return f(*args, **kwargs)
         
         # TODO: Use wrapper
-        return InstructFunc(f, engine, None, True, None)
+        return InstructFunc(f, engine, None, True, None, resp_p=resp_p)
     return _
 
 
-def signaturemethod(engine: Assistant=None):
+def signaturemethod(
+    engine: AIModel=None, 
+    resp_p: Formatter=None
+):
     """Decorator for using a function signature
 
     Args:
@@ -659,12 +664,15 @@ def signaturemethod(engine: Assistant=None):
         @wraps(f)
         def wrapper(*args, **kwargs):
             return f(*args, **kwargs)
-        return SignatureFunc(f, engine, None, True)
+        return SignatureFunc(f, engine, None, True, resp_p=resp_p)
 
     return _
 
 
-def signaturef(engine: Assistant=None):
+def signaturef(
+    engine: AIModel=None, 
+    resp_p: Formatter=None
+):
     """Decorator for using a function signature
 
     Args:
@@ -675,134 +683,6 @@ def signaturef(engine: Assistant=None):
         @wraps(f)
         def wrapper(*args, **kwargs):
             return f(*args, **kwargs)
-        # print(is_method, f)
-        return SignatureFunc(f, engine, None, False)
+        return SignatureFunc(f, engine, None, False, resp_p=resp_p)
 
     return _
-
-
-class Dialog(Struct):
-
-    messages: typing.List[Message] = pydantic.Field(default_factory=list)
-
-    def __iter__(self) -> typing.Iterator[Message]:
-
-        for message in self.messages:
-            yield message
-
-    def __add__(self, other: 'Dialog'):
-
-        return Dialog(
-            self.messages + other.messages
-        )
-
-    def __getitem__(self, idx) -> 'Dialog':
-
-        return Dialog(
-            messages=self.messages[idx]
-        )
-
-    def __setitem__(self, idx, message) -> 'Dialog':
-
-        self.messages[idx] = message
-
-    def insert(self, index: int, message: Message):
-
-        self.messages.insert(index, message)
-
-    def pop(self, index: int):
-
-        self.messages.pop(index)
-
-    def remove(self, message: Message):
-
-        self.messages.remove(message)
-
-    def append(self, message: Message):
-
-        self.messages.append(message)
-
-    def add(self, message: Message, ind: typing.Optional[int]=None, replace: bool=False):
-        if ind < 0:
-            ind = max(len(self.messages) + ind, 0)
-
-        if ind is None or ind == len(self.messages):
-            if not replace or ind == len(self.messages):
-                self.messages.append(message)
-            else:
-                self.messages[-1] = message
-        elif ind > len(self.messages):
-            raise ValueError(
-                f'The index {ind} is out of bounds '
-                f'for size {len(self.messages)}')
-        elif replace:
-            self.messages[ind] = message
-        else:
-            self.messages.insert(ind, message)
-        
-    def spawn(self) -> typing.Self:
-
-        return Dialog(messages=[*self.messages])
-
-    def extend(self, dialog: typing.Union['Dialog', typing.List[Message]]):
-
-        if isinstance(dialog, Dialog):
-            dialog = dialog.messages
-        
-        self.messages.extend(dialog)
-
-    def source(self, source: str, text: typing.Optional[str]=None, _ind: typing.Optional[int]=None, _replace: bool=False, **kwargs):
-        if len(kwargs) == 0 and text is not None:
-            message = TextMessage(source, text)
-        elif text is not None:
-            message = Message(text=text, **kwargs)
-        elif text is None:
-            message = Message(**kwargs)
-        else:
-            raise ValueError('No message has been passed. The text and kwargs are empty')
-
-        self.add(message, _ind, _replace)
-
-    def user(self, text: str=None, _ind=None, _replace: bool=False, **kwargs):
-        self.source('user', text, _ind, _replace, **kwargs)
-
-    def assistant(self, text: str=None, _ind=None, _replace: bool=False, **kwargs):
-        self.source('assistant', text, _ind, _replace, **kwargs)
-
-    def system(self, text: str=None, _ind=None, _replace: bool=False, **kwargs):
-        self.source('system', text, _ind, _replace, **kwargs)
-
-    def out(self) -> Out:
-
-        for r in reversed(self.messages):
-            if  isinstance(r, Instruction):
-                return r.out
-        return None
-            
-    def process(self, response: AIResponse) -> AIResponse:
-
-        response = response.clone()
-        out = self.out()
-        if out is None:
-            response.val = response.content
-        else:
-            # Not sure about this
-            response.val = out.read(response.content['text'])
-        return response
-
-    def instruct(self, instructor: Instructor, ai_model: AIModel, ind: int=0, replace: bool=True) -> AIResponse:
-        
-        if isinstance(instructor, SignatureFunc) or isinstance(instructor, InstructFunc):
-            instructor = instructor.i()
-        
-        self.system(instructor, ind)
-        response = ai_model.forward(self.messages)
-        response = self.process(response)
-        self.assistant(response.content)
-        return response
-
-    def prompt(self, ai_model: AIModel) -> AIResponse:
-        
-        response = ai_model.forward(self.mesages)
-        self.assistant(response.content)
-        return self.process(response)

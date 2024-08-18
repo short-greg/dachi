@@ -22,7 +22,7 @@ class TestListOut(object):
 
     def test_out_reads_in_the_class_with_str(self):
 
-        out = _core.Out(
+        out = _core.StructFormatter(
             name='F1',
             out_cls=SimpleStruct
         )
@@ -51,7 +51,7 @@ class TestListOut(object):
 
     def test_out_reads_in_the_class_with_str(self):
 
-        out = _core.Out(
+        out = _core.StructFormatter(
             name='F1',
             out_cls=SimpleStruct
         )
@@ -69,17 +69,17 @@ class TestMultiOut(object):
             SimpleStruct(x='3')
         ]
 
-        out = _core.MultiOut(
-            outs=[_core.Out(
+        out = _core.MultiFormatter(
+            outs=[_core.StructFormatter(
                 name='F1',
                 out_cls=SimpleStruct
-            ), _core.Out(
+            ), _core.StructFormatter(
                 name='F2',
                 out_cls=SimpleStruct
             )]
         )
 
-        text = out.write(struct_list)
+        text = out.example(struct_list)
         assert 'x' in text
         assert 'F2' in text
 
@@ -90,17 +90,17 @@ class TestMultiOut(object):
             SimpleStruct(x='3')
         ]
 
-        out = _core.MultiOut(
-            outs=[_core.Out(
+        out = _core.MultiFormatter(
+            outs=[_core.StructFormatter(
                 name='F1',
                 out_cls=SimpleStruct
-            ), _core.Out(
+            ), _core.StructFormatter(
                 name='F2',
                 out_cls=SimpleStruct
             )]
         )
 
-        text = out.write(struct_list)
+        text = out.example(struct_list)
         structs = out.read(text)
         assert structs[0].x == struct_list[0].x
 
@@ -111,17 +111,17 @@ class TestMultiOut(object):
             SimpleStruct(x='3')
         ]
 
-        out = _core.MultiOut(
-            outs=[_core.Out(
+        out = _core.MultiFormatter(
+            outs=[_core.StructFormatter(
                 name='F1',
                 out_cls=SimpleStruct
-            ), _core.Out(
+            ), _core.StructFormatter(
                 name='F2',
                 out_cls=SimpleStruct
             )]
         )
 
-        text = out.write(struct_list)
+        text = out.example(struct_list)
         structs, failed_on = out.stream_read(text)
         assert structs[0].x == struct_list[0].x
         assert failed_on is None

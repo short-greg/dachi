@@ -197,6 +197,171 @@ class Media:
 Content = typing.Union[Media, str, typing.List[typing.Union[Media, str]]]
 
 
+@dataclass
+class AIResponse(object):
+
+    content: 'Message'
+    source: typing.Dict
+    val: typing.Any = None
+
+    def clone(self) -> Self:
+
+        return AIResponse(
+            content=self.content,
+            source=self.source,
+            val=self.val
+        )
+    
+    def __iter__(self) -> typing.Iterator:
+        yield self.source
+        yield self.content
+        yield self.val
+
+
+class Formatter(Struct, ABC):
+
+    name: str
+
+    @abstractmethod
+    def example(self, data: typing.Any) -> str:
+        pass
+
+    @abstractmethod
+    def read(self, data: str) -> typing.Any:
+        pass
+
+    @abstractmethod
+    def stream_read(self, data: str) -> typing.Any:
+        pass
+
+    @abstractmethod
+    def template(self) -> str:
+        pass
+
+
+class NullFormatter(Formatter):
+
+    def example(self, data: typing.Any) -> str:
+        return ''
+
+    def read(self, data: str) -> str:
+        return data
+
+    def stream_read(self, data: str) -> str:
+        return data
+
+    def template(self) -> str:
+        return '<No Template>'
+
+
+class StructFormatter(Formatter, typing.Generic[S]):
+
+    _out_cls: typing.Type[S] = pydantic.PrivateAttr()
+
+    def __init__(self, out_cls: S, **data):
+        super().__init__(**data)
+        self._out_cls = out_cls
+
+    def to_text(self, data: S) -> str:
+        return data.to_text(True)
+
+    def example(self, data: S) -> str:
+        return data.to_text(True)
+
+    def read(self, message: str) -> S:
+        return Message(
+            self._out_cls.from_text(message, True)
+        )
+
+    def stream_read(self, message: str) -> S:
+        return self._out_cls.from_text(message, True)
+
+    def template(self) -> str:
+        return self._out_cls.template()
+
+
+class PrimitiveFormatter(Formatter):
+
+    _out: typing.Type
+
+    def __init__(
+        self, out: typing.Type,
+        **data
+    ):
+        super().__init__(**data)
+        self._out = out
+
+    def to_text(self, data: typing.Any) -> str:
+        return str(data)
+
+    def example(self, data) -> str:
+        return str(data)
+
+    def read(self, message: 'Message') -> typing.Any:
+        return self._out(message)
+
+    def stream_read(self, message: 'Message') -> typing.Any:
+        return self._out(message)
+
+    def template(self) -> str:
+        return f'<{self._out}>'
+
+
+class AIPrompt(Struct, ABC):
+
+    @abstractmethod
+    def prompt(self, model: 'AIModel'):
+        pass
+
+    @abstractmethod
+    def instruct(self, instruction: 'Instruction', model: 'AIModel'):
+        pass
+
+    @abstractmethod
+    def out(self) -> 'Formatter':
+        pass
+
+    @abstractmethod
+    def process_response(self, response: 'AIResponse') -> 'AIResponse':
+        """
+
+        Args:
+            response (AIResponse): The response to process
+
+        Returns:
+            AIResponse: The updated response
+        """
+        pass
+
+    @abstractmethod
+    def clone(self) -> typing.Self:
+        """Do a shallow clone of the message object
+
+        Returns:
+            typing.Self: The cloned object
+        """
+        pass
+
+    @abstractmethod
+    def aslist(self) -> typing.List['Message']:
+        """
+        """
+        pass
+
+    def __iter__(self) -> typing.Iterator['Message']:
+        """
+
+        Yields:
+            Message: Each message
+        """
+        for message in self.aslist():
+            yield message
+
+    def __call__(self, prompt: 'AIPrompt') -> 'AIResponse':
+
+        return self.forward(prompt)
+
+
 class Message(Struct):
 
     source: str
@@ -216,18 +381,176 @@ class Message(Struct):
             self.data[key] = value
         raise KeyError(f'{key}')
 
-    # def instruct(self, instruction: 'Instruction', ai_model: 'AIModel', **kwargs) -> 'AIResponse':
+    def prompt(self, model: 'AIModel', **kwarg_overrides) -> 'AIResponse':
+        return model(self, **kwarg_overrides)
+
+    def out(self) -> 'Formatter':
+        return NullFormatter()
+
+    def clone(self) -> typing.Self:
+        return self.__class__(
+            source=self.source,
+            data=self.data
+        )
+
+    def aslist(self) -> typing.List['Message']:
+        return [self]
+
+
+class TextMessage(Message):
+
+    def __init__(self, source: str, text: typing.Union[str, 'Instruction']) -> 'Message':
+
+        super().__init__(
+            source=source,
+            data={
+                'text': text
+            }
+        )
+
+    def out(self) -> 'Formatter':
+        text = self['text']
+        if isinstance(text, Instruction):
+            return text.out
+        return NullFormatter(name='')
+
+
+class Dialog(Struct):
+
+    messages: typing.List[Message] = pydantic.Field(default_factory=list)
+
+    def __iter__(self) -> typing.Iterator[Message]:
+
+        for message in self.messages:
+            yield message
+
+    def __add__(self, other: 'Dialog'):
+
+        return Dialog(
+            self.messages + other.messages
+        )
+
+    def __getitem__(self, idx) -> 'Dialog':
+
+        return Dialog(
+            messages=self.messages[idx]
+        )
+
+    def __setitem__(self, idx, message) -> 'Dialog':
+
+        self.messages[idx] = message
+
+    def insert(self, index: int, message: Message):
+
+        self.messages.insert(index, message)
+
+    def pop(self, index: int):
+
+        self.messages.pop(index)
+
+    def remove(self, message: Message):
+
+        self.messages.remove(message)
+
+    def append(self, message: Message):
+
+        self.messages.append(message)
+
+    def add(self, message: Message, ind: typing.Optional[int]=None, replace: bool=False):
+        if ind < 0:
+            ind = max(len(self.messages) + ind, 0)
+
+        if ind is None or ind == len(self.messages):
+            if not replace or ind == len(self.messages):
+                self.messages.append(message)
+            else:
+                self.messages[-1] = message
+        elif ind > len(self.messages):
+            raise ValueError(
+                f'The index {ind} is out of bounds '
+                f'for size {len(self.messages)}')
+        elif replace:
+            self.messages[ind] = message
+        else:
+            self.messages.insert(ind, message)
         
-    #     response = ai_model.forward(self.messages)
-    #     response = self.process(response)
-    #     self.assistant(response.content)
+    def clone(self) -> typing.Self:
+
+        return Dialog(
+            messages=[message.clone() for message in self.messages]
+        )
+
+    def extend(self, dialog: typing.Union['Dialog', typing.List[Message]]):
+
+        if isinstance(dialog, Dialog):
+            dialog = dialog.messages
+        
+        self.messages.extend(dialog)
+
+    def message(self, source: str, text: typing.Optional[str]=None, _ind: typing.Optional[int]=None, _replace: bool=False, **kwargs):
+        if len(kwargs) == 0 and text is not None:
+            message = TextMessage(source, text)
+        elif text is not None:
+            message = Message(text=text, **kwargs)
+        elif text is None:
+            message = Message(**kwargs)
+        else:
+            raise ValueError('No message has been passed. The text and kwargs are empty')
+
+        self.add(message, _ind, _replace)
+
+    def user(self, text: str=None, _ind=None, _replace: bool=False, **kwargs):
+        self.message('user', text, _ind, _replace, **kwargs)
+
+    def assistant(self, text: str=None, _ind=None, _replace: bool=False, **kwargs):
+        self.message('assistant', text, _ind, _replace, **kwargs)
+
+    def system(self, text: str=None, _ind=None, _replace: bool=False, **kwargs):
+        self.message('system', text, _ind, _replace, **kwargs)
+            
+    # def process_response(self, response: AIResponse) -> AIResponse:
+
+    #     response = response.clone()
+
+    #     out = None
+    #     for r in reversed(self.messages):
+    #         if  isinstance(r, Instruction):
+    #             out = r.out
+    #             break
+
+    #     if out is None:
+    #         response.val = response.content
+    #     else:
+    #         # Not sure about this
+    #         response.val = out.read(response.content['text'])
     #     return response
 
-    # def prompt(self, ai_model: 'AIModel') -> 'AIResponse':
+    def out(self) -> 'Formatter':
+        for r in reversed(self.messages):
+            if isinstance(r, Instruction):
+                return r.out
+        return NullFormatter(name='')
+
+    def instruct(
+        self, instruct: 'Instruct', ai_model: 'AIModel', 
+        ind: int=0, replace: bool=True
+    ) -> AIResponse:
+        instruction = instruct.i()
         
-    #     response = ai_model.forward(self.mesages)
-    #     self.assistant(response.content)
-    #     return self.process(response)
+        self.system(instruction, ind, replace)
+        response = ai_model.forward(self.messages)
+        response = self.process_response(response)
+        self.assistant(response.content)
+        return response
+
+    def prompt(self, model: 'AIModel', append: bool=True) -> 'AIResponse':
+        response = model(self)
+        if append:
+            self.message('assistant', response.message())
+        return response
+
+    def aslist(self) -> typing.List['Message']:
+        return self.messages
 
 
 Data = typing.Union[Struct, typing.List[Struct]]
@@ -273,7 +596,11 @@ class StructList(Struct, typing.Generic[S]):
     structs: typing.List[S]
 
     def __init__(self, structs: typing.Iterable):
+        """
 
+        Args:
+            structs (typing.Iterable): 
+        """
         super().__init__(structs=structs)
 
     def __getitem__(self, key) -> typing.Any:
@@ -322,50 +649,6 @@ class StructList(Struct, typing.Generic[S]):
         )
 
 
-class Result(Struct, ABC):
-
-    @abstractmethod
-    def write(self, data: Struct) -> str:
-        pass
-
-    @abstractmethod
-    def read(self, data: str) -> S:
-        pass
-
-    @abstractmethod
-    def stream_read(self, data: str) -> S:
-        pass
-
-    @abstractmethod
-    def out_template(self) -> str:
-        pass
-
-
-class Out(Result, typing.Generic[S]):
-
-    name: str
-    _out_cls: typing.Type[S] = pydantic.PrivateAttr()
-
-    def __init__(self, out_cls: S, **data):
-        super().__init__(**data)
-        self._out_cls = out_cls
-
-    def to_text(self, data: S) -> str:
-        return data.to_text(True)
-
-    def write(self, data: S) -> str:
-        return data.to_text(True)
-
-    def read(self, message: Message) -> S:
-        return self._out_cls.from_text(message, True)
-
-    def stream_read(self, data: str) -> S:
-        return self._out_cls.from_text(data, True)
-
-    def out_template(self) -> str:
-        return self._out_cls.template()
-
-
 def is_undefined(val) -> bool:
     """
     Args:
@@ -377,6 +660,8 @@ def is_undefined(val) -> bool:
     return val == UNDEFINED or val == WAITING
 
 
+# TODO: Make "struct" storable?
+#  Module as well
 class Storable(ABC):
     """Object to serialize objects to make them easy to recover
     """
@@ -455,19 +740,9 @@ def render_multi(xs: typing.Iterable[typing.Any]) -> typing.List[str]:
     ]
 
 
-@dataclass
-class AIResponse(object):
-
-    content: typing.Any
-    source: typing.Dict
-    val: typing.Any = None
-    delta: typing.Any = None
-    
-
 class Module(ABC):
     """Base class for Modules
     """
-
     @abstractmethod
     def forward(self, *args, **kwargs) -> typing.Any:
         pass
@@ -509,37 +784,52 @@ class Module(ABC):
                         yield v
     
     async def async_forward(self, *args, **kwargs) -> typing.Any:
-        """
+        """Execute the forward method asynchronously
 
         Returns:
             typing.Any: 
         """
         return self.forward(*args, **kwargs)
 
-    def stream_iter(self, *args, **kwargs) -> typing.Iterator[
+    def stream_forward(self, *args, **kwargs) -> typing.Iterator[
         typing.Tuple[typing.Any, typing.Any]
     ]:
         # default behavior doesn't actually stream
         res = self.forward(*args, **kwargs) 
         yield res, None
 
-    def stream_forward(self, *args, **kwargs) -> 'Streamer':
+    def streamer(self, *args, **kwargs) -> 'Streamer':
         """
         Returns:
             Streamer: The Streamer to loop over
         """
         return Streamer(
-            self.stream_iter(*args, **kwargs)
+            iter(self.stream_forward(*args, **kwargs))
         )
+    # async def async_stream_iter(self, *args, **kwargs) -> typing.AsyncIterator[
+    #     typing.Tuple[typing.Any, typing.Any]
+    # ]:
+    #     # default behavior doesn't actually stream
+    #     res = self.forward(*args, **kwargs) 
+    #     yield res, None
+
+    # async def async_stream_forward(self, *args, **kwargs) -> 'Streamer':
+    #     """
+    #     Returns:
+    #         Streamer: The Streamer to loop over
+    #     """
+    #     return Streamer(
+    #         self.stream_iter(*args, **kwargs)
+    #     )
 
 
-class AIModel(ABC, Module):
+class AIModel(Module, ABC):
     """APIAdapter allows one to adapt various WebAPI or otehr
     API for a consistent interface
     """
 
     @abstractmethod
-    def forward(self, messages: typing.List[Message]) -> AIResponse:
+    def forward(self, prompt: AIPrompt) -> AIResponse:
         """Run a standard query to the API
 
         Args:
@@ -551,14 +841,33 @@ class AIModel(ABC, Module):
         pass
 
     @abstractmethod
-    def convert(self, messages: typing.List[Message]) -> typing.List[typing.Dict]:
+    def convert(self, message: Message) -> typing.Dict:
+        """Convert a message to the format needed for the model
+
+        Args:
+            messages (Message): The messages to convert
+
+        Returns:
+            typing.List[typing.Dict]: The format to pass to the "model"
+        """
         pass
 
-    def stream_iter(self, messages: typing.List[Message]) -> typing.Iterator[AIResponse]:
+    def convert_messages(self, messages: typing.List[Message]) -> typing.List[typing.Dict]:
+        """Convienence method to convert a list of messages to the format needed for the model
+
+        Args:
+            messages (typing.List[Message]): The messages to convert
+
+        Returns:
+            typing.List[typing.Dict]: The format to pass to the "model"
+        """
+        return [self.convert(message) for message in messages]
+
+    def stream_forward(self, prompt: AIPrompt) -> typing.Iterator[typing.Tuple[AIResponse, AIResponse]]:
         """API that allows for streaming the response
 
         Args:
-            data: Data to pass to the API
+            prompt (AIPrompt): Data to pass to the API
 
         Returns:
             typing.Iterator: Data representing the streamed response
@@ -568,10 +877,12 @@ class AIModel(ABC, Module):
         Yields:
             typing.Dict: The data
         """
-        result = self.forward(messages)
+        result = self.forward(prompt)
         yield result, None
     
-    async def async_forward(self, messages: typing.List[Message], **kwarg_override) -> AIResponse:
+    async def async_forward(
+        self, prompt: AIPrompt, **kwarg_override
+    ) -> AIResponse:
         """Run this query for asynchronous operations
         The default behavior is simply to call the query
 
@@ -581,13 +892,15 @@ class AIModel(ABC, Module):
         Returns:
             typing.Any: 
         """
-        return self.forward(messages, **kwarg_override)
+        return self.forward(prompt, **kwarg_override)
     
-    async def bulk_async_forward(self, messages: typing.List[typing.List[Message]], **kwarg_override) -> typing.List[AIResponse]:
+    async def bulk_async_forward(
+        self, prompt: typing.List[AIPrompt], **kwarg_override
+    ) -> typing.List[AIResponse]:
         """
 
         Args:
-            data (_type_): 
+            messages (typing.List[typing.List[Message]]): 
 
         Returns:
             typing.List[typing.Dict]: 
@@ -595,25 +908,25 @@ class AIModel(ABC, Module):
         tasks = []
         async with asyncio.TaskGroup() as tg:
 
-            for messages_i in messages:
+            for prompt_i in prompt:
                 tasks.append(
-                    tg.create_task(self.async_forward(messages_i, **kwarg_override))
+                    tg.create_task(self.async_forward(prompt_i, **kwarg_override))
                 )
         return list(
             task.result() for task in tasks
         )
     
-    async def async_stream_iter(self, data, **kwarg_override) -> typing.AsyncIterator[AIResponse]:
+    async def async_stream_iter(self, prompt: AIPrompt, **kwarg_override) -> typing.AsyncIterator[AIResponse]:
         """Run this query for asynchronous streaming operations
         The default behavior is simply to call the query
 
         Args:
-            data: The data to pass to the API
+            prompt (AIPrompt): The data to pass to the API
 
         Yields:
             typing.Dict: The data returned from the API
         """
-        result = self.forward(data, **kwarg_override)
+        result = self.forward(prompt, **kwarg_override)
         yield result
 
     async def _collect_results(generator, index, results, queue):
@@ -622,25 +935,27 @@ class AIModel(ABC, Module):
             await queue.put(results[:])  # Put a copy of the current results
         results[index] = None  # Mark this generator as completed
 
-    async def bulk_async_stream_iter(self, data, **kwarg_override) -> typing.AsyncIterator[typing.List[AIResponse]]:
-        """
+    async def bulk_async_stream_iter(
+        self, prompts: typing.List[AIPrompt], **kwarg_override
+    ) -> typing.AsyncIterator[typing.List[AIResponse]]:
+        """Process multiple 
 
         Args:
-            data (_type_): 
+            prompts (AIPrompt): The prompts to process
 
         Returns:
             typing.List[typing.Dict]: 
         """
-        results = [None] * len(data)
+        results = [None] * len(prompts)
         queue = asyncio.Queue()
 
         async with asyncio.TaskGroup() as tg:
-            for index, data_i in enumerate(data):
+            for index, prompt_i in enumerate(prompts):
                 tg.create_task(self._collect_results(
-                    self.async_stream_iter(data_i, **kwarg_override), index, results, queue)
+                    self.async_stream_iter(prompt_i, **kwarg_override), index, results, queue)
                 )
 
-        active_generators = len(data)
+        active_generators = len(prompts)
         while active_generators > 0:
             current_results = await queue.get()
             yield current_results
@@ -658,6 +973,8 @@ class Partial(object):
 
 
 class Streamer(object):
+    """Streamer is an object used to stream over the response
+    """
 
     def __init__(self, stream: typing.Iterator):
         """The Stream to loop over
@@ -701,11 +1018,21 @@ class Streamer(object):
             yield cur
 
 
-class Instruction(Struct, typing.Generic[S]):
+class Instruct(ABC):
+
+    @abstractmethod
+    def i(self) -> 'Instruction':
+        pass
+
+
+class Instruction(Struct, Instruct, typing.Generic[S]):
     """Specific instruction for the model to use
     """
     text: str
-    out: typing.Optional[Out] = None
+    out: typing.Optional[Formatter] = None
+
+    def i(self) -> Self:
+        return self
 
     @pydantic.field_validator('text', mode='before')
     def convert_renderable_to_string(cls, v):

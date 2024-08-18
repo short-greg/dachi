@@ -188,7 +188,7 @@ class StreamSrc(Src):
             return value
     
         args = self._args.iterate(by)        
-        streamer = by[self] = self._module.stream_forward(*args.args, **args.kwargs)
+        streamer = by[self] = self._module.streamer(*args.args, **args.kwargs)
         return streamer
     
     def __call__(self, by: typing.Dict['T', typing.Any]) -> typing.Any:
@@ -720,7 +720,7 @@ def stream_link(module: 'Module', *args, **kwargs) -> T:
         args = args.eval()
 
         return T(
-            module.stream_forward(*args.args, **args.kwargs),
+            module.streamer(*args.args, **args.kwargs),
             StreamSrc(module, args)
         )
 
