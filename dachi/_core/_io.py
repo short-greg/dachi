@@ -10,14 +10,16 @@ import pandas as pd
 # local
 from ._core import (
     Reader, 
-    Struct, generic_class
+    Struct, generic_class,
+    unescape_curly_braces
 )
 
 from ._core import (
     Struct, 
     StructList, 
     Reader, 
-    StructLoadException
+    StructLoadException,
+    render
 )
 
 S = typing.TypeVar('S', bound=Struct)
@@ -32,28 +34,29 @@ class StructRead(Reader, typing.Generic[S]):
         super().__init__(**data)
         self._out_cls = out_cls
 
-    def dump_data(self, data: typing.Any) -> typing.Any:
-        pass
+    def dump_data(self, data: S) -> typing.Any:
+        return data.to_dict()
 
     def write_text(self, data: typing.Any) -> str:
-        pass
+        return str(data)
 
     def to_text(self, data: S) -> str:
         return data.to_text(True)
 
-    def example(self, data: S) -> str:
-        return data.to_text(True)
-
     def read_text(self, message: str) -> S:
+        message = unescape_curly_braces(message)
         return json.loads(message)
         # return self._out_cls.from_text(message, True)
     
     def load_data(self, data) -> S:
-        self._out_cls.from_dict(data)
+        return self._out_cls.from_dict(data)
 
     def template(self) -> str:
         return self._out_cls.template()
     
+    # def example(self, data: S) -> str:
+    #     return data.to_text(True)
+
     # def stream_read(self, message: str) -> S:
     #     return self._out_cls.from_text(message, True)
 
@@ -74,22 +77,15 @@ class StructListRead(Reader, typing.Generic[S]):
         super().__init__(**data)
         self._out_cls = out_cls
 
-    def dump_data(self, data: typing.Any) -> typing.Any:
-        pass
+    def dump_data(self, data: StructList[S]) -> typing.Any:
+        structs = []
+        for cur in data.structs:
+            structs.append(self._out_cls.to_dict(cur))
 
-    def write_text(self, data: typing.Any) -> str:
-        pass
+        return structs
 
-    # def example(self, data: StructList[S]) -> str:
-    #     """Output an example of the output
-
-    #     Args:
-    #         data (StructList[S]): The data to output
-
-    #     Returns:
-    #         str: the data written
-    #     """
-    #     return json.dumps(data)
+    def write_text(self, data: typing.List) -> str:
+        return json.dumps(data)
 
     def read_text(self, message: str) -> StructList[S]:
         """Convert the message into a list of structs
@@ -132,6 +128,17 @@ class StructListRead(Reader, typing.Generic[S]):
 
         return self._out_cls.template()
 
+    # def example(self, data: StructList[S]) -> str:
+    #     """Output an example of the output
+
+    #     Args:
+    #         data (StructList[S]): The data to output
+
+    #     Returns:
+    #         str: the data written
+    #     """
+    #     return json.dumps(data)
+
     # def stream_read(self, message: str) -> StructList[S]:
     #     """
 
@@ -149,7 +156,7 @@ class StructListRead(Reader, typing.Generic[S]):
     #     return StructList(structs=structs)
     
 
-class CSVRead(StructListRead):
+class CSVRead(Reader):
     """Convert text to a StructList
     """
     indexed: bool = True
@@ -172,21 +179,10 @@ class CSVRead(StructListRead):
         """
         return data # StructList[S].load_records(data)
 
-    def dump_data(self, data: typing.Any) -> typing.Any:
-        pass
+    def dump_data(self, data: typing.List) -> typing.Any:
+        return data
 
     def write_text(self, data: typing.Any) -> str:
-        pass
-
-    def example(self, data: StructList[S]) -> str:
-        """Create an example of the CSV
-
-        Args:
-            data (StructList[S]): The data to create an example for
-
-        Returns:
-            StructList[S]: The resulting StructList
-        """
         io = StringIO()
         data = [
             d_i.dump()
@@ -239,6 +235,26 @@ class CSVRead(StructListRead):
 
     #     return StructList[S].load_records(records)
 
+    # def example(self, data: StructList[S]) -> str:
+    #     """Create an example of the CSV
+
+    #     Args:
+    #         data (StructList[S]): The data to create an example for
+
+    #     Returns:
+    #         StructList[S]: The resulting StructList
+    #     """
+    #     io = StringIO()
+    #     data = [
+    #         d_i.dump()
+    #         for d_i in self.data.structs
+    #     ]
+    #     df = pd.DataFrame(data)
+    #     df.to_csv(io, index=True, sep=self.delim)
+        
+    #     # Reset the cursor position to the beginning of the StringIO object
+    #     io.seek(0)
+    #     return io.read()
 
 
 class DualRead(Reader):
@@ -260,27 +276,76 @@ class DualRead(Reader):
 
     def template(self) -> str:
         return self.text.template()
-    
 
 
 class KVRead(StructRead):
 
-    delim: str = '::'
+    sep: str = '::'
+    key_descr: typing.Optional[typing.Dict] = None
     
     def read_text(self, message: str) -> typing.Dict:
-        pass
+        lines = message.splitlines()
+        result = {}
+        for line in lines:
+            try:
+                key, value = line.split(self.sep)
+                result[key] = value
+            except ValueError:
+                pass
+        return result
     
-    def load_data(self, data) -> 'StructList[S]':
-        pass
+    def load_data(self, data: typing.Dict) -> typing.Dict:
+        """
 
-    def dump_data(self, data: typing.Any) -> typing.Any:
-        pass
+        Args:
+            data (typing.Dict): 
 
-    def write_text(self, data: typing.Any) -> str:
-        pass
+        Returns:
+            typing.Dict: 
+        """
+        return data
+
+    def dump_data(self, data: typing.Dict) -> typing.Dict:
+        """
+
+        Args:
+            data (typing.Dict): 
+
+        Returns:
+            typing.Dict: 
+        """
+        return data
+
+    def write_text(self, data: typing.Dict) -> str:
+        """
+
+        Args:
+            data (typing.Dict): 
+
+        Returns:
+            str: 
+        """
+        return '\n'.join(
+            f'{k}{self.sep}{render(v)}' for k, v in data.items()
+        )
 
     def template(self) -> str:
-        pass
+        """
+
+        Returns:
+            str: 
+        """
+        if self.key_descr is None:
+            key_descr = {
+                '<Example>': '<The value for the key.>'
+            }
+
+        else:
+            key_descr = self.key_descr
+        return '\n'.join(
+            f'{key}{self.sep}{value}' 
+            for key, value in key_descr.items()
+        )
 
     # def stream_read(self, message: str) -> 'StructList[S]':
     #     pass
@@ -289,23 +354,22 @@ class KVRead(StructRead):
 class MultiRead(Reader):
     """Concatenates multiple outputs Out into one output
     """
-    outs: typing.List[StructRead]
+    outs: typing.List[Reader]
     conn: str = '::OUT::{name}::\n'
     signal: str = '\u241E'
 
+    def dump_data(self, data: typing.Dict) -> typing.Any:
+        
+        results = []
+        for data_i, out in zip(data['data'], self.outs):
+            results.append(out.dump_data(data_i))
+        return {'data': results, 'i': data['i']}
 
-    def dump_data(self, data: typing.Any) -> typing.Any:
-        pass
-
-    def write_text(self, data: typing.Any) -> str:
-        pass
-
-    def example(self, data: typing.List[Struct]) -> str:
-
+    def write_text(self, data: typing.Dict) -> str:
         result = ''
-        for struct, out in zip(data, self.outs):
+        for d, out in zip(data['data'], self.outs):
             result = result + '\n' + self.signal + self.conn.format(name=out.name)
-            result = f'{result}\n{struct.render()}'
+            result = f'{result}\n{render(d)}'
 
         return result
 
@@ -322,6 +386,14 @@ class MultiRead(Reader):
         return text
 
     def read_text(self, message: str) -> typing.Dict:
+        """_summary_
+
+        Args:
+            message (str): _description_
+
+        Returns:
+            typing.Dict: _description_
+        """
         structs = []
 
         d = message
@@ -340,19 +412,27 @@ class MultiRead(Reader):
             try: 
                 structs.append(t.read_text(data_str))
             except StructLoadException as e:
-                return structs
+                return {'data': structs, 'i': i}
             d = d[data_end_loc:]
 
         return {'data': structs, 'i': i}
     
     def load_data(self, data) -> typing.List:
+        """
+
+        Args:
+            data (): 
+
+        Returns:
+            typing.List: 
+        """
         structs = []
 
-        for o, d_i in zip(self.outs, data['structs']):
+        for o, d_i in zip(self.outs, data['data']):
             structs.append(o.load_data(d_i))
 
         return {'data': structs, 'i': data['i']}
-        
+
     def template(self) -> str:
 
         text = ""
@@ -364,7 +444,16 @@ class MultiRead(Reader):
             {cur}
             """
         return text
-    
+
+    # def example(self, data: typing.List[Struct]) -> str:
+
+    #     result = ''
+    #     for struct, out in zip(data, self.outs):
+    #         result = result + '\n' + self.signal + self.conn.format(name=out.name)
+    #         result = f'{result}\n{struct.render()}'
+
+    #     return result
+
     # def read(self, message: str) -> typing.List[Struct]:
 
     #     structs = []
@@ -408,14 +497,10 @@ class PrimRead(Reader):
     def to_text(self, data: typing.Any) -> str:
         return str(data)
 
-
     def dump_data(self, data: typing.Any) -> typing.Any:
-        pass
+        return data
 
     def write_text(self, data: typing.Any) -> str:
-        pass
-
-    def example(self, data) -> str:
         return str(data)
 
     def read_text(self, message: str) -> typing.Any:
@@ -426,13 +511,17 @@ class PrimRead(Reader):
 
     def template(self) -> str:
         return f'<{self._out}>'
-    
+
+    # def example(self, data) -> str:
+    #     return str(data)
+
     # def stream_read(self, message: str) -> typing.Any:
     #     return self._out(message)
 
 
 class JSONRead(StructRead):
     """
+
     """
     def stream_read(self, message: str) -> typing.Tuple[
         typing.Optional[typing.Dict], bool
@@ -456,13 +545,13 @@ class JSONRead(StructRead):
         return result
 
     def dump_data(self, data: typing.Any) -> typing.Any:
-        pass
+        return data.to_dict()
 
     def write_text(self, data: typing.Any) -> str:
-        pass
+        return str(data)
 
-    def example(self, data: Struct) -> str:
-        return data.to_text()
+    # def example(self, data: Struct) -> str:
+    #     return data.to_text()
     
     def template(self, out_cls: Struct) -> str:
         return out_cls.template()

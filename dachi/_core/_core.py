@@ -234,7 +234,7 @@ class Reader(Struct, ABC):
         pass
 
     def read(self, message: str) -> typing.Dict:
-        return self.load_data(self.read(message))
+        return self.load_data(self.read_text(message))
     
     @abstractmethod
     def read_text(self, message: str) -> typing.Any:
@@ -675,8 +675,9 @@ def render(x: typing.Any) -> typing.Union[str, typing.List[str]]:
     """
     if isinstance(x, Renderable):
         return x.render()
-    elif is_primitive(x):
-        return str(x)
+    
+    elif is_primitive(x) or isinstance(x, dict) or isinstance(x, list):
+        return escape_curly_braces(x)
     
     raise ValueError(
         f'Cannot render value of type {type(x)}'

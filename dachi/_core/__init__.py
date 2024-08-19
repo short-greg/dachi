@@ -6,14 +6,13 @@ from ._core import (
     Renderable, model_template,
     Struct, StructLoadException,
     is_nested_model, StructList,
-    Reader, StructRead, is_undefined,
+    Reader, is_undefined,
     Storable, render,
     render_multi, AIResponse,
     AIModel, Partial, Streamer,
     Module, Instruction, Dialog, AIPrompt,
     Param, Data, UNDEFINED, WAITING, 
-    NullRead, PrimRead,
-    is_primitive
+    is_primitive, NullRead, TextMessage
 )
 
 from ._instruct import (
@@ -21,7 +20,7 @@ from ._instruct import (
     numbered, validate_out, fill, head,
     section, cat, join, Operation, op,
     FunctionOut, signaturef, SignatureFunc, 
-    signaturemethod, TextMessage,
+    signaturemethod,
     InstructFunc, instructf, instructmethod
 )
 from ._structs import (
@@ -39,7 +38,8 @@ from ._process import (
 )
 
 from ._io import (
-    CSVRead, KVRead, StructListRead, MultiRead, JSONRead
+    CSVRead, KVRead, StructListRead, MultiRead, JSONRead,
+    StructRead, PrimRead,
 )
 from ._utils import (
     get_str_variables, escape_curly_braces,

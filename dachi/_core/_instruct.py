@@ -12,15 +12,21 @@ from ._utils import (
     str_formatter
 )
 from ._core import (
-    Struct, StructRead, 
-    render, render_multi, Dialog, TextMessage
+    Struct, 
+    render, render_multi, Dialog
+)
+from ._io import (
+    StructRead
 )
 from ._process import Module
 from ._structs import Description
-from ._core import Instruction, render, Param, Instruct, Reader, NullRead
+from ._core import (
+    Instruction, render, Param, 
+    Instruct, Reader, NullRead, TextMessage
+)
 
 from ._core import (
-    Struct, AIModel, AIResponse,
+    Struct, AIModel,
     Instruction
 )
 

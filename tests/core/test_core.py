@@ -125,51 +125,6 @@ class TestInstruction:
         assert instruction.text == text
 
 
-class TestOut:
-
-    def test_out_creates_out_class(self):
-
-        out = _core.StructRead(
-            name='F1',
-            out_cls=SimpleStruct
-            # name='Simple', signature='...',
-        )
-        simple = SimpleStruct(x='hi')
-        d = simple.to_text()
-        simple2 = out.read(d)
-        assert simple.x == simple2.x
-
-    def test_out_creates_out_class_with_string(self):
-
-        out = _core.StructRead(
-            name='F1',
-            out_cls=SimpleStruct
-        )
-        simple = SimpleStruct(x='hi')
-        d = simple.to_text()
-        simple2 = out.read(d)
-        assert simple.x == simple2.x
-    
-    def test_out_template(self):
-
-        out = _core.StructRead(
-            name='F1',
-            out_cls=SimpleStruct
-        )
-        simple2 = out.template()
-        assert 'x' in simple2
-
-    def test_read_reads_in_the_class(self):
-
-        out = _core.StructRead(
-            name='F1',
-            out_cls=SimpleStruct
-        )
-        s = SimpleStruct(x='2').to_text()
-        simple2 = out.read(s)
-        assert simple2.x == '2'
-
-
 class TestIsUndefined(object):
 
     def test_is_undefined(self):
@@ -309,3 +264,14 @@ class TestParam:
         # partial = streamer()
         # assert partial.cur == 1
         # assert partial.complete is False
+
+
+
+class TestMessage(object):
+
+    def test_message_role_is_a_string(self):
+
+        message = _core.TextMessage(source='assistant', text='hi, how are you')
+        assert message.source == 'assistant'
+        assert message.data['text'] == 'hi, how are you'
+

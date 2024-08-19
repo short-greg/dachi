@@ -64,15 +64,6 @@ class TestRef:
         assert ref.render() == role.name
 
 
-class TestMessage(object):
-
-    def test_message_role_is_a_string(self):
-
-        message = _structs.TextMessage(source='assistant', text='hi, how are you')
-        assert message.source == 'assistant'
-        assert message.data['text'] == 'hi, how are you'
-
-
 # class TestDoc(object):
 
 #     def test_doc_text_is_a_string(self):
