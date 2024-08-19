@@ -6,13 +6,13 @@ from ._core import (
     Renderable, model_template,
     Struct, StructLoadException,
     is_nested_model, StructList,
-    Formatter, StructFormatter, is_undefined,
+    Reader, StructRead, is_undefined,
     Storable, render,
     render_multi, AIResponse,
     AIModel, Partial, Streamer,
     Module, Instruction, Dialog, AIPrompt,
     Param, Data, UNDEFINED, WAITING, 
-    NullFormatter, PrimitiveFormatter,
+    NullRead, PrimRead,
     is_primitive
 )
 
@@ -39,7 +39,7 @@ from ._process import (
 )
 
 from ._io import (
-    CSV, KV, ListOut, MultiFormatter, JSONFormatter
+    CSVRead, KVRead, StructListRead, MultiRead, JSONRead
 )
 from ._utils import (
     get_str_variables, escape_curly_braces,

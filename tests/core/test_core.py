@@ -129,7 +129,7 @@ class TestOut:
 
     def test_out_creates_out_class(self):
 
-        out = _core.StructFormatter(
+        out = _core.StructRead(
             name='F1',
             out_cls=SimpleStruct
             # name='Simple', signature='...',
@@ -141,7 +141,7 @@ class TestOut:
 
     def test_out_creates_out_class_with_string(self):
 
-        out = _core.StructFormatter(
+        out = _core.StructRead(
             name='F1',
             out_cls=SimpleStruct
         )
@@ -152,7 +152,7 @@ class TestOut:
     
     def test_out_template(self):
 
-        out = _core.StructFormatter(
+        out = _core.StructRead(
             name='F1',
             out_cls=SimpleStruct
         )
@@ -161,7 +161,7 @@ class TestOut:
 
     def test_read_reads_in_the_class(self):
 
-        out = _core.StructFormatter(
+        out = _core.StructRead(
             name='F1',
             out_cls=SimpleStruct
         )
@@ -197,7 +197,7 @@ class TestInstruction(object):
     def test_read_(self):
 
         instruction = _core.Instruction(
-            text='x', out=_core.StructFormatter(
+            text='x', out=_core.StructRead(
                 name='F1',
                 out_cls=SimpleStruct
             )
@@ -218,7 +218,7 @@ class TestParam(object):
     def test_param_with_instruction_passed_in(self):
 
         instruction = _core.Instruction(
-            text='x', out=_core.StructFormatter(
+            text='x', out=_core.StructRead(
                 name='F1',
                 out_cls=SimpleStruct
             )
@@ -232,7 +232,7 @@ class TestParam(object):
     def test_read_reads_the_object(self):
 
         instruction = _core.Instruction(
-            text='x', out=_core.StructFormatter(
+            text='x', out=_core.StructRead(
                 name='F1',
                 out_cls=SimpleStruct
             )

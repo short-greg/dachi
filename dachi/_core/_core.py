@@ -218,20 +218,30 @@ class AIResponse(object):
         yield self.val
 
 
-class Formatter(Struct, ABC):
+class Reader(Struct, ABC):
 
     name: str
 
-    @abstractmethod
     def example(self, data: typing.Any) -> str:
+        return self.write_text(self.dump_data(data))
+
+    @abstractmethod
+    def dump_data(self, data: typing.Any) -> typing.Any:
         pass
 
     @abstractmethod
-    def read(self, data: str) -> typing.Any:
+    def write_text(self, data: typing.Any) -> str:
+        pass
+
+    def read(self, message: str) -> typing.Dict:
+        return self.load_data(self.read(message))
+    
+    @abstractmethod
+    def read_text(self, message: str) -> typing.Any:
         pass
 
     @abstractmethod
-    def stream_read(self, data: str) -> typing.Any:
+    def load_data(self, data: typing.Dict) -> typing.Any:
         pass
 
     @abstractmethod
@@ -239,72 +249,22 @@ class Formatter(Struct, ABC):
         pass
 
 
-class NullFormatter(Formatter):
+class NullRead(Reader):
 
-    def example(self, data: typing.Any) -> str:
-        return ''
+    def dump_data(self, data: typing.Any) -> typing.Any:
+        pass
 
-    def read(self, data: str) -> str:
+    def write_text(self, data: typing.Any) -> str:
+        pass
+
+    def read_text(self, data: str) -> typing.Dict:
         return data
-
-    def stream_read(self, data: str) -> str:
+    
+    def load_data(self, data) -> typing.Any:
         return data
 
     def template(self) -> str:
         return '<No Template>'
-
-
-class StructFormatter(Formatter, typing.Generic[S]):
-
-    _out_cls: typing.Type[S] = pydantic.PrivateAttr()
-
-    def __init__(self, out_cls: S, **data):
-        super().__init__(**data)
-        self._out_cls = out_cls
-
-    def to_text(self, data: S) -> str:
-        return data.to_text(True)
-
-    def example(self, data: S) -> str:
-        return data.to_text(True)
-
-    def read(self, message: str) -> S:
-        return Message(
-            self._out_cls.from_text(message, True)
-        )
-
-    def stream_read(self, message: str) -> S:
-        return self._out_cls.from_text(message, True)
-
-    def template(self) -> str:
-        return self._out_cls.template()
-
-
-class PrimitiveFormatter(Formatter):
-
-    _out: typing.Type
-
-    def __init__(
-        self, out: typing.Type,
-        **data
-    ):
-        super().__init__(**data)
-        self._out = out
-
-    def to_text(self, data: typing.Any) -> str:
-        return str(data)
-
-    def example(self, data) -> str:
-        return str(data)
-
-    def read(self, message: 'Message') -> typing.Any:
-        return self._out(message)
-
-    def stream_read(self, message: 'Message') -> typing.Any:
-        return self._out(message)
-
-    def template(self) -> str:
-        return f'<{self._out}>'
 
 
 class AIPrompt(Struct, ABC):
@@ -318,7 +278,7 @@ class AIPrompt(Struct, ABC):
         pass
 
     @abstractmethod
-    def out(self) -> 'Formatter':
+    def out(self) -> 'Reader':
         pass
 
     @abstractmethod
@@ -384,8 +344,8 @@ class Message(Struct):
     def prompt(self, model: 'AIModel', **kwarg_overrides) -> 'AIResponse':
         return model(self, **kwarg_overrides)
 
-    def out(self) -> 'Formatter':
-        return NullFormatter()
+    def out(self) -> 'Reader':
+        return NullRead()
 
     def clone(self) -> typing.Self:
         return self.__class__(
@@ -408,11 +368,11 @@ class TextMessage(Message):
             }
         )
 
-    def out(self) -> 'Formatter':
+    def out(self) -> 'Reader':
         text = self['text']
         if isinstance(text, Instruction):
             return text.out
-        return NullFormatter(name='')
+        return NullRead(name='')
 
 
 class Dialog(Struct):
@@ -525,11 +485,11 @@ class Dialog(Struct):
     #         response.val = out.read(response.content['text'])
     #     return response
 
-    def out(self) -> 'Formatter':
+    def reader(self) -> 'Reader':
         for r in reversed(self.messages):
             if isinstance(r, Instruction):
                 return r.out
-        return NullFormatter(name='')
+        return NullRead(name='')
 
     def instruct(
         self, instruct: 'Instruct', ai_model: 'AIModel', 
@@ -1029,7 +989,7 @@ class Instruction(Struct, Instruct, typing.Generic[S]):
     """Specific instruction for the model to use
     """
     text: str
-    out: typing.Optional[Formatter] = None
+    out: typing.Optional[Reader] = None
 
     def i(self) -> Self:
         return self

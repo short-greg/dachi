@@ -13,7 +13,7 @@ class TestListOut(object):
             ]
         )
 
-        out = _core.ListOut(
+        out = _core.StructListRead(
             name='F1',
             out_cls=SimpleStruct
         )
@@ -22,7 +22,7 @@ class TestListOut(object):
 
     def test_out_reads_in_the_class_with_str(self):
 
-        out = _core.StructFormatter(
+        out = _core.StructRead(
             name='F1',
             out_cls=SimpleStruct
         )
@@ -42,7 +42,7 @@ class TestListOut(object):
             ]
         )
 
-        out = _core.ListOut(
+        out = _core.StructListRead(
             name='F1',
             out_cls=SimpleStruct
         )
@@ -51,7 +51,7 @@ class TestListOut(object):
 
     def test_out_reads_in_the_class_with_str(self):
 
-        out = _core.StructFormatter(
+        out = _core.StructRead(
             name='F1',
             out_cls=SimpleStruct
         )
@@ -69,11 +69,11 @@ class TestMultiOut(object):
             SimpleStruct(x='3')
         ]
 
-        out = _core.MultiFormatter(
-            outs=[_core.StructFormatter(
+        out = _core.MultiRead(
+            outs=[_core.StructRead(
                 name='F1',
                 out_cls=SimpleStruct
-            ), _core.StructFormatter(
+            ), _core.StructRead(
                 name='F2',
                 out_cls=SimpleStruct
             )]
@@ -90,11 +90,11 @@ class TestMultiOut(object):
             SimpleStruct(x='3')
         ]
 
-        out = _core.MultiFormatter(
-            outs=[_core.StructFormatter(
+        out = _core.MultiRead(
+            outs=[_core.StructRead(
                 name='F1',
                 out_cls=SimpleStruct
-            ), _core.StructFormatter(
+            ), _core.StructRead(
                 name='F2',
                 out_cls=SimpleStruct
             )]
@@ -111,11 +111,11 @@ class TestMultiOut(object):
             SimpleStruct(x='3')
         ]
 
-        out = _core.MultiFormatter(
-            outs=[_core.StructFormatter(
+        out = _core.MultiRead(
+            outs=[_core.StructRead(
                 name='F1',
                 out_cls=SimpleStruct
-            ), _core.StructFormatter(
+            ), _core.StructRead(
                 name='F2',
                 out_cls=SimpleStruct
             )]

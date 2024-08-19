@@ -12,12 +12,12 @@ from ._utils import (
     str_formatter
 )
 from ._core import (
-    Struct, StructFormatter, 
+    Struct, StructRead, 
     render, render_multi, Dialog, TextMessage
 )
 from ._process import Module
 from ._structs import Description
-from ._core import Instruction, render, Param, Instruct, Formatter, NullFormatter
+from ._core import Instruction, render, Param, Instruct, Reader, NullRead
 
 from ._core import (
     Struct, AIModel, AIResponse,
@@ -112,7 +112,7 @@ def numbered(xs: typing.Iterable[X], indent: int=0, numbering: str='arabic') -> 
     )
 
 
-def validate_out(instructions: typing.List[X]) -> StructFormatter:
+def validate_out(instructions: typing.List[X]) -> StructRead:
     """Validate an Out based on several instructions
 
     Args:
@@ -375,7 +375,7 @@ class FunctionOut(Module):
 
         return Instruction(
             text=filled_docstring,
-            out=NullFormatter(name=self.name)
+            out=NullRead(name=self.name)
             # out=StructFormatter(name=self.name, out_cls=self.out_cls)
         )
 
@@ -397,7 +397,7 @@ class SignatureFunc(Module, Instruct):
         self, f: typing.Callable, engine: AIModel, 
         dialog_factory: typing.Optional[typing.Callable[[], Dialog]]=None,
         is_method: bool=False,
-        resp_p: Formatter=None,
+        resp_p: Reader=None,
         train: bool=False, instance=None
     ):
         """Wrap the signature method with a particular engine and
@@ -417,7 +417,7 @@ class SignatureFunc(Module, Instruct):
         # self._out = self._details.out(is_method, train)
         self.engine = engine
         self._train = train
-        self.resp_p = resp_p or NullFormatter(name=f.__name__)
+        self.resp_p = resp_p or NullRead(name=f.__name__)
 
         update_wrapper(self, f) 
         self.instance = instance
@@ -530,7 +530,7 @@ class InstructFunc(Module, Instruct):
         self, f: typing.Callable, engine: AIModel, 
         dialog_factory: typing.Optional[typing.Callable[[], Dialog]]=None,
         is_method: bool=False,
-        resp_p: Formatter=None,
+        resp_p: Reader=None,
         instance=None
     ):
         """Create an InstructMethod that decorates a function that returns 
@@ -554,7 +554,7 @@ class InstructFunc(Module, Instruct):
 
         # make it so it can automatically set this up
         # rather than using the "Null version"
-        self.resp_p = resp_p or NullFormatter(f.__name__)
+        self.resp_p = resp_p or NullRead(f.__name__)
 
     def i(self, *args, **kwargs) -> Instruction:
         """Get the instruction based on the arguments
@@ -612,7 +612,7 @@ class InstructFunc(Module, Instruct):
 
 def instructf(
     engine: AIModel=None, 
-    resp_proc: Formatter=None
+    resp_proc: Reader=None
 ):
     """Decorator for using a function signature
 
@@ -632,7 +632,7 @@ def instructf(
 
 def instructmethod(
     engine: AIModel=None, 
-    resp_p: Formatter=None
+    resp_p: Reader=None
 ):
     """Decorator for using a function signature
 
@@ -652,7 +652,7 @@ def instructmethod(
 
 def signaturemethod(
     engine: AIModel=None, 
-    resp_p: Formatter=None
+    resp_p: Reader=None
 ):
     """Decorator for using a function signature
 
@@ -671,7 +671,7 @@ def signaturemethod(
 
 def signaturef(
     engine: AIModel=None, 
-    resp_p: Formatter=None
+    resp_p: Reader=None
 ):
     """Decorator for using a function signature
 
