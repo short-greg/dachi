@@ -6,11 +6,9 @@ import typing
 from ._utils import Args
 from ._process import Module, ParallelModule, processf
 
-# 3rd party
-# import networkx as nx
-# import functools
-# import numpy as np
-# from ._process import Batch, batchf
+# TODO: Decide how to handle this.. I want to try
+# and get a more robust approach to handling these
+# processes
 
 
 class AsyncModule(ParallelModule):
@@ -42,7 +40,7 @@ class AsyncModule(ParallelModule):
         )
 
     def forward(self, args: Args) -> typing.Tuple:
-        """
+        """Run the asynchronous module
         Returns:
             typing.Tuple: The output for the paralell module
         """
@@ -89,7 +87,16 @@ def reduce(
 
 @processf
 def map(data: typing.Iterable, module: Module, *args, init=None, **kwargs) -> typing.Any:
-    
+    """
+
+    Args:
+        data (typing.Iterable): The data to map
+        module (Module): The module to execute
+        init : TODO: CHECK. Defaults to None.
+
+    Returns:
+        typing.Any: 
+    """
     results = []
     for data_i in data:
         results.append(module(data_i, *args, **kwargs))

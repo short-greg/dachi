@@ -219,29 +219,80 @@ class AIResponse(object):
 
 
 class Reader(Struct, ABC):
+    """
+    """
 
     name: str
 
     def example(self, data: typing.Any) -> str:
+        """Output an example of the data
+
+        Args:
+            data (typing.Any): 
+
+        Returns:
+            str: 
+        """
         return self.write_text(self.dump_data(data))
 
     @abstractmethod
     def dump_data(self, data: typing.Any) -> typing.Any:
+        """Convert the data from the output of write_text
+        to the original format
+
+        Args:
+            data (typing.Any): The data
+
+        Returns:
+            typing.Any: The data
+        """
         pass
 
     @abstractmethod
     def write_text(self, data: typing.Any) -> str:
+        """Write out the text for the data
+
+        Args:
+            data (typing.Any): The data to write the text for
+
+        Returns:
+            str: The text
+        """
         pass
 
-    def read(self, message: str) -> typing.Dict:
+    def read(self, message: str) -> typing.Any:
+        """Read in the output
+
+        Args:
+            message (str): The message to read
+
+        Returns:
+            typing.Any: The output of the reader
+        """
         return self.load_data(self.read_text(message))
     
     @abstractmethod
     def read_text(self, message: str) -> typing.Any:
+        """Read in the text and output to a "json" compatible format or a primitive
+
+        Args:
+            message (str): The message to read
+
+        Returns:
+            typing.Any: The result of the reading process
+        """
         pass
 
     @abstractmethod
     def load_data(self, data: typing.Dict) -> typing.Any:
+        """Load the data output from reading the text
+
+        Args:
+            data (typing.Dict): The data to load (JSON format)
+
+        Returns:
+            typing.Any: The result of the reading
+        """
         pass
 
     @abstractmethod
@@ -250,17 +301,52 @@ class Reader(Struct, ABC):
 
 
 class NullRead(Reader):
+    """A Reader that does not change the data. 
+    So in most cases will simply output a string
+    """
 
     def dump_data(self, data: typing.Any) -> typing.Any:
+        """Convert the data to JSON compatible format
+
+        Args:
+            data (typing.Any): The data to convert to "JSON" compatible format
+
+        Returns:
+            typing.Any: Returns the data passed in
+        """
         pass
 
     def write_text(self, data: typing.Any) -> str:
+        """Output the data to text
+
+        Args:
+            data (typing.Any): The JSON compatible data
+
+        Returns:
+            str: The data converted to text
+        """
         pass
 
     def read_text(self, data: str) -> typing.Dict:
+        """Read in the text as a JSON compatible structure
+
+        Args:
+            data (str): The data to read in
+
+        Returns:
+            typing.Dict: The JSON compatible object (does nothing because it is null)
+        """
         return data
     
     def load_data(self, data) -> typing.Any:
+        """Load the data
+
+        Args:
+            data: The data to load
+
+        Returns:
+            typing.Any: The data passed in (since null)
+        """
         return data
 
     def template(self) -> str:
@@ -278,7 +364,7 @@ class AIPrompt(Struct, ABC):
         pass
 
     @abstractmethod
-    def out(self) -> 'Reader':
+    def reader(self) -> 'Reader':
         pass
 
     @abstractmethod
@@ -344,10 +430,15 @@ class Message(Struct):
     def prompt(self, model: 'AIModel', **kwarg_overrides) -> 'AIResponse':
         return model(self, **kwarg_overrides)
 
-    def out(self) -> 'Reader':
+    def reader(self) -> 'Reader':
         return NullRead()
 
     def clone(self) -> typing.Self:
+        """Do a shallow copy of the message
+
+        Returns:
+            Message: The cloned message
+        """
         return self.__class__(
             source=self.source,
             data=self.data
@@ -355,6 +446,14 @@ class Message(Struct):
 
     def aslist(self) -> typing.List['Message']:
         return [self]
+    
+    def render(self) -> str:
+        """Render the message
+
+        Returns:
+            str: Return the message and the source
+        """
+        return f'{self.source}: {render(self.data)}'
 
 
 class TextMessage(Message):
@@ -368,55 +467,122 @@ class TextMessage(Message):
             }
         )
 
-    def out(self) -> 'Reader':
+    def reader(self) -> 'Reader':
         text = self['text']
         if isinstance(text, Instruction):
             return text.out
         return NullRead(name='')
+    
+    def render(self) -> str:
+        """Render the text message
+
+        Returns:
+            str: Return the message and the text for the message
+        """
+        text = self.data['text']
+        return f'{self.source}: {
+            text.render() if isinstance(text, Instruction) else text
+        }'
 
 
 class Dialog(Struct):
+    """A Dialog stores the interactions between the system/user and the assistant
+    (i.e. the prompts and the responses)
+    """
 
     messages: typing.List[Message] = pydantic.Field(default_factory=list)
 
     def __iter__(self) -> typing.Iterator[Message]:
+        """Iterate over each message in the dialog
+
+        Yields:
+            Iterator[typing.Iterator[Message]]: Each message in the dialog
+        """
 
         for message in self.messages:
             yield message
 
-    def __add__(self, other: 'Dialog'):
+    def __add__(self, other: 'Dialog') -> 'Dialog':
+        """Concatenate two dialogs together
 
+        Args:
+            other (Dialog): The other dialog to concatenate
+
+        Returns:
+            Dialog: The concatenated dialog
+        """
         return Dialog(
             self.messages + other.messages
         )
 
-    def __getitem__(self, idx) -> 'Dialog':
+    def __getitem__(self, idx) -> Message:
+        """Retrieve a value from the dialog
 
-        return Dialog(
-            messages=self.messages[idx]
-        )
+        Args:
+            idx : The index to add at
 
-    def __setitem__(self, idx, message) -> 'Dialog':
+        Returns:
+            Message: The message in the dialog
+        """
+        return self.messages[idx]
 
+    def __setitem__(self, idx, message) -> Self:
+        """Set idx with a message
+
+        Args:
+            idx: The index to set
+            message: The message to set
+
+        Returns:
+            Dialog: The updated dialog
+        """
         self.messages[idx] = message
+        return self
 
     def insert(self, index: int, message: Message):
+        """Insert a value into the dialog
 
+        Args:
+            index (int): The index to insert at
+            message (Message): The message to insert
+        """
         self.messages.insert(index, message)
 
     def pop(self, index: int):
+        """Remove a value from the dialog
 
+        Args:
+            index (int): The index to pop
+        """
         self.messages.pop(index)
 
     def remove(self, message: Message):
+        """Remove a message from the dialog
 
+        Args:
+            message (Message): The message to remove
+        """
         self.messages.remove(message)
 
     def append(self, message: Message):
+        """Append a message to the end of the dialog
 
+        Args:
+            message (Message): The message to add
+        """
         self.messages.append(message)
 
     def add(self, message: Message, ind: typing.Optional[int]=None, replace: bool=False):
+        """Add a message to the dialog
+
+        Args:
+            message (Message): The message to add
+            ind (typing.Optional[int], optional): The index to add. Defaults to None.
+            replace (bool, optional): Whether to replace at the index. Defaults to False.
+
+        Raises:
+            ValueError: If the index is not correct
+        """
         if ind < 0:
             ind = max(len(self.messages) + ind, 0)
 
@@ -434,20 +600,39 @@ class Dialog(Struct):
         else:
             self.messages.insert(ind, message)
         
-    def clone(self) -> typing.Self:
+    def clone(self) -> 'Dialog':
+        """Clones the dialog
 
+        Returns:
+            Dialog: A dialog cloned with shallow copying of the messages
+        """
         return Dialog(
             messages=[message.clone() for message in self.messages]
         )
 
     def extend(self, dialog: typing.Union['Dialog', typing.List[Message]]):
+        """Extend the dialog with another dialog or a list of messages
 
+        Args:
+            dialog (typing.Union[&#39;Dialog&#39;, typing.List[Message]]): _description_
+        """
         if isinstance(dialog, Dialog):
             dialog = dialog.messages
         
         self.messages.extend(dialog)
 
     def message(self, source: str, text: typing.Optional[str]=None, _ind: typing.Optional[int]=None, _replace: bool=False, **kwargs):
+        """Add a message to the 
+
+        Args:
+            source (str): the source of the message
+            text (typing.Optional[str], optional): The text message. Defaults to None.
+            _ind (typing.Optional[int], optional): The index to set at. Defaults to None.
+            _replace (bool, optional): Whether to replace the the text at the index. Defaults to False.
+
+        Raises:
+            ValueError: If no message was passed in
+        """
         if len(kwargs) == 0 and text is not None:
             message = TextMessage(source, text)
         elif text is not None:
@@ -459,15 +644,100 @@ class Dialog(Struct):
 
         self.add(message, _ind, _replace)
 
-    def user(self, text: str=None, _ind=None, _replace: bool=False, **kwargs):
+    def user(self, text: str=None, _ind: int=None, _replace: bool=False, **kwargs):
+        """Add a user message
+
+        Args:
+            text (str, optional): The text for the message. Defaults to None.
+            _ind (int, optional): The index to add to. Defaults to None.
+            _replace (bool, optional): Whether to replace at the index. Defaults to False.
+        """
         self.message('user', text, _ind, _replace, **kwargs)
 
     def assistant(self, text: str=None, _ind=None, _replace: bool=False, **kwargs):
+        """Add an assistant message
+
+        Args:
+            text (str, optional): The text for the message. Defaults to None.
+            _ind (int, optional): The index to add to. Defaults to None.
+            _replace (bool, optional): Whether to replace at the index. Defaults to False.
+        """
         self.message('assistant', text, _ind, _replace, **kwargs)
 
     def system(self, text: str=None, _ind=None, _replace: bool=False, **kwargs):
+        """Add a system message
+
+        Args:
+            text (str, optional): The text for the message. Defaults to None.
+            _ind (int, optional): The index to add to. Defaults to None.
+            _replace (bool, optional): Whether to replace at the index. Defaults to False.
+        """
         self.message('system', text, _ind, _replace, **kwargs)
-            
+
+    def reader(self) -> 'Reader':
+        """Get the "Reader" for the dialog. By default will use the last one
+        that is available.
+
+        Returns:
+            Reader: The reader to retrieve
+        """
+        for r in reversed(self.messages):
+            if isinstance(r, Instruction):
+                return r.reader
+        return NullRead(name='')
+    
+    def render(self) -> str:
+        return '\n'.join(
+            message.render() for message in self.messages
+        )
+
+    def instruct(
+        self, instruct: 'Instruct', ai_model: 'AIModel', 
+        ind: int=0, replace: bool=True
+    ) -> AIResponse:
+        """Instruct the AI
+
+        Args:
+            instruct (Instruct): The instruction to use
+            ai_model (AIModel): The AIModel to use
+            ind (int, optional): The index to set to. Defaults to 0.
+            replace (bool, optional): Whether to replace at the index if already set. Defaults to True.
+
+        Returns:
+            AIResponse: The output from the AI
+        """
+        instruction = instruct.i()
+        
+        self.system(instruction, ind, replace)
+        response = ai_model.forward(self.messages)
+        response = self.process_response(response)
+        self.assistant(response.content)
+        return response
+
+    def prompt(self, model: 'AIModel', append: bool=True) -> 'AIResponse':
+        """Prompt the AI
+
+        Args:
+            model (AIModel): The model to usee
+            append (bool, optional): Whether to append the output. Defaults to True.
+
+        Returns:
+            AIResponse: The response from the AI
+        """
+        response = model(self)
+
+        if append:
+            self.message('assistant', response.message())
+        return response
+
+    def aslist(self) -> typing.List['Message']:
+        """Retrieve the message list
+
+        Returns:
+            typing.List[Message]: the messages in the dialog
+        """
+        return self.messages
+
     # def process_response(self, response: AIResponse) -> AIResponse:
 
     #     response = response.clone()
@@ -485,32 +755,6 @@ class Dialog(Struct):
     #         response.val = out.read(response.content['text'])
     #     return response
 
-    def reader(self) -> 'Reader':
-        for r in reversed(self.messages):
-            if isinstance(r, Instruction):
-                return r.out
-        return NullRead(name='')
-
-    def instruct(
-        self, instruct: 'Instruct', ai_model: 'AIModel', 
-        ind: int=0, replace: bool=True
-    ) -> AIResponse:
-        instruction = instruct.i()
-        
-        self.system(instruction, ind, replace)
-        response = ai_model.forward(self.messages)
-        response = self.process_response(response)
-        self.assistant(response.content)
-        return response
-
-    def prompt(self, model: 'AIModel', append: bool=True) -> 'AIResponse':
-        response = model(self)
-        if append:
-            self.message('assistant', response.message())
-        return response
-
-    def aslist(self) -> typing.List['Message']:
-        return self.messages
 
 
 Data = typing.Union[Struct, typing.List[Struct]]
@@ -704,16 +948,30 @@ def render_multi(xs: typing.Iterable[typing.Any]) -> typing.List[str]:
 class Module(ABC):
     """Base class for Modules
     """
+    
     @abstractmethod
     def forward(self, *args, **kwargs) -> typing.Any:
+        """Execute the module
+
+        Returns:
+            typing.Any: The output of the module
+        """
         pass
 
     def __call__(self, *args, **kwargs) -> typing.Any:
+        """Execute the module
 
+        Returns:
+            typing.Any: The output of the module
+        """
         return self.forward(*args, **kwargs)
 
     def parameters(self, recurse: bool=True) -> typing.Iterator['Param']:
-        
+        """Loop over the parameters for the module
+
+        Yields:
+            Param: The parameters for the module
+        """
         yielded = set()
         for k, v in self.__dict__.items():
             if isinstance(v, Param):
@@ -730,7 +988,11 @@ class Module(ABC):
                     yield v
 
     def children(self, recurse: bool=True) -> typing.Iterator['Module']:
-        
+        """Loop over all of the child modules
+
+        Yields:
+            Module: The child module
+        """
         yielded = set()
         for k, v in self.__dict__.items():
             if isinstance(v, Module):
@@ -755,18 +1017,24 @@ class Module(ABC):
     def stream_forward(self, *args, **kwargs) -> typing.Iterator[
         typing.Tuple[typing.Any, typing.Any]
     ]:
+        """Stream the output
+
+        Yields:
+            Iterator[typing.Iterator[ typing.Tuple[typing.Any, typing.Any] ]]: The current value and the change in the value
+        """
         # default behavior doesn't actually stream
         res = self.forward(*args, **kwargs) 
         yield res, None
 
     def streamer(self, *args, **kwargs) -> 'Streamer':
-        """
+        """Retrieve a streamer
         Returns:
             Streamer: The Streamer to loop over
         """
         return Streamer(
             iter(self.stream_forward(*args, **kwargs))
         )
+
     # async def async_stream_iter(self, *args, **kwargs) -> typing.AsyncIterator[
     #     typing.Tuple[typing.Any, typing.Any]
     # ]:
@@ -1004,13 +1272,30 @@ class Instruction(Struct, Instruct, typing.Generic[S]):
         return v
 
     def render(self) -> str:
+        """Render the instruction
+
+        Returns:
+            str: The text for the instruction 
+        """
         return self.text
 
-    def read_out(self, data: str) -> S:
+    def read(self, data: str) -> S:
+        """Read the data
+
+        Args:
+            data (str): The data to read
+
+        Raises:
+            RuntimeError: If the instruction does not have a reader
+
+        Returns:
+            S: The result of the read process
+        """
         if self.out is None:
             raise RuntimeError(
                 "Out has not been specified so can't read it"
             )
+        
         return self.out.read(data)
 
 
@@ -1044,6 +1329,14 @@ class Param(Struct):
         return self.instruction.render()
 
     def read(self, data: typing.Dict) -> S:
+        """Read in the data
+
+        Args:
+            data (typing.Dict): The data to read in
+
+        Returns:
+            S: The result of the reading
+        """
         return self.instruction.read(data)
 
     def reads(self, data: str) -> S:

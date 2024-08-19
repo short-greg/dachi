@@ -54,7 +54,7 @@ class OpenAIChatModel(AIModel):
             messages=self.convert_messages(prompt.aslist()),
             **kwargs
         )
-        p = prompt.out()
+        p = prompt.reader()
         text = response.choices[0].message.content
         message = TextMessage('assistant', text)
         
@@ -83,7 +83,7 @@ class OpenAIChatModel(AIModel):
             **kwargs
         )
         cur_message = ''
-        p = prompt.out()
+        p = prompt.reader()
         for chunk in query:
             delta = chunk.choices[0].delta.content
 
@@ -111,7 +111,7 @@ class OpenAIChatModel(AIModel):
             **self.kwargs,
             **kwarg_override
         }
-        p = prompt.out()
+        p = prompt.reader()
 
         response = await client.chat.completions.create(
             model=self.model,
@@ -138,7 +138,7 @@ class OpenAIChatModel(AIModel):
             stream=True,
             **kwargs
         )
-        p = prompt.out()
+        p = prompt.reader()
 
         cur_message = ''
         async for chunk in query:

@@ -8,27 +8,22 @@ import pydantic
 import roman
 
 # local
-from ._utils import (
-    str_formatter
-)
 from ._core import (
     Struct, 
-    render, render_multi, Dialog
+    render, render_multi, Dialog,
+    Instruction, render, Param, 
+    Instruct, Reader, NullRead, TextMessage,
+    Struct, AIModel,
+    Instruction
 )
 from ._io import (
     StructRead
 )
+from ._utils import (
+    str_formatter
+)
 from ._process import Module
 from ._structs import Description
-from ._core import (
-    Instruction, render, Param, 
-    Instruct, Reader, NullRead, TextMessage
-)
-
-from ._core import (
-    Struct, AIModel,
-    Instruction
-)
 
 S = typing.TypeVar('S', bound=Struct)
 X = typing.Union[str, Description, Instruction]
@@ -175,7 +170,7 @@ def head(x: X, size: int=1) -> 'Instruction':
 
 
 def section(name: X, details: X, size: int=1, linebreak: int=1) -> 'Instruction':
-    """Add a section
+    """Add a section to the instruction
 
     Args:
         name (X): The name of the section

@@ -358,14 +358,30 @@ class MultiRead(Reader):
     conn: str = '::OUT::{name}::\n'
     signal: str = '\u241E'
 
-    def dump_data(self, data: typing.Dict) -> typing.Any:
-        
+    def dump_data(self, data: typing.Dict) -> typing.Dict:
+        """Dump all of the data to a dictionary
+
+        Args:
+            data (typing.Dict): A dictionary containing all
+            of the data
+
+        Returns:
+            typing.Dict: The data all dumped
+        """
         results = []
         for data_i, out in zip(data['data'], self.outs):
             results.append(out.dump_data(data_i))
         return {'data': results, 'i': data['i']}
 
     def write_text(self, data: typing.Dict) -> str:
+        """Convert the dictionary data to text
+
+        Args:
+            data (typing.Dict): The dictionary data obtained from dump_data
+
+        Returns:
+            str: The data written as text
+        """
         result = ''
         for d, out in zip(data['data'], self.outs):
             result = result + '\n' + self.signal + self.conn.format(name=out.name)
@@ -374,6 +390,8 @@ class MultiRead(Reader):
         return result
 
     def to_text(self, data: typing.List[S]) -> str:
+        """Convert the data to text
+        """
 
         text = ""
         for data_i, out in zip(data, self.outs):
@@ -386,7 +404,7 @@ class MultiRead(Reader):
         return text
 
     def read_text(self, message: str) -> typing.Dict:
-        """_summary_
+        """
 
         Args:
             message (str): _description_
@@ -417,14 +435,15 @@ class MultiRead(Reader):
 
         return {'data': structs, 'i': i}
     
-    def load_data(self, data) -> typing.List:
-        """
+    def load_data(self, data: typing.Dict) -> typing.Dict:
+        """Load the data for each of the components of the output
 
         Args:
-            data (): 
+            data (): The dictionary data to load
 
         Returns:
-            typing.List: 
+            typing.Dict: The data with each element of the output
+             loaded
         """
         structs = []
 
@@ -434,7 +453,15 @@ class MultiRead(Reader):
         return {'data': structs, 'i': data['i']}
 
     def template(self) -> str:
+        """Output a template for the output
 
+        Args:
+            data (): The dictionary data to load
+
+        Returns:
+            typing.Dict: The data with each element of the output
+             loaded
+        """
         text = ""
         for out in self.outs:
             cur = out.template()
@@ -486,30 +513,76 @@ class PrimRead(Reader):
         self, out: typing.Type,
         **data
     ):
-        """
+        """Create a reader for Primitive values
 
         Args:
-            out (typing.Type): 
+            out (typing.Type): The type of data
         """
         super().__init__(**data)
         self._out = out
 
     def to_text(self, data: typing.Any) -> str:
+        """Convert the data to text
+
+        Args:
+            data (typing.Any): 
+
+        Returns:
+            str: The 
+        """
         return str(data)
 
     def dump_data(self, data: typing.Any) -> typing.Any:
+        """
+
+        Args:
+            data (typing.Any): 
+
+        Returns:
+            typing.Any: 
+        """
         return data
 
     def write_text(self, data: typing.Any) -> str:
+        """Convert the primitive to a string
+
+        Args:
+            data (primitive): The primitive
+
+        Returns:
+            str: The data converted to a string
+        """
         return str(data)
 
     def read_text(self, message: str) -> typing.Any:
+        """Read the message from text
+
+        Args:
+            message (str): The message to read
+
+        Returns:
+            typing.Any: The string converted to the primitive
+        """
         return self._out(message)
     
     def load_data(self, data) -> typing.Any:
+        """Doesn't do anything because the data should be in
+        the right form
+
+        Args:
+            data: The primitive
+
+        Returns:
+            typing.Any: The primitive value
+        """
         return data
 
     def template(self) -> str:
+        """Output the template for the string
+
+        Returns:
+            str: The template for the data
+        """
         return f'<{self._out}>'
 
     # def example(self, data) -> str:
@@ -523,35 +596,69 @@ class JSONRead(StructRead):
     """
 
     """
-    def stream_read(self, message: str) -> typing.Tuple[
-        typing.Optional[typing.Dict], bool
-    ]:
-        """
+
+
+    def read_text(self, message: str) -> typing.Dict:
+        """Read in the JSON
 
         Args:
-            text (str): 
+            text (str): The JSON to read in
 
         Returns:
-            typing.Tuple[ typing.Optional[typing.Dict], bool ]: 
+            typing.Dict: The result - if it fails, will return an empty dict
         """
         try: 
             result = json.loads(message)
-            return result, True
+            return result
         except json.JSONDecodeError:
-            return None, False
+            return {}
+    
+    def load_data(self, data: typing.Dict) -> typing.Dict:
+        """_summary_
 
-    def read(self, message: str) -> typing.Dict:
-        result = json.loads(message)
-        return result
+        Args:
+            data (typing.Dict): _description_
 
-    def dump_data(self, data: typing.Any) -> typing.Any:
-        return data.to_dict()
+        Returns:
+            typing.Dict: Convert the
+        """
+        return data
+
+    def dump_data(self, data: typing.Dict) -> typing.Dict:
+        """Does not do anything 
+
+        Args:
+            data (typing.Any): The data 
+
+        Returns:
+            typing.Any: The data
+        """
+        return data
+        # return data.to_dict()
 
     def write_text(self, data: typing.Any) -> str:
-        return str(data)
+        """Write the data to a a string
+
+        Args:
+            data (typing.Any): The data to write
+
+        Returns:
+            str: The string version of the data
+        """
+        return json.dumps(data)
+
+    def template(self) -> str:
+        """Output the template for the class
+
+        Returns:
+            str: The template for the output
+        """
+        return self._out_cls.template()
+
+    # def read(self, message: str) -> typing.Dict:
+    #     result = json.loads(message)
+    #     return result
 
     # def example(self, data: Struct) -> str:
     #     return data.to_text()
     
-    def template(self, out_cls: Struct) -> str:
-        return out_cls.template()

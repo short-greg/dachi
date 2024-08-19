@@ -3,8 +3,7 @@ import typing
 from abc import ABC, abstractmethod
 
 from ._core import (
-    Struct, Renderable, AIModel, AIResponse,
-    Instruction, Message, Media
+    Struct, Renderable, Message, Media
 )
 from ._utils import generic_class
 
@@ -15,6 +14,8 @@ import pydantic
 S = typing.TypeVar('S', bound='Struct')
 T = typing.TypeVar('T', bound=Struct)
 
+
+# TODO: Decide whether to keep this
 
 class StructList(Struct, typing.Generic[S]):
     """
@@ -73,10 +74,6 @@ class Description(Struct, Renderable, ABC):
     """
     name: str = pydantic.Field(description='The name of the description.')
 
-    # @abstractmethod
-    # def update(self, **kwargs) -> Self:
-    #     pass
-
     @abstractmethod
     def render(self) -> str:
         pass
@@ -109,8 +106,13 @@ class Ref(Struct):
 
 class MediaMessage(Message):
 
-    def __init__(self, source: str, media: typing.List[Media]) -> 'Message':
+    def __init__(self, source: str, media: typing.List[Media]):
+        """_summary_
 
+        Args:
+            source (str): _description_
+            media (typing.List[Media]): The media to use
+        """
         super().__init__(
             source=source,
             data={
@@ -118,5 +120,10 @@ class MediaMessage(Message):
             }
         )
 
-# TODO: Improve document similar to message
-# Can extend the dialog to provide more functionality
+    def render(self) -> str:
+        """Render the media message
+
+        Returns:
+            str: The rendered message
+        """
+        return f'{self.source}: Media [{self.media}]'

@@ -158,7 +158,7 @@ class TestInstruction(object):
             )
         )
         simple = SimpleStruct(x='2')
-        assert instruction.read_out(simple.to_text()).x == '2'
+        assert instruction.read(simple.to_text()).x == '2'
 
 
 class TestParam(object):
