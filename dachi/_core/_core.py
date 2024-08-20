@@ -755,8 +755,6 @@ class Dialog(Struct):
     #         response.val = out.read(response.content['text'])
     #     return response
 
-
-
 Data = typing.Union[Struct, typing.List[Struct]]
 
 
@@ -948,7 +946,7 @@ def render_multi(xs: typing.Iterable[typing.Any]) -> typing.List[str]:
 class Module(ABC):
     """Base class for Modules
     """
-    
+
     @abstractmethod
     def forward(self, *args, **kwargs) -> typing.Any:
         """Execute the module
@@ -1028,12 +1026,60 @@ class Module(ABC):
 
     def streamer(self, *args, **kwargs) -> 'Streamer':
         """Retrieve a streamer
+
         Returns:
             Streamer: The Streamer to loop over
         """
         return Streamer(
             iter(self.stream_forward(*args, **kwargs))
         )
+
+    def reduce(
+        self,
+        data: typing.Iterable, 
+        *args, init=None, **kwargs
+    ) -> typing.Any:
+        """
+
+        Args:
+            data (typing.Iterable): 
+            module (Module): 
+            init (_type_, optional): . Defaults to None.
+
+        Returns:
+            typing.Any: 
+        """
+        cur = init
+        for data_i in data:
+            cur = self(cur, data_i, *args, **kwargs)
+        return cur
+
+    def map(self, data: typing.Iterable, *args, **kwargs) -> typing.Any:
+        """
+
+        Args:
+            data (typing.Iterable): The data to map
+            module (Module): The module to execute
+            init : TODO: CHECK. Defaults to None.
+
+        Returns:
+            typing.Any: 
+        """
+        results = []
+        for data_i in data:
+            results.append(self(data_i, *args, **kwargs))
+        return results
+
+    async def async_map(self, data: typing.Iterable, *args, **kwargs):
+        
+        tasks: asyncio.Task = []
+        async with asyncio.TaskGroup() as tg:
+            for data_i in data:
+                tasks.append(
+                    tg.create_task(self, data_i, *args, **kwargs)
+                )
+        
+            return tuple(task.result() for task in tasks)
 
     # async def async_stream_iter(self, *args, **kwargs) -> typing.AsyncIterator[
     #     typing.Tuple[typing.Any, typing.Any]
@@ -1145,7 +1191,7 @@ class AIModel(Module, ABC):
             task.result() for task in tasks
         )
     
-    async def async_stream_iter(self, prompt: AIPrompt, **kwarg_override) -> typing.AsyncIterator[AIResponse]:
+    async def async_stream_forward(self, prompt: AIPrompt, **kwarg_override) -> typing.AsyncIterator[AIResponse]:
         """Run this query for asynchronous streaming operations
         The default behavior is simply to call the query
 
@@ -1164,7 +1210,7 @@ class AIModel(Module, ABC):
             await queue.put(results[:])  # Put a copy of the current results
         results[index] = None  # Mark this generator as completed
 
-    async def bulk_async_stream_iter(
+    async def bulk_async_stream_forward(
         self, prompts: typing.List[AIPrompt], **kwarg_override
     ) -> typing.AsyncIterator[typing.List[AIResponse]]:
         """Process multiple 
@@ -1181,7 +1227,7 @@ class AIModel(Module, ABC):
         async with asyncio.TaskGroup() as tg:
             for index, prompt_i in enumerate(prompts):
                 tg.create_task(self._collect_results(
-                    self.async_stream_iter(prompt_i, **kwarg_override), index, results, queue)
+                    self.async_stream_forward(prompt_i, **kwarg_override), index, results, queue)
                 )
 
         active_generators = len(prompts)

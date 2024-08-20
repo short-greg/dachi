@@ -125,7 +125,7 @@ class OpenAIChatModel(AIModel):
             p.read(text)
         )
 
-    async def async_stream_iter(self, prompt: AIPrompt, **kwarg_override) -> AsyncIterator[typing.Tuple[AIResponse, AIResponse]]:
+    async def async_stream_forward(self, prompt: AIPrompt, **kwarg_override) -> AsyncIterator[typing.Tuple[AIResponse, AIResponse]]:
 
         kwargs = {
             **self.kwargs,

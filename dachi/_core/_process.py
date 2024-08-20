@@ -1,5 +1,5 @@
 # 1st party
-from abc import abstractmethod, ABC
+from abc import ABC
 import typing
 from typing import Any
 import typing
@@ -11,7 +11,7 @@ from dataclasses import dataclass
 import numpy as np
 
 # local
-from ._core import UNDEFINED, Param, Struct
+from ._core import Struct, Module
 
 
 @dataclass
@@ -22,119 +22,6 @@ class Partial(object):
     prev: typing.Any = None
     dx: typing.Any = None
     complete: bool = False
-
-
-class Streamer(object):
-
-    def __init__(self, stream: typing.Iterator):
-        """The Stream to loop over
-
-        Args:
-            stream: The stream to loop over in generating the stream
-        """
-        self._stream = stream
-        self._cur = None
-        self._output = UNDEFINED
-        self._prev = None
-        self._dx = None
-
-    @property
-    def complete(self) -> bool:
-        return self._output is not UNDEFINED
-
-    def __call__(self) -> typing.Union[typing.Any, Partial]:
-        """Query the streamer and returned updated value if updated
-
-        Returns:
-            typing.Union[typing.Any, Partial]: Get the next value in the stream
-        """
-        if self._output is not UNDEFINED:
-            return self._output
-        try:
-            self._prev = self._cur
-            self._cur, self._dx = next(self._stream)
-            return Partial(self._cur, self._prev, self._dx, False)    
-        except StopIteration:
-            self._output = Partial(self._cur, self._prev, self._dx, True) 
-            return self._output
-        
-    def __iter__(self) -> typing.Iterator[Partial]:
-
-        while True:
-
-            cur = self()
-            if cur.complete:
-                break
-            yield cur
-
-
-class Module(ABC):
-    """Base class for Modules
-    """
-
-    @abstractmethod
-    def forward(self, *args, **kwargs) -> typing.Any:
-        pass
-
-    def __call__(self, *args, **kwargs) -> typing.Any:
-
-        return self.forward(*args, **kwargs)
-
-    def parameters(self, recurse: bool=True) -> typing.Iterator[Param]:
-        
-        yielded = set()
-        for k, v in self.__dict__.items():
-            if isinstance(v, Param):
-                if id(v) in yielded:
-                    continue
-                yielded.add(id(v))
-                
-                yield v
-            if recurse and isinstance(v, Module):
-                for v in v.parameters(True):
-                    if id(v) in yielded:
-                        continue
-                    yielded.add(id(v))
-                    yield v
-
-    def children(self, recurse: bool=True) -> typing.Iterator['Module']:
-        
-        yielded = set()
-        for k, v in self.__dict__.items():
-            if isinstance(v, Module):
-                if id(v) in yielded:
-                    continue
-                yielded.add(id(v))
-                if recurse:
-                    for v in v.children(True):
-                        if id(v) in yielded:
-                            continue
-                        yielded.add(id(v))
-                        yield v
-    
-    async def async_forward(self, *args, **kwargs) -> typing.Any:
-        """
-
-        Returns:
-            typing.Any: 
-        """
-        return self.forward(*args, **kwargs)
-
-    def stream_iter(self, *args, **kwargs) -> typing.Iterator[
-        typing.Tuple[typing.Any, typing.Any]
-    ]:
-        # default behavior doesn't actually stream
-        res = self.forward(*args, **kwargs) 
-        yield res, None
-
-    def stream_forward(self, *args, **kwargs) -> Streamer:
-        """
-        Returns:
-            Streamer: The Streamer to loop over
-        """
-        return Streamer(
-            self.stream_iter(*args, **kwargs)
-        )
 
 
 class StructModule(Struct, Module):
@@ -348,3 +235,116 @@ def stream(m: Module, *args, **kwargs) -> typing.Iterator[typing.Tuple[typing.An
 
     for partial in streamer:
         yield partial.cur, partial.dx
+
+
+# class Module(ABC):
+#     """Base class for Modules
+#     """
+
+#     @abstractmethod
+#     def forward(self, *args, **kwargs) -> typing.Any:
+#         pass
+
+#     def __call__(self, *args, **kwargs) -> typing.Any:
+
+#         return self.forward(*args, **kwargs)
+
+#     def parameters(self, recurse: bool=True) -> typing.Iterator[Param]:
+        
+#         yielded = set()
+#         for k, v in self.__dict__.items():
+#             if isinstance(v, Param):
+#                 if id(v) in yielded:
+#                     continue
+#                 yielded.add(id(v))
+                
+#                 yield v
+#             if recurse and isinstance(v, Module):
+#                 for v in v.parameters(True):
+#                     if id(v) in yielded:
+#                         continue
+#                     yielded.add(id(v))
+#                     yield v
+
+#     def children(self, recurse: bool=True) -> typing.Iterator['Module']:
+        
+#         yielded = set()
+#         for k, v in self.__dict__.items():
+#             if isinstance(v, Module):
+#                 if id(v) in yielded:
+#                     continue
+#                 yielded.add(id(v))
+#                 if recurse:
+#                     for v in v.children(True):
+#                         if id(v) in yielded:
+#                             continue
+#                         yielded.add(id(v))
+#                         yield v
+    
+#     async def async_forward(self, *args, **kwargs) -> typing.Any:
+#         """
+
+#         Returns:
+#             typing.Any: 
+#         """
+#         return self.forward(*args, **kwargs)
+
+#     def stream_iter(self, *args, **kwargs) -> typing.Iterator[
+#         typing.Tuple[typing.Any, typing.Any]
+#     ]:
+#         # default behavior doesn't actually stream
+#         res = self.forward(*args, **kwargs) 
+#         yield res, None
+
+#     def stream_forward(self, *args, **kwargs) -> Streamer:
+#         """
+#         Returns:
+#             Streamer: The Streamer to loop over
+#         """
+#         return Streamer(
+#             self.stream_iter(*args, **kwargs)
+#         )
+
+
+# class Streamer(object):
+
+#     def __init__(self, stream: typing.Iterator):
+#         """The Stream to loop over
+
+#         Args:
+#             stream: The stream to loop over in generating the stream
+#         """
+#         self._stream = stream
+#         self._cur = None
+#         self._output = UNDEFINED
+#         self._prev = None
+#         self._dx = None
+
+#     @property
+#     def complete(self) -> bool:
+#         return self._output is not UNDEFINED
+
+#     def __call__(self) -> typing.Union[typing.Any, Partial]:
+#         """Query the streamer and returned updated value if updated
+
+#         Returns:
+#             typing.Union[typing.Any, Partial]: Get the next value in the stream
+#         """
+#         if self._output is not UNDEFINED:
+#             return self._output
+#         try:
+#             self._prev = self._cur
+#             self._cur, self._dx = next(self._stream)
+#             return Partial(self._cur, self._prev, self._dx, False)    
+#         except StopIteration:
+#             self._output = Partial(self._cur, self._prev, self._dx, True) 
+#             return self._output
+        
+#     def __iter__(self) -> typing.Iterator[Partial]:
+
+#         while True:
+
+#             cur = self()
+#             if cur.complete:
+#                 break
+#             yield cur

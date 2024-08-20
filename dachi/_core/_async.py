@@ -4,7 +4,7 @@ import typing
 
 # local
 from ._utils import Args
-from ._process import Module, ParallelModule, processf
+from ._process import Module, ParallelModule
 
 # TODO: Decide how to handle this.. I want to try
 # and get a more robust approach to handling these
@@ -63,58 +63,58 @@ class MultiModule(ParallelModule):
         )
 
 
-@processf
-def reduce(
-    data: typing.Iterable, 
-    module: Module, 
-    *args, init=None, **kwargs
-) -> typing.Any:
-    """
+# @processf
+# def reduce(
+#     data: typing.Iterable, 
+#     module: Module, 
+#     *args, init=None, **kwargs
+# ) -> typing.Any:
+#     """
 
-    Args:
-        data (typing.Iterable): 
-        module (Module): 
-        init (_type_, optional): . Defaults to None.
+#     Args:
+#         data (typing.Iterable): 
+#         module (Module): 
+#         init (_type_, optional): . Defaults to None.
 
-    Returns:
-        typing.Any: 
-    """
-    cur = init
-    for data_i in data:
-        cur = module(cur, data_i)
-    return cur
+#     Returns:
+#         typing.Any: 
+#     """
+#     cur = init
+#     for data_i in data:
+#         cur = module(cur, data_i)
+#     return cur
 
 
-@processf
-def map(data: typing.Iterable, module: Module, *args, init=None, **kwargs) -> typing.Any:
-    """
+# @processf
+# def map(data: typing.Iterable, module: Module, *args, init=None, **kwargs) -> typing.Any:
+#     """
 
-    Args:
-        data (typing.Iterable): The data to map
-        module (Module): The module to execute
-        init : TODO: CHECK. Defaults to None.
+#     Args:
+#         data (typing.Iterable): The data to map
+#         module (Module): The module to execute
+#         init : TODO: CHECK. Defaults to None.
 
-    Returns:
-        typing.Any: 
-    """
-    results = []
-    for data_i in data:
-        results.append(module(data_i, *args, **kwargs))
-    return results
+#     Returns:
+#         typing.Any: 
+#     """
+#     results = []
+#     for data_i in data:
+#         results.append(module(data_i, *args, **kwargs))
+#     return results
 
 
 # # TODO: figure out how to do this
-@map.async_
-async def async_map(data: typing.Iterable, module: Module, *args, init=None, **kwargs):
+# @map.async_
+# async def async_map(data: typing.Iterable, module: Module, *args, **kwargs):
     
-    tasks: asyncio.Task = []
-    async with asyncio.TaskGroup() as tg:
-        for data_i in data:
-            tasks.append(
-                tg.create_task(module, data_i, *args, **kwargs)
-            )
+#     tasks: asyncio.Task = []
+#     async with asyncio.TaskGroup() as tg:
+#         for data_i in data:
+#             tasks.append(
+#                 tg.create_task(module, data_i, *args, **kwargs)
+#             )
     
-        return tuple(task.result() for task in tasks)
+#         return tuple(task.result() for task in tasks)
 
 
 def parallel(m: Module, *args, **kwargs) -> typing.List:

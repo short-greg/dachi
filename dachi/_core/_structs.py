@@ -107,10 +107,10 @@ class Ref(Struct):
 class MediaMessage(Message):
 
     def __init__(self, source: str, media: typing.List[Media]):
-        """_summary_
+        """
 
         Args:
-            source (str): _description_
+            source (str): 
             media (typing.List[Media]): The media to use
         """
         super().__init__(

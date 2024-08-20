@@ -1,9 +1,10 @@
 from typing import Any, Iterator, Tuple
 import pytest
 from dachi._core import _process as p
+from dachi._core._core import Module
 
 
-class Append(p.Module):
+class Append(Module):
 
     def __init__(self, append: str):
         super().__init__()
@@ -13,9 +14,13 @@ class Append(p.Module):
         return name + self._append
 
 
-class WriteOut(p.StreamModule):
+class WriteOut(Module):
 
-    def stream_iter(self, x: str) -> Iterator[Tuple[Any, Any]]:
+    def forward(self, x: str) -> str:
+
+        return x
+
+    def stream_forward(self, x: str) -> Iterator[Tuple[Any, Any]]:
         
         out = ''
         for c in x:
@@ -36,7 +41,7 @@ class TestStreamable:
     def test_streamable_streams_characters(self):
 
         writer = WriteOut()
-        streamer = writer.stream_forward('xyz')
+        streamer = writer.streamer('xyz')
         partial = streamer()
         assert partial.cur == 'x'
         assert partial.dx == 'x'
@@ -44,7 +49,7 @@ class TestStreamable:
     def test_streamable_streams_characters_to_end(self):
 
         writer = WriteOut()
-        streamer = writer.stream_forward('xyz')
+        streamer = writer.streamer('xyz')
         partial = streamer()
         partial = streamer()
         partial = streamer()

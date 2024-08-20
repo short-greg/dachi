@@ -1,6 +1,5 @@
 from ._async import (
-    AsyncModule, reduce,
-    map, async_map
+    AsyncModule
 )
 from ._core import (
     Renderable, model_template,
@@ -30,7 +29,6 @@ from ._structs import (
 
 from ._process import (
     Partial, 
-    Streamer,
     ParallelModule, 
     Get,
     Set, get, set, processf, Multi, Sequential, Batch,
