@@ -35,7 +35,6 @@ WAITING = _Types.WAITING
 
 
 S = typing.TypeVar('S', bound='Struct')
-# X = typing.Union[str, 'Description', 'Instruction']
 
 
 class Renderable(ABC):
@@ -1235,6 +1234,9 @@ class AIModel(Module, ABC):
             current_results = await queue.get()
             yield current_results
             active_generators = sum(result is not None for result in current_results)
+
+    def __call__(self, prompt: AIPrompt) -> AIResponse:
+        return self.forward(prompt)
 
 
 @dataclass

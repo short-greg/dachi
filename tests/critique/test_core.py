@@ -1,4 +1,4 @@
-from dachi.critique import _core
+from dachi.critique import _orig
 from ..core.test_core import SimpleStruct
 
 
@@ -6,7 +6,7 @@ class TestEvaluation:
 
     def test_evaluation_has_the_evaluations(self):
 
-        evaluation = _core.Evaluation(
+        evaluation = _orig.Evaluation(
             values=[{
                 'mse': 'Great'
             }]
@@ -18,7 +18,7 @@ class TestTextualCriterion:
 
     def test_out_result_is_correct(self):
 
-        criterion = _core.TextualCriterion(
+        criterion = _orig.TextualCriterion(
             name='Accuracy',
             desc='Evaluate how close the output is to the target'
         )
@@ -26,7 +26,7 @@ class TestTextualCriterion:
 
     def test_criteria_is_correct(self):
 
-        criterion = _core.TextualCriterion(
+        criterion = _orig.TextualCriterion(
             name='Accuracy',
             desc='Evaluate how close the output is to the target'
         )
@@ -42,11 +42,11 @@ class TestHeaderView:
         x = SimpleStruct(x='hi')
         t = SimpleStruct(x='bye')
 
-        criterion = _core.TextualCriterion(
+        criterion = _orig.TextualCriterion(
             name='Accuracy',
             desc='Evaluate how close the output is to the target'
         )
-        view = _core.HeaderView(criterion)
+        view = _orig.HeaderView(criterion)
         text = view(x, t)
         # TODO: test the output
         assert 'N' in text

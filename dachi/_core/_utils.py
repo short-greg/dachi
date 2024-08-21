@@ -9,11 +9,11 @@ class _PartialFormatter(string.Formatter):
     def __init__(self):
         super().__init__()
 
-    def format(self, format_string, *args, **kwargs):
+    def format(self, format_string, *args, required: bool=True, **kwargs):
         if args and kwargs:
             raise ValueError("Cannot mix positional and keyword arguments")
 
-        if kwargs:
+        if kwargs and required:
             difference = set(kwargs.keys()).difference(set(get_str_variables(format_string)))
             if difference:
                 raise ValueError(f'Variables specified that are not in the string {difference}')
@@ -88,7 +88,7 @@ def unescape_curly_braces(value: typing.Any) -> str:
     return value
 
 
-_primitives = (bool, str, int, float, type(None))
+primitives = (bool, str, int, float, type(None))
 
 
 def is_primitive(obj) -> bool:
@@ -100,7 +100,7 @@ def is_primitive(obj) -> bool:
     Returns:
         bool: If it is a "primitive"
     """
-    return type(obj) in _primitives
+    return type(obj) in primitives
 
 
 def generic_class(t: typing.TypeVar, idx: int=0) -> typing.Type:

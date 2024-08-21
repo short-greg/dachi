@@ -45,6 +45,7 @@ class StructRead(Reader, typing.Generic[S]):
 
     def read_text(self, message: str) -> S:
         message = unescape_curly_braces(message)
+        print(message)
         return json.loads(message)
         # return self._out_cls.from_text(message, True)
     
@@ -507,10 +508,10 @@ class PrimRead(Reader):
     """Use for converting an AI response into a primitive value
     """
 
-    _out: typing.Type
+    _out_cls: typing.Type
 
     def __init__(
-        self, out: typing.Type,
+        self, out_cls: typing.Type,
         **data
     ):
         """Create a reader for Primitive values
@@ -519,7 +520,7 @@ class PrimRead(Reader):
             out (typing.Type): The type of data
         """
         super().__init__(**data)
-        self._out = out
+        self._out_cls = out_cls
 
     def to_text(self, data: typing.Any) -> str:
         """Convert the data to text
@@ -563,7 +564,7 @@ class PrimRead(Reader):
         Returns:
             typing.Any: The string converted to the primitive
         """
-        return self._out(message)
+        return self._out_cls(message)
     
     def load_data(self, data) -> typing.Any:
         """Doesn't do anything because the data should be in
@@ -583,7 +584,7 @@ class PrimRead(Reader):
         Returns:
             str: The template for the data
         """
-        return f'<{self._out}>'
+        return f'<{self._out_cls}>'
 
     # def example(self, data) -> str:
     #     return str(data)
@@ -594,9 +595,7 @@ class PrimRead(Reader):
 
 class JSONRead(StructRead):
     """
-
     """
-
 
     def read_text(self, message: str) -> typing.Dict:
         """Read in the JSON
@@ -661,4 +660,3 @@ class JSONRead(StructRead):
 
     # def example(self, data: Struct) -> str:
     #     return data.to_text()
-    

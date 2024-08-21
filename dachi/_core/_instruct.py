@@ -9,7 +9,7 @@ import roman
 
 # local
 from ._core import (
-    Struct, 
+    Struct,
     render, render_multi, Dialog,
     Instruction, render, Param, 
     Instruct, Reader, NullRead, TextMessage,
@@ -17,13 +17,14 @@ from ._core import (
     Instruction
 )
 from ._io import (
-    StructRead
+    StructRead, PrimRead
 )
 from ._utils import (
-    str_formatter
+    str_formatter, primitives
 )
 from ._process import Module
 from ._structs import Description
+
 
 S = typing.TypeVar('S', bound=Struct)
 X = typing.Union[str, Description, Instruction]
@@ -113,7 +114,7 @@ def numbered(xs: typing.Iterable[X], indent: int=0, numbering: str='arabic') -> 
     )
 
 
-def validate_out(instructions: typing.List[X]) -> StructRead:
+def validate_out(instructions: typing.List[X]) -> typing.Optional[Reader]:
     """Validate an Out based on several instructions
 
     Args:
@@ -286,110 +287,6 @@ def op(x: typing.Union[typing.Iterable[X], X], instruction: X) -> Instruction:
     )
 
 
-class FunctionOut(Module):
-    """FunctionDetails are used to convert the user input into an instruction 
-    """
-
-    def __init__(
-        self, func: typing.Callable, 
-        is_method: bool=False, 
-        train: bool=False
-    ):
-        """Create FunctionDetails based on the signature of that method or fucntion
-
-        Args:
-            func (typing.Callable): The function to get the details for
-            is_method (bool, optional): Whether it is a method or not. Defaults to False.
-            train (bool, optional): Whether to train or not train. Defaults to False.
-        """
-        # TODO: I don't want the return type to Out
-
-        self.func = func
-        self.name = func.__name__
-        self._docstring = inspect.getdoc(func)
-        self.signature = str(inspect.signature(func))
-        self.parameters = inspect.signature(func).parameters
-        self.return_annotation = inspect.signature(func).return_annotation
-        # if (
-        #     self.return_annotation is not inspect.Signature.empty 
-        #     and not issubclass(self.return_annotation, Out)
-        # ):
-        #     raise TypeError(f"Expected return type {Out}, got {type(self.return_annotation)} instead")
-
-        self._docstring_p = Param(
-            name=self.name,
-            instruction=self._docstring,
-            training=train
-        )
-
-        # origin, generic_type = self.get_generic_type()
-        self.out_cls = (
-            self.return_annotation if self.return_annotation is not None 
-            else str 
-        )# origin
-        # self.parameters = parameters
-        self._is_method = is_method
-
-    def forward(self, *args, **kwargs) -> Instruction:
-        """Get the instruction based on the input arguments
-
-        Raises:
-            RuntimeError: If a parameter is not defined or has no value
-
-        Returns:
-            Instruction: The resulting instruction
-        """
-        filled_docstring = self._docstring_p.render()
-
-        filled = set()
-
-        param_values = list(self.parameters.values())
-
-        if self._is_method:            
-            param_values = param_values[1:]
-
-        for value, param in zip(args, param_values):
-            
-            filled_docstring = filled_docstring.replace(
-                f'{{{param.name}}}', 
-                str(value) if not isinstance(value, Instruction) else render(value)
-            )
-            filled.add(param.name)
-        for k, value in kwargs.items():
-            param = self.parameters[k]
-            
-            filled_docstring = filled_docstring.replace(
-                f'{{{param.name}}}', # str(param.default)
-                str(value) if not isinstance(value, Instruction) else render(value)
-            )
-            filled.add(param.name)
-
-        for param in param_values:
-            if param.name in filled:
-                continue
-            if param.default == inspect.Parameter.empty:
-                raise RuntimeError('Param has not been defined and no value')
-            filled_docstring = filled_docstring.replace(
-                f'{{{param.name}}}', str(param.default)
-            )
-            filled.add(param.name)
-
-        return Instruction(
-            text=filled_docstring,
-            out=NullRead(name=self.name)
-            # out=StructFormatter(name=self.name, out_cls=self.out_cls)
-        )
-
-    # def get_generic_type(self):
-    #     if self.return_annotation is not inspect.Signature.empty:
-    #         origin = getattr(self.return_annotation, '__origin__', None)
-    #         return origin
-    #         # if origin and issubclass(origin, Out):
-    #         #     args = self.return_annotation.__args__ if hasattr(self.return_annotation, '__args__') else ()
-    #         #     return origin, args[0] if args else None
-    #     return None #, None
-
-
 class SignatureFunc(Module, Instruct):
     """SignatureMethod is a method where you define the instruction in
     the function signature
@@ -398,8 +295,9 @@ class SignatureFunc(Module, Instruct):
         self, f: typing.Callable, engine: AIModel, 
         dialog_factory: typing.Optional[typing.Callable[[], Dialog]]=None,
         is_method: bool=False,
-        resp_p: Reader=None,
-        train: bool=False, instance=None
+        reader: typing.Optional[Reader]=None,
+        train: bool=False, instance=None,
+        return_: typing.List[str]=None
     ):
         """Wrap the signature method with a particular engine and
         dialog factory
@@ -413,12 +311,39 @@ class SignatureFunc(Module, Instruct):
             instance (_type_, optional): The instance. Defaults to None.
         """
         self.f = f
+        self.name = f.__name__
         self._is_method = is_method
-        self._details = FunctionOut(f, self._is_method, train)
+        # self._details = FunctionDetails(f, self._is_method, train)
         # self._out = self._details.out(is_method, train)
         self.engine = engine
         self._train = train
-        self.resp_p = resp_p or NullRead(name=f.__name__)
+
+        self._docstring = inspect.getdoc(f)
+        self.signature = str(inspect.signature(f))
+        self.parameters = inspect.signature(f).parameters
+        self.return_annotation = inspect.signature(f).return_annotation
+
+        self.return_ = return_
+        self._docstring_p = Param(
+            name=self.name,
+            instruction=self._docstring,
+            training=train
+        )
+        self.out_cls = (
+            self.return_annotation if self.return_annotation is not None 
+            else str 
+        )
+
+        if reader is None:
+            if self.out_cls in primitives:
+                reader = PrimRead(name=self.name, out_cls=self.out_cls)
+            elif issubclass(self.out_cls, Struct):
+                reader = StructRead(name=self.name, out_cls=self.out_cls)
+            else:
+                reader = NullRead(name=self.name)
+        
+        self.reader = reader
+        print(type(self.reader))
 
         update_wrapper(self, f) 
         self.instance = instance
@@ -446,7 +371,7 @@ class SignatureFunc(Module, Instruct):
             engine=engine or self.engine,
             is_method=self._is_method,
             dialog_factory=dialog_factory or self.dialog_factory,
-            resp_p=self.resp_p,
+            reader=self.resp_p,
             train=train
         )
 
@@ -456,9 +381,78 @@ class SignatureFunc(Module, Instruct):
         Returns:
             Instruction: Get the instruction
         """
-        return self._details(
-            *args, 
-            **kwargs
+        filled_docstring = self._docstring_p.render()
+
+        filled = set()
+
+        param_values = list(self.parameters.values())
+
+        if self.return_ is not None:
+            values = dict(
+                zip(self.return_, self.f(*args, **kwargs))
+            )
+        else:
+            values = {}
+
+        if self._is_method:            
+            param_values = param_values[1:]
+
+        # what if one of the parameters is an instruction?
+        values.update(dict(zip(args, [v for v in param_values])))
+        
+        if '{TEMPLATE}' in filled_docstring:
+            values['TEMPLATE'] = self.reader.template()
+
+        for value, param in zip(args, param_values):
+            values[param.name] = value
+            filled.add(param.name)
+        
+        for k, value in kwargs.items():
+            param = self.parameters[k]
+            values[param.name] = value
+            filled.add(param.name)
+
+        for param in param_values:
+            if param.name in filled:
+                continue
+            if param.default == inspect.Parameter.empty:
+                raise RuntimeError('Param has not been defined and no value')
+            values[param.name] = param.default
+
+        out = validate_out(values)
+        values = {key: render(value) for key, value in values.items()}
+            # filled_docstring = filled_docstring.replace(
+            #     f'{{{param.name}}}', 
+            #     str(value) if not isinstance(value, Instruction) else render(value)
+            # )
+            # filled.add(param.name)
+        # for k, value in kwargs.items():
+        #     param = self.parameters[k]
+            
+        #     filled_docstring = filled_docstring.replace(
+        #         f'{{{param.name}}}', # str(param.default)
+        #         str(value) if not isinstance(value, Instruction) else render(value)
+        #     )
+        #     filled.add(param.name)
+
+        # for param in param_values:
+        #     if param.name in filled:
+        #         continue
+        #     if param.default == inspect.Parameter.empty:
+        #         raise RuntimeError('Param has not been defined and no value')
+        #     filled_docstring = filled_docstring.replace(
+        #         f'{{{param.name}}}', str(param.default)
+        #     )
+        #     filled.add(param.name)
+
+        filled_docstring = str_formatter(
+            filled_docstring, **filled, required=False
+        )
+
+        return Instruction(
+            text=filled_docstring,
+            out=self.reader, # NullRead(name=self.name)
+            # out=StructFormatter(name=self.name, out_cls=self.out_cls)
         )
 
     def forward(
@@ -477,8 +471,7 @@ class SignatureFunc(Module, Instruct):
 
         instruction = self.i(*args,  **kwargs)
         return engine(TextMessage('system', instruction)).val
-
-        # return instruction.read_out(result.text)
+        # return self.reader.read(result.content)
 
     async def async_forward(
         self, *args, 
@@ -500,7 +493,7 @@ class SignatureFunc(Module, Instruct):
         )
 
     def __get__(self, instance, owner):
-        """Get the SignatureMethod with a 
+        """Get the SignatureMethod with the instance set
 
         Args:
             instance (): The instance to use
@@ -531,7 +524,7 @@ class InstructFunc(Module, Instruct):
         self, f: typing.Callable, engine: AIModel, 
         dialog_factory: typing.Optional[typing.Callable[[], Dialog]]=None,
         is_method: bool=False,
-        resp_p: Reader=None,
+        reader: Reader=None,
         instance=None
     ):
         """Create an InstructMethod that decorates a function that returns 
@@ -539,7 +532,6 @@ class InstructFunc(Module, Instruct):
 
         Args:
             f (typing.Callable): The function to decorate
-            details (FunctionDetails): The details for the function
             train (bool, optional): Whether to train . Defaults to True.
             instance (, optional): The instance to use. Defaults to None.
 
@@ -555,7 +547,7 @@ class InstructFunc(Module, Instruct):
 
         # make it so it can automatically set this up
         # rather than using the "Null version"
-        self.resp_p = resp_p or NullRead(f.__name__)
+        self.reader = reader or NullRead(f.__name__)
 
     def i(self, *args, **kwargs) -> Instruction:
         """Get the instruction based on the arguments
@@ -577,6 +569,7 @@ class InstructFunc(Module, Instruct):
         engine = _engine or self.engine
 
         instruction = self.i(*args, **kwargs)
+        # return engine(TextMessage('system', instruction)).val
         return engine(TextMessage('system', instruction)).val
         # return result
     
@@ -605,7 +598,7 @@ class InstructFunc(Module, Instruct):
             self.engine, 
             self.dialog_factory, 
             self._is_method,
-            resp_p=self.resp_p,
+            reader=self.reader,
             instance=instance
         )
         return self._stored
@@ -627,7 +620,7 @@ def instructf(
             return f(*args, **kwargs)
         
         # TODO: Use wrapper
-        return InstructFunc(f, engine, None, False, None, resp_p=resp_proc)
+        return InstructFunc(f, engine, None, False, None, reader=resp_proc)
     return _
 
 
@@ -647,7 +640,7 @@ def instructmethod(
             return f(*args, **kwargs)
         
         # TODO: Use wrapper
-        return InstructFunc(f, engine, None, True, None, resp_p=resp_p)
+        return InstructFunc(f, engine, None, True, None, reader=resp_p)
     return _
 
 
@@ -665,14 +658,15 @@ def signaturemethod(
         @wraps(f)
         def wrapper(*args, **kwargs):
             return f(*args, **kwargs)
-        return SignatureFunc(f, engine, None, True, resp_p=resp_p)
+        return SignatureFunc(f, engine, None, True, reader=resp_p)
 
     return _
 
 
 def signaturef(
     engine: AIModel=None, 
-    resp_p: Reader=None
+    reader: Reader=None,
+    return_: typing.List[str]=None
 ):
     """Decorator for using a function signature
 
@@ -684,6 +678,105 @@ def signaturef(
         @wraps(f)
         def wrapper(*args, **kwargs):
             return f(*args, **kwargs)
-        return SignatureFunc(f, engine, None, False, resp_p=resp_p)
+        return SignatureFunc(f, engine, None, False, reader=reader, return_=return_)
 
     return _
+
+
+# class FunctionDetails(object):
+#     """FunctionDetails are used to convert the user input into an instruction 
+#     """
+
+#     def __init__(
+#         self, func: typing.Callable, 
+#         is_method: bool=False, 
+#         train: bool=False
+#     ):
+#         """Create FunctionDetails based on the signature of that method or fucntion
+
+#         Args:
+#             func (typing.Callable): The function to get the details for
+#             is_method (bool, optional): Whether it is a method or not. Defaults to False.
+#             train (bool, optional): Whether to train or not train. Defaults to False.
+#         """
+#         # TODO: I don't want the return type to Out
+
+#         self.func = func
+#         self.name = func.__name__
+#         self._docstring = inspect.getdoc(func)
+#         self.signature = str(inspect.signature(func))
+#         self.parameters = inspect.signature(func).parameters
+#         self.return_annotation = inspect.signature(func).return_annotation
+
+#         self._docstring_p = Param(
+#             name=self.name,
+#             instruction=self._docstring,
+#             training=train
+#         )
+
+#         # origin, generic_type = self.get_generic_type()
+#         self.out_cls = (
+#             self.return_annotation if self.return_annotation is not None 
+#             else str 
+#         )# origin
+#         # self.parameters = parameters
+#         self._is_method = is_method
+
+#     def forward(self, *args, **kwargs) -> Instruction:
+#         """Get the instruction based on the input arguments
+
+#         Raises:
+#             RuntimeError: If a parameter is not defined or has no value
+
+#         Returns:
+#             Instruction: The resulting instruction
+#         """
+#         filled_docstring = self._docstring_p.render()
+
+#         filled = set()
+
+#         param_values = list(self.parameters.values())
+
+#         if self._is_method:            
+#             param_values = param_values[1:]
+
+#         for value, param in zip(args, param_values):
+            
+#             filled_docstring = filled_docstring.replace(
+#                 f'{{{param.name}}}', 
+#                 str(value) if not isinstance(value, Instruction) else render(value)
+#             )
+#             filled.add(param.name)
+#         for k, value in kwargs.items():
+#             param = self.parameters[k]
+            
+#             filled_docstring = filled_docstring.replace(
+#                 f'{{{param.name}}}', # str(param.default)
+#                 str(value) if not isinstance(value, Instruction) else render(value)
+#             )
+#             filled.add(param.name)
+
+#         for param in param_values:
+#             if param.name in filled:
+#                 continue
+#             if param.default == inspect.Parameter.empty:
+#                 raise RuntimeError('Param has not been defined and no value')
+#             filled_docstring = filled_docstring.replace(
+#                 f'{{{param.name}}}', str(param.default)
+#             )
+#             filled.add(param.name)
+
+#         return Instruction(
+#             text=filled_docstring,
+#             out=NullRead(name=self.name)
+#             # out=StructFormatter(name=self.name, out_cls=self.out_cls)
+#         )
+
+#     # def get_generic_type(self):
+#     #     if self.return_annotation is not inspect.Signature.empty:
+#     #         origin = getattr(self.return_annotation, '__origin__', None)
+#     #         return origin
+#     #         # if origin and issubclass(origin, Out):
+#     #         #     args = self.return_annotation.__args__ if hasattr(self.return_annotation, '__args__') else ()
+#     #         #     return origin, args[0] if args else None
+#     #     return None #, None

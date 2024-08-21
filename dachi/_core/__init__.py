@@ -18,7 +18,7 @@ from ._instruct import (
     bullet, formatted, generate_numbered_list,
     numbered, validate_out, fill, head,
     section, cat, join, Operation, op,
-    FunctionOut, signaturef, SignatureFunc, 
+    signaturef, SignatureFunc, 
     signaturemethod,
     InstructFunc, instructf, instructmethod
 )
