@@ -1103,7 +1103,7 @@ class AIModel(Module, ABC):
     """
 
     @abstractmethod
-    def forward(self, prompt: AIPrompt) -> AIResponse:
+    def forward(self, prompt: AIPrompt, **kwarg_override) -> AIResponse:
         """Run a standard query to the API
 
         Args:
@@ -1137,7 +1137,7 @@ class AIModel(Module, ABC):
         """
         return [self.convert(message) for message in messages]
 
-    def stream_forward(self, prompt: AIPrompt) -> typing.Iterator[typing.Tuple[AIResponse, AIResponse]]:
+    def stream_forward(self, prompt: AIPrompt, **kwarg_override) -> typing.Iterator[typing.Tuple[AIResponse, AIResponse]]:
         """API that allows for streaming the response
 
         Args:
@@ -1151,7 +1151,7 @@ class AIModel(Module, ABC):
         Yields:
             typing.Dict: The data
         """
-        result = self.forward(prompt)
+        result = self.forward(prompt, **kwarg_override)
         yield result, None
     
     async def async_forward(
@@ -1235,8 +1235,8 @@ class AIModel(Module, ABC):
             yield current_results
             active_generators = sum(result is not None for result in current_results)
 
-    def __call__(self, prompt: AIPrompt) -> AIResponse:
-        return self.forward(prompt)
+    def __call__(self, prompt: AIPrompt, **kwarg_override) -> AIResponse:
+        return self.forward(prompt, **kwarg_override)
 
 
 @dataclass

@@ -59,7 +59,7 @@ class OpenAIChatModel(AIModel):
         message = TextMessage('assistant', text)
         
         val = p.read(text)
-        print(val, type(val), type(p))
+        
         return AIResponse(
             message,
             response,

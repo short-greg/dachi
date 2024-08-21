@@ -123,6 +123,8 @@ def validate_out(instructions: typing.List[X]) -> typing.Optional[Reader]:
     Returns:
         Out: The resulting "Out" to use from the instructions
     """
+    if isinstance(instructions, dict):
+        instructions = instructions.values()
 
     out = None
     for instruction in instructions:
@@ -296,8 +298,10 @@ class SignatureFunc(Module, Instruct):
         dialog_factory: typing.Optional[typing.Callable[[], Dialog]]=None,
         is_method: bool=False,
         reader: typing.Optional[Reader]=None,
-        train: bool=False, instance=None,
-        return_: typing.List[str]=None
+        train: bool=False, 
+        instance=None,
+        return_: typing.List[str]=None,
+        ai_kwargs: typing.Dict=None
     ):
         """Wrap the signature method with a particular engine and
         dialog factory
@@ -343,12 +347,12 @@ class SignatureFunc(Module, Instruct):
                 reader = NullRead(name=self.name)
         
         self.reader = reader
-        print(type(self.reader))
 
         update_wrapper(self, f) 
         self.instance = instance
         self._stored = None
         self.dialog_factory = dialog_factory or Dialog
+        self.ai_kwargs = ai_kwargs
 
     def spawn(
         self, 
@@ -372,7 +376,9 @@ class SignatureFunc(Module, Instruct):
             is_method=self._is_method,
             dialog_factory=dialog_factory or self.dialog_factory,
             reader=self.resp_p,
-            train=train
+            train=train,
+            return_=self.return_,
+            ai_kwargs=self.ai_kwargs
         )
 
     def i(self, *args, **kwargs) -> Instruction:
@@ -388,9 +394,15 @@ class SignatureFunc(Module, Instruct):
         param_values = list(self.parameters.values())
 
         if self.return_ is not None:
-            values = dict(
-                zip(self.return_, self.f(*args, **kwargs))
-            )
+            result = self.f(*args, **kwargs)
+            if len(self.return_) == 1:
+                values = {
+                    self.return_[0]: result
+                }
+            else:
+                values = dict(
+                    zip(self.return_, result)
+                )
         else:
             values = {}
 
@@ -398,7 +410,7 @@ class SignatureFunc(Module, Instruct):
             param_values = param_values[1:]
 
         # what if one of the parameters is an instruction?
-        values.update(dict(zip(args, [v for v in param_values])))
+        # values.update(dict(zip(args, [v for v in param_values])))
         
         if '{TEMPLATE}' in filled_docstring:
             values['TEMPLATE'] = self.reader.template()
@@ -417,10 +429,12 @@ class SignatureFunc(Module, Instruct):
                 continue
             if param.default == inspect.Parameter.empty:
                 raise RuntimeError('Param has not been defined and no value')
+            
             values[param.name] = param.default
 
+        # TODO: Determine how to handle this
         out = validate_out(values)
-        values = {key: render(value) for key, value in values.items()}
+        values = {key: render(v) for key, v in values.items()}
             # filled_docstring = filled_docstring.replace(
             #     f'{{{param.name}}}', 
             #     str(value) if not isinstance(value, Instruction) else render(value)
@@ -446,7 +460,7 @@ class SignatureFunc(Module, Instruct):
         #     filled.add(param.name)
 
         filled_docstring = str_formatter(
-            filled_docstring, **filled, required=False
+            filled_docstring, required=False, **values
         )
 
         return Instruction(
@@ -470,7 +484,7 @@ class SignatureFunc(Module, Instruct):
         engine = _engine or self.engine
 
         instruction = self.i(*args,  **kwargs)
-        return engine(TextMessage('system', instruction)).val
+        return engine(TextMessage('system', instruction), **self.ai_kwargs).val
         # return self.reader.read(result.content)
 
     async def async_forward(
@@ -508,9 +522,14 @@ class SignatureFunc(Module, Instruct):
             self.f,
             self.engine,
             self.dialog_factory,
+            self.reader,
             self._is_method,
             self._train,
-            instance
+            
+            instance,
+            self.return_,
+            self.ai_kwargs
+
         )
         return self._stored
 
@@ -525,7 +544,8 @@ class InstructFunc(Module, Instruct):
         dialog_factory: typing.Optional[typing.Callable[[], Dialog]]=None,
         is_method: bool=False,
         reader: Reader=None,
-        instance=None
+        instance=None,
+        ai_kwargs=None
     ):
         """Create an InstructMethod that decorates a function that returns 
         an instruction
@@ -548,6 +568,7 @@ class InstructFunc(Module, Instruct):
         # make it so it can automatically set this up
         # rather than using the "Null version"
         self.reader = reader or NullRead(f.__name__)
+        self.ai_kwargs = ai_kwargs or {}
 
     def i(self, *args, **kwargs) -> Instruction:
         """Get the instruction based on the arguments
@@ -570,7 +591,7 @@ class InstructFunc(Module, Instruct):
 
         instruction = self.i(*args, **kwargs)
         # return engine(TextMessage('system', instruction)).val
-        return engine(TextMessage('system', instruction)).val
+        return engine(TextMessage('system', instruction), **self.ai_kwargs).val
         # return result
     
     async def async_forward(self, *args, **kwargs) -> typing.Any:
@@ -599,14 +620,16 @@ class InstructFunc(Module, Instruct):
             self.dialog_factory, 
             self._is_method,
             reader=self.reader,
-            instance=instance
+            instance=instance,
+            ai_kwargs=self.ai_kwargs
         )
         return self._stored
 
 
 def instructf(
     engine: AIModel=None, 
-    resp_proc: Reader=None
+    resp_proc: Reader=None,
+    **ai_kwargs
 ):
     """Decorator for using a function signature
 
@@ -620,13 +643,14 @@ def instructf(
             return f(*args, **kwargs)
         
         # TODO: Use wrapper
-        return InstructFunc(f, engine, None, False, None, reader=resp_proc)
+        return InstructFunc(f, engine, None, False, None, reader=resp_proc, ai_kwargs=ai_kwargs)
     return _
 
 
 def instructmethod(
     engine: AIModel=None, 
-    resp_p: Reader=None
+    reader: Reader=None,
+    **ai_kwargs
 ):
     """Decorator for using a function signature
 
@@ -640,13 +664,15 @@ def instructmethod(
             return f(*args, **kwargs)
         
         # TODO: Use wrapper
-        return InstructFunc(f, engine, None, True, None, reader=resp_p)
+        return InstructFunc(f, engine, None, True, None, reader=reader, ai_kwargs=ai_kwargs)
     return _
 
 
 def signaturemethod(
     engine: AIModel=None, 
-    resp_p: Reader=None
+    resp_p: Reader=None,
+    return_: typing.List[str]=None,
+    **ai_kwargs
 ):
     """Decorator for using a function signature
 
@@ -658,7 +684,7 @@ def signaturemethod(
         @wraps(f)
         def wrapper(*args, **kwargs):
             return f(*args, **kwargs)
-        return SignatureFunc(f, engine, None, True, reader=resp_p)
+        return SignatureFunc(f, engine, None, True, reader=resp_p, return_=return_, ai_kwargs=ai_kwargs)
 
     return _
 
@@ -666,7 +692,8 @@ def signaturemethod(
 def signaturef(
     engine: AIModel=None, 
     reader: Reader=None,
-    return_: typing.List[str]=None
+    return_: typing.List[str]=None,
+    **ai_kwargs
 ):
     """Decorator for using a function signature
 
@@ -678,7 +705,7 @@ def signaturef(
         @wraps(f)
         def wrapper(*args, **kwargs):
             return f(*args, **kwargs)
-        return SignatureFunc(f, engine, None, False, reader=reader, return_=return_)
+        return SignatureFunc(f, engine, None, False, reader=reader, return_=return_, ai_kwargs=ai_kwargs)
 
     return _
 
