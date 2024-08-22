@@ -18,7 +18,6 @@ class Role(_structs.Description):
         return Role(name=self.name, duty=str_formatter(self.duty, **kwargs))
 
 
-
 class TestRendering:
 
     def test_text_for_description_is_correct(self):

@@ -25,6 +25,7 @@ class WaitAppend(core.Module):
 
 
 class TestAsyncModule:
+    pass
 
     # def test_two_appends_output_correct_result(self):
 

@@ -35,7 +35,7 @@ from ._process import (
     batchf, stream, 
 )
 
-from ._io import (
+from ._read import (
     CSVRead, KVRead, StructListRead, MultiRead, JSONRead,
     StructRead, PrimRead,
 )

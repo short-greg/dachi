@@ -16,7 +16,7 @@ from ._core import (
     Struct, AIModel,
     Instruction
 )
-from ._io import (
+from ._read import (
     StructRead, PrimRead
 )
 from ._utils import (

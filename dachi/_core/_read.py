@@ -19,7 +19,8 @@ from ._core import (
     StructList, 
     Reader, 
     StructLoadException,
-    render
+    render,
+    escape_curly_braces
 )
 
 S = typing.TypeVar('S', bound=Struct)
@@ -162,12 +163,13 @@ class CSVRead(Reader):
     """
     indexed: bool = True
     delim: str = ','
+    cols: typing.Optional[typing.List[typing.Tuple[str, str, str]]] = None
 
     def read_text(self, message: str):
 
         io = StringIO(message)
         df = pd.read_csv(io, sep=self.delim)
-        return df.to_dict(orient='records', index=False)
+        return df.to_dict(orient='records', index=True)
 
     def load_data(self, data) -> typing.Dict:
         """Convert the message to a StructList
@@ -202,24 +204,28 @@ class CSVRead(Reader):
         Returns:
             str: The template for the CSV
         """
-        s_cls: typing.Type[Struct] = generic_class(S)
-        template = s_cls.template()
+        # s_cls: typing.Type[Struct] = generic_class(S)
+        # template = s_cls.template()
+        if self.cols is None:
+            cols = [['1', 'First Col', ''], ['2', 'Second Col', ''], ['...', '...', ''], ['N', 'Nth Col', '']]
+        else:
+            cols = self.cols
 
         result = []
         header = ['Index']
-        first = [1]
+        first = ['1']
         last = ['N']
         mid = '...'
-        for k, v in template.items():
-            header.append(v['name'])
-            first.append(f'{v['description']} {v['type_']}')
-            last.append(f'{v['description']} {v['type_']}')
-        header = f'{self.delim} '.join(header)
-        first = f'{self.delim} '.join(first)
-        last = f'{self.delim} '.join(first)
-
+        for name, descr, type_ in cols:
+            header.append(name)
+            first.append(f'{descr} <{type_}>')
+            last.append(f'{descr} <{type_}>')
+        header = f'{self.delim}'.join(header)
+        first = f'{self.delim}'.join(first)
+        last = f'{self.delim}'.join(last)
         result = [header, first, mid, last]
-        return '\n'.join(result)
+        result = '\n'.join(result)
+        return result
 
     # def stream_read(self, message: str) -> 'StructList[S]':
     #     """Convert a message to a struct list one by one
@@ -279,7 +285,7 @@ class DualRead(Reader):
         return self.text.template()
 
 
-class KVRead(StructRead):
+class KVRead(Reader):
 
     sep: str = '::'
     key_descr: typing.Optional[typing.Dict] = None
@@ -586,16 +592,12 @@ class PrimRead(Reader):
         """
         return f'<{self._out_cls}>'
 
-    # def example(self, data) -> str:
-    #     return str(data)
 
-    # def stream_read(self, message: str) -> typing.Any:
-    #     return self._out(message)
-
-
-class JSONRead(StructRead):
+class JSONRead(Reader):
     """
     """
+
+    key_descr: typing.Optional[typing.Dict] = None
 
     def read_text(self, message: str) -> typing.Dict:
         """Read in the JSON
@@ -633,7 +635,6 @@ class JSONRead(StructRead):
             typing.Any: The data
         """
         return data
-        # return data.to_dict()
 
     def write_text(self, data: typing.Any) -> str:
         """Write the data to a a string
@@ -652,11 +653,4 @@ class JSONRead(StructRead):
         Returns:
             str: The template for the output
         """
-        return self._out_cls.template()
-
-    # def read(self, message: str) -> typing.Dict:
-    #     result = json.loads(message)
-    #     return result
-
-    # def example(self, data: Struct) -> str:
-    #     return data.to_text()
+        return escape_curly_braces(self.key_descr)

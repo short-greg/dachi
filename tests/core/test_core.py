@@ -17,6 +17,12 @@ class SimpleStruct(_core.Struct):
     x: str
 
 
+class SimpleStruct2(_core.Struct):
+
+    x: str
+    y: int
+
+
 class NestedStruct(_core.Struct):
 
     simple: SimpleStruct
@@ -154,36 +160,6 @@ class Evaluation(Struct):
 
 
 
-class TestInstruction:
-
-    def test_instruction_text_is_correct(self):
-
-        text = 'Evaluate the quality of the CSV'
-        instruction = _core.Instruction(
-            name='Evaluate',
-            text=text
-        )
-        assert instruction.text == text
-
-    def test_render_returns_the_instruction_text(self):
-
-        text = 'Evaluate the quality of the CSV'
-        instruction = _core.Instruction(
-            name='Evaluate',
-            text=text
-        )
-        assert instruction.render() == text
-
-    def test_i_returns_the_instruction(self):
-
-        text = 'Evaluate the quality of the CSV'
-        instruction = _core.Instruction(
-            name='Evaluate',
-            text=text
-        )
-        assert instruction.i() is instruction
-
-
 class TestIsUndefined(object):
 
     def test_is_undefined(self):
@@ -218,6 +194,33 @@ class TestInstruction(object):
         )
         simple = SimpleStruct(x='2')
         assert instruction.read(simple.to_text()).x == '2'
+
+    def test_instruction_text_is_correct(self):
+
+        text = 'Evaluate the quality of the CSV'
+        instruction = _core.Instruction(
+            name='Evaluate',
+            text=text
+        )
+        assert instruction.text == text
+
+    def test_render_returns_the_instruction_text(self):
+
+        text = 'Evaluate the quality of the CSV'
+        instruction = _core.Instruction(
+            name='Evaluate',
+            text=text
+        )
+        assert instruction.render() == text
+
+    def test_i_returns_the_instruction(self):
+
+        text = 'Evaluate the quality of the CSV'
+        instruction = _core.Instruction(
+            name='Evaluate',
+            text=text
+        )
+        assert instruction.i() is instruction
 
 
 class TestParam(object):
