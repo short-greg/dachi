@@ -44,3 +44,6 @@ from ._utils import (
     unescape_curly_braces, is_primitive,
     generic_class, Args, str_formatter
 )
+from ._convert import (
+    kv_to_dict, json_to_dict, CSV2DF, csv_to_df
+)

@@ -199,21 +199,21 @@ Content = typing.Union[Media, str, typing.List[typing.Union[Media, str]]]
 @dataclass
 class AIResponse(object):
 
-    content: 'Message'
+    message: 'Message'
     source: typing.Dict
     val: typing.Any = None
 
     def clone(self) -> Self:
 
         return AIResponse(
-            content=self.content,
+            message=self.message,
             source=self.source,
             val=self.val
         )
     
     def __iter__(self) -> typing.Iterator:
         yield self.source
-        yield self.content
+        yield self.message
         yield self.val
 
 
@@ -483,6 +483,21 @@ class TextMessage(Message):
             text.render() if isinstance(text, Instruction) else text
         }'
 
+    def clone(self) -> typing.Self:
+        """Do a shallow copy of the message
+
+        Returns:
+            Message: The cloned message
+        """
+        return self.__class__(
+            source=self.source,
+            text=self.data['text']
+        )
+
+    @property
+    def text(self) -> str:
+        return self.data['text']
+
 
 class Dialog(Struct):
     """A Dialog stores the interactions between the system/user and the assistant
@@ -582,7 +597,7 @@ class Dialog(Struct):
         Raises:
             ValueError: If the index is not correct
         """
-        if ind < 0:
+        if ind is not None and ind < 0:
             ind = max(len(self.messages) + ind, 0)
 
         if ind is None or ind == len(self.messages):
@@ -726,8 +741,25 @@ class Dialog(Struct):
         response = model(self)
 
         if append:
-            self.message('assistant', response.message())
+            self.message('assistant', response.message)
         return response
+
+    def stream_prompt(self, model: 'AIModel', append: bool=True, **kwarg_override) -> typing.Iterator[typing.Tuple['AIResponse']]:
+        """Prompt the AI
+
+        Args:
+            model (AIModel): The model to usee
+            append (bool, optional): Whether to append the output. Defaults to True.
+
+        Returns:
+            AIResponse: The response from the AI
+        """
+        for d, dx in model.stream_forward(self, **kwarg_override):
+            yield d, dx
+
+        if append:
+            self.message('assistant', d.message)
+        return d
 
     def aslist(self) -> typing.List['Message']:
         """Retrieve the message list
@@ -736,6 +768,9 @@ class Dialog(Struct):
             typing.List[Message]: the messages in the dialog
         """
         return self.messages
+    
+    def __len__(self) -> int:
+        return len(self.messages)
 
     # def process_response(self, response: AIResponse) -> AIResponse:
 
@@ -991,10 +1026,12 @@ class Module(ABC):
             Module: The child module
         """
         yielded = set()
+        print(self.__dict__)
         for k, v in self.__dict__.items():
             if isinstance(v, Module):
                 if id(v) in yielded:
                     continue
+                yield v
                 yielded.add(id(v))
                 if recurse:
                     for v in v.children(True):
@@ -1021,7 +1058,7 @@ class Module(ABC):
         """
         # default behavior doesn't actually stream
         res = self.forward(*args, **kwargs) 
-        yield res, None
+        yield res, res
 
     def streamer(self, *args, **kwargs) -> 'Streamer':
         """Retrieve a streamer
@@ -1152,7 +1189,7 @@ class AIModel(Module, ABC):
             typing.Dict: The data
         """
         result = self.forward(prompt, **kwarg_override)
-        yield result, None
+        yield result, result
     
     async def async_forward(
         self, prompt: AIPrompt, **kwarg_override
@@ -1348,11 +1385,10 @@ class Instruction(Struct, Instruct, typing.Generic[S]):
 
 
 class Param(Struct):
-    """Param is used to wrap an instruction
-    """
     name: str
     instruction: Instruction
     training: bool=False
+    text: str = None
 
     @pydantic.field_validator('instruction', mode='before')
     def convert_renderable_to_string(cls, v):
@@ -1366,7 +1402,7 @@ class Param(Struct):
 
     def update(self, text: str):
         if self.training:
-            self.instruction.text = text
+            self.text = text
 
     def render(self) -> str:
         """
@@ -1374,7 +1410,9 @@ class Param(Struct):
         Returns:
             str: 
         """
-        return self.instruction.render()
+        if self.text is None:
+            return self.instruction.render()
+        return self.text
 
     def read(self, data: typing.Dict) -> S:
         """Read in the data

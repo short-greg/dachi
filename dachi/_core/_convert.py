@@ -6,8 +6,8 @@ import typing
 import pandas as pd
 
 # local
-from .._core._structs import Message
-from .._core import Module, processf
+from ._structs import Message
+from . import Module, processf
 
 
 class CSV2DF(Module):

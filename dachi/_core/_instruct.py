@@ -288,6 +288,8 @@ def op(x: typing.Union[typing.Iterable[X], X], instruction: X) -> Instruction:
         text=text, out=out
     )
 
+from ._core import AIResponse
+
 
 class SignatureFunc(Module, Instruct):
     """SignatureMethod is a method where you define the instruction in
@@ -317,8 +319,6 @@ class SignatureFunc(Module, Instruct):
         self.f = f
         self.name = f.__name__
         self._is_method = is_method
-        # self._details = FunctionDetails(f, self._is_method, train)
-        # self._out = self._details.out(is_method, train)
         self.engine = engine
         self._train = train
 
@@ -335,7 +335,7 @@ class SignatureFunc(Module, Instruct):
         )
         self.out_cls = (
             self.return_annotation if self.return_annotation is not None 
-            else str 
+            else AIResponse 
         )
 
         if reader is None:
@@ -484,7 +484,10 @@ class SignatureFunc(Module, Instruct):
         engine = _engine or self.engine
 
         instruction = self.i(*args,  **kwargs)
-        return engine(TextMessage('system', instruction), **self.ai_kwargs).val
+        result = engine(TextMessage('system', instruction), **self.ai_kwargs)
+        if self.out_cls is AIResponse:
+            return result
+        return result.val
         # return self.reader.read(result.content)
 
     async def async_forward(
@@ -588,10 +591,15 @@ class InstructFunc(Module, Instruct):
             typing.Any: The resulting
         """
         engine = _engine or self.engine
-
         instruction = self.i(*args, **kwargs)
-        # return engine(TextMessage('system', instruction)).val
-        return engine(TextMessage('system', instruction), **self.ai_kwargs).val
+        result = engine(TextMessage('system', instruction), **self.ai_kwargs)
+        if self.out_cls is AIResponse:
+            return result
+        return result.val
+
+        # instruction = self.i(*args, **kwargs)
+        # # return engine(TextMessage('system', instruction)).val
+        # return engine(TextMessage('system', instruction), **self.ai_kwargs).val
         # return result
     
     async def async_forward(self, *args, **kwargs) -> typing.Any:

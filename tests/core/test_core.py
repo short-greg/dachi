@@ -4,6 +4,13 @@ from dachi._core import Struct, str_formatter
 import pytest
 from pydantic import Field
 
+import asyncio
+from typing import Any, Iterator, Tuple
+import pytest
+from dachi._core import _process as p
+from dachi._core._core import Module
+import typing
+
 
 class SimpleStruct(_core.Struct):
 
@@ -13,6 +20,40 @@ class SimpleStruct(_core.Struct):
 class NestedStruct(_core.Struct):
 
     simple: SimpleStruct
+
+
+class DummyAIModel(_core.AIModel):
+    """APIAdapter allows one to adapt various WebAPI or other
+    API for a consistent interface
+    """
+
+    target = 'Great!'
+
+    def forward(self, prompt: _core.AIPrompt, **kwarg_override) -> _core.AIResponse:
+        """Run a standard query to the API
+
+        Args:
+            data : Data to pass to the API
+
+        Returns:
+            typing.Dict: The result of the API call
+        """
+        message = prompt.aslist()[0]
+        result = self.convert(message)
+        return _core.AIResponse(
+            _core.TextMessage('assistant', self.target), result, self.target
+        )
+
+    def convert(self, message: _core.Message) -> typing.Dict:
+        """Convert a message to the format needed for the model
+
+        Args:
+            messages (Message): The messages to convert
+
+        Returns:
+            typing.List[typing.Dict]: The format to pass to the "model"
+        """
+        return {'text': message['text']}
 
 
 class TestStruct(object):
@@ -225,7 +266,162 @@ class TestRenderMulti:
         assert '4' in rendered[1]
 
 
+class TestInstruction:
+    pass
+
+
+
+class Append(Module):
+
+    def __init__(self, append: str):
+        super().__init__()
+        self._append = append
+
+    def forward(self, name: str='') -> Any:
+        return name + self._append
+
+
+class NestedModule(Module):
+
+    def __init__(self, child: Module):
+        super().__init__()
+        self.child = child
+        self.p = _core.Param(
+            name='p',
+            instruction=_core.Instruction(text='Do this')
+        )
+
+    def forward(self) -> Any:
+        return None
+
+
+class WriteOut(Module):
+
+    def forward(self, x: str) -> str:
+
+        return x
+
+    def stream_forward(self, x: str) -> Iterator[Tuple[Any, Any]]:
+        
+        out = ''
+        for c in x:
+            out = out + c
+            yield out, c
+
+
+class TestModule:
+
+    def test_module_forward_outputs_correct_value(self):
+
+        append = Append('_t')
+        assert append.forward('x') == 'x_t'
+
+    def test_async_runs_the_model_asynchronously(self):
+        
+        module = Append('t')
+
+        async def run_model(data: typing.List[str]):
+
+            tasks = []
+            async with asyncio.TaskGroup() as tg:
+                for data_i in data:
+                    tasks.append(
+                        tg.create_task(module.async_forward(data_i))
+                    )
+
+            return list(task.result() for task in tasks)
+
+        with asyncio.Runner() as runner:
+            results = runner.run(run_model(['hi', 'bye']))
+        
+        assert results[0] == 'hit'
+        assert results[1] == 'byet'
+
+    def test_stream_forward_returns_the_results(self):
+        
+        module = Append('t')
+
+        res = ''
+        for x, dx in module.stream_forward('xyz'):
+            res += dx
+        assert res == 'xyzt'
+
+    def test_children_returns_no_children(self):
+        
+        module = Append('t')
+
+        children = list(module.children())
+        assert len(children) == 0
+
+    def test_children_returns_two_children_with_nested(self):
+        
+        module = NestedModule(NestedModule(Append('a')))
+
+        children = list(module.children())
+        assert len(children) == 2
+
+    def test_parameters_returns_all_parameters(self):
+        
+        module = NestedModule(NestedModule(Append('a')))
+
+        children = list(module.parameters())
+        assert len(children) == 2
+
+    def test_streamable_streams_characters(self):
+
+        writer = WriteOut()
+        results = []
+        for x, dx in writer.stream_forward('xyz'):
+            results.append(dx)
+        assert results == list('xyz')
+
+
+class TestParam:
+
+    def test_param_renders_the_instruction(self):
+
+        param = _core.Param(
+            name='p',
+            instruction=_core.Instruction(
+                text='simple instruction'
+            )
+        )
+        target = param.instruction.render()
+        assert param.render() == target
+
+    def test_param_updates_the_instruction(self):
+
+        param = _core.Param(
+            name='p',
+            instruction=_core.Instruction(
+                text='simple instruction'
+            ),
+            training=True
+        )
+        target = 'basic instruction'
+        param.update(target)
+        assert param.render() == target
+
+
 class TestStreamer:
+
+    def test_streamable_streams_characters(self):
+
+        writer = WriteOut()
+        streamer = writer.streamer('xyz')
+        partial = streamer()
+        assert partial.cur == 'x'
+        assert partial.dx == 'x'
+
+    def test_streamable_streams_characters_to_end(self):
+
+        writer = WriteOut()
+        streamer = writer.streamer('xyz')
+        partial = streamer()
+        partial = streamer()
+        partial = streamer()
+        assert partial.cur == 'xyz'
+        assert partial.dx == 'z'
 
     def test_streamer_gets_next_item(self):
 
@@ -249,29 +445,108 @@ class TestStreamer:
         assert partial.complete is True
 
 
-class TestInstruction:
-    pass
-
-
-class TestParam:
-
-    def test_param_renders_the_instruction(self):
-        pass
-
-        # streamer = _core.Streamer(
-        #     iter([1, 2, 3])
-        # )
-        # partial = streamer()
-        # assert partial.cur == 1
-        # assert partial.complete is False
-
-
 
 class TestMessage(object):
+
+    def test_message_sets_data(self):
+
+        message = _core.Message(source='assistant', data={'question': 'How?'})
+        assert message.source == 'assistant'
+        assert message.data['question'] == 'How?'
+
+    def test_message_clones_correctly(self):
+
+        message = _core.Message(source='assistant', data={'question': 'How?'})
+        message2 = message.clone()
+        assert message['question'] == message2['question']
 
     def test_message_role_is_a_string(self):
 
         message = _core.TextMessage(source='assistant', text='hi, how are you')
         assert message.source == 'assistant'
         assert message.data['text'] == 'hi, how are you'
+
+    def test_message_returns_the_reader(self):
+
+        message = _core.TextMessage(source='assistant', text='hi, how are you')
+        
+        assert isinstance(message.reader(), _core.NullRead)
+
+    def test_clone_copies_the_message(self):
+
+        message = _core.TextMessage(source='assistant', text='hi, how are you')
+        message2 = message.clone()
+        assert message2['text'] == message['text']
+
+    def test_render_renders_the_message_with_colon(self):
+
+        message = _core.TextMessage(source='assistant', text='hi, how are you')
+        rendered = message.render()
+        assert rendered == 'assistant: hi, how are you'
+
+class TestDialog(object):
+
+    def test_dialog_creates_message_list(self):
+
+        message = _core.TextMessage('assistant', 'help')
+        message2 = _core.TextMessage('system', 'help the user')
+        dialog = _core.Dialog(
+            messages=[message, message2]
+        )
+        assert dialog[0] is message
+        assert dialog[1] is message2
+
+    def test_dialog_replaces_the_message(self):
+
+        message = _core.TextMessage('assistant', 'help')
+        message2 = _core.TextMessage('system', 'help the user')
+        dialog = _core.Dialog(
+            messages=[message, message2]
+        )
+        dialog.system('Stop!', _ind=0, _replace=True)
+        assert dialog[1] is message2
+        assert dialog[0].text == 'Stop!'
+
+    def test_dialog_inserts_into_correct_position(self):
+
+        message = _core.TextMessage('assistant', 'help')
+        message2 = _core.TextMessage('system', 'help the user')
+        dialog = _core.Dialog(
+            messages=[message, message2]
+        )
+        dialog.system('Stop!', _ind=0, _replace=False)
+        assert len(dialog) == 3
+        assert dialog[2] is message2
+        assert dialog[0].text == 'Stop!'
+
+    def test_aslist_converts_to_a_list(self):
+
+        message = _core.TextMessage('assistant', 'help')
+        message2 = _core.TextMessage('system', 'help the user')
+        dialog = _core.Dialog(
+            messages=[message, message2]
+        )
+        dialog.system('Stop!', _ind=0, _replace=False)
+        assert isinstance(dialog.aslist(), list)
+
+    def test_prompt_returns_a_message(self):
+
+        message = _core.TextMessage('assistant', 'help')
+        message2 = _core.TextMessage('system', 'help the user')
+        dialog = _core.Dialog(
+            messages=[message, message2]
+        )
+        result = dialog.prompt(DummyAIModel())
+        assert result.val == DummyAIModel.target
+
+    def test_stream_prompt_returns_a_message(self):
+
+        message = _core.TextMessage('assistant', 'help')
+        message2 = _core.TextMessage('system', 'help the user')
+        dialog = _core.Dialog(
+            messages=[message, message2]
+        )
+        for d, dx in dialog.stream_prompt(DummyAIModel()):
+            pass
+        assert dx.val == DummyAIModel.target
 

@@ -8,6 +8,7 @@ from functools import wraps
 from dataclasses import dataclass
 
 # 3rd party
+from dachi._core._core import Param
 import numpy as np
 
 # local
@@ -172,6 +173,29 @@ class Multi(Module):
                 result = await task
                 results.append(result)
         return result
+
+
+class ModuleList(Module):
+
+    def __init__(self, modules: typing.List[Module]):
+
+        self._modules = modules
+
+    def children(self, recurse: bool = True) -> typing.Iterator[Module]:
+        
+        for module in self._modules:
+            for child in module.children(recurse):
+                yield child
+
+    def parameters(self, recurse: bool = True) -> typing.Iterator[Param]:
+        
+        for module in self._modules:
+            for p in module.parameters(recurse):
+                yield p
+        
+    def forward(self) -> Any:
+        return None
+
 
 
 class Sequential(Module):
