@@ -165,6 +165,24 @@ class TestInstruction:
         )
         assert instruction.text == text
 
+    def test_render_returns_the_instruction_text(self):
+
+        text = 'Evaluate the quality of the CSV'
+        instruction = _core.Instruction(
+            name='Evaluate',
+            text=text
+        )
+        assert instruction.render() == text
+
+    def test_i_returns_the_instruction(self):
+
+        text = 'Evaluate the quality of the CSV'
+        instruction = _core.Instruction(
+            name='Evaluate',
+            text=text
+        )
+        assert instruction.i() is instruction
+
 
 class TestIsUndefined(object):
 
@@ -484,6 +502,12 @@ class TestMessage(object):
         rendered = message.render()
         assert rendered == 'assistant: hi, how are you'
 
+    def test_aslist_returns_self_in_a_list(self):
+        message = _core.TextMessage(source='assistant', text='hi, how are you')
+        assert message.aslist()[0] is message
+
+
+
 class TestDialog(object):
 
     def test_dialog_creates_message_list(self):
@@ -549,4 +573,3 @@ class TestDialog(object):
         for d, dx in dialog.stream_prompt(DummyAIModel()):
             pass
         assert dx.val == DummyAIModel.target
-
