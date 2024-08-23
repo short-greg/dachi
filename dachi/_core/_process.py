@@ -1,4 +1,10 @@
 # 1st party
+# 1st party
+import typing
+from abc import ABC, abstractmethod
+from typing import get_type_hints
+from typing import Self
+import typing
 from abc import ABC
 import typing
 from typing import Any
@@ -6,39 +12,20 @@ import typing
 import asyncio
 from functools import wraps
 from dataclasses import dataclass
-
-# 3rd party
-from dachi._core._core import Param
-import numpy as np
-
-# local
-from ._core import Struct, Module
-
-# 1st party
-import typing
-from abc import ABC, abstractmethod
-from typing import get_type_hints
-from typing import Self
-import typing
-
 from uuid import uuid4
 from enum import Enum
 import asyncio
 from dataclasses import dataclass
 
-import inspect
-import json
-
+# 3rd party
+import numpy as np
 # 3rd party
 import pydantic
 
-# local
-from ._utils import (
-    is_primitive, escape_curly_braces, 
-    unescape_curly_braces,
-    generic_class
-)
 
+# local
+from ._core import Struct, Module
+from dachi._core._core import Param
 from ._core import UNDEFINED
 
 
@@ -244,6 +231,7 @@ class Sequential(Module):
         return x
 
 
+# TODO Doesn't belong here
 class Batch(object):
 
     def __init__(self, data: typing.Iterable, n_samples: int, shuffle: bool, drop_last: bool=True):
@@ -289,162 +277,6 @@ def stream(m: Module, *args, **kwargs) -> typing.Iterator[typing.Tuple[typing.An
         yield partial.cur, partial.dx
 
 
-class Module(ABC):
-    """Base class for Modules
-    """
-
-    @abstractmethod
-    def forward(self, *args, **kwargs) -> typing.Any:
-        """Execute the module
-
-        Returns:
-            typing.Any: The output of the module
-        """
-        pass
-
-    def __call__(self, *args, **kwargs) -> typing.Any:
-        """Execute the module
-
-        Returns:
-            typing.Any: The output of the module
-        """
-        return self.forward(*args, **kwargs)
-
-    def parameters(self, recurse: bool=True) -> typing.Iterator['Param']:
-        """Loop over the parameters for the module
-
-        Yields:
-            Param: The parameters for the module
-        """
-        yielded = set()
-        for k, v in self.__dict__.items():
-            if isinstance(v, Param):
-                if id(v) in yielded:
-                    continue
-                yielded.add(id(v))
-                
-                yield v
-            if recurse and isinstance(v, Module):
-                for v in v.parameters(True):
-                    if id(v) in yielded:
-                        continue
-                    yielded.add(id(v))
-                    yield v
-
-    def children(self, recurse: bool=True) -> typing.Iterator['Module']:
-        """Loop over all of the child modules
-
-        Yields:
-            Module: The child module
-        """
-        yielded = set()
-        print(self.__dict__)
-        for k, v in self.__dict__.items():
-            if isinstance(v, Module):
-                if id(v) in yielded:
-                    continue
-                yield v
-                yielded.add(id(v))
-                if recurse:
-                    for v in v.children(True):
-                        if id(v) in yielded:
-                            continue
-                        yielded.add(id(v))
-                        yield v
-    
-    async def async_forward(self, *args, **kwargs) -> typing.Any:
-        """Execute the forward method asynchronously
-
-        Returns:
-            typing.Any: 
-        """
-        return self.forward(*args, **kwargs)
-
-    def stream_forward(self, *args, **kwargs) -> typing.Iterator[
-        typing.Tuple[typing.Any, typing.Any]
-    ]:
-        """Stream the output
-
-        Yields:
-            Iterator[typing.Iterator[ typing.Tuple[typing.Any, typing.Any] ]]: The current value and the change in the value
-        """
-        # default behavior doesn't actually stream
-        res = self.forward(*args, **kwargs) 
-        yield res, res
-
-    def streamer(self, *args, **kwargs) -> 'Streamer':
-        """Retrieve a streamer
-
-        Returns:
-            Streamer: The Streamer to loop over
-        """
-        return Streamer(
-            iter(self.stream_forward(*args, **kwargs))
-        )
-
-    def reduce(
-        self,
-        data: typing.Iterable, 
-        *args, init=None, **kwargs
-    ) -> typing.Any:
-        """
-
-        Args:
-            data (typing.Iterable): 
-            module (Module): 
-            init (_type_, optional): . Defaults to None.
-
-        Returns:
-            typing.Any: 
-        """
-        cur = init
-        for data_i in data:
-            cur = self(cur, data_i, *args, **kwargs)
-        return cur
-
-    def map(self, data: typing.Iterable, *args, **kwargs) -> typing.Any:
-        """
-
-        Args:
-            data (typing.Iterable): The data to map
-            module (Module): The module to execute
-            init : TODO: CHECK. Defaults to None.
-
-        Returns:
-            typing.Any: 
-        """
-        results = []
-        for data_i in data:
-            results.append(self(data_i, *args, **kwargs))
-        return results
-
-    async def async_map(self, data: typing.Iterable, *args, **kwargs):
-        
-        tasks: asyncio.Task = []
-        async with asyncio.TaskGroup() as tg:
-            for data_i in data:
-                tasks.append(
-                    tg.create_task(self, data_i, *args, **kwargs)
-                )
-        
-            return tuple(task.result() for task in tasks)
-
-    # async def async_stream_iter(self, *args, **kwargs) -> typing.AsyncIterator[
-    #     typing.Tuple[typing.Any, typing.Any]
-    # ]:
-    #     # default behavior doesn't actually stream
-    #     res = self.forward(*args, **kwargs) 
-    #     yield res, None
-
-    # async def async_stream_forward(self, *args, **kwargs) -> 'Streamer':
-    #     """
-    #     Returns:
-    #         Streamer: The Streamer to loop over
-    #     """
-    #     return Streamer(
-    #         self.stream_iter(*args, **kwargs)
-    #     )
-
 @dataclass
 class Partial(object):
     """Class for storing a partial output from a streaming process
@@ -459,13 +291,13 @@ class Streamer(object):
     """Streamer is an object used to stream over the response
     """
 
-    def __init__(self, stream: typing.Iterator):
+    def __init__(self, stream: typing.Iterable):
         """The Stream to loop over
 
         Args:
             stream: The stream to loop over in generating the stream
         """
-        self._stream = stream
+        self._stream = iter(stream)
         self._cur = None
         self._output = UNDEFINED
         self._prev = None

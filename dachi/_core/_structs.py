@@ -3,9 +3,10 @@ import typing
 from abc import ABC, abstractmethod
 
 from ._core import (
-    Struct, Renderable, Message, Media
+    Struct, Renderable
 )
 from ._utils import generic_class
+from ._ai import Message
 
 # 3rd party
 import pydantic
@@ -39,6 +40,12 @@ from ._utils import (
 
 S = typing.TypeVar('S', bound='Struct')
 T = typing.TypeVar('T', bound=Struct)
+
+
+class Media:
+
+    descr: str
+    data: str
 
 
 # TODO: Decide whether to keep this
@@ -153,13 +160,6 @@ class MediaMessage(Message):
             str: The rendered message
         """
         return f'{self.source}: Media [{self.media}]'
-
-
-
-class Media:
-
-    descr: str
-    data: str
 
 
 

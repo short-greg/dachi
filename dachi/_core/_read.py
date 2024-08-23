@@ -16,12 +16,12 @@ from ._core import (
 
 from ._core import (
     Struct, 
-    StructList, 
     Reader, 
     StructLoadException,
     render,
     escape_curly_braces
 )
+from ._structs import StructList
 
 S = typing.TypeVar('S', bound=Struct)
 

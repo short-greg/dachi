@@ -1,5 +1,6 @@
 from dachi._core import _structs, str_formatter
 from pydantic import Field
+from test_core import SimpleStruct
 
 
 class Role(_structs.Description):
@@ -61,6 +62,34 @@ class TestRef:
         ref = _structs.Ref(desc=role)
         # ref = ref.update(role='Helpful Assistant')
         assert ref.render() == role.name
+
+
+class TestStructList:
+
+    def test_struct_list_retrieves_item(self):
+
+        l = _structs.StructList[SimpleStruct](
+            [SimpleStruct(x='2'), SimpleStruct(x='3')]
+        )
+        assert l[0].x == '2'
+        assert l[1].x == '3'
+
+    def test_struct_sets_the_item(self):
+
+        l = _structs.StructList[SimpleStruct](
+            [SimpleStruct(x='4'), SimpleStruct(x='5')]
+        )
+        l[1] = SimpleStruct(x='8')
+        assert l[1].x == '8'
+    
+    def test_struct_sets_the_item_with_none(self):
+
+        l = _structs.StructList[SimpleStruct](
+            [SimpleStruct(x='4'), SimpleStruct(x='5')]
+        )
+        l[None] = SimpleStruct(x='8')
+        assert l[2].x == '8'
+    
 
 
 # class TestDoc(object):

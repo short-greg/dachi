@@ -628,5 +628,3 @@ class AIModel(Module, ABC):
 
     def __call__(self, prompt: AIPrompt, **kwarg_override) -> AIResponse:
         return self.forward(prompt, **kwarg_override)
-
-

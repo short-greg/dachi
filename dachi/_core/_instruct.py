@@ -10,11 +10,14 @@ import roman
 # local
 from ._core import (
     Struct,
-    render, render_multi, Dialog,
+    render, render_multi,
     Instruction, render, Param, 
-    Instruct, Reader, NullRead, TextMessage,
-    Struct, AIModel,
+    Instruct, Reader, NullRead,
+    Struct, 
     Instruction
+)
+from ._ai import (
+    Dialog, TextMessage, AIModel, AIResponse
 )
 from ._read import (
     StructRead, PrimRead
@@ -287,8 +290,6 @@ def op(x: typing.Union[typing.Iterable[X], X], instruction: X) -> Instruction:
     return Instruction(
         text=text, out=out
     )
-
-from ._core import AIResponse
 
 
 class SignatureFunc(Module, Instruct):
