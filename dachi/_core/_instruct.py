@@ -526,11 +526,12 @@ class SignatureFunc(Module, Instruct):
             self.f,
             self.engine,
             self.dialog_factory,
-            self.reader,
             self._is_method,
+
+            self.reader,
             self._train,
-            
             instance,
+            
             self.return_,
             self.ai_kwargs
 

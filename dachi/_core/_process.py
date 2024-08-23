@@ -333,6 +333,55 @@ class Streamer(object):
             yield cur
 
 
+def reduce(
+    module: Module,
+    data: typing.Iterable, 
+    *args, init=None, **kwargs
+) -> typing.Any:
+    """
+
+    Args:
+        data (typing.Iterable): 
+        module (Module): 
+        init (_type_, optional): . Defaults to None.
+
+    Returns:
+        typing.Any: 
+    """
+    cur = init
+    for data_i in data:
+        cur = module(cur, data_i, *args, **kwargs)
+    return cur
+
+
+def map(module: Module, data: typing.Iterable, *args, **kwargs) -> typing.Any:
+    """
+
+    Args:
+        data (typing.Iterable): The data to map
+        module (Module): The module to execute
+        init : TODO: CHECK. Defaults to None.
+
+    Returns:
+        typing.Any: 
+    """
+    results = []
+    for data_i in data:
+        results.append(module(data_i, *args, **kwargs))
+    return results
+
+async def async_map(module: Module, data: typing.Iterable, *args, **kwargs):
+    
+    tasks: asyncio.Task = []
+    async with asyncio.TaskGroup() as tg:
+        for data_i in data:
+            tasks.append(
+                tg.create_task(module, data_i, *args, **kwargs)
+            )
+    
+        return tuple(task.result() for task in tasks)
+
+
 
 # class Module(ABC):
 #     """Base class for Modules

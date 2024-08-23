@@ -1,6 +1,6 @@
 from dachi._core import _structs, str_formatter
 from pydantic import Field
-from test_core import SimpleStruct
+from .test_core import SimpleStruct
 
 
 class Role(_structs.Description):

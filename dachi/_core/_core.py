@@ -288,7 +288,10 @@ def render(x: typing.Any) -> typing.Union[str, typing.List[str]]:
     if isinstance(x, Renderable):
         return x.render()
     
-    elif is_primitive(x) or isinstance(x, dict) or isinstance(x, list):
+    elif is_primitive(x):
+        return str(x)
+    
+    elif isinstance(x, dict) or isinstance(x, list):
         return escape_curly_braces(x)
     
     raise ValueError(
@@ -640,52 +643,6 @@ class Module(ABC):
     #         iter(self.stream_forward(*args, **kwargs))
     #     )
 
-    def reduce(
-        self,
-        data: typing.Iterable, 
-        *args, init=None, **kwargs
-    ) -> typing.Any:
-        """
-
-        Args:
-            data (typing.Iterable): 
-            module (Module): 
-            init (_type_, optional): . Defaults to None.
-
-        Returns:
-            typing.Any: 
-        """
-        cur = init
-        for data_i in data:
-            cur = self(cur, data_i, *args, **kwargs)
-        return cur
-
-    def map(self, data: typing.Iterable, *args, **kwargs) -> typing.Any:
-        """
-
-        Args:
-            data (typing.Iterable): The data to map
-            module (Module): The module to execute
-            init : TODO: CHECK. Defaults to None.
-
-        Returns:
-            typing.Any: 
-        """
-        results = []
-        for data_i in data:
-            results.append(self(data_i, *args, **kwargs))
-        return results
-
-    async def async_map(self, data: typing.Iterable, *args, **kwargs):
-        
-        tasks: asyncio.Task = []
-        async with asyncio.TaskGroup() as tg:
-            for data_i in data:
-                tasks.append(
-                    tg.create_task(self, data_i, *args, **kwargs)
-                )
-        
-            return tuple(task.result() for task in tasks)
 
     # async def async_stream_iter(self, *args, **kwargs) -> typing.AsyncIterator[
     #     typing.Tuple[typing.Any, typing.Any]
