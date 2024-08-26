@@ -19,41 +19,11 @@ import numpy as np
 import pydantic
 
 # local
-from ._core import Struct, Module, Renderable
+from ._core import Struct, Module
 from dachi._core._core import Param
 from ._core import UNDEFINED
-from ._utils import Args
 from ._process import Module
 
-# TODO: Decide how to handle this.. I want to try
-# and get a more robust approach to handling these
-# processes
-
-
-# 1) pass in a list to multiple modules (N/N)
-# 2) pass in a list to a single module (N/1)
-# 3) pass in a single item to multiple modules (1/N)
-# specify which it is in advance
-
-
-# Some data I want to pass is static
-# Some needs to be "split"
-
-# parallel(*args, **kwargs)
-# Args(*args, **kwargs)
-
-# Parallel() -
-
-# 
-# paralell()
-
-
-# Batch
-#   1) returns a single item (size=None)
-#   2) returns multiple items (list, size=a number)
-
-# Parallelize(Module)
-#   def forward(self,)
 
 @dataclass
 class Partial(object):
