@@ -92,12 +92,10 @@ class TestIsNestedModel:
         assert _core.is_nested_model(SimpleStruct) is False
 
 
-
 class Evaluation(Struct):
 
     text: str
     score: float
-
 
 
 class TestIsUndefined(object):

@@ -619,7 +619,8 @@ class Module(ABC):
         Returns:
             typing.Any: 
         """
-        return self.forward(*args, **kwargs)
+        res = self.forward(*args, **kwargs)
+        return res
 
     def stream_forward(self, *args, **kwargs) -> typing.Iterator[
         typing.Tuple[typing.Any, typing.Any]

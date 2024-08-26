@@ -1,6 +1,3 @@
-from ._async import (
-    AsyncModule
-)
 from ._core import (
     Renderable, model_template,
     Struct, StructLoadException,
@@ -27,18 +24,25 @@ from ._instruct import (
 )
 from ._structs import (
     Description, Ref,
-    Media, Message, StructList,
+    Media, 
+    Message, 
+    StructList
 )
 
 from ._process import (
     Partial, 
     ParallelModule, 
-    Get,
-    Set, get, set, 
-    processf, Multi, 
-    Sequential, Batch,
-    batchf, stream, 
+    # Get,
+    # Set, 
+    # get, set, 
+    processf, 
+    MultiModule, 
+    ModuleList,
+    Sequential, Batched,
+    # batchf, 
+    # stream, 
     Streamer, 
+    AsyncModule
 )
 
 from ._read import (
