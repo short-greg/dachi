@@ -720,7 +720,7 @@ def stream_link(module: 'Module', *args, **kwargs) -> T:
         args = args.eval()
 
         return T(
-            module.streamer(*args.args, **args.kwargs),
+            Streamer(module.stream_forward(*args.args, **args.kwargs)),
             StreamSrc(module, args)
         )
 
