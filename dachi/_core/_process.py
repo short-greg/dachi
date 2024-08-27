@@ -301,13 +301,6 @@ class Sequential(ModuleList):
     def __len__(self) -> int:
         return len(self._modules)
 
-# Batched()
-
-# batched.reduce(lambda x, y: ...)
-# batched.map(lambda x, y: ...)
-# Batched(...).reduce()
-# Batched(x=.., y=...).reduce()
-
 
 class Batched(object):
 

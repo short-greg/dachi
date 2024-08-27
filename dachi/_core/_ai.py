@@ -441,7 +441,7 @@ class Dialog(Struct):
         response = model(self)
 
         if append:
-            self.message('assistant', response.message)
+            self.append(response.message)
         return response
 
     def stream_prompt(self, model: 'AIModel', append: bool=True, **kwarg_override) -> typing.Iterator[typing.Tuple['AIResponse']]:
@@ -458,7 +458,7 @@ class Dialog(Struct):
             yield d, dx
 
         if append:
-            self.message('assistant', d.message)
+            self.append(d.message)
         return d
 
     def aslist(self) -> typing.List['Message']:

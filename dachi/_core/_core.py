@@ -409,7 +409,7 @@ class NullRead(Reader):
         Returns:
             typing.Any: Returns the data passed in
         """
-        pass
+        return data
 
     def write_text(self, data: typing.Any) -> str:
         """Output the data to text
@@ -420,7 +420,7 @@ class NullRead(Reader):
         Returns:
             str: The data converted to text
         """
-        pass
+        return data
 
     def read_text(self, data: str) -> typing.Dict:
         """Read in the text as a JSON compatible structure
@@ -445,7 +445,7 @@ class NullRead(Reader):
         return data
 
     def template(self) -> str:
-        return '<No Template>'
+        return None
 
 
 class Instruct(ABC):

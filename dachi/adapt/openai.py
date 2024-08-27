@@ -97,7 +97,7 @@ class OpenAIChatModel(AIModel):
             dx = TextMessage('assistant', delta)
 
             yield AIResponse(
-                message, chunk, p.stream_read(cur_message)
+                message, chunk, p.read(cur_message)
             ), AIResponse(
                 dx, chunk, None
             )
