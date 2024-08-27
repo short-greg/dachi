@@ -303,7 +303,6 @@ class SignatureFunc(Module, Instruct):
         reader: typing.Optional[Reader]=None,
         train: bool=False, 
         instance=None,
-        return_: typing.List[str]=None,
         ai_kwargs: typing.Dict=None
     ):
         """Wrap the signature method with a particular engine and
@@ -328,7 +327,6 @@ class SignatureFunc(Module, Instruct):
         self.parameters = inspect.signature(f).parameters
         self.return_annotation = inspect.signature(f).return_annotation
 
-        self.return_ = return_
         self._docstring_p = Param(
             name=self.name,
             instruction=self._docstring,
@@ -378,7 +376,6 @@ class SignatureFunc(Module, Instruct):
             dialog_factory=dialog_factory or self.dialog_factory,
             reader=self.resp_p,
             train=train,
-            return_=self.return_,
             ai_kwargs=self.ai_kwargs
         )
 
@@ -394,18 +391,11 @@ class SignatureFunc(Module, Instruct):
 
         param_values = list(self.parameters.values())
 
-        if self.return_ is not None:
-            result = self.f(*args, **kwargs)
-            if len(self.return_) == 1:
-                values = {
-                    self.return_[0]: result
-                }
-            else:
-                values = dict(
-                    zip(self.return_, result)
-                )
+        if self._is_method:
+            values = self.f(self.instance, *args, **kwargs)
         else:
-            values = {}
+            values = self.f(*args, **kwargs)
+        values = values if values is not None else {}
 
         if self._is_method:            
             param_values = param_values[1:]
@@ -532,7 +522,6 @@ class SignatureFunc(Module, Instruct):
             self._train,
             instance,
             
-            self.return_,
             self.ai_kwargs
 
         )
@@ -681,7 +670,6 @@ def instructmethod(
 def signaturemethod(
     engine: AIModel=None, 
     resp_p: Reader=None,
-    return_: typing.List[str]=None,
     **ai_kwargs
 ):
     """Decorator for using a function signature
@@ -694,7 +682,7 @@ def signaturemethod(
         @wraps(f)
         def wrapper(*args, **kwargs):
             return f(*args, **kwargs)
-        return SignatureFunc(f, engine, None, True, reader=resp_p, return_=return_, ai_kwargs=ai_kwargs)
+        return SignatureFunc(f, engine, None, True, reader=resp_p, ai_kwargs=ai_kwargs)
 
     return _
 
@@ -702,7 +690,6 @@ def signaturemethod(
 def signaturef(
     engine: AIModel=None, 
     reader: Reader=None,
-    return_: typing.List[str]=None,
     **ai_kwargs
 ):
     """Decorator for using a function signature
@@ -715,7 +702,7 @@ def signaturef(
         @wraps(f)
         def wrapper(*args, **kwargs):
             return f(*args, **kwargs)
-        return SignatureFunc(f, engine, None, False, reader=reader, return_=return_, ai_kwargs=ai_kwargs)
+        return SignatureFunc(f, engine, None, False, reader=reader, ai_kwargs=ai_kwargs)
 
     return _
 
