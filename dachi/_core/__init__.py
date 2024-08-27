@@ -11,7 +11,8 @@ from ._core import (
 )
 from ._ai import (
     AIModel, AIPrompt, AIResponse, Dialog, Message,
-    TextMessage, Data
+    TextMessage, Data,
+    stream_text
 )
 
 from ._instruct import (
@@ -32,15 +33,11 @@ from ._structs import (
 from ._process import (
     Partial, 
     ParallelModule, 
-    # Get,
-    # Set, 
-    # get, set, 
     processf, 
     MultiModule, 
     ModuleList,
-    Sequential, Batched,
-    # batchf, 
-    # stream, 
+    Sequential, 
+    Batched,
     Streamer, 
     AsyncModule
 )

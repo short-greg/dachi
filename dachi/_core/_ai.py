@@ -8,13 +8,12 @@ import typing
 from uuid import uuid4
 from enum import Enum
 import asyncio
-from ._core import Instruct, Instruction, Reader, render, NullRead
+from ._core import Instruct, Instruction, Reader, render, NullRead, Module
 from dataclasses import dataclass
 from ._core import Struct
 import inspect
 import json
 
-from ._process import Module
 # 3rd party
 import pydantic
 
@@ -192,6 +191,12 @@ class TextMessage(Message):
     @property
     def text(self) -> str:
         return self.data['text']
+
+
+def stream_text(stream: typing.Iterator[typing.Tuple[AIResponse, AIResponse]]) -> typing.Iterator[TextMessage]:
+    
+    for _, a2 in stream:
+        yield a2.message
 
 
 class Dialog(Struct):
