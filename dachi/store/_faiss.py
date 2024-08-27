@@ -30,7 +30,29 @@ class FAISSStore(VectorStore):
             {'id': ids, 'data': data, 'vector': vectors}
         )
         self._index = index
-    
+
+    def store(
+        self, index=None, **kwargs
+    ):
+        pass
+        # if index is None:
+        #     self._df.iloc[len(self._df.index)] = kwargs
+        # else:
+        #     self._df.loc[max(self._df.index)] = kwargs
+
+    def bulk_store(
+        self, index=None, **kwargs
+    ):
+        pass
+        # df = pd.DataFrame(kwargs, index)
+        # if index is None:
+        #     self._df = pd.concat(
+        #         [self._df, df]
+        #     )
+        # else:
+        #     self._df = self._df.reindex(df.index.union(df.index))
+        #     self._df.update(df)    
+
     def _like_helper(self, df: pd.DataFrame, like: Like) -> pd.DataFrame:
         
         ids = self._index.search(

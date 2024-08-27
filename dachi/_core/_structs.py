@@ -31,15 +31,11 @@ import pydantic
 
 # local
 from ._utils import (
-    is_primitive, escape_curly_braces, 
-    unescape_curly_braces,
     generic_class
 )
 
 
-
-S = typing.TypeVar('S', bound='Struct')
-T = typing.TypeVar('T', bound=Struct)
+S = typing.TypeVar('S', bound=Struct)
 
 
 class Media:

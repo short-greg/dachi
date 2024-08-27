@@ -1,17 +1,13 @@
 # 1st party
-import typing
 from abc import ABC, abstractmethod
-from typing import get_type_hints
-from typing import Self
+from typing import Self, get_type_hints
 import typing
+import inspect
+import json
 
 from uuid import uuid4
 from enum import Enum
-import asyncio
-from dataclasses import dataclass
 
-import inspect
-import json
 
 # 3rd party
 import pydantic
@@ -457,7 +453,6 @@ class Instruct(ABC):
     @abstractmethod
     def i(self) -> 'Instruction':
         pass
-
 
 
 class Instruction(Struct, Instruct, typing.Generic[S]):
