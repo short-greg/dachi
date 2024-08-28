@@ -3,6 +3,7 @@ import typing
 from functools import wraps, update_wrapper
 import inspect
 import string
+from itertools import chain
 
 import pydantic
 import roman
@@ -292,8 +293,56 @@ def op(x: typing.Union[typing.Iterable[X], X], instruction: X) -> Instruction:
     )
 
 
+class InstructCall(Module, Instruct):
+    """InstructCall is used within an instructf or
+    signaturef to allow one to loop over "incoming"
+    instructions
+    """
+
+    def __init__(self, i: Instruct, *args, **kwargs):
+        """Create the "Call" passing in the instruction
+        and its inputs
+
+        Args:
+            i (Instruct): The instruction to wrap
+        """
+        self._instruct = i
+        self.args = args
+        self.kwargs = kwargs
+
+    def __iter__(self) -> typing.Iterator['InstructCall']:
+        """Loop over the "sub" InstructCalls
+
+        Yields:
+            typing.Iterator['InstructCall']: The InstructCalls used
+        """
+        for arg in chain(self.args, self.kwargs.values()):
+            if isinstance(arg, InstructCall):
+                for arg_i in arg:
+                    yield arg_i
+                yield arg
+        yield self
+
+    def i(self) -> Instruction:
+        
+        return self._instruct.i()
+        
+    def forward(self) -> typing.Any:
+        
+        args = [
+            arg() if isinstance(arg, InstructCall) 
+            else arg for arg in self.args
+        ]
+        kwargs = {
+            k: v() if isinstance(v, Instruct) else v
+            for k, v in self.kwargs.items()
+        }
+
+        return self._instruct(*args, **kwargs)
+
+
 class SignatureFunc(Module, Instruct):
-    """SignatureMethod is a method where you define the instruction in
+    """SignatureFunc is a method where you define the instruction in
     the function signature
     """
     def __init__(
@@ -396,6 +445,7 @@ class SignatureFunc(Module, Instruct):
         else:
             values = self.f(*args, **kwargs)
         values = values if values is not None else {}
+        values = {k: v() if isinstance(k, InstructCall) else v for k, v in values.items()}
 
         if self._is_method:            
             param_values = param_values[1:]
@@ -426,30 +476,7 @@ class SignatureFunc(Module, Instruct):
         # TODO: Determine how to handle this
         out = validate_out(values)
         values = {key: render(v) for key, v in values.items()}
-            # filled_docstring = filled_docstring.replace(
-            #     f'{{{param.name}}}', 
-            #     str(value) if not isinstance(value, Instruction) else render(value)
-            # )
-            # filled.add(param.name)
-        # for k, value in kwargs.items():
-        #     param = self.parameters[k]
             
-        #     filled_docstring = filled_docstring.replace(
-        #         f'{{{param.name}}}', # str(param.default)
-        #         str(value) if not isinstance(value, Instruction) else render(value)
-        #     )
-        #     filled.add(param.name)
-
-        # for param in param_values:
-        #     if param.name in filled:
-        #         continue
-        #     if param.default == inspect.Parameter.empty:
-        #         raise RuntimeError('Param has not been defined and no value')
-        #     filled_docstring = filled_docstring.replace(
-        #         f'{{{param.name}}}', str(param.default)
-        #     )
-        #     filled.add(param.name)
-
         filled_docstring = str_formatter(
             filled_docstring, required=False, **values
         )
@@ -500,6 +527,15 @@ class SignatureFunc(Module, Instruct):
             **kwargs
         )
 
+    def __iter__(self, *args, **kwargs):
+        
+        res = self(*args, **kwargs)
+        for k, v in res.items():
+            if isinstance(v, InstructCall):
+                for v_i in v:
+                    yield v_i
+        yield InstructCall(self, *args, **kwargs)
+
     def __get__(self, instance, owner):
         """Get the SignatureMethod with the instance set
 
@@ -517,13 +553,10 @@ class SignatureFunc(Module, Instruct):
             self.engine,
             self.dialog_factory,
             self._is_method,
-
             self.reader,
             self._train,
             instance,
-            
             self.ai_kwargs
-
         )
         return self._stored
 
@@ -552,7 +585,6 @@ class InstructFunc(Module, Instruct):
         """
         self.f = f
         self._is_method = is_method
-
         self.engine = engine
         update_wrapper(self, f) 
         self.instance = instance
@@ -570,7 +602,10 @@ class InstructFunc(Module, Instruct):
         Returns:
             Instruction: Get the instruction
         """
-        return self.f(*args, **kwargs)
+        result = self.f(*args, **kwargs)
+        if isinstance(result, InstructCall):
+            result = result()
+        return result
 
     def forward(self, *args, _engine: AIModel=None, **kwargs) -> typing.Any:        
         """Execute the instruct method and then process the output
@@ -623,6 +658,13 @@ class InstructFunc(Module, Instruct):
             ai_kwargs=self.ai_kwargs
         )
         return self._stored
+
+    def __iter__(self, *args, **kwargs):
+        
+        res = self(*args, **kwargs)
+        if isinstance(res, InstructCall):
+            for res_i in res:
+                yield res_i
 
 
 def instructf(
@@ -706,6 +748,30 @@ def signaturef(
 
     return _
 
+
+# filled_docstring = filled_docstring.replace(
+#     f'{{{param.name}}}', 
+#     str(value) if not isinstance(value, Instruction) else render(value)
+# )
+# filled.add(param.name)
+# for k, value in kwargs.items():
+#     param = self.parameters[k]
+
+#     filled_docstring = filled_docstring.replace(
+#         f'{{{param.name}}}', # str(param.default)
+#         str(value) if not isinstance(value, Instruction) else render(value)
+#     )
+#     filled.add(param.name)
+
+# for param in param_values:
+#     if param.name in filled:
+#         continue
+#     if param.default == inspect.Parameter.empty:
+#         raise RuntimeError('Param has not been defined and no value')
+#     filled_docstring = filled_docstring.replace(
+#         f'{{{param.name}}}', str(param.default)
+#     )
+#     filled.add(param.name)
 
 # class FunctionDetails(object):
 #     """FunctionDetails are used to convert the user input into an instruction 

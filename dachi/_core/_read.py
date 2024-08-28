@@ -10,7 +10,7 @@ import pandas as pd
 # local
 from ._core import (
     Reader, 
-    Struct, generic_class,
+    Struct,
     unescape_curly_braces
 )
 
@@ -22,6 +22,7 @@ from ._core import (
     escape_curly_braces
 )
 from ._structs import StructList
+
 
 S = typing.TypeVar('S', bound=Struct)
 
