@@ -506,7 +506,27 @@ class SignatureFunc(Module, Instruct):
         if self.out_cls is AIResponse:
             return result
         return result.val
-        # return self.reader.read(result.content)
+
+    def stream_forward(
+        self, *args,
+        _engine: AIModel=None, **kwargs
+    ) -> typing.Iterator[typing.Tuple[typing.Any, typing.Any]]:
+        """Execute the instruction and get the output 
+
+        Args:
+            _engine (AIModel, optional): The engine to override with. Defaults to None.
+
+        Returns:
+            typing.Any: The result of processing the instruction
+        """
+        engine = _engine or self.engine
+
+        instruction = self.i(*args,  **kwargs)
+        for cur, dx in engine.stream_forward(TextMessage('system', instruction), **self.ai_kwargs):
+            if self.out_cls is AIResponse:
+                yield cur, dx
+            else:
+                yield cur.val, dx.val
 
     async def async_forward(
         self, *args, 
@@ -590,7 +610,6 @@ class InstructFunc(Module, Instruct):
         self.instance = instance
         self._stored = None
         self.dialog_factory = dialog_factory or Dialog
-
         # make it so it can automatically set this up
         # rather than using the "Null version"
         self.reader = reader or NullRead(f.__name__)
@@ -627,7 +646,28 @@ class InstructFunc(Module, Instruct):
         # # return engine(TextMessage('system', instruction)).val
         # return engine(TextMessage('system', instruction), **self.ai_kwargs).val
         # return result
-    
+
+    def stream_forward(
+        self, *args,
+        _engine: AIModel=None, **kwargs
+    ) -> typing.Iterator[typing.Tuple[typing.Any, typing.Any]]:
+        """Execute the instruction and get the output 
+
+        Args:
+            _engine (AIModel, optional): The engine to override with. Defaults to None.
+
+        Returns:
+            typing.Any: The result of processing the instruction
+        """
+        engine = _engine or self.engine
+
+        instruction = self.i(*args,  **kwargs)
+        for cur, dx in engine.stream_forward(TextMessage('system', instruction), **self.ai_kwargs):
+            if self.out_cls is AIResponse:
+                yield cur, dx
+            else:
+                yield cur.val, dx.val
+
     async def async_forward(self, *args, **kwargs) -> typing.Any:
         """
 

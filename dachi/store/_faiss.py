@@ -1,6 +1,6 @@
 from typing import Any, Dict, List
 from dachi.store._core import QF, Comp, Join, Rep, Like
-from ._core import VectorStore
+from ._core import Vectorized, Store
 from . import _dataframe as df_utils
 import faiss
 import typing
@@ -8,7 +8,7 @@ import pandas as pd
 import numpy as np
 
 
-class FAISSStore(VectorStore):
+class FAISSStore(Store, Vectorized):
 
     def __init__(
         self, 

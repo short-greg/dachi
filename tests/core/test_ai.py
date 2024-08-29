@@ -34,6 +34,19 @@ class DummyAIModel(_ai.AIModel):
         return _ai.AIResponse(
             _ai.TextMessage('assistant', self.target), result, self.target
         )
+    
+    def stream_forward(self, prompt: _ai.AIPrompt, **kwarg_override) -> Iterator[Tuple[p.AIResponse]]:
+        message = prompt.aslist()[0]
+        result = self.convert(message)
+
+        cur_out = ''
+        for c in self.target:
+            cur_out += c
+            yield _ai.AIResponse(
+                _ai.TextMessage('assistant', cur_out), result, cur_out
+            ), _ai.AIResponse(
+                _ai.TextMessage('assistant', c), result, c
+            )
 
     def convert(self, message: _ai.Message) -> typing.Dict:
         """Convert a message to the format needed for the model
@@ -102,7 +115,7 @@ class TestDialog(object):
         result = dialog.prompt(DummyAIModel())
         assert result.val == DummyAIModel.target
 
-    def test_stream_prompt_returns_a_message(self):
+    def test_stream_prompt_returns_each_part_of_the_message(self):
 
         message = _ai.TextMessage('assistant', 'help')
         message2 = _ai.TextMessage('system', 'help the user')
@@ -111,8 +124,8 @@ class TestDialog(object):
         )
         for d, dx in dialog.stream_prompt(DummyAIModel()):
             pass
-        assert dx.val == DummyAIModel.target
-
+        assert d.val == DummyAIModel.target
+        assert dx.val == DummyAIModel.target[-1]
 
 
 class TestMessage(object):

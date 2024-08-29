@@ -217,7 +217,27 @@ class Query(ABC):
         return self.spawn(
             where=where
         )
-    
+
+    def like(self, like: typing.Union[typing.List, typing.Any], n: int) -> 'VectorQuery':
+        if not isinstance(self._store, Vectorized):
+            raise RuntimeError(
+                'The store does not have a vectorized '
+                'operation so cannot use like'
+            )
+        return self.spawn(
+            like=Like(like, n)
+        )
+
+    def rep(self) -> 'Rep':
+        if not isinstance(self._store, Vectorized):
+            raise RuntimeError(
+                'The store does not have a vectorized '
+                'operation so cannot use rep'
+            )
+        return self._store.rep(
+            # same as retrieve
+        )
+
     def spawn(
         self, 
         select: typing.Dict[str, typing.Union[QF, str]]=UNCHANGED, 
@@ -253,6 +273,12 @@ class Query(ABC):
         right: str, comp: Comp, 
         alias: typing.Dict[str, str]=None, how: str='inner'
     ) -> Self:
+        
+        if not isinstance(self._store, Joinable):
+            raise RuntimeError(
+                'Cannot join since the store has '
+                'no join operation'
+            )
         joins = [*self._joins, Join(query, left, right, comp, alias, how)]
         return self.spawn(
             self._store, joins=joins
@@ -313,7 +339,8 @@ class Store(ABC):
         alias: typing.Dict[str, str]=None, how: str='inner'
     ) -> Self:
         kwargs = self.kwargs()
-        kwargs['joins'] = [*self._joins, Join(query, left, right, comp, alias, how)]
+        kwargs['joins'] = [
+            *self._joins, Join(query, left, right, comp, alias, how)]
         return Query(
             self, **kwargs
         )
@@ -346,13 +373,23 @@ class Rep(object):
         self.vectors = vectors
 
 
-class VectorStore(Store):
+class Vectorized(ABC):
+    """Mixin to handle "Vector" Stores
+    """
 
+    @abstractmethod
     def like(self) -> Query:
         pass
 
     @abstractmethod
     def rep(self) -> Rep:
+        pass
+
+
+class Joinable(ABC):
+    
+    @abstractmethod
+    def join(self, join: Join) -> Query:
         pass
 
 
@@ -363,57 +400,57 @@ class Like(object):
     n: int
 
 
-class VectorQuery(Query):
+# class VectorQuery(Query):
 
-    def __init__(
-        self, store: VectorStore, select: typing.Dict[str, str | QF] = None, 
-        joins: typing.List[Join] = None, where: Comp = None, 
-        order_by: typing.List[str] = None, limit: int = None,
-        like: Like=None
-    ):
-        """
+#     def __init__(
+#         self, store: Vectorized, select: typing.Dict[str, str | QF] = None, 
+#         joins: typing.List[Join] = None, where: Comp = None, 
+#         order_by: typing.List[str] = None, limit: int = None,
+#         like: Like=None
+#     ):
+#         """
 
-        Args:
-            store (VectorStore): 
-            select (typing.Dict[str, str  |  QF], optional): . Defaults to None.
-            joins (typing.List[Join], optional): . Defaults to None.
-            where (Comp, optional): . Defaults to None.
-            order_by (typing.List[str], optional): . Defaults to None.
-            limit (int, optional): . Defaults to None.
-            like (Like, optional): . Defaults to None.
-        """
-        super().__init__(store, select, joins, where, order_by, limit)
-        self._like = like
+#         Args:
+#             store (VectorStore): 
+#             select (typing.Dict[str, str  |  QF], optional): . Defaults to None.
+#             joins (typing.List[Join], optional): . Defaults to None.
+#             where (Comp, optional): . Defaults to None.
+#             order_by (typing.List[str], optional): . Defaults to None.
+#             limit (int, optional): . Defaults to None.
+#             like (Like, optional): . Defaults to None.
+#         """
+#         super().__init__(store, select, joins, where, order_by, limit)
+#         self._like = like
 
-    def spawn(
-        self, 
-        select: typing.Dict[str, typing.Union[QF, str]]=UNCHANGED, 
-        joins: typing.List[Join]=UNCHANGED, 
-        where: Comp=UNCHANGED, 
-        order_by: typing.List[str]=UNCHANGED,
-        limit: int=UNCHANGED,
-        like: Like=None
-    ):
-        return self.__class__(
-            self._store, 
-            select=coalesce(select, select), 
-            joins=coalesce(joins, self._joins), 
-            where=coalesce(where, self._where),
-            order_by=coalesce(order_by, self._order_by),
-            coalesce=coalesce(limit, self._limit), 
-            like=coalesce(like, self._like)
-        )
+#     def spawn(
+#         self, 
+#         select: typing.Dict[str, typing.Union[QF, str]]=UNCHANGED, 
+#         joins: typing.List[Join]=UNCHANGED, 
+#         where: Comp=UNCHANGED, 
+#         order_by: typing.List[str]=UNCHANGED,
+#         limit: int=UNCHANGED,
+#         like: Like=None
+#     ):
+#         return self.__class__(
+#             self._store, 
+#             select=coalesce(select, select), 
+#             joins=coalesce(joins, self._joins), 
+#             where=coalesce(where, self._where),
+#             order_by=coalesce(order_by, self._order_by),
+#             coalesce=coalesce(limit, self._limit), 
+#             like=coalesce(like, self._like)
+#         )
     
-    def like(self, like: typing.Union[typing.List, typing.Any], n: int) -> 'VectorQuery':
+#     def like(self, like: typing.Union[typing.List, typing.Any], n: int) -> 'VectorQuery':
 
-        return self.spawn(
-            like=Like(like, n)
-        )
+#         return self.spawn(
+#             like=Like(like, n)
+#         )
 
-    def rep(self) -> Rep:
-        return self._store.rep(
-            # same as retrieve
-        )
+#     def rep(self) -> Rep:
+#         return self._store.rep(
+#             # same as retrieve
+#         )
 
 
 class Retrieve(Module):

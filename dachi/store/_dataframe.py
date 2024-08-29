@@ -2,7 +2,7 @@ from typing import Self
 import typing
 
 from ._core import QF
-from ._core import Store, Comp, Key, Join, CompF, Val
+from ._core import Store, Comp, Key, Join, CompF, Val, Joinable
 import pandas as pd
 
 # 1) "Store" [dataframe, etc]
@@ -123,7 +123,7 @@ def df_select(df: pd.DataFrame, select: typing.Union[None, typing.Dict]=None) ->
     return df_new
 
 
-class DFStore(Store):
+class DFStore(Store, Joinable):
 
     def __init__(self, df: pd.DataFrame):
         """

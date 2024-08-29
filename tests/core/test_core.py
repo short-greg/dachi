@@ -28,7 +28,6 @@ class NestedStruct(_core.Struct):
     simple: SimpleStruct
 
 
-
 class TestStruct(object):
 
     def test_simple_struct_gets_string(self):

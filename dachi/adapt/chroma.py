@@ -1,6 +1,6 @@
 import typing
 
-from ..store import VectorStore, Comp, Join, Like, QF
+from ..store import Vectorized, Comp, Join, Like, QF
 from ..store import df_sort, df_join, df_select
 
 import pandas as pd
@@ -46,7 +46,7 @@ def to_df(query_results: typing.Dict[typing.List]) -> pd.DataFrame:
     return pd.DataFrame(d)
 
 
-class ChromaDBStore(VectorStore):
+class ChromaDBStore(Vectorized):
 
     def __init__(self, collection: str, path: str):
         """
