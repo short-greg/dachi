@@ -166,39 +166,6 @@ class AsyncModule(ParallelModule):
         return asyncio.run(self.async_forward(*args, **kwargs))
 
 
-# TODO: finish this
-
-# class Parallel(object):
-
-#     def __init__(self, modules: typing.Union['ModuleList', Module], *args, **kwargs):
-
-#         if isinstance(modules, typing.List):
-#             modules = ModuleList(modules)
-#         self.modules = P(modules) if isinstance(modules, ModuleList) else I(modules)
-#         self.args = [arg if isinstance(arg, P) else I(arg) for arg in args]
-#         self.kwargs = {k: arg if isinstance(arg, P) else I(arg) for k, arg in kwargs.items()}
-
-
-
-# class Get(Module):
-
-#     def forward(self, struct: Struct, key) -> typing.Any:
-        
-#         return struct[key]
-
-
-# class Set(Module):
-
-#     def forward(self, struct: Struct, key, value) -> typing.Any:
-        
-#         struct[key] = value
-#         return value
-
-
-# get = Get()
-# set = Set()
-
-
 class _ProcessMethod(Module):
 
     def __init__(self, f: typing.Callable, instance=None):
@@ -451,3 +418,36 @@ class Streamer(object):
             if cur.complete:
                 break
             yield cur
+
+
+# TODO: finish this
+
+# class Parallel(object):
+
+#     def __init__(self, modules: typing.Union['ModuleList', Module], *args, **kwargs):
+
+#         if isinstance(modules, typing.List):
+#             modules = ModuleList(modules)
+#         self.modules = P(modules) if isinstance(modules, ModuleList) else I(modules)
+#         self.args = [arg if isinstance(arg, P) else I(arg) for arg in args]
+#         self.kwargs = {k: arg if isinstance(arg, P) else I(arg) for k, arg in kwargs.items()}
+
+
+
+# class Get(Module):
+
+#     def forward(self, struct: Struct, key) -> typing.Any:
+        
+#         return struct[key]
+
+
+# class Set(Module):
+
+#     def forward(self, struct: Struct, key, value) -> typing.Any:
+        
+#         struct[key] = value
+#         return value
+
+
+# get = Get()
+# set = Set()

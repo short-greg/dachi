@@ -11,6 +11,8 @@ from . import Module, processf
 
 
 class CSV2DF(Module):
+    """Converts a Message with a CSV to a Dataframe
+    """
 
     def __init__(self, sep: str=',', key: str='text'):
         """Module to convert a CSV to a DataFrame
@@ -38,7 +40,15 @@ class CSV2DF(Module):
 
 @processf
 def json_to_dict(message: Message, key: str='text') -> pd.DataFrame:
-    
+    """Convert a message containing a JSON string to a dict
+
+    Args:
+        message (Message): The message to convert
+        key (str, optional): The key for the value to convert. Defaults to 'text'.
+
+    Returns:
+        dict: The dictionary loaded from the value
+    """
     return json.loads(
         message.data[key]
     )
@@ -46,7 +56,16 @@ def json_to_dict(message: Message, key: str='text') -> pd.DataFrame:
 
 @processf
 def csv_to_df(message: Message, sep: str=',', key: str='text') -> pd.DataFrame:
+    """Convert a message to df
 
+    Args:
+        message (Message): The message to convert
+        sep (str, optional): The separator. Defaults to ','.
+        key (str, optional): The key for the data. Defaults to 'text'.
+
+    Returns:
+        pd.DataFrame: the csv as a DataFrame
+    """
     return pd.read_csv(
         message.data[key], sep=sep
     )

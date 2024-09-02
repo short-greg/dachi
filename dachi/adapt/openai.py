@@ -90,16 +90,17 @@ class OpenAIChatModel(AIModel):
 
             if delta is None:
                 delta = ''
-
+            
             cur_message = cur_message + delta
             
             message = TextMessage('assistant', cur_message)
             dx = TextMessage('assistant', delta)
 
+            dx_val = p.read(delta)
             yield AIResponse(
                 message, chunk, p.read(cur_message)
             ), AIResponse(
-                dx, chunk, None
+                dx, chunk, dx_val
             )
     
     async def async_forward(

@@ -1,28 +1,16 @@
 # 1st party
 import typing
 from abc import ABC, abstractmethod
-from typing import get_type_hints
 from typing import Self
 import typing
 
-from uuid import uuid4
-from enum import Enum
 import asyncio
 from ._core import Instruct, Instruction, Reader, render, NullRead, Module
 from dataclasses import dataclass
 from ._core import Struct
-import inspect
-import json
 
 # 3rd party
 import pydantic
-
-# local
-from ._utils import (
-    is_primitive, escape_curly_braces, 
-    unescape_curly_braces,
-    generic_class
-)
 
 
 @dataclass
@@ -400,6 +388,21 @@ class Dialog(Struct):
                 return r.reader
         return NullRead(name='')
     
+    def exclude(self, *source: str) -> 'Dialog':
+
+        exclude = set(source)
+        return Dialog(
+            messages=[message for message in self.messages
+            if message.source not in exclude]
+        )
+    
+    def include(self, *source: str) -> 'Dialog':
+        include = set(source)
+        return Dialog(
+            messages=[message for message in self.messages
+            if message.source in include]
+        )
+
     def render(self) -> str:
         return '\n'.join(
             message.render() for message in self.messages
@@ -444,7 +447,7 @@ class Dialog(Struct):
             self.append(response.message)
         return response
 
-    def stream_prompt(self, model: 'AIModel', append: bool=True, **kwarg_override) -> typing.Iterator[typing.Tuple['AIResponse']]:
+    def stream_prompt(self, model: 'AIModel', append: bool=True, **kwarg_override) -> typing.Iterator[typing.Tuple['AIResponse', 'AIResponse']]:
         """Prompt the AI
 
         Args:
@@ -472,25 +475,8 @@ class Dialog(Struct):
     def __len__(self) -> int:
         return len(self.messages)
 
-    # def process_response(self, response: AIResponse) -> AIResponse:
-
-    #     response = response.clone()
-
-    #     out = None
-    #     for r in reversed(self.messages):
-    #         if  isinstance(r, Instruction):
-    #             out = r.out
-    #             break
-
-    #     if out is None:
-    #         response.val = response.content
-    #     else:
-    #         # Not sure about this
-    #         response.val = out.read(response.content['text'])
-    #     return response
 
 Data = typing.Union[Struct, typing.List[Struct]]
-
 
 
 class AIModel(Module, ABC):
@@ -633,3 +619,22 @@ class AIModel(Module, ABC):
 
     def __call__(self, prompt: AIPrompt, **kwarg_override) -> AIResponse:
         return self.forward(prompt, **kwarg_override)
+
+
+    # def process_response(self, response: AIResponse) -> AIResponse:
+
+    #     response = response.clone()
+
+    #     out = None
+    #     for r in reversed(self.messages):
+    #         if  isinstance(r, Instruction):
+    #             out = r.out
+    #             break
+
+    #     if out is None:
+    #         response.val = response.content
+    #     else:
+    #         # Not sure about this
+    #         response.val = out.read(response.content['text'])
+    #     return response
+

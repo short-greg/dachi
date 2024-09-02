@@ -629,30 +629,11 @@ class Module(ABC):
         res = self.forward(*args, **kwargs) 
         yield res, res
 
-    # def streamer(self, *args, **kwargs) -> 'Streamer':
-    #     """Retrieve a streamer
+    async def async_stream_forward(self, *args, **kwargs) -> typing.AsyncIterator:
+        """
+        Returns:
+            Streamer: The Streamer to loop over
+        """
 
-    #     Returns:
-    #         Streamer: The Streamer to loop over
-    #     """
-    #     return Streamer(
-    #         iter(self.stream_forward(*args, **kwargs))
-    #     )
-
-
-    # async def async_stream_iter(self, *args, **kwargs) -> typing.AsyncIterator[
-    #     typing.Tuple[typing.Any, typing.Any]
-    # ]:
-    #     # default behavior doesn't actually stream
-    #     res = self.forward(*args, **kwargs) 
-    #     yield res, None
-
-    # async def async_stream_forward(self, *args, **kwargs) -> 'Streamer':
-    #     """
-    #     Returns:
-    #         Streamer: The Streamer to loop over
-    #     """
-    #     return Streamer(
-    #         self.stream_iter(*args, **kwargs)
-    #     )
-
+        for d, dx in self.stream_forward(*args, **kwargs):
+            yield d, dx

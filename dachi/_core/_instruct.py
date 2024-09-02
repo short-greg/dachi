@@ -523,6 +523,7 @@ class SignatureFunc(Module, Instruct):
 
         instruction = self.i(*args,  **kwargs)
         for cur, dx in engine.stream_forward(TextMessage('system', instruction), **self.ai_kwargs):
+
             if self.out_cls is AIResponse:
                 yield cur, dx
             else:

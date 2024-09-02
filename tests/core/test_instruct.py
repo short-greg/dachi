@@ -209,31 +209,7 @@ class TestSignatureF:
 
         result = signaturep.i(2)
 
-        print(result.text)
-
         assert 'x: 2' in result.text
-
-    # def test_inserts_into_docstring(self):
-
-    #     @core.signaturef()
-    #     def signaturep(x: str) -> SimpleStruct:
-    #         """Output the value of x
-            
-    #         x: {x}
-
-    #         Args:
-    #             x (str): The input
-
-    #         Returns:
-    #             SimpleStruct: The value of x
-    #         """
-    #         pass
-
-    #     result = signaturep.i(2)
-
-    #     print(result.text)
-
-    #     assert 'x: 2' in result.text
 
     def test_inserts_into_docstring_with_method(self):
 
@@ -304,3 +280,24 @@ class TestSignatureF:
         assert d == 'Great!'
         assert dx == '!'
 
+    # def test_inserts_into_docstring(self):
+
+    #     @core.signaturef()
+    #     def signaturep(x: str) -> SimpleStruct:
+    #         """Output the value of x
+            
+    #         x: {x}
+
+    #         Args:
+    #             x (str): The input
+
+    #         Returns:
+    #             SimpleStruct: The value of x
+    #         """
+    #         pass
+
+    #     result = signaturep.i(2)
+
+    #     print(result.text)
+
+    #     assert 'x: 2' in result.text

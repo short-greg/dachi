@@ -117,12 +117,12 @@ def generic_class(t: typing.TypeVar, idx: int=0) -> typing.Type:
     return t.__orig_class__.__args__[idx]
 
 
-class Args(object):
-    """Encapsulates args and kwargs into an object
-    """
+# class Args(object):
+#     """Encapsulates args and kwargs into an object
+#     """
 
-    def __init__(self, *args, **kwargs):
-        """Create the Args object
-        """
-        self.args = args
-        self.kwargs = kwargs
+#     def __init__(self, *args, **kwargs):
+#         """Create the Args object
+#         """
+#         self.args = args
+#         self.kwargs = kwargs
