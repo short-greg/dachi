@@ -210,7 +210,6 @@ class Term(Struct):
         return f'{base}\n{meta}'
 
 
-
 class Glossary(Struct):
 
     terms: typing.Dict[str, Term]
@@ -255,7 +254,6 @@ class Glossary(Struct):
         Returns:
             ...
         """
-
         if isinstance(val, Term):
             self.terms[val.name] = val
         else:
@@ -263,9 +261,9 @@ class Glossary(Struct):
                 self.terms[term_i.name] = val
         return val
     
-    def add(self, name: str, **meta) -> Self:
+    def add(self, name: str, definition: str, **meta) -> Self:
 
-        self.terms[name] = Term(name, **meta)
+        self.terms[name] = Term(name, definition, **meta)
         return self
     
     def exclude(self, *meta: str) -> 'Glossary':
