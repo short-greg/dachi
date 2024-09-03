@@ -156,7 +156,14 @@ class Term(Struct):
     """
 
     name: str
+    definition: str
     meta: typing.Dict[str, typing.Union[str, typing.List[str]]]
+
+    def __init__(self, name: str, definition: str, **meta: str):
+
+        super().__init__(
+            name=name, definition=definition, meta=meta
+        )
 
     def __getitem__(
         self, key: typing.Union[str, typing.Iterable[str]]
@@ -192,6 +199,16 @@ class Term(Struct):
             for k, v in zip(key, val):
                 self.meta[k] = v
         return val
+    
+    def render(self) -> str:
+        
+        base = f"{self.name}: {self.definition}"
+        if len(self.meta) == 0:
+            return base
+        
+        meta = '\n-'.join(f'{k}: {v}' for k, v in self.meta.items())
+        return f'{base}\n{meta}'
+
 
 
 class Glossary(Struct):
@@ -208,7 +225,6 @@ class Glossary(Struct):
         super().__init__(
             terms={term.name: term for term in terms}
         )
-
 
     def __getitem__(
         self, key: typing.Union[str, typing.Iterable[str]]
@@ -228,7 +244,7 @@ class Glossary(Struct):
             v for k, v in self.terms.items() if k in key
         ]
 
-    def add(
+    def join(
         self, val: typing.Union[Term, typing.List[Term]]
     ):
         """
@@ -246,3 +262,32 @@ class Glossary(Struct):
             for term_i in val:
                 self.terms[term_i.name] = val
         return val
+    
+    def add(self, name: str, **meta) -> Self:
+
+        self.terms[name] = Term(name, **meta)
+        return self
+    
+    def exclude(self, *meta: str) -> 'Glossary':
+
+        terms = []
+        for name, term in self.terms.items():
+            cur_meta = {
+                k: v for k, v in term.meta.items() if k not in meta
+            }
+            terms.append(Term(name, **cur_meta))
+        return Glossary(terms)
+
+    def include(self, *meta: str) -> 'Glossary':
+
+        terms = []
+        for name, term in self.terms.items():
+            cur_meta = {
+                k: v for k, v in term.meta.items() if k in meta
+            }
+            terms.append(Term(name, **cur_meta))
+        return Glossary(terms)
+
+    def render(self) -> str:
+
+        return '\n'.join(term.render() for term in self.terms)

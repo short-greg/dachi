@@ -27,7 +27,7 @@ from ._structs import (
     Description, Ref,
     Media, 
     Message, 
-    StructList
+    StructList, Glossary, MediaMessage, Term
 )
 
 from ._process import (
