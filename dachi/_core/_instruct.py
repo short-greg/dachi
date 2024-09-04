@@ -483,7 +483,7 @@ class SignatureFunc(Module, Instruct):
 
         return Instruction(
             text=filled_docstring,
-            out=self.reader, # NullRead(name=self.name)
+            out=self.reader, 
             # out=StructFormatter(name=self.name, out_cls=self.out_cls)
         )
 
@@ -586,14 +586,13 @@ class InstructFunc(Module, Instruct):
     """InstructMethod is a method where you define the instruction by
     doing operations on that instructions
     """
-
     def __init__(
         self, f: typing.Callable, engine: AIModel, 
         dialog_factory: typing.Optional[typing.Callable[[], Dialog]]=None,
         is_method: bool=False,
-        reader: Reader=None,
         instance=None,
         ai_kwargs=None
+        #reader: typing.Optional[Reader]=None,
     ):
         """Create an InstructMethod that decorates a function that returns 
         an instruction
@@ -611,9 +610,19 @@ class InstructFunc(Module, Instruct):
         self.instance = instance
         self._stored = None
         self.dialog_factory = dialog_factory or Dialog
+        self.return_annotation = inspect.signature(f).return_annotation
+
         # make it so it can automatically set this up
         # rather than using the "Null version"
-        self.reader = reader or NullRead(f.__name__)
+        # if reader is None:
+        #     if self.out_cls in primitives:
+        #         reader = PrimRead(name=self.name, out_cls=self.out_cls)
+        #     elif issubclass(self.out_cls, Struct):
+        #         reader = StructRead(name=self.name, out_cls=self.out_cls)
+        #     else:
+        #         reader = NullRead(name=self.name)
+        
+        # self.reader = reader or NullRead()
         self.ai_kwargs = ai_kwargs or {}
 
     def i(self, *args, **kwargs) -> Instruction:
@@ -622,7 +631,12 @@ class InstructFunc(Module, Instruct):
         Returns:
             Instruction: Get the instruction
         """
-        result = self.f(*args, **kwargs)
+
+        if self._is_method:
+            result = self.f(self.instance, *args, **kwargs)
+        else:
+            result = self.f(*args, **kwargs)
+        # result = self.f(*args, **kwargs)
         if isinstance(result, InstructCall):
             result = result()
         return result
@@ -639,10 +653,9 @@ class InstructFunc(Module, Instruct):
         engine = _engine or self.engine
         instruction = self.i(*args, **kwargs)
         result = engine(TextMessage('system', instruction), **self.ai_kwargs)
-        if self.out_cls is AIResponse:
+        if self.return_annotation is AIResponse:
             return result
         return result.val
-
         # instruction = self.i(*args, **kwargs)
         # # return engine(TextMessage('system', instruction)).val
         # return engine(TextMessage('system', instruction), **self.ai_kwargs).val
@@ -664,6 +677,7 @@ class InstructFunc(Module, Instruct):
 
         instruction = self.i(*args,  **kwargs)
         for cur, dx in engine.stream_forward(TextMessage('system', instruction), **self.ai_kwargs):
+
             if self.out_cls is AIResponse:
                 yield cur, dx
             else:
@@ -691,10 +705,9 @@ class InstructFunc(Module, Instruct):
             return self._stored
         self._stored = InstructFunc(
             self.f, 
-            self.engine, 
+            self.engine,
             self.dialog_factory, 
             self._is_method,
-            reader=self.reader,
             instance=instance,
             ai_kwargs=self.ai_kwargs
         )
@@ -710,7 +723,6 @@ class InstructFunc(Module, Instruct):
 
 def instructf(
     engine: AIModel=None, 
-    resp_proc: Reader=None,
     **ai_kwargs
 ):
     """Decorator for using a function signature
@@ -725,7 +737,7 @@ def instructf(
             return f(*args, **kwargs)
         
         # TODO: Use wrapper
-        return InstructFunc(f, engine, None, False, None, reader=resp_proc, ai_kwargs=ai_kwargs)
+        return InstructFunc(f, engine, None, False, ai_kwargs=ai_kwargs)
     return _
 
 
@@ -746,13 +758,16 @@ def instructmethod(
             return f(*args, **kwargs)
         
         # TODO: Use wrapper
-        return InstructFunc(f, engine, None, True, None, reader=reader, ai_kwargs=ai_kwargs)
+        return InstructFunc(
+            f, engine, None, True, 
+            ai_kwargs=ai_kwargs
+        )
     return _
 
 
 def signaturemethod(
     engine: AIModel=None, 
-    resp_p: Reader=None,
+    reader: Reader=None,
     **ai_kwargs
 ):
     """Decorator for using a function signature
@@ -765,7 +780,10 @@ def signaturemethod(
         @wraps(f)
         def wrapper(*args, **kwargs):
             return f(*args, **kwargs)
-        return SignatureFunc(f, engine, None, True, reader=resp_p, ai_kwargs=ai_kwargs)
+        return SignatureFunc(
+            f, engine, None, True, 
+            reader=reader, ai_kwargs=ai_kwargs
+        )
 
     return _
 
@@ -785,7 +803,8 @@ def signaturef(
         @wraps(f)
         def wrapper(*args, **kwargs):
             return f(*args, **kwargs)
-        return SignatureFunc(f, engine, None, False, reader=reader, ai_kwargs=ai_kwargs)
+        return SignatureFunc(
+            f, engine, None, False, reader=reader, ai_kwargs=ai_kwargs)
 
     return _
 

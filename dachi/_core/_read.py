@@ -164,7 +164,7 @@ class CSVRead(Reader):
     """
     indexed: bool = True
     delim: str = ','
-    cols: typing.Optional[typing.List[typing.Tuple[str, str, str]]] = None
+    cols: typing.Optional[typing.Union[Struct, typing.List[typing.Tuple[str, str, str]]]] = None
 
     def read_text(self, message: str):
 
@@ -207,7 +207,14 @@ class CSVRead(Reader):
         """
         # s_cls: typing.Type[Struct] = generic_class(S)
         # template = s_cls.template()
-        if self.cols is None:
+        if isinstance(self.cols, Struct):
+            temp = self.cols.template()
+            cols = []
+            for k, v in temp.items():
+                if 'description' not in v:
+                    raise RuntimeError(f'Cannot create CSV template for {self.cols}')
+                cols.append((k, v['description'], v['type']))
+        elif self.cols is None:
             cols = [['1', 'First Col', ''], ['2', 'Second Col', ''], ['...', '...', ''], ['N', 'Nth Col', '']]
         else:
             cols = self.cols

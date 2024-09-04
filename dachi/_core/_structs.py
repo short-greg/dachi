@@ -287,5 +287,5 @@ class Glossary(Struct):
         return Glossary(terms)
 
     def render(self) -> str:
-
-        return '\n'.join(term.render() for term in self.terms)
+        
+        return '\n'.join(term.render() for _, term in self.terms.items())

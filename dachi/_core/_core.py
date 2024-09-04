@@ -1,5 +1,6 @@
 # 1st party
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from typing import Self, get_type_hints
 import typing
 import inspect
@@ -62,6 +63,25 @@ def model_template(model_cls: typing.Type[pydantic.BaseModel]) -> str:
     return template
 
 
+# TODO: Decide whether to use
+# @dataclass
+# class TemplateField(Renderable):
+
+#     type_: str
+#     description: str
+#     default: typing.Any = None
+#     is_required: bool = True
+
+#     def render(self) -> str:
+
+#         return str({
+#             'type': self.type_,
+#             'description': self.description,
+#             'default': self.default,
+#             'is_required': self.is_required
+#         })
+
+
 class Struct(pydantic.BaseModel, Renderable):
     """Struct is used to contain data that is used
     """
@@ -92,7 +112,7 @@ class Struct(pydantic.BaseModel, Renderable):
                     "is_required": base_template[field_name]['is_required']
                 }
         return template
-    
+
     @classmethod
     def from_text(cls, data: str, escaped: bool=False) -> Self:
         """Load the struct from a string
@@ -317,7 +337,7 @@ class Reader(Struct, ABC):
     """
     """
 
-    name: str
+    name: str = ''
 
     def example(self, data: typing.Any) -> str:
         """Output an example of the data

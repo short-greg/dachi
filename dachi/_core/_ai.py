@@ -150,7 +150,7 @@ class TextMessage(Message):
 
     def reader(self) -> 'Reader':
         text = self['text']
-        if isinstance(text, Instruction):
+        if isinstance(text, Instruction) and text.out is not None:
             return text.out
         return NullRead(name='')
     
@@ -385,7 +385,8 @@ class Dialog(Struct):
         """
         for r in reversed(self.messages):
             if isinstance(r, Instruction):
-                return r.reader
+                if r.reader is not None:
+                    return r.reader
         return NullRead(name='')
     
     def exclude(self, *source: str) -> 'Dialog':
