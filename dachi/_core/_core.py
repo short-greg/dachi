@@ -82,6 +82,11 @@ class TemplateField(Renderable):
         }
     
     def render(self) -> str:
+        """
+
+        Returns:
+            str: 
+        """
         return str(self.to_dict())
 
 

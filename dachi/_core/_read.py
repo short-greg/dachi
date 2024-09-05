@@ -1,12 +1,13 @@
 # 1st party
 import typing
-import pydantic
-from pydantic_core import PydanticUndefined
 import json
+import inspect
 
 # 3rd party
 from io import StringIO
 import pandas as pd
+import pydantic
+from pydantic_core import PydanticUndefined
 
 # local
 from ._core import (
@@ -174,12 +175,14 @@ class CSVRead(Reader):
     """
     indexed: bool = True
     delim: str = ','
-    cols: typing.Optional[typing.Union[Struct, typing.List[typing.Tuple[str, str, str]]]] = None
+    cols: typing.Optional[typing.Union[typing.Type[Struct], typing.List[typing.Tuple[str, str, str]]]] = None
 
     def read_text(self, message: str):
 
         io = StringIO(message)
+        print('CSV Read1: ', message)
         df = pd.read_csv(io, sep=self.delim)
+        print('CSV Read: ', df)
         return df.to_dict(orient='records', index=True)
 
     def load_data(self, data) -> typing.Dict:
@@ -217,13 +220,16 @@ class CSVRead(Reader):
         """
         # s_cls: typing.Type[Struct] = generic_class(S)
         # template = s_cls.template()
-        if isinstance(self.cols, Struct):
+        if (
+            isinstance(self.cols, Struct) or 
+            (inspect.isclass(self.cols) and issubclass(self.cols, Struct))
+        ):
             temp = self.cols.template()
             cols = []
-            for k, v in temp.items():
-                if 'description' not in v:
-                    raise RuntimeError(f'Cannot create CSV template for {self.cols}')
-                cols.append((k, v['description'], v['type']))
+            for k, v in temp.items():                
+                # if 'description' not in v:
+                #     raise RuntimeError(f'Cannot create CSV template for {self.cols}')
+                cols.append((k, v.description, v.type_))
         elif self.cols is None:
             cols = [['1', 'First Col', ''], ['2', 'Second Col', ''], ['...', '...', ''], ['N', 'Nth Col', '']]
         else:
@@ -306,7 +312,7 @@ class DualRead(Reader):
 class KVRead(Reader):
 
     sep: str = '::'
-    key_descr: typing.Optional[typing.Dict] = None
+    key_descr: typing.Optional[typing.Union[typing.Type[Struct], typing.Dict]] = None
     
     def read_text(self, message: str) -> typing.Dict:
         lines = message.splitlines()
@@ -364,16 +370,18 @@ class KVRead(Reader):
             key_descr = {
                 '<Example>': '<The value for the key.>'
             }
-
+        elif inspect.isclass(self.key_descr) and issubclass(self.key_descr, Struct):
+            temp = self.key_descr.template()
+            key_descr = {}
+            for k, v in temp.items():
+                description =  v.description or 'value'
+                key_descr[k] = f'<{description}>'
         else:
             key_descr = self.key_descr
         return '\n'.join(
             f'{key}{self.sep}{value}' 
             for key, value in key_descr.items()
         )
-
-    # def stream_read(self, message: str) -> 'StructList[S]':
-    #     pass
 
 
 class MultiRead(Reader):
