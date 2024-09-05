@@ -388,6 +388,7 @@ class SignatureFunc(Module, Instruct):
 
         if reader is None:
             if self.out_cls in primitives:
+                print('Reading primitive!')
                 reader = PrimRead(name=self.name, out_cls=self.out_cls)
             elif issubclass(self.out_cls, Struct):
                 reader = StructRead(name=self.name, out_cls=self.out_cls)
@@ -423,7 +424,7 @@ class SignatureFunc(Module, Instruct):
             engine=engine or self.engine,
             is_method=self._is_method,
             dialog_factory=dialog_factory or self.dialog_factory,
-            reader=self.resp_p,
+            reader=self.reader,
             train=train,
             ai_kwargs=self.ai_kwargs
         )

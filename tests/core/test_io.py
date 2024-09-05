@@ -90,6 +90,7 @@ class TestMultiRead(object):
         )
 
         text = out.example(struct_list)
+        print('Text: ', text)
         structs = out.read(text)
         assert structs['data'][0].x == struct_list['data'][0].x
 

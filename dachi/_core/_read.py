@@ -1,6 +1,7 @@
 # 1st party
 import typing
 import pydantic
+from pydantic_core import PydanticUndefined
 import json
 
 # 3rd party
@@ -11,16 +12,15 @@ import pandas as pd
 from ._core import (
     Reader, 
     Struct,
-    unescape_curly_braces
-)
-
-from ._core import (
-    Struct, 
-    Reader, 
     StructLoadException,
     render,
-    escape_curly_braces
+    TemplateField
 )
+from ._utils import (
+    unescape_curly_braces,
+    escape_curly_braces, 
+)
+
 from ._structs import StructList
 
 
@@ -47,15 +47,25 @@ class StructRead(Reader, typing.Generic[S]):
 
     def read_text(self, message: str) -> S:
         message = unescape_curly_braces(message)
-        print(message)
+        print('Message: ', message)
         return json.loads(message)
         # return self._out_cls.from_text(message, True)
     
     def load_data(self, data) -> S:
         return self._out_cls.from_dict(data)
+    
+    def template_renderer(self, template: TemplateField) -> str:
 
-    def template(self) -> str:
-        return self._out_cls.template()
+        t = f'<{template.description}> - type: {template.type_}'
+        if template.default is not None or template.default == PydanticUndefined:
+            t = f'{t} {template.default}>'
+        else:
+            t = f'{t}>'
+        return t
+
+    def template(self, escape_braces: bool=False) -> str:
+        # return self._out_cls.template()
+        return render(self._out_cls.template(), escape_braces, self.template_renderer) 
     
     # def example(self, data: S) -> str:
     #     return data.to_text(True)

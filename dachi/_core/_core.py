@@ -15,9 +15,10 @@ import pydantic
 
 # local
 from ._utils import (
-    is_primitive, escape_curly_braces, 
-    unescape_curly_braces,
-    generic_class
+    is_primitive, 
+    generic_class,
+    escape_curly_braces,
+    unescape_curly_braces
 )
 
 
@@ -63,23 +64,25 @@ def model_template(model_cls: typing.Type[pydantic.BaseModel]) -> str:
     return template
 
 
-# TODO: Decide whether to use
-# @dataclass
-# class TemplateField(Renderable):
+@dataclass
+class TemplateField(Renderable):
 
-#     type_: str
-#     description: str
-#     default: typing.Any = None
-#     is_required: bool = True
+    type_: str
+    description: str
+    default: typing.Any = None
+    is_required: bool = True
 
-#     def render(self) -> str:
+    def to_dict(self) -> typing.Dict:
 
-#         return str({
-#             'type': self.type_,
-#             'description': self.description,
-#             'default': self.default,
-#             'is_required': self.is_required
-#         })
+        return {
+            'type': self.type_,
+            'description': self.description,
+            'default': self.default,
+            'is_required': self.is_required
+        }
+    
+    def render(self) -> str:
+        return str(self.to_dict())
 
 
 class Struct(pydantic.BaseModel, Renderable):
@@ -89,6 +92,29 @@ class Struct(pydantic.BaseModel, Renderable):
         validate_assignment=True,
         arbitrary_types_allowed=True
     )
+
+    # @classmethod
+    # def template(cls) -> typing.Dict:
+    #     """Get the template for the Struct
+
+    #     Returns:
+    #         typing.Dict: The template 
+    #     """
+    #     template = {}
+        
+    #     base_template = model_template(cls)
+    #     for field_name, field in cls.model_fields.items():
+    #         field_type = field.annotation
+    #         if isinstance(field_type, type) and issubclass(field_type, Struct):
+    #             template[field_name] = field_type.template()
+    #         else:
+    #             template[field_name] = {
+    #                 "type": field.annotation,
+    #                 "description": field.description,
+    #                 "default": field.default if field.default is not None else None,
+    #                 "is_required": base_template[field_name]['is_required']
+    #             }
+    #     return template
 
     @classmethod
     def template(cls) -> typing.Dict:
@@ -105,12 +131,21 @@ class Struct(pydantic.BaseModel, Renderable):
             if isinstance(field_type, type) and issubclass(field_type, Struct):
                 template[field_name] = field_type.template()
             else:
-                template[field_name] = {
-                    "type": field.annotation,
-                    "description": field.description,
-                    "default": field.default if field.default is not None else None,
-                    "is_required": base_template[field_name]['is_required']
-                }
+                # description = f'{field.description} - type: {field.annotation}'
+                # if field.default is not None and field.default != PydanticUndefined:
+                #     description = f'{description} - default: field.default'
+                # template[field_name] = f"<{description}>"
+                template[field_name] = TemplateField(
+                    type_=field.annotation,
+                    description=field.description,
+                    default=field.default if field.default is not None else None,
+                    is_required=base_template[field_name]['is_required']
+                )
+                #     "type": field.annotation,
+                #     "description": field.description,
+                #     "default": field.default if field.default is not None else None,
+                #     "is_required": base_template[field_name]['is_required']
+                # }
         return template
 
     @classmethod
@@ -290,7 +325,25 @@ class Storable(ABC):
         return cur
 
 
-def render(x: typing.Any) -> typing.Union[str, typing.List[str]]:
+# def render_general(value: typing.Any) -> str:
+#     """Escape curly braces for dictionary-like structures."""
+
+#     if isinstance(value, str):
+#         result = f'"{value}"'
+#         return result
+#     if isinstance(value, typing.Dict):
+#         items = ', '.join(f'"{k}": {render_general(v)}' for k, v in value.items())
+#         return f"{{{{{items}}}}}"
+#     if isinstance(value, typing.List):
+#         return '[{}]'.format(', '.join(render_general(v) for v in value))
+#     if isinstance(value, Renderable):
+#         return value.render()
+#     return str(value)
+
+
+def render(
+    x: typing.Any, escape_braces: bool=True, template_render: typing.Optional[typing.Callable[[TemplateField], str]]=None
+) -> typing.Union[str, typing.List[str]]:
     """Convert an input to text. Will use the text for an instruction,
     the render() method for a description and convert any other value to
     text with str()
@@ -301,18 +354,49 @@ def render(x: typing.Any) -> typing.Union[str, typing.List[str]]:
     Returns:
         str: The resulting text
     """
+    if isinstance(x, TemplateField):
+        if template_render is not None:
+            x = template_render(x)
+        else: 
+            x = x.render()
+
     if isinstance(x, Renderable):
         return x.render()
     
+    # elif isinstance(x, str):
+    #     result = f'"{x}"'
+    #     return result
     elif is_primitive(x):
         return str(x)
-    
-    elif isinstance(x, dict) or isinstance(x, list):
-        return escape_curly_braces(x)
-    
-    raise ValueError(
-        f'Cannot render value of type {type(x)}'
-    )
+    elif isinstance(x, typing.Dict):
+        items = {}
+        for k, v in x.items():
+            v = render(v, escape_braces)
+            if isinstance(v, str):
+                v = f'"{v}"'
+            items[k] = v    
+        items = ', '.join(
+            f'"{k}": {v}' 
+            for k, v in items.items()
+        )
+
+        if escape_braces:
+            return f"{{{{{items}}}}}"
+        else:
+            return f'{{{items}}}'
+    elif isinstance(x, typing.List):
+
+        items = []
+        for v in x:
+            v = render(v, escape_braces)
+            if isinstance(v, str):
+                v = f'"{v}"'
+            items.append(v)
+
+        return '[{}]'.format(', '.join(render(v) for v in items))
+    elif isinstance(x, Renderable):
+        return x.render()
+    return str(x)
 
 
 def render_multi(xs: typing.Iterable[typing.Any]) -> typing.List[str]:
