@@ -416,8 +416,9 @@ class MultiRead(Reader):
             str: The data written as text
         """
         result = ''
-        for d, out in zip(data['data'], self.outs):
-            result = result + '\n' + self.signal + self.conn.format(name=out.name)
+        for i, (d, out) in enumerate(zip(data['data'], self.outs)):
+            name = out.name or str(i) 
+            result = result + '\n' + self.signal + self.conn.format(name=name)
             result = f'{result}\n{render(d)}'
 
         return result
@@ -427,9 +428,10 @@ class MultiRead(Reader):
         """
 
         text = ""
-        for data_i, out in zip(data, self.outs):
+        for i, (data_i, out) in enumerate(zip(data, self.outs)):
+            name = out.name or str(i) 
             cur = data_i.render()
-            cur_conn = self.conn.format(out.name)
+            cur_conn = self.conn.format(name)
             text += f"""
             {self.signal}{cur_conn}
             {cur}
@@ -448,10 +450,11 @@ class MultiRead(Reader):
         structs = []
 
         d = message
-        for i, t in enumerate(self.outs):
+        for i, out in enumerate(self.outs):
+            name = out.name or str(i)
             from_loc = d.find('\u241E')
             to_loc = d[from_loc + 1:].find('\u241E')
-            cur = self.conn.format(name=t.name)
+            cur = self.conn.format(name=name)
             data_loc = from_loc + len(cur) + 1
 
             if to_loc != -1:
@@ -461,12 +464,12 @@ class MultiRead(Reader):
 
             data_str = d[data_loc:data_end_loc]
             try: 
-                structs.append(t.read_text(data_str))
+                structs.append(out.read_text(data_str))
             except StructLoadException as e:
                 return {'data': structs, 'i': i}
             d = d[data_end_loc:]
 
-        return {'data': structs, 'i': i}
+        return {'data': structs, 'i': i, 'n': len(self.outs)}
     
     def load_data(self, data: typing.Dict) -> typing.Dict:
         """Load the data for each of the components of the output
@@ -483,7 +486,7 @@ class MultiRead(Reader):
         for o, d_i in zip(self.outs, data['data']):
             structs.append(o.load_data(d_i))
 
-        return {'data': structs, 'i': data['i']}
+        return {'data': structs, 'i': data['i'], 'n': data['n']}
 
     def template(self) -> str:
         """Output a template for the output
@@ -495,14 +498,15 @@ class MultiRead(Reader):
             typing.Dict: The data with each element of the output
              loaded
         """
-        text = ""
-        for out in self.outs:
+        texts = []
+        for i, out in enumerate(self.outs):
+            print(out.name)
+            name = out.name or str(i)
             cur = out.template()
-            cur_conn = self.conn.format(out.name)
-            text += f"""
-            {self.signal}{cur_conn}
-            {cur}
-            """
+            print(out, type(out))
+            cur_conn = self.conn.format(name=name)
+            texts.append(f"{self.signal}{cur_conn}\n{cur}")
+        text = '\n'.join(texts)
         return text
 
     # def example(self, data: typing.List[Struct]) -> str:

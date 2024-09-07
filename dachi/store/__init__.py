@@ -1,7 +1,8 @@
 from ._core import (
     coalesce, Key, Comp, CompF,
-    Val, QF, Join, Query, Store,
+    Val, QF, Join, Store,
     Rep, Joinable, Vectorized,
+    JoinableStore, VectorizedStore,
     Like, Retrieve, retrieve,
 )
 from ._dataframe import (

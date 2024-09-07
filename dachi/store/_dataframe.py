@@ -2,15 +2,9 @@ from typing import Self
 import typing
 
 from ._core import QF
-from ._core import Store, Comp, Key, Join, CompF, Val, Joinable
+from ._core import JoinableStore, Comp, Key, Join, CompF, Val, Joinable
 import pandas as pd
 
-# 1) "Store" [dataframe, etc]
-#   the store needs to have 
-# 2) "Query"
-#   Query is specific to the store
-#   Can specify anything on it
-# 3) Retrieve
 
 def df_sort(df: pd.DataFrame, order_by: typing.List[str]):
     ascending = []
@@ -123,15 +117,23 @@ def df_select(df: pd.DataFrame, select: typing.Union[None, typing.Dict]=None) ->
     return df_new
 
 
-class DFStore(Store, Joinable):
+class DFStore(JoinableStore):
 
-    def __init__(self, df: pd.DataFrame):
+    def __init__(
+        self, df: pd.DataFrame, 
+        select: typing.Dict[str, typing.Union[str, QF]]=None,
+        where: Comp=None,
+        order_by: typing.List[str]=None,
+        limit: int=None
+    ):
         """
 
         Args:
             df (pd.DataFrame): 
         """
-        super().__init__()
+        super().__init__(
+            select, where, order_by, limit, 
+        )
         self._df = df
 
     @property
@@ -182,3 +184,10 @@ class DFStore(Store, Joinable):
         if select is not None:
             store = df_select(store, select)
         return store
+
+# 1) "Store" [dataframe, etc]
+#   the store needs to have 
+# 2) "Query"
+#   Query is specific to the store
+#   Can specify anything on it
+# 3) Retrieve
