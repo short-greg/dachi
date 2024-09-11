@@ -2,22 +2,16 @@
 import typing
 import typing
 from abc import ABC, abstractmethod
+from abc import ABC, abstractmethod
+from typing import get_type_hints
+from typing import Self
+import typing
 
 from ._core import (
     Struct, Renderable
 )
 from ._utils import generic_class
 from ._ai import Message
-
-# 3rd party
-import pydantic
-
-# 1st party
-from abc import ABC, abstractmethod
-from typing import get_type_hints
-from typing import Self
-import typing
-
 
 # 3rd party
 import pydantic

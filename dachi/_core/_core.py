@@ -415,11 +415,9 @@ def render_multi(xs: typing.Iterable[typing.Any]) -> typing.List[str]:
     Returns:
         str: The resulting text
     """
-
     return [
         render(x) for x in xs
     ]
-
 
 
 class Reader(Struct, ABC):

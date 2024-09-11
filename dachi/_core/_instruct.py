@@ -440,6 +440,11 @@ class SignatureFunc(Module, Instruct):
 
         param_values = list(self.parameters.values())
 
+        if isinstance(self.reader, str) and self._is_method:
+            reader = getattr(self.instance, self.reader)
+        else:
+            reader = self.reader
+
         if self._is_method:
             values = self.f(self.instance, *args, **kwargs)
         else:
@@ -454,7 +459,7 @@ class SignatureFunc(Module, Instruct):
         # values.update(dict(zip(args, [v for v in param_values])))
         
         if '{TEMPLATE}' in filled_docstring:
-            values['TEMPLATE'] = self.reader.template()
+            values['TEMPLATE'] = reader.template()
 
         for value, param in zip(args, param_values):
             values[param.name] = value
@@ -483,7 +488,7 @@ class SignatureFunc(Module, Instruct):
 
         return Instruction(
             text=filled_docstring,
-            out=self.reader, 
+            out=reader, 
             # out=StructFormatter(name=self.name, out_cls=self.out_cls)
         )
 
@@ -500,6 +505,9 @@ class SignatureFunc(Module, Instruct):
             typing.Any: The result of processing the instruction
         """
         engine = _engine or self.engine
+
+        if isinstance(engine, str) and self._is_method:
+            engine = getattr(self.instance, engine)
 
         instruction = self.i(*args,  **kwargs)
         result = engine(TextMessage('system', instruction), **self.ai_kwargs)
@@ -636,7 +644,7 @@ class InstructFunc(Module, Instruct):
             result = self.f(self.instance, *args, **kwargs)
         else:
             result = self.f(*args, **kwargs)
-        # result = self.f(*args, **kwargs)
+    
         if isinstance(result, InstructCall):
             result = result()
         return result
@@ -651,6 +659,8 @@ class InstructFunc(Module, Instruct):
             typing.Any: The resulting
         """
         engine = _engine or self.engine
+        if isinstance(engine, str) and self._is_method:
+            engine = getattr(self.instance, engine)
         instruction = self.i(*args, **kwargs)
         result = engine(TextMessage('system', instruction), **self.ai_kwargs)
         if self.return_annotation is AIResponse:
@@ -742,8 +752,7 @@ def instructf(
 
 
 def instructmethod(
-    engine: AIModel=None, 
-    reader: Reader=None,
+    engine: AIModel=None,
     **ai_kwargs
 ):
     """Decorator for using a function signature

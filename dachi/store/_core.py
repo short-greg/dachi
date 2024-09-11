@@ -170,6 +170,7 @@ class QF(ABC):
         pass
 
 
+# Join(query, left, right, comp)
 @dataclass
 class Join(object):
 
@@ -179,8 +180,6 @@ class Join(object):
     comp: Comp=None
     alias: typing.Dict[str, str]=None
     how: str='inner'
-
-# Join(query, left, right, comp)
 
 
 class Store(ABC):

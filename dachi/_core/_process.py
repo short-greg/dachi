@@ -23,6 +23,7 @@ from ._core import Struct, Module
 from ._ai import AIResponse, TextMessage
 from dachi._core._core import Param
 from ._core import UNDEFINED
+from ._core import Renderable, render
 
 
 @dataclass
@@ -78,17 +79,27 @@ class P(object):
         return self._n
 
 
-def parallel_loop(modules: typing.Union['ModuleList', Module], *args, **kwargs) -> typing.Iterator[
+def parallel_loop(modules: typing.Union['ModuleList', Module, None], *args, **kwargs) -> typing.Iterator[
     typing.Tuple[Module, typing.List, typing.Dict]
 ]:
-    if isinstance(modules, list):
+    """
+
+    Args:
+        modules (typing.Union[ModuleList, Module, None]): 
+
+    Returns:
+        typing.Iterator[ typing.Tuple[Module, typing.List, typing.Dict] ]: 
+
+    Yields:
+        Iterator[typing.Iterator[ typing.Tuple[Module, typing.List, typing.Dict] ]]: 
+    """
+    if isinstance(modules, typing.List):
         modules = ModuleList(modules)
 
     sz = None
     if isinstance(modules, ModuleList):
         sz = len(modules)
     for arg in itertools.chain(args, kwargs.values()):
-        print('ARG: ', arg)
         if isinstance(arg, P):
             if sz is None:
                 sz = arg.n
@@ -132,7 +143,7 @@ class MultiModule(ParallelModule):
         for module, cur_args, cur_kwargs in parallel_loop(self._modules, *args, **kwargs):
            res.append(module(*cur_args, **cur_kwargs))
         return res
-    
+
 
 class AsyncModule(ParallelModule):
     """A type of Parallel module that makes use of 
@@ -269,9 +280,13 @@ class Sequential(ModuleList):
         return len(self._modules)
 
 
-class Batched(object):
+class Batched(Renderable):
 
-    def __init__(self, *data: typing.Iterable, size: int=1, drop_last: bool=True, order: typing.Optional[typing.List]=None):
+    def __init__(
+        self, *data: typing.Iterable, 
+        size: int=1, drop_last: bool=True, 
+        order: typing.Optional[typing.List]=None
+    ):
 
         if len(data) == 0:
             raise ValueError('No data was passed in to batch')
@@ -280,14 +295,20 @@ class Batched(object):
             if sz is None:
                 sz = len(v)
             elif sz != len(v):
-                raise ValueError('The lengths of all of the elements to batch must be the same')
+                raise ValueError(
+                    'The lengths of all of the elements '
+                    'to batch must be the same'
+                )
         self._data = data
         self._size = size
         self._n_elements = sz
         self.drop_last = drop_last
         add_one = (self._n_elements % self._size) != 0
         self._n = (self._n_elements // self._size) + add_one
-        self._order = order if order is not None else np.arange(self._n_elements)
+        self._order = (
+            order if order is not None 
+            else np.arange(self._n_elements)
+        )
 
     def __len__(self) -> int:
         return self._n
@@ -325,28 +346,12 @@ class Batched(object):
                 yield cur[0]
             else:
                 yield tuple(cur)
-
-    # def map(self, f: typing.Callable, *args, **kwargs) -> typing.List:
-        
-    #     results = []
-    #     for data in self:
-    #         results.append(f(data, *args, **kwargs))
-    #     return results
     
-    # async def _async_map_helper(self, f, *args,  **kwargs) -> typing.List:
+    def render(self) -> str:
         
-    #     async with asyncio.TaskGroup() as tg:
-    #         tasks = []
-    #         for data in self:
-    #             tasks.append(tg.create_task(f, data, *args, **kwargs))
-        
-    #         return [task.result() for task in tasks]
-
-    # def async_map(self, f, *args,  **kwargs) -> typing.List:
-        
-    #     with asyncio.Runner() as run:
-    #         result = run.run(self._async_map_helper(f, *args, **kwargs))
-    #     return result
+        return '\n'.join(
+            f'{i}: {render(v)}' for i, v in enumerate(self)
+        )
 
 
 def reduce(mod: Module, *args, init: Module=None, **kwargs):
@@ -362,6 +367,56 @@ def reduce(mod: Module, *args, init: Module=None, **kwargs):
         else:
             results.append(mod(results[-1], *cur_args, **cur_kwargs))
     return results[-1]
+
+
+async def _async_map(f: Module, *args, **kwargs) -> typing.Tuple[typing.Any]:
+
+    tasks = []
+    async with asyncio.TaskGroup() as tg:
+        
+        for cur_f, a, kv in parallel_loop(f, *args, **kwargs):
+
+            tasks.append(tg.create_task(cur_f.async_forward(*a, **kv)))
+
+    return tuple(
+        t.result() for t in tasks
+    )
+
+
+def async_map(f: Module, *args, **kwargs) -> typing.Tuple[typing.Any]:
+    
+    return asyncio.run(_async_map(f, *args, **kwargs))
+
+
+async def _async_multi(*f) -> typing.Tuple[typing.Any]:
+    """Helper function to run asynchronous processes
+
+    Returns:
+        typing.Tuple[typing.Any]: 
+    """
+
+    tasks = []
+    async with asyncio.TaskGroup() as tg:
+
+        for f_i in f:
+            tasks.append(tg.create_task(f_i))
+
+    return tuple(
+        task.result() for task in tasks
+    )
+
+
+def async_multi(*f) -> typing.Tuple[typing.Any]:
+    """Run multiple asynchronous processes and return
+    the results
+
+    Args:
+       f (coroutine): The coroutines to run
+
+    Returns:
+        typing.Tuple: The output of the 
+    """
+    return asyncio.run(_async_multi(*f))
 
 
 @dataclass

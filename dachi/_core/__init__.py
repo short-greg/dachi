@@ -39,7 +39,11 @@ from ._process import (
     Sequential, 
     Batched,
     Streamer, 
-    AsyncModule
+    AsyncModule,
+    async_multi,
+    reduce,
+    P,
+    async_map
 )
 
 from ._read import (
