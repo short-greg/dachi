@@ -7,6 +7,7 @@ from enum import Enum
 import numpy as np
 from dataclasses import dataclass
 import pandas as pd
+import uuid
 
 
 # 1) Remove "Query"
@@ -185,18 +186,88 @@ class Join(object):
 class Store(ABC):
     """Store 
     """
+    
+    @abstractmethod
+    def store(self, **kwargs):
+        pass
+
+    @abstractmethod
+    def bulk_store(
+        self, **kwargs: typing.List[typing.Any]
+    ):
+        pass
+
+    @property
+    @abstractmethod
+    def query(self) -> 'Query':
+        pass
+
+    # store
+
+
+
+    # def select(self, **kwargs: typing.Union[str, QF]) -> Query:
+
+    #     for k, v in kwargs.items():
+    #         if isinstance(v, QF):
+    #             # TODO: Confirm it is a valid function
+    #             pass
+        
+    #     kwargs = {
+    #         **self.kwargs(),
+    #         'select': kwargs
+    #     }
+    #     return Query(self._store, **kwargs)
+
+    # def join(
+    #     self, query: 'Query', left: str, 
+    #     right: str, comp: Comp, 
+    #     alias: typing.Dict[str, str]=None, how: str='inner'
+    # ) -> Self:
+    #     kwargs = self.kwargs()
+    #     kwargs['joins'] = [
+    #         *self._joins, Join(query, left, right, comp, alias, how)]
+    #     return Query(
+    #         self, **kwargs
+    #     )
+
+
+class Query(ABC):
+
     def __init__(
         self, 
+        store: 'Store',
         select: typing.Dict[str, typing.Union[str, QF]]=None,
         where: Comp=None,
         order_by: typing.List[str]=None,
         limit: int=None
     ) -> None:
+        """
+
+        Args:
+            store (Store): 
+            select (typing.Dict[str, typing.Union[str, QF]], optional): . Defaults to None.
+            where (Comp, optional): . Defaults to None.
+            order_by (typing.List[str], optional): . Defaults to None.
+            limit (int, optional): . Defaults to None.
+        """
         super().__init__()
+        self._store = store
         self._limit = limit
         self._select = select
         self._where = where or None
         self._order_by = order_by or None
+
+    @abstractmethod
+    def retrieve(
+        self,
+        # select: typing.Dict[str, typing.Union[str, QF]]=None,
+        # joins: typing.List[Join]=None,
+        # where: Comp=None,
+        # order_by: typing.List[str]=None,
+        # limit: int=None, 
+    ) -> typing.Any:
+        pass
 
     def limit(self, n: int) -> Self:
         return self.spawn(
@@ -251,42 +322,6 @@ class Store(ABC):
             order_by=keys
         )
 
-    @abstractmethod
-    def retrieve(
-        self,
-        select: typing.Dict[str, typing.Union[str, QF]]=None,
-        joins: typing.List[Join]=None,
-        where: Comp=None,
-        order_by: typing.List[str]=None,
-        limit: int=None, 
-    ) -> typing.Any:
-        pass
-
-    # def select(self, **kwargs: typing.Union[str, QF]) -> Query:
-
-    #     for k, v in kwargs.items():
-    #         if isinstance(v, QF):
-    #             # TODO: Confirm it is a valid function
-    #             pass
-        
-    #     kwargs = {
-    #         **self.kwargs(),
-    #         'select': kwargs
-    #     }
-    #     return Query(self._store, **kwargs)
-
-    # def join(
-    #     self, query: 'Query', left: str, 
-    #     right: str, comp: Comp, 
-    #     alias: typing.Dict[str, str]=None, how: str='inner'
-    # ) -> Self:
-    #     kwargs = self.kwargs()
-    #     kwargs['joins'] = [
-    #         *self._joins, Join(query, left, right, comp, alias, how)]
-    #     return Query(
-    #         self, **kwargs
-    #     )
-
 
 class Rep(object):
 
@@ -310,11 +345,35 @@ class Vectorized(ABC):
         pass
 
 
+def get_uuid() -> str:
+    """Convenience function to get a uuid4 as a string
+
+    Returns:
+        str: the uuid
+    """
+    return str(uuid.uuid4())
+
+
 class VectorizedStore(Store, Vectorized):
     """Mixin to handle "Vector" Stores
     """
+
+    @property
+    @abstractmethod
+    def query(self) -> 'VectorizedQuery':
+        pass
+
+    @abstractmethod
+    def rep(self) -> Rep:
+        return self._store.rep(
+            # same as retrieve
+        )
+
+
+class VectorizedQuery(Query):
+
     def __init__(
-        self, select: typing.Dict[str, str | QF] = None, 
+        self, store: 'VectorizedStore', select: typing.Dict[str, str | QF] = None, 
         like: 'Like'=None, where: Comp = None, 
         order_by: typing.List[str] = None, limit: int = None
     ) -> None:
@@ -327,7 +386,7 @@ class VectorizedStore(Store, Vectorized):
             order_by (typing.List[str], optional): _description_. Defaults to None.
             limit (int, optional): _description_. Defaults to None.
         """
-        super().__init__(select, where, order_by, limit)
+        super().__init__(store, select, where, order_by, limit)
         self.like = like
 
     def like(
@@ -338,15 +397,10 @@ class VectorizedStore(Store, Vectorized):
         return self.spawn(
             like=Like(like, n)
         )
-
-    @abstractmethod
-    def rep(self) -> Rep:
-        return self._store.rep(
-            # same as retrieve
-        )
     
     def spawn(self, select: typing.Dict[str, QF | str] = UNCHANGED, like: 'Like'=UNCHANGED, where: Comp = UNCHANGED, order_by: typing.List[str] = UNCHANGED, limit: int = UNCHANGED, **kwargs):
         return super().spawn(
+            self._store,
             select, where, order_by, 
             limit, like=coalesce(like, self.like), 
             **kwargs
@@ -364,15 +418,27 @@ class Joinable(ABC):
         pass
 
 
-class JoinableStore(Store, Joinable):
+class JoinableStore(Store):
+    """Mixin to handle "Vector" Stores
+    """
+
+    @property
+    @abstractmethod
+    def query(self) -> 'JoinableQuery':
+        pass
+
+
+class JoinableQuery(Query, Joinable):
 
     def __init__(
-        self, select: typing.Dict[str, str | QF] = None, 
+        self, store: 'JoinableStore', select: typing.Dict[str, str | QF] = None, 
         joins: typing.List[Join]=None,
         where: Comp = None, order_by: typing.List[str] = None, 
         limit: int = None
     ) -> None:
-        super().__init__(select, where, order_by, limit)
+        super().__init__(
+            store, select, where, order_by, limit
+        )
         self.joins = joins
     
     def join(
@@ -380,8 +446,6 @@ class JoinableStore(Store, Joinable):
         right: str, comp: Comp, 
         alias: typing.Dict[str, str]=None, how: str='inner'
     ) -> Self:
-        pass
-        
         joins = [*self._joins, Join(store, left, right, comp, alias, how)]
         return self.spawn(
             self._store, joins=joins
@@ -390,6 +454,7 @@ class JoinableStore(Store, Joinable):
     def spawn(self, select: typing.Dict[str, QF | str] = UNCHANGED, joins: typing.List[Join] = UNCHANGED, where: Comp = UNCHANGED, order_by: typing.List[str] = UNCHANGED, limit: int = UNCHANGED, **kwargs):
         
         return super().spawn(
+            self._store,
             select,
             where,
             order_by,

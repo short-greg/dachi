@@ -4,6 +4,9 @@ from ._core import (
     Rep, Joinable, Vectorized,
     JoinableStore, VectorizedStore,
     Like, Retrieve, retrieve,
+    UNCHANGED, get_uuid,
+    VectorizedQuery, Query,
+    JoinableQuery
 )
 from ._dataframe import (
     df_sort, df_compare,

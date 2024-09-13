@@ -20,7 +20,6 @@ import pydantic
 
 # local
 from ._core import Struct, Module
-from ._ai import AIResponse, TextMessage
 from dachi._core._core import Param
 from ._core import UNDEFINED
 from ._core import Renderable, render

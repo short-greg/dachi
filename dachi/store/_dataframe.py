@@ -2,7 +2,10 @@ from typing import Self
 import typing
 
 from ._core import QF
-from ._core import JoinableStore, Comp, Key, Join, CompF, Val, Joinable
+from ._core import (
+    JoinableStore, JoinableQuery, Comp, 
+    Key, Join, CompF, Val, Joinable
+)
 import pandas as pd
 
 
@@ -121,10 +124,10 @@ class DFStore(JoinableStore):
 
     def __init__(
         self, df: pd.DataFrame, 
-        select: typing.Dict[str, typing.Union[str, QF]]=None,
-        where: Comp=None,
-        order_by: typing.List[str]=None,
-        limit: int=None
+        # select: typing.Dict[str, typing.Union[str, QF]]=None,
+        # where: Comp=None,
+        # order_by: typing.List[str]=None,
+        # limit: int=None
     ):
         """
 
@@ -132,7 +135,7 @@ class DFStore(JoinableStore):
             df (pd.DataFrame): 
         """
         super().__init__(
-            select, where, order_by, limit, 
+            # select, where, order_by, limit, 
         )
         self._df = df
 
@@ -160,34 +163,34 @@ class DFStore(JoinableStore):
             self._df = self._df.reindex(df.index.union(df.index))
             self._df.update(df)
 
+    @property
+    def query(self) -> 'DFQuery':
+
+        return DFQuery(self)
+
+
+class DFQuery(JoinableQuery):
+
     def retrieve(
         self,
-        select: typing.Dict[str, typing.Union[str, QF]]=None,
-        joins: typing.List[Join]=None,
-        where: Comp=None,
-        order_by: typing.List[str]=None,
-        limit: int=None, 
+        # select: typing.Dict[str, typing.Union[str, QF]]=None,
+        # joins: typing.List[Join]=None,
+        # order_by: typing.List[str]=None,
+        # limit: int=None, 
     ) -> pd.DataFrame:
-        store = self._df
+        store = self._store.df
 
         joins = joins or []
         for join in joins:
             store = df_join(store, join)
 
-        if where is not None:
-            store = store[df_filter(store, where)]
+        if self._where is not None:
+            store = store[df_filter(store, self._where)]
 
-        if order_by is not None:
-            store = df_sort(store, order_by)
-        if limit is not None:
-            store = store.iloc[:limit]
-        if select is not None:
-            store = df_select(store, select)
+        if self._order_by is not None:
+            store = df_sort(store, self._order_by)
+        if self._limit is not None:
+            store = store.iloc[:self._limit]
+        if self._select is not None:
+            store = df_select(store, self._select)
         return store
-
-# 1) "Store" [dataframe, etc]
-#   the store needs to have 
-# 2) "Query"
-#   Query is specific to the store
-#   Can specify anything on it
-# 3) Retrieve
