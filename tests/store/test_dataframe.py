@@ -21,7 +21,7 @@ class TestDFStore(object):
             columns=['w', 'x', 'y', 'z']
         )
         store = st_df.DFStore(df)
-        assert store.retrieve() is df
+        assert store.query.values() is df
 
     def test_retrieve_returns_sorted_dataframe(self):
 
@@ -30,7 +30,7 @@ class TestDFStore(object):
             columns=['w', 'x', 'y', 'z']
         )
         store = st_df.DFStore(df)
-        retrieved = store.retrieve(order_by='x')
+        retrieved = store.query.order_by('x').values()
         print(retrieved)
         print(df.sort_values('x'))
 
@@ -46,9 +46,7 @@ class TestDFStore(object):
         )
         store = st_df.DFStore(df)
         comp = st_core.Key('x') >= 0.5
-        retrieved = store.retrieve(
-            where=comp
-        )
+        retrieved = store.query.where(comp).values()
 
         assert (
             retrieved['x'] >= 0.5
@@ -61,9 +59,7 @@ class TestDFStore(object):
             columns=['w', 'x', 'y', 'z']
         )
         store = st_df.DFStore(df)
-        retrieved = store.retrieve(
-            select={'t': 'x', 'w': 'w'}
-        )
+        retrieved = store.query.select(t='x', w='w').values()
         assert 't' in retrieved.columns.values
         assert 'y' not in retrieved.columns.values
         assert 'x' not in retrieved.columns.values

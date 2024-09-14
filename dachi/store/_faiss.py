@@ -101,7 +101,7 @@ class FAISSQuery(VectorizedQuery, JoinableQuery):
         ids = np.flatten(ids)
         return df[df['id'].isin(ids)]
 
-    def retrieve(
+    def values(
         self, 
         # select: Dict[str, typing.Union[str, QF]] = None, 
         # joins: List[Join] = None, 

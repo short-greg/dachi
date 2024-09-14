@@ -129,7 +129,7 @@ class ChromaDBQuery(VectorizedQuery):
         super().__init__(
             select, like, where, order_by, limit)
 
-    def retrieve(
+    def values(
         self, 
         select: typing.Dict[str, typing.Union[str, QF]]=None,
         where: typing.Optional[Comp]=None,

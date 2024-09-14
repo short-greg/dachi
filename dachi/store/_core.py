@@ -259,7 +259,7 @@ class Query(ABC):
         self._order_by = order_by or None
 
     @abstractmethod
-    def retrieve(
+    def values(
         self,
         # select: typing.Dict[str, typing.Union[str, QF]]=None,
         # joins: typing.List[Join]=None,
@@ -297,7 +297,7 @@ class Query(ABC):
     ):
         return self.__class__(
             self._store, 
-            select=coalesce(select, select), 
+            select=coalesce(select, self._select), 
             where=coalesce(where, self._where),
             order_by=coalesce(order_by, self._order_by),
             limit=coalesce(limit, self._limit), 
@@ -400,7 +400,6 @@ class VectorizedQuery(Query):
     
     def spawn(self, select: typing.Dict[str, QF | str] = UNCHANGED, like: 'Like'=UNCHANGED, where: Comp = UNCHANGED, order_by: typing.List[str] = UNCHANGED, limit: int = UNCHANGED, **kwargs):
         return super().spawn(
-            self._store,
             select, where, order_by, 
             limit, like=coalesce(like, self.like), 
             **kwargs
@@ -454,7 +453,6 @@ class JoinableQuery(Query, Joinable):
     def spawn(self, select: typing.Dict[str, QF | str] = UNCHANGED, joins: typing.List[Join] = UNCHANGED, where: Comp = UNCHANGED, order_by: typing.List[str] = UNCHANGED, limit: int = UNCHANGED, **kwargs):
         
         return super().spawn(
-            self._store,
             select,
             where,
             order_by,

@@ -104,6 +104,7 @@ def df_join(df: pd.DataFrame, join: Join) -> Self:
     filter = df_filter(join.comp, df)
     return df[filter]
 
+
 def df_select(df: pd.DataFrame, select: typing.Union[None, typing.Dict]=None) -> pd.DataFrame:
     
     df_new = pd.DataFrame()
@@ -171,7 +172,7 @@ class DFStore(JoinableStore):
 
 class DFQuery(JoinableQuery):
 
-    def retrieve(
+    def values(
         self,
         # select: typing.Dict[str, typing.Union[str, QF]]=None,
         # joins: typing.List[Join]=None,
@@ -180,7 +181,7 @@ class DFQuery(JoinableQuery):
     ) -> pd.DataFrame:
         store = self._store.df
 
-        joins = joins or []
+        joins = self.joins or []
         for join in joins:
             store = df_join(store, join)
 
@@ -192,5 +193,6 @@ class DFQuery(JoinableQuery):
         if self._limit is not None:
             store = store.iloc[:self._limit]
         if self._select is not None:
+            print(self._select)
             store = df_select(store, self._select)
         return store
