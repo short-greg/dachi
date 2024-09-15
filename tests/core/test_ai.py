@@ -1,8 +1,5 @@
 from dachi._core import _core
 # from dachi._core import _instruct as core
-from dachi._core import Struct, str_formatter
-import pytest
-from pydantic import Field
 
 import asyncio
 from typing import Any, Iterator, Tuple
@@ -35,7 +32,7 @@ class DummyAIModel(_ai.AIModel):
             _ai.TextMessage('assistant', self.target), result, self.target
         )
     
-    def stream_forward(self, prompt: _ai.AIPrompt, **kwarg_override) -> Iterator[Tuple[p.AIResponse]]:
+    def stream_forward(self, prompt: _ai.AIPrompt, **kwarg_override) -> Iterator[Tuple[_ai.AIResponse]]:
         message = prompt.aslist()[0]
         result = self.convert(message)
 
