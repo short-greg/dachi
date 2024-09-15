@@ -5,7 +5,10 @@ from typing import Self
 import typing
 
 import asyncio
-from ._core import Instruct, Instruction, Reader, render, NullRead, Module
+from ._core import (
+    Instruct, Instruction, Reader, 
+    render, NullRead, Module
+)
 from dataclasses import dataclass
 from ._core import Struct
 

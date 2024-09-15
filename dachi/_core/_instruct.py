@@ -529,6 +529,9 @@ class SignatureFunc(Module, Instruct):
         """
         engine = _engine or self.engine
 
+        if isinstance(engine, str) and self._is_method:
+            engine = getattr(self.instance, engine)
+
         instruction = self.i(*args,  **kwargs)
         for cur, dx in engine.stream_forward(TextMessage('system', instruction), **self.ai_kwargs):
 
@@ -685,6 +688,9 @@ class InstructFunc(Module, Instruct):
         """
         engine = _engine or self.engine
 
+        if isinstance(engine, str) and self._is_method:
+            engine = getattr(self.instance, engine)
+
         instruction = self.i(*args,  **kwargs)
         for cur, dx in engine.stream_forward(TextMessage('system', instruction), **self.ai_kwargs):
 
@@ -699,6 +705,7 @@ class InstructFunc(Module, Instruct):
         Returns:
             typing.Any: 
         """
+        # TODO: Update this to use the Async for the Engine
         return self.forward(*args, **kwargs)
 
     def __get__(self, instance, owner):
