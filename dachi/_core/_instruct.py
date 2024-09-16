@@ -79,6 +79,55 @@ def formatted(x: X, format: str) -> 'Instruction':
     )
 
 
+def bold(x: X) -> 'Instruction':
+    """Format the X with a bold format. The format string will encapsulate it
+
+    Example:
+
+    bold('Name') => '**Name**'
+
+    Args:
+        x (X): The data to format
+
+    Returns:
+        Instruction: The resulting instruction
+    """
+
+    return formatted(x, '**')
+
+
+def italic(x: X) -> 'Instruction':
+    """Format the X with a bold format. The format string will encapsulate it
+
+    Example:
+
+    italic('Name') => '*Name*'
+
+    Args:
+        x (X): The data to format
+
+    Returns:
+        Instruction: The resulting instruction
+    """
+    return formatted(x, '*')
+
+
+def strike(x: X) -> 'Instruction':
+    """Format the X with a bold format. The format string will encapsulate it
+
+    Example:
+
+    italic('Name') => '*Name*'
+
+    Args:
+        x (X): The data to format
+
+    Returns:
+        Instruction: The resulting instruction
+    """
+    return formatted(x, '~~')
+
+
 def generate_numbered_list(n, numbering_type='arabic'):
     if numbering_type == 'arabic':
         return [str(i) for i in range(1, n + 1)]
@@ -246,6 +295,8 @@ class Operation(Module):
             name (str): The name of the operation
             instruction (X): The instruction for the operation
         """
+        # Make instruction tuna
+
         if not isinstance(instruction, Instruction):
             instruction = Instruction(
                 text=render(instruction)
@@ -694,7 +745,7 @@ class InstructFunc(Module, Instruct):
         instruction = self.i(*args,  **kwargs)
         for cur, dx in engine.stream_forward(TextMessage('system', instruction), **self.ai_kwargs):
 
-            if self.out_cls is AIResponse:
+            if self.return_annotation is AIResponse:
                 yield cur, dx
             else:
                 yield cur.val, dx.val
@@ -823,126 +874,3 @@ def signaturef(
             f, engine, None, False, reader=reader, ai_kwargs=ai_kwargs)
 
     return _
-
-
-# filled_docstring = filled_docstring.replace(
-#     f'{{{param.name}}}', 
-#     str(value) if not isinstance(value, Instruction) else render(value)
-# )
-# filled.add(param.name)
-# for k, value in kwargs.items():
-#     param = self.parameters[k]
-
-#     filled_docstring = filled_docstring.replace(
-#         f'{{{param.name}}}', # str(param.default)
-#         str(value) if not isinstance(value, Instruction) else render(value)
-#     )
-#     filled.add(param.name)
-
-# for param in param_values:
-#     if param.name in filled:
-#         continue
-#     if param.default == inspect.Parameter.empty:
-#         raise RuntimeError('Param has not been defined and no value')
-#     filled_docstring = filled_docstring.replace(
-#         f'{{{param.name}}}', str(param.default)
-#     )
-#     filled.add(param.name)
-
-# class FunctionDetails(object):
-#     """FunctionDetails are used to convert the user input into an instruction 
-#     """
-
-#     def __init__(
-#         self, func: typing.Callable, 
-#         is_method: bool=False, 
-#         train: bool=False
-#     ):
-#         """Create FunctionDetails based on the signature of that method or fucntion
-
-#         Args:
-#             func (typing.Callable): The function to get the details for
-#             is_method (bool, optional): Whether it is a method or not. Defaults to False.
-#             train (bool, optional): Whether to train or not train. Defaults to False.
-#         """
-#         # TODO: I don't want the return type to Out
-
-#         self.func = func
-#         self.name = func.__name__
-#         self._docstring = inspect.getdoc(func)
-#         self.signature = str(inspect.signature(func))
-#         self.parameters = inspect.signature(func).parameters
-#         self.return_annotation = inspect.signature(func).return_annotation
-
-#         self._docstring_p = Param(
-#             name=self.name,
-#             instruction=self._docstring,
-#             training=train
-#         )
-
-#         # origin, generic_type = self.get_generic_type()
-#         self.out_cls = (
-#             self.return_annotation if self.return_annotation is not None 
-#             else str 
-#         )# origin
-#         # self.parameters = parameters
-#         self._is_method = is_method
-
-#     def forward(self, *args, **kwargs) -> Instruction:
-#         """Get the instruction based on the input arguments
-
-#         Raises:
-#             RuntimeError: If a parameter is not defined or has no value
-
-#         Returns:
-#             Instruction: The resulting instruction
-#         """
-#         filled_docstring = self._docstring_p.render()
-
-#         filled = set()
-
-#         param_values = list(self.parameters.values())
-
-#         if self._is_method:            
-#             param_values = param_values[1:]
-
-#         for value, param in zip(args, param_values):
-            
-#             filled_docstring = filled_docstring.replace(
-#                 f'{{{param.name}}}', 
-#                 str(value) if not isinstance(value, Instruction) else render(value)
-#             )
-#             filled.add(param.name)
-#         for k, value in kwargs.items():
-#             param = self.parameters[k]
-            
-#             filled_docstring = filled_docstring.replace(
-#                 f'{{{param.name}}}', # str(param.default)
-#                 str(value) if not isinstance(value, Instruction) else render(value)
-#             )
-#             filled.add(param.name)
-
-#         for param in param_values:
-#             if param.name in filled:
-#                 continue
-#             if param.default == inspect.Parameter.empty:
-#                 raise RuntimeError('Param has not been defined and no value')
-#             filled_docstring = filled_docstring.replace(
-#                 f'{{{param.name}}}', str(param.default)
-#             )
-#             filled.add(param.name)
-
-#         return Instruction(
-#             text=filled_docstring,
-#             out=NullRead(name=self.name)
-#             # out=StructFormatter(name=self.name, out_cls=self.out_cls)
-#         )
-
-#     # def get_generic_type(self):
-#     #     if self.return_annotation is not inspect.Signature.empty:
-#     #         origin = getattr(self.return_annotation, '__origin__', None)
-#     #         return origin
-#     #         # if origin and issubclass(origin, Out):
-#     #         #     args = self.return_annotation.__args__ if hasattr(self.return_annotation, '__args__') else ()
-#     #         #     return origin, args[0] if args else None
-#     #     return None #, None

@@ -21,7 +21,8 @@ from ._instruct import (
     section, cat, join, Operation, op,
     signaturef, SignatureFunc, 
     signaturemethod,
-    InstructFunc, instructf, instructmethod
+    InstructFunc, instructf, instructmethod,
+    bold, strike, italic
 )
 from ._structs import (
     Description, Ref,
