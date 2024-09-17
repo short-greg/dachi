@@ -1,4 +1,4 @@
-from . import TaskStatus
+from ._tasks import TaskStatus, Task
 import threading
 import typing
 

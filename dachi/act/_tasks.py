@@ -3,6 +3,7 @@ from abc import abstractmethod
 import typing
 from dataclasses import dataclass
 import threading
+import time
 
 # 3rd party
 from .._core import Storable
@@ -474,24 +475,15 @@ class Not(Decorator):
         return status
 
 
-# class TakoTask(Action):
+def run_task(task: Task, interval: float=1./60) -> typing.Iterator[TaskStatus]:
 
-#     def __init__(self, tako: TakoBase):
+    status = None
+    while status == TaskStatus.RUNNING or status == TaskStatus.READY:
+        status = task.tick()
+        if interval is not None:
+            time.sleep(interval)
+        yield status
 
-#         super().__init__()
-#         self._tako = tako
-#         self._executed = False
-
-#     def exec(self):
-#         self._tako()
-
-#     def act(self) -> TaskStatus:
-        
-#         if self._status == self.READY:
-#             thread = threading.Thread(target=self.exec, args=[])
-#             thread.start()
-
-#         if self._executed:
-#             return self.SUCCESS
-        
-#         return self.RUNNING
+@dataclass
+class Shared:
+    data: typing.Any

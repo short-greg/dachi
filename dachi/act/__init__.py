@@ -7,6 +7,8 @@ from ._tasks import (
     # Check, 
     Not, 
     Unless, Until,
+    run_task,
+    Shared
     # CheckReady, Reset, CheckTrue,
     # CheckFalse,
     # Converse, PromptCompleter
@@ -22,4 +24,7 @@ from ._func_decorators import (
     ActionFunc, actionfunc, 
     # TaskFuncWrapper
 )
-from ..act._agent import Agent, AgentStatus
+
+from ..act._agent import (
+    Agent, AgentStatus,
+)

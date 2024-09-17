@@ -2,10 +2,13 @@
 import typing
 from typing import Self, Any
 import itertools
+import time
 
 from abc import ABC, abstractmethod
 from abc import ABC
 import asyncio
+import threading
+from enum import Enum
 
 from dataclasses import dataclass
 
@@ -474,18 +477,109 @@ class Streamer(object):
             yield cur
 
 
-# TODO: finish this
+class RunStatus(Enum):
 
-# class Parallel(object):
+    RUNNING = 'running'
+    READY = 'ready'
+    FINISHED = 'finished'
 
-#     def __init__(self, modules: typing.Union['ModuleList', Module], *args, **kwargs):
 
-#         if isinstance(modules, typing.List):
-#             modules = ModuleList(modules)
-#         self.modules = P(modules) if isinstance(modules, ModuleList) else I(modules)
-#         self.args = [arg if isinstance(arg, P) else I(arg) for arg in args]
-#         self.kwargs = {k: arg if isinstance(arg, P) else I(arg) for k, arg in kwargs.items()}
+class Runner(object):
 
+    def __init__(self, module, *args, **kwargs):
+        
+        self.module = module
+        self.status = RunStatus.READY
+        args = [module, *args]
+        self._result = None
+        self.t = threading.Thread(target=self._exec, args=args, kwargs=kwargs)
+        self.t.run()
+
+    @property
+    def result(self) -> typing.Any:
+        return self._result
+
+    def _exec(self, module: Module, *args, **kwargs):
+
+        self.status = RunStatus.RUNNING
+        result = module(*args, **kwargs)
+        self.status = RunStatus.FINISHED
+        self._result = result
+
+
+class StreamRunner(object):
+
+    def __init__(self, module,  *args, **kwargs):
+        
+        self.module = module
+        self.status = RunStatus.READY
+        args = [module, *args]
+        self._results = []
+        self._result_dx = []
+        self.t = threading.Thread(target=self._stream_exec, args=args, kwargs=kwargs)
+        self.t.run()
+
+    def _stream_exec(self, module: Module, *args, **kwargs):
+
+        self.status = RunStatus.RUNNING
+        for d, dx in module.stream_forward(*args, **kwargs):
+            self._result_dx.append(dx)
+            self._results.append(d)
+
+        self.status = RunStatus.FINISHED
+
+    @property
+    def result(self) -> typing.Any:
+        if len(self._results) > 0:
+            return self._results[-1]
+        return None
+
+    def exec_loop(self, sleep_time: float=1./60) -> typing.Iterator[typing.Tuple]:
+        i = 0
+        while True:
+
+            if len(self._results) > i:
+                yield self._results[i], self._result_dx[i]
+                i += 1
+            
+            elif self.status == RunStatus.FINISHED:
+                break
+            
+            time.sleep(sleep_time)
+
+    def __iter__(self)  -> typing.Iterator[typing.Tuple]:
+
+        for r, rx in zip(self._results, self._result_dx):
+            yield r, rx
+
+
+def run_thread(module: Module, *args, **kwargs) -> Runner:
+    """Convenience function to create a "Runner"
+
+    Args:
+        module (Module): The module to execute
+
+    Returns:
+        Runner: 
+    """
+    return Runner(
+        module, *args, **kwargs
+    )
+
+
+def stream_thread(module, *args, **kwargs) -> StreamRunner:
+    """_summary_
+
+    Args:
+        module (_type_): _description_
+
+    Returns:
+        StreamRunner: _description_
+    """
+
+    return StreamRunner(
+        module, *args, **kwargs
+    )
 
 
 # class Get(Module):

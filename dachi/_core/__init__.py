@@ -44,7 +44,12 @@ from ._process import (
     async_multi,
     reduce,
     P,
-    async_map
+    async_map,
+    run_thread,
+    stream_thread,
+    Runner,
+    RunStatus,
+    StreamRunner
 )
 
 from ._read import (

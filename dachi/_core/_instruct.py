@@ -14,8 +14,7 @@ from ._core import (
     render, render_multi,
     Instruction, render, Param, 
     Instruct, Reader, NullRead,
-    Struct, 
-    Instruction
+    Struct
 )
 from ._ai import (
     Dialog, TextMessage, AIModel, AIResponse
@@ -288,19 +287,20 @@ class Operation(Module):
     """An operation acts on an instruction to produce a new instruction
     """
 
-    def __init__(self, name: str, instruction: X):
+    def __init__(self, name: str, instruction: X, tunable: bool=False):
         """Create an operation specifying the name
 
         Args:
             name (str): The name of the operation
             instruction (X): The instruction for the operation
+            tunable: whether the instruction is tunable
         """
-        # Make instruction tuna
-
         if not isinstance(instruction, Instruction):
-            instruction = Instruction(
-                text=render(instruction)
-            )
+            instruction = Param(
+                name=self.name, training=tunable, 
+                instruction=Instruction(
+                    text=render(instruction)
+            ))
         self.name = name
         self.instruction = instruction
         
