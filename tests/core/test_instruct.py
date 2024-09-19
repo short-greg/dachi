@@ -193,7 +193,7 @@ class TestSignatureF:
 
     def test_inserts_into_docstring(self):
 
-        @core.signaturef()
+        @core.signaturefunc()
         def signaturep(x: str) -> SimpleStruct:
             """Output the value of x
             

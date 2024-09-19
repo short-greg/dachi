@@ -2,12 +2,13 @@
 from abc import abstractmethod
 import typing
 from dataclasses import dataclass
-import threading
 import time
+from typing import Self
 
 # 3rd party
 from .._core import Storable
 from ._status import TaskStatus
+from . import _functional
 
 
 @dataclass
@@ -37,6 +38,10 @@ class Task(Storable):
     @abstractmethod    
     def tick(self) -> TaskStatus:
         raise NotImplementedError
+    
+    @abstractmethod
+    def spawn(self) -> Self:
+        pass
 
     def __call__(self) -> TaskStatus:
         """
@@ -112,116 +117,159 @@ class Sango(Task):
             self._root.reset()
 
 
-class Serial(Task):
-    """Task composed of subtasks
-    """
-    def __init__(
-        self, tasks: typing.Iterable[Task], 
-        stop_on: TaskStatus=TaskStatus.FAILURE,
-        complete_with: TaskStatus=TaskStatus.SUCCESS
-    ):
-        super().__init__()
-        self._tasks = tasks if tasks is not None else []
-        self._cur = None
-        self._iter = None
-        self._stop_on = stop_on
-        self._ticked = set()
-        self._complete_with = complete_with
+# class Serial(Task):
+#     """Task composed of subtasks
+#     """
+#     def __init__(
+#         self, tasks: typing.Iterable[Task], 
+#         stop_on: TaskStatus=TaskStatus.FAILURE,
+#         complete_with: TaskStatus=TaskStatus.SUCCESS
+#     ):
+#         super().__init__()
+#         self._tasks = tasks if tasks is not None else []
+#         self._cur = None
+#         self._iter = None
+#         self._stop_on = stop_on
+#         self._ticked = set()
+#         self._complete_with = complete_with
 
-    @property
-    def n(self):
-        """The number of subtasks"""
-        return len(self._tasks)
+#     @property
+#     def n(self):
+#         """The number of subtasks"""
+#         return len(self._tasks)
     
-    @property
-    def tasks(self):
-        """The subtasks"""
-        return self._tasks
+#     @property
+#     def tasks(self):
+#         """The subtasks"""
+#         return self._tasks
 
-    def _advance(self):
+#     def _advance(self):
 
-        if self._iter is None:
+#         if self._iter is None:
             
-            if isinstance(self._tasks, typing.Iterable):
-                tasks = self._tasks
-            else:
-                tasks = self._tasks()
-            self._iter = iter(tasks)
+#             if isinstance(self._tasks, typing.Iterable):
+#                 tasks = self._tasks
+#             else:
+#                 tasks = self._tasks()
+#             self._iter = iter(tasks)
 
-        try:
-            self._cur = next(self._iter)
-            if not isinstance(self._cur, TaskStatus):
-                self._ticked.add(self._cur)
-            return False
-        except StopIteration:
-            self._cur = None
-            return True
+#         try:
+#             self._cur = next(self._iter)
+#             if not isinstance(self._cur, TaskStatus):
+#                 self._ticked.add(self._cur)
+#             return False
+#         except StopIteration:
+#             self._cur = None
+#             return True
     
-    def _initiate(self):
+#     def _initiate(self):
 
-        if self._iter is None:
+#         if self._iter is None:
 
-            if isinstance(self._tasks, typing.Iterable):
-                tasks = self._tasks
-            else:
-                tasks = self._tasks()
-            self._iter = iter(tasks)
-            return self._advance()
-        return False
+#             if isinstance(self._tasks, typing.Iterable):
+#                 tasks = self._tasks
+#             else:
+#                 tasks = self._tasks()
+#             self._iter = iter(tasks)
+#             return self._advance()
+#         return False
 
-    def subtick(self) -> TaskStatus:
-        """Tick each subtask. Implement when implementing a new Composite task"""
+#     def subtick(self) -> TaskStatus:
+#         """Tick each subtask. Implement when implementing a new Composite task"""
         
-        if self._status.is_done:
-            return self._status
+#         if self._status.is_done:
+#             return self._status
     
-        # Not started yet?
-        if self._initiate():
-            return TaskStatus.SUCCESS
+#         # Not started yet?
+#         if self._initiate():
+#             return TaskStatus.SUCCESS
     
-        if isinstance(self._cur, TaskStatus):
-            status = self._cur
-        else: 
-            status = self._cur.tick()
+#         if isinstance(self._cur, TaskStatus):
+#             status = self._cur
+#         else: 
+#             status = self._cur.tick()
 
-        # Still in progress?
-        if status == TaskStatus.RUNNING:
-            return TaskStatus.RUNNING
+#         # Still in progress?
+#         if status == TaskStatus.RUNNING:
+#             return TaskStatus.RUNNING
     
-        # Reached a stopping condition?
-        if (status == self._stop_on):
-            self._cur = None
-            return status
+#         # Reached a stopping condition?
+#         if (status == self._stop_on):
+#             self._cur = None
+#             return status
         
-        if self._advance():
-            return self._complete_with
+#         if self._advance():
+#             return self._complete_with
 
-        return TaskStatus.RUNNING
+#         return TaskStatus.RUNNING
 
-    def tick(self) -> TaskStatus:
-        self._status = self.subtick()
+#     def tick(self) -> TaskStatus:
+#         # self._status = self.subtick()
         
-        return self._status
     
-    def reset(self):
-        super().reset()
-        self._cur = None
-        self._iter = None
-        for task in self._ticked:
-            task.reset()
-        self._ticked = set()
+#         return self._status
+    
+#     def reset(self):
+#         super().reset()
+#         self._cur = None
+#         self._iter = None
+#         for task in self._ticked:
+#             task.reset()
+#         self._ticked = set()
+
+# class Selector(Serial):
+
+#     def __init__(self, tasks: typing.Iterable[Task]):
+#         super().__init__(tasks, TaskStatus.SUCCESS, TaskStatus.FAILURE)
 
 
-class Sequence(Serial):
+
+
+class Sequence(Task):
 
     def __init__(self, tasks: typing.Iterable[Task]):
         super().__init__(tasks, TaskStatus.FAILURE)
+        self._state = {}
+
+    def tick(self) -> TaskStatus:
+        # self._status = self.subtick()
+        
+        self._status = _functional.sequence(
+            self._tasks, self._state
+        )
+        return self._status
+
+    def reset(self):
+        super().reset()
+        for task in self._tasks:
+            task.reset()
+        self._state = {}
+        # self._cur = None
+        # self._iter = None
+        # for task in self._ticked:
+        #     task.reset()
+        # self._ticked = set()
 
 
-class Selector(Serial):
+class Selector(Task):
 
     def __init__(self, tasks: typing.Iterable[Task]):
-        super().__init__(tasks, TaskStatus.SUCCESS, TaskStatus.FAILURE)
+        super().__init__(tasks, TaskStatus.FAILURE)
+        self._state = {}
+
+    def tick(self) -> TaskStatus:
+        # self._status = self.subtick()
+        
+        self._status = _functional.selector(
+            self._tasks, self._state
+        )
+        return self._status
+
+    def reset(self):
+        super().reset()
+        for task in self._tasks:
+            task.reset()
+        self._state = {}
 
 
 class Parallel(Task):
@@ -243,6 +291,7 @@ class Parallel(Task):
         self.set_condition(fails_on, succeeds_on)
         self._success_priority = success_priority
         self._ticked = set()
+        self._state = {}
 
     @property
     def tasks(self) -> typing.Iterable[Task]:
@@ -268,48 +317,6 @@ class Parallel(Task):
         if self._fails_on <= 0 or self._succeeds_on <= 0:
             raise ValueError('')
 
-    def _accumulate(self, statuses: typing.List[TaskStatus]) -> TaskStatus:
-        
-        successes = 0
-        failures = 0
-        # waiting = 0
-        dones = 0
-        for status in statuses:
-            failures += status.failure
-            successes += status.success
-
-            dones += status.is_done
-            # waiting += status.waiting
-
-        has_failed = failures >= self._fails_on
-        has_succeeded = successes >= self._succeeds_on
-        if self._success_priority:
-            if has_succeeded:
-                return TaskStatus.SUCCESS
-            if has_failed:
-                return TaskStatus.FAILURE
-
-        if has_failed:
-            return TaskStatus.FAILURE
-        if has_succeeded:
-            return TaskStatus.SUCCESS
-        # if waiting == (len(statuses) - dones):
-        #     return TaskStatus.WAITING
-        # failures + successes - 1
-        return TaskStatus.RUNNING
-
-    def subtick(self) -> TaskStatus:
-
-        statuses = []
-        if isinstance(self.tasks, typing.Iterable):
-            tasks = self.tasks
-        else: tasks = self.tasks()
-        for task in tasks:
-            statuses.append(task.tick())
-            self._ticked.add(task)
-
-        return self._accumulate(statuses)
-
     @property
     def fails_on(self) -> int:
         return self._fails_on
@@ -330,7 +337,10 @@ class Parallel(Task):
     
     def tick(self) -> TaskStatus:
         
-        self._status = self.subtick()
+        self._status = _functional.parallel(
+            self._tasks, self._state, self.succeeds_on, self.fails_on,
+            self._success_priority
+        )
         return self._status
 
     def reset(self):
@@ -338,7 +348,8 @@ class Parallel(Task):
         super().reset()
         for task in self._ticked:
             task.reset()
-        self._ticked = set()
+        self._state = {}
+
 
 
 class Action(Task):
@@ -416,6 +427,9 @@ class Decorator(Task):
 class Until(Decorator):
     """Loop until a condition is met
     """
+    def __init__(self, task: Task, status: TaskStatus.SUCCESS) -> None:
+        super().__init__(task)
+        self.status = status
 
     def decorate(self, status: TaskStatus) -> TaskStatus:
         """Continue running unless the result is a success
@@ -426,17 +440,19 @@ class Until(Decorator):
         Returns:
             SangoStatus: The decorated status
         """
-        if status.success:
-            return TaskStatus.SUCCESS
-        if status.failure:
+        if status == self.status:
+            return status
+        if status.is_done:
             self._task.reset()
-            return TaskStatus.RUNNING
-        return status
+        return TaskStatus.RUNNING
 
 
 class Unless(Decorator):
     """Loop while a condition is met
     """
+    def __init__(self, task: Task, status: TaskStatus.FAILURE) -> None:
+        super().__init__(task)
+        self.status = status
 
     def decorate(self, status: TaskStatus) -> TaskStatus:
         """Continue running unless the result is a failure
@@ -447,12 +463,11 @@ class Unless(Decorator):
         Returns:
             SangoStatus: The decorated status
         """
-        if status.failure:
-            return TaskStatus.FAILURE
-        if status.success:
+        if status == self.status:
+            return status
+        if status.is_done:
             self._task.reset()
-            return TaskStatus.RUNNING
-        return status
+        return TaskStatus.RUNNING
 
 
 class Not(Decorator):
@@ -468,11 +483,7 @@ class Not(Decorator):
         Returns:
             SangoStatus: The decorated status
         """
-        if status.failure:
-            return TaskStatus.SUCCESS
-        if status.success:
-            return TaskStatus.FAILURE
-        return status
+        return status.invert()
 
 
 def run_task(task: Task, interval: float=1./60) -> typing.Iterator[TaskStatus]:
@@ -484,6 +495,171 @@ def run_task(task: Task, interval: float=1./60) -> typing.Iterator[TaskStatus]:
             time.sleep(interval)
         yield status
 
+
 @dataclass
 class Shared:
-    data: typing.Any
+
+    data: typing.Any = None
+    _default: typing.Any = None
+
+    def reset(self):
+        self.data = self._default
+
+
+# TODO: FINISH!
+
+# x, y, z, ..., STOP
+# current index
+
+class Buffer(object):
+
+    def add(self, data):
+
+        self._data = data
+
+    def next(self) -> typing.Any:
+        pass
+
+    def prev(self) -> typing.Any:
+        pass
+
+    def reset(self):
+        self._buffer = []
+
+
+class BufferIter(object):
+
+    def __init__(self, buffer: typing.List) -> None:
+        
+        self._buffer = buffer
+        self._i = 0
+
+    def next(self) -> typing.Any:
+        if self._i >= len():
+
+            pass
+
+    def prev(self) -> typing.Any:
+        pass
+
+    def reset(self):
+        self._buffer = []
+
+
+
+
+# class Parallel(Task):
+#     """A composite task for running multiple tasks in parallel
+#     """
+
+#     def __init__(self, tasks: typing.Iterable[Task]=None, fails_on: int=None, succeeds_on: int=None, success_priority: bool=True):
+#         """
+
+#         Args:
+#             tasks (typing.Iterable[Task]): 
+#             runner (, optional): . Defaults to None.
+#             fails_on (int, optional): . Defaults to None.
+#             succeeds_on (int, optional): . Defaults to None.
+#             success_priority (bool, optional): . Defaults to True.
+#         """
+#         super().__init__()
+#         self._tasks = tasks if tasks is not None else []
+#         self.set_condition(fails_on, succeeds_on)
+#         self._success_priority = success_priority
+#         self._ticked = set()
+
+#     @property
+#     def tasks(self) -> typing.Iterable[Task]:
+#         return self._tasks
+
+#     def set_condition(self, fails_on: int, succeeds_on: int):
+#         """Set the number of falures or successes it takes to end
+
+#         Args:
+#             fails_on (int): The number of failures it takes to fail
+#             succeeds_on (int): The number of successes it takes to succeed
+
+#         Raises:
+#             ValueError: If teh number of successes or failures is invalid
+#         """
+#         self._fails_on = fails_on if fails_on is not None else len(self._tasks)
+#         self._succeeds_on = succeeds_on if succeeds_on is not None else (len(self._tasks) + 1 - self._fails_on)
+
+#     def validate(self):
+        
+#         if (self._fails_on + self._succeeds_on - 1) > len(self._tasks):
+#             raise ValueError('')
+#         if self._fails_on <= 0 or self._succeeds_on <= 0:
+#             raise ValueError('')
+
+#     def _accumulate(self, statuses: typing.List[TaskStatus]) -> TaskStatus:
+        
+#         successes = 0
+#         failures = 0
+#         # waiting = 0
+#         dones = 0
+#         for status in statuses:
+#             failures += status.failure
+#             successes += status.success
+
+#             dones += status.is_done
+#             # waiting += status.waiting
+
+#         has_failed = failures >= self._fails_on
+#         has_succeeded = successes >= self._succeeds_on
+#         if self._success_priority:
+#             if has_succeeded:
+#                 return TaskStatus.SUCCESS
+#             if has_failed:
+#                 return TaskStatus.FAILURE
+
+#         if has_failed:
+#             return TaskStatus.FAILURE
+#         if has_succeeded:
+#             return TaskStatus.SUCCESS
+#         # if waiting == (len(statuses) - dones):
+#         #     return TaskStatus.WAITING
+#         # failures + successes - 1
+#         return TaskStatus.RUNNING
+
+#     def subtick(self) -> TaskStatus:
+
+#         statuses = []
+#         if isinstance(self.tasks, typing.Iterable):
+#             tasks = self.tasks
+#         else: tasks = self.tasks()
+#         for task in tasks:
+#             statuses.append(task.tick())
+#             self._ticked.add(task)
+
+#         return self._accumulate(statuses)
+
+#     @property
+#     def fails_on(self) -> int:
+#         return self._fails_on
+
+#     @fails_on.setter
+#     def fails_on(self, fails_on) -> int:
+#         self._fails_on = fails_on
+#         return self._fails_on
+
+#     @property
+#     def succeeds_on(self) -> int:
+#         return self._succeeds_on        
+    
+#     @succeeds_on.setter
+#     def succeeds_on(self, succeeds_on) -> int:
+#         self._succeeds_on = succeeds_on
+#         return self._succeeds_on
+    
+#     def tick(self) -> TaskStatus:
+        
+#         self._status = self.subtick()
+#         return self._status
+
+#     def reset(self):
+
+#         super().reset()
+#         for task in self._ticked:
+#             task.reset()
+#         self._ticked = set()

@@ -533,6 +533,10 @@ class StreamRunner(object):
         if len(self._results) > 0:
             return self._results[-1]
         return None
+    
+    def dx(self) -> typing.Iterator:
+        for x in self._result_dx:
+            yield x
 
     def exec_loop(self, sleep_time: float=1./60) -> typing.Iterator[typing.Tuple]:
         i = 0

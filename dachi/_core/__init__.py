@@ -19,9 +19,9 @@ from ._instruct import (
     bullet, formatted, generate_numbered_list,
     numbered, validate_out, fill, head,
     section, cat, join, Operation, op,
-    signaturef, SignatureFunc, 
+    signaturefunc, SignatureFunc, 
     signaturemethod,
-    InstructFunc, instructf, instructmethod,
+    InstructFunc, instructfunc, instructmethod,
     bold, strike, italic
 )
 from ._structs import (

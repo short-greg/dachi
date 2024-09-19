@@ -3,7 +3,7 @@ from . import _tasks as behavior
 import typing
 
 
-class sango(object):
+class build_sango(object):
 
     def __init__(self) -> None:
         """Create the behavior tree. This is the root node
@@ -21,7 +21,7 @@ class sango(object):
             raise
 
 
-class composite(object):
+class build_composite(object):
 
     def __init__(self, child: behavior.Task, parent: behavior.Task=None) -> None:
         """Create a composite node that uses a list to store all of the subtasks
@@ -66,18 +66,19 @@ class composite(object):
             raise
 
 
-class decorate(object):
+class build_decorate(object):
 
     def __init__(
         self, decorate: typing.Type[behavior.Decorator], 
-        decorated: typing.Union['decorate', composite], parent: behavior.Task=None
+        decorated: typing.Union['build_decorate', build_composite], parent: behavior.Task=None,
+        **kwargs
     ) -> None:
         """Decorate the task
 
         """
         super().__init__()
         assert decorated.parent is None
-        self._decorated = decorate(decorated.task)
+        self._decorated = decorate(decorated.task, **kwargs)
 
         self._parent = parent
         
@@ -115,7 +116,7 @@ class decorate(object):
             raise
 
 
-class sequence(composite):
+class build_sequence(build_composite):
 
     def __init__(self, parent: behavior.Task=None) -> None:
         """Create a Sequence task
@@ -126,7 +127,7 @@ class sequence(composite):
         super().__init__(behavior.Sequence([]), parent)
 
 
-class select(composite):
+class build_select(build_composite):
 
     def __init__(self, parent: behavior.Task=None) -> None:
         """Create a selector task
@@ -137,10 +138,10 @@ class select(composite):
         super().__init__(behavior.Selector([]), parent)
 
 
-fallback = select
+fallback = build_select
 
 
-class parallel(composite):
+class build_parallel(build_composite):
 
     def __init__(
         self, parent: behavior.Task=None, 
@@ -162,9 +163,9 @@ class parallel(composite):
         )
 
 
-class not_(decorate):
+class build_not(build_decorate):
 
-    def __init__(self, decorated: composite, parent: Task = None) -> None:
+    def __init__(self, decorated: build_composite, parent: Task = None) -> None:
         """Invert the output of a composite task
 
         Args:
@@ -174,25 +175,25 @@ class not_(decorate):
         super().__init__(behavior.Not, decorated, parent)
 
 
-class while_(decorate):
+class build_unless(build_decorate):
 
-    def __init__(self, decorated, parent: Task = None) -> None:
+    def __init__(self, decorated, parent: Task = None, status: behavior.TaskStatus=behavior.TaskStatus.FAILURE) -> None:
         """Loop over the subtask while it 'succeeds'
 
         Args:
             decorated: The task to loop over
             parent (Task, optional): The parent task. Defaults to None.
         """
-        super().__init__(behavior.Unless, decorated, parent)
+        super().__init__(behavior.Unless, decorated, parent, status=status)
 
 
-class until_(decorate):
+class build_until(build_decorate):
 
-    def __init__(self, decorated: composite, parent: Task = None) -> None:
+    def __init__(self, decorated: build_composite, parent: Task = None, status: behavior.TaskStatus=behavior.TaskStatus.SUCCESS) -> None:
         """Loop over the subtask until it 'succeeds'
 
         Args:
             decorated: The task to loop over
             parent (Task, optional): The parent task. Defaults to None.
         """
-        super().__init__(behavior.Until, decorated, parent)
+        super().__init__(behavior.Until, decorated, parent, status=status)

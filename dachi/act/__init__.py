@@ -17,12 +17,13 @@ from ._status import (
     TaskStatus
 )
 from ._build import (
-    composite, sequence,
-    parallel, sango, select
+    build_composite, build_sequence,
+    build_parallel, build_sango, build_select
 )
-from ._func_decorators import (
-    ActionFunc, actionfunc, 
-    # TaskFuncWrapper
+from ._func_decorators2 import (
+    ActionFunc, CondFunc, UntilFunc,
+    UnlessFunc, SelectorFunc, SequenceFunc, fallbackfunc,
+    unlessfunc, untilfunc, condfunc, selectorfunc
 )
 
 from ..act._agent import (

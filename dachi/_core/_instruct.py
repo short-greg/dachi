@@ -789,7 +789,7 @@ class InstructFunc(Module, Instruct):
                 yield res_i
 
 
-def instructf(
+def instructfunc(
     engine: AIModel=None, 
     **ai_kwargs
 ):
@@ -855,7 +855,7 @@ def signaturemethod(
     return _
 
 
-def signaturef(
+def signaturefunc(
     engine: AIModel=None, 
     reader: Reader=None,
     **ai_kwargs

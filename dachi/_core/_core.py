@@ -608,6 +608,7 @@ class Instruction(Struct, Instruct, typing.Generic[S]):
 
 
 class Param(Struct):
+    
     name: str
     instruction: Instruction
     training: bool=False
