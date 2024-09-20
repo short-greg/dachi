@@ -12,7 +12,6 @@ from pydantic_core import PydanticUndefined
 # local
 from ._core import (
     Reader, 
-    Struct,
     StructLoadException,
     render,
     TemplateField,
@@ -27,7 +26,7 @@ from ._utils import (
 from ._structs import StructList
 
 
-S = typing.TypeVar('S', bound=Struct)
+S = typing.TypeVar('S', bound=pydantic.BaseModel)
 
 
 class StructRead(Reader, typing.Generic[S]):
@@ -55,7 +54,7 @@ class StructRead(Reader, typing.Generic[S]):
         # return self._out_cls.from_text(message, True)
     
     def load_data(self, data) -> S:
-        return self._out_cls.from_dict(data)
+        return self._out_cls(**data)
     
     def template_renderer(self, template: TemplateField) -> str:
 
@@ -121,7 +120,7 @@ class StructListRead(Reader, typing.Generic[S]):
     def load_data(self, data) -> StructList[S]:
         structs = []
         for cur in data['structs']:
-            structs.append(self._out_cls.from_dict(cur))
+            structs.append(self._out_cls(**cur))
 
         return StructList(structs=structs)
 
@@ -181,7 +180,7 @@ class CSVRead(Reader):
     """
     indexed: bool = True
     delim: str = ','
-    cols: typing.Optional[typing.Union[typing.Type[Struct], typing.List[typing.Tuple[str, str, str]]]] = None
+    cols: typing.Optional[typing.Union[typing.Type[pydantic.BaseModel], typing.List[typing.Tuple[str, str, str]]]] = None
 
     def read_text(self, message: str):
 
@@ -225,8 +224,8 @@ class CSVRead(Reader):
         # s_cls: typing.Type[Struct] = generic_class(S)
         # template = s_cls.template()
         if (
-            isinstance(self.cols, Struct) or 
-            (inspect.isclass(self.cols) and issubclass(self.cols, Struct))
+            isinstance(self.cols, pydantic.BaseModel) or 
+            (inspect.isclass(self.cols) and issubclass(self.cols, pydantic.BaseModel))
         ):
             temp = struct_template(self.cols)
             cols = []
@@ -316,7 +315,7 @@ class DualRead(Reader):
 class KVRead(Reader):
 
     sep: str = '::'
-    key_descr: typing.Optional[typing.Union[typing.Type[Struct], typing.Dict]] = None
+    key_descr: typing.Optional[typing.Union[typing.Type[pydantic.BaseModel], typing.Dict]] = None
     
     def read_text(self, message: str) -> typing.Dict:
         lines = message.splitlines()
@@ -374,7 +373,10 @@ class KVRead(Reader):
             key_descr = {
                 '<Example>': '<The value for the key.>'
             }
-        elif inspect.isclass(self.key_descr) and issubclass(self.key_descr, Struct):
+        elif (
+            inspect.isclass(self.key_descr) and 
+            issubclass(self.key_descr, pydantic.BaseModel)
+        ):
             temp = struct_template(self.key_descr)
             key_descr = {}
             for k, v in temp.items():

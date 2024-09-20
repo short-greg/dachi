@@ -20,6 +20,7 @@ class TestStructListRead(object):
 
         assert out.read(model_to_text(struct_list))[0].x == '2'
 
+
     def test_out_reads_in_the_class(self):
 
         struct_list = _core.StructList(
@@ -274,7 +275,7 @@ class TestJSONRead(object):
             }
         )
         simple = SimpleStruct2(x='hi', y=1)
-        d = simple.to_text()
+        d = model_to_text(simple)
         simple2 = out.read(d)
         assert simple.x == simple2['x']
 

@@ -22,7 +22,7 @@ import numpy as np
 import pydantic
 
 # local
-from ._core import Struct, Module
+from ._core import Module
 from dachi._core._core import Param
 from ._core import UNDEFINED
 from ._core import Renderable, render
@@ -38,13 +38,13 @@ class Partial(object):
     complete: bool = False
 
 
-class StructModule(Struct, Module):
+# class StructModule(Struct, Module):
 
-    def forward(self, key: str, value: typing.Any) -> typing.Any:
+#     def forward(self, key: str, value: typing.Any) -> typing.Any:
         
-        copy = self.model_copy()
-        copy[key] = value
-        return copy
+#         copy = self.model_copy()
+#         copy[key] = value
+#         return copy
 
 
 class I(object):

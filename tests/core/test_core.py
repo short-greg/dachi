@@ -1,8 +1,7 @@
 from dachi._core import _core, render
 # from dachi._core import _instruct as core
-from dachi._core import Struct, str_formatter
 import pytest
-from pydantic import Field
+from pydantic import Field, BaseModel
 
 import asyncio
 from typing import Any, Iterator, Tuple
@@ -12,20 +11,34 @@ from dachi._core._core import Module
 import typing
 
 
-class SimpleStruct(_core.Struct):
+class SimpleStruct(BaseModel):
 
     x: str
 
 
-class SimpleStruct2(_core.Struct):
+class SimpleStruct2(BaseModel):
 
     x: str
     y: int
 
 
-class NestedStruct(_core.Struct):
+class NestedStruct(BaseModel):
 
     simple: SimpleStruct
+
+
+class WriteOut(Module):
+
+    def forward(self, x: str) -> str:
+
+        return x
+
+    def stream_forward(self, x: str) -> Iterator[Tuple[Any, Any]]:
+        
+        out = ''
+        for c in x:
+            out = out + c
+            yield out, c
 
 
 class TestStruct(object):
@@ -90,7 +103,7 @@ class TestIsNestedModel:
         assert _core.is_nested_model(SimpleStruct) is False
 
 
-class Evaluation(Struct):
+class Evaluation(BaseModel):
 
     text: str
     score: float
@@ -245,20 +258,6 @@ class NestedModule(Module):
 
     def forward(self) -> Any:
         return None
-
-
-class WriteOut(Module):
-
-    def forward(self, x: str) -> str:
-
-        return x
-
-    def stream_forward(self, x: str) -> Iterator[Tuple[Any, Any]]:
-        
-        out = ''
-        for c in x:
-            out = out + c
-            yield out, c
 
 
 class TestModule:

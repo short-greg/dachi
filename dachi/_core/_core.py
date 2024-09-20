@@ -101,24 +101,22 @@ def struct_template(model: pydantic.BaseModel) -> typing.Dict:
     base_template = model_template(model)
     for field_name, field in model.model_fields.items():
         field_type = field.annotation
-        if isinstance(field_type, type) and issubclass(field_type, Struct):
-            template[field_name] = field_type.template()
+        if isinstance(field_type, type) and issubclass(field_type, pydantic.BaseModel):
+
+            template[field_name] = struct_template(field_type)
         else:
-            # description = f'{field.description} - type: {field.annotation}'
-            # if field.default is not None and field.default != PydanticUndefined:
-            #     description = f'{description} - default: field.default'
-            # template[field_name] = f"<{description}>"
+
+            if 'is_required' in base_template[field_name]:
+                is_required = base_template[field_name]['is_required']
+            else:
+                is_required = True
             template[field_name] = TemplateField(
                 type_=field.annotation,
                 description=field.description,
                 default=field.default if field.default is not None else None,
-                is_required=base_template[field_name]['is_required']
+                is_required=is_required
             )
-            #     "type": field.annotation,
-            #     "description": field.description,
-            #     "default": field.default if field.default is not None else None,
-            #     "is_required": base_template[field_name]['is_required']
-            # }
+
     return template
 
 
@@ -129,7 +127,7 @@ def model_to_text(model: pydantic.BaseModel, escape: bool=False) -> str:
         str: The string
     """
     if escape:  
-        return escape_curly_braces(model.to_dict())
+        return escape_curly_braces(model.model_dump())
     return model.model_dump_json()
 
 
@@ -198,6 +196,8 @@ class Struct(pydantic.BaseModel, Renderable):
         base_template = model_template(cls)
         for field_name, field in cls.model_fields.items():
             field_type = field.annotation
+            print('----')
+            print(base_template[field_name])
             if isinstance(field_type, type) and issubclass(field_type, Struct):
                 template[field_name] = field_type.template()
             else:
@@ -252,6 +252,7 @@ class Struct(pydantic.BaseModel, Renderable):
         Returns:
             Self: The result
         """
+        
         return cls(**data)
     
     def to_dict(self) -> typing.Dict:
@@ -336,7 +337,7 @@ def is_nested_model(
     """
     for field in pydantic_model_cls.model_fields.values():
         
-        if isinstance(field.annotation, type) and issubclass(field.annotation, Struct):
+        if isinstance(field.annotation, type) and issubclass(field.annotation, pydantic.BaseModel):
             return True
     return False
 
@@ -810,3 +811,35 @@ class Module(ABC):
 
         for d, dx in self.stream_forward(*args, **kwargs):
             yield d, dx
+
+
+# def struct_template(model: pydantic.BaseModel) -> typing.Dict:
+#     """Get the template for the Struct
+
+#     Returns:
+#         typing.Dict: The template 
+#     """
+#     template = {}
+    
+#     base_template = model_template(model)
+#     for field_name, field in model.model_fields.items():
+#         field_type = field.annotation
+#         if isinstance(field_type, type) and issubclass(field_type, Struct):
+#             template[field_name] = field_type.template()
+#         else:
+#             # description = f'{field.description} - type: {field.annotation}'
+#             # if field.default is not None and field.default != PydanticUndefined:
+#             #     description = f'{description} - default: field.default'
+#             # template[field_name] = f"<{description}>"
+#             template[field_name] = TemplateField(
+#                 type_=field.annotation,
+#                 description=field.description,
+#                 default=field.default if field.default is not None else None,
+#                 #is_required=base_template[field_name]['is_required']
+#             )
+#             #     "type": field.annotation,
+#             #     "description": field.description,
+#             #     "default": field.default if field.default is not None else None,
+#             #     "is_required": base_template[field_name]['is_required']
+#             # }
+#     return template

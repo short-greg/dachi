@@ -10,11 +10,9 @@ import roman
 
 # local
 from ._core import (
-    Struct,
     render, render_multi,
     Instruction, render, Param, 
     Instruct, Reader, NullRead,
-    Struct
 )
 from ._ai import (
     Dialog, TextMessage, AIModel, AIResponse
@@ -29,7 +27,7 @@ from ._process import Module
 from ._structs import Description
 
 
-S = typing.TypeVar('S', bound=Struct)
+S = typing.TypeVar('S', bound=pydantic.BaseModel)
 X = typing.Union[str, Description, Instruction]
 
 
@@ -443,7 +441,7 @@ class SignatureFunc(Module, Instruct):
         if reader is None:
             if self.out_cls in primitives:
                 reader = PrimRead(name=self.name, out_cls=self.out_cls)
-            elif issubclass(self.out_cls, Struct):
+            elif issubclass(self.out_cls, pydantic.BaseModel):
                 reader = StructRead(name=self.name, out_cls=self.out_cls)
             else:
                 reader = NullRead(name=self.name)

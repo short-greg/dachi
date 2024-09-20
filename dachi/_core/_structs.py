@@ -8,7 +8,7 @@ from typing import Self
 import typing
 
 from ._core import (
-    Struct, Renderable
+    Renderable
 )
 from ._utils import generic_class
 from ._ai import Message
@@ -22,7 +22,7 @@ from ._utils import (
 )
 
 
-S = typing.TypeVar('S', bound=Struct)
+S = typing.TypeVar('S', bound=pydantic.BaseModel)
 
 
 class Media:
@@ -32,7 +32,7 @@ class Media:
 
 
 
-class StructList(Struct, typing.Generic[S]):
+class StructList(pydantic.BaseModel, typing.Generic[S]):
     """
     """
 
@@ -76,7 +76,7 @@ class StructList(Struct, typing.Generic[S]):
             StructList[S]: The list of structs
         """
         structs = []
-        struct_cls: typing.Type[Struct] = generic_class(S)
+        struct_cls: typing.Type[pydantic.BaseModel] = generic_class(S)
         for record in records:
             structs.append(struct_cls.load(record))
         return StructList[S](
@@ -84,7 +84,7 @@ class StructList(Struct, typing.Generic[S]):
         )
 
 
-class Description(Struct, Renderable, ABC):
+class Description(pydantic.BaseModel, Renderable, ABC):
     """Provide context in the prompt template
     """
     name: str = pydantic.Field(description='The name of the description.')
@@ -94,7 +94,7 @@ class Description(Struct, Renderable, ABC):
         pass
 
 
-class Ref(Struct, Renderable):
+class Ref(pydantic.BaseModel, Renderable):
     """Reference to another description.
     Useful when one only wants to include the 
     name of a description in part of the prompt
@@ -144,7 +144,7 @@ class MediaMessage(Message):
         return f'{self.source}: Media [{self.media}]'
 
 
-class Term(Struct, Renderable):
+class Term(pydantic.BaseModel, Renderable):
     """Use to define a term used in the AI system
     for repeated usage
     """
@@ -204,7 +204,7 @@ class Term(Struct, Renderable):
         return f'{base}\n{meta}'
 
 
-class Glossary(Struct, Renderable):
+class Glossary(pydantic.BaseModel, Renderable):
 
     terms: typing.Dict[str, Term]
 
