@@ -94,7 +94,7 @@ class Description(Struct, Renderable, ABC):
         pass
 
 
-class Ref(Struct):
+class Ref(Struct, Renderable):
     """Reference to another description.
     Useful when one only wants to include the 
     name of a description in part of the prompt
@@ -144,7 +144,7 @@ class MediaMessage(Message):
         return f'{self.source}: Media [{self.media}]'
 
 
-class Term(Struct):
+class Term(Struct, Renderable):
     """Use to define a term used in the AI system
     for repeated usage
     """
@@ -204,7 +204,7 @@ class Term(Struct):
         return f'{base}\n{meta}'
 
 
-class Glossary(Struct):
+class Glossary(Struct, Renderable):
 
     terms: typing.Dict[str, Term]
 

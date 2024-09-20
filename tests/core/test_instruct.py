@@ -167,12 +167,15 @@ class TestJoin(object):
 
 class TestOperation(object):
 
-    def test_operation_alters_teh_text(self):
+    def test_operation_alters_the_text(self):
 
         operation = core.Operation(
             'Translate', 'Translate the input {}'
         )
-        assert operation.instruction.text == 'Translate the input {}'
+        print('Instruction')
+        print(operation.instruction)
+        print('---')
+        assert operation.instruction.render() == 'Translate the input {}'
 
     def test_operation_renders_the_text(self):
 
@@ -280,24 +283,24 @@ class TestSignatureF:
         assert d == 'Great!'
         assert dx == '!'
 
-    # def test_inserts_into_docstring(self):
+#     # def test_inserts_into_docstring(self):
 
-    #     @core.signaturef()
-    #     def signaturep(x: str) -> SimpleStruct:
-    #         """Output the value of x
+#     #     @core.signaturef()
+#     #     def signaturep(x: str) -> SimpleStruct:
+#     #         """Output the value of x
             
-    #         x: {x}
+#     #         x: {x}
 
-    #         Args:
-    #             x (str): The input
+#     #         Args:
+#     #             x (str): The input
 
-    #         Returns:
-    #             SimpleStruct: The value of x
-    #         """
-    #         pass
+#     #         Returns:
+#     #             SimpleStruct: The value of x
+#     #         """
+#     #         pass
 
-    #     result = signaturep.i(2)
+#     #     result = signaturep.i(2)
 
-    #     print(result.text)
+#     #     print(result.text)
 
-    #     assert 'x: 2' in result.text
+#     #     assert 'x: 2' in result.text

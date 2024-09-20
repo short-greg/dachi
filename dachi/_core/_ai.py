@@ -10,7 +10,7 @@ from ._core import (
     render, NullRead, Module
 )
 from dataclasses import dataclass
-from ._core import Struct
+from ._core import Struct, Renderable
 
 # 3rd party
 import pydantic
@@ -92,7 +92,7 @@ class AIPrompt(Struct, ABC):
         return self.forward(prompt)
 
 
-class Message(Struct):
+class Message(Struct, Renderable):
 
     source: str
     data: typing.Dict[str, typing.Any]

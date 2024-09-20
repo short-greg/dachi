@@ -90,6 +90,71 @@ class TemplateField(Renderable):
         return str(self.to_dict())
 
 
+def struct_template(model: pydantic.BaseModel) -> typing.Dict:
+    """Get the template for the Struct
+
+    Returns:
+        typing.Dict: The template 
+    """
+    template = {}
+    
+    base_template = model_template(model)
+    for field_name, field in model.model_fields.items():
+        field_type = field.annotation
+        if isinstance(field_type, type) and issubclass(field_type, Struct):
+            template[field_name] = field_type.template()
+        else:
+            # description = f'{field.description} - type: {field.annotation}'
+            # if field.default is not None and field.default != PydanticUndefined:
+            #     description = f'{description} - default: field.default'
+            # template[field_name] = f"<{description}>"
+            template[field_name] = TemplateField(
+                type_=field.annotation,
+                description=field.description,
+                default=field.default if field.default is not None else None,
+                is_required=base_template[field_name]['is_required']
+            )
+            #     "type": field.annotation,
+            #     "description": field.description,
+            #     "default": field.default if field.default is not None else None,
+            #     "is_required": base_template[field_name]['is_required']
+            # }
+    return template
+
+
+def model_to_text(model: pydantic.BaseModel, escape: bool=False) -> str:
+    """Dump the struct to a string
+
+    Returns:
+        str: The string
+    """
+    if escape:  
+        return escape_curly_braces(model.to_dict())
+    return model.model_dump_json()
+
+
+def model_from_text(model_cls: typing.Type[pydantic.BaseModel], data: str, escaped: bool=False) -> Self:
+    """Load the struct from a string
+
+    Args:
+        data (str): The data for the struct
+
+    Returns:
+        Self: The loaded struct
+    """
+    if escaped:
+        data = unescape_curly_braces(data)
+    return model_cls(**json.loads(data))
+
+
+class Templatable:
+
+    @abstractmethod
+    def template(self) -> str:
+        pass
+
+
+
 class Struct(pydantic.BaseModel, Renderable):
     """Struct is used to contain data that is used
     """
@@ -203,7 +268,7 @@ class Struct(pydantic.BaseModel, Renderable):
         Returns:
             str: The text version of the struct
         """
-        return self.to_text(True)
+        return model_to_text(self, True)
     
     def forward(self, key, value) -> Self:
 
@@ -347,7 +412,8 @@ class Storable(ABC):
 
 
 def render(
-    x: typing.Any, escape_braces: bool=True, template_render: typing.Optional[typing.Callable[[TemplateField], str]]=None
+    x: typing.Any, escape_braces: bool=True, 
+    template_render: typing.Optional[typing.Callable[[TemplateField], str]]=None
 ) -> typing.Union[str, typing.List[str]]:
     """Convert an input to text. Will use the text for an instruction,
     the render() method for a description and convert any other value to
@@ -367,10 +433,9 @@ def render(
 
     if isinstance(x, Renderable):
         return x.render()
-    
-    # elif isinstance(x, str):
-    #     result = f'"{x}"'
-    #     return result
+
+    elif isinstance(x, pydantic.BaseModel):
+        return model_to_text(x, escape_curly_braces)
     elif is_primitive(x):
         return str(x)
     elif isinstance(x, typing.Dict):
@@ -562,7 +627,7 @@ class Instruct(ABC):
         pass
 
 
-class Instruction(Struct, Instruct, typing.Generic[S]):
+class Instruction(Struct, Instruct, typing.Generic[S], Renderable):
     """Specific instruction for the model to use
     """
     text: str
@@ -607,7 +672,7 @@ class Instruction(Struct, Instruct, typing.Generic[S]):
         return self.out.read(data)
 
 
-class Param(Struct):
+class Param(Struct, Renderable):
     
     name: str
     instruction: Instruction
@@ -621,7 +686,7 @@ class Param(Struct):
         if isinstance(v, Renderable):
             return Instruction(text=v.render())
         if is_primitive(v):
-            return Instruction(text=str(v))
+            return Instruction(text=render(v))
         return v
 
     def update(self, text: str):

@@ -1,4 +1,4 @@
-from dachi._core import _core
+from dachi._core import _core, render
 # from dachi._core import _instruct as core
 from dachi._core import Struct, str_formatter
 import pytest
@@ -7,7 +7,7 @@ from pydantic import Field
 import asyncio
 from typing import Any, Iterator, Tuple
 import pytest
-from dachi._core import _process as p
+from dachi._core import _process as p, struct_template, model_to_text
 from dachi._core._core import Module
 import typing
 
@@ -38,7 +38,7 @@ class TestStruct(object):
     def test_template_gives_correct_template(self):
 
         struct = SimpleStruct(x="2")
-        template = struct.template()
+        template = struct_template(struct)
         print(template)
         assert template['x'].is_required is True
         assert template['x'].type_ == type('text')
@@ -46,36 +46,36 @@ class TestStruct(object):
     def test_template_gives_correct_template_with_nested(self):
 
         struct = NestedStruct(simple=SimpleStruct(x="2"))
-        template = struct.template()
+        template = struct_template(struct)
         assert template['simple']['x'].is_required is True
         assert template['simple']['x'].type_ == type('text')
 
     def test_to_text_converts_to_text(self):
         struct = SimpleStruct(x="2")
-        text = struct.to_text()
+        text = model_to_text(struct)
         assert "2" in text
 
     def test_to_text_doubles_the_braces(self):
         struct = SimpleStruct(x="2")
-        text = struct.to_text(True)
+        text = model_to_text(struct, True)
         assert "{{" in text
         assert "}}" in text
 
     def test_to_text_works_for_nested(self):
         struct = NestedStruct(simple=SimpleStruct(x="2"))
-        text = struct.to_text(True)
+        text = model_to_text(struct, True)
         assert text.count('{{') == 2
         assert text.count("}}") == 2
 
     def test_render_works_for_nested(self):
         struct = NestedStruct(simple=SimpleStruct(x="2"))
-        text = struct.render()
+        text = render(struct)
         assert text.count('{{') == 2
         assert text.count("}}") == 2
 
     def test_to_dict_converts_to_a_dict(self):
         struct = SimpleStruct(x="2")
-        d = struct.to_dict()
+        d = struct.model_dump()
         assert d['x'] == "2"
 
 

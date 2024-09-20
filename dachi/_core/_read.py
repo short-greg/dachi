@@ -15,7 +15,9 @@ from ._core import (
     Struct,
     StructLoadException,
     render,
-    TemplateField
+    TemplateField,
+    struct_template,
+    model_to_text
 )
 from ._utils import (
     unescape_curly_braces,
@@ -38,13 +40,13 @@ class StructRead(Reader, typing.Generic[S]):
         self._out_cls = out_cls
 
     def dump_data(self, data: S) -> typing.Any:
-        return data.to_dict()
+        return data.model_dump()
 
     def write_text(self, data: typing.Any) -> str:
         return str(data)
 
     def to_text(self, data: S) -> str:
-        return data.to_text(True)
+        return model_to_text(data, True)
 
     def read_text(self, message: str) -> S:
         message = unescape_curly_braces(message)
@@ -66,7 +68,7 @@ class StructRead(Reader, typing.Generic[S]):
 
     def template(self, escape_braces: bool=False) -> str:
         # return self._out_cls.template()
-        return render(self._out_cls.template(), escape_braces, self.template_renderer) 
+        return render(struct_template(self._out_cls), escape_braces, self.template_renderer) 
     
     # def example(self, data: S) -> str:
     #     return data.to_text(True)
@@ -94,7 +96,11 @@ class StructListRead(Reader, typing.Generic[S]):
     def dump_data(self, data: StructList[S]) -> typing.Any:
         structs = []
         for cur in data.structs:
-            structs.append(self._out_cls.to_dict(cur))
+            # 
+            # structs.append(self._out_cls.to_dict(cur))
+            structs.append(
+                cur.model_dump()
+            )
 
         return structs
 
@@ -129,7 +135,7 @@ class StructListRead(Reader, typing.Generic[S]):
         Returns:
             str: the data converted to a string
         """
-        return data.to_text()
+        return model_to_text(data)
 
     def template(self) -> str:
         """Output a template for the struct list
@@ -140,7 +146,7 @@ class StructListRead(Reader, typing.Generic[S]):
         # TODO: This is currently not correct
         #   Needs to output as a list
 
-        return self._out_cls.template()
+        return struct_template(self._out_cls)
 
     # def example(self, data: StructList[S]) -> str:
     #     """Output an example of the output
@@ -180,9 +186,7 @@ class CSVRead(Reader):
     def read_text(self, message: str):
 
         io = StringIO(message)
-        print('CSV Read1: ', message)
         df = pd.read_csv(io, sep=self.delim)
-        print('CSV Read: ', df)
         return df.to_dict(orient='records', index=True)
 
     def load_data(self, data) -> typing.Dict:
@@ -224,7 +228,7 @@ class CSVRead(Reader):
             isinstance(self.cols, Struct) or 
             (inspect.isclass(self.cols) and issubclass(self.cols, Struct))
         ):
-            temp = self.cols.template()
+            temp = struct_template(self.cols)
             cols = []
             for k, v in temp.items():                
                 # if 'description' not in v:
@@ -371,7 +375,7 @@ class KVRead(Reader):
                 '<Example>': '<The value for the key.>'
             }
         elif inspect.isclass(self.key_descr) and issubclass(self.key_descr, Struct):
-            temp = self.key_descr.template()
+            temp = struct_template(self.key_descr)
             key_descr = {}
             for k, v in temp.items():
                 description =  v.description or 'value'
@@ -430,7 +434,7 @@ class MultiRead(Reader):
         text = ""
         for i, (data_i, out) in enumerate(zip(data, self.outs)):
             name = out.name or str(i) 
-            cur = data_i.render()
+            cur = render(data_i)
             cur_conn = self.conn.format(name)
             text += f"""
             {self.signal}{cur_conn}
@@ -502,7 +506,7 @@ class MultiRead(Reader):
         for i, out in enumerate(self.outs):
             print(out.name)
             name = out.name or str(i)
-            cur = out.template()
+            cur = struct_template(out)
             print(out, type(out))
             cur_conn = self.conn.format(name=name)
             texts.append(f"{self.signal}{cur_conn}\n{cur}")

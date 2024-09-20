@@ -1,4 +1,4 @@
-from dachi._core import _read as _core
+from dachi._core import _read as _core, model_to_text
 from .test_core import SimpleStruct, SimpleStruct2
 
 
@@ -18,7 +18,7 @@ class TestStructListRead(object):
             out_cls=SimpleStruct
         )
 
-        assert out.read(struct_list.to_text())[0].x == '2'
+        assert out.read(model_to_text(struct_list))[0].x == '2'
 
     def test_out_reads_in_the_class(self):
 
@@ -34,7 +34,7 @@ class TestStructListRead(object):
             out_cls=SimpleStruct
         )
 
-        assert out.read(struct_list.to_text())[0].x == '2'
+        assert out.read(model_to_text(struct_list))[0].x == '2'
 
     def test_out_reads_in_the_class_with_str(self):
 
@@ -44,7 +44,7 @@ class TestStructListRead(object):
         )
 
         simple = SimpleStruct(x='2')
-        assert out.read(simple.to_text()).x == '2'
+        assert out.read(model_to_text(simple)).x == '2'
 
 
 class TestMultiRead(object):
@@ -128,7 +128,7 @@ class TestStructRead:
             # name='Simple', signature='...',
         )
         simple = SimpleStruct(x='hi')
-        d = simple.to_text()
+        d = model_to_text(simple)
         simple2 = out.read(d)
         assert simple.x == simple2.x
 
@@ -139,7 +139,7 @@ class TestStructRead:
             out_cls=SimpleStruct
         )
         simple = SimpleStruct(x='hi')
-        d = simple.to_text()
+        d = model_to_text(simple)
         simple2 = out.read(d)
         assert simple.x == simple2.x
     
@@ -158,7 +158,7 @@ class TestStructRead:
             name='F1',
             out_cls=SimpleStruct
         )
-        s = SimpleStruct(x='2').to_text()
+        s = model_to_text(SimpleStruct(x='2'))
         simple2 = out.read(s)
         assert simple2.x == '2'
 
@@ -171,7 +171,7 @@ class TestStructRead:
 
         simple = SimpleStruct(x='2')
 
-        assert out.read(simple.to_text()).x == '2'
+        assert out.read(model_to_text(simple)).x == '2'
 
 
 class TestCSVRead(object):

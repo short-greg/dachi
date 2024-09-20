@@ -1,21 +1,17 @@
 # 1st party
 from abc import abstractmethod
 import typing
-from dataclasses import dataclass
-import time
-from typing import Self
 import asyncio
 
 # local
 from .._core import Storable
-from ._status import TaskStatus
-from . import _tasks
+from ._core import TaskStatus, Task
 from . import _status
 
 
 # require the state?
 
-TASK = typing.Union[_tasks.Task, typing.Callable[[typing.Dict], TaskStatus]]
+TASK = typing.Union[Task, typing.Callable[[typing.Dict], TaskStatus]]
 
 
 async def _parallel(
@@ -38,14 +34,13 @@ async def _parallel(
     Returns:
         TaskStatus: 
     """
-
     tg_tasks = []
     async with asyncio.TaskGroup() as tg:
 
         for task in tasks:
 
             threads = []
-            if isinstance(task, _tasks.Task):
+            if isinstance(task, Task):
                 threads.append(asyncio.to_thread(task.tick))
                 tg_tasks.append(
                     tg.create_task()
@@ -106,7 +101,7 @@ def sequence(tasks: typing.Iterable[TASK], state: typing.Dict) -> TaskStatus:
         return status
     
     cur_task = tasks[idx]
-    if isinstance(cur_task, _tasks.Task):
+    if isinstance(cur_task, Task):
         cur_task.tick()
     else:
         child_state = _status.get_or_spawn(state, idx)
@@ -132,7 +127,7 @@ def selector(tasks: typing.List[TASK],
     cur_status = tasks[idx](child_state)
 
     cur_task = tasks[idx]
-    if isinstance(cur_task, _tasks.Task):
+    if isinstance(cur_task, Task):
         cur_task.tick()
     else:
         child_state = _status.get_or_spawn(state, idx)
@@ -183,7 +178,7 @@ def unless(task: TASK, state: typing.Dict, status: TaskStatus=TaskStatus.FAILURE
         TaskStatus: The status of the result
     """
 
-    if isinstance(task, _tasks.Task):
+    if isinstance(task, Task):
         cur_status = task.tick()
     elif isinstance(task, TaskStatus):
         cur_status = task
@@ -205,8 +200,7 @@ def until(task: TASK, state: typing.Dict, status: TaskStatus=TaskStatus.SUCCESS)
     Returns:
         TaskStatus: The status of the result
     """
-
-    if isinstance(task, _tasks.Task):
+    if isinstance(task, Task):
         cur_status = task.tick()
     elif isinstance(task, TaskStatus):
         cur_status = task
@@ -228,7 +222,7 @@ def not_(task: TASK, state: typing.Dict) -> TaskStatus:
     Returns:
         TaskStatus: The status of the result
     """
-    if isinstance(task, _tasks.Task):
+    if isinstance(task, Task):
         cur_status = task.tick()
     elif isinstance(task, TaskStatus):
         cur_status = task

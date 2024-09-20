@@ -1,56 +1,25 @@
 from . import _tasks as tasks
+from ._core import Task, TaskStatus
 import typing
 from functools import wraps
 from functools import partial
 from typing import Self
 from abc import abstractmethod
 from . import _functional
+from ._core import TaskFunc, SUCCESS, FAILURE
 
-
-class TaskFunc(object):
-
-    def __init__(self, f: typing.Callable, is_method: bool=False, instance=None):
-        
-        super().__init__()
-        self.f = f
-        self._is_method = is_method
-        self._instance = instance
-    
-    def __get__(self, instance, owner):
-
-        if self._instance is not None and instance is self._instance:
-            return self._instance
-        self._instance = instance
-        return self._instance
-    
-    def _exec(self, *args, **kwargs):
-
-        if self._is_method:
-            return self.f(self._instance, *args, **kwargs)
-        return self.f(*args, **kwargs)
-
-    @abstractmethod
-    def __call__(self, *args: typing.Any, **kwargs: typing.Any) -> tasks.TaskStatus:
-        pass
-
-    def l(self) -> typing.Callable[[], Self]:
-    
-        def _(_: typing.Dict) -> Self:
-            return self.tick()
-        
-        return _
 
 
 class CondFunc(TaskFunc, tasks.Condition):
 
-    def __call__(self, *args, **kwargs) -> tasks.TaskStatus:
+    def __call__(self, *args, **kwargs) -> TaskStatus:
         result = self._exec(*args, **kwargs)
-        return tasks.TaskStatus.from_bool(result)
+        return TaskStatus.from_bool(result)
 
 
 class ActionFunc(TaskFunc, tasks.Action):
 
-    def __call__(self, *args, **kwargs) -> tasks.TaskStatus:
+    def __call__(self, *args, **kwargs) -> TaskStatus:
         return self._exec(*args, **kwargs)
 
 
@@ -60,7 +29,7 @@ class SequenceFunc(TaskFunc, tasks.Sequence):
         super().__init__(f, is_method, instance)
         self._state = {}
     
-    def __call__(self, *args, **kwargs) -> tasks.TaskStatus:
+    def __call__(self, *args, **kwargs) -> TaskStatus:
         
         result = self._exec(*args, **kwargs)
         return _functional.sequence(result, self._state)
@@ -77,7 +46,7 @@ class SelectorFunc(TaskFunc):
         super().__init__(f, is_method, instance)
         self._state = {}
 
-    def __call__(self, *args, **kwargs) -> tasks.TaskStatus:
+    def __call__(self, *args, **kwargs) -> TaskStatus:
         
         result = self._exec(*args, **kwargs)
         return _functional.selector(
@@ -92,15 +61,16 @@ class SelectorFunc(TaskFunc):
 
 class UntilFunc(TaskFunc, tasks.Until):
 
-    def __init__(self, f, is_method: bool=False, instance=None):
+    def __init__(self, f, is_method: bool=False, instance=None, status: TaskStatus=SUCCESS):
         super().__init__(f, is_method, instance)
         self._state = {}
+        self._status = status
 
-    def __call__(self, *args, **kwargs) -> tasks.TaskStatus:
+    def __call__(self, *args, **kwargs) -> TaskStatus:
         
         result = self._exec(*args, **kwargs)
         return _functional.until(
-            result self._state
+            result, self._state, self._status
         )
     
     def reset(self):
@@ -111,15 +81,16 @@ class UntilFunc(TaskFunc, tasks.Until):
 
 class UnlessFunc(TaskFunc):
 
-    def __init__(self, f, is_method: bool=False, instance=None):
+    def __init__(self, f, is_method: bool=False, instance=None, status: TaskStatus=FAILURE):
         super().__init__(f, is_method, instance)
         self._state = {}
+        self._status = status
 
-    def __call__(self, *args, **kwargs) -> tasks.TaskStatus:
+    def __call__(self, *args, **kwargs) -> TaskStatus:
         
         result = self._exec(*args, **kwargs)
         return _functional.unless(
-            result, self._state
+            result, self._state, self._status
         )
     
     def reset(self):
@@ -143,7 +114,7 @@ class ParallelFunc(TaskFunc):
             success_priority=success_priority
         )
 
-    def __call__(self, *args, **kwargs) -> tasks.TaskStatus:
+    def __call__(self, *args, **kwargs) -> TaskStatus:
 
         result = self._exec(*args, **kwargs)
         return _functional.parallel(result, self._state)
@@ -155,7 +126,7 @@ class NotFunc(TaskFunc):
         super().__init__(f, is_method, instance)
         self._state = {}
 
-    def __call__(self, *args, **kwargs) -> tasks.TaskStatus:
+    def __call__(self, *args, **kwargs) -> TaskStatus:
         
         result = self._exec(*args, **kwargs)
         return _functional.not_(
@@ -245,7 +216,7 @@ fallbackfunc = selectorfunc
 
 
 
-def untilfunc(status: tasks.TaskStatus=tasks.TaskStatus.SUCCESS):
+def untilfunc(status: TaskStatus=TaskStatus.SUCCESS):
 
     def _(f):
 
@@ -261,7 +232,7 @@ def untilfunc(status: tasks.TaskStatus=tasks.TaskStatus.SUCCESS):
     return _
 
 
-def unlessfunc(status: tasks.TaskStatus=tasks.TaskStatus.SUCCESS):
+def unlessfunc(status: TaskStatus=TaskStatus.SUCCESS):
 
     def _(f):
 
@@ -273,7 +244,7 @@ def unlessfunc(status: tasks.TaskStatus=tasks.TaskStatus.SUCCESS):
     return _
 
 
-def unlessmethod(status: tasks.TaskStatus=tasks.TaskStatus.SUCCESS):
+def unlessmethod(status: TaskStatus=TaskStatus.SUCCESS):
 
     def _(f):
 

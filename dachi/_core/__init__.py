@@ -7,7 +7,8 @@ from ._core import (
     render_multi, 
     Module, Instruction,
     Param, UNDEFINED, WAITING, 
-    is_primitive
+    is_primitive, struct_template,
+    model_to_text, model_from_text
 )
 from ._ai import (
     AIModel, AIPrompt, AIResponse, Dialog, Message,
