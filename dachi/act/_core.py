@@ -229,7 +229,7 @@ class Shared:
 
         self._default = default
         self._data = data if data is not None else default
-        self._callbacks = callbacks
+        self._callbacks = callbacks or []
 
     def register(self, callback) -> bool:
         """Register a callback to call on data updates
@@ -303,14 +303,14 @@ class Buffer(object):
         self._buffer = []
         self._opened = True
         
-    def add(self, data):
+    def add(self, *data):
         
         if not self._opened:
             raise RuntimeError(
                 'The buffer is currently closed so cannot add data to it.'
             )
 
-        self._buffer.append(data)
+        self._buffer.extend(data)
 
     def open(self):
         self._opened = True
@@ -323,15 +323,24 @@ class Buffer(object):
 
         return self._opened
         
-    def it(self) -> typing.Any:
+    def it(self) -> 'BufferIter':
         return BufferIter(self)
 
-    def reset(self):
-        """Resets new buffer. Note that any iterators will
-        still use the old buffer
-        """
-        self._buffer = []
+    # def reset(self, opened: bool=True):
+    #     """Resets new buffer. Note that any iterators will
+    #     still use the old buffer
+    #     """
+    #     self._opened = opened
+    #     self._buffer = []
 
+    def __getitem__(self, key) -> typing.Union[typing.Any, typing.List]:
+
+        if isinstance(key, slice):
+            return self._buffer[key]
+        if isinstance(key, typing.Iterable):
+            return [self._buffer[i] for i in key]
+        return self._buffer[key]
+        
     def __len__(self) -> int:
         """
 
@@ -341,10 +350,9 @@ class Buffer(object):
         return len(self._buffer)
 
 
-
 class BufferIter(object):
 
-    def __init__(self, buffer: typing.List) -> None:
+    def __init__(self, buffer: Buffer) -> None:
         """
 
         Args:

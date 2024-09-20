@@ -5,7 +5,7 @@ import asyncio
 
 # local
 from .._core import Storable
-from ._core import TaskStatus, Task
+from ._core import TaskStatus, Task, get_or_set, get_or_spawn
 from . import _status
 
 
@@ -39,30 +39,26 @@ async def _parallel(
 
         for task in tasks:
 
-            threads = []
             if isinstance(task, Task):
-                threads.append(asyncio.to_thread(task.tick))
                 tg_tasks.append(
-                    tg.create_task()
+                    tg.create_task(asyncio.to_thread(task.tick))
                 )
             else:
-                threads.append(asyncio.to_thread(task, state))
+                tg_tasks.append(tg.create_task(
+                    (asyncio.to_thread(task, state))
+                ))
 
         if success_on < 0:
             success_on = len(tg_tasks) + 1 + success_on
 
         if fails_on < 0:
             fails_on = len(tg_tasks) + 1 + fails_on
+        
 
-        if (fails_on + success_on) > len(tg_tasks):
+        if (fails_on + success_on) > (len(tg_tasks) + 1):
             raise ValueError(
                 f'Success + failure must be lte the number '
                 f'of tasks not {fails_on + success_on}'
-            )
-        
-        for thread in threads:
-            tg_tasks.append(
-                tg.create_task(thread)
             )
 
     failed = 0
@@ -90,26 +86,35 @@ async def _parallel(
 
 def parallel(tasks: typing.Iterable[TASK], state: typing.Dict, succeeds_on: int=-1, fails_on: int=1, success_priority: bool=True) -> TaskStatus:
 
-    return asyncio.run(_parallel(tasks, state, succeeds_on, fails_on, success_priority))
+    return asyncio.run(
+        _parallel(tasks, state, succeeds_on, fails_on, success_priority)
+    )
 
 
 def sequence(tasks: typing.Iterable[TASK], state: typing.Dict) -> TaskStatus:
     
-    idx = _status.get_or_set(state, 'idx', 0)
-    status = _status.get_or_set(state, 'status', TaskStatus.RUNNING)
+    idx = get_or_set(state, 'idx', 0)
+    status = get_or_set(state, 'status', TaskStatus.RUNNING)
+    
     if status.is_done:
         return status
+    if idx >= len(tasks):
+        return TaskStatus.SUCCESS
     
     cur_task = tasks[idx]
     if isinstance(cur_task, Task):
         cur_task.tick()
     else:
-        child_state = _status.get_or_spawn(state, idx)
+        child_state = get_or_spawn(state, idx)
         cur_status = cur_task(child_state)
-    if cur_status.success:
+    idx += 1
+    if cur_status.success and idx == len(tasks):
+        state['status'] = TaskStatus.SUCCESS
+    elif cur_status.success:
         state['status'] = TaskStatus.RUNNING
     else:
         state['status'] = cur_status
+    state['idx'] = idx
 
     return state['status']
 
@@ -118,25 +123,29 @@ def selector(tasks: typing.List[TASK],
     state: typing.Dict
 ) -> TaskStatus:
 
-    idx = _status.get_or_set(state, 'idx', 0)
-    status = _status.get_or_set(state, 'status', TaskStatus.RUNNING)
+    idx = get_or_set(state, 'idx', 0)
+    status = get_or_set(state, 'status', TaskStatus.RUNNING)
+    
     if status.is_done:
         return status
+    if idx >= len(tasks):
+        return TaskStatus.FAILURE
     
-    child_state = _status.get_or_spawn(state, idx)
-    cur_status = tasks[idx](child_state)
-
     cur_task = tasks[idx]
     if isinstance(cur_task, Task):
         cur_task.tick()
     else:
-        child_state = _status.get_or_spawn(state, idx)
+        child_state = get_or_spawn(state, idx)
         cur_status = cur_task(child_state)
-
-    if cur_status.failure:
+    
+    idx += 1
+    if cur_status.failure and idx == len(tasks):
+        state['status'] = TaskStatus.FAILURE
+    elif cur_status.failure:
         state['status'] = TaskStatus.RUNNING
     else:
         state['status'] = cur_status
+    state['idx'] = idx
 
     return state['status']
 
@@ -185,7 +194,7 @@ def unless(task: TASK, state: typing.Dict, status: TaskStatus=TaskStatus.FAILURE
     else:
         cur_status = task(state)
 
-    if cur_status != status:
+    if cur_status == status:
         return cur_status
     return TaskStatus.RUNNING
 
@@ -256,7 +265,7 @@ def nest_selector(tasks: TASK) -> typing.Callable:
     return _f
 
 
-def nest_action(task: typing.Iterable[TASK], *args, **kwargs) -> TaskStatus:
+def nest_action(task: Task, *args, **kwargs) -> TaskStatus:
     """Functional form of action
 
     Args:
@@ -268,6 +277,21 @@ def nest_action(task: typing.Iterable[TASK], *args, **kwargs) -> TaskStatus:
     """
     def _f(state: typing.Dict):
         return action(task, state, *args, **kwargs)
+
+    return _f
+
+def nest_cond(task: Task, *args, **kwargs) -> TaskStatus:
+    """Functional form of action
+
+    Args:
+        task (typing.Union[_tasks.Task, typing.Callable[[], TaskStatus]]): the task to execute
+        state (typing.Dict): The state of execution
+
+    Returns:
+        TaskStatus: The status of the result
+    """
+    def _f(state: typing.Dict):
+        return cond(task, state, *args, **kwargs)
 
     return _f
 
