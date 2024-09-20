@@ -1,6 +1,6 @@
 from ._core import (
     Renderable, model_template,
-    Struct, StructLoadException,
+    StructLoadException,
     is_nested_model, 
     Reader, NullRead, is_undefined,
     Storable, render,

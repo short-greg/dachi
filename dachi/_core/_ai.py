@@ -10,7 +10,7 @@ from ._core import (
     render, NullRead, Module
 )
 from dataclasses import dataclass
-from ._core import Struct, Renderable
+from ._core import Renderable
 
 # 3rd party
 import pydantic
@@ -37,7 +37,7 @@ class AIResponse(object):
         yield self.val
 
 
-class AIPrompt(Struct, ABC):
+class AIPrompt(pydantic.BaseModel, ABC):
 
     @abstractmethod
     def prompt(self, model: 'AIModel'):
@@ -92,7 +92,7 @@ class AIPrompt(Struct, ABC):
         return self.forward(prompt)
 
 
-class Message(Struct, Renderable):
+class Message(pydantic.BaseModel, Renderable):
 
     source: str
     data: typing.Dict[str, typing.Any]
@@ -190,7 +190,7 @@ def stream_text(stream: typing.Iterator[typing.Tuple[AIResponse, AIResponse]]) -
         yield a2.message
 
 
-class Dialog(Struct):
+class Dialog(pydantic.BaseModel):
     """A Dialog stores the interactions between the system/user and the assistant
     (i.e. the prompts and the responses)
     """
@@ -480,7 +480,7 @@ class Dialog(Struct):
         return len(self.messages)
 
 
-Data = typing.Union[Struct, typing.List[Struct]]
+Data = typing.Union[pydantic.BaseModel, typing.List[pydantic.BaseModel]]
 
 
 class AIModel(Module, ABC):

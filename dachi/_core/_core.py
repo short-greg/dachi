@@ -152,161 +152,160 @@ class Templatable:
         pass
 
 
+# class Struct(pydantic.BaseModel, Renderable):
+#     """Struct is used to contain data that is used
+#     """
+#     model_config = pydantic.ConfigDict(
+#         validate_assignment=True,
+#         arbitrary_types_allowed=True
+#     )
 
-class Struct(pydantic.BaseModel, Renderable):
-    """Struct is used to contain data that is used
-    """
-    model_config = pydantic.ConfigDict(
-        validate_assignment=True,
-        arbitrary_types_allowed=True
-    )
+#     # @classmethod
+#     # def template(cls) -> typing.Dict:
+#     #     """Get the template for the Struct
 
-    # @classmethod
-    # def template(cls) -> typing.Dict:
-    #     """Get the template for the Struct
-
-    #     Returns:
-    #         typing.Dict: The template 
-    #     """
-    #     template = {}
+#     #     Returns:
+#     #         typing.Dict: The template 
+#     #     """
+#     #     template = {}
         
-    #     base_template = model_template(cls)
-    #     for field_name, field in cls.model_fields.items():
-    #         field_type = field.annotation
-    #         if isinstance(field_type, type) and issubclass(field_type, Struct):
-    #             template[field_name] = field_type.template()
-    #         else:
-    #             template[field_name] = {
-    #                 "type": field.annotation,
-    #                 "description": field.description,
-    #                 "default": field.default if field.default is not None else None,
-    #                 "is_required": base_template[field_name]['is_required']
-    #             }
-    #     return template
+#     #     base_template = model_template(cls)
+#     #     for field_name, field in cls.model_fields.items():
+#     #         field_type = field.annotation
+#     #         if isinstance(field_type, type) and issubclass(field_type, Struct):
+#     #             template[field_name] = field_type.template()
+#     #         else:
+#     #             template[field_name] = {
+#     #                 "type": field.annotation,
+#     #                 "description": field.description,
+#     #                 "default": field.default if field.default is not None else None,
+#     #                 "is_required": base_template[field_name]['is_required']
+#     #             }
+#     #     return template
 
-    @classmethod
-    def template(cls) -> typing.Dict:
-        """Get the template for the Struct
+#     @classmethod
+#     def template(cls) -> typing.Dict:
+#         """Get the template for the Struct
 
-        Returns:
-            typing.Dict: The template 
-        """
-        template = {}
+#         Returns:
+#             typing.Dict: The template 
+#         """
+#         template = {}
         
-        base_template = model_template(cls)
-        for field_name, field in cls.model_fields.items():
-            field_type = field.annotation
-            print('----')
-            print(base_template[field_name])
-            if isinstance(field_type, type) and issubclass(field_type, Struct):
-                template[field_name] = field_type.template()
-            else:
-                # description = f'{field.description} - type: {field.annotation}'
-                # if field.default is not None and field.default != PydanticUndefined:
-                #     description = f'{description} - default: field.default'
-                # template[field_name] = f"<{description}>"
-                template[field_name] = TemplateField(
-                    type_=field.annotation,
-                    description=field.description,
-                    default=field.default if field.default is not None else None,
-                    is_required=base_template[field_name]['is_required']
-                )
-                #     "type": field.annotation,
-                #     "description": field.description,
-                #     "default": field.default if field.default is not None else None,
-                #     "is_required": base_template[field_name]['is_required']
-                # }
-        return template
+#         base_template = model_template(cls)
+#         for field_name, field in cls.model_fields.items():
+#             field_type = field.annotation
+#             print('----')
+#             print(base_template[field_name])
+#             if isinstance(field_type, type) and issubclass(field_type, Struct):
+#                 template[field_name] = field_type.template()
+#             else:
+#                 # description = f'{field.description} - type: {field.annotation}'
+#                 # if field.default is not None and field.default != PydanticUndefined:
+#                 #     description = f'{description} - default: field.default'
+#                 # template[field_name] = f"<{description}>"
+#                 template[field_name] = TemplateField(
+#                     type_=field.annotation,
+#                     description=field.description,
+#                     default=field.default if field.default is not None else None,
+#                     is_required=base_template[field_name]['is_required']
+#                 )
+#                 #     "type": field.annotation,
+#                 #     "description": field.description,
+#                 #     "default": field.default if field.default is not None else None,
+#                 #     "is_required": base_template[field_name]['is_required']
+#                 # }
+#         return template
 
-    @classmethod
-    def from_text(cls, data: str, escaped: bool=False) -> Self:
-        """Load the struct from a string
+#     @classmethod
+#     def from_text(cls, data: str, escaped: bool=False) -> Self:
+#         """Load the struct from a string
 
-        Args:
-            data (str): The data for the struct
+#         Args:
+#             data (str): The data for the struct
 
-        Returns:
-            Self: The loaded struct
-        """
-        if escaped:
-            data = unescape_curly_braces(data)
-        return cls(**json.loads(data))
+#         Returns:
+#             Self: The loaded struct
+#         """
+#         if escaped:
+#             data = unescape_curly_braces(data)
+#         return cls(**json.loads(data))
     
-    def to_text(self, escape: bool=False) -> str:
-        """Dump the struct to a string
+#     def to_text(self, escape: bool=False) -> str:
+#         """Dump the struct to a string
 
-        Returns:
-            str: The string
-        """
-        if escape:  
-            return escape_curly_braces(self.to_dict())
-        return self.model_dump_json()
+#         Returns:
+#             str: The string
+#         """
+#         if escape:  
+#             return escape_curly_braces(self.to_dict())
+#         return self.model_dump_json()
     
-    @classmethod
-    def from_dict(cls, data: typing.Dict) -> Self:
-        """Load the struct from a dictionary
+#     @classmethod
+#     def from_dict(cls, data: typing.Dict) -> Self:
+#         """Load the struct from a dictionary
 
-        Args:
-            data (typing.Dict): The dictionary containing the values
+#         Args:
+#             data (typing.Dict): The dictionary containing the values
 
-        Returns:
-            Self: The result
-        """
+#         Returns:
+#             Self: The result
+#         """
         
-        return cls(**data)
+#         return cls(**data)
     
-    def to_dict(self) -> typing.Dict:
-        """Convert the model to a dictionary
+#     def to_dict(self) -> typing.Dict:
+#         """Convert the model to a dictionary
 
-        Returns:
-            typing.Dict: The model dumped
-        """
-        return self.model_dump()
+#         Returns:
+#             typing.Dict: The model dumped
+#         """
+#         return self.model_dump()
     
-    def render(self) -> str:
-        """Render the struct for display
+#     def render(self) -> str:
+#         """Render the struct for display
 
-        Returns:
-            str: The text version of the struct
-        """
-        return model_to_text(self, True)
+#         Returns:
+#             str: The text version of the struct
+#         """
+#         return model_to_text(self, True)
     
-    def forward(self, key, value) -> Self:
+#     def forward(self, key, value) -> Self:
 
-        if not hasattr(self, key):
-            raise AttributeError(f'There is no attribute named {key}')
-        setattr(self, key, value)
-        return self
+#         if not hasattr(self, key):
+#             raise AttributeError(f'There is no attribute named {key}')
+#         setattr(self, key, value)
+#         return self
 
-    # def __getitem__(self, key) -> typing.Any:
-    #     """Get an attribute in 
+#     # def __getitem__(self, key) -> typing.Any:
+#     #     """Get an attribute in 
 
-    #     Args:
-    #         key: The key to get
+#     #     Args:
+#     #         key: The key to get
 
-    #     Returns:
-    #         typing.Any: Get attribute specified by key
-    #     """
-    #     return getattr(self, key)
+#     #     Returns:
+#     #         typing.Any: Get attribute specified by key
+#     #     """
+#     #     return getattr(self, key)
     
-    # def __setitem__(
-    #     self, key, value
-    # ) -> typing.Any:
-    #     """Update a member of the Struct
+#     # def __setitem__(
+#     #     self, key, value
+#     # ) -> typing.Any:
+#     #     """Update a member of the Struct
 
-    #     Args:
-    #         key: The name of the value to update
-    #         value: The value to update. 
-    #             If it is a string and the member is a Str, it will be cast to a
-    #             Str
+#     #     Args:
+#     #         key: The name of the value to update
+#     #         value: The value to update. 
+#     #             If it is a string and the member is a Str, it will be cast to a
+#     #             Str
 
-    #     Returns:
-    #         typing.Any: The value to set
-    #     """
-    #     if not hasattr(self, key):
-    #         raise AttributeError(f'There is no attribute named {key}')
-    #     setattr(self, key, value)
-    #     return value
+#     #     Returns:
+#     #         typing.Any: The value to set
+#     #     """
+#     #     if not hasattr(self, key):
+#     #         raise AttributeError(f'There is no attribute named {key}')
+#     #     setattr(self, key, value)
+#     #     return value
 
 
 class StructLoadException(Exception):
@@ -325,12 +324,12 @@ class StructLoadException(Exception):
 
 
 def is_nested_model(
-    pydantic_model_cls: typing.Type[Struct]
+    pydantic_model_cls: typing.Type[pydantic.BaseModel]
 ) -> bool:
     """Helper function to check if it is a nested model
 
     Args:
-        pydantic_model_cls (typing.Type[Struct]): The class to check if it is a nested model
+        pydantic_model_cls (typing.Type[pydantic.BaseModel]): The class to check if it is a nested model
 
     Returns:
         bool: If it is a nested model
@@ -340,7 +339,6 @@ def is_nested_model(
         if isinstance(field.annotation, type) and issubclass(field.annotation, pydantic.BaseModel):
             return True
     return False
-
 
 
 def is_undefined(val) -> bool:
@@ -486,7 +484,7 @@ def render_multi(xs: typing.Iterable[typing.Any]) -> typing.List[str]:
     ]
 
 
-class Reader(Struct, ABC):
+class Reader(pydantic.BaseModel, Templatable, ABC):
     """
     """
 
@@ -628,7 +626,7 @@ class Instruct(ABC):
         pass
 
 
-class Instruction(Struct, Instruct, typing.Generic[S], Renderable):
+class Instruction(pydantic.BaseModel, Instruct, typing.Generic[S], Renderable):
     """Specific instruction for the model to use
     """
     text: str
@@ -673,7 +671,7 @@ class Instruction(Struct, Instruct, typing.Generic[S], Renderable):
         return self.out.read(data)
 
 
-class Param(Struct, Renderable):
+class Param(pydantic.BaseModel, Renderable):
     
     name: str
     instruction: Instruction
