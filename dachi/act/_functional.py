@@ -4,12 +4,8 @@ import typing
 import asyncio
 
 # local
-from .._core import Storable
 from ._core import TaskStatus, Task, get_or_set, get_or_spawn
-from . import _status
 
-
-# require the state?
 
 TASK = typing.Union[Task, typing.Callable[[typing.Dict], TaskStatus]]
 
@@ -37,7 +33,9 @@ async def _parallel(
     tg_tasks = []
     async with asyncio.TaskGroup() as tg:
 
-        for task in tasks:
+        for i, task in enumerate(tasks):
+
+            cur_state = get_or_spawn(state, i)
 
             if isinstance(task, Task):
                 tg_tasks.append(
@@ -45,7 +43,7 @@ async def _parallel(
                 )
             else:
                 tg_tasks.append(tg.create_task(
-                    (asyncio.to_thread(task, state))
+                    (asyncio.to_thread(task, cur_state))
                 ))
 
         if success_on < 0:
@@ -53,7 +51,6 @@ async def _parallel(
 
         if fails_on < 0:
             fails_on = len(tg_tasks) + 1 + fails_on
-        
 
         if (fails_on + success_on) > (len(tg_tasks) + 1):
             raise ValueError(
@@ -84,8 +81,26 @@ async def _parallel(
     return TaskStatus.RUNNING
 
 
-def parallel(tasks: typing.Iterable[TASK], state: typing.Dict, succeeds_on: int=-1, fails_on: int=1, success_priority: bool=True) -> TaskStatus:
+def parallel(
+    tasks: typing.Iterable[TASK], 
+    state: typing.Dict, succeeds_on: int=-1, 
+    fails_on: int=1, 
+    success_priority: bool=True
+) -> TaskStatus:
 
+    return asyncio.run(
+        _parallel(tasks, state, succeeds_on, fails_on, success_priority)
+    )
+
+
+def multi(
+    task: TASK, state: typing.Dict, 
+    n: int, succeeds_on: int=-1, 
+    fails_on: int=1, 
+    success_priority: bool=True
+) -> TaskStatus:
+
+    tasks = [task] * n
     return asyncio.run(
         _parallel(tasks, state, succeeds_on, fails_on, success_priority)
     )
@@ -150,7 +165,10 @@ def selector(tasks: typing.List[TASK],
     return state['status']
 
 
-def action(task: TASK, state: typing.Optional[typing.Dict], *args, **kwargs) -> TaskStatus:
+def action(
+    task: TASK, state: typing.Optional[typing.Dict], 
+    *args, **kwargs
+) -> TaskStatus:
     """Functional form of action
 
     Args:
@@ -160,6 +178,10 @@ def action(task: TASK, state: typing.Optional[typing.Dict], *args, **kwargs) -> 
     Returns:
         TaskStatus: The status of the result
     """
+    if isinstance(task, Task):
+        return task.tick()
+    if state is False:
+        return task(*args, **kwargs)
     return task(state, *args, **kwargs)
 
 
@@ -173,7 +195,14 @@ def cond(task: TASK, state: typing.Dict, *args, **kwargs) -> TaskStatus:
     Returns:
         TaskStatus: The status of the result
     """
-    return TaskStatus.from_bool(task(state, *args, **kwargs))
+    if isinstance(task, Task):
+        return task.tick()
+    if state is False:
+        result = task(*args, **kwargs)
+    else:
+        result = task(state, *args, **kwargs)
+    
+    return TaskStatus.from_bool(result)
 
 
 def unless(task: TASK, state: typing.Dict, status: TaskStatus=TaskStatus.FAILURE) -> TaskStatus:
@@ -235,10 +264,20 @@ def not_(task: TASK, state: typing.Dict) -> TaskStatus:
         cur_status = task.tick()
     elif isinstance(task, TaskStatus):
         cur_status = task
+    elif state is None:
+        cur_status = task()
     else:
         cur_status = task(state)
     
     return cur_status.invert()
+
+
+def nest_multi(task: TASK, n: int) -> typing.Callable:
+    
+    def _f(state: typing.Dict):
+        return multi(task, state, n)
+
+    return _f
 
 
 def nest_parallel(tasks: typing.Iterable[TASK]) -> typing.Callable:
@@ -265,7 +304,7 @@ def nest_selector(tasks: TASK) -> typing.Callable:
     return _f
 
 
-def nest_action(task: Task, *args, **kwargs) -> TaskStatus:
+def nest_action(task: Task, *args, use_state: bool=True, **kwargs) -> TaskStatus:
     """Functional form of action
 
     Args:
@@ -276,11 +315,14 @@ def nest_action(task: Task, *args, **kwargs) -> TaskStatus:
         TaskStatus: The status of the result
     """
     def _f(state: typing.Dict):
+        if use_state is False:
+            state = None
         return action(task, state, *args, **kwargs)
 
     return _f
 
-def nest_cond(task: Task, *args, **kwargs) -> TaskStatus:
+
+def nest_cond(task: Task, *args, use_state: bool=True, **kwargs) -> TaskStatus:
     """Functional form of action
 
     Args:
@@ -291,12 +333,14 @@ def nest_cond(task: Task, *args, **kwargs) -> TaskStatus:
         TaskStatus: The status of the result
     """
     def _f(state: typing.Dict):
+        if use_state is False:
+            state = None
         return cond(task, state, *args, **kwargs)
 
     return _f
 
 
-def nest_not(task: TASK) -> TaskStatus:
+def nest_not(task: TASK, use_state: bool=True) -> TaskStatus:
     """Invert the result of the task if Failure or Success
 
     Args:
@@ -307,9 +351,8 @@ def nest_not(task: TASK) -> TaskStatus:
         TaskStatus: The status of the result
     """
     def _f(state: typing.Dict):
+        if use_state is False:
+            state = None
         return not_(task, state)
 
     return _f
-
-# until
-# unless

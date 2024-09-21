@@ -1,289 +1,289 @@
-from . import _tasks as tasks
-from ._core import Task, TaskStatus
-import typing
-from functools import wraps
-from functools import partial
-from typing import Self
-from abc import abstractmethod
-from . import _functional
-from ._core import TaskFunc, SUCCESS, FAILURE
+# from . import _tasks as tasks
+# from ._core import Task, TaskStatus
+# import typing
+# from functools import wraps
+# from functools import partial
+# from typing import Self
+# from abc import abstractmethod
+# from . import _functional
+# from ._core import TaskFunc, SUCCESS, FAILURE
 
 
 
-class CondFunc(TaskFunc, tasks.Condition):
+# class CondFunc(TaskFunc, tasks.Condition):
 
-    def __call__(self, *args, **kwargs) -> TaskStatus:
-        result = self._exec(*args, **kwargs)
-        return TaskStatus.from_bool(result)
-
-
-class ActionFunc(TaskFunc, tasks.Action):
-
-    def __call__(self, *args, **kwargs) -> TaskStatus:
-        return self._exec(*args, **kwargs)
+#     def __call__(self, *args, **kwargs) -> TaskStatus:
+#         result = self._exec(*args, **kwargs)
+#         return TaskStatus.from_bool(result)
 
 
-class SequenceFunc(TaskFunc, tasks.Sequence):
+# class ActionFunc(TaskFunc, tasks.Action):
 
-    def __init__(self, f, is_method: bool=False, instance=None):
-        super().__init__(f, is_method, instance)
-        self._state = {}
+#     def __call__(self, *args, **kwargs) -> TaskStatus:
+#         return self._exec(*args, **kwargs)
+
+
+# class SequenceFunc(TaskFunc, tasks.Sequence):
+
+#     def __init__(self, f, is_method: bool=False, instance=None):
+#         super().__init__(f, is_method, instance)
+#         self._state = {}
     
-    def __call__(self, *args, **kwargs) -> TaskStatus:
+#     def __call__(self, *args, **kwargs) -> TaskStatus:
         
-        result = self._exec(*args, **kwargs)
-        return _functional.sequence(result, self._state)
+#         result = self._exec(*args, **kwargs)
+#         return _functional.sequence(result, self._state)
     
-    def reset(self):
+#     def reset(self):
         
-        super().__init__()
-        self._state = {}
+#         super().__init__()
+#         self._state = {}
 
 
-class SelectorFunc(TaskFunc):
+# class SelectorFunc(TaskFunc):
 
-    def __init__(self, f, is_method: bool=False, instance=None):
-        super().__init__(f, is_method, instance)
-        self._state = {}
+#     def __init__(self, f, is_method: bool=False, instance=None):
+#         super().__init__(f, is_method, instance)
+#         self._state = {}
 
-    def __call__(self, *args, **kwargs) -> TaskStatus:
+#     def __call__(self, *args, **kwargs) -> TaskStatus:
         
-        result = self._exec(*args, **kwargs)
-        return _functional.selector(
-            result, self._state
-        )
+#         result = self._exec(*args, **kwargs)
+#         return _functional.selector(
+#             result, self._state
+#         )
     
-    def reset(self):
+#     def reset(self):
         
-        super().__init__()
-        self._state = {}
+#         super().__init__()
+#         self._state = {}
 
 
-class UntilFunc(TaskFunc, tasks.Until):
+# class UntilFunc(TaskFunc, tasks.Until):
 
-    def __init__(self, f, is_method: bool=False, instance=None, status: TaskStatus=SUCCESS):
-        super().__init__(f, is_method, instance)
-        self._state = {}
-        self._status = status
+#     def __init__(self, f, is_method: bool=False, instance=None, status: TaskStatus=SUCCESS):
+#         super().__init__(f, is_method, instance)
+#         self._state = {}
+#         self._status = status
 
-    def __call__(self, *args, **kwargs) -> TaskStatus:
+#     def __call__(self, *args, **kwargs) -> TaskStatus:
         
-        result = self._exec(*args, **kwargs)
-        return _functional.until(
-            result, self._state, self._status
-        )
+#         result = self._exec(*args, **kwargs)
+#         return _functional.until(
+#             result, self._state, self._status
+#         )
     
-    def reset(self):
+#     def reset(self):
         
-        super().__init__()
-        self._state = {}
+#         super().__init__()
+#         self._state = {}
 
 
-class UnlessFunc(TaskFunc):
+# class UnlessFunc(TaskFunc):
 
-    def __init__(self, f, is_method: bool=False, instance=None, status: TaskStatus=FAILURE):
-        super().__init__(f, is_method, instance)
-        self._state = {}
-        self._status = status
+#     def __init__(self, f, is_method: bool=False, instance=None, status: TaskStatus=FAILURE):
+#         super().__init__(f, is_method, instance)
+#         self._state = {}
+#         self._status = status
 
-    def __call__(self, *args, **kwargs) -> TaskStatus:
+#     def __call__(self, *args, **kwargs) -> TaskStatus:
         
-        result = self._exec(*args, **kwargs)
-        return _functional.unless(
-            result, self._state, self._status
-        )
+#         result = self._exec(*args, **kwargs)
+#         return _functional.unless(
+#             result, self._state, self._status
+#         )
     
-    def reset(self):
+#     def reset(self):
         
-        super().__init__()
-        self._state = {}
+#         super().__init__()
+#         self._state = {}
 
 
-class ParallelFunc(TaskFunc):
+# class ParallelFunc(TaskFunc):
 
-    def __init__(
-        self, iterable: typing.Callable[[typing.Any], bool], is_method: bool=False, 
-        *args, fails_on: int=1, 
-        succeeds_on=-1, success_priority: bool=True, **kwargs
-    ) -> None:
+#     def __init__(
+#         self, iterable: typing.Callable[[typing.Any], bool], is_method: bool=False, 
+#         *args, fails_on: int=1, 
+#         succeeds_on=-1, success_priority: bool=True, **kwargs
+#     ) -> None:
 
-        f = partial(iterable, *args, **kwargs)
-        super().__init__(
-            f, is_method,
-            fails_on=fails_on, succeeds_on=succeeds_on, 
-            success_priority=success_priority
-        )
+#         f = partial(iterable, *args, **kwargs)
+#         super().__init__(
+#             f, is_method,
+#             fails_on=fails_on, succeeds_on=succeeds_on, 
+#             success_priority=success_priority
+#         )
 
-    def __call__(self, *args, **kwargs) -> TaskStatus:
+#     def __call__(self, *args, **kwargs) -> TaskStatus:
 
-        result = self._exec(*args, **kwargs)
-        return _functional.parallel(result, self._state)
+#         result = self._exec(*args, **kwargs)
+#         return _functional.parallel(result, self._state)
 
 
-class NotFunc(TaskFunc):
+# class NotFunc(TaskFunc):
 
-    def __init__(self, f, is_method: bool=False, instance=None):
-        super().__init__(f, is_method, instance)
-        self._state = {}
+#     def __init__(self, f, is_method: bool=False, instance=None):
+#         super().__init__(f, is_method, instance)
+#         self._state = {}
 
-    def __call__(self, *args, **kwargs) -> TaskStatus:
+#     def __call__(self, *args, **kwargs) -> TaskStatus:
         
-        result = self._exec(*args, **kwargs)
-        return _functional.not_(
-            result, self._state
-        )
+#         result = self._exec(*args, **kwargs)
+#         return _functional.not_(
+#             result, self._state
+#         )
     
-    def reset(self):
+#     def reset(self):
         
-        super().__init__()
-        self._state = {}
+#         super().__init__()
+#         self._state = {}
 
 
-def condfunc(f):
+# def condfunc(f):
 
-    @wraps(f)
-    def wrapper(*args, **kwargs):
-        return f(*args, **kwargs)
+#     @wraps(f)
+#     def wrapper(*args, **kwargs):
+#         return f(*args, **kwargs)
 
-    return CondFunc(wrapper)
+#     return CondFunc(wrapper)
 
 
-def condmethod(f):
+# def condmethod(f):
 
-    @wraps(f)
-    def wrapper(*args, **kwargs):
-        return f(*args, **kwargs)
+#     @wraps(f)
+#     def wrapper(*args, **kwargs):
+#         return f(*args, **kwargs)
     
-    return CondFunc(f, True)
+#     return CondFunc(f, True)
 
 
-def actionfunc(f):
+# def actionfunc(f):
 
-    @wraps(f)
-    def wrapper(*args, **kwargs):
-        return f(*args, **kwargs)
+#     @wraps(f)
+#     def wrapper(*args, **kwargs):
+#         return f(*args, **kwargs)
 
-    return ActionFunc(wrapper)
-
-
-def actionmethod(f):
-
-    @wraps(f)
-    def wrapper(*args, **kwargs):
-        return f(*args, **kwargs)
-
-    return ActionFunc(f, True)
+#     return ActionFunc(wrapper)
 
 
-def sequencefunc(f):
+# def actionmethod(f):
 
-    @wraps(f)
-    def wrapper(*args, **kwargs):
-        return f(*args, **kwargs)
+#     @wraps(f)
+#     def wrapper(*args, **kwargs):
+#         return f(*args, **kwargs)
 
-    return SequenceFunc(wrapper)
-
-
-def sequencemethod(f):
-
-    @wraps(f)
-    def wrapper(*args, **kwargs):
-        return f(*args, **kwargs)
-
-    return SequenceFunc(f, True)
+#     return ActionFunc(f, True)
 
 
-def selectorfunc(f):
+# def sequencefunc(f):
 
-    @wraps(f)
-    def wrapper(*args, **kwargs):
-        return f(*args, **kwargs)
+#     @wraps(f)
+#     def wrapper(*args, **kwargs):
+#         return f(*args, **kwargs)
 
-    return SelectorFunc(wrapper)
-
-
-def selectormethod(f):
-
-    @wraps(f)
-    def wrapper(*args, **kwargs):
-        return f(*args, **kwargs)
-
-    return SelectorFunc(f, True)
+#     return SequenceFunc(wrapper)
 
 
+# def sequencemethod(f):
 
-fallbackfunc = selectorfunc
+#     @wraps(f)
+#     def wrapper(*args, **kwargs):
+#         return f(*args, **kwargs)
+
+#     return SequenceFunc(f, True)
+
+
+# def selectorfunc(f):
+
+#     @wraps(f)
+#     def wrapper(*args, **kwargs):
+#         return f(*args, **kwargs)
+
+#     return SelectorFunc(wrapper)
+
+
+# def selectormethod(f):
+
+#     @wraps(f)
+#     def wrapper(*args, **kwargs):
+#         return f(*args, **kwargs)
+
+#     return SelectorFunc(f, True)
 
 
 
-def untilfunc(status: TaskStatus=TaskStatus.SUCCESS):
-
-    def _(f):
-
-        @wraps(f)
-        def wrapper(*args, **kwargs):
-            return f(*args, **kwargs)
-
-        # update this
-        if hasattr(f, '__self__') or '__self__' in dir(f):
-            return UntilFunc(f, status)
-        else:
-            return UntilFunc(wrapper, status)
-    return _
+# fallbackfunc = selectorfunc
 
 
-def unlessfunc(status: TaskStatus=TaskStatus.SUCCESS):
 
-    def _(f):
+# def untilfunc(status: TaskStatus=TaskStatus.SUCCESS):
 
-        @wraps(f)
-        def wrapper(*args, **kwargs):
-            return f(*args, **kwargs)
+#     def _(f):
 
-        return UnlessFunc(wrapper, status)
-    return _
+#         @wraps(f)
+#         def wrapper(*args, **kwargs):
+#             return f(*args, **kwargs)
+
+#         # update this
+#         if hasattr(f, '__self__') or '__self__' in dir(f):
+#             return UntilFunc(f, status)
+#         else:
+#             return UntilFunc(wrapper, status)
+#     return _
 
 
-def unlessmethod(status: TaskStatus=TaskStatus.SUCCESS):
+# def unlessfunc(status: TaskStatus=TaskStatus.SUCCESS):
 
-    def _(f):
+#     def _(f):
 
-        @wraps(f)
-        def wrapper(*args, **kwargs):
-            return f(*args, **kwargs)
+#         @wraps(f)
+#         def wrapper(*args, **kwargs):
+#             return f(*args, **kwargs)
+
+#         return UnlessFunc(wrapper, status)
+#     return _
+
+
+# def unlessmethod(status: TaskStatus=TaskStatus.SUCCESS):
+
+#     def _(f):
+
+#         @wraps(f)
+#         def wrapper(*args, **kwargs):
+#             return f(*args, **kwargs)
         
-        return UnlessFunc(f, status, True)
-    return _
+#         return UnlessFunc(f, status, True)
+#     return _
 
 
-def parallelfunc(
-    n_succeeds: int=-1, n_fails=1, 
-):
+# def parallelfunc(
+#     n_succeeds: int=-1, n_fails=1, 
+# ):
 
-    def _(f):
+#     def _(f):
 
-        @wraps(f)
-        def wrapper(*args, **kwargs):
-            return f(*args, **kwargs)
+#         @wraps(f)
+#         def wrapper(*args, **kwargs):
+#             return f(*args, **kwargs)
 
-        return ParallelFunc(wrapper, n_succeeds, n_fails)
-    return _
+#         return ParallelFunc(wrapper, n_succeeds, n_fails)
+#     return _
 
 
-def parallelmethod(
-    succeeds_on: int=-1, fails_on=1, 
-    success_priority: bool=True
-):
+# def parallelmethod(
+#     succeeds_on: int=-1, fails_on=1, 
+#     success_priority: bool=True
+# ):
 
-    def _(f):
+#     def _(f):
 
-        f.factory = partial(
-            ParallelFunc, succeeds_on=succeeds_on, fails_on=fails_on, 
-            success_priority=success_priority
-        )
-        return f
+#         f.factory = partial(
+#             ParallelFunc, succeeds_on=succeeds_on, fails_on=fails_on, 
+#             success_priority=success_priority
+#         )
+#         return f
 
-    return _
+#     return _
 
 
 # TODO: Write these functions

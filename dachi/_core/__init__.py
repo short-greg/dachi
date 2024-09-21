@@ -8,7 +8,8 @@ from ._core import (
     Module, Instruction,
     Param, UNDEFINED, WAITING, 
     is_primitive, struct_template,
-    model_to_text, model_from_text
+    model_to_text, model_from_text,
+    Blackboard, Retriever
 )
 from ._ai import (
     AIModel, AIPrompt, AIResponse, Dialog, Message,
