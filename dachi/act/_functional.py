@@ -145,6 +145,29 @@ def parallel(
     return _f
 
 
+def parallelf(
+    f: typing.Callable[[typing.Any], typing.Iterator[TASK]],
+    *args, 
+    succeeds_on: int=-1, 
+    fails_on: int=1, 
+    success_priority: bool=True,
+    **kwargs
+) -> CALL_TASK:
+    """Create a parallel task
+
+    Args:
+        tasks (typing.Iterable[TASK]): The tasks to run
+        succeeds_on (int, optional): The number of Successes required to succeed. Defaults to -1.
+        fails_on (int, optional): The number of Failures required to fail. Defaults to 1.
+        success_priority (bool, optional): Whether success is prioritized over failure. Defaults to True.
+
+    Returns:
+        CALL_TASK: The task to call
+    """
+    f = partial(f, *args, **kwargs)
+    return parallel(f, succeeds_on, fails_on, success_priority)
+
+
 def spawn(
     f, n: int,
     *args, 
@@ -213,6 +236,19 @@ def sequence(tasks: typing.Iterable[TASK], state: Context) -> CALL_TASK:
     return _f
 
 
+def sequencef(f: typing.Callable[[typing.Any], typing.Iterator[TASK]], context: Context, *args, **kwargs) -> CALL_TASK:
+    """Run a callable sequence task
+
+    Args:
+        tasks (typing.Iterable[TASK]): The tasks to execute
+        state (State): The current state
+
+    Returns:
+        CALL_TASK: The task to call
+    """
+    return sequence(partial(f, *args, **kwargs), context)
+
+
 def _selector(tasks: typing.List[TASK], 
     state: Context
 ) -> TaskStatus:
@@ -254,6 +290,25 @@ def selector(tasks: TASK, state: Context) -> CALL_TASK:
         return _selector(tasks, state)
 
     return _f
+
+
+def selectorf(
+    f: typing.Callable[[typing.Any], typing.Iterator[TASK]], 
+    context: Context, *args, **kwargs) -> CALL_TASK:
+    """Run a callable selector task
+
+    Args:
+        tasks (typing.Iterable[TASK]): The tasks to execute
+        state (State): The current state
+
+    Returns:
+        CALL_TASK: The task to call
+    """
+    return selector(partial(f, *args, **kwargs), context)
+
+
+fallback = selector
+fallbackf = selectorf
 
 
 def action(task: Task, *args, **kwargs) -> CALL_TASK:

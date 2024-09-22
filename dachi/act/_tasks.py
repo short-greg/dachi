@@ -394,7 +394,7 @@ class StateMachine(Task):
     """
 
     def __init__(self, init_state: 'State'):
-        """_summary_
+        """
 
         Args:
             init_state (State): The starting state for the machine
