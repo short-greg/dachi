@@ -2,6 +2,7 @@
 from abc import abstractmethod
 import typing
 import asyncio
+from functools import partial
 
 # local
 from ._core import (
@@ -11,11 +12,11 @@ from ._core import (
 
 
 TASK = typing.Union[Task, typing.Callable[[typing.Dict], TaskStatus]]
-
 CALL_TASK = typing.Callable[[],TaskStatus]
 
+
 def unless(task: TASK, status: TaskStatus=TaskStatus.FAILURE) -> CALL_TASK:
-    """Use to loop unless a condition is met
+    """Loop unless a condition is met
 
     Args:
         task (typing.Union[_tasks.Task, typing.Callable[[], TaskStatus]]): the task to execute
@@ -33,7 +34,7 @@ def unless(task: TASK, status: TaskStatus=TaskStatus.FAILURE) -> CALL_TASK:
 
 
 def until(task: TASK, status: TaskStatus=TaskStatus.SUCCESS) -> CALL_TASK:
-    """Use to loop until a condition is met
+    """Loop until a condition is met
 
     Args:
         task (typing.Union[_tasks.Task, typing.Callable[[], TaskStatus]]): the task to execute
@@ -126,20 +127,39 @@ def parallel(
     fails_on: int=1, 
     success_priority: bool=True
 ) -> CALL_TASK:
+    """Create a parallel task
 
+    Args:
+        tasks (typing.Iterable[TASK]): The tasks to run
+        succeeds_on (int, optional): The number of Successes required to succeed. Defaults to -1.
+        fails_on (int, optional): The number of Failures required to fail. Defaults to 1.
+        success_priority (bool, optional): Whether success is prioritized over failure. Defaults to True.
+
+    Returns:
+        CALL_TASK: The task to call
+    """
     def _f():
         return asyncio.run(
             _parallel(tasks, succeeds_on, fails_on, success_priority)
         )
     return _f
 
-from functools import partial
 
-def multi(
+def spawn(
     f, n: int,
     *args, 
     **kwargs
 ) -> typing.List[TASK]:
+    """Convert a task into multiple tasks by spawning multiple
+    states. Any "states" that are included in args or kwargs
+
+    Args:
+        f: The function to execute
+        n (int): The number of tasks to spawn
+
+    Returns:
+        typing.List[TASK]: The list of tasks to run
+    """
 
     tasks = []
 
@@ -159,7 +179,15 @@ def multi(
 
 
 def sequence(tasks: typing.Iterable[TASK], state: State) -> CALL_TASK:
-    
+    """Run a sequence task
+
+    Args:
+        tasks (typing.Iterable[TASK]): The tasks to execute
+        state (State): The current state
+
+    Returns:
+        CALL_TASK: The task to call
+    """
     def _f():
         idx = state.get_or_set('idx', 0)
         status = state.get_or_set('status', TaskStatus.RUNNING)
@@ -213,7 +241,15 @@ def _selector(tasks: typing.List[TASK],
 
 
 def selector(tasks: TASK, state: State) -> CALL_TASK:
+    """Create a selector task
 
+    Args:
+        tasks (TASK): The tasks to run
+        state (State): The state for the selector
+
+    Returns:
+        CALL_TASK: The task to call
+    """
     def _f():
         return _selector(tasks, state)
 
@@ -254,11 +290,6 @@ def cond(task: typing.Callable, *args, **kwargs) -> CALL_TASK:
     return _f
 
 
-def spawn(task: TASK, n: int) -> typing.List[TASK]:
-
-    pass
-
-
 def not_(task: TASK) -> CALL_TASK:
     """Invert the result of the task if Failure or Success
 
@@ -277,6 +308,14 @@ def not_(task: TASK) -> CALL_TASK:
 
 
 def tick(task: TASK) -> TaskStatus:
+    """Run the task
+
+    Args:
+        task (TASK): The task to run
+
+    Returns:
+        TaskStatus: The resulting status from the task
+    """
 
     if isinstance(task, Task):
         return task.tick()
