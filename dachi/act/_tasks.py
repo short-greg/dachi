@@ -7,7 +7,7 @@ from functools import reduce
 
 # 3rd party
 from . import _functional
-from ._core import Task, TaskStatus
+from ._core import Task, TaskStatus, State
 
 
 class Sango(Task):
@@ -63,7 +63,7 @@ class Serial(Task):
     def __init__(self, tasks: typing.Iterable[Task]):
         super().__init__()
         self._tasks = tasks
-        self._state = {}
+        self._state = State()
         
     @property
     def tasks(self) -> typing.Iterable[Task]:
@@ -76,23 +76,29 @@ class Serial(Task):
             task.reset()
 
 
-class Sequence(Task):
+class Sequence(Serial):
 
-    def tick(self) -> TaskStatus:
-        # self._status = self.subtick()
-        
-        self._status = _functional.sequence(
+    def __init__(self, tasks: typing.Iterable[Task]):
+        super().__init__(tasks)
+        self.f = _functional.sequence(
             self._tasks, self._state
         )
+
+    def tick(self) -> TaskStatus:
+        self._status = self.f()
         return self._status
 
 
 class Selector(Serial):
 
-    def tick(self) -> TaskStatus:
-        self._status = _functional.selector(
+    def __init__(self, tasks: typing.Iterable[Task]):
+        super().__init__(tasks)
+        self.f = _functional.selector(
             self._tasks, self._state
         )
+
+    def tick(self) -> TaskStatus:
+        self._status = self.f()
         return self._status
 
 
@@ -116,9 +122,19 @@ class Parallel(Task):
         super().__init__()
         self._tasks = tasks if tasks is not None else []
         self.set_condition(fails_on, succeeds_on)
+
         self._success_priority = success_priority
+        self._f = _functional.parallel(
+            self._tasks, self._succeeds_on, self._fails_on,
+            self._success_priority
+        )
         self._ticked = set()
-        self._state = {}
+
+    def _update_f(self):
+        self._f = _functional.parallel(
+            self._tasks, self._succeeds_on, self._fails_on,
+            self._success_priority
+        )
 
     @property
     def tasks(self) -> typing.Iterable[Task]:
@@ -136,6 +152,7 @@ class Parallel(Task):
         """
         self._fails_on = fails_on if fails_on is not None else len(self._tasks)
         self._succeeds_on = succeeds_on if succeeds_on is not None else (len(self._tasks) + 1 - self._fails_on)
+        self._update_f()
 
     def validate(self):
         
@@ -151,23 +168,24 @@ class Parallel(Task):
     @fails_on.setter
     def fails_on(self, fails_on) -> int:
         self._fails_on = fails_on
+        self._update_f()
         return self._fails_on
 
     @property
     def succeeds_on(self) -> int:
+
         return self._succeeds_on        
     
     @succeeds_on.setter
     def succeeds_on(self, succeeds_on) -> int:
         self._succeeds_on = succeeds_on
+        self._update_f()
+
         return self._succeeds_on
     
     def tick(self) -> TaskStatus:
         
-        self._status = _functional.parallel(
-            self._tasks, self._state, self.succeeds_on, self.fails_on,
-            self._success_priority
-        )
+        self._status = self._f()
         return self._status
 
     def reset(self):
@@ -254,9 +272,9 @@ class Decorator(Task):
 class Until(Decorator):
     """Loop until a condition is met
     """
-    def __init__(self, task: Task, status: TaskStatus.SUCCESS) -> None:
+    def __init__(self, task: Task, target_status: TaskStatus= TaskStatus.SUCCESS) -> None:
         super().__init__(task)
-        self.status = status
+        self.target_status = target_status
 
     def decorate(self, status: TaskStatus) -> TaskStatus:
         """Continue running unless the result is a success
@@ -267,7 +285,7 @@ class Until(Decorator):
         Returns:
             SangoStatus: The decorated status
         """
-        if status == self.status:
+        if status == self.target_status:
             return status
         if status.is_done:
             self._task.reset()
@@ -277,9 +295,9 @@ class Until(Decorator):
 class Unless(Decorator):
     """Loop while a condition is met
     """
-    def __init__(self, task: Task, status: TaskStatus.FAILURE) -> None:
+    def __init__(self, task: Task, target_status: TaskStatus= TaskStatus.FAILURE) -> None:
         super().__init__(task)
-        self.status = status
+        self.target_status = target_status
 
     def decorate(self, status: TaskStatus) -> TaskStatus:
         """Continue running unless the result is a failure
@@ -290,7 +308,7 @@ class Unless(Decorator):
         Returns:
             SangoStatus: The decorated status
         """
-        if status == self.status:
+        if status == self.target_status:
             return status
         if status.is_done:
             self._task.reset()

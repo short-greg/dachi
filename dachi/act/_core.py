@@ -179,10 +179,6 @@ class Task(Storable):
     @abstractmethod    
     def tick(self) -> TaskStatus:
         raise NotImplementedError
-    
-    @abstractmethod
-    def spawn(self) -> Self:
-        pass
 
     def __call__(self) -> TaskStatus:
         """
