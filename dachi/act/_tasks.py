@@ -1,16 +1,16 @@
 # 1st party
 from abc import abstractmethod
 import typing
-from dataclasses import dataclass
 import time
-from functools import reduce
 
 # 3rd party
 from . import _functional
-from ._core import Task, TaskStatus, State
+from ._core import Task, TaskStatus, Context
 
 
-class Sango(Task):
+class Root(Task):
+    """The root task for a behavior tree
+    """
 
     def __init__(self, root: 'Task'=None):
         """Create a tree to store the tasks
@@ -59,45 +59,83 @@ class Sango(Task):
 
 
 class Serial(Task):
+    """A task consisting of other tasks executed one 
+    after the other
+    """
 
     def __init__(self, tasks: typing.Iterable[Task]):
+        """Create a serial task
+
+        Args:
+            tasks (typing.Iterable[Task]): The tasks comprising the serial task
+        """
         super().__init__()
         self._tasks = tasks
-        self._state = State()
+        self._context = Context()
         
     @property
     def tasks(self) -> typing.Iterable[Task]:
+        """Get the tasks in the serial task
 
+        Returns:
+            typing.Iterable[Task]: The tasks comprising the serial task
+        """
         return self._tasks
 
     def reset(self):
+        """Reset the state
+        """
         super().reset()
         for task in self._tasks:
             task.reset()
 
 
 class Sequence(Serial):
+    """Create a sequence of tasks to execute
+    """
 
     def __init__(self, tasks: typing.Iterable[Task]):
+        """Create a sequence of tasks
+
+        Args:
+            tasks (typing.Iterable[Task]): The tasks making up the sequence
+        """
         super().__init__(tasks)
         self.f = _functional.sequence(
-            self._tasks, self._state
+            self._tasks, self._context
         )
 
     def tick(self) -> TaskStatus:
+        """Update the task
+
+        Returns:
+            TaskStatus: The status
+        """
         self._status = self.f()
         return self._status
 
 
 class Selector(Serial):
+    """Create a set of tasks to select from
+    """
 
     def __init__(self, tasks: typing.Iterable[Task]):
+        """Create a selector of tasks
+
+        Args:
+            tasks (typing.Iterable[Task]): The tasks to select from
+        """
         super().__init__(tasks)
         self.f = _functional.selector(
-            self._tasks, self._state
+            self._tasks, self._context
         )
 
     def tick(self) -> TaskStatus:
+        """Execute the task
+
+        Returns:
+            TaskStatus: The resulting task status
+        """
         self._status = self.f()
         return self._status
 
@@ -110,7 +148,7 @@ class Parallel(Task):
     """
 
     def __init__(self, tasks: typing.Iterable[Task]=None, fails_on: int=None, succeeds_on: int=None, success_priority: bool=True):
-        """
+        """The parallel
 
         Args:
             tasks (typing.Iterable[Task]): 
@@ -193,8 +231,7 @@ class Parallel(Task):
         super().reset()
         for task in self._ticked:
             task.reset()
-        self._state = {}
-
+        self._context = {}
 
 
 class Action(Task):
@@ -234,6 +271,11 @@ class Decorator(Task):
 
     # name should retrieve the name of the decorated
     def __init__(self, task: Task) -> None:
+        """Decorate a task
+
+        Args:
+            task (Task): The task to decorate
+        """
         super().__init__()
         self._task = task
 
@@ -243,6 +285,11 @@ class Decorator(Task):
 
     @property
     def task(self) -> Task:
+        """Get the task to execute
+
+        Returns:
+            Task: The decorated task
+        """
         return self._task
 
     def tick(self) -> TaskStatus:
@@ -339,3 +386,52 @@ def run_task(task: Task, interval: float=1./60) -> typing.Iterator[TaskStatus]:
         if interval is not None:
             time.sleep(interval)
         yield status
+
+
+class StateMachine(Task):
+    """StateMachine is a task composed of multiple tasks in
+    a directed graph
+    """
+
+    def __init__(self, init_state: 'State'):
+        """_summary_
+
+        Args:
+            init_state (State): The starting state for the machine
+        """
+        self._init_state = init_state
+        self._cur_state = init_state
+        self._status = TaskStatus.READY
+
+    def tick(self) -> TaskStatus:
+        """Update the state machine
+        """
+        if self._status.is_done:
+            return self._status
+        
+        self._cur_state = self._cur_state.update()
+        if self._cur_state == TaskStatus.FAILURE or self._cur_state == TaskStatus.SUCCESS:
+            self._status = self._cur_state
+        else:
+            self._status = TaskStatus.RUNNING
+        return self._status
+
+    @property
+    def status(self) -> TaskStatus:
+        """Get the status of the state machine
+
+        Returns:
+            TaskStatus: Get the current status
+        """
+        return self._status
+
+    def reset(self):
+
+        self._cur_state = self._init_state
+
+
+class State(Task):
+
+    @abstractmethod
+    def update(self) -> typing.Union['State', TaskStatus]:
+        pass

@@ -1,6 +1,6 @@
 from ._core import (
     Task, TaskFunc, TaskMessage, TaskStatus, Shared,
-    Buffer, BufferIter, State, StateManager, StateSpawner
+    Buffer, BufferIter, Context, ContextStorage, ContextSpawner
 )
 
 from ._functional import (
@@ -11,7 +11,7 @@ from ._functional import (
 from ._tasks import (
     Serial, Sequence, Selector, 
     Parallel, Action,
-    Condition, Sango,
+    Condition, Root,
     Not, 
     Unless, Until,
     run_task,

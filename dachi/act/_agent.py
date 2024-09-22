@@ -4,7 +4,7 @@ import typing
 
 import time
 from enum import Enum
-from . import Sango
+from . import Root
 
 
 class AgentStatus(Enum):
@@ -20,7 +20,7 @@ class Agent(object):
     """Agent class
     """
 
-    def __init__(self, sango: Sango=None, interval: float=None):
+    def __init__(self, sango: Root=None, interval: float=None):
         """
 
         Args:

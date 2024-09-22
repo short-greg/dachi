@@ -9,7 +9,7 @@ class build_sango(object):
         """Create the behavior tree. This is the root node
         """
         super().__init__()
-        self._sango = behavior.Sango()
+        self._sango = behavior.Root()
 
     def __enter__(self):
         
@@ -35,7 +35,7 @@ class build_composite(object):
         
         if parent is None:
             pass
-        elif isinstance(parent, behavior.Sango):
+        elif isinstance(parent, behavior.Root):
             parent.root = child
         elif isinstance(parent, behavior.Serial):
             parent.add(child)
@@ -84,7 +84,7 @@ class build_decorate(object):
         
         if parent is None:
             pass
-        elif isinstance(parent, behavior.Sango):
+        elif isinstance(parent, behavior.Root):
             parent.root = self._decorated
         elif isinstance(parent, behavior.Serial):
             parent.add(self._decorated)

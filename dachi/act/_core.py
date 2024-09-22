@@ -435,7 +435,7 @@ class TaskFunc(object):
         return _
 
 
-class State(dict):
+class Context(dict):
 
     def get_or_set(self, key, value):
 
@@ -446,14 +446,14 @@ class State(dict):
         return self[key]
 
 
-class StateManager(object):
+class ContextStorage(object):
 
     def __init__(self):
 
         object.__setattr__(self, '_data', {})
 
     @property
-    def states(self) -> typing.Dict[str, State]:
+    def states(self) -> typing.Dict[str, Context]:
         return {**self._data}
     
     def remove(self, key):
@@ -463,7 +463,7 @@ class StateManager(object):
     def add(self, key):
 
         if key not in self._data:
-            d = State()
+            d = Context()
             self._data[key] = d
         
         return self._data[key]
@@ -471,20 +471,25 @@ class StateManager(object):
     def __getattr__(self, key):
 
         if key not in self._data:
-            d = State()
+            d = Context()
             self._data[key] = d
         
         return self._data[key]
 
 
-class StateSpawner(object):
+class ContextSpawner(object):
 
-    def __init__(self, manager: StateManager, base_name: str):
+    def __init__(self, manager: ContextStorage, base_name: str):
+        """_summary_
 
+        Args:
+            manager (StateManager): _description_
+            base_name (str): _description_
+        """
         self.manager = manager
         self.base_name = base_name
 
-    def __getitem__(self, i: int) -> State:
+    def __getitem__(self, i: int) -> Context:
 
         name = f'{self.base_name}_{i}'
         return self.manager.add(name)

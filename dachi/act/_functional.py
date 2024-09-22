@@ -6,8 +6,8 @@ from functools import partial
 
 # local
 from ._core import (
-    TaskStatus, Task, State,
-    StateSpawner
+    TaskStatus, Task, Context,
+    ContextSpawner
 )
 
 
@@ -165,11 +165,11 @@ def spawn(
 
     for i in range(n):
         cur_args = [
-            arg[i] if isinstance(arg, StateSpawner) else arg
+            arg[i] if isinstance(arg, ContextSpawner) else arg
             for arg in args.items()
         ]
         cur_kwargs = {
-            k: arg[i] if isinstance(arg, StateSpawner) else arg
+            k: arg[i] if isinstance(arg, ContextSpawner) else arg
             for k, arg in kwargs.items()
         }
 
@@ -178,7 +178,7 @@ def spawn(
     return tasks
 
 
-def sequence(tasks: typing.Iterable[TASK], state: State) -> CALL_TASK:
+def sequence(tasks: typing.Iterable[TASK], state: Context) -> CALL_TASK:
     """Run a sequence task
 
     Args:
@@ -214,7 +214,7 @@ def sequence(tasks: typing.Iterable[TASK], state: State) -> CALL_TASK:
 
 
 def _selector(tasks: typing.List[TASK], 
-    state: State
+    state: Context
 ) -> TaskStatus:
 
     idx = state.get_or_set('idx', 0)
@@ -240,7 +240,7 @@ def _selector(tasks: typing.List[TASK],
     return state['status']
 
 
-def selector(tasks: TASK, state: State) -> CALL_TASK:
+def selector(tasks: TASK, state: Context) -> CALL_TASK:
     """Create a selector task
 
     Args:

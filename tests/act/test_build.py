@@ -56,7 +56,7 @@ class TestSango:
 
                 sequence.tasks.append(ATask())
                 sequence.tasks.append(ATask())
-        assert isinstance(tree, tasks.Sango)
+        assert isinstance(tree, tasks.Root)
         assert isinstance(tree.root, Sequence)
 
 
