@@ -121,7 +121,8 @@ class Parallel(Task):
         """
         super().__init__()
         self._tasks = tasks if tasks is not None else []
-        self.set_condition(fails_on, succeeds_on)
+        self._fails_on = fails_on if fails_on is not None else len(self._tasks)
+        self._succeeds_on = succeeds_on if succeeds_on is not None else (len(self._tasks) + 1 - self._fails_on)
 
         self._success_priority = success_priority
         self._f = _functional.parallel(
@@ -152,7 +153,6 @@ class Parallel(Task):
         """
         self._fails_on = fails_on if fails_on is not None else len(self._tasks)
         self._succeeds_on = succeeds_on if succeeds_on is not None else (len(self._tasks) + 1 - self._fails_on)
-        self._update_f()
 
     def validate(self):
         

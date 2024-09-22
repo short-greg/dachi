@@ -177,23 +177,23 @@ class build_not(build_decorate):
 
 class build_unless(build_decorate):
 
-    def __init__(self, decorated, parent: Task = None, status: behavior.TaskStatus=behavior.TaskStatus.FAILURE) -> None:
+    def __init__(self, decorated, parent: Task = None, target_status: behavior.TaskStatus=behavior.TaskStatus.FAILURE) -> None:
         """Loop over the subtask while it 'succeeds'
 
         Args:
             decorated: The task to loop over
             parent (Task, optional): The parent task. Defaults to None.
         """
-        super().__init__(behavior.Unless, decorated, parent, status=status)
+        super().__init__(behavior.Unless, decorated, parent, target_status=target_status)
 
 
 class build_until(build_decorate):
 
-    def __init__(self, decorated: build_composite, parent: Task = None, status: behavior.TaskStatus=behavior.TaskStatus.SUCCESS) -> None:
+    def __init__(self, decorated: build_composite, parent: Task = None, target_status: behavior.TaskStatus=behavior.TaskStatus.SUCCESS) -> None:
         """Loop over the subtask until it 'succeeds'
 
         Args:
             decorated: The task to loop over
             parent (Task, optional): The parent task. Defaults to None.
         """
-        super().__init__(behavior.Until, decorated, parent, status=status)
+        super().__init__(behavior.Until, decorated, parent, target_status=target_status)
