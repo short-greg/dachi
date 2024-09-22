@@ -1,6 +1,11 @@
 from ._core import (
     Task, TaskFunc, TaskMessage, TaskStatus, Shared,
-    Buffer, BufferIter
+    Buffer, BufferIter, State, StateManager, StateSpawner
+)
+
+from ._functional import (
+    parallel, unless, until, sequence,
+    action, not_, tick, cond, selector
 )
 
 from ._tasks import (

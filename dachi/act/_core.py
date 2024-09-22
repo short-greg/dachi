@@ -437,3 +437,58 @@ class TaskFunc(object):
             return self.tick()
         
         return _
+
+
+class State(dict):
+
+    def get_or_set(self, key, value):
+
+        if key not in self:
+            self[key] = value
+            return value
+        
+        return self[key]
+
+
+class StateManager(object):
+
+    def __init__(self):
+
+        object.__setattr__(self, '_data', {})
+
+    @property
+    def states(self) -> typing.Dict[str, State]:
+        return {**self._data}
+    
+    def remove(self, key):
+
+        del self._data[key]
+    
+    def add(self, key):
+
+        if key not in self._data:
+            d = State()
+            self._data[key] = d
+        
+        return self._data[key]
+
+    def __getattr__(self, key):
+
+        if key not in self._data:
+            d = State()
+            self._data[key] = d
+        
+        return self._data[key]
+
+
+class StateSpawner(object):
+
+    def __init__(self, manager: StateManager, base_name: str):
+
+        self.manager = manager
+        self.base_name = base_name
+
+    def __getitem__(self, i: int) -> State:
+
+        name = f'{self.base_name}_{i}'
+        return self.manager.add(name)

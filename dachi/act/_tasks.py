@@ -10,7 +10,6 @@ from . import _functional
 from ._core import Task, TaskStatus
 
 
-
 class Sango(Task):
 
     def __init__(self, root: 'Task'=None):
@@ -57,6 +56,7 @@ class Sango(Task):
         super().reset()
         if self._root is not None:
             self._root.reset()
+
 
 class Serial(Task):
 
