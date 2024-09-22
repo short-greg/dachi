@@ -1,10 +1,11 @@
 from dachi.act import _core, _functional as F
+from dachi._core import _utils as utils
 import typing
 
 
 def sample_action(state: typing.Dict, x: int) -> _core.TaskStatus:
 
-    val = _core.get_or_set(state, 'val', 0)
+    val = utils.get_or_set(state, 'val', 0)
     state['val'] = x + val
 
     if state['val'] < 3:
@@ -49,7 +50,7 @@ class TestCond:
 class TestSequence:
 
     def test_sequence_executes_and_returns_running(self):
-        state = _core.ContextStorage()
+        state = utils.ContextStorage()
 
         status = F.tick(F.sequence([
             F.cond(sample_cond, 4),
@@ -60,7 +61,7 @@ class TestSequence:
         assert status.running
 
     def test_sequence_executes_and_returns_success(self):
-        state = _core.ContextStorage()
+        state = utils.ContextStorage()
 
         status = F.sequence([
             F.cond(sample_cond, 4),
@@ -74,7 +75,7 @@ class TestSequence:
         assert status.success
 
     def test_returns_success_if_no_tasks(self):
-        state = _core.ContextStorage()
+        state = utils.ContextStorage()
 
         status = F.sequence([
         ], state.S)()
@@ -83,7 +84,7 @@ class TestSequence:
 
 
     def test_sequence_executes_and_returns_failure(self):
-        state = _core.ContextStorage()
+        state = utils.ContextStorage()
 
         status = F.sequence([
             F.cond(sample_cond, 0),
@@ -96,7 +97,7 @@ class TestSequence:
 class TestSelector:
 
     def test_selector_executes_and_returns_running(self):
-        state = _core.ContextStorage()
+        state = utils.ContextStorage()
 
         status = F.selector([
             F.cond(sample_cond, 2),
@@ -106,7 +107,7 @@ class TestSelector:
         assert status.running
 
     def test_selector_executes_and_returns_success(self):
-        state = _core.ContextStorage()
+        state = utils.ContextStorage()
 
         status = F.selector([
             F.cond(sample_cond, 2),
@@ -120,7 +121,7 @@ class TestSelector:
         assert status.success
 
     def test_returns_failure_if_no_tasks(self):
-        state = _core.ContextStorage()
+        state = utils.ContextStorage()
 
         status = F.selector([
         ], state.S)()
@@ -128,7 +129,7 @@ class TestSelector:
         assert status.failure
 
     def test_selector_executes_and_returns_success(self):
-        state = _core.ContextStorage()
+        state = utils.ContextStorage()
 
         status = F.selector([
             F.cond(sample_cond, 4),
@@ -141,7 +142,7 @@ class TestSelector:
 class TestParallel:
 
     def test_parallel_returns_failure_if_one_fails(self):
-        state = _core.ContextStorage()
+        state = utils.ContextStorage()
 
         status = F.parallel([
             F.cond(sample_cond, 2),
@@ -151,7 +152,7 @@ class TestParallel:
         assert status.failure
 
     def test_parallel_returns_success_if_both_succeed(self):
-        state = _core.ContextStorage()
+        state = utils.ContextStorage()
 
         status = F.parallel([
             F.cond(sample_cond, 4),
@@ -161,7 +162,7 @@ class TestParallel:
         assert status.success
 
     def test_parallel_returns_running_if_one_running(self):
-        state = _core.ContextStorage()
+        state = utils.ContextStorage()
 
         status = F.parallel([
             F.cond(sample_cond, 4),
@@ -171,7 +172,7 @@ class TestParallel:
         assert status.running
 
     def test_parallel_returns_running_with_nested_sequence(self):
-        state = _core.ContextStorage()
+        state = utils.ContextStorage()
 
         status = F.parallel([
             F.cond(sample_cond, 4),
@@ -186,7 +187,7 @@ class TestParallel:
 class TestUnless:
 
     def test_unless_returns_failure_if_failed(self):
-        state = _core.ContextStorage()
+        state = utils.ContextStorage()
 
         status = F.unless(
             F.sequence([
@@ -198,7 +199,7 @@ class TestUnless:
         assert status.failure
 
     def test_unless_returns_running_if_succeeded(self):
-        state = _core.ContextStorage()
+        state = utils.ContextStorage()
 
         status = F.unless(
             F.sequence([
@@ -220,7 +221,7 @@ class TestUnless:
 class TestUntil:
 
     def test_until_returns_running_if_failed(self):
-        state = _core.ContextStorage()
+        state = utils.ContextStorage()
 
         status = F.until(
             F.sequence([
@@ -232,7 +233,7 @@ class TestUntil:
         assert status.running
 
     def test_unless_returns_success_if_succeeded(self):
-        state = _core.ContextStorage()
+        state = utils.ContextStorage()
 
         status = F.until(
             F.sequence([

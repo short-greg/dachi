@@ -32,7 +32,7 @@ UNDEFINED = _Types.UNDEFINED
 WAITING = _Types.WAITING
 
 
-S = typing.TypeVar('S', bound='Struct')
+S = typing.TypeVar('S', bound=pydantic.BaseModel)
 
 
 class Renderable(ABC):
@@ -653,82 +653,6 @@ class Module(ABC):
 
         for d, dx in self.stream_forward(*args, **kwargs):
             yield d, dx
-
-
-class Blackboard(object):
-    """A blackboard is for sharing information
-    across agents
-    """
-
-    def __init__(self):
-        """The data for the blackboard
-        """
-        self._data = {}
-
-    def r(self, key) -> 'Retriever':
-        """Get a retriever for the blackboard
-
-        Args:
-            key: The name of the key for the retriever
-
-        Returns:
-            Retriever: The retriever for the blackboard
-        """
-        return Retriever(self, key)
-
-
-    def __getitem__(self, key) -> typing.Any:
-        """Get an item from the blackboard
-
-        Args:
-            key: The key to retrieve for
-
-        Returns:
-            typing.Any: The value for the key
-        """
-        return self._data[key]
-
-    def __setitem__(self, key, val) -> typing.Any:
-        """Set an item in the blackboard
-
-        Args:
-            key: The name of the item to set
-            val: The value to set to
-
-        Returns:
-            typing.Any: The name of the 
-        """
-        self._data[key] = val
-        return val
-
-
-class Retriever(object):
-
-    def __init__(self, blackboard: Blackboard, key: str):
-
-        self._blackboard = blackboard
-        self._key = key
-
-    def get(self) -> typing.Any:
-        """Get a value from the blackboard
-
-        Returns:
-            typing.Any: The value to get
-        """
-        return self._blackboard[self._key]
-    
-    def set(self, val) -> typing.Any:
-        """Set the value the retriever points to
-
-        Args:
-            val: The value to set to
-
-        Returns:
-            typing.Any: The value to set
-        """
-        self._blackboard[self._key] = val
-        return val
-
 
 
 # def struct_template(model: pydantic.BaseModel) -> typing.Dict:

@@ -5,7 +5,8 @@ import time
 
 # 3rd party
 from . import _functional
-from ._core import Task, TaskStatus, Context
+from ._core import Task, TaskStatus
+from .._core._utils import Context
 
 
 class Root(Task):

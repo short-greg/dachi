@@ -1,14 +1,13 @@
 # 1st party
-from abc import abstractmethod
 import typing
 import asyncio
 from functools import partial
 
 # local
 from ._core import (
-    TaskStatus, Task, Context,
-    ContextSpawner
+    TaskStatus, Task,
 )
+from .._core._utils import Context, ContextSpawner
 
 
 TASK = typing.Union[Task, typing.Callable[[typing.Dict], TaskStatus]]
