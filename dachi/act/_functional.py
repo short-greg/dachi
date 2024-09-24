@@ -5,51 +5,13 @@ from functools import partial
 
 # local
 from ._core import (
-    TaskStatus, Task,
+    TaskStatus, Task, ROUTE
 )
 from .._core._utils import Context, ContextSpawner
 
 
 TASK = typing.Union[Task, typing.Callable[[typing.Dict], TaskStatus]]
 CALL_TASK = typing.Callable[[],TaskStatus]
-
-
-def unless(task: TASK, status: TaskStatus=TaskStatus.FAILURE) -> CALL_TASK:
-    """Loop unless a condition is met
-
-    Args:
-        task (typing.Union[_tasks.Task, typing.Callable[[], TaskStatus]]): the task to execute
-
-    Returns:
-        TaskStatus: The status of the result
-    """
-    def _f():
-        cur_status = task()
-        
-        if cur_status == status:
-            return TaskStatus.RUNNING
-        return cur_status
-    return _f
-
-
-def until(task: TASK, status: TaskStatus=TaskStatus.SUCCESS) -> CALL_TASK:
-    """Loop until a condition is met
-
-    Args:
-        task (typing.Union[_tasks.Task, typing.Callable[[], TaskStatus]]): the task to execute
-
-    Returns:
-        TaskStatus: The status of the result
-    """
-
-    def _f():
-        cur_status = task()
-        
-        if cur_status == status:
-            return cur_status
-        return TaskStatus.RUNNING
-    return _f
-
 
 async def _parallel(
     tasks: typing.Iterable[TASK], 
@@ -310,7 +272,7 @@ fallback = selector
 fallbackf = selectorf
 
 
-def action(task: Task, *args, **kwargs) -> CALL_TASK:
+def actionf(task: Task, *args, router: ROUTE=None, **kwargs) -> CALL_TASK:
     """Functional form of action
 
     Args:
@@ -322,12 +284,14 @@ def action(task: Task, *args, **kwargs) -> CALL_TASK:
     """
     def _f():
         result = task(*args, **kwargs)
+        if router:
+            return router(result)
         return result
 
     return _f
 
 
-def cond(task: typing.Callable, *args, **kwargs) -> CALL_TASK:
+def condf(task: typing.Callable, *args, **kwargs) -> CALL_TASK:
     """Functional form of action
 
     Args:
@@ -361,6 +325,19 @@ def not_(task: TASK) -> CALL_TASK:
     return _f
 
 
+def notf(f, *args, **kwargs) -> CALL_TASK:
+    """Invert the result of the task if Failure or Success
+
+    Args:
+        task (typing.Union[_tasks.Task, typing.Callable[[], TaskStatus]]): the task to execute
+        state (typing.Dict): The state of execution
+
+    Returns:
+        TaskStatus: The status of the result
+    """
+    return not_(partial(f, *args, **kwargs))
+
+
 def tick(task: TASK) -> TaskStatus:
     """Run the task
 
@@ -375,3 +352,65 @@ def tick(task: TASK) -> TaskStatus:
         return task.tick()
     
     return task()
+
+
+def unless(task: TASK, status: TaskStatus=TaskStatus.FAILURE) -> CALL_TASK:
+    """Loop unless a condition is met
+
+    Args:
+        task (typing.Union[_tasks.Task, typing.Callable[[], TaskStatus]]): the task to execute
+
+    Returns:
+        TaskStatus: The status of the result
+    """
+    def _f():
+        cur_status = task()
+        
+        if cur_status == status:
+            return TaskStatus.RUNNING
+        return cur_status
+    return _f
+
+
+def unlessf(f, *args, status: TaskStatus=TaskStatus.FAILURE, **kwargs) -> CALL_TASK:
+    """Loop unless a condition is met
+
+    Args:
+        task (typing.Union[_tasks.Task, typing.Callable[[], TaskStatus]]): the task to execute
+
+    Returns:
+        CALL_TASK: The status of the result
+    """
+    return unless(partial(f, *args, **kwargs), status)
+
+
+def until(task: TASK, status: TaskStatus=TaskStatus.SUCCESS) -> CALL_TASK:
+    """Loop until a condition is met
+
+    Args:
+        task (typing.Union[_tasks.Task, typing.Callable[[], TaskStatus]]): the task to execute
+
+    Returns:
+        TaskStatus: The status of the result
+    """
+
+    def _f():
+        cur_status = task()
+        
+        if cur_status == status:
+            return cur_status
+        return TaskStatus.RUNNING
+    return _f
+
+
+def untilf(f, *args, status: TaskStatus=TaskStatus.SUCCESS, **kwargs) -> CALL_TASK:
+    """Loop until a condition is met
+
+    Args:
+        task (typing.Union[_tasks.Task, typing.Callable[[], TaskStatus]]): the task to execute
+
+    Returns:
+        TaskStatus: The status of the result
+    """
+
+    return until(partial(f, *args, **kwargs), status)

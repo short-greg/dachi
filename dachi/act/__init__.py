@@ -1,9 +1,13 @@
 from ._core import (
-    Task, TaskMessage, TaskStatus
+    Task, TaskMessage, TaskStatus,
+    Router, ROUTE
 )
 from ._functional import (
     parallel, unless, until, sequence,
-    action, not_, tick, cond, selector
+    actionf, not_, tick, condf, selector,
+    unlessf, untilf, notf, parallelf,
+    selectorf, sequencef, fallbackf,
+    fallback
 )
 
 from ._tasks import (

@@ -207,3 +207,14 @@ class TaskFunc(object):
             return self.tick()
         
         return _
+
+
+class Router(object):
+
+    @abstractmethod
+    def __call__(self, val) -> TaskStatus:
+        pass
+
+
+ROUTE = Router | typing.Callable[[typing.Any], TaskStatus]
+

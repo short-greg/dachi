@@ -38,12 +38,12 @@ class TestCond:
 
     def test_cond_returns_failure(self):
 
-        status = F.tick(F.cond(sample_cond, 2))
+        status = F.tick(F.condf(sample_cond, 2))
         assert status.failure
 
     def test_cond_returns_success(self):
 
-        status = F.tick(F.cond(sample_cond, 4))
+        status = F.tick(F.condf(sample_cond, 4))
         assert status.success
 
 
@@ -53,8 +53,8 @@ class TestSequence:
         state = utils.ContextStorage()
 
         status = F.tick(F.sequence([
-            F.cond(sample_cond, 4),
-            F.action(sample_action, state.A, 4)
+            F.condf(sample_cond, 4),
+            F.actionf(sample_action, state.A, 4)
         ], state.S))
 
         print(status)
@@ -64,13 +64,13 @@ class TestSequence:
         state = utils.ContextStorage()
 
         status = F.sequence([
-            F.cond(sample_cond, 4),
-            F.action(sample_action, state.A, 4)
+            F.condf(sample_cond, 4),
+            F.actionf(sample_action, state.A, 4)
         ], state.S)()
 
         status = F.sequence([
-            F.cond(sample_cond, 4),
-            F.action(sample_action, state.A, 4)
+            F.condf(sample_cond, 4),
+            F.actionf(sample_action, state.A, 4)
         ], state.S)()
         assert status.success
 
@@ -87,8 +87,8 @@ class TestSequence:
         state = utils.ContextStorage()
 
         status = F.sequence([
-            F.cond(sample_cond, 0),
-            F.action(sample_action, state.A, 4)
+            F.condf(sample_cond, 0),
+            F.actionf(sample_action, state.A, 4)
         ], state.S)()
 
         assert status.failure
@@ -100,8 +100,8 @@ class TestSelector:
         state = utils.ContextStorage()
 
         status = F.selector([
-            F.cond(sample_cond, 2),
-            F.action(sample_action, state.A, 4)
+            F.condf(sample_cond, 2),
+            F.actionf(sample_action, state.A, 4)
         ], state.S)()
 
         assert status.running
@@ -110,13 +110,13 @@ class TestSelector:
         state = utils.ContextStorage()
 
         status = F.selector([
-            F.cond(sample_cond, 2),
-            F.action(sample_action, state.A, 4)
+            F.condf(sample_cond, 2),
+            F.actionf(sample_action, state.A, 4)
         ], state.S)()
 
         status = F.selector([
-            F.cond(sample_cond, 4),
-            F.action(sample_action, state.A, 4)
+            F.condf(sample_cond, 4),
+            F.actionf(sample_action, state.A, 4)
         ], state.S)()
         assert status.success
 
@@ -132,8 +132,8 @@ class TestSelector:
         state = utils.ContextStorage()
 
         status = F.selector([
-            F.cond(sample_cond, 4),
-            F.action(sample_action, state.A, 4)
+            F.condf(sample_cond, 4),
+            F.actionf(sample_action, state.A, 4)
         ], state.S)()
 
         assert status.success
@@ -145,8 +145,8 @@ class TestParallel:
         state = utils.ContextStorage()
 
         status = F.parallel([
-            F.cond(sample_cond, 2),
-            F.action(sample_action, state.A, 4)
+            F.condf(sample_cond, 2),
+            F.actionf(sample_action, state.A, 4)
         ])()
 
         assert status.failure
@@ -155,8 +155,8 @@ class TestParallel:
         state = utils.ContextStorage()
 
         status = F.parallel([
-            F.cond(sample_cond, 4),
-            F.action(sample_action, state.A, 4)
+            F.condf(sample_cond, 4),
+            F.actionf(sample_action, state.A, 4)
         ])()
 
         assert status.success
@@ -165,8 +165,8 @@ class TestParallel:
         state = utils.ContextStorage()
 
         status = F.parallel([
-            F.cond(sample_cond, 4),
-            F.action(sample_action, state.A, 2)
+            F.condf(sample_cond, 4),
+            F.actionf(sample_action, state.A, 2)
         ])()
 
         assert status.running
@@ -175,9 +175,9 @@ class TestParallel:
         state = utils.ContextStorage()
 
         status = F.parallel([
-            F.cond(sample_cond, 4),
+            F.condf(sample_cond, 4),
             F.sequence(
-                [F.action(sample_action, state.A, 2)], state.S
+                [F.actionf(sample_action, state.A, 2)], state.S
             )
         ])()
 
@@ -191,8 +191,8 @@ class TestUnless:
 
         status = F.unless(
             F.sequence([
-                F.cond(sample_cond, 2),
-                F.action(sample_action, state.A, 4)
+                F.condf(sample_cond, 2),
+                F.actionf(sample_action, state.A, 4)
             ], state.S)
         , state)()
 
@@ -203,15 +203,15 @@ class TestUnless:
 
         status = F.unless(
             F.sequence([
-                F.cond(sample_cond, 4),
-                F.action(sample_action, state.A, 4)
+                F.condf(sample_cond, 4),
+                F.actionf(sample_action, state.A, 4)
             ], state.S)
         )()
 
         status = F.unless(
             F.sequence([
-                F.cond(sample_cond, 4),
-                F.action(sample_action, state.S, 4)
+                F.condf(sample_cond, 4),
+                F.actionf(sample_action, state.S, 4)
             ], state.A)
         )()
 
@@ -225,8 +225,8 @@ class TestUntil:
 
         status = F.until(
             F.sequence([
-                F.cond(sample_cond, 2),
-                F.action(sample_action, 4)
+                F.condf(sample_cond, 2),
+                F.actionf(sample_action, 4)
             ], state.S)
         )()
 
@@ -237,15 +237,15 @@ class TestUntil:
 
         status = F.until(
             F.sequence([
-                F.cond(sample_cond, 4),
-                F.action(sample_action, state.A, 4)
+                F.condf(sample_cond, 4),
+                F.actionf(sample_action, state.A, 4)
             ],state.S)
         )()
 
         status = F.until(
             F.sequence([
-                F.cond(sample_cond, 4),
-                F.action(sample_action, state.A, 4)
+                F.condf(sample_cond, 4),
+                F.actionf(sample_action, state.A, 4)
             ], state.S)
         )()
 
@@ -257,7 +257,7 @@ class TestNot:
     def test_not_returns_success_if_failed(self):
 
         status = F.not_(
-            F.cond(sample_cond, 2),
+            F.condf(sample_cond, 2),
         )()
 
         assert status.success
@@ -266,7 +266,7 @@ class TestNot:
     def test_not_returns_failed_if_success(self):
 
         status = F.tick(F.not_(
-            F.cond(sample_cond, 4),
+            F.condf(sample_cond, 4),
         ))
 
         assert status.failure
