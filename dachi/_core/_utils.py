@@ -195,7 +195,69 @@ def get_or_set(state: typing.Dict, key: str, val: typing.Any) -> typing.Any:
     return state[key]
 
 
-class Shared:
+from abc import ABC, abstractmethod
+
+class SharedBase(ABC):
+    """Allows for shared data between tasks
+    """
+
+    @abstractmethod
+    def register(self, callback) -> bool:
+        """Register a callback to call on data updates
+
+        Args:
+            callback (function): The callback to register
+
+        Returns:
+            bool: True the callback was registered, False if already registered
+        """
+        pass
+
+    @abstractmethod
+    def unregister(self, callback) -> bool:
+        """Unregister a callback to call on data updates
+
+        Args:
+            callback (function): The callback to unregister
+
+        Returns:
+            bool: True if the callback was removed, False if callback was not registered
+        """
+        pass
+
+    @property
+    @abstractmethod
+    def data(self) -> typing.Any:
+        """Get the data shared
+
+        Returns:
+            typing.Any: The shared data
+        """
+        return self._data
+
+    @data.setter
+    @abstractmethod
+    def data(self, data) -> typing.Any:
+        """Update the data
+
+        Args:
+            data: The data to share
+
+        Returns:
+            typing.Any: The value for the data
+        """
+        pass
+
+    @abstractmethod
+    def get(self) -> typing.Any:
+        pass
+    
+    @abstractmethod
+    def set(self, value) -> typing.Any:
+        pass
+
+
+class Shared(SharedBase):
     """Allows for shared data between tasks
     """
 
@@ -272,8 +334,16 @@ class Shared:
             callback(data)
         return data
 
+    def get(self) -> typing.Any:
+        return self._data
+    
+    def set(self, value) -> typing.Any:
+        self.data = value
+        return value
+    
     def reset(self):
         self.data = self._default
+
 
 
 # TODO: FINISH!
@@ -450,8 +520,6 @@ class ContextSpawner(object):
         return self.manager.add(name)
 
 
-
-
 class Blackboard(object):
     """A blackboard is for sharing information
     across agents
@@ -461,6 +529,7 @@ class Blackboard(object):
         """The data for the blackboard
         """
         self._data = {}
+        self._callbacks: typing.Dict[str, typing.List[typing.Callable[[typing.Any]]]] = {}
 
     def r(self, key) -> 'Retriever':
         """Get a retriever for the blackboard
@@ -473,6 +542,42 @@ class Blackboard(object):
         """
         return Retriever(self, key)
 
+    def register(self, key, callback) -> bool:
+        """Register a callback to call on data updates
+
+        Args:
+            callback (function): The callback to register
+
+        Returns:
+            bool: True the callback was registered, False if already registered
+        """
+        if key not in self._callbacks:
+            self._callbacks[key] = [callable]
+            return True
+
+        if callback in self._callbacks[key]:
+            return False
+        
+        self._callbacks[key].append(callback)
+        return True
+
+    def unregister(self, key, callback) -> bool:
+        """Unregister a callback to call on data updates
+
+        Args:
+            callback (function): The callback to unregister
+
+        Returns:
+            bool: True if the callback was removed, False if callback was not registered
+        """
+        if key not in self._callbacks:
+            return False
+
+        if callback not in self._callbacks[key]:
+            return False
+        
+        self._callbacks[key].remove(callback)
+        return True
 
     def __getitem__(self, key) -> typing.Any:
         """Get an item from the blackboard
@@ -499,7 +604,7 @@ class Blackboard(object):
         return val
 
 
-class Retriever(object):
+class Retriever(SharedBase):
 
     def __init__(self, blackboard: Blackboard, key: str):
 
@@ -526,3 +631,46 @@ class Retriever(object):
         self._blackboard[self._key] = val
         return val
 
+    def register(self, callback) -> bool:
+        """Register a callback to call on data updates
+
+        Args:
+            callback (function): The callback to register
+
+        Returns:
+            bool: True the callback was registered, False if already registered
+        """
+        self._blackboard.register(self._key, callback)
+
+    def unregister(self, callback) -> bool:
+        """Unregister a callback to call on data updates
+
+        Args:
+            callback (function): The callback to unregister
+
+        Returns:
+            bool: True if the callback was removed, False if callback was not registered
+        """
+        self._blackboard.unregister(self._key, callback)
+
+    @property
+    def data(self) -> typing.Any:
+        """Get the data shared
+
+        Returns:
+            typing.Any: The shared data
+        """
+        return self._blackboard[self._key]
+
+    @data.setter
+    def data(self, data) -> typing.Any:
+        """Update the data
+
+        Args:
+            data: The data to share
+
+        Returns:
+            typing.Any: The value for the data
+        """
+        self._blackboard[self._key] = data
+        return data
