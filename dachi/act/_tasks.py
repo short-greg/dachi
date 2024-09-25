@@ -87,6 +87,7 @@ class Serial(Task):
         """Reset the state
         """
         super().reset()
+        self._context = Context()
         for task in self._tasks:
             task.reset()
 
@@ -115,6 +116,12 @@ class Sequence(Serial):
         self._status = self.f()
         return self._status
 
+    def reset(self):
+        super().reset()
+        self.f = _functional.sequence(
+            self._tasks, self._context
+        )
+
 
 class Selector(Serial):
     """Create a set of tasks to select from
@@ -139,6 +146,12 @@ class Selector(Serial):
         """
         self._status = self.f()
         return self._status
+
+    def reset(self):
+        super().reset()
+        self.f = _functional.selector(
+            self._tasks, self._context
+        )
 
 
 Fallback = Selector

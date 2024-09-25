@@ -162,7 +162,7 @@ def spawn(
     return tasks
 
 
-def sequence(tasks: typing.Iterable[TASK], state: Context) -> CALL_TASK:
+def sequence(tasks: typing.Iterable[TASK], ctx: Context) -> CALL_TASK:
     """Run a sequence task
 
     Args:
@@ -173,31 +173,50 @@ def sequence(tasks: typing.Iterable[TASK], state: Context) -> CALL_TASK:
         CALL_TASK: The task to call
     """
     def _f():
-        idx = state.get_or_set('idx', 0)
-        status = state.get_or_set('status', TaskStatus.RUNNING)
+
+        status = ctx.get_or_set('status', TaskStatus.RUNNING)
 
         if status.is_done:
             return status
-        if idx >= len(tasks):
-            return TaskStatus.SUCCESS
         
-        cur_task = tasks[idx]
-        cur_status = cur_task()
-        idx += 1
-        if cur_status.success and idx == len(tasks):
-            state['status'] = TaskStatus.SUCCESS
-        elif cur_status.success:
-            state['status'] = TaskStatus.RUNNING
-        else:
-            state['status'] = cur_status
-        state['idx'] = idx
+        # get the iterator
+        if 'it' not in ctx:
+            ctx['it'] = iter(tasks)
 
-        return state['status']
+            try:
+                cur_task = next(ctx['it'])
+                ctx['cur_task'] = cur_task
+            except StopIteration:
+                ctx['status'] = TaskStatus.SUCCESS
+                return TaskStatus.SUCCESS
+            
+        cur_task = ctx['cur_task']
+            
+        cur_status = cur_task()
+
+        # update the sequence status
+        if cur_status.running:
+            ctx['status'] = TaskStatus.RUNNING
+            return ctx['status']
+
+        if cur_status.success:
+
+            try:
+                cur_task = next(ctx['it'])
+                ctx['cur_task'] = cur_task
+                ctx['status'] = TaskStatus.RUNNING
+            except StopIteration:
+                ctx['status'] = TaskStatus.SUCCESS
+                return TaskStatus.SUCCESS
+        else:
+            ctx['status'] = cur_status
+
+        return ctx['status']
 
     return _f
 
 
-def sequencef(f: typing.Callable[[typing.Any], typing.Iterator[TASK]], context: Context, *args, **kwargs) -> CALL_TASK:
+def sequencef(f: typing.Callable[[typing.Any], typing.Iterator[TASK]], ctx: Context, *args, **kwargs) -> CALL_TASK:
     """Run a callable sequence task
 
     Args:
@@ -207,37 +226,57 @@ def sequencef(f: typing.Callable[[typing.Any], typing.Iterator[TASK]], context: 
     Returns:
         CALL_TASK: The task to call
     """
-    return sequence(partial(f, *args, **kwargs), context)
+    return sequence(partial(f, *args, **kwargs), ctx)
 
 
-def _selector(tasks: typing.List[TASK], 
-    state: Context
+# SELECTOR does not seem to be working correctly
+
+def _selector(
+    tasks: typing.List[TASK], 
+    ctx: Context
 ) -> TaskStatus:
 
-    idx = state.get_or_set('idx', 0)
-    status = state.get_or_set('status', TaskStatus.RUNNING)
-    
+    status = ctx.get_or_set('status', TaskStatus.RUNNING)
+
     if status.is_done:
         return status
-    if idx >= len(tasks):
-        return TaskStatus.FAILURE
     
-    cur_task = tasks[idx]
+    # get the iterator
+    if 'it' not in ctx:
+        ctx['it'] = iter(tasks)
+
+        try:
+            cur_task = next(ctx['it'])
+            ctx['cur_task'] = cur_task
+        except StopIteration:
+            ctx['status'] = TaskStatus.FAILURE
+            return TaskStatus.FAILURE
+        
+    cur_task = ctx['cur_task']
+        
     cur_status = cur_task()
-    
-    idx += 1
-    if cur_status.failure and idx == len(tasks):
-        state['status'] = TaskStatus.FAILURE
-    elif cur_status.failure:
-        state['status'] = TaskStatus.RUNNING
+
+
+    if cur_status.running:
+        ctx['status'] = TaskStatus.RUNNING
+        return ctx['status']
+
+    if cur_status.failure:
+
+        try:
+            cur_task = next(ctx['it'])
+            ctx['cur_task'] = cur_task
+            ctx['status'] = TaskStatus.RUNNING
+        except StopIteration:
+            ctx['status'] = TaskStatus.FAILURE
+            return TaskStatus.FAILURE
     else:
-        state['status'] = cur_status
-    state['idx'] = idx
+        ctx['status'] = cur_status
 
-    return state['status']
+    return ctx['status']
 
 
-def selector(tasks: TASK, state: Context) -> CALL_TASK:
+def selector(tasks: TASK, ctx: Context) -> CALL_TASK:
     """Create a selector task
 
     Args:
@@ -248,14 +287,14 @@ def selector(tasks: TASK, state: Context) -> CALL_TASK:
         CALL_TASK: The task to call
     """
     def _f():
-        return _selector(tasks, state)
+        return _selector(tasks, ctx)
 
     return _f
 
 
 def selectorf(
     f: typing.Callable[[typing.Any], typing.Iterator[TASK]], 
-    context: Context, *args, **kwargs) -> CALL_TASK:
+    ctx: Context, *args, **kwargs) -> CALL_TASK:
     """Run a callable selector task
 
     Args:
@@ -265,7 +304,7 @@ def selectorf(
     Returns:
         CALL_TASK: The task to call
     """
-    return selector(partial(f, *args, **kwargs), context)
+    return selector(partial(f, *args, **kwargs), ctx)
 
 
 fallback = selector
