@@ -5,7 +5,7 @@ import time
 
 # 3rd party
 from . import _functional
-from ._core import Task, TaskStatus
+from ._core import Task, TaskStatus, State
 from .._core._utils import Context
 
 
@@ -442,10 +442,3 @@ class StateMachine(Task):
     def reset(self):
 
         self._cur_state = self._init_state
-
-
-class State(Task):
-
-    @abstractmethod
-    def update(self) -> typing.Union['State', TaskStatus]:
-        pass

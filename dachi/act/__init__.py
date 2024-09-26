@@ -1,6 +1,6 @@
 from ._core import (
     Task, TaskMessage, TaskStatus,
-    Router, ROUTE
+    Router, ROUTE, TOSTATUS, ToStatus, State
 )
 from ._functional import (
     parallel, unless, until, sequence,
@@ -17,7 +17,8 @@ from ._tasks import (
     Not, 
     Unless, Until,
     run_task,
-    Fallback
+    Fallback,
+    StateMachine
 )
 from ._build import (
     build_composite, build_sequence,

@@ -153,10 +153,9 @@ class Task(Storable):
         """
 
         Args:
-            terminal (Terminal): _description_
 
         Returns:
-            SangoStatus: _description_
+            TaskStatus: _description_
         """
         return self.tick()
 
@@ -175,46 +174,28 @@ class Task(Storable):
         return self._id
 
 
-class TaskFunc(object):
-
-    def __init__(self, f: typing.Callable, is_method: bool=False, instance=None):
-        
-        super().__init__()
-        self.f = f
-        self._is_method = is_method
-        self._instance = instance
-    
-    def __get__(self, instance, owner):
-
-        if self._instance is not None and instance is self._instance:
-            return self._instance
-        self._instance = instance
-        return self._instance
-    
-    def _exec(self, *args, **kwargs):
-
-        if self._is_method:
-            return self.f(self._instance, *args, **kwargs)
-        return self.f(*args, **kwargs)
-
-    @abstractmethod
-    def __call__(self, *args: typing.Any, **kwargs: typing.Any) -> TaskStatus:
-        pass
-
-    def l(self) -> typing.Callable[[], Self]:
-    
-        def _(_: typing.Dict) -> Self:
-            return self.tick()
-        
-        return _
-
-
-class Router(object):
+class ToStatus(object):
 
     @abstractmethod
     def __call__(self, val) -> TaskStatus:
         pass
 
 
-ROUTE = Router | typing.Callable[[typing.Any], TaskStatus]
+TOSTATUS = ToStatus | typing.Callable[[typing.Any], TaskStatus]
 
+
+class State(object):
+
+    @abstractmethod
+    def update(self) -> typing.Union['State', TaskStatus]:
+        pass
+
+
+class Router(object):
+
+    @abstractmethod
+    def __call__(self, val) -> TaskStatus | State:
+        pass
+
+
+ROUTE = Router | typing.Callable[[typing.Any], TaskStatus | State]

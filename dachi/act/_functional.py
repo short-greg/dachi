@@ -36,13 +36,8 @@ async def _parallel(
     tg_tasks = []
     async with asyncio.TaskGroup() as tg:
 
-        for i, task in enumerate(tasks):
+        for _, task in enumerate(tasks):
 
-            # if isinstance(task, Task):
-            #     tg_tasks.append(
-            #         tg.create_task(asyncio.to_thread(task.tick))
-            #     )
-            # else:
             tg_tasks.append(tg.create_task(
                 (asyncio.to_thread(task))
             ))
