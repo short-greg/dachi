@@ -7,7 +7,7 @@ from ._functional import (
     action, not_, tick, condf, selector,
     unlessf, untilf, notf, parallelf,
     selectorf, sequencef, fallbackf,
-    fallback
+    fallback, taskf, PARALLEL, threaded
 )
 
 from ._tasks import (
