@@ -4,7 +4,7 @@ from ._core import (
 )
 from ._functional import (
     parallel, unless, until, sequence,
-    actionf, not_, tick, condf, selector,
+    action, not_, tick, condf, selector,
     unlessf, untilf, notf, parallelf,
     selectorf, sequencef, fallbackf,
     fallback
@@ -18,14 +18,14 @@ from ._tasks import (
     Unless, Until,
     run_task,
     Fallback,
-    StateMachine
+    StateMachine,
+    FixedTimer, RandomTimer
 )
 from ._build import (
     build_composite, build_sequence,
     build_parallel, build_sango, build_select,
     build_decorate, build_not, build_unless, build_until
 )
-
 from ..act._agent import (
     Agent, AgentStatus,
 )

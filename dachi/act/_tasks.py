@@ -2,6 +2,7 @@
 from abc import abstractmethod
 import typing
 import time
+import random
 
 # 3rd party
 from . import _functional
@@ -442,3 +443,66 @@ class StateMachine(Task):
     def reset(self):
 
         self._cur_state = self._init_state
+
+
+class FixedTimer(Action):
+    """A timer that will "succeed" at a fixed interval
+    """
+
+    def __init__(self, seconds: float):
+        """Create the timer specifying the number of seconds for it
+
+        Args:
+            seconds (float): The number of seconds for the timer
+        """
+        super().__init__()
+        self.seconds = seconds
+        self._start = None
+
+    def tick(self) -> TaskStatus:
+
+        cur = time.time()
+        if self._start is None:
+            self._start = cur
+        elapsed = cur - self._start
+        if elapsed >= self.seconds:
+            return TaskStatus.SUCCESS
+        return TaskStatus.RUNNING
+
+    def reset(self):
+        super().reset()
+        self._start = None
+
+
+class RandomTimer(Action):
+    """A timer that will randomly choose a time between two values
+    """
+    def __init__(self, seconds_lower: float, seconds_upper: float):
+        """Create the timer specifying the range
+
+        Args:
+            seconds_lower (float): The lower bound for the timer
+            seconds_upper (float): The upper bound for the timer
+        """
+        super().__init__()
+        self.seconds_lower = seconds_lower
+        self.seconds_upper = seconds_upper
+        self._start = None
+        self._target = None
+
+    def tick(self) -> TaskStatus:
+
+        cur = time.time()
+        if self._start is None:
+            self._start = cur
+            r = random.random() 
+            self._target = r * self.seconds_lower + r * self.seconds_upper
+        elapsed = cur - self._start
+        if elapsed >= self._target:
+            return TaskStatus.SUCCESS
+        return TaskStatus.RUNNING
+
+    def reset(self):
+        super().reset()
+        self._start = None
+        self._target = None

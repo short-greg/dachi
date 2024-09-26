@@ -62,7 +62,7 @@ from ._utils import (
     unescape_curly_braces, is_primitive,
     generic_class, str_formatter,
     Context, ContextSpawner, ContextStorage,
-    Shared, get_or_set, get_or_spawn
+    Shared, get_or_set, get_or_spawn, SharedBase
 )
 
 from ._convert import (

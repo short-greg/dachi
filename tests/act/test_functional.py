@@ -54,7 +54,7 @@ class TestSequence:
 
         status = F.tick(F.sequence([
             F.condf(sample_cond, 4),
-            F.actionf(sample_action, state.A, 4)
+            F.action(sample_action, state.A, 4)
         ], state.S))
 
         print(status)
@@ -65,12 +65,12 @@ class TestSequence:
 
         status = F.sequence([
             F.condf(sample_cond, 4),
-            F.actionf(sample_action, state.A, 4)
+            F.action(sample_action, state.A, 4)
         ], state.S)()
 
         status = F.sequence([
             F.condf(sample_cond, 4),
-            F.actionf(sample_action, state.A, 4)
+            F.action(sample_action, state.A, 4)
         ], state.S)()
         assert status.success
 
@@ -88,7 +88,7 @@ class TestSequence:
 
         status = F.sequence([
             F.condf(sample_cond, 0),
-            F.actionf(sample_action, state.A, 4)
+            F.action(sample_action, state.A, 4)
         ], state.S)()
 
         assert status.failure
@@ -101,7 +101,7 @@ class TestSelector:
 
         status = F.selector([
             F.condf(sample_cond, 2),
-            F.actionf(sample_action, state.A, 4)
+            F.action(sample_action, state.A, 4)
         ], state.S)()
 
         assert status.running
@@ -111,12 +111,12 @@ class TestSelector:
 
         status = F.selector([
             F.condf(sample_cond, 2),
-            F.actionf(sample_action, state.A, 4)
+            F.action(sample_action, state.A, 4)
         ], state.S)()
 
         status = F.selector([
             F.condf(sample_cond, 4),
-            F.actionf(sample_action, state.A, 4)
+            F.action(sample_action, state.A, 4)
         ], state.S)()
         assert status.success
 
@@ -133,7 +133,7 @@ class TestSelector:
 
         status = F.selector([
             F.condf(sample_cond, 4),
-            F.actionf(sample_action, state.A, 4)
+            F.action(sample_action, state.A, 4)
         ], state.S)()
 
         assert status.success
@@ -146,7 +146,7 @@ class TestParallel:
 
         status = F.parallel([
             F.condf(sample_cond, 2),
-            F.actionf(sample_action, state.A, 4)
+            F.action(sample_action, state.A, 4)
         ])()
 
         assert status.failure
@@ -156,7 +156,7 @@ class TestParallel:
 
         status = F.parallel([
             F.condf(sample_cond, 4),
-            F.actionf(sample_action, state.A, 4)
+            F.action(sample_action, state.A, 4)
         ])()
 
         assert status.success
@@ -166,7 +166,7 @@ class TestParallel:
 
         status = F.parallel([
             F.condf(sample_cond, 4),
-            F.actionf(sample_action, state.A, 2)
+            F.action(sample_action, state.A, 2)
         ])()
 
         assert status.running
@@ -177,7 +177,7 @@ class TestParallel:
         status = F.parallel([
             F.condf(sample_cond, 4),
             F.sequence(
-                [F.actionf(sample_action, state.A, 2)], state.S
+                [F.action(sample_action, state.A, 2)], state.S
             )
         ])()
 
@@ -192,7 +192,7 @@ class TestUnless:
         status = F.unless(
             F.sequence([
                 F.condf(sample_cond, 2),
-                F.actionf(sample_action, state.A, 4)
+                F.action(sample_action, state.A, 4)
             ], state.S)
         , state)()
 
@@ -204,14 +204,14 @@ class TestUnless:
         status = F.unless(
             F.sequence([
                 F.condf(sample_cond, 4),
-                F.actionf(sample_action, state.A, 4)
+                F.action(sample_action, state.A, 4)
             ], state.S)
         )()
 
         status = F.unless(
             F.sequence([
                 F.condf(sample_cond, 4),
-                F.actionf(sample_action, state.S, 4)
+                F.action(sample_action, state.S, 4)
             ], state.A)
         )()
 
@@ -226,7 +226,7 @@ class TestUntil:
         status = F.until(
             F.sequence([
                 F.condf(sample_cond, 2),
-                F.actionf(sample_action, 4)
+                F.action(sample_action, 4)
             ], state.S)
         )()
 
@@ -238,14 +238,14 @@ class TestUntil:
         status = F.until(
             F.sequence([
                 F.condf(sample_cond, 4),
-                F.actionf(sample_action, state.A, 4)
+                F.action(sample_action, state.A, 4)
             ],state.S)
         )()
 
         status = F.until(
             F.sequence([
                 F.condf(sample_cond, 4),
-                F.actionf(sample_action, state.A, 4)
+                F.action(sample_action, state.A, 4)
             ], state.S)
         )()
 

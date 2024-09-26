@@ -2,6 +2,8 @@
 import typing
 import asyncio
 from functools import partial
+import threading
+import time
 
 # local
 from ._core import (
@@ -12,6 +14,10 @@ from .._core._utils import Context, ContextSpawner
 
 TASK = typing.Union[Task, typing.Callable[[typing.Dict], TaskStatus]]
 CALL_TASK = typing.Callable[[],TaskStatus]
+
+
+PARALLEL = typing.Callable[[typing.Iterable[Task], int, int, bool], TaskStatus]
+
 
 async def _parallel(
     tasks: typing.Iterable[TASK], 
@@ -81,7 +87,8 @@ def parallel(
     tasks: typing.Iterable[TASK], 
     succeeds_on: int=-1, 
     fails_on: int=1, 
-    success_priority: bool=True
+    success_priority: bool=True,
+    parallelizer: PARALLEL=_parallel
 ) -> CALL_TASK:
     """Create a parallel task
 
@@ -95,6 +102,9 @@ def parallel(
         CALL_TASK: The task to call
     """
     def _f():
+        if parallelizer:
+            return parallelizer(tasks, succeeds_on, fails_on, success_priority)
+        
         return asyncio.run(
             _parallel(tasks, succeeds_on, fails_on, success_priority)
         )
@@ -306,7 +316,10 @@ fallback = selector
 fallbackf = selectorf
 
 
-def actionf(task: Task, *args, router: ROUTE=None, **kwargs) -> CALL_TASK:
+from ._core import TOSTATUS
+from .._core import SharedBase
+
+def action(task: TASK, *args, **kwargs) -> CALL_TASK:
     """Functional form of action
 
     Args:
@@ -318,9 +331,32 @@ def actionf(task: Task, *args, router: ROUTE=None, **kwargs) -> CALL_TASK:
     """
     def _f():
         result = task(*args, **kwargs)
-        if router:
-            return router(result)
         return result
+
+    return _f
+
+
+def taskf(f, *args, out: SharedBase=None, to_status: TOSTATUS=None, **kwargs) -> CALL_TASK:
+    """A generic task based on a function
+
+    Args:
+        f: The function to exectue
+        out (SharedBase, optional): The output to store to. Defaults to None.
+        to_status (TOSTATUS, optional): The status converter. If not set will automatically set to "Success". 
+            Defaults to None.
+
+    Returns:
+        CALL_TASK: The CALL_TASK to execute
+    """
+    def _f():
+        result = f(*args, **kwargs)
+        if out is not None:
+            out.set(result)
+        if to_status is not None:
+            status = to_status(result)
+        else:
+            status = TaskStatus.SUCCESS
+        return status
 
     return _f
 
@@ -352,7 +388,7 @@ def not_(task: TASK) -> CALL_TASK:
     Returns:
         TaskStatus: The status of the result
     """
-    def _f():
+    def _f() -> TaskStatus:
         status = tick(task)
         return status.invert()
 
@@ -370,6 +406,43 @@ def notf(f, *args, **kwargs) -> CALL_TASK:
         TaskStatus: The status of the result
     """
     return not_(partial(f, *args, **kwargs))
+
+
+def _run_thread(task: TASK, ctx: Context, interval: float=1./60):
+    """Run periodically to update the status
+
+    Args:
+        task (TASK): The task to run
+        ctx (Context): The context
+        interval (float, optional): The interval to run at. Defaults to 1./60.
+    """
+    while True:
+        status = task()
+        ctx['thread_status'] = status
+        if status.is_done:
+            break
+        time.sleep(interval)
+
+
+def threaded(task: TASK, ctx: Context, interval: float=1./60) -> CALL_TASK:
+
+    def run() -> TaskStatus:
+        if '_thread' not in ctx:
+            ctx['thread_status'] = TaskStatus.RUNNING
+            t = threading.Thread(target=_run_thread, args=(task, ctx, interval))
+            t.start()
+            ctx['_thread'] = t
+        
+        return ctx['thread_status']
+
+    if 'task_id' in ctx and id(task) != ctx['task_id']:
+
+        raise RuntimeError(
+            'Task context has been initialized but '
+            'the task passed in is does not match'
+        )
+
+    return run
 
 
 def tick(task: TASK) -> TaskStatus:

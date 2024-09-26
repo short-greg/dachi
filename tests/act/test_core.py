@@ -2,7 +2,6 @@ import pytest
 from dachi.act import _core
 
 
-
 class TestTaskStatus(object):
 
     def test_task_status_is_done_if_failed(self):
@@ -40,7 +39,6 @@ class TestTaskStatus(object):
     def test_or_returns_running_if_failure_and_running(self):
 
         assert (_core.TaskStatus.FAILURE | _core.TaskStatus.RUNNING).running
-
 
     def test_and_returns_success_if_one_failure(self):
 
