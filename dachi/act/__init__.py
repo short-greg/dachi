@@ -1,6 +1,7 @@
 from ._core import (
     Task, TaskMessage, TaskStatus,
-    Router, ROUTE, TOSTATUS, ToStatus, State
+    Router, ROUTE, TOSTATUS, ToStatus, State,
+    from_bool
 )
 from ._functional import (
     parallel, unless, until, sequence,
@@ -11,7 +12,8 @@ from ._functional import (
 )
 
 from ._tasks import (
-    Serial, Sequence, Selector, 
+    Serial, Sequence, 
+    Selector, 
     Parallel, Action,
     Condition, Root,
     Not, 

@@ -184,6 +184,18 @@ class ToStatus(object):
 TOSTATUS = ToStatus | typing.Callable[[typing.Any], TaskStatus]
 
 
+def from_bool(status: bool) -> TaskStatus:
+    """functional code to map from a boolean
+
+    Args:
+        status (bool): The status in boolean form
+
+    Returns:
+        TaskStatus: The task status
+    """
+    return TaskStatus.from_bool(status)
+
+
 class State(object):
 
     @abstractmethod

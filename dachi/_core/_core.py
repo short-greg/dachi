@@ -9,14 +9,12 @@ import json
 from uuid import uuid4
 from enum import Enum
 
-
 # 3rd party
 import pydantic
 
 # local
 from ._utils import (
     is_primitive, 
-    generic_class,
     escape_curly_braces,
     unescape_curly_braces
 )

@@ -35,7 +35,7 @@ def get_or_set(state: typing.Dict, key: str, val: typing.Any) -> typing.Any:
     return state[key]
 
 
-class SharedBase(ABC, Renderable):
+class SharedBase(Renderable, ABC):
     """Allows for shared data between tasks
     """
 
@@ -101,7 +101,6 @@ class SharedBase(ABC, Renderable):
 class Shared(SharedBase):
     """Allows for shared data between tasks
     """
-
     def __init__(
         self, data: typing.Any=None, 
         default: typing.Any=None,
@@ -114,7 +113,6 @@ class Shared(SharedBase):
             default (typing.Any, optional): The default value of the shared. When resetting, will go back to this. Defaults to None.
             callbacks (typing.List[typing.Callable[[typing.Any], None]], optional): The callbacks to call on update. Defaults to None.
         """
-
         self._default = default
         self._data = data if data is not None else default
         self._callbacks = callbacks or []
@@ -186,20 +184,22 @@ class Shared(SharedBase):
         self.data = self._default
 
 
-
-# TODO: FINISH!
-
-# x, y, z, ..., STOP
-# current index
-
 class Buffer(object):
+    """Create a buffer to add data to
+    """
 
     def __init__(self) -> None:
-        
+        """Create a buffer
+        """
         self._buffer = []
         self._opened = True
         
     def add(self, *data):
+        """Add data to the buffer
+
+        Raises:
+            RuntimeError: if the buffer is closed
+        """
         
         if not self._opened:
             raise RuntimeError(
@@ -209,50 +209,59 @@ class Buffer(object):
         self._buffer.extend(data)
 
     def open(self):
+        """Open the buffer
+        """
         self._opened = True
 
     def close(self):
-
+        """Close the buffer
+        """
         self._opened = False
 
-    def is_open(self):
+    def is_open(self) -> bool:
+        """Get whether the buffer is open
 
+        Returns:
+            bool: Whether the buffer is open
+        """
         return self._opened
         
     def it(self) -> 'BufferIter':
         return BufferIter(self)
 
-    # def reset(self, opened: bool=True):
-    #     """Resets new buffer. Note that any iterators will
-    #     still use the old buffer
-    #     """
-    #     self._opened = opened
-    #     self._buffer = []
+    def __getitem__(self, idx) -> typing.Union[typing.Any, typing.List]:
+        """Get a value from the buffer
 
-    def __getitem__(self, key) -> typing.Union[typing.Any, typing.List]:
-
-        if isinstance(key, slice):
-            return self._buffer[key]
-        if isinstance(key, typing.Iterable):
-            return [self._buffer[i] for i in key]
-        return self._buffer[key]
-        
-    def __len__(self) -> int:
-        """
+        Args:
+            idx: The index to to retrieve
 
         Returns:
-            int: 
+            typing.Union[typing.Any, typing.List]: The retrieved data
+        """
+        if isinstance(idx, slice):
+            return self._buffer[idx]
+        if isinstance(idx, typing.Iterable):
+            return [self._buffer[i] for i in idx]
+        return self._buffer[idx]
+        
+    def __len__(self) -> int:
+        """Get the length of the buffer
+
+        Returns:
+            int: the length
         """
         return len(self._buffer)
 
 
 class BufferIter(object):
+    """An iterator to retrieve values from a Buffer
+    """
 
     def __init__(self, buffer: Buffer) -> None:
-        """
+        """Create a buffer iterator
 
         Args:
-            buffer (typing.List): 
+            buffer (Buffer): The buffer to iterate over
         """
         self._buffer = buffer
         self._i = 0
@@ -262,22 +271,42 @@ class BufferIter(object):
         """
         return self._i == 0
 
-    def end(self):
+    def end(self) -> bool:
+        """Get whether the buffer is at an end
 
+        Returns:
+            whether it is the end of the buffer iter
+        """
         return self._i >= (len(self._buffer) - 1)
     
-    def is_open(self):
+    def is_open(self) -> bool:
+        """Get if the buffer is open
 
+        Returns:
+            bool: Whether the buffer is open
+        """
         return self._buffer.is_open()
 
     def read(self) -> typing.Any:
-        
+        """Read the next value in the buffer
+
+        Raises:
+            StopIteration: If the buffer is at an end
+
+        Returns:
+            typing.Any: The next value in the buffer
+        """
         if self._i < (len(self._buffer) - 1):
             self._i += 1
             return self._buffer[self._i - 1]
         raise StopIteration('Reached the end of the buffer')
 
     def read_all(self) -> typing.List:
+        """_summary_
+
+        Returns:
+            typing.List: _description_
+        """
         
         if self._i < len(self._buffer):
             i = self._i
@@ -313,64 +342,87 @@ class Context(dict):
 
 
 class ContextStorage(object):
+    """Use to store the state
+    """
 
     def __init__(self):
-
+        """
+        """
         object.__setattr__(self, '_data', {})
+        self._data: typing.Dict
 
     @property
-    def states(self) -> typing.Dict[str, Context]:
+    def contexts(self) -> typing.Dict[str, Context]:
+        """Retrieve all contexts
+
+        Returns:
+            typing.Dict[str, Context]: All contexts
+        """
         return {**self._data}
     
-    def remove(self, key):
+    def clear(self):
+        """Clear the entire context storage
+        """
+        self._data = {}
 
-        del self._data[key]
+    def reset(self):
+        """Clear the entire context storage
+        """
+        self.clear()
     
-    def add(self, key):
-
-        if key not in self._data:
-            d = Context()
-            self._data[key] = d
-        
-        return self._data[key]
-
-    def __getattr__(self, key):
-
-        if key not in self._data:
-            d = Context()
-            self._data[key] = d
-        
-        return self._data[key]
-
-
-class ContextSpawner(object):
-
-    def __init__(self, manager: ContextStorage, base_name: str):
-        """_summary_
+    def remove(self, key):
+        """Remove a context
 
         Args:
-            manager (StateManager): _description_
-            base_name (str): _description_
+            key: The name of the context to remove
         """
-        self.manager = manager
-        self.base_name = base_name
+        del self._data[key]
+    
+    def add(self, key) -> 'Context':
+        """Add context to the storage
 
-    def __getitem__(self, i: int) -> Context:
+        Args:
+            key : The name of the context 
 
-        name = f'{self.base_name}_{i}'
-        return self.manager.add(name)
+        Returns:
+            Context: The spawned context
+        """
+
+        if key not in self._data:
+            d = Context()
+            self._data[key] = d
+        
+        return self._data[key]
+
+    def __getattr__(self, key) -> 'Context':
+        """Retrieve the context
+
+        Args:
+            key Retrieve the context
+
+        Returns:
+            Context: The created context
+        """
+
+        if key not in self._data:
+            d = Context()
+            self._data[key] = d
+        
+        return self._data[key]
 
 
 class Blackboard(object):
     """A blackboard is for sharing information
-    across agents
+    across tasks
     """
 
     def __init__(self):
         """The data for the blackboard
         """
-        self._data = {}
-        self._callbacks: typing.Dict[str, typing.List[typing.Callable[[typing.Any]]]] = {}
+        object.__setattr__('_data', {})
+        object.__setattr__('_callbacks', {})
+        self._data: typing.Dict
+        self._callbacks: typing.Dict[str, typing.List[typing.Callable[[typing.Any]]]]
 
     def r(self, key) -> 'Retriever':
         """Get a retriever for the blackboard
@@ -444,6 +496,14 @@ class Blackboard(object):
         self._data[key] = val
         return val
 
+    def __getattr__(self, key):
+
+        if key not in self._data:
+            d = Context()
+            self._data[key] = d
+        
+        return self._data[key]
+
 
 class Retriever(SharedBase):
 
@@ -515,3 +575,22 @@ class Retriever(SharedBase):
         """
         self._blackboard[self._key] = data
         return data
+
+
+class ContextSpawner(object):
+
+    def __init__(self, manager: ContextStorage, base_name: str):
+        """
+
+        Args:
+            manager (): 
+            base_name (str): 
+        """
+        self.manager = manager
+        self.base_name = base_name
+
+    def __getitem__(self, i: int) -> Context:
+
+        name = f'{self.base_name}_{i}'
+        return self.manager.add(name)
+

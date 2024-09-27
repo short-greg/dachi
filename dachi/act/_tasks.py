@@ -459,7 +459,7 @@ class FixedTimer(Action):
         self.seconds = seconds
         self._start = None
 
-    def tick(self) -> TaskStatus:
+    def act(self) -> TaskStatus:
 
         cur = time.time()
         if self._start is None:
@@ -490,7 +490,7 @@ class RandomTimer(Action):
         self._start = None
         self._target = None
 
-    def tick(self) -> TaskStatus:
+    def act(self) -> TaskStatus:
 
         cur = time.time()
         if self._start is None:

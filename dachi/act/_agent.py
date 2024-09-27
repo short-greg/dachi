@@ -20,7 +20,9 @@ class Agent(object):
     """Agent class
     """
 
-    def __init__(self, sango: Root=None, interval: float=None):
+    def __init__(
+        self, sango: Root=None, interval: float=None
+    ):
         """
 
         Args:
