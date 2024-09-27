@@ -1,7 +1,7 @@
 import typing
 from functools import reduce
 from abc import ABC, abstractmethod
-
+from ._core import Renderable, render
 
 
 def get_or_spawn(state: typing.Dict, child: str) -> typing.Dict:
@@ -35,7 +35,7 @@ def get_or_set(state: typing.Dict, key: str, val: typing.Any) -> typing.Any:
     return state[key]
 
 
-class SharedBase(ABC):
+class SharedBase(ABC, Renderable):
     """Allows for shared data between tasks
     """
 
@@ -93,6 +93,9 @@ class SharedBase(ABC):
     @abstractmethod
     def set(self, value) -> typing.Any:
         pass
+
+    def render(self) -> str:
+        return render(self.get())
 
 
 class Shared(SharedBase):

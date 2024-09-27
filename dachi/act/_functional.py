@@ -7,7 +7,7 @@ import time
 
 # local
 from ._core import (
-    TaskStatus, Task, ROUTE
+    TaskStatus, Task
 )
 from .._core._data import Context, ContextSpawner
 
@@ -27,7 +27,7 @@ async def _parallel(
     """
 
     Args:
-        tasks (typing.List[TASK]): 
+        tasks (typing.List[TASK]): The tasks to run
         state (typing.Dict): 
         success_on (int): 
         fails_on (int): 
