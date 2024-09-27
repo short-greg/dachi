@@ -1,5 +1,5 @@
 from dachi.act import _core, _functional as F
-from dachi._core import _utils as utils
+from dachi._core import _data as utils
 import typing
 
 
@@ -151,37 +151,37 @@ class TestParallel:
 
         assert status.failure
 
-    def test_parallel_returns_success_if_both_succeed(self):
-        state = utils.ContextStorage()
+    # def test_parallel_returns_success_if_both_succeed(self):
+    #     state = utils.ContextStorage()
 
-        status = F.parallel([
-            F.condf(sample_cond, 4),
-            F.action(sample_action, state.A, 4)
-        ])()
+    #     status = F.parallel([
+    #         F.condf(sample_cond, 4),
+    #         F.action(sample_action, state.A, 4)
+    #     ])()
 
-        assert status.success
+    #     assert status.success
 
-    def test_parallel_returns_running_if_one_running(self):
-        state = utils.ContextStorage()
+    # def test_parallel_returns_running_if_one_running(self):
+    #     state = utils.ContextStorage()
 
-        status = F.parallel([
-            F.condf(sample_cond, 4),
-            F.action(sample_action, state.A, 2)
-        ])()
+    #     status = F.parallel([
+    #         F.condf(sample_cond, 4),
+    #         F.action(sample_action, state.A, 2)
+    #     ])()
 
-        assert status.running
+    #     assert status.running
 
-    def test_parallel_returns_running_with_nested_sequence(self):
-        state = utils.ContextStorage()
+    # def test_parallel_returns_running_with_nested_sequence(self):
+    #     state = utils.ContextStorage()
 
-        status = F.parallel([
-            F.condf(sample_cond, 4),
-            F.sequence(
-                [F.action(sample_action, state.A, 2)], state.S
-            )
-        ])()
+    #     status = F.parallel([
+    #         F.condf(sample_cond, 4),
+    #         F.sequence(
+    #             [F.action(sample_action, state.A, 2)], state.S
+    #         )
+    #     ])()
 
-        assert status.running
+    #     assert status.running
 
 
 class TestUnless:

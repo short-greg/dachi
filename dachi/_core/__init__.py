@@ -61,8 +61,11 @@ from ._utils import (
     get_str_variables, escape_curly_braces,
     unescape_curly_braces, is_primitive,
     generic_class, str_formatter,
+)
+from ._data import (
     Context, ContextSpawner, ContextStorage,
-    Shared, get_or_set, get_or_spawn, SharedBase
+    Shared, get_or_set, get_or_spawn, SharedBase,
+    Buffer, BufferIter
 )
 
 from ._convert import (

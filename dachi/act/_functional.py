@@ -9,7 +9,7 @@ import time
 from ._core import (
     TaskStatus, Task, ROUTE
 )
-from .._core._utils import Context, ContextSpawner
+from .._core._data import Context, ContextSpawner
 
 
 TASK = typing.Union[Task, typing.Callable[[typing.Dict], TaskStatus]]
@@ -88,7 +88,7 @@ def parallel(
     succeeds_on: int=-1, 
     fails_on: int=1, 
     success_priority: bool=True,
-    parallelizer: PARALLEL=_parallel
+    parallelizer: PARALLEL=None
 ) -> CALL_TASK:
     """Create a parallel task
 
