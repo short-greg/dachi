@@ -118,7 +118,6 @@ class SignatureFunc(Module, Instruct):
         doc: typing.Optional[str]=None,
         reader: typing.Optional[Reader]=None,
         train: bool=False, 
-        instance=None,
         ai_kwargs: typing.Dict=None
     ):
         """Wrap the signature method with a particular engine and
@@ -171,8 +170,8 @@ class SignatureFunc(Module, Instruct):
         self.reader = reader
 
         update_wrapper(self, f) 
-        self.instance = instance
-        self._stored = None
+        self.instance = None
+        # self._stored = None
         self.dialog_factory = dialog_factory or Dialog
         self.ai_kwargs = ai_kwargs
 
@@ -360,20 +359,23 @@ class SignatureFunc(Module, Instruct):
         Returns:
             SignatureMethod
         """
-        if self._stored is not None and instance is self._stored:
-            return self._stored
-        self._stored = SignatureFunc(
-            self.f,
-            self.engine,
-            self.dialog_factory,
-            self._is_method,
-            self._doc,
-            self.reader,
-            self._train,
-            instance,
-            self.ai_kwargs
-        )
-        return self._stored
+        self.instance = instance
+        return self
+        # if self._stored is not None and instance is self._stored:
+        #     return self._stored
+        
+        # self._stored = SignatureFunc(
+        #     self.f,
+        #     self.engine,
+        #     self.dialog_factory,
+        #     self._is_method,
+        #     self._doc,
+        #     self.reader,
+        #     self._train,
+        #     instance,
+        #     self.ai_kwargs
+        # )
+        # return self._stored
 
 
 class InstructFunc(Module, Instruct):
@@ -384,7 +386,6 @@ class InstructFunc(Module, Instruct):
         self, f: typing.Callable, engine: typing.Union[AIModel, str, typing.Callable[[], AIModel]], 
         dialog_factory: typing.Optional[typing.Callable[[], Dialog]]=None,
         is_method: bool=False,
-        instance=None,
         ai_kwargs=None
         #reader: typing.Optional[Reader]=None,
     ):
@@ -401,7 +402,7 @@ class InstructFunc(Module, Instruct):
         self._is_method = is_method
         self.engine = engine
         update_wrapper(self, f) 
-        self.instance = instance
+        self.instance = None
         self._stored = None
         self.dialog_factory = dialog_factory or Dialog
         self.return_annotation = inspect.signature(f).return_annotation
@@ -501,17 +502,19 @@ class InstructFunc(Module, Instruct):
         Returns:
             SignatureMethod
         """
-        if self._stored is not None and instance is self._stored:
-            return self._stored
-        self._stored = InstructFunc(
-            self.f, 
-            self.engine,
-            self.dialog_factory, 
-            self._is_method,
-            instance=instance,
-            ai_kwargs=self.ai_kwargs
-        )
-        return self._stored
+        self.instance = instance
+        return self
+        # if self._stored is not None and instance is self._stored:
+        #     return self._stored
+        # self._stored = InstructFunc(
+        #     self.f, 
+        #     self.engine,
+        #     self.dialog_factory, 
+        #     self._is_method,
+        #     instance=instance,
+        #     ai_kwargs=self.ai_kwargs
+        # )
+        # return self._stored
 
     def __iter__(self, *args, **kwargs):
         
