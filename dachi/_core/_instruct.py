@@ -5,7 +5,6 @@ import inspect
 from itertools import chain
 
 import pydantic
-import roman
 
 # local
 from ._core import (
@@ -116,6 +115,7 @@ class SignatureFunc(Module, Instruct):
         self, f: typing.Callable, engine: typing.Union[AIModel, str, typing.Callable[[], AIModel]], 
         dialog_factory: typing.Optional[typing.Callable[[], Dialog]]=None,
         is_method: bool=False,
+        doc: typing.Optional[str]=None,
         reader: typing.Optional[Reader]=None,
         train: bool=False, 
         instance=None,
@@ -130,24 +130,31 @@ class SignatureFunc(Module, Instruct):
             dialog_factory (typing.Optional[typing.Callable[[], Dialog]], optional): The dialog to use. Defaults to None.
             train (bool, optional): Whether to train the instructions or not. Defaults to False.
             is_method (bool, optional): Whether it is a method or not. Defaults to False.
-            instance (_type_, optional): The instance. Defaults to None.
+            instance (optional): The instance. Defaults to None.
         """
         self.f = f
         self.name = f.__name__
         self._is_method = is_method
         self.engine = engine
         self._train = train
-
-        self._docstring = inspect.getdoc(f)
+        self._doc = doc
+        docstring = inspect.getdoc(f) if doc is None else doc
         self.signature = str(inspect.signature(f))
         self.parameters = inspect.signature(f).parameters
         self.return_annotation = inspect.signature(f).return_annotation
 
-        self._docstring_p = Param(
-            name=self.name,
-            instruction=self._docstring,
-            training=train
-        )
+        if not isinstance(docstring, typing.Callable):
+            docstring = Instruction(text=docstring)
+            self._docstring = Param(
+                name=self.name,
+                instruction=docstring,
+                training=train
+            )
+        elif train:
+            raise ValueError('Cannot set to train if the docstring is a callable')
+        else:
+            self._docstring = docstring
+
         self.out_cls = (
             self.return_annotation if self.return_annotation is not None 
             else AIResponse 
@@ -183,7 +190,7 @@ class SignatureFunc(Module, Instruct):
             train (bool, optional): _description_. Defaults to False.
 
         Returns:
-            SignatureMethod: _description_
+            SignatureMethod: 
         """
         return SignatureFunc(
             f=self.f,
@@ -191,6 +198,7 @@ class SignatureFunc(Module, Instruct):
             is_method=self._is_method,
             dialog_factory=dialog_factory or self.dialog_factory,
             reader=self.reader,
+            doc=self._doc,
             train=train,
             ai_kwargs=self.ai_kwargs
         )
@@ -201,7 +209,10 @@ class SignatureFunc(Module, Instruct):
         Returns:
             Instruction: Get the instruction
         """
-        filled_docstring = self._docstring_p.render()
+        if isinstance(self._docstring, Param):
+            filled_docstring = self._docstring.render()
+        else:
+            filled_docstring = self._docstring()
 
         filled = set()
 
@@ -356,6 +367,7 @@ class SignatureFunc(Module, Instruct):
             self.engine,
             self.dialog_factory,
             self._is_method,
+            self._doc,
             self.reader,
             self._train,
             instance,
@@ -555,6 +567,7 @@ def instructmethod(
 def signaturemethod(
     engine: AIModel=None, 
     reader: Reader=None,
+    doc: typing.Union[str, typing.Callable[[], str]]=None,
     **ai_kwargs
 ):
     """Decorator for using a function signature
@@ -567,8 +580,9 @@ def signaturemethod(
         @wraps(f)
         def wrapper(*args, **kwargs):
             return f(*args, **kwargs)
+        
         return SignatureFunc(
-            f, engine, None, True, 
+            f, engine, None, True, doc=doc,
             reader=reader, ai_kwargs=ai_kwargs
         )
 
@@ -578,6 +592,7 @@ def signaturemethod(
 def signaturefunc(
     engine: AIModel=None, 
     reader: Reader=None,
+    doc: typing.Union[str, typing.Callable[[], str]]=None,
     **ai_kwargs
 ):
     """Decorator for using a function signature
@@ -590,7 +605,10 @@ def signaturefunc(
         @wraps(f)
         def wrapper(*args, **kwargs):
             return f(*args, **kwargs)
+
         return SignatureFunc(
-            f, engine, None, False, reader=reader, ai_kwargs=ai_kwargs)
+            f, engine, None, False, doc=doc, reader=reader, 
+            ai_kwargs=ai_kwargs
+        )
 
     return _

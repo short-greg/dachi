@@ -284,7 +284,6 @@ class NullRead(Reader):
 class Instruct(ABC):
     """
     """
-
     @abstractmethod
     def i(self) -> 'Instruction':
         """Create an Instruct class used for instructions

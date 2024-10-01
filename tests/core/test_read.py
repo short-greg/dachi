@@ -150,4 +150,3 @@ class TestPrimRead(object):
         )
         temp = out.template()
         assert 'int' in temp
-

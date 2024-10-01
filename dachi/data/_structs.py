@@ -99,5 +99,3 @@ class MediaMessage(Message):
             str: The rendered message
         """
         return f'{self.source}: Media [{self.media}]'
-
-
