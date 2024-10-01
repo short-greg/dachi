@@ -361,21 +361,6 @@ class SignatureFunc(Module, Instruct):
         """
         self.instance = instance
         return self
-        # if self._stored is not None and instance is self._stored:
-        #     return self._stored
-        
-        # self._stored = SignatureFunc(
-        #     self.f,
-        #     self.engine,
-        #     self.dialog_factory,
-        #     self._is_method,
-        #     self._doc,
-        #     self.reader,
-        #     self._train,
-        #     instance,
-        #     self.ai_kwargs
-        # )
-        # return self._stored
 
 
 class InstructFunc(Module, Instruct):
@@ -504,17 +489,6 @@ class InstructFunc(Module, Instruct):
         """
         self.instance = instance
         return self
-        # if self._stored is not None and instance is self._stored:
-        #     return self._stored
-        # self._stored = InstructFunc(
-        #     self.f, 
-        #     self.engine,
-        #     self.dialog_factory, 
-        #     self._is_method,
-        #     instance=instance,
-        #     ai_kwargs=self.ai_kwargs
-        # )
-        # return self._stored
 
     def __iter__(self, *args, **kwargs):
         
