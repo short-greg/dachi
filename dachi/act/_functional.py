@@ -9,7 +9,9 @@ import time
 from ._core import (
     TaskStatus, Task
 )
-from .._core._data import Context, ContextSpawner
+from ..data import Context, ContextSpawner, SharedBase
+
+from ._core import TOSTATUS
 
 
 TASK = typing.Union[Task, typing.Callable[[typing.Dict], TaskStatus]]
@@ -315,9 +317,6 @@ def selectorf(
 fallback = selector
 fallbackf = selectorf
 
-
-from ._core import TOSTATUS
-from .._core import SharedBase
 
 def action(task: TASK, *args, **kwargs) -> CALL_TASK:
     """Functional form of action

@@ -2,6 +2,8 @@
 import typing
 import string
 import re
+import pydantic
+from enum import Enum
 
 
 class _PartialFormatter(string.Formatter):
@@ -117,45 +119,41 @@ def generic_class(t: typing.TypeVar, idx: int=0) -> typing.Type:
     return t.__orig_class__.__args__[idx]
 
 
-# class Args(object):
-#     """Encapsulates args and kwargs into an object
-#     """
+class _Types(Enum):
 
-#     def __init__(self, *args, **kwargs):
-#         """Create the Args object
-#         """
-#         self.args = args
-#         self.kwargs = kwargs
+    UNDEFINED = 'UNDEFINED'
+    WAITING = 'WAITING'
 
 
-
-class F(object):
-    """F is a functor that allows the user to set the args and kwargs
-    """
-
-    def __init__(self, f: typing.Callable[[], typing.Any], *args, **kwargs):
-        """Create a functor
-
-        Args:
-            f (typing.Callable[[], typing.Any]): The function called
-        """
-        super().__init__()
-        self.f = f
-        self.args = args
-        self.kwargs = kwargs
-
-    @property
-    def value(self) -> typing.Any:
-        return self.f(*self.args, **self.kwargs)
+UNDEFINED = _Types.UNDEFINED
+WAITING = _Types.WAITING
 
 
-def _is_function(f) -> bool:
-    """ 
+def is_nested_model(
+    pydantic_model_cls: typing.Type[pydantic.BaseModel]
+) -> bool:
+    """Helper function to check if it is a nested model
+
     Args:
-        f: The value to check
+        pydantic_model_cls (typing.Type[pydantic.BaseModel]): The class to check if it is a nested model
 
     Returns:
-        bool: whether f is a function
+        bool: If it is a nested model
     """
-    f_type = type(f)
-    return f_type == type(_is_function) or f_type == type(hasattr)
+    for field in pydantic_model_cls.model_fields.values():
+        
+        if isinstance(field.annotation, type) and issubclass(field.annotation, pydantic.BaseModel):
+            return True
+    return False
+
+
+def is_undefined(val) -> bool:
+    """Returns true if the vlaue is undefined
+
+    Args:
+        val : The value to check
+
+    Returns:
+        bool: Whether the value is undefined or not
+    """
+    return val == UNDEFINED or val == WAITING

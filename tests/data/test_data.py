@@ -1,5 +1,5 @@
 import pytest
-from dachi._core import _data as _data
+from dachi.data import _data as _data
 
 
 class TestGetOrSpawn(object):
@@ -33,7 +33,6 @@ class TestGetOrSet(object):
         state = {}
         child = _data.get_or_set(state, 'val', 3)
         assert child == 3
-
 
 
 class TestShared:
@@ -151,4 +150,3 @@ class TestBuffer:
         
         val = it.read_reduce(lambda cur, x: cur + str(x), '')
         assert val == '23'
-

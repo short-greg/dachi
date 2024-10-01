@@ -1,5 +1,5 @@
 from dachi.act import _core, _functional as F
-from dachi._core import _data as utils
+from dachi.data import _data as utils
 import typing
 
 

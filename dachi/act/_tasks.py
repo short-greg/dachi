@@ -7,7 +7,7 @@ import random
 # 3rd party
 from . import _functional
 from ._core import Task, TaskStatus, State
-from .._core._data import Context
+from ..data._data import Context
 
 
 class Root(Task):

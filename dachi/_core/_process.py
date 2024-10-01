@@ -1,31 +1,24 @@
 # 1st party
+from abc import ABC, abstractmethod
+from abc import ABC
 import typing
 from typing import Self, Any
 import itertools
 import time
-
-from abc import ABC, abstractmethod
-from abc import ABC
 import asyncio
 import threading
 from enum import Enum
-
 from dataclasses import dataclass
-
 from functools import wraps
-from uuid import uuid4
-from enum import Enum
 
 # 3rd party
 import numpy as np
-# 3rd party
-import pydantic
 
 # local
 from ._core import Module
 from dachi._core._core import Param
-from ._core import UNDEFINED
-from ._core import Renderable, render
+from ..utils import UNDEFINED, Renderable
+from ._core import render
 
 
 @dataclass
@@ -38,34 +31,50 @@ class Partial(object):
     complete: bool = False
 
 
-# class StructModule(Struct, Module):
-
-#     def forward(self, key: str, value: typing.Any) -> typing.Any:
-        
-#         copy = self.model_copy()
-#         copy[key] = value
-#         return copy
-
-
 class I(object):
+    """Use to mark data that should not be batched
+    """
     
     def __init__(self, data, n: int):
+        """Create an I object
+
+        Args:
+            data: 
+            n (int): The number of times to loop
+        """
         self.data = data
         self.n = n
 
     def __iter__(self) -> typing.Iterator[typing.Any]:
+        """Iterate over the object (n times)
+
+        Returns:
+            typing.Iterator[typing.Any]: The 
+        """
         for i in range(self.n):
             yield self.data
 
 
 class P(object):
+    """Use to mark data for batching
+    """
     
     def __init__(self, data: typing.Iterable, n: int=None):
+        """Create a P object that will loop over the data
 
+        Args:
+            data (typing.Iterable): The data to loop over
+            n (int, optional): The number of items to loop over. Defaults to None.
+        """
         self.data = data
         self._n = n or len(data)
 
     def __iter__(self) -> typing.Iterator:
+        """
+
+        Yields:
+            typing.Any: Get each value in the  
+        """
         for d_i in self.data:
             yield d_i
 
@@ -78,13 +87,18 @@ class P(object):
     
     @property
     def n(self) -> int:
+        """Get the number of iterations
+
+        Returns:
+            int: The number of iterations in the loop
+        """
         return self._n
 
 
 def parallel_loop(modules: typing.Union['ModuleList', Module, None], *args, **kwargs) -> typing.Iterator[
     typing.Tuple[Module, typing.List, typing.Dict]
 ]:
-    """
+    """Use to loop over the module list
 
     Args:
         modules (typing.Union[ModuleList, Module, None]): 
@@ -224,46 +238,95 @@ def processf(f):
 
 
 class ModuleList(Module):
+    """Use to have a list of modules
+    """
 
     def __init__(self, modules: typing.List[Module]):
+        """Create a list of modules
 
+        Args:
+            modules (typing.List[Module]): the modules to set
+        """
         self._modules = modules
 
     def children(self, recurse: bool = True) -> typing.Iterator[Module]:
-        
+        """Get the children of the ModuleList
+
+        Args:
+            recurse (bool, optional): Whether to recurse to child modules. Defaults to True.
+
+        Yields:
+            Module: The children of the module
+        """
         for module in self._modules:
             yield module
-            for child in module.children(recurse):
-                yield child
+            if recurse:
+                for child in module.children(recurse):
+                    yield child
 
     def parameters(self, recurse: bool = True) -> typing.Iterator[Param]:
-        
+        """Get the parameters in the ModuleList
+
+        Args:
+            recurse (bool, optional): _description_. Defaults to True
+
+        Yields:
+            Param: The params in the ModuleList
+        """
         for module in self._modules:
             for p in module.parameters(recurse):
                 yield p
         
     def forward(self) -> Any:
+        """
+
+        Raises:
+            ValueError: If called because ModuleList cannot be __call__
+
+        """
         raise ValueError('Cannot pass forward with ModuleList')
     
     def __len__(self) -> int:
+        """Get the number of modules in the ModuleList
+
+        Returns:
+            int: The number of modules
+        """
         return len(self._modules)
     
-    def __iter__(self) -> typing.Iterator:
+    def __iter__(self) -> typing.Iterator[Module]:
+        """Loop over the modules in the ModuleList
 
+        Yields:
+            Module: All of the modules in the ModuleList
+        """
         for m in self._modules:
             yield m
 
 
 class Sequential(ModuleList):
+    """Use to 
+    """
     
     def __init__(self, *module) -> None:
+        """Create a Sequence of modules
+        """
         super().__init__(module)
 
     def add(self, module):
+        """Add a module to Sequential
 
+        Args:
+            module: Add the module to the Sequential
+        """
         self._modules.append(module)
 
     def forward(self, *x) -> Any:
+        """Pass the input (x) through each of the modules
+
+        Returns:
+            Any: The result of the final model
+        """
         
         multi = len(x) > 1
         if len(x) == 1:
@@ -277,19 +340,24 @@ class Sequential(ModuleList):
                 x = module(x)
             first = False
         return x
-    
-    def __len__(self) -> int:
-        return len(self._modules)
 
 
 class Batched(Renderable):
+    """Batched is data 
+    """
 
     def __init__(
         self, *data: typing.Iterable, 
         size: int=1, drop_last: bool=True, 
         order: typing.Optional[typing.List]=None
     ):
+        """Create Batched data
 
+        Args:
+            size (int, optional): the size of each batch. Defaults to 1.
+            drop_last (bool, optional): Whether to drop the last element. Defaults to True.
+            order (typing.Optional[typing.List], optional): The order to return the values in. Defaults to None.
+        """
         if len(data) == 0:
             raise ValueError('No data was passed in to batch')
         sz = None
@@ -313,24 +381,30 @@ class Batched(Renderable):
         )
 
     def __len__(self) -> int:
+        """Get the length of the batch
+
+        Returns:
+            int: The number of elements in the batch
+        """
         return self._n
 
     def shuffle(self) -> Self:
+        """Shuffle the batched data
+
+        Returns:
+            Self: Batched but shuffled
+        """
         return Batched(
             *self._data, size=self._size, drop_last=self.drop_last, 
             order=np.random.permutation(self._n_elements)
         )
-        # n_iterations = len(self._data) // self.size
-        # if len(self._data) % self.size != 0 and not self.drop_last:
-        #     n_iterations += 1
 
     def __iter__(self) -> typing.Iterator[typing.Any]:
+        """Iterate over the batched data
 
-        # if self.shuffle:
-        #     order = np.random.permutation(self._n_elements)
-        # else:
-        #     order = np.linspace(0, len(self._n_elements))
-
+        Yields:
+            Iterator[typing.Iterator[typing.Any]]: _description_
+        """
         start = 0
         upto = self._size
         for _ in range(self._n):
@@ -350,29 +424,51 @@ class Batched(Renderable):
                 yield tuple(cur)
     
     def render(self) -> str:
-        
+        """Render the batch to a string
+
+        Returns:
+            str: The text
+        """
         return '\n'.join(
             f'{i}: {render(v)}' for i, v in enumerate(self)
         )
 
 
-def reduce(mod: Module, *args, init: Module=None, **kwargs):
-    
+def reduce(mod: Module, *args, init_mod: Module=None, init_val=None, **kwargs):
+    """Reduce the args passed in with a module
+
+    Args:
+        mod (Module): The module to use for reduction
+        init_mod (Module, optional): The module to use for the first set of data. Defaults to None.
+        init_val: The initial value to use
+        
+    Returns:
+        The result of the reduction
+    """
     results = []
 
     for _, cur_args, cur_kwargs in parallel_loop(None, *args, **kwargs):
 
-        if len(results) == 0 and init is not None:
-            results.append(init(*cur_args, **cur_kwargs))
+        if len(results) == 0 and init_mod is not None and init_val is None:
+            results.append(init_mod(*cur_args, **cur_kwargs))
+        elif len(results) == 0 and init_mod is not None:
+            results.append(init_mod(init_val, *cur_args, **cur_kwargs))
         elif len(results) == 0:
-            results.append(mod(None, *cur_args, **cur_kwargs))
+            results.append(mod(init_val, *cur_args, **cur_kwargs))
         else:
             results.append(mod(results[-1], *cur_args, **cur_kwargs))
     return results[-1]
 
 
 async def _async_map(f: Module, *args, **kwargs) -> typing.Tuple[typing.Any]:
+    """
 
+    Args:
+        f (Module): 
+
+    Returns:
+        typing.Tuple[typing.Any]: 
+    """
     tasks = []
     async with asyncio.TaskGroup() as tg:
         
@@ -386,7 +482,14 @@ async def _async_map(f: Module, *args, **kwargs) -> typing.Tuple[typing.Any]:
 
 
 def async_map(f: Module, *args, **kwargs) -> typing.Tuple[typing.Any]:
-    
+    """Map *args and **kwargs through the module
+
+    Args:
+        f (Module): The module to use for mapping
+
+    Returns:
+        typing.Tuple[typing.Any]: The output of the modules
+    """
     return asyncio.run(_async_map(f, *args, **kwargs))
 
 
@@ -478,6 +581,8 @@ class Streamer(object):
 
 
 class RunStatus(Enum):
+    """The status for a "Run"
+    """
 
     RUNNING = 'running'
     READY = 'ready'
@@ -485,8 +590,15 @@ class RunStatus(Enum):
 
 
 class Runner(object):
+    """Create an object to loop over the stream
+    """
 
     def __init__(self, module, *args, **kwargs):
+        """Create a runner which will loop over the stream
+
+        Args:
+            module: The module to stream
+        """
         
         self.module = module
         self.status = RunStatus.READY
@@ -497,10 +609,19 @@ class Runner(object):
 
     @property
     def result(self) -> typing.Any:
+        """Return the result
+
+        Returns:
+            typing.Any: The result of the 
+        """
         return self._result
 
     def _exec(self, module: Module, *args, **kwargs):
+        """The method that gets executed by the thread
 
+        Args:
+            module (Module): The module to execute
+        """
         self.status = RunStatus.RUNNING
         result = module(*args, **kwargs)
         self.status = RunStatus.FINISHED
@@ -508,9 +629,16 @@ class Runner(object):
 
 
 class StreamRunner(object):
+    """Use to run a stream
+    """
 
     def __init__(self, module,  *args, **kwargs):
-        
+        """Create a StreamRunner which will run the module in 
+        a stream
+
+        Args:
+            module: The module to stream
+        """
         self.module = module
         self.status = RunStatus.READY
         args = [module, *args]
@@ -520,6 +648,11 @@ class StreamRunner(object):
         self.t.run()
 
     def _stream_exec(self, module: Module, *args, **kwargs):
+        """Stream the module
+
+        Args:
+            module (Module): The module to run
+        """
 
         self.status = RunStatus.RUNNING
         for d, dx in module.stream_forward(*args, **kwargs):
@@ -530,15 +663,44 @@ class StreamRunner(object):
 
     @property
     def result(self) -> typing.Any:
+        """Get the result of the stream
+
+        Returns:
+            typing.Any: The result
+        """
         if len(self._results) > 0:
             return self._results[-1]
         return None
-    
+
+    @property
+    def result_dx(self) -> typing.Any:
+        """Get the result of the stream
+
+        Returns:
+            typing.Any: The result
+        """
+        if len(self._result_dx) > 0:
+            return [*self._result_dx]
+        return None
+
     def dx(self) -> typing.Iterator:
+        """Loop over the changes in the results
+
+        Yields:
+            typing.Any: Each change" in value
+        """
         for x in self._result_dx:
             yield x
 
     def exec_loop(self, sleep_time: float=1./60) -> typing.Iterator[typing.Tuple]:
+        """Execute the loop
+
+        Args:
+            sleep_time (float, optional): The interval to execute the loop at. Defaults to 1./60.
+
+        Yields:
+            typing.Tuple: Each result and dx
+        """
         i = 0
         while True:
 
@@ -552,7 +714,11 @@ class StreamRunner(object):
             time.sleep(sleep_time)
 
     def __iter__(self)  -> typing.Iterator[typing.Tuple]:
+        """Loop over the results and the dxs
 
+        Yields:
+            typing.Tuple: The result and each change in the result
+        """
         for r, rx in zip(self._results, self._result_dx):
             yield r, rx
 
@@ -572,34 +738,14 @@ def run_thread(module: Module, *args, **kwargs) -> Runner:
 
 
 def stream_thread(module, *args, **kwargs) -> StreamRunner:
-    """_summary_
+    """Convenience function to stream a thread. Will create a StreamRunner
 
     Args:
-        module (_type_): _description_
+        module: The module to run
 
     Returns:
-        StreamRunner: _description_
+        StreamRunner: The stream runner
     """
-
     return StreamRunner(
         module, *args, **kwargs
     )
-
-
-# class Get(Module):
-
-#     def forward(self, struct: Struct, key) -> typing.Any:
-        
-#         return struct[key]
-
-
-# class Set(Module):
-
-#     def forward(self, struct: Struct, key, value) -> typing.Any:
-        
-#         struct[key] = value
-#         return value
-
-
-# get = Get()
-# set = Set()

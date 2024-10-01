@@ -229,7 +229,7 @@ class TestReduce:
         r = Append('x')
         b = RefinerAppender('y')
         res = _process.reduce(
-            b, _process.P('xy'), init=r
+            b, _process.P('xy'), init_mod=r
         )
         assert res == 'xxyy'
 
@@ -238,7 +238,7 @@ class TestReduce:
         r = Append('x')
         b = RefinerAppender('y')
         res = _process.reduce(
-            b, _process.P('xyz'), init=r
+            b, _process.P('xyz'), init_mod=r
         )
         assert res == 'xxyyzy'
 

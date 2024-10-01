@@ -1,52 +1,52 @@
-from dachi import converse
-from ..depracated.core import DummyNode, DummyNode2
+# from dachi import converse
+# from ..depracated.core import DummyNode, DummyNode2
 
 
-class TestNetwork:
+# class TestNetwork:
 
-    def test_network_outputs_correct_value_in_chain(self):
+#     def test_network_outputs_correct_value_in_chain(self):
 
-        node1 = DummyNode("Node1")
-        node2 = DummyNode2("Node2")
+#         node1 = DummyNode("Node1")
+#         node2 = DummyNode2("Node2")
         
-        var = converse.TIn("X", default=1)
+#         var = converse.TIn("X", default=1)
 
-        y = node1.link(var)
-        y = node2.link(y)
+#         y = node1.link(var)
+#         y = node2.link(y)
         
-        network = converse.Network((y, 0))
+#         network = converse.Network((y, 0))
 
-        result = network.exec(by={var: 2})
-        assert result == 4
+#         result = network.exec(by={var: 2})
+#         assert result == 4
 
-    def test_node_outputs_correct_value_with_two_outputs(self):
+#     def test_node_outputs_correct_value_with_two_outputs(self):
 
-        node1 = DummyNode("Node1")
-        node2 = DummyNode2("Node2")
+#         node1 = DummyNode("Node1")
+#         node2 = DummyNode2("Node2")
         
-        var = converse.TIn("X", default=1)
+#         var = converse.TIn("X", default=1)
 
-        y1 = node1.link(var)
-        y = node2.link(y1)
+#         y1 = node1.link(var)
+#         y = node2.link(y1)
         
-        network = converse.Network([(y, 0), y1])
+#         network = converse.Network([(y, 0), y1])
 
-        result = network.exec(by={var: 2})
-        assert result[0] == 4
-        assert result[1] == 3
+#         result = network.exec(by={var: 2})
+#         assert result[0] == 4
+#         assert result[1] == 3
 
 
-    def test_node_outputs_correct_value_with_two_outputs(self):
+#     def test_node_outputs_correct_value_with_two_outputs(self):
 
-        node1 = DummyNode("Node1")
-        node2 = DummyNode2("Node2")
+#         node1 = DummyNode("Node1")
+#         node2 = DummyNode2("Node2")
         
-        var = converse.TIn("X", default=1)
+#         var = converse.TIn("X", default=1)
 
-        y = node2.link(var)
-        y = node1.link(y[0])
+#         y = node2.link(var)
+#         y = node1.link(y[0])
         
-        network = converse.Network(y)
+#         network = converse.Network(y)
 
-        result = network.exec(by={var: 2})
-        assert result == 4
+#         result = network.exec(by={var: 2})
+#         assert result == 4

@@ -1,11 +1,11 @@
 # 1st party
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
-from typing import Self, get_type_hints
+from typing import Self
 import typing
-import inspect
-import json
-
+from ..utils import (
+    Renderable, TemplateField, 
+    Templatable, model_to_text
+)
 from uuid import uuid4
 from enum import Enum
 
@@ -13,189 +13,19 @@ from enum import Enum
 import pydantic
 
 # local
-from ._utils import (
+from ..utils import (
     is_primitive, 
-    escape_curly_braces,
-    unescape_curly_braces
+    escape_curly_braces
 )
-
-
-class _Types(Enum):
-
-    UNDEFINED = 'UNDEFINED'
-    WAITING = 'WAITING'
-
-
-UNDEFINED = _Types.UNDEFINED
-WAITING = _Types.WAITING
 
 
 S = typing.TypeVar('S', bound=pydantic.BaseModel)
 
 
-class Renderable(ABC):
-
-    @abstractmethod
-    def render(self) -> str:
-        pass
-
-
-def model_template(model_cls: typing.Type[pydantic.BaseModel]) -> str:
-    """Get the template for a pydantic.Model
-
-    Args:
-        model_cls (typing.Type[pydantic.BaseModel]): The model to retrieve for
-
-    Returns:
-        str: The model template string
-    """
-    template = {}
-    for name, field_type in get_type_hints(model_cls).items():
-        
-        if inspect.isclass(field_type) and issubclass(field_type, pydantic.BaseModel):
-            template[name] = model_template(field_type)
-        else:
-            template[name] = {
-                "is_required": model_cls.model_fields[name].is_required(),
-                "type": field_type
-            }
-    return template
-
-
-@dataclass
-class TemplateField(Renderable):
-
-    type_: str
-    description: str
-    default: typing.Any = None
-    is_required: bool = True
-
-    def to_dict(self) -> typing.Dict:
-
-        return {
-            'type': self.type_,
-            'description': self.description,
-            'default': self.default,
-            'is_required': self.is_required
-        }
-    
-    def render(self) -> str:
-        """
-
-        Returns:
-            str: 
-        """
-        return str(self.to_dict())
-
-
-def struct_template(model: pydantic.BaseModel) -> typing.Dict:
-    """Get the template for the Struct
-
-    Returns:
-        typing.Dict: The template 
-    """
-    template = {}
-    
-    base_template = model_template(model)
-    for field_name, field in model.model_fields.items():
-        field_type = field.annotation
-        if isinstance(field_type, type) and issubclass(field_type, pydantic.BaseModel):
-
-            template[field_name] = struct_template(field_type)
-        else:
-
-            if 'is_required' in base_template[field_name]:
-                is_required = base_template[field_name]['is_required']
-            else:
-                is_required = True
-            template[field_name] = TemplateField(
-                type_=field.annotation,
-                description=field.description,
-                default=field.default if field.default is not None else None,
-                is_required=is_required
-            )
-
-    return template
-
-
-def model_to_text(model: pydantic.BaseModel, escape: bool=False) -> str:
-    """Dump the struct to a string
-
-    Returns:
-        str: The string
-    """
-    if escape:  
-        return escape_curly_braces(model.model_dump())
-    return model.model_dump_json()
-
-
-def model_from_text(model_cls: typing.Type[pydantic.BaseModel], data: str, escaped: bool=False) -> Self:
-    """Load the struct from a string
-
-    Args:
-        data (str): The data for the struct
-
-    Returns:
-        Self: The loaded struct
-    """
-    if escaped:
-        data = unescape_curly_braces(data)
-    return model_cls(**json.loads(data))
-
-
-class Templatable:
-
-    @abstractmethod
-    def template(self) -> str:
-        pass
-
-
-class StructLoadException(Exception):
-    """Exception StructLoad
-    """
-
-    def __init__(self, message="Struct loading failed.", errors=None):
-        """Create a StructLoadException with a message
-
-        Args:
-            message (str, optional): The message. Defaults to "Struct loading failed.".
-            errors (optional): The errors. Defaults to None.
-        """
-        super().__init__(message)
-        self.errors = errors
-
-
-def is_nested_model(
-    pydantic_model_cls: typing.Type[pydantic.BaseModel]
-) -> bool:
-    """Helper function to check if it is a nested model
-
-    Args:
-        pydantic_model_cls (typing.Type[pydantic.BaseModel]): The class to check if it is a nested model
-
-    Returns:
-        bool: If it is a nested model
-    """
-    for field in pydantic_model_cls.model_fields.values():
-        
-        if isinstance(field.annotation, type) and issubclass(field.annotation, pydantic.BaseModel):
-            return True
-    return False
-
-
-def is_undefined(val) -> bool:
-    """
-    Args:
-        val : The value to check
-
-    Returns:
-        bool: Whether the value is undefined or not
-    """
-    return val == UNDEFINED or val == WAITING
-
-
 # TODO: Make "struct" storable?
 #  Module as well
+# Consider whether to remove
+
 class Storable(ABC):
     """Object to serialize objects to make them easy to recover
     """
@@ -206,6 +36,11 @@ class Storable(ABC):
 
     @property
     def id(self) -> str:
+        """The object id of the storable
+
+        Returns:
+            str: The ID
+        """
         return self._id
 
     def load_state_dict(self, state_dict: typing.Dict):
@@ -234,22 +69,6 @@ class Storable(ABC):
             else:
                 cur[k] = v
         return cur
-
-
-# def render_general(value: typing.Any) -> str:
-#     """Escape curly braces for dictionary-like structures."""
-
-#     if isinstance(value, str):
-#         result = f'"{value}"'
-#         return result
-#     if isinstance(value, typing.Dict):
-#         items = ', '.join(f'"{k}": {render_general(v)}' for k, v in value.items())
-#         return f"{{{{{items}}}}}"
-#     if isinstance(value, typing.List):
-#         return '[{}]'.format(', '.join(render_general(v) for v in value))
-#     if isinstance(value, Renderable):
-#         return value.render()
-#     return str(value)
 
 
 def render(
@@ -327,7 +146,8 @@ def render_multi(xs: typing.Iterable[typing.Any]) -> typing.List[str]:
 
 
 class Reader(pydantic.BaseModel, Templatable, ABC):
-    """
+    """Use a reader to read in data convert data retrieved from
+    an LLM to a better format
     """
 
     name: str = ''
@@ -462,15 +282,23 @@ class NullRead(Reader):
 
 
 class Instruct(ABC):
+    """
+    """
 
     @abstractmethod
     def i(self) -> 'Instruction':
+        """Create an Instruct class used for instructions
+
+        Returns:
+            Instruction: Get the instruction
+        """
         pass
 
 
 class Instruction(pydantic.BaseModel, Instruct, typing.Generic[S], Renderable):
     """Specific instruction for the model to use
     """
+    
     text: str
     out: typing.Optional[Reader] = None
 
@@ -514,6 +342,9 @@ class Instruction(pydantic.BaseModel, Instruct, typing.Generic[S], Renderable):
 
 
 class Param(pydantic.BaseModel, Renderable):
+    """Use Param to wrap instructions so the instructions
+    can update
+    """
     
     name: str
     instruction: Instruction
@@ -530,12 +361,25 @@ class Param(pydantic.BaseModel, Renderable):
             return Instruction(text=render(v))
         return v
 
-    def update(self, text: str):
+    def update(self, text: str) -> bool:
+        """Update the text for the parameter
+        If not in "training" mode will not update
+
+        Args:
+            text (str): The text to update with
+        
+        Returns:
+            True if updated and Fals if not (not in training mode)
+        """
         if self.training:
             self.text = text
+            return True
+        return False
 
     def render(self) -> str:
-        """
+        """Convert the Parameter to a string
+        IF the text for the paramter has not been 
+        updated 
 
         Returns:
             str: 
@@ -651,35 +495,3 @@ class Module(ABC):
 
         for d, dx in self.stream_forward(*args, **kwargs):
             yield d, dx
-
-
-# def struct_template(model: pydantic.BaseModel) -> typing.Dict:
-#     """Get the template for the Struct
-
-#     Returns:
-#         typing.Dict: The template 
-#     """
-#     template = {}
-    
-#     base_template = model_template(model)
-#     for field_name, field in model.model_fields.items():
-#         field_type = field.annotation
-#         if isinstance(field_type, type) and issubclass(field_type, Struct):
-#             template[field_name] = field_type.template()
-#         else:
-#             # description = f'{field.description} - type: {field.annotation}'
-#             # if field.default is not None and field.default != PydanticUndefined:
-#             #     description = f'{description} - default: field.default'
-#             # template[field_name] = f"<{description}>"
-#             template[field_name] = TemplateField(
-#                 type_=field.annotation,
-#                 description=field.description,
-#                 default=field.default if field.default is not None else None,
-#                 #is_required=base_template[field_name]['is_required']
-#             )
-#             #     "type": field.annotation,
-#             #     "description": field.description,
-#             #     "default": field.default if field.default is not None else None,
-#             #     "is_required": base_template[field_name]['is_required']
-#             # }
-#     return template

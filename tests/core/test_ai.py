@@ -166,5 +166,3 @@ class TestMessage(object):
     def test_aslist_returns_self_in_a_list(self):
         message = _ai.TextMessage(source='assistant', text='hi, how are you')
         assert message.aslist()[0] is message
-
-

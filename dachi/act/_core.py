@@ -3,8 +3,6 @@ from enum import Enum
 from abc import abstractmethod
 import typing
 from dataclasses import dataclass
-from functools import reduce
-from typing import Self
 
 # local
 from .._core import Storable

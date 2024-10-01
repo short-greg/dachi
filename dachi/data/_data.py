@@ -1,7 +1,7 @@
 import typing
 from functools import reduce
 from abc import ABC, abstractmethod
-from ._core import Renderable, render
+from .._core._core import Renderable, render
 
 
 def get_or_spawn(state: typing.Dict, child: str) -> typing.Dict:
@@ -126,7 +126,6 @@ class Shared(SharedBase):
         Returns:
             bool: True the callback was registered, False if already registered
         """
-
         if callback in self._callbacks:
             return False
         
@@ -174,13 +173,28 @@ class Shared(SharedBase):
         return data
 
     def get(self) -> typing.Any:
+        """Get the value
+
+        Returns:
+            typing.Any: 
+        """
         return self._data
     
     def set(self, value) -> typing.Any:
+        """Set the shared value
+
+        Args:
+            value : Set the shared value
+
+        Returns:
+            typing.Any: The value the shared value was set to
+        """
         self.data = value
         return value
     
     def reset(self):
+        """Reset the shared value back to the default value
+        """
         self.data = self._default
 
 
@@ -331,9 +345,19 @@ class BufferIter(object):
 
 
 class Context(dict):
+    """Use to store state
+    """
 
     def get_or_set(self, key, value):
+        """Get or set a value in the context
 
+        Args:
+            key : The key for the value to set
+            value : The value to set if not already set
+
+        Returns:
+            Any: the value specified by key
+        """
         if key not in self:
             self[key] = value
             return value
@@ -342,11 +366,12 @@ class Context(dict):
 
 
 class ContextStorage(object):
-    """Use to store the state
+    """Use to manage context storage such as spawning new
+    contexts.
     """
 
     def __init__(self):
-        """
+        """Create the context storage
         """
         object.__setattr__(self, '_data', {})
         self._data: typing.Dict
@@ -387,7 +412,6 @@ class ContextStorage(object):
         Returns:
             Context: The spawned context
         """
-
         if key not in self._data:
             d = Context()
             self._data[key] = d
@@ -403,7 +427,6 @@ class ContextStorage(object):
         Returns:
             Context: The created context
         """
-
         if key not in self._data:
             d = Context()
             self._data[key] = d
@@ -506,9 +529,16 @@ class Blackboard(object):
 
 
 class Retriever(SharedBase):
+    """Use to retrieve data and set data in the blackboard
+    """
 
     def __init__(self, blackboard: Blackboard, key: str):
+        """Create a retriever to retrieve data from the blackboard
 
+        Args:
+            blackboard (Blackboard): The blackboard to retrieve from
+            key (str): The key to retrieve from
+        """
         self._blackboard = blackboard
         self._key = key
 
@@ -593,4 +623,3 @@ class ContextSpawner(object):
 
         name = f'{self.base_name}_{i}'
         return self.manager.add(name)
-

@@ -623,22 +623,3 @@ class AIModel(Module, ABC):
 
     def __call__(self, prompt: AIPrompt, **kwarg_override) -> AIResponse:
         return self.forward(prompt, **kwarg_override)
-
-
-    # def process_response(self, response: AIResponse) -> AIResponse:
-
-    #     response = response.clone()
-
-    #     out = None
-    #     for r in reversed(self.messages):
-    #         if  isinstance(r, Instruction):
-    #             out = r.out
-    #             break
-
-    #     if out is None:
-    #         response.val = response.content
-    #     else:
-    #         # Not sure about this
-    #         response.val = out.read(response.content['text'])
-    #     return response
-
