@@ -165,10 +165,10 @@ class PrimRead(Reader):
         """Convert the data to text
 
         Args:
-            data (typing.Any): 
+            data (typing.Any): The data to convert
 
         Returns:
-            str: The 
+            str: The text
         """
         return str(data)
 
@@ -176,10 +176,10 @@ class PrimRead(Reader):
         """
 
         Args:
-            data (typing.Any): 
+            data (typing.Any): The data to dump
 
         Returns:
-            typing.Any: 
+            typing.Any: The data (since it is a primitive, does nothing)
         """
         return data
 
@@ -226,35 +226,86 @@ class PrimRead(Reader):
         return f'<{self._out_cls}>'
 
 
-class StructRead(Reader, typing.Generic[S]):
-    """Use for converting an AI response into a struct
+class PydanticRead(Reader, typing.Generic[S]):
+    """Use for converting an AI response into a Pydantic BaseModel
     """
     _out_cls: typing.Type[S] = pydantic.PrivateAttr()
 
     def __init__(self, out_cls: S, **data):
+        """Read in a 
+
+        Args:
+            out_cls (S): The class to read in
+        """
         super().__init__(**data)
         self._out_cls = out_cls
 
     def dump_data(self, data: S) -> typing.Any:
+        """Convert the data to a dictionary
+
+        Args:
+            data (S): The data to convert
+
+        Returns:
+            typing.Any: The result
+        """
         return data.model_dump()
 
     def write_text(self, data: typing.Any) -> str:
+        """Convert the dumped data to a string
+
+        Args:
+            data (typing.Any): The data to convert to a string
+
+        Returns:
+            str: The convered data
+        """
         return str(data)
 
     def to_text(self, data: S) -> str:
+        """Convert the data to text
+
+        Args:
+            data (S): The data to convert
+
+        Returns:
+            str: The 
+        """
         return model_to_text(data, True)
 
     def read_text(self, message: str) -> S:
+        """Read in text from the message
+
+        Args:
+            message (str): Read in the text from 
+
+        Returns:
+            S: The BaseModel specified by S
+        """
         message = unescape_curly_braces(message)
-        print('Message: ', message)
         return json.loads(message)
         # return self._out_cls.from_text(message, True)
     
     def load_data(self, data) -> S:
+        """Load data from the 
+
+        Args:
+            data: The data to load
+
+        Returns:
+            S: the loaded data
+        """
         return self._out_cls(**data)
     
     def template_renderer(self, template: TemplateField) -> str:
+        """Render the template for the BaseModel
 
+        Args:
+            template (TemplateField): The template to render
+
+        Returns:
+            str: The template
+        """
         t = f'<{template.description}> - type: {template.type_}'
         if template.default is not None or template.default == PydanticUndefined:
             t = f'{t} {template.default}>'
@@ -263,6 +314,14 @@ class StructRead(Reader, typing.Generic[S]):
         return t
 
     def template(self, escape_braces: bool=False) -> str:
+        """Convert the object to a template
+
+        Args:
+            escape_braces (bool, optional): Whether to escape curly brances. Defaults to False.
+
+        Returns:
+            str: Escape the braces
+        """
         # return self._out_cls.template()
         return render(struct_template(self._out_cls), escape_braces, self.template_renderer) 
 

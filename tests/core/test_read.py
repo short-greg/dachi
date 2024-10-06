@@ -14,10 +14,10 @@ class TestMultiRead(object):
 
         out = _core.MultiRead(
             name='Multi',
-            outs=[_core.StructRead(
+            outs=[_core.PydanticRead(
                 name='F1',
                 out_cls=SimpleStruct
-            ), _core.StructRead(
+            ), _core.PydanticRead(
                 name='F2',
                 out_cls=SimpleStruct
             )]
@@ -36,10 +36,10 @@ class TestMultiRead(object):
 
         out = _core.MultiRead(
             name='Multi',
-            outs=[_core.StructRead(
+            outs=[_core.PydanticRead(
                 name='F1',
                 out_cls=SimpleStruct
-            ), _core.StructRead(
+            ), _core.PydanticRead(
                 name='F2',
                 out_cls=SimpleStruct
             )]
@@ -59,10 +59,10 @@ class TestMultiRead(object):
 
         out = _core.MultiRead(
             name='Multi',
-            outs=[_core.StructRead(
+            outs=[_core.PydanticRead(
                 name='F1',
                 out_cls=SimpleStruct
-            ), _core.StructRead(
+            ), _core.PydanticRead(
                 name='F2',
                 out_cls=SimpleStruct
             )]
@@ -78,7 +78,7 @@ class TestStructRead:
 
     def test_out_creates_out_class(self):
 
-        out = _core.StructRead(
+        out = _core.PydanticRead(
             name='F1',
             out_cls=SimpleStruct
             # name='Simple', signature='...',
@@ -90,7 +90,7 @@ class TestStructRead:
 
     def test_out_creates_out_class_with_string(self):
 
-        out = _core.StructRead(
+        out = _core.PydanticRead(
             name='F1',
             out_cls=SimpleStruct
         )
@@ -101,7 +101,7 @@ class TestStructRead:
     
     def test_out_template(self):
 
-        out = _core.StructRead(
+        out = _core.PydanticRead(
             name='F1',
             out_cls=SimpleStruct
         )
@@ -110,7 +110,7 @@ class TestStructRead:
 
     def test_read_reads_in_the_class(self):
 
-        out = _core.StructRead(
+        out = _core.PydanticRead(
             name='F1',
             out_cls=SimpleStruct
         )
@@ -120,7 +120,7 @@ class TestStructRead:
 
     def test_out_reads_in_the_class_with_str(self):
 
-        out = _core.StructRead(
+        out = _core.PydanticRead(
             name='F1',
             out_cls=SimpleStruct
         )

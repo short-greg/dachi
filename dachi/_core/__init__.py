@@ -7,7 +7,7 @@ from ._core import (
 
 )
 from ._read import (
-    MultiRead, PrimRead, StructRead
+    MultiRead, PrimRead, PydanticRead
 )
 from ._ai import (
     AIModel, AIPrompt, AIResponse, Dialog, Message,

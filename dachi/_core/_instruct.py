@@ -16,7 +16,7 @@ from .._core._ai import (
     Dialog, TextMessage, AIModel, AIResponse
 )
 from ._read import (
-    StructRead, PrimRead
+    PydanticRead, PrimRead
 )
 from ..utils._utils import (
     str_formatter, primitives
@@ -163,7 +163,7 @@ class SignatureFunc(Module, Instruct):
             if self.out_cls in primitives:
                 reader = PrimRead(name=self.name, out_cls=self.out_cls)
             elif issubclass(self.out_cls, pydantic.BaseModel):
-                reader = StructRead(name=self.name, out_cls=self.out_cls)
+                reader = PydanticRead(name=self.name, out_cls=self.out_cls)
             else:
                 reader = NullRead(name=self.name)
         
@@ -340,8 +340,12 @@ class SignatureFunc(Module, Instruct):
             **kwargs
         )
 
-    def __iter__(self, *args, **kwargs):
-        
+    def __iter__(self, *args, **kwargs) -> typing.Iterator[InstructCall]:
+        """Loop over all child InstructCalls of this "Instruct"
+
+        Yields:
+            InstructCall
+        """
         res = self(*args, **kwargs)
         for k, v in res.items():
             if isinstance(v, InstructCall):
@@ -350,7 +354,7 @@ class SignatureFunc(Module, Instruct):
         yield InstructCall(self, *args, **kwargs)
 
     def __get__(self, instance, owner):
-        """Get the SignatureMethod with the instance set
+        """Set the instance on the SignatureMethod
 
         Args:
             instance (): The instance to use
@@ -367,6 +371,7 @@ class InstructFunc(Module, Instruct):
     """InstructMethod is a method where you define the instruction by
     doing operations on that instructions
     """
+
     def __init__(
         self, f: typing.Callable, engine: typing.Union[AIModel, str, typing.Callable[[], AIModel]], 
         dialog_factory: typing.Optional[typing.Callable[[], Dialog]]=None,
@@ -469,10 +474,10 @@ class InstructFunc(Module, Instruct):
                 yield cur.val, dx.val
 
     async def async_forward(self, *args, **kwargs) -> typing.Any:
-        """
+        """Execute forward asynchronously
 
         Returns:
-            typing.Any: 
+            typing.Any: The result of the forward method
         """
         # TODO: Update this to use the Async for the Engine
         return self.forward(*args, **kwargs)
@@ -491,7 +496,11 @@ class InstructFunc(Module, Instruct):
         return self
 
     def __iter__(self, *args, **kwargs):
-        
+        """Loop over all child InstructCalls of this "Instruct"
+
+        Yields:
+            InstructCall
+        """
         res = self(*args, **kwargs)
         if isinstance(res, InstructCall):
             for res_i in res:

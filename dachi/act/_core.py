@@ -207,5 +207,6 @@ class Router(object):
     def __call__(self, val) -> TaskStatus | State:
         pass
 
-
 ROUTE = Router | typing.Callable[[typing.Any], TaskStatus | State]
+
+# TODO: Add in Action (For GOAP)

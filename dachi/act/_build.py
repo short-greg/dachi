@@ -4,6 +4,8 @@ import typing
 
 
 class build_sango(object):
+    """Base context method to build a behavior tree
+    """
 
     def __init__(self) -> None:
         """Create the behavior tree. This is the root node
@@ -12,7 +14,6 @@ class build_sango(object):
         self._sango = behavior.Root()
 
     def __enter__(self):
-        
         return self._sango
     
     def __exit__(self, exc_type, exc_value, traceback):
@@ -22,6 +23,8 @@ class build_sango(object):
 
 
 class build_composite(object):
+    """Base context method to build a task decorator
+    """
 
     def __init__(self, child: behavior.Task, parent: behavior.Task=None) -> None:
         """Create a composite node that uses a list to store all of the subtasks
@@ -67,6 +70,8 @@ class build_composite(object):
 
 
 class build_decorate(object):
+    """Base context method to build a task decorator
+    """
 
     def __init__(
         self, decorate: typing.Type[behavior.Decorator], 
@@ -117,6 +122,8 @@ class build_decorate(object):
 
 
 class build_sequence(build_composite):
+    """Context method to build a sequence task
+    """
 
     def __init__(self, parent: behavior.Task=None) -> None:
         """Create a Sequence task
@@ -128,6 +135,8 @@ class build_sequence(build_composite):
 
 
 class build_select(build_composite):
+    """Context method to build a Selector task
+    """
 
     def __init__(self, parent: behavior.Task=None) -> None:
         """Create a selector task
@@ -138,10 +147,12 @@ class build_select(build_composite):
         super().__init__(behavior.Selector([]), parent)
 
 
-fallback = build_select
+build_fallback = build_select
 
 
 class build_parallel(build_composite):
+    """Context manager to build an Parallel task
+    """
 
     def __init__(
         self, parent: behavior.Task=None, 
@@ -164,6 +175,8 @@ class build_parallel(build_composite):
 
 
 class build_not(build_decorate):
+    """Context manager to build an Not decorated task
+    """
 
     def __init__(self, decorated: build_composite, parent: Task = None) -> None:
         """Invert the output of a composite task
@@ -176,6 +189,8 @@ class build_not(build_decorate):
 
 
 class build_unless(build_decorate):
+    """Context manager to build an Unless decorated task
+    """
 
     def __init__(self, decorated, parent: Task = None, target_status: behavior.TaskStatus=behavior.TaskStatus.FAILURE) -> None:
         """Loop over the subtask while it 'succeeds'
@@ -188,6 +203,8 @@ class build_unless(build_decorate):
 
 
 class build_until(build_decorate):
+    """Context manager to build an Until decorated task
+    """
 
     def __init__(self, decorated: build_composite, parent: Task = None, target_status: behavior.TaskStatus=behavior.TaskStatus.SUCCESS) -> None:
         """Loop over the subtask until it 'succeeds'

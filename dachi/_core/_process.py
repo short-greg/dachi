@@ -51,7 +51,7 @@ class I(object):
         Returns:
             typing.Iterator[typing.Any]: The 
         """
-        for i in range(self.n):
+        for _ in range(self.n):
             yield self.data
 
 
@@ -80,7 +80,14 @@ class P(object):
 
     @classmethod
     def m(cls, *data: typing.Iterable, n: int=None) -> typing.Tuple['P']:
+        """Wrap multiple data through Ps
 
+        data: The data to wrap in P
+        n: The number of batches to have
+
+        Returns:
+            typing.Tuple[P]: The resulting ps
+        """
         return tuple(
             P(d, n) for d in data
         )
@@ -226,6 +233,7 @@ class _ProcessMethod(Module):
 
 
 def processf(f):
+
 
     @wraps(f)
     def wrapper(*args, **kwargs):
@@ -461,13 +469,13 @@ def reduce(mod: Module, *args, init_mod: Module=None, init_val=None, **kwargs):
 
 
 async def _async_map(f: Module, *args, **kwargs) -> typing.Tuple[typing.Any]:
-    """
+    """Helper function to run async_map
 
     Args:
-        f (Module): 
+        f (Module): The function to asynchronously execute
 
     Returns:
-        typing.Tuple[typing.Any]: 
+        typing.Tuple[typing.Any]: The result of the map
     """
     tasks = []
     async with asyncio.TaskGroup() as tg:
@@ -571,7 +579,11 @@ class Streamer(object):
             return self._output
         
     def __iter__(self) -> typing.Iterator[Partial]:
+        """Iterate over the stream
 
+        Yields:
+            Partial: The partial results of the stream
+        """
         while True:
 
             cur = self()
@@ -703,7 +715,6 @@ class StreamRunner(object):
         """
         i = 0
         while True:
-
             if len(self._results) > i:
                 yield self._results[i], self._result_dx[i]
                 i += 1

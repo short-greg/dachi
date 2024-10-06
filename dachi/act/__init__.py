@@ -25,7 +25,7 @@ from ._tasks import (
 )
 from ._build import (
     build_composite, build_sequence,
-    build_parallel, build_sango, build_select,
+    build_parallel, build_sango, build_select, build_fallback,
     build_decorate, build_not, build_unless, build_until
 )
 from ..act._agent import (
