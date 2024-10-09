@@ -3,7 +3,7 @@ from ._core import (
     Storable, render,
     render_multi, 
     Module, Instruction,
-    Param, 
+    Param
 
 )
 from ._read import (

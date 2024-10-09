@@ -29,10 +29,22 @@ Below is a basic example of how to use Dachi to interact with an LLM:
 ```python
 from dachi import LLM
 
+engine = dachi.act.OpenAIChatModel(model='gpt-4o-mini')
+
+@dachi.signaturefunc(engine=engine)
+def summarize(document: str, num_sentences: int) -> str:
+    """
+    Summarize the document in {num_sentences} sentences.
+
+    # Document
+
+    {document}
+    """
+    pass
+
 # Instantiate the LLM and read a response
-llm = LLM(api_key='your-api-key')
-response = llm.query("What is the capital of France?")
-print(response)
+summary = summarize(document, 5)
+print(summary)
 ```
 
 ### Advanced usage
@@ -40,7 +52,7 @@ print(response)
 You can leverage behavior trees to define more complex interactions and processes with the LLM:
 
 ```python
-from dachi.act import BehaviorTree, Sequence, Parallel
+import dachi
 
 
 engine = dachi.adapt.openai.OpenAIChatModel(model='gpt-4o-mini')
@@ -79,53 +91,11 @@ while status != dachi.act.RUNNING:
     status = tree.tick()
 ```
 
-## Advanced Usage
-
-### Parallel Processing with Behavior Trees
-
-The behavior tree system allows parallel execution of tasks, enabling more complex behaviors to be modeled:
-
-```python
-from dachi.behavior_tree import Parallel
-
-# Define tasks for parallel execution
-parallel_tasks = Parallel([
-    lambda: llm.query("First task"),
-    lambda: llm.query("Second task")
-])
-
-# Execute tasks
-parallel_tasks.execute()
-```
-
-### Custom Decision-Making Logic
-
-Build decision-making logic based on specific criteria:
-
-```python
-from dachi.behavior_tree import Sequence, Condition
-
-def is_high_priority():
-    # Custom condition check
-    return True
-
-def high_priority_task():
-    return llm.query("High priority task query")
-
-# Create a sequence with a condition
-decision_tree = Sequence([
-    Condition(is_high_priority),
-    high_priority_task
-])
-
-decision_tree.execute()
-```
-
 ## Roadmap
 
-- **Model Integration**: Support for more advanced LLMs and additional integrations.
-- **Improved Performance**: Optimizations for faster execution and scalability.
-- **Enhanced Customization**: Additional hooks for developer-defined behavior.
+- **Improve planning**: Add support for proactive planning and better integration of planning systems with LLMs.
+- **Add adapters**: Add adapters for a wider variety.
+- **Add evaluation and learning capabilities**: Add the ability for the systems to evaluate the output and learn.
 
 ## Contributing
 

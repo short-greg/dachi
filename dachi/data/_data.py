@@ -1,7 +1,7 @@
 import typing
 from functools import reduce
 from abc import ABC, abstractmethod
-from .._core._core import Renderable, render
+from .._core import Renderable, render, Message
 
 
 def get_or_spawn(state: typing.Dict, child: str) -> typing.Dict:
@@ -623,3 +623,56 @@ class ContextSpawner(object):
 
         name = f'{self.base_name}_{i}'
         return self.manager.add(name)
+
+
+class Comm(object):
+    """Use to have communication between two components 
+    (two agents etc)
+    """
+
+    def __init__(self):
+        """
+        """
+        self._processing = []
+
+    def post(self, message: Message, callback: typing.Callbable[Message]=None):
+        """Post a message to be received
+
+        Args:
+            message (Message): 
+            callback (optional): . Defaults to None.
+        """
+        self._processing.append((message, callback))
+
+    def get(self) -> Message:
+        """Get the current message to process
+
+        Raises:
+            RuntimeError: 
+
+        Returns:
+            Message: The message to process
+        """
+        if self.empty():
+            raise RuntimeError('No items to process')
+        return self._processing[0][0]
+    
+    def empty(self) -> bool:
+        """If nothing is being processed
+
+        Returns:
+            bool: Whether nothing is waiting for processing
+        """
+        return len(self._processing) == 0
+
+    def respond(self, with_message: Message):
+
+        if self.empty():
+            raise RuntimeError(
+                'Cannot respond with a message '
+            )
+        
+        callback = self._processing[0][1]
+        if callback is not None:
+            callback(with_message)
+        self._processing.pop(0)
