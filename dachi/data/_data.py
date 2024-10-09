@@ -1,7 +1,8 @@
 import typing
 from functools import reduce
 from abc import ABC, abstractmethod
-from .._core import Renderable, render, Message
+from .._core import Message, render
+from ..utils import Renderable
 
 
 def get_or_spawn(state: typing.Dict, child: str) -> typing.Dict:
@@ -635,7 +636,7 @@ class Comm(object):
         """
         self._processing = []
 
-    def post(self, message: Message, callback: typing.Callbable[Message]=None):
+    def post(self, message: Message, callback: typing.Callable[[], Message]=None):
         """Post a message to be received
 
         Args:
