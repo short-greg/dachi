@@ -6,7 +6,7 @@ import typing
 
 import asyncio
 from ._core import (
-    Instruct, Instruction, Reader, 
+    Instruct, Cue, Reader, 
     render, NullRead, Module
 )
 from dataclasses import dataclass
@@ -44,7 +44,7 @@ class AIPrompt(pydantic.BaseModel, ABC):
         pass
 
     @abstractmethod
-    def instruct(self, instruction: 'Instruction', model: 'AIModel'):
+    def instruct(self, cue: 'Cue', model: 'AIModel'):
         pass
 
     @abstractmethod
@@ -142,7 +142,7 @@ class Message(pydantic.BaseModel, Renderable):
 
 class TextMessage(Message):
 
-    def __init__(self, source: str, text: typing.Union[str, 'Instruction']) -> 'Message':
+    def __init__(self, source: str, text: typing.Union[str, 'Cue']) -> 'Message':
 
         super().__init__(
             source=source,
@@ -153,7 +153,7 @@ class TextMessage(Message):
 
     def reader(self) -> 'Reader':
         text = self['text']
-        if isinstance(text, Instruction) and text.out is not None:
+        if isinstance(text, Cue) and text.out is not None:
             return text.out
         return NullRead(name='')
     
@@ -165,7 +165,7 @@ class TextMessage(Message):
         """
         text = self.data['text']
         return f'{self.source}: {
-            text.render() if isinstance(text, Instruction) else text
+            text.render() if isinstance(text, Cue) else text
         }'
 
     def clone(self) -> typing.Self:
@@ -387,7 +387,7 @@ class Dialog(pydantic.BaseModel):
             Reader: The reader to retrieve
         """
         for r in reversed(self.messages):
-            if isinstance(r, Instruction):
+            if isinstance(r, Cue):
                 if r.reader is not None:
                     return r.reader
         return NullRead(name='')
@@ -419,7 +419,7 @@ class Dialog(pydantic.BaseModel):
         """Instruct the AI
 
         Args:
-            instruct (Instruct): The instruction to use
+            instruct (Instruct): The cue to use
             ai_model (AIModel): The AIModel to use
             ind (int, optional): The index to set to. Defaults to 0.
             replace (bool, optional): Whether to replace at the index if already set. Defaults to True.
@@ -427,9 +427,9 @@ class Dialog(pydantic.BaseModel):
         Returns:
             AIResponse: The output from the AI
         """
-        instruction = instruct.i()
+        cue = instruct.i()
         
-        self.system(instruction, ind, replace)
+        self.system(cue, ind, replace)
         response = ai_model.forward(self.messages)
         response = self.process_response(response)
         self.assistant(response.content)

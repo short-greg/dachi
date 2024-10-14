@@ -7,7 +7,6 @@ from ..utils import (
     Templatable, model_to_text
 )
 from uuid import uuid4
-from enum import Enum
 
 # 3rd party
 import pydantic
@@ -17,7 +16,6 @@ from ..utils import (
     is_primitive, 
     escape_curly_braces
 )
-
 
 S = typing.TypeVar('S', bound=pydantic.BaseModel)
 
@@ -75,7 +73,7 @@ def render(
     x: typing.Any, escape_braces: bool=True, 
     template_render: typing.Optional[typing.Callable[[TemplateField], str]]=None
 ) -> typing.Union[str, typing.List[str]]:
-    """Convert an input to text. Will use the text for an instruction,
+    """Convert an input to text. Will use the text for a cue,
     the render() method for a description and convert any other value to
     text with str()
 
@@ -130,7 +128,7 @@ def render(
 
 
 def render_multi(xs: typing.Iterable[typing.Any]) -> typing.List[str]:
-    """Convert an input to text. Will use the text for an instruction,
+    """Convert an input to text. Will use the text for an cue,
     the render() method for a description and convert any other value to
     text with str()
 
@@ -285,21 +283,25 @@ class Instruct(ABC):
     """
     """
     @abstractmethod
-    def i(self) -> 'Instruction':
+    def i(self) -> 'Cue':
         """Create an Instruct class used for instructions
 
         Returns:
-            Instruction: Get the instruction
+            Cue: Get the cue
         """
         pass
 
 
-class Instruction(pydantic.BaseModel, Instruct, typing.Generic[S], Renderable):
-    """Specific instruction for the model to use
+class Cue(pydantic.BaseModel, Instruct, typing.Generic[S], Renderable):
+    """Specific cue for the model to use
     """
     
     text: str
     out: typing.Optional[Reader] = None
+
+    def __init__(self, text: str, name: str='', out: typing.Optional[Reader] = None):
+
+        super().__init__(text=text, name=name, out=out)
 
     def i(self) -> Self:
         return self
@@ -313,10 +315,10 @@ class Instruction(pydantic.BaseModel, Instruct, typing.Generic[S], Renderable):
         return v
 
     def render(self) -> str:
-        """Render the instruction
+        """Render the cue
 
         Returns:
-            str: The text for the instruction 
+            str: The text for the cue 
         """
         return self.text
 
@@ -327,7 +329,7 @@ class Instruction(pydantic.BaseModel, Instruct, typing.Generic[S], Renderable):
             data (str): The data to read
 
         Raises:
-            RuntimeError: If the instruction does not have a reader
+            RuntimeError: If the cue does not have a reader
 
         Returns:
             S: The result of the read process
@@ -339,25 +341,35 @@ class Instruction(pydantic.BaseModel, Instruct, typing.Generic[S], Renderable):
         
         return self.out.read(data)
 
+    def state_dict(self) -> typing.Dict:
+        
+        return {
+            'text': self.text,
+        }
 
-class Param(pydantic.BaseModel, Renderable):
+    def load_state_dict(self, params: typing.Dict):
+        
+        self.text = params['text']
+
+
+class Param(pydantic.BaseModel, Renderable, Storable):
     """Use Param to wrap instructions so the instructions
     can update
     """
     
     name: str
-    instruction: Instruction
+    cue: Cue
     training: bool=False
     text: str = None
 
-    @pydantic.field_validator('instruction', mode='before')
+    @pydantic.field_validator('cue', mode='before')
     def convert_renderable_to_string(cls, v):
-        if isinstance(v, Instruction):
+        if isinstance(v, Cue):
             return v
         if isinstance(v, Renderable):
-            return Instruction(text=v.render())
+            return Cue(text=v.render())
         if is_primitive(v):
-            return Instruction(text=render(v))
+            return Cue(text=render(v))
         return v
 
     def update(self, text: str) -> bool:
@@ -384,7 +396,7 @@ class Param(pydantic.BaseModel, Renderable):
             str: 
         """
         if self.text is None:
-            return self.instruction.render()
+            return self.cue.render()
         return self.text
 
     def read(self, data: typing.Dict) -> S:
@@ -396,13 +408,29 @@ class Param(pydantic.BaseModel, Renderable):
         Returns:
             S: The result of the reading
         """
-        return self.instruction.read(data)
+        return self.cue.read(data)
 
     def reads(self, data: str) -> S:
-        return self.instruction.read_out(data)
+        return self.cue.read_out(data)
+    
+    def state_dict(self) -> typing.Dict:
+        
+        return {
+            'name': self.name,
+            'cue': self.cue.state_dict(),
+            'training': self.training,
+            'text': self.text
+        }
+
+    def load_state_dict(self, params: typing.Dict):
+        
+        self.name = params['name']
+        self.cue = self.cue.load_state_dict(params['cue'])
+        self.training = params['training']
+        self.text = params['text']
 
 
-class Module(ABC):
+class Module(Storable, ABC):
     """Base class for Modules
     """
 
@@ -494,3 +522,26 @@ class Module(ABC):
 
         for d, dx in self.stream_forward(*args, **kwargs):
             yield d, dx
+
+    def state_dict(self):
+        
+        state_dict = {}
+        for i, child in enumerate(self.children(False)):
+            state_dict[i] = child.state_dict()
+        
+        params = {}
+        for i, param in enumerate(self.parameters(False)):
+            params[i] = param.state_dict()
+        state_dict['__params__'] = params
+
+        return state_dict
+    
+    def load_state_dict(self, state_dict):
+
+        for i, child in enumerate(self.children(False)):
+            cur_dict = state_dict[i]
+            child.load_state_dict(cur_dict)
+
+        params = state_dict['__params__']
+        for i, cur in enumerate(self.parameters(False)):
+            cur.load_state_dict(params[i])

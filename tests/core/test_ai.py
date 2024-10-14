@@ -57,6 +57,12 @@ class DummyAIModel(_ai.AIModel):
         return {'text': message['text']}
 
 
+
+# TODO: Test stream text, TextMessage, and AIResponse
+
+
+# TODO: Add tests - Test all functionality here
+
 class TestDialog(object):
 
     def test_dialog_creates_message_list(self):
@@ -124,6 +130,8 @@ class TestDialog(object):
         assert d.val == DummyAIModel.target
         assert dx.val == DummyAIModel.target[-1]
 
+
+# TODO: Add tests - Test all functionality here
 
 class TestMessage(object):
 

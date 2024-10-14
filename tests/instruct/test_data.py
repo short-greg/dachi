@@ -1,4 +1,4 @@
-from dachi.instruct import _data as _structs
+from dachi.op import _data as _structs
 from .._structs import Role
 
 

@@ -142,7 +142,6 @@ class MultiRead(Reader):
         return text
 
 
-
 class PrimRead(Reader):
     """Use for converting an AI response into a primitive value
     """
@@ -203,6 +202,8 @@ class PrimRead(Reader):
         Returns:
             typing.Any: The string converted to the primitive
         """
+        if self._out_cls is bool:
+            return message.lower() in ('true', 'y', 'yes', '1', 't')
         return self._out_cls(message)
     
     def load_data(self, data) -> typing.Any:

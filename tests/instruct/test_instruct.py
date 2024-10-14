@@ -1,5 +1,5 @@
-from dachi.instruct import _instruct as core
-from dachi.instruct._data import Ref
+from dachi.op import _instruct as core
+from dachi.op._data import Ref
 from .._structs import Role, SimpleStruct
 import pytest
 
@@ -11,20 +11,20 @@ class TestOp:
         role = Role(name='Assistant', duty='You are a helpful assistant')
 
         text = 'Evaluate the user'
-        instruction = core.op(
+        cue = core.op(
             [role], text
         )
-        assert 'Assistant' in instruction.text
+        assert 'Assistant' in cue.text
 
     def test_op_outputs_an_instruction_with_reef(self):
 
         role = Role(name='Assistant', duty='You are a helpful assistant')
         ref = Ref(desc=role)
         text = 'Evaluate the user'
-        instruction = core.op(
+        cue = core.op(
             [ref], text
         )
-        assert 'Assistant' in instruction.text
+        assert 'Assistant' in cue.text
 
 
 class TestBullet(object):
@@ -167,24 +167,21 @@ class TestOperation(object):
 
     def test_operation_alters_the_text(self):
 
-        operation = core.Operation(
+        operation = core.Op(
             'Translate', 'Translate the input {}'
         )
-        print('Instruction')
-        print(operation.instruction)
-        print('---')
-        assert operation.instruction.render() == 'Translate the input {}'
+        assert operation.cue.render() == 'Translate the input {}'
 
     def test_operation_renders_the_text(self):
 
-        operation = core.Operation(
+        operation = core.Op(
             'Translate', 'Translate the input {}'
         )
         assert operation('x').text == 'Translate the input x'
 
     def test_operation_renders_the_text_with_named_var(self):
 
-        operation = core.Operation(
+        operation = core.Op(
             'Translate', 'Translate the input {x}'
         )
         assert operation(x='x').text == 'Translate the input x'

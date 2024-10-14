@@ -8,7 +8,7 @@ import roman
 # local
 from .._core import (
     render, render_multi,
-    Instruction, render, Param, validate_out 
+    Cue, render, Param, validate_out 
 )
 from ..utils import (
     str_formatter
@@ -18,18 +18,18 @@ from ._data import Description
 
 
 S = typing.TypeVar('S', bound=pydantic.BaseModel)
-X = typing.Union[str, Description, Instruction]
+X = typing.Union[str, Description, Cue]
 
 
-def bullet(xs: typing.Iterable[X], bullets: str='-', indent: int=0) -> 'Instruction':
+def bullet(xs: typing.Iterable[X], bullets: str='-', indent: int=0) -> 'Cue':
     """Create a bullet list based on the instructions
 
     Args:
-        xs (typing.Iterable[X]): The instructions to bullet
+        xs (typing.Iterable[X]): The cues to bullet
         bullets (str, optional): The string to use for the bullet. Defaults to '-'.
 
     Returns:
-        Instruction: The resulting instruction
+        Cue: The resulting cue
     """
     indent = ' ' * indent
     text = f'\n{indent}{bullets}'
@@ -37,12 +37,12 @@ def bullet(xs: typing.Iterable[X], bullets: str='-', indent: int=0) -> 'Instruct
     text = text + f'\n{indent}{bullets}'.join(
         render(x_i) for x_i in xs
     )
-    return Instruction(
+    return Cue(
         text=text, out=out
     )
 
 
-def formatted(x: X, format: str) -> 'Instruction':
+def formatted(x: X, format: str) -> 'Cue':
     """Format the X with a format. The format string will encapsulate it
 
     Example:
@@ -54,19 +54,19 @@ def formatted(x: X, format: str) -> 'Instruction':
         format (str): The format to use
 
     Returns:
-        Instruction: The resulting instruction
+        Cue: The resulting cue
     """
 
     text = render(x)
     if text[:len(format)] == format and text[-len(format):] == format:
         return x
-    return Instruction(
+    return Cue(
         f'{format}{text}{format}',
         out=x.out
     )
 
 
-def bold(x: X) -> 'Instruction':
+def bold(x: X) -> 'Cue':
     """Format the X with a bold format. The format string will encapsulate it
 
     Example:
@@ -77,13 +77,13 @@ def bold(x: X) -> 'Instruction':
         x (X): The data to format
 
     Returns:
-        Instruction: The resulting instruction
+        Cue: The resulting cue
     """
 
     return formatted(x, '**')
 
 
-def italic(x: X) -> 'Instruction':
+def italic(x: X) -> 'Cue':
     """Format the X with a bold format. The format string will encapsulate it
 
     Example:
@@ -94,12 +94,12 @@ def italic(x: X) -> 'Instruction':
         x (X): The data to format
 
     Returns:
-        Instruction: The resulting instruction
+        Cue: The resulting cue
     """
     return formatted(x, '*')
 
 
-def strike(x: X) -> 'Instruction':
+def strike(x: X) -> 'Cue':
     """Format the X with a bold format. The format string will encapsulate it
 
     Example:
@@ -110,7 +110,7 @@ def strike(x: X) -> 'Instruction':
         x (X): The data to format
 
     Returns:
-        Instruction: The resulting instruction
+        Cue: The resulting cue
     """
     return formatted(x, '~~')
 
@@ -142,16 +142,16 @@ def generate_numbered_list(n, numbering_type='arabic') -> typing.List:
         raise ValueError("Unsupported numbering type")
 
 
-def numbered(xs: typing.Iterable[X], indent: int=0, numbering: str='arabic') -> 'Instruction':
+def numbered(xs: typing.Iterable[X], indent: int=0, numbering: str='arabic') -> 'Cue':
     """Create a numbered list
 
     Args:
-        xs (typing.Iterable[Instruction]): A list of strings
+        xs (typing.Iterable[Cue]): A list of strings
         indent (int, optional): The number to start with indenting. Defaults to 0.
         numbering (str, optional): The type of numbering system to use. Defaults to 'arabic'.
 
     Returns:
-        Instruction: The resulting Instruction
+        Cue: The resulting Cue
     """
     text = ''
     indent = ' ' * indent
@@ -162,49 +162,49 @@ def numbered(xs: typing.Iterable[X], indent: int=0, numbering: str='arabic') -> 
         if i < (len(numbers) - 1):
             text += "\n"
 
-    return Instruction(
+    return Cue(
         text=text, 
         out=out
     )
 
 
-def fill(x_instr: X, *args: X, **kwargs: X) -> 'Instruction':
+def fill(x_instr: X, *args: X, **kwargs: X) -> 'Cue':
     """Format a string with variables
 
     Args:
         x_instr (X): The value to format
 
     Returns:
-        Instruction: The resulting instruction
+        Cue: The resulting cue
     """
     out = validate_out([x_instr])
 
     kwargs = dict(zip(kwargs.keys(), render_multi(kwargs.values())))
     args = render_multi(args)
-    return Instruction(
+    return Cue(
         text=str_formatter(render(x_instr), *args, **kwargs), out=out
     )
 
 
-def head(x: X, size: int=1) -> 'Instruction':
-    """Add a header to the instruction
+def head(x: X, size: int=1) -> 'Cue':
+    """Add a header to the cue
 
     Args:
         x (X): The input to add to
         size (int, optional): The size of the heading. Defaults to 1.
 
     Returns:
-        Instruction: The resulting instruction
+        Cue: The resulting cue
     """
     out = validate_out([x])
     heading = '#' * size
-    return Instruction(
+    return Cue(
         text=f'{heading} {render(x)}', out=out
     )
 
 
-def section(name: X, details: X, size: int=1, linebreak: int=1) -> 'Instruction':
-    """Add a section to the instruction
+def section(name: X, details: X, size: int=1, linebreak: int=1) -> 'Cue':
+    """Add a section to the cue
 
     Args:
         name (X): The name of the section
@@ -213,114 +213,114 @@ def section(name: X, details: X, size: int=1, linebreak: int=1) -> 'Instruction'
         linebreak (int, optional): How many linebreaks to put between the heading and the details. Defaults to 1.
 
     Returns:
-        Instruction: The inst
+        Cue: The inst
     """
     heading = '#' * size
     out = validate_out([name, details])
     linebreak = '\n' * linebreak
     text = f'{heading} {render(name)}{linebreak}' + render(details)
-    return Instruction(
+    return Cue(
         text=text, out=out
     )
 
 
-def cat(xs: typing.List[Instruction], sep: str=' ') -> Instruction:
-    """Concatenate multiple instructions together
+def cat(xs: typing.List[Cue], sep: str=' ') -> Cue:
+    """Concatenate multiple cues together
 
     Args:
-        xs (typing.List[Instruction]): THe instructions 
+        xs (typing.List[Cue]): THe cues 
         sep (str): The delimiter to use for the sections
 
     Raises:
         RuntimeError: 
 
     Returns:
-        Instruction: The concatenated instruction
+        Cue: The concatenated cues
     """
     out = validate_out(xs)
 
-    return Instruction(text=f'{sep}'.join(
+    return Cue(text=f'{sep}'.join(
         render(x_i) for x_i in xs
     ), out=out)
 
 
-def join(x1: X, x2: X, sep: str=' ') -> Instruction:
+def join(x1: X, x2: X, sep: str=' ') -> Cue:
     """Join two instructions together
 
     Args:
-        x1 : Instruction 1
-        x2 : Instruction 2
+        x1 : Cue 1
+        x2 : Cue 2
         sep (str): The separator between the two instructions
 
     Returns:
-        Instruction: The joined instructions
+        Cue: The joined instructions
     """
     out = validate_out([x1, x2])
-    return Instruction(
+    return Cue(
         text=render(x1) + sep + render(x2),
         out=out
     )
 
 
-class Operation(Module):
-    """An operation acts on an instruction to produce a new instruction
+class Op(Module):
+    """An operation acts on an cue to produce a new cue
     """
 
     def __init__(
-        self, name: str, instruction: X, 
+        self, name: str, cue: X, 
         tunable: bool=False):
         """Create an operation specifying the name
 
         Args:
             name (str): The name of the operation
-            instruction (X): The instruction for the operation
-            tunable: whether the instruction is tunable
+            cue (X): The cue for the operation
+            tunable: whether the cue is tunable
         """
         self.name = name
-        if not isinstance(instruction, Instruction):
-            instruction = Param(
+        if not isinstance(cue, Cue):
+            cue = Param(
                 name=self.name, training=tunable, 
-                instruction=Instruction(
-                    text=render(instruction)
+                cue=Cue(
+                    text=render(cue)
             ))
         
-        self.instruction = instruction
+        self.cue = cue
         
     def forward(
         self, *args: X, **kwargs: X
-    ) -> Instruction:
-        """Fill in the instruction with the inputs
+    ) -> Cue:
+        """Fill in the cue with the inputs
 
         Returns:
-            Instruction: 
+            Cue: 
         """
-        instruction = render(self.instruction)
+        cue = render(self.cue)
         out = validate_out(
-            [*args, *kwargs.values(), self.instruction]
+            [*args, *kwargs.values(), self.cue]
         )
 
-        return Instruction(
-            text=fill(instruction, *args, **kwargs), out=out
+        return Cue(
+            text=fill(cue, *args, **kwargs), out=out
         )
 
 
-def op(x: typing.Union[typing.Iterable[X], X], instruction: X) -> Instruction:
-    """Execute an operation on an instruction
+def op(x: typing.Union[typing.Iterable[X], X], cue: X) -> Cue:
+    """Execute an operation on a cue
 
     Args:
         x (typing.Union[typing.Iterable[X], X]): The input
-        instruction (X): The instruction for the operation
+        cue (X): The cue for the operation
 
     Returns:
-        Instruction: The resulting instruction
+        Cue: The resulting cue
     """
     if not isinstance(x, typing.Iterable):
         x = [x]
 
-    out = validate_out([*x, instruction])
+    out = validate_out([*x, cue])
     resources = ', '.join(render_multi(x))
     # resources = ', '.join(x_i.name for x_i in x)
-    text = f'Do: {render(instruction)} --- With Inputs: {resources}'
-    return Instruction(
+    text = f'Do: {render(cue)} --- With Inputs: {resources}'
+    return Cue(
         text=text, out=out
     )

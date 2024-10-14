@@ -4,7 +4,7 @@ import openai
 import typing
 
 from .._core import Message, AIPrompt
-from .._core import AIModel, AIResponse, Instruction, TextMessage
+from .._core import AIModel, AIResponse, Cue, TextMessage
 
 # TODO: add utility for this
 required = {'openai'}
@@ -34,7 +34,7 @@ class OpenAIChatModel(AIModel):
             typing.List[typing.Dict]: The input to the API
         """
         text = message['text']
-        if isinstance(text, Instruction):
+        if isinstance(text, Cue):
             text = text.render()
         return {
             'role': message.source,

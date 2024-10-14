@@ -1,4 +1,4 @@
-from dachi.instruct._data import Description
+from dachi.op._data import Description
 from pydantic import BaseModel, Field
 from dachi.utils import str_formatter
 

@@ -45,18 +45,22 @@ class Evaluation(BaseModel):
     score: float
 
 
-class TestInstruction(object):
+
+# Test Storable
+
+
+class TestCue(object):
 
     def test_instruction_renders_with_text(self):
 
-        instruction = _core.Instruction(
+        cue = _core.Cue(
             text='x'
         )
-        assert instruction.render() == 'x'
+        assert cue.render() == 'x'
 
     # def test_read_(self):
 
-    #     instruction = _core.Instruction(
+    #     instruction = _core.Cue(
     #         text='x', out=_core.StructRead(
     #             name='F1',
     #             out_cls=SimpleStruct
@@ -68,43 +72,43 @@ class TestInstruction(object):
     def test_instruction_text_is_correct(self):
 
         text = 'Evaluate the quality of the CSV'
-        instruction = _core.Instruction(
+        cue = _core.Cue(
             name='Evaluate',
             text=text
         )
-        assert instruction.text == text
+        assert cue.text == text
 
     def test_render_returns_the_instruction_text(self):
 
         text = 'Evaluate the quality of the CSV'
-        instruction = _core.Instruction(
+        cue = _core.Cue(
             name='Evaluate',
             text=text
         )
-        assert instruction.render() == text
+        assert cue.render() == text
 
     def test_i_returns_the_instruction(self):
 
         text = 'Evaluate the quality of the CSV'
-        instruction = _core.Instruction(
+        cue = _core.Cue(
             name='Evaluate',
             text=text
         )
-        assert instruction.i() is instruction
+        assert cue.i() is cue
 
 
 class TestParam(object):
 
     def test_get_x_from_param(self):
 
-        instruction = _core.Param(
-            name='X', instruction='x'
+        cue = _core.Param(
+            name='X', cue='x'
         )
-        assert instruction.render() == 'x'
+        assert cue.render() == 'x'
 
     # def test_param_with_instruction_passed_in(self):
 
-    #     instruction = _core.Instruction(
+    #     instruction = _core.Cue(
     #         text='x', out=_core.StructRead(
     #             name='F1',
     #             out_cls=SimpleStruct
@@ -118,7 +122,7 @@ class TestParam(object):
 
 #     def test_read_reads_the_object(self):
 
-#         instruction = _core.Instruction(
+#         instruction = _core.Cue(
 #             text='x', out=_core.StructRead(
 #                 name='F1',
 #                 out_cls=SimpleStruct
@@ -129,6 +133,10 @@ class TestParam(object):
 #         )
 #         simple = SimpleStruct(x='2')
 #         assert param.reads(simple.to_text()).x == '2'
+
+
+
+# Test render: Add more tests - Two few
 
 
 class TestRender:
@@ -174,7 +182,7 @@ class NestedModule(Module):
         self.child = child
         self.p = _core.Param(
             name='p',
-            instruction=_core.Instruction(text='Do this')
+            cue=_core.Cue(text='Do this')
         )
 
     def forward(self) -> Any:
@@ -254,18 +262,18 @@ class TestParam:
 
         param = _core.Param(
             name='p',
-            instruction=_core.Instruction(
+            cue=_core.Cue(
                 text='simple instruction'
             )
         )
-        target = param.instruction.render()
+        target = param.cue.render()
         assert param.render() == target
 
     def test_param_updates_the_instruction(self):
 
         param = _core.Param(
             name='p',
-            instruction=_core.Instruction(
+            cue=_core.Cue(
                 text='simple instruction'
             ),
             training=True

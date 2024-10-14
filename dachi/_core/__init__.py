@@ -2,7 +2,7 @@ from ._core import (
     Reader, NullRead, 
     Storable, render,
     render_multi, 
-    Module, Instruction,
+    Module, Cue,
     Param
 
 )

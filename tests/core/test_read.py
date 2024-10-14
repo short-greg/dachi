@@ -150,3 +150,21 @@ class TestPrimRead(object):
         )
         temp = out.template()
         assert 'int' in temp
+
+    def test_prim_read_reads_bool(self):
+
+        out = _core.PrimRead(
+            name='F1',
+            out_cls=bool,
+        )
+        result = out.read('TRUE')
+        assert result is True
+
+    def test_prim_read_reads_bool_correctly(self):
+
+        out = _core.PrimRead(
+            name='F1',
+            out_cls=bool,
+        )
+        result = out.read('false')
+        assert result is False

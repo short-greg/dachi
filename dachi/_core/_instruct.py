@@ -9,7 +9,7 @@ import pydantic
 # local
 from ._core import (
     render, 
-    Instruction, render, Param, 
+    Cue, render, Param, 
     Instruct, Reader, NullRead,
 )
 from .._core._ai import (
@@ -24,10 +24,10 @@ from ..utils._utils import (
 from .._core._process import Module
 
 
-X = typing.Union[str, Instruction]
+X = typing.Union[str, Cue]
 
 
-def validate_out(instructions: typing.List[X]) -> typing.Optional[Reader]:
+def validate_out(cues: typing.List[X]) -> typing.Optional[Reader]:
     """Validate an Out based on several instructions
 
     Args:
@@ -36,16 +36,16 @@ def validate_out(instructions: typing.List[X]) -> typing.Optional[Reader]:
     Returns:
         Out: The resulting "Out" to use from the instructions
     """
-    if isinstance(instructions, dict):
-        instructions = instructions.values()
+    if isinstance(cues, dict):
+        cues = cues.values()
 
     out = None
-    for instruction in instructions:
-        if not isinstance(instruction, Instruction):
+    for cue in cues:
+        if not isinstance(cue, Cue):
             continue
-        if out is None and instruction.out is not None:
-            out = instruction.out
-        elif instruction.out is not None:
+        if out is None and cue.out is not None:
+            out = cue.out
+        elif cue.out is not None:
             raise RuntimeError(f'Out cannot be duplicated')
     return out
 
@@ -57,11 +57,11 @@ class InstructCall(Module, Instruct):
     """
 
     def __init__(self, i: Instruct, *args, **kwargs):
-        """Create the "Call" passing in the instruction
+        """Create the "Call" passing in the cue
         and its inputs
 
         Args:
-            i (Instruct): The instruction to wrap
+            i (Instruct): The cue to wrap
         """
         self._instruct = i
         self.args = args
@@ -80,16 +80,16 @@ class InstructCall(Module, Instruct):
                 yield arg
         yield self
 
-    def i(self) -> Instruction:
-        """Get the instruction 
+    def i(self) -> Cue:
+        """Get the cue 
 
         Returns:
-            Instruction: The instruction
+            Cue: The cue
         """
         return self._instruct.i()
         
     def forward(self) -> typing.Any:
-        """Execute the instruction
+        """Execute the cue
 
         Returns:
             typing.Any: Execute the Instruct
@@ -108,7 +108,7 @@ class InstructCall(Module, Instruct):
 
 
 class SignatureFunc(Module, Instruct):
-    """SignatureFunc is a method where you define the instruction in
+    """SignatureFunc is a method where you define the cue in
     the function signature
     """
     def __init__(
@@ -127,7 +127,7 @@ class SignatureFunc(Module, Instruct):
             f (typing.Callable): The function to wrap
             engine (AIModel): The engine to use for getting the response
             dialog_factory (typing.Optional[typing.Callable[[], Dialog]], optional): The dialog to use. Defaults to None.
-            train (bool, optional): Whether to train the instructions or not. Defaults to False.
+            train (bool, optional): Whether to train the cues or not. Defaults to False.
             is_method (bool, optional): Whether it is a method or not. Defaults to False.
             instance (optional): The instance. Defaults to None.
         """
@@ -143,10 +143,10 @@ class SignatureFunc(Module, Instruct):
         self.return_annotation = inspect.signature(f).return_annotation
 
         if not isinstance(docstring, typing.Callable):
-            docstring = Instruction(text=docstring)
+            docstring = Cue(text=docstring)
             self._docstring = Param(
                 name=self.name,
-                instruction=docstring,
+                cue=docstring,
                 training=train
             )
         elif train:
@@ -202,11 +202,11 @@ class SignatureFunc(Module, Instruct):
             ai_kwargs=self.ai_kwargs
         )
 
-    def i(self, *args, **kwargs) -> Instruction:
-        """Get the instruction
+    def i(self, *args, **kwargs) -> Cue:
+        """Get the cue
 
         Returns:
-            Instruction: Get the instruction
+            Cue: Get the cue
         """
         if isinstance(self._docstring, Param):
             filled_docstring = self._docstring.render()
@@ -232,7 +232,7 @@ class SignatureFunc(Module, Instruct):
         if self._is_method:            
             param_values = param_values[1:]
 
-        # what if one of the parameters is an instruction?
+        # what if one of the parameters is an cue?
         # values.update(dict(zip(args, [v for v in param_values])))
         
         if '{TEMPLATE}' in filled_docstring:
@@ -263,7 +263,7 @@ class SignatureFunc(Module, Instruct):
             filled_docstring, required=False, **values
         )
 
-        return Instruction(
+        return Cue(
             text=filled_docstring,
             out=reader, 
             # out=StructFormatter(name=self.name, out_cls=self.out_cls)
@@ -273,13 +273,13 @@ class SignatureFunc(Module, Instruct):
         self, *args,
         _engine: AIModel=None, **kwargs
     ) -> typing.Any:
-        """Execute the instruction and get the output 
+        """Execute the cue and get the output 
 
         Args:
             _engine (AIModel, optional): The engine to override with. Defaults to None.
 
         Returns:
-            typing.Any: The result of processing the instruction
+            typing.Any: The result of processing the cue
         """
         engine = _engine or self.engine
 
@@ -288,8 +288,8 @@ class SignatureFunc(Module, Instruct):
         elif not isinstance(engine, AIModel) and isinstance(engine, typing.Callable[[], AIModel]):
             engine = engine()
 
-        instruction = self.i(*args,  **kwargs)
-        result = engine(TextMessage('system', instruction), **self.ai_kwargs)
+        cue = self.i(*args,  **kwargs)
+        result = engine(TextMessage('system', cue), **self.ai_kwargs)
         if self.out_cls is AIResponse:
             return result
         return result.val
@@ -298,13 +298,13 @@ class SignatureFunc(Module, Instruct):
         self, *args,
         _engine: AIModel=None, **kwargs
     ) -> typing.Iterator[typing.Tuple[typing.Any, typing.Any]]:
-        """Execute the instruction and get the output 
+        """Execute the cue and get the output 
 
         Args:
             _engine (AIModel, optional): The engine to override with. Defaults to None.
 
         Returns:
-            typing.Any: The result of processing the instruction
+            typing.Any: The result of processing the cue
         """
         engine = _engine or self.engine
 
@@ -313,8 +313,8 @@ class SignatureFunc(Module, Instruct):
         elif not isinstance(engine, AIModel) and isinstance(engine, typing.Callable[[], AIModel]):
             engine = engine()
 
-        instruction = self.i(*args,  **kwargs)
-        for cur, dx in engine.stream_forward(TextMessage('system', instruction), **self.ai_kwargs):
+        cue = self.i(*args,  **kwargs)
+        for cur, dx in engine.stream_forward(TextMessage('system', cue), **self.ai_kwargs):
 
             if self.out_cls is AIResponse:
                 yield cur, dx
@@ -326,13 +326,13 @@ class SignatureFunc(Module, Instruct):
         _engine: AIModel=None, 
         **kwargs
     ) -> typing.Any:
-        """Execute the instruction and get the output
+        """Execute the cue and get the output
 
         Args:
             _engine (AIModel, optional): The engine to override with. Defaults to None.
 
         Returns:
-            typing.Any: The result of processing the instruction
+            typing.Any: The result of processing the cue
         """
         return self.forward(
             *args, 
@@ -368,7 +368,7 @@ class SignatureFunc(Module, Instruct):
 
 
 class InstructFunc(Module, Instruct):
-    """InstructMethod is a method where you define the instruction by
+    """InstructMethod is a method where you define the cue by
     doing operations on that instructions
     """
 
@@ -380,7 +380,7 @@ class InstructFunc(Module, Instruct):
         #reader: typing.Optional[Reader]=None,
     ):
         """Create an InstructMethod that decorates a function that returns 
-        an instruction
+        a cue
 
         Args:
             f (typing.Callable): The function to decorate
@@ -410,11 +410,11 @@ class InstructFunc(Module, Instruct):
         # self.reader = reader or NullRead()
         self.ai_kwargs = ai_kwargs or {}
 
-    def i(self, *args, **kwargs) -> Instruction:
-        """Get the instruction based on the arguments
+    def i(self, *args, **kwargs) -> Cue:
+        """Get the cue based on the arguments
 
         Returns:
-            Instruction: Get the instruction
+            Cue: Get the cue
         """
 
         if self._is_method:
@@ -440,8 +440,8 @@ class InstructFunc(Module, Instruct):
             engine = getattr(self.instance, engine)
         elif not isinstance(engine, AIModel) and isinstance(engine, typing.Callable[[], AIModel]):
             engine = engine()
-        instruction = self.i(*args, **kwargs)
-        result = engine(TextMessage('system', instruction), **self.ai_kwargs)
+        cue = self.i(*args, **kwargs)
+        result = engine(TextMessage('system', cue), **self.ai_kwargs)
         if self.return_annotation is AIResponse:
             return result
         return result.val
@@ -450,13 +450,13 @@ class InstructFunc(Module, Instruct):
         self, *args,
         _engine: AIModel=None, **kwargs
     ) -> typing.Iterator[typing.Tuple[typing.Any, typing.Any]]:
-        """Execute the instruction and get the output 
+        """Execute the cue and get the output 
 
         Args:
             _engine (AIModel, optional): The engine to override with. Defaults to None.
 
         Returns:
-            typing.Any: The result of processing the instruction
+            typing.Any: The result of processing the cue
         """
         engine = _engine or self.engine
 
@@ -465,8 +465,8 @@ class InstructFunc(Module, Instruct):
         elif not isinstance(engine, AIModel) and isinstance(engine, typing.Callable[[], AIModel]):
             engine = engine()
 
-        instruction = self.i(*args,  **kwargs)
-        for cur, dx in engine.stream_forward(TextMessage('system', instruction), **self.ai_kwargs):
+        cue = self.i(*args,  **kwargs)
+        for cur, dx in engine.stream_forward(TextMessage('system', cue), **self.ai_kwargs):
 
             if self.return_annotation is AIResponse:
                 yield cur, dx
