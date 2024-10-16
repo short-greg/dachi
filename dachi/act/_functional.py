@@ -13,6 +13,9 @@ from ..data import Context, ContextSpawner, SharedBase
 
 from ._core import TOSTATUS
 
+from ..data import Buffer,Shared
+from .._core import AIModel, AIPrompt
+
 
 TASK = typing.Union[Task, typing.Callable[[typing.Dict], TaskStatus]]
 CALL_TASK = typing.Callable[[],TaskStatus]
@@ -180,7 +183,6 @@ def sequence(tasks: typing.Iterable[TASK], ctx: Context) -> CALL_TASK:
         CALL_TASK: The task to call
     """
     def _f():
-
         status = ctx.get_or_set('status', TaskStatus.RUNNING)
 
         if status.is_done:
@@ -198,8 +200,14 @@ def sequence(tasks: typing.Iterable[TASK], ctx: Context) -> CALL_TASK:
                 return TaskStatus.SUCCESS
             
         cur_task = ctx['cur_task']
-            
-        cur_status = cur_task()
+
+        if isinstance(cur_task, bool):
+            cur_status = TaskStatus.from_bool(cur_task)
+        if isinstance(cur_task, TaskStatus.FAILURE) or isinstance(cur_task, TaskStatus.RUNNING):
+            cur_status = cur_status
+        # It must be a task
+        else:
+            cur_status = cur_task()
 
         # update the sequence status
         if cur_status.running:
@@ -260,9 +268,14 @@ def _selector(
             return TaskStatus.FAILURE
         
     cur_task = ctx['cur_task']
-        
-    cur_status = cur_task()
-
+    
+    if isinstance(cur_task, bool):
+        cur_status = TaskStatus.from_bool(cur_task)
+    if isinstance(cur_task, TaskStatus.FAILURE) or isinstance(cur_task, TaskStatus.RUNNING):
+        cur_status = cur_status
+    # It must be a task
+    else:
+        cur_status = cur_task()
 
     if cur_status.running:
         ctx['status'] = TaskStatus.RUNNING
@@ -444,6 +457,104 @@ def threaded(task: TASK, ctx: Context, interval: float=1./60) -> CALL_TASK:
     return run
 
 
+def _stream_model(model: AIModel, prompt: AIPrompt, ctx: Context, *args, interval: float=1./60, **kwargs):
+    """Run periodically to update the status
+
+    Args:
+        task (TASK): The task to run
+        ctx (Context): The context
+        interval (float, optional): The interval to run at. Defaults to 1./60.
+    """
+    for x, dx in model.stream_forward(prompt, *args, **kwargs):
+        ctx['x'] = x
+        ctx['dx'].append(dx)
+        time.sleep(interval)
+    ctx['thread_status'] = TaskStatus.SUCCESS
+
+
+def stream_model(
+    buffer: Buffer, engine: AIModel, ctx: Context, 
+    *args, interval: float=1./60,  **kwargs
+) -> CALL_TASK:
+    """Execute the AI model in a thread
+
+    Args:
+        shared (Shared): THe shared
+        engine (AIModel): The model to use
+        ctx (Context): The context to use for maintaining state
+
+    Returns:
+        CALL_TASK
+    """
+    def run() -> TaskStatus:
+        if '_thread' not in ctx:
+            ctx['x'] = None
+            ctx['dx'] = []
+            ctx['i'] = 0
+            ctx['thread_status'] = TaskStatus.RUNNING
+            t = threading.Thread(
+                target=_stream_model, args=(
+                    engine, ctx, *args
+                ), kwargs={'interval': interval, **kwargs}
+            )
+            t.start()
+            ctx['_thread'] = t
+        
+        if ctx['i'] < len(ctx['dx']):
+            buffer.add(*ctx['dx'][ctx['i']:])
+            ctx['i'] = len(ctx['dx'])
+
+        return ctx['thread_status']
+
+    return run
+
+
+def _run_model(model: AIModel, prompt: AIPrompt, ctx: Context, **kwargs):
+    """Run periodically to update the status
+
+    Args:
+        task (TASK): The task to run
+        ctx (Context): The context
+        interval (float, optional): The interval to run at. Defaults to 1./60.
+    """
+    ctx['x'] = model(prompt, **kwargs)
+    ctx['thread_status'] = TaskStatus.SUCCESS
+
+
+def exec_model(
+    shared: Shared, engine: AIModel, prompt: AIPrompt, ctx: Context, 
+    **kwargs
+) -> CALL_TASK:
+    """Execute the AI model in a thread
+
+    Args:
+        shared (Shared): THe shared
+        engine (AIModel): The model to use
+        ctx (Context): The context to use for maintaining state
+
+    Returns:
+        CALL_TASK
+    """
+    def run() -> TaskStatus:
+        if '_thread' not in ctx:
+            ctx['x'] = None
+            ctx['thread_status'] = TaskStatus.RUNNING
+            t = threading.Thread(
+                target=_run_model, args=(
+                    engine, prompt, ctx
+                ), kwargs=kwargs
+            )
+            t.start()
+            ctx['_thread'] = t
+        
+        if ctx['thread_status'].is_done:
+            shared.set(ctx['x'])
+
+        return ctx['thread_status']
+
+    return run
+
+
 def tick(task: TASK) -> TaskStatus:
     """Run the task
 
@@ -520,3 +631,20 @@ def untilf(f, *args, status: TaskStatus=TaskStatus.SUCCESS, **kwargs) -> CALL_TA
     """
 
     return until(partial(f, *args, **kwargs), status)
+
+
+
+# class BufferTask(Action):
+
+#     def __init__(self, buffer: Buffer, g: AIModel):
+        
+#         super().__init__()
+#         self._buffer = buffer
+#         self._g = g
+
+#     def act(self) -> TaskStatus:
+        
+#         self._g.stream_forward()
+#         self._buffer.add()
+
+

@@ -9,6 +9,9 @@ from . import _functional
 from ._core import Task, TaskStatus, State
 from ..data._data import Context
 
+from ..data import Buffer
+from .._core import AIModel
+
 
 class Root(Task):
     """The root task for a behavior tree

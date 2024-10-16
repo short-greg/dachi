@@ -5,7 +5,7 @@ API Reference
 =============
 
 dachi
--------------
+-----
 
 .. autosummary::
    :toctree: generated

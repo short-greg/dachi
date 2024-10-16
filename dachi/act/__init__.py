@@ -8,7 +8,8 @@ from ._functional import (
     action, not_, tick, condf, selector,
     unlessf, untilf, notf, parallelf,
     selectorf, sequencef, fallbackf,
-    fallback, taskf, PARALLEL, threaded
+    fallback, taskf, PARALLEL, threaded,
+    stream_model, exec_model
 )
 
 from ._tasks import (
