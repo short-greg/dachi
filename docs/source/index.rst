@@ -5,7 +5,7 @@
 
 Dachi - A framework for building AI Applications
 ================================================
-Dachi is a framework to create intelligent applications.
+Dachi is a framework to flexibly create intelligent applications by making use of state of the art systems with familiar Python-like programming and providing tools to implement complex behaviors.
 
 Get Developing With Dachi
 =========================

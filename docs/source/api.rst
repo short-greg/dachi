@@ -58,7 +58,7 @@ dachi
 
 
 zenkai.data
--------------
+-----------
 
 .. autosummary::
    :toctree: generated
@@ -78,3 +78,63 @@ zenkai.data
    zenkai.data.Message
    zenkai.data.DataList
    zenkai.data.MediaMessage
+
+
+zenkai.op
+---------
+
+.. autosummary::
+   :toctree: generated
+
+   zenkai.op.Description
+   zenkai.op.Ref
+   zenkai.op.bullet
+   zenkai.op.formatted
+   zenkai.op.generate_numbered_list
+   zenkai.op.numbered
+   zenkai.op.validate_out
+   zenkai.op.fill
+   zenkai.op.head
+   zenkai.op.section
+   zenkai.op.cat
+   zenkai.op.join
+   zenkai.op.Op
+   zenkai.op.op
+   zenkai.op.bold
+   zenkai.op.strike
+   zenkai.op.italic
+
+zenkai.read
+-----------
+
+.. autosummary::
+   :toctree: generated
+
+   zenkai.read.CSVRead
+   zenkai.read.KVRead
+   zenkai.read.StructListRead
+   zenkai.read.JSONRead
+
+zenkai.utils
+------------
+
+.. autosummary::
+   :toctree: generated
+
+   zenkai.utils.get_str_variables
+   zenkai.utils.escape_curly_braces
+   zenkai.utils.is_primitive
+   zenkai.utils.generic_class
+   zenkai.utils.str_formatter
+   zenkai.utils.is_nested_model
+   zenkai.utils.is_undefined
+   zenkai.utils.UNDEFINED
+   zenkai.utils.WAITING
+   zenkai.utils.Renderable
+   zenkai.utils.model_template
+   zenkai.utils.struct_template
+   zenkai.utils.model_to_text
+   zenkai.utils.model_from_text
+   zenkai.utils.StructLoadException
+   zenkai.utils.Templatable
+   zenkai.utils.TemplateField
