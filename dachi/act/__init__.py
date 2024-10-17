@@ -9,7 +9,7 @@ from ._functional import (
     unlessf, untilf, notf, parallelf,
     selectorf, sequencef, fallbackf,
     fallback, taskf, PARALLEL, threaded,
-    stream_model, exec_model
+    stream_model, exec_model,
 )
 
 from ._tasks import (

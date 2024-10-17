@@ -266,6 +266,9 @@ class Buffer(object):
             int: the length
         """
         return len(self._buffer)
+    
+    def get(self):
+        return [*self._buffer]
 
 
 class BufferIter(object):

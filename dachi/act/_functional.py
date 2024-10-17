@@ -203,7 +203,7 @@ def sequence(tasks: typing.Iterable[TASK], ctx: Context) -> CALL_TASK:
 
         if isinstance(cur_task, bool):
             cur_status = TaskStatus.from_bool(cur_task)
-        if isinstance(cur_task, TaskStatus.FAILURE) or isinstance(cur_task, TaskStatus.RUNNING):
+        if cur_task == TaskStatus.FAILURE or cur_task == TaskStatus.SUCCESS:
             cur_status = cur_status
         # It must be a task
         else:
@@ -271,7 +271,7 @@ def _selector(
     
     if isinstance(cur_task, bool):
         cur_status = TaskStatus.from_bool(cur_task)
-    if isinstance(cur_task, TaskStatus.FAILURE) or isinstance(cur_task, TaskStatus.RUNNING):
+    if cur_task == TaskStatus.FAILURE or cur_task == TaskStatus.SUCCESS:
         cur_status = cur_status
     # It must be a task
     else:
@@ -465,6 +465,7 @@ def _stream_model(model: AIModel, prompt: AIPrompt, ctx: Context, *args, interva
         ctx (Context): The context
         interval (float, optional): The interval to run at. Defaults to 1./60.
     """
+    print('Executing thread')
     for x, dx in model.stream_forward(prompt, *args, **kwargs):
         ctx['x'] = x
         ctx['dx'].append(dx)
@@ -473,7 +474,7 @@ def _stream_model(model: AIModel, prompt: AIPrompt, ctx: Context, *args, interva
 
 
 def stream_model(
-    buffer: Buffer, engine: AIModel, ctx: Context, 
+    buffer: Buffer, engine: AIModel, prompt: AIPrompt, ctx: Context, 
     *args, interval: float=1./60,  **kwargs
 ) -> CALL_TASK:
     """Execute the AI model in a thread
@@ -492,9 +493,10 @@ def stream_model(
             ctx['dx'] = []
             ctx['i'] = 0
             ctx['thread_status'] = TaskStatus.RUNNING
+            print('create thread')
             t = threading.Thread(
                 target=_stream_model, args=(
-                    engine, ctx, *args
+                    engine, prompt, ctx, *args
                 ), kwargs={'interval': interval, **kwargs}
             )
             t.start()

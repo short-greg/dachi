@@ -1,6 +1,10 @@
 from dachi.act import _core, _functional as F
+from dachi.act import TaskStatus
 from dachi.data import _data as utils
 import typing
+from ..core.test_ai import DummyAIModel
+from dachi import _core as core
+import time
 
 
 def sample_action(state: typing.Dict, x: int) -> _core.TaskStatus:
@@ -270,3 +274,78 @@ class TestNot:
         ))
 
         assert status.failure
+
+
+class TestBuffer:
+
+    def test_buffer_returns_correct_Status(self):
+
+        buffer = utils.Buffer()
+        model = DummyAIModel()
+        message = core.Message(
+            source='user', data={'text': 'text'}
+        )
+        ctx = utils.Context()
+        stream = F.stream_model(
+            buffer, model, message, ctx, interval=1./400.
+        )
+        res = stream()
+        time.sleep(0.1)
+        res = stream()
+
+        assert res == TaskStatus.SUCCESS
+
+    def test_buffer_has_correct_value(self):
+
+        buffer = utils.Buffer()
+        model = DummyAIModel()
+        message = core.Message(
+            source='user', data={'text': 'text'}
+        )
+        ctx = utils.Context()
+        stream = F.stream_model(
+            buffer, model, message, ctx, interval=1./400.
+        )
+        stream()
+        time.sleep(0.1)
+        stream()
+        res = ''.join((r.val for r in buffer.get()))
+
+        assert res == 'Great!'
+
+
+class TestSharedTask:
+
+    def test_shared_task_returns_correct_status(self):
+
+        shared = utils.Shared()
+        model = DummyAIModel()
+        message = core.Message(
+            source='user', data={'text': 'text'}
+        )
+        ctx = utils.Context()
+        stream = F.exec_model(
+            shared, model, message, ctx, interval=1./400.
+        )
+        res = stream()
+        time.sleep(0.1)
+        res = stream()
+
+        assert res == TaskStatus.SUCCESS
+
+    def test_shared(self):
+
+        shared = utils.Shared()
+        model = DummyAIModel()
+        message = core.Message(
+            source='user', data={'text': 'text'}
+        )
+        ctx = utils.Context()
+        stream = F.exec_model(
+            shared, model, message, ctx, interval=1./400.
+        )
+        res = stream()
+        time.sleep(0.1)
+        res = stream()
+
+        assert shared.data.val == 'Great!'
