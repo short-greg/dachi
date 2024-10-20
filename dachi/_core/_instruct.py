@@ -118,7 +118,8 @@ class SignatureFunc(Module, Instruct):
         doc: typing.Optional[str]=None,
         reader: typing.Optional[Reader]=None,
         train: bool=False, 
-        ai_kwargs: typing.Dict=None
+        ai_kwargs: typing.Dict=None,
+        instance=None
     ):
         """Wrap the signature method with a particular engine and
         dialog factory
@@ -170,10 +171,9 @@ class SignatureFunc(Module, Instruct):
         self.reader = reader
 
         update_wrapper(self, f) 
-        self.instance = None
-        # self._stored = None
         self.dialog_factory = dialog_factory or Dialog
         self.ai_kwargs = ai_kwargs
+        self._instance = instance
 
     def spawn(
         self, 
@@ -199,6 +199,7 @@ class SignatureFunc(Module, Instruct):
             reader=self.reader,
             doc=self._doc,
             train=train,
+            instance=self._instance,
             ai_kwargs=self.ai_kwargs
         )
 
@@ -218,12 +219,12 @@ class SignatureFunc(Module, Instruct):
         param_values = list(self.parameters.values())
 
         if isinstance(self.reader, str) and self._is_method:
-            reader = getattr(self.instance, self.reader)
+            reader = getattr(self._instance, self.reader)
         else:
             reader = self.reader
 
         if self._is_method:
-            values = self.f(self.instance, *args, **kwargs)
+            values = self.f(self._instance, *args, **kwargs)
         else:
             values = self.f(*args, **kwargs)
         values = values if values is not None else {}
@@ -284,7 +285,7 @@ class SignatureFunc(Module, Instruct):
         engine = _engine or self.engine
 
         if isinstance(engine, str) and self._is_method:
-            engine = getattr(self.instance, engine)
+            engine = getattr(self._instance, engine)
         elif not isinstance(engine, AIModel) and isinstance(engine, typing.Callable[[], AIModel]):
             engine = engine()
 
@@ -309,7 +310,7 @@ class SignatureFunc(Module, Instruct):
         engine = _engine or self.engine
 
         if isinstance(engine, str) and self._is_method:
-            engine = getattr(self.instance, engine)
+            engine = getattr(self._instance, engine)
         elif not isinstance(engine, AIModel) and isinstance(engine, typing.Callable[[], AIModel]):
             engine = engine()
 
@@ -398,7 +399,7 @@ class InstructFunc(Module, Instruct):
         self._is_method = is_method
         self.engine = engine
         update_wrapper(self, f) 
-        self.instance = instance
+        self._instance = instance
         self._stored = None
         self.dialog_factory = dialog_factory or Dialog
         self.return_annotation = inspect.signature(f).return_annotation
@@ -424,7 +425,7 @@ class InstructFunc(Module, Instruct):
         """
 
         if self._is_method:
-            result = self.f(self.instance, *args, **kwargs)
+            result = self.f(self._instance, *args, **kwargs)
         else:
             result = self.f(*args, **kwargs)
     
@@ -443,7 +444,7 @@ class InstructFunc(Module, Instruct):
         """
         engine = _engine or self.engine
         if isinstance(engine, str) and self._is_method:
-            engine = getattr(self.instance, engine)
+            engine = getattr(self._instance, engine)
         elif not isinstance(engine, AIModel) and isinstance(engine, typing.Callable[[], AIModel]):
             engine = engine()
         cue = self.i(*args, **kwargs)
@@ -467,7 +468,7 @@ class InstructFunc(Module, Instruct):
         engine = _engine or self.engine
 
         if isinstance(engine, str) and self._is_method:
-            engine = getattr(self.instance, engine)
+            engine = getattr(self._instance, engine)
         elif not isinstance(engine, AIModel) and isinstance(engine, typing.Callable[[], AIModel]):
             engine = engine()
 
