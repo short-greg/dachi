@@ -11,5 +11,5 @@ from ._model import (
     struct_template,
     model_to_text, model_from_text,
     StructLoadException, Templatable,
-    TemplateField
+    TemplateField, doc
 )

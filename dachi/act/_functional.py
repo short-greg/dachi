@@ -557,6 +557,53 @@ def exec_model(
     return run
 
 
+def _run_func(ctx: Context, f, *args, **kwargs):
+    """Run periodically to update the status
+
+    Args:
+        task (TASK): The task to run
+        ctx (Context): The context
+        interval (float, optional): The interval to run at. Defaults to 1./60.
+    """
+    ctx['x'] = f(*args, **kwargs)
+    ctx['thread_status'] = TaskStatus.SUCCESS
+
+
+def exec_func(
+    shared: Shared, ctx: Context, f: typing.Callable,
+    *args,
+    **kwargs
+) -> CALL_TASK:
+    """Execute the AI model in a thread
+
+    Args:
+        shared (Shared): THe shared
+        engine (AIModel): The model to use
+        ctx (Context): The context to use for maintaining state
+
+    Returns:
+        CALL_TASK
+    """
+    def run() -> TaskStatus:
+        if '_thread' not in ctx:
+            ctx['x'] = None
+            ctx['thread_status'] = TaskStatus.RUNNING
+            t = threading.Thread(
+                target=_run_func, args=(
+                    ctx, f, *args
+                ), kwargs=kwargs
+            )
+            t.start()
+            ctx['_thread'] = t
+        
+        if ctx['thread_status'].is_done:
+            shared.set(ctx['x'])
+
+        return ctx['thread_status']
+
+    return run
+
+
 def tick(task: TASK) -> TaskStatus:
     """Run the task
 

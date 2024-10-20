@@ -363,8 +363,13 @@ class SignatureFunc(Module, Instruct):
         Returns:
             SignatureMethod
         """
-        self.instance = instance
-        return self
+        if self.f.__name__ not in instance.__dict__:
+            instance.__dict__[self.f.__name__] = SignatureFunc(
+                self.f, self.engine, self.dialog_factory,
+                self._is_method, self._doc, self.reader, self._train,
+                self.ai_kwargs, instance
+            )
+        return instance.__dict__[self.f.__name__]
 
 
 class InstructFunc(Module, Instruct):
@@ -376,7 +381,8 @@ class InstructFunc(Module, Instruct):
         self, f: typing.Callable, engine: typing.Union[AIModel, str, typing.Callable[[], AIModel]], 
         dialog_factory: typing.Optional[typing.Callable[[], Dialog]]=None,
         is_method: bool=False,
-        ai_kwargs=None
+        ai_kwargs=None,
+        instance=None
         #reader: typing.Optional[Reader]=None,
     ):
         """Create an InstructMethod that decorates a function that returns 
@@ -392,7 +398,7 @@ class InstructFunc(Module, Instruct):
         self._is_method = is_method
         self.engine = engine
         update_wrapper(self, f) 
-        self.instance = None
+        self.instance = instance
         self._stored = None
         self.dialog_factory = dialog_factory or Dialog
         self.return_annotation = inspect.signature(f).return_annotation
@@ -492,8 +498,12 @@ class InstructFunc(Module, Instruct):
         Returns:
             SignatureMethod
         """
-        self.instance = instance
-        return self
+        if self.f.__name__ not in instance.__dict__:
+            instance.__dict__[self.f.__name__] = InstructFunc(
+                self.f, self.engine, self.dialog_factory,
+                self._is_method, self.ai_kwargs, instance
+            )
+        return instance.__dict__[self.f.__name__]
 
     def __iter__(self, *args, **kwargs):
         """Loop over all child InstructCalls of this "Instruct"

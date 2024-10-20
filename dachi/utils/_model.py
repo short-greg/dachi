@@ -89,7 +89,6 @@ class TemplateField(Renderable):
         return str(self.to_dict())
 
 
-
 def model_template(model_cls: typing.Type[pydantic.BaseModel]) -> str:
     """Get the template for a pydantic.Model
 
@@ -165,3 +164,16 @@ def model_from_text(model_cls: typing.Type[pydantic.BaseModel], data: str, escap
     if escaped:
         data = unescape_curly_braces(data)
     return model_cls(**json.loads(data))
+
+
+def doc(obj) -> str:
+    """utility to get the docstring for the object
+
+    Args:
+        obj: the object to get the docstring for
+
+    Returns:
+        str: The docstring for the object
+    """
+    d = obj.__doc__
+    return d if d is not None else ''

@@ -10,8 +10,8 @@ from ._functional import (
     selectorf, sequencef, fallbackf,
     fallback, taskf, PARALLEL, threaded,
     stream_model, exec_model,
+    exec_func
 )
-
 from ._tasks import (
     Serial, Sequence, 
     Selector, 
