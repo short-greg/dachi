@@ -678,22 +678,4 @@ def untilf(f, *args, status: TaskStatus=TaskStatus.SUCCESS, **kwargs) -> CALL_TA
     Returns:
         TaskStatus: The status of the result
     """
-
     return until(partial(f, *args, **kwargs), status)
-
-
-
-# class BufferTask(Action):
-
-#     def __init__(self, buffer: Buffer, g: AIModel):
-        
-#         super().__init__()
-#         self._buffer = buffer
-#         self._g = g
-
-#     def act(self) -> TaskStatus:
-        
-#         self._g.stream_forward()
-#         self._buffer.add()
-
-

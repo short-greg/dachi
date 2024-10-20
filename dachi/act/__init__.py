@@ -29,6 +29,9 @@ from ._build import (
     build_parallel, build_sango, build_select, build_fallback,
     build_decorate, build_not, build_unless, build_until
 )
-from ..act._agent import (
+from ._agent import (
     Agent, AgentStatus,
+)
+from ._decorator_func import (
+    parallelfunc, selectorfunc, sequencefunc
 )

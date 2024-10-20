@@ -1,12 +1,23 @@
 from . import _functional as F
-from ..data import Context
+from ..data import Context, Shared
 
 
 class TaskF:
+    """TaskF is used for function decorators to 
+    """
 
     def __init__(
-        self, f, base_f, ctx: Context=None, instance=None
+        self, f, base_f, ctx: 
+        Context=None, instance=None
     ):
+        """
+
+        Args:
+            f (_type_): _description_
+            base_f (_type_): _description_
+            ctx (Context, optional): _description_. Defaults to None.
+            instance (_type_, optional): _description_. Defaults to None.
+        """
         self.f = f
         self.base_f = base_f
         self.instance = instance
@@ -62,7 +73,15 @@ def parallelfunc(ctx: Context=None):
     return _
 
 
-# make it possible to define the context
+def condfunc():
 
-# using "task" will result in using the
-# functional task
+    def _(f):
+        return TaskF(f, F.conf)
+    return _
+
+
+# def actfunc(data: Shared=None):
+
+#     def _(f):
+#         return TaskF(f, F.conf)
+#     return _
