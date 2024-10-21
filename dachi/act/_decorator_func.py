@@ -1,6 +1,7 @@
 from . import _functional as F
 from ..data import Context, SharedBase
 import typing
+import functools
 
 
 class CompositeFunc:
@@ -80,6 +81,7 @@ class CondFunc:
 
         return CondFunc(self.f, instance)
 
+
 def _get(obj, key):
     return object.__getattribute__(obj, key) if isinstance(key, str) else key
             
@@ -108,11 +110,21 @@ class TaskFunc:
     def task(self, *args, **kwargs):
 
         if self._instance is None:
+            out = self._out
+            to_status = self._to_status
+            return F.taskf(self.f, *args, out=out, to_status=to_status, **kwargs)
+        else:
             to_status = _get(self._instance, self._to_status)
             out = _get(self._instance, self._out)
-            return F.taskf(self.f, *args, out=out, to_status=to_status, **kwargs)
-        return F.condf(
-            self.f, self._instance, *args, out=self._out, to_status=self._out, **kwargs)
+            return F.taskf(
+                self.f, self._instance, out=out, to_status=to_status, *args, **kwargs
+            )
+
+        # if out is not None:
+        #     out.set(result)
+        # if to_status is not None:
+        #     return to_status(result)
+        # return result
 
     def __call__(self, *args, **kwargs):
         if self._instance is not None:
@@ -159,14 +171,16 @@ def parallelfunc(ctx: Context=None):
 def condfunc():
 
     def _(f):
-        return CondFunc(f, F.conf)
+        return CondFunc(f, F.condf)
     return _
 
 
-def taskfunc():
+def taskfunc(out: SharedBase=None, to_status: F.TOSTATUS=None):
 
     def _(f):
-        return TaskFunc(f, F.conf)
+        t = TaskFunc(f, F.taskf, out, to_status)
+        t.__call__ = functools.wraps(f, t.__call__)
+        return t
     return _
 
 

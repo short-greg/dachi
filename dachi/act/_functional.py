@@ -364,8 +364,11 @@ def taskf(f, *args, out: SharedBase=None, to_status: TOSTATUS=None, **kwargs) ->
         result = f(*args, **kwargs)
         if out is not None:
             out.set(result)
+        
         if to_status is not None:
             status = to_status(result)
+        elif isinstance(result, TaskStatus):
+            status = result
         else:
             status = TaskStatus.SUCCESS
         return status
