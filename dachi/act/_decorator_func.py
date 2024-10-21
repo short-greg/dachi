@@ -1,8 +1,9 @@
 from . import _functional as F
-from ..data import Context, Shared
+from ..data import Context, SharedBase
+import typing
 
 
-class TaskF:
+class CompositeFunc:
     """TaskF is used for function decorators to 
     """
 
@@ -33,12 +34,94 @@ class TaskF:
 
     def __call__(self, *args, **kwargs):
         # This handles the original method call
-        return self.f(self.instance, *args, **kwargs)
+        if self._instance is not None:
+            return self.f(self._instance, *args, **kwargs)
+        return self.f(*args, **kwargs)
 
     def __get__(self, instance, owner):
         # Bind the decorator to the instance (used for instance method binding)
 
-        return TaskF(self.f, instance)
+        return CompositeFunc(self.f, instance)
+
+
+class CondFunc:
+    """TaskF is used for function decorators to 
+    """
+
+    def __init__(
+        self, f, instance=None
+    ):
+        """
+
+        Args:
+            f (_type_): _description_
+            base_f (_type_): _description_
+            ctx (Context, optional): _description_. Defaults to None.
+            instance (_type_, optional): _description_. Defaults to None.
+        """
+        self.f = f
+        self._instance = instance
+
+    def task(self, *args, **kwargs):
+        # This method will handle "task" and correctly bind to the instance
+
+        if self._instance is None:
+            return F.condf(self.f, *args, **kwargs)
+        return F.condf(self.f, self._instance, *args, **kwargs)
+
+    def __call__(self, *args, **kwargs):
+        # This handles the original method call
+        if self._instance is not None:
+            return self.f(self._instance, *args, **kwargs)
+        return self.f(*args, **kwargs)
+
+    def __get__(self, instance, owner):
+        # Bind the decorator to the instance (used for instance method binding)
+
+        return CondFunc(self.f, instance)
+
+def _get(obj, key):
+    return object.__getattribute__(obj, key) if isinstance(key, str) else key
+            
+
+class TaskFunc:
+    """TaskF is used for function decorators to 
+    """
+
+    def __init__(
+        self, f, instance=None, out: typing.Union[SharedBase, str]=None, 
+        to_status: F.TOSTATUS=None
+    ):
+        """
+
+        Args:
+            f (_type_): _description_
+            base_f (_type_): _description_
+            ctx (Context, optional): _description_. Defaults to None.
+            instance (_type_, optional): _description_. Defaults to None.
+        """
+        self.f = f
+        self._instance = instance
+        self._to_status = to_status
+        self._out = out
+
+    def task(self, *args, **kwargs):
+
+        if self._instance is None:
+            to_status = _get(self._instance, self._to_status)
+            out = _get(self._instance, self._out)
+            return F.taskf(self.f, *args, out=out, to_status=to_status, **kwargs)
+        return F.condf(
+            self.f, self._instance, *args, out=self._out, to_status=self._out, **kwargs)
+
+    def __call__(self, *args, **kwargs):
+        if self._instance is not None:
+            return self.f(self._instance, *args, **kwargs)
+        return self.f(*args, **kwargs)
+
+    def __get__(self, instance, owner):
+
+        return TaskFunc(self.f, instance, self._out, self._to_status)
 
 
 def _get_ctx(self, _ctx, ctx):
@@ -55,28 +138,35 @@ def sequencefunc(ctx: Context=None):
 
     def _(f):
 
-        return TaskF(f, F.sequencef, ctx)
+        return CompositeFunc(f, F.sequencef, ctx)
     return _
 
 
 def selectorfunc(ctx: Context=None):
 
     def _(f):
-        return TaskF(f, F.selectorf, ctx)
+        return CompositeFunc(f, F.selectorf, ctx)
     return _
 
 
 def parallelfunc(ctx: Context=None):
 
     def _(f):
-        return TaskF(f, F.parallelf, ctx)
+        return CompositeFunc(f, F.parallelf, ctx)
     return _
 
 
 def condfunc():
 
     def _(f):
-        return TaskF(f, F.conf)
+        return CondFunc(f, F.conf)
+    return _
+
+
+def taskfunc():
+
+    def _(f):
+        return TaskFunc(f, F.conf)
     return _
 
 
