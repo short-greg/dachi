@@ -39,6 +39,6 @@ from ._process import (
 from ._instruct import (
     validate_out, 
     InstructCall, SignatureFunc, signaturefunc,
-    signaturemethod, instructmethod,
+    signaturefunc, instructfunc,
     InstructFunc, instructfunc
 )

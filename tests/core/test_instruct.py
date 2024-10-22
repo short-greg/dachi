@@ -28,7 +28,7 @@ class TestSignatureF:
     def test_inserts_into_docstring_with_method(self):
 
         class X(object):
-            @core.signaturemethod()
+            @core.signaturefunc()
             def signaturep(self, x: str) -> SimpleStruct:
                 """Output the value of x
                 
@@ -50,7 +50,7 @@ class TestSignatureF:
     def test_signature_executes_model(self):
 
         class X(object):
-            @core.signaturemethod(engine=DummyAIModel())
+            @core.signaturefunc(engine=DummyAIModel())
             def signaturep(self, x: str) -> SimpleStruct:
                 """Output the value of x
                 
@@ -73,7 +73,7 @@ class TestSignatureF:
 
         class X(object):
 
-            @core.signaturemethod(engine=DummyAIModel())
+            @core.signaturefunc(engine=DummyAIModel())
             def signaturep(self, x: str) -> SimpleStruct:
                 """Output the value of x
                 
