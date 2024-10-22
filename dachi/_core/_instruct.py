@@ -512,26 +512,6 @@ class InstructFunc(Module, Instruct):
                 yield res_i
 
 
-# def instructfunc(
-#     engine: AIModel=None, 
-#     **ai_kwargs
-# ):
-#     """Decorator for using a function signature
-
-#     Args:
-#         train (bool, optional): Whether to train the function or not. Defaults to True.
-#     """
-#     def _(f):
-
-#         @wraps(f)
-#         def wrapper(*args, **kwargs):
-#             return f(*args, **kwargs)
-        
-#         # TODO: Use wrapper
-#         return InstructFunc(f, engine, None, False, ai_kwargs=ai_kwargs)
-#     return _
-
-
 def instructfunc(
     engine: AIModel=None,
     **ai_kwargs
@@ -578,28 +558,3 @@ def signaturefunc(
         )
 
     return _
-
-
-# def signaturefunc(
-#     engine: AIModel=None, 
-#     reader: Reader=None,
-#     doc: typing.Union[str, typing.Callable[[], str]]=None,
-#     **ai_kwargs
-# ):
-#     """Decorator for using a function signature
-
-#     Args:
-#         train (bool, optional): Whether to train the function or not. Defaults to True.
-#     """
-#     def _(f):
-
-#         @wraps(f)
-#         def wrapper(*args, **kwargs):
-#             return f(*args, **kwargs)
-
-#         return SignatureFunc(
-#             f, engine, None, False, doc=doc, reader=reader, 
-#             ai_kwargs=ai_kwargs
-#         )
-
-#     return _
