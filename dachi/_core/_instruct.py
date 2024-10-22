@@ -379,7 +379,6 @@ class InstructFunc(Module, Instruct):
         dialog_factory: typing.Optional[typing.Callable[[], Dialog]]=None,
         ai_kwargs=None,
         instance=None
-        #reader: typing.Optional[Reader]=None,
     ):
         """Create an InstructMethod that decorates a function that returns 
         a cue
@@ -417,7 +416,6 @@ class InstructFunc(Module, Instruct):
         Returns:
             Cue: Get the cue
         """
-
         if self._instance is not None:
             result = self.f(self._instance, *args, **kwargs)
         else:

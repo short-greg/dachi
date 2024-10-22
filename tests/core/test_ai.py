@@ -15,7 +15,9 @@ class DummyAIModel(_ai.AIModel):
     API for a consistent interface
     """
 
-    target = 'Great!'
+    def __init__(self, target='Great!'):
+        super().__init__()
+        self.target = target
 
     def forward(self, prompt: _ai.AIPrompt, **kwarg_override) -> _ai.AIResponse:
         """Run a standard query to the API
@@ -115,8 +117,9 @@ class TestDialog(object):
         dialog = _ai.Dialog(
             messages=[message, message2]
         )
-        result = dialog.prompt(DummyAIModel())
-        assert result.val == DummyAIModel.target
+        model = DummyAIModel()
+        result = dialog.prompt(model)
+        assert result.val == model.target
 
     def test_stream_prompt_returns_each_part_of_the_message(self):
 
@@ -125,10 +128,11 @@ class TestDialog(object):
         dialog = _ai.Dialog(
             messages=[message, message2]
         )
-        for d, dx in dialog.stream_prompt(DummyAIModel()):
+        model = DummyAIModel()
+        for d, dx in dialog.stream_prompt(model):
             pass
-        assert d.val == DummyAIModel.target
-        assert dx.val == DummyAIModel.target[-1]
+        assert d.val == model.target
+        assert dx.val == model.target[-1]
 
 
 # TODO: Add tests - Test all functionality here

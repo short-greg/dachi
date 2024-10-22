@@ -50,6 +50,7 @@ class TestSignatureF:
     def test_signature_executes_model(self):
 
         class X(object):
+            
             @core.signaturefunc(engine=DummyAIModel())
             def signaturep(self, x: str) -> SimpleStruct:
                 """Output the value of x
@@ -94,28 +95,35 @@ class TestSignatureF:
         assert d == 'Great!'
         assert dx == '!'
 
-#     # def test_inserts_into_docstring(self):
+    def test_signature_uses_the_correct_model(self):
 
-#     #     @core.signaturef()
-#     #     def signaturep(x: str) -> SimpleStruct:
-#     #         """Output the value of x
+        class X(object):
+
+            def __init__(self, model):
+                super().__init__()
+                self.model = model
             
-#     #         x: {x}
+            @core.signaturefunc(engine='model')
+            def signaturep(self, x: str) -> SimpleStruct:
+                """Output the value of x
+                
+                x: {x}
 
-#     #         Args:
-#     #             x (str): The input
+                Args:
+                    x (str): The input
 
-#     #         Returns:
-#     #             SimpleStruct: The value of x
-#     #         """
-#     #         pass
+                Returns:
+                    SimpleStruct: The value of x
+                """
+                pass
 
-#     #     result = signaturep.i(2)
+        x = X(DummyAIModel('Awesome'))
+        x2 = X(DummyAIModel('Fabulous'))
+        result = x.signaturep(2)
+        result2 = x2.signaturep(2)
 
-#     #     print(result.text)
-
-#     #     assert 'x: 2' in result.text
-
+        assert result == 'Awesome'
+        assert result2 == 'Fabulous'
 
 
 class TestInstructF:
@@ -123,7 +131,7 @@ class TestInstructF:
     def test_instruct(self):
 
         @core.instructfunc(engine=DummyAIModel())
-        def instructrep(x: str) -> SimpleStruct:
+        def instructrep(x: str) -> str:
             """Output the value of x
             
             x: {x}
@@ -140,71 +148,44 @@ class TestInstructF:
 
         assert 'Do 2' == result.text
 
-    # def test_inserts_into_docstring_with_method(self):
+    def test_inserts_into_docstring_with_method(self):
 
-    #     class X(object):
-    #         @core.signaturemethod()
-    #         def signaturep(self, x: str) -> SimpleStruct:
-    #             """Output the value of x
-                
-    #             x: {x}
+        class X(object):
 
-    #             Args:
-    #                 x (str): The input
+            @core.instructfunc(engine=DummyAIModel())
+            def instructrep(self, x: str) -> str:
+                """
+                """
+                return core.Cue(f'Do {x}')
 
-    #             Returns:
-    #                 SimpleStruct: The value of x
-    #             """
-    #             pass
+        x = X()
+        result = x.instructrep.i(2)
 
-    #     x = X()
-    #     result = x.signaturep.i(2)
+        assert 'Do 2' == result.text
 
-    #     assert 'x: 2' in result.text
+    def test_x_has_different_instance_for_instruct_rep(self):
 
-    # def test_signature_executes_model(self):
+        class X(object):
 
-    #     class X(object):
-    #         @core.signaturemethod(engine=DummyAIModel())
-    #         def signaturep(self, x: str) -> SimpleStruct:
-    #             """Output the value of x
-                
-    #             x: {x}
+            @core.instructfunc(engine=DummyAIModel())
+            def instructrep(self, x: str) -> str:
+                """
+                """
+                return core.Cue(f'Do {x}')
 
-    #             Args:
-    #                 x (str): The input
+        x = X()
+        x2 = X()
+        assert x.instructrep is not x2.instructrep
 
-    #             Returns:
-    #                 SimpleStruct: The value of x
-    #             """
-    #             pass
+    def test_x_has_same_value_for_instruct_rep(self):
 
-    #     x = X()
-    #     result = x.signaturep(2)
+        class X(object):
 
-    #     assert result == 'Great!'
+            @core.instructfunc(engine=DummyAIModel())
+            def instructrep(self, x: str) -> str:
+                """
+                """
+                return core.Cue(f'Do {x}')
 
-    # def test_signature_streams_the_output(self):
-
-    #     class X(object):
-
-    #         @core.signaturemethod(engine=DummyAIModel())
-    #         def signaturep(self, x: str) -> SimpleStruct:
-    #             """Output the value of x
-                
-    #             x: {x}
-
-    #             Args:
-    #                 x (str): The input
-
-    #             Returns:
-    #                 SimpleStruct: The value of x
-    #             """
-    #             pass
-
-    #     x = X()
-    #     for d, dx in x.signaturep.stream_forward(2):
-    #         pass
-
-    #     assert d == 'Great!'
-    #     assert dx == '!'
+        x = X()
+        assert x.instructrep is x.instructrep
