@@ -26,8 +26,8 @@ PARALLEL = typing.Callable[[typing.Iterable[Task], int, int, bool], TaskStatus]
 
 async def _parallel(
     tasks: typing.Iterable[TASK], 
-    success_on: int, 
-    fails_on: int, success_priority: bool=True
+    success_on: int=-1, 
+    fails_on: int=1, success_priority: bool=True
 ) -> TaskStatus:
     """
 
@@ -44,6 +44,7 @@ async def _parallel(
     Returns:
         TaskStatus: 
     """
+    print(tasks, success_on, fails_on, success_priority)
     tg_tasks = []
     async with asyncio.TaskGroup() as tg:
 
@@ -135,8 +136,9 @@ def parallelf(
     Returns:
         CALL_TASK: The task to call
     """
-    f = partial(f, *args, **kwargs)
-    return parallel(f, succeeds_on, fails_on, success_priority)
+    return parallel(
+        f(*args, **kwargs), succeeds_on, fails_on, success_priority
+    )
 
 
 def spawn(
@@ -241,7 +243,7 @@ def sequencef(f: typing.Callable[[typing.Any], typing.Iterator[TASK]], ctx: Cont
     Returns:
         CALL_TASK: The task to call
     """
-    return sequence(partial(f, *args, **kwargs), ctx)
+    return sequence(f(*args, **kwargs), ctx)
 
 
 # SELECTOR does not seem to be working correctly
@@ -324,7 +326,7 @@ def selectorf(
     Returns:
         CALL_TASK: The task to call
     """
-    return selector(partial(f, *args, **kwargs), ctx)
+    return selector(f(*args, **kwargs), ctx)
 
 
 fallback = selector
