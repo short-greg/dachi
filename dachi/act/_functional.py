@@ -205,7 +205,7 @@ def sequence(tasks: typing.Iterable[TASK], ctx: Context) -> CALL_TASK:
 
         if isinstance(cur_task, bool):
             cur_status = TaskStatus.from_bool(cur_task)
-        if cur_task == TaskStatus.FAILURE or cur_task == TaskStatus.SUCCESS:
+        elif cur_task == TaskStatus.FAILURE or cur_task == TaskStatus.SUCCESS:
             cur_status = cur_status
         # It must be a task
         else:
@@ -273,7 +273,7 @@ def _selector(
     
     if isinstance(cur_task, bool):
         cur_status = TaskStatus.from_bool(cur_task)
-    if cur_task == TaskStatus.FAILURE or cur_task == TaskStatus.SUCCESS:
+    elif cur_task == TaskStatus.FAILURE or cur_task == TaskStatus.SUCCESS:
         cur_status = cur_status
     # It must be a task
     else:

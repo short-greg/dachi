@@ -118,6 +118,7 @@ class SignatureFunc(Module, Instruct):
         reader: typing.Optional[Reader]=None,
         train: bool=False, 
         ai_kwargs: typing.Dict=None,
+        is_method: bool=False,
         instance=None
     ):
         """Wrap the signature method with a particular engine and
@@ -134,6 +135,7 @@ class SignatureFunc(Module, Instruct):
         self.name = f.__name__
         self.engine = engine
         self._train = train
+        self._is_method = is_method
         self._doc = doc
         docstring = inspect.getdoc(f) if doc is None else doc
         self.signature = str(inspect.signature(f))
@@ -205,6 +207,15 @@ class SignatureFunc(Module, Instruct):
         Returns:
             Cue: Get the cue
         """
+
+        if self._instance is not None:
+            instance = self._instance
+        elif self._is_method:
+            instance = args[0]
+            args = args[1:]
+        else:
+            instance = None
+        
         if isinstance(self._docstring, Param):
             filled_docstring = self._docstring.render()
         else:
@@ -214,20 +225,20 @@ class SignatureFunc(Module, Instruct):
 
         param_values = list(self.parameters.values())
 
-        if isinstance(self.reader, str) and self._instance is not None:
-            reader = get_member(self._instance, self.reader)
+        if isinstance(self.reader, str) and instance is not None:
+            reader = get_member(instance, self.reader)
         else:
             reader = self.reader
 
-        if self._instance is not None:
-            values = self.f(self._instance, *args, **kwargs)
+        if instance is not None:
+            print('AN INSTANCE')
+            values = self.f(instance, *args, **kwargs)
+            param_values = param_values[1:]
         else:
+            print('NOT AN INSTANCE ', self._is_method)
             values = self.f(*args, **kwargs)
         values = values if values is not None else {}
         values = {k: v() if isinstance(k, InstructCall) else v for k, v in values.items()}
-
-        if self._instance is not None:            
-            param_values = param_values[1:]
 
         # what if one of the parameters is an cue?
         # values.update(dict(zip(args, [v for v in param_values])))
@@ -255,7 +266,8 @@ class SignatureFunc(Module, Instruct):
         # TODO: Determine how to handle this
         out = validate_out(values)
         values = {key: render(v) for key, v in values.items()}
-            
+        
+        print(filled_docstring, values.keys())
         filled_docstring = str_formatter(
             filled_docstring, required=False, **values
         )
@@ -280,9 +292,14 @@ class SignatureFunc(Module, Instruct):
         """
         engine = _engine or self.engine
 
-        if isinstance(engine, str) and self._instance is not None:
-            engine = get_member(self._instance, engine)
-        elif not isinstance(engine, AIModel) and isinstance(engine, typing.Callable[[], AIModel]):
+        if self._instance is not None:
+            instance = self._instance
+        elif self._is_method:
+            instance = args[0]
+
+        if isinstance(engine, str) and instance is not None:
+            engine = get_member(instance, engine)
+        elif not isinstance(engine, AIModel) and isinstance(engine, typing.Callable):
             engine = engine()
 
         cue = self.i(*args,  **kwargs)
@@ -305,8 +322,13 @@ class SignatureFunc(Module, Instruct):
         """
         engine = _engine or self.engine
 
-        if isinstance(engine, str) and self._instance is not None:
-            engine = get_member(self._instance, engine)
+        if self._instance is not None:
+            instance = self._instance
+        elif self._is_method:
+            instance = args[0]
+
+        if isinstance(engine, str) and instance is not None:
+            engine = get_member(instance, engine)
         elif not isinstance(engine, AIModel) and isinstance(engine, typing.Callable[[], AIModel]):
             engine = engine()
 
@@ -364,7 +386,7 @@ class SignatureFunc(Module, Instruct):
             instance.__dict__[self.f.__name__] = SignatureFunc(
                 self.f, self.engine, self.dialog_factory,
                 self._doc, self.reader, self._train,
-                self.ai_kwargs, instance
+                self.ai_kwargs, True, instance
             )
         return instance.__dict__[self.f.__name__]
 
@@ -378,6 +400,7 @@ class InstructFunc(Module, Instruct):
         self, f: typing.Callable, engine: typing.Union[AIModel, str, typing.Callable[[], AIModel]], 
         dialog_factory: typing.Optional[typing.Callable[[], Dialog]]=None,
         ai_kwargs=None,
+        is_method: bool=False,
         instance=None
     ):
         """Create an InstructMethod that decorates a function that returns 
@@ -394,6 +417,7 @@ class InstructFunc(Module, Instruct):
         update_wrapper(self, f) 
         self._instance = instance
         self._stored = None
+        self._is_method = is_method
         self.dialog_factory = dialog_factory or Dialog
         self.return_annotation = inspect.signature(f).return_annotation
 
@@ -416,8 +440,17 @@ class InstructFunc(Module, Instruct):
         Returns:
             Cue: Get the cue
         """
+
         if self._instance is not None:
-            result = self.f(self._instance, *args, **kwargs)
+            instance = self._instance
+        elif self._is_method:
+            instance = args[0]
+            args = args[1:]
+        else:
+            instance = None
+
+        if instance is not None:
+            result = self.f(instance, *args, **kwargs)
         else:
             result = self.f(*args, **kwargs)
     
@@ -434,11 +467,17 @@ class InstructFunc(Module, Instruct):
         Returns:
             typing.Any: The resulting
         """
+        if self._instance is not None:
+            instance = self._instance
+        elif self._is_method:
+            instance = args[0]
+
         engine = _engine or self.engine
-        if isinstance(engine, str) and self._instance is not None:
-            engine = get_member(self._instance, engine)
-        elif not isinstance(engine, AIModel) and isinstance(engine, typing.Callable[[], AIModel]):
+        if isinstance(engine, str) and instance is not None:
+            engine = get_member(instance, engine)
+        elif not isinstance(engine, AIModel) and isinstance(engine, typing.Callable):
             engine = engine()
+
         cue = self.i(*args, **kwargs)
         result = engine(TextMessage('system', cue), **self.ai_kwargs)
         if self.return_annotation is AIResponse:
@@ -459,8 +498,14 @@ class InstructFunc(Module, Instruct):
         """
         engine = _engine or self.engine
 
+        if self._instance is not None:
+            instance = self._instance
+        elif self._is_method:
+            instance = args[0]
+
         if isinstance(engine, str) and self._instance is not None:
-            engine = get_member(self._instance, engine)
+            engine = get_member(instance, engine)
+        
         elif not isinstance(engine, AIModel) and isinstance(engine, typing.Callable[[], AIModel]):
             engine = engine()
 
@@ -494,7 +539,7 @@ class InstructFunc(Module, Instruct):
         if self.f.__name__ not in instance.__dict__:
             instance.__dict__[self.f.__name__] = InstructFunc(
                 self.f, self.engine, self.dialog_factory,
-                self.ai_kwargs, instance
+                self.ai_kwargs, True, instance
             )
         return instance.__dict__[self.f.__name__]
 
@@ -512,6 +557,7 @@ class InstructFunc(Module, Instruct):
 
 def instructfunc(
     engine: AIModel=None,
+    is_method: bool=False,
     **ai_kwargs
 ):
     """Decorator for using a function signature
@@ -527,16 +573,26 @@ def instructfunc(
         
         # TODO: Use wrapper
         return InstructFunc(
-            f, engine, None, 
+            f, engine, None, is_method=is_method,
             ai_kwargs=ai_kwargs
         )
     return _
+
+
+def instructmethod(
+    engine: AIModel=None,
+    **ai_kwargs
+):
+    return instructfunc(
+        engine, True, **ai_kwargs
+    )
 
 
 def signaturefunc(
     engine: AIModel=None, 
     reader: Reader=None,
     doc: typing.Union[str, typing.Callable[[], str]]=None,
+    is_method=False,
     **ai_kwargs
 ):
     """Decorator for using a function signature
@@ -551,8 +607,18 @@ def signaturefunc(
             return f(*args, **kwargs)
         
         return SignatureFunc(
-            f, engine, None, doc=doc,
+            f, engine, None, is_method=is_method, doc=doc,
             reader=reader, ai_kwargs=ai_kwargs
         )
 
     return _
+
+def signaturemethod(
+    engine: AIModel=None, 
+    reader: Reader=None,
+    doc: typing.Union[str, typing.Callable[[], str]]=None,
+    **ai_kwargs
+):
+    return signaturefunc(
+        engine, reader, doc, True, **ai_kwargs
+    )

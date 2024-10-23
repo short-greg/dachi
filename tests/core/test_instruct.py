@@ -3,6 +3,16 @@ from .test_core import SimpleStruct
 from .test_ai import DummyAIModel
 
 
+def dummy_dec(f):
+    """Use to ensure signaturemethod works 
+    even if decorated
+    """
+    
+    def _(*args, **kwargs):
+        return f(*args, **kwargs)
+    return _
+
+
 class TestSignatureF:
 
     def test_inserts_into_docstring(self):
@@ -28,7 +38,7 @@ class TestSignatureF:
     def test_inserts_into_docstring_with_method(self):
 
         class X(object):
-            @core.signaturefunc()
+            @core.signaturemethod()
             def signaturep(self, x: str) -> SimpleStruct:
                 """Output the value of x
                 
@@ -51,7 +61,31 @@ class TestSignatureF:
 
         class X(object):
             
-            @core.signaturefunc(engine=DummyAIModel())
+            @core.signaturemethod(engine=DummyAIModel())
+            def signaturep(self, x: str) -> SimpleStruct:
+                """Output the value of x
+                
+                x: {x}
+
+                Args:
+                    x (str): The input
+
+                Returns:
+                    SimpleStruct: The value of x
+                """
+                pass
+
+        x = X()
+        result = x.signaturep(2)
+
+        assert result == 'Great!'
+
+    def test_inserts_into_docstring_with_method_when_decorated(self):
+
+        class X(object):
+            
+            @dummy_dec
+            @core.signaturemethod(engine=DummyAIModel())
             def signaturep(self, x: str) -> SimpleStruct:
                 """Output the value of x
                 
@@ -74,7 +108,7 @@ class TestSignatureF:
 
         class X(object):
 
-            @core.signaturefunc(engine=DummyAIModel())
+            @core.signaturemethod(engine=DummyAIModel())
             def signaturep(self, x: str) -> SimpleStruct:
                 """Output the value of x
                 
@@ -103,7 +137,7 @@ class TestSignatureF:
                 super().__init__()
                 self.model = model
             
-            @core.signaturefunc(engine='model')
+            @core.signaturemethod(engine='model')
             def signaturep(self, x: str) -> SimpleStruct:
                 """Output the value of x
                 
@@ -152,7 +186,7 @@ class TestInstructF:
 
         class X(object):
 
-            @core.instructfunc(engine=DummyAIModel())
+            @core.instructmethod(engine=DummyAIModel())
             def instructrep(self, x: str) -> str:
                 """
                 """
@@ -167,7 +201,7 @@ class TestInstructF:
 
         class X(object):
 
-            @core.instructfunc(engine=DummyAIModel())
+            @core.instructmethod(engine=DummyAIModel())
             def instructrep(self, x: str) -> str:
                 """
                 """
@@ -181,7 +215,7 @@ class TestInstructF:
 
         class X(object):
 
-            @core.instructfunc(engine=DummyAIModel())
+            @core.instructmethod(engine=DummyAIModel())
             def instructrep(self, x: str) -> str:
                 """
                 """
@@ -189,3 +223,24 @@ class TestInstructF:
 
         x = X()
         assert x.instructrep is x.instructrep
+
+
+    def test_signature_uses_the_correct_model(self):
+
+        class X(object):
+
+            def __init__(self, model):
+                super().__init__()
+                self.model = model
+            
+            @dummy_dec
+            @core.instructmethod(engine=DummyAIModel('Awesome'))
+            def instructrep(self, x: str) -> SimpleStruct:
+                """
+                """
+                return core.Cue(f'Do {x}')
+
+        x = X(DummyAIModel('Awesome'))
+        result = x.instructrep(2)
+
+        assert result == 'Awesome'
