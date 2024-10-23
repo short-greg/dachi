@@ -1,5 +1,6 @@
 from . import _functional as F
 from ..data import Context, SharedBase
+from ..utils import get_member
 import typing
 import functools
 
@@ -135,7 +136,8 @@ class CondFunc:
 
 
 def _get(obj, key):
-    return object.__getattribute__(obj, key) if isinstance(key, str) else key
+
+    return get_member(obj, key) if isinstance(key, str) else key
             
 
 class TaskFunc:
@@ -190,7 +192,7 @@ def _get_ctx(self, _ctx, ctx):
     if ctx is None:
         raise ValueError('Context has not been defined')
     elif isinstance(ctx, str):
-        return object.__getattribute__(self, ctx)
+        return get_member(self, ctx)
     return ctx
 
 

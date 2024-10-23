@@ -157,3 +157,19 @@ def is_undefined(val) -> bool:
         bool: Whether the value is undefined or not
     """
     return val == UNDEFINED or val == WAITING
+
+
+def get_member(obj, loc: str):
+    """Get a member from an object recursively
+
+    Args:
+        obj (_type_): the object
+        loc (str): the location as a string, use '.' to indicate sub objects
+
+    Returns:
+        Any: The member
+    """
+    locs = loc.split('.')
+    for loc in locs:
+        obj = getattr(obj, loc)
+    return obj

@@ -4,7 +4,7 @@ from ._utils import (
     generic_class, str_formatter,
     is_nested_model, is_undefined,
     UNDEFINED, WAITING,
-    primitives
+    primitives, get_member
 )
 from ._model import (
     Renderable, model_template,

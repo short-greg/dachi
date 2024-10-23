@@ -19,7 +19,7 @@ from ._read import (
     PydanticRead, PrimRead
 )
 from ..utils._utils import (
-    str_formatter, primitives
+    str_formatter, primitives, get_member
 )
 from .._core._process import Module
 
@@ -215,7 +215,7 @@ class SignatureFunc(Module, Instruct):
         param_values = list(self.parameters.values())
 
         if isinstance(self.reader, str) and self._instance is not None:
-            reader = getattr(self._instance, self.reader)
+            reader = get_member(self._instance, self.reader)
         else:
             reader = self.reader
 
@@ -281,7 +281,7 @@ class SignatureFunc(Module, Instruct):
         engine = _engine or self.engine
 
         if isinstance(engine, str) and self._instance is not None:
-            engine = getattr(self._instance, engine)
+            engine = get_member(self._instance, engine)
         elif not isinstance(engine, AIModel) and isinstance(engine, typing.Callable[[], AIModel]):
             engine = engine()
 
@@ -306,7 +306,7 @@ class SignatureFunc(Module, Instruct):
         engine = _engine or self.engine
 
         if isinstance(engine, str) and self._instance is not None:
-            engine = getattr(self._instance, engine)
+            engine = get_member(self._instance, engine)
         elif not isinstance(engine, AIModel) and isinstance(engine, typing.Callable[[], AIModel]):
             engine = engine()
 
@@ -436,7 +436,7 @@ class InstructFunc(Module, Instruct):
         """
         engine = _engine or self.engine
         if isinstance(engine, str) and self._instance is not None:
-            engine = getattr(self._instance, engine)
+            engine = get_member(self._instance, engine)
         elif not isinstance(engine, AIModel) and isinstance(engine, typing.Callable[[], AIModel]):
             engine = engine()
         cue = self.i(*args, **kwargs)
@@ -460,7 +460,7 @@ class InstructFunc(Module, Instruct):
         engine = _engine or self.engine
 
         if isinstance(engine, str) and self._instance is not None:
-            engine = getattr(self._instance, engine)
+            engine = get_member(self._instance, engine)
         elif not isinstance(engine, AIModel) and isinstance(engine, typing.Callable[[], AIModel]):
             engine = engine()
 

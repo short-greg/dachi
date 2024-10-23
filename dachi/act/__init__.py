@@ -33,5 +33,6 @@ from ._agent import (
     Agent, AgentStatus,
 )
 from ._decorator_func import (
-    parallelfunc, selectorfunc, sequencefunc
+    parallelfunc, selectorfunc, sequencefunc,
+    taskfunc, condfunc
 )

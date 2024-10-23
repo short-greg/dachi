@@ -128,3 +128,35 @@ class TestStrFormatter(object):
         assert utils.get_str_variables(
             '{x} {y}'
         ) == ['x', 'y']
+
+
+class TestGetMember(object):
+
+    def test_get_member_gets_immediate_child(self):
+
+        class X:
+            y = 2
+
+        x = X()
+
+        assert utils.get_member(
+            x, 'y'
+        ) == 2
+
+    def test_get_member_gets_sub_child(self):
+
+        class X:
+            y = 2
+
+            def __getattr__(self, key):
+
+                o = X()
+                object.__setattr__(self, key, o)
+                return o
+
+        x = X()
+
+        assert utils.get_member(
+            x, 'z.y'
+        ) == 2
+
