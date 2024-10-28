@@ -14,12 +14,15 @@ license = "LICENSE"
 readme = "README.md"
 packages = [
     {include="dachi"},
+    {include="dachi/op"},
+    {include="dachi/read"},
+    {include="dachi/utils"},
     {include="dachi/act"},
     {include="dachi/adapt"},
 ]
 
 [tool.poetry.dependencies]
-python = ">=3.8,<4.0"
+python = ">=3.10,<4.0"
 
 
 [tool.poetry.dev-dependencies]

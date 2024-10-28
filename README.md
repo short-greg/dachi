@@ -45,6 +45,22 @@ def summarize(document: str, num_sentences: int) -> str:
 # Instantiate the LLM and read a response
 summary = summarize(document, 5)
 print(summary)
+
+
+# instructfunc is an alternative 
+@dachi.instructfunc(engine=engine)
+def summarize(document: str, num_sentences: int) -> str:
+    cue = dachi.Cue('Summarize the document in {num_sentences} sentences')
+    cue2 = dachi.Cue("""
+    
+    # Document
+
+    {document}    
+    """)
+    dachi.op.join([cue, cue2], '\n')
+
+    return dachi.op.fill(document=document, num_sentences=num_sentences)
+    
 ```
 
 ### Advanced usage
@@ -54,6 +70,8 @@ You can leverage behavior trees to define more complex interactions and processe
 ```python
 import dachi
 
+
+# This is the standard way to create a behavior tree
 
 engine = dachi.adapt.openai.OpenAIChatModel(model='gpt-4o-mini')
 
@@ -80,20 +98,49 @@ def task2(document: str, num_sentences: int):
 
 
 # Create a behavior tree with parallel execution
-tree = BehaviorTree(
+tree = Sango(
     root=Parallel([
-        dachi.act.taskf(task1, ), 
+        dachi.act.taskf(task1), 
         dachi.act.taskf(task2)
     ])
 )
 
 while status != dachi.act.RUNNING:
     status = tree.tick()
+
+
+# You can also use function decorators to create
+# a behavior tree
+
+class Agent(Task):
+
+    def __init__(self):
+
+        self.context = ContextSpawner()
+        self.data = Shared()
+        self.task1 = SomeTask()
+        self.task2 = SomeTask2(self.data)
+
+    @sequencefunc('context.sequence')
+    def sequence(self):
+
+        yield y == 'ready'
+        yield self.task1
+        yield self.task2
+
+    def tick(self) -> TaskStatus:
+
+        return self.sequence.task()()
+        
+    def reset(self):
+        self.context = ContextSpawner()
+
 ```
 
 ## Roadmap
 
 - **Improve planning**: Add support for proactive planning and better integration of planning systems with LLMs.
+- **Add more reading features**: Increase the 
 - **Add adapters**: Add adapters for a wider variety.
 - **Add evaluation and learning capabilities**: Add the ability for the systems to evaluate the output and learn.
 

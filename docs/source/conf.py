@@ -38,7 +38,7 @@ print("Resolved project root:", project_root)
 
 sys.path.insert(0, project_root) # os.path.abspath('../'))
 
-import zenkai
+import dachi
 
 # -- General configuration ---------------------------------------------------
 

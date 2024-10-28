@@ -38,7 +38,7 @@ Other
    other/contribute
 
 :doc:`other/contribute`
-    Contribute to Zenkai
+    Contribute to Dachi
 
 .. note::
 

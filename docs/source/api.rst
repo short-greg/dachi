@@ -38,7 +38,6 @@ dachi
    dachi.Batched
    dachi.Streamer
    dachi.AsyncModule
-   dachi.async_module
    dachi.reduce
    dachi.I
    dachi.P
@@ -57,84 +56,84 @@ dachi
    dachi.instructfunc
 
 
-zenkai.data
+dachi.data
 -----------
 
 .. autosummary::
    :toctree: generated
 
-   zenkai.data.Term
-   zenkai.data.Glossary
-   zenkai.data.Context
-   zenkai.data.ContextStorage
-   zenkai.data.Shared
-   zenkai.data.get_or_set
-   zenkai.data.get_or_spawn
-   zenkai.data.SharedBase
-   zenkai.data.Buffer
-   zenkai.data.BufferIter
-   zenkai.data.ContextSpawner
-   zenkai.data.Media
-   zenkai.data.Message
-   zenkai.data.DataList
-   zenkai.data.MediaMessage
+   dachi.data.Term
+   dachi.data.Glossary
+   dachi.data.Context
+   dachi.data.ContextStorage
+   dachi.data.Shared
+   dachi.data.get_or_set
+   dachi.data.get_or_spawn
+   dachi.data.SharedBase
+   dachi.data.Buffer
+   dachi.data.BufferIter
+   dachi.data.ContextSpawner
+   dachi.data.Media
+   dachi.data.Message
+   dachi.data.DataList
+   dachi.data.MediaMessage
 
 
-zenkai.op
+dachi.op
 ---------
 
 .. autosummary::
    :toctree: generated
 
-   zenkai.op.Description
-   zenkai.op.Ref
-   zenkai.op.bullet
-   zenkai.op.formatted
-   zenkai.op.generate_numbered_list
-   zenkai.op.numbered
-   zenkai.op.validate_out
-   zenkai.op.fill
-   zenkai.op.head
-   zenkai.op.section
-   zenkai.op.cat
-   zenkai.op.join
-   zenkai.op.Op
-   zenkai.op.op
-   zenkai.op.bold
-   zenkai.op.strike
-   zenkai.op.italic
+   dachi.op.Description
+   dachi.op.Ref
+   dachi.op.bullet
+   dachi.op.formatted
+   dachi.op.generate_numbered_list
+   dachi.op.numbered
+   dachi.op.validate_out
+   dachi.op.fill
+   dachi.op.head
+   dachi.op.section
+   dachi.op.cat
+   dachi.op.join
+   dachi.op.Op
+   dachi.op.op
+   dachi.op.bold
+   dachi.op.strike
+   dachi.op.italic
 
-zenkai.read
+dachi.read
 -----------
 
 .. autosummary::
    :toctree: generated
 
-   zenkai.read.CSVRead
-   zenkai.read.KVRead
-   zenkai.read.StructListRead
-   zenkai.read.JSONRead
+   dachi.read.CSVRead
+   dachi.read.KVRead
+   dachi.read.StructListRead
+   dachi.read.JSONRead
 
-zenkai.utils
+dachi.utils
 ------------
 
 .. autosummary::
    :toctree: generated
 
-   zenkai.utils.get_str_variables
-   zenkai.utils.escape_curly_braces
-   zenkai.utils.is_primitive
-   zenkai.utils.generic_class
-   zenkai.utils.str_formatter
-   zenkai.utils.is_nested_model
-   zenkai.utils.is_undefined
-   zenkai.utils.UNDEFINED
-   zenkai.utils.WAITING
-   zenkai.utils.Renderable
-   zenkai.utils.model_template
-   zenkai.utils.struct_template
-   zenkai.utils.model_to_text
-   zenkai.utils.model_from_text
-   zenkai.utils.StructLoadException
-   zenkai.utils.Templatable
-   zenkai.utils.TemplateField
+   dachi.utils.get_str_variables
+   dachi.utils.escape_curly_braces
+   dachi.utils.is_primitive
+   dachi.utils.generic_class
+   dachi.utils.str_formatter
+   dachi.utils.is_nested_model
+   dachi.utils.is_undefined
+   dachi.utils.UNDEFINED
+   dachi.utils.WAITING
+   dachi.utils.Renderable
+   dachi.utils.model_template
+   dachi.utils.struct_template
+   dachi.utils.model_to_text
+   dachi.utils.model_from_text
+   dachi.utils.StructLoadException
+   dachi.utils.Templatable
+   dachi.utils.TemplateField

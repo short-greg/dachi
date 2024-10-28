@@ -231,11 +231,9 @@ class SignatureFunc(Module, Instruct):
             reader = self.reader
 
         if instance is not None:
-            print('AN INSTANCE')
             values = self.f(instance, *args, **kwargs)
             param_values = param_values[1:]
         else:
-            print('NOT AN INSTANCE ', self._is_method)
             values = self.f(*args, **kwargs)
         values = values if values is not None else {}
         values = {k: v() if isinstance(k, InstructCall) else v for k, v in values.items()}
