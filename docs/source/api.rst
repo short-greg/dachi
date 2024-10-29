@@ -31,7 +31,6 @@ dachi
    dachi.Partial
    dachi.ParallelModule
    dachi.parallel_loop
-   dachi.processf
    dachi.MultiModule
    dachi.ModuleList
    dachi.Sequential

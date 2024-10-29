@@ -612,20 +612,43 @@ class Retriever(SharedBase):
 
 
 class ContextSpawner(object):
+    """Use to Spawn contexts for your behaviors
+    """
 
     def __init__(self, manager: ContextStorage, base_name: str):
-        """
+        """Create a context Spawner specifying the Storage and the
+        base name to use in spawning
 
         Args:
-            manager (): 
-            base_name (str): 
+            manager (): The manager to use
+            base_name (str): The base name of all contexts to spawn
         """
-        self.manager = manager
-        self.base_name = base_name
+        object.__setattr__('manager', manager)
+        object.__setattr__('base_name', base_name)
 
-    def __getitem__(self, i: int) -> Context:
+    def __getitem__(self, name) -> Context:
+        """Get item specified by name
 
-        name = f'{self.base_name}_{i}'
+        Args:
+            name: The context to get
+
+        Returns:
+            Context: The context
+        """
+
+        name = f'{self.base_name}_{name}'
+        return self.manager.add(name)
+
+    def __getattr__(self, name: int) -> Context:
+        """Get item specified by name
+
+        Args:
+            name: The context to get
+
+        Returns:
+            Context: The context
+        """
+        name = f'{self.base_name}_{name}'
         return self.manager.add(name)
 
 

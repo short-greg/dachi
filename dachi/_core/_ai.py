@@ -18,10 +18,13 @@ import pydantic
 
 @dataclass
 class AIResponse(object):
+    """The AI response stores the response from the API
+    And any processing done on it.
+    """
 
-    message: 'Message'
-    source: typing.Dict
-    val: typing.Any = None
+    message: 'Message' # The message from the AI
+    source: typing.Dict # The response from the API
+    val: typing.Any = None # the result of processing the message
 
     def clone(self) -> Self:
 
@@ -32,28 +35,51 @@ class AIResponse(object):
         )
     
     def __iter__(self) -> typing.Iterator:
+        """Unpack the values in the AIResponse
+
+        Yields:
+            Iterator[typing.Iterator]: Each value in the response
+        """
         yield self.source
         yield self.message
         yield self.val
 
 
 class AIPrompt(pydantic.BaseModel, ABC):
+    """Base class for prompts to send to the AI
+    """
 
     @abstractmethod
     def prompt(self, model: 'AIModel'):
+        """Send the prompt to the AI Model
+
+        Args:
+            model (AIModel): The model to query
+        """
         pass
 
     @abstractmethod
     def instruct(self, cue: 'Cue', model: 'AIModel'):
+        """Send an instruction to the model
+
+        Args:
+            cue (Cue): The cue to use
+            model (AIModel): The model to use
+        """
         pass
 
     @abstractmethod
     def reader(self) -> 'Reader':
+        """Get the reader from the AIPrompt to process the response
+
+        Returns:
+            Reader: The reader used to compute val in the response
+        """
         pass
 
     @abstractmethod
     def process_response(self, response: 'AIResponse') -> 'AIResponse':
-        """
+        """Process the response of the Model
 
         Args:
             response (AIResponse): The response to process
@@ -74,12 +100,12 @@ class AIPrompt(pydantic.BaseModel, ABC):
 
     @abstractmethod
     def aslist(self) -> typing.List['Message']:
-        """
+        """Return the AIPrompt as a list of messages
         """
         pass
 
     def __iter__(self) -> typing.Iterator['Message']:
-        """
+        """Iterate over each message in the prompt
 
         Yields:
             Message: Each message
@@ -87,17 +113,24 @@ class AIPrompt(pydantic.BaseModel, ABC):
         for message in self.aslist():
             yield message
 
-    def __call__(self, prompt: 'AIPrompt') -> 'AIResponse':
-
-        return self.forward(prompt)
-
 
 class Message(pydantic.BaseModel, Renderable):
+    """A prompt that consists of a single message to send the AI
+    """
 
-    source: str
-    data: typing.Dict[str, typing.Any]
+    source: str # The source of the messsage (user, assistant etc)
+    data: typing.Dict[str, typing.Any] # The contents of the message
 
-    def __getitem__(self, key: str):
+    def __getitem__(self, key: str) -> typing.Any:
+        """Get an item from the message
+
+        Args:
+            key (str): The key to retrieve for
+
+        Raises:
+            KeyError: 
+
+        """
         if hasattr(self, key):
             return getattr(self, key)
         if key in self.data:
@@ -105,6 +138,15 @@ class Message(pydantic.BaseModel, Renderable):
         raise KeyError(f'{key}')
 
     def __setitem__(self, key: str, value: typing.Any):
+        """Set an item in the message
+
+        Args:
+            key (str): The key to set for
+            value (typing.Any): The value to set
+
+        Raises:
+            KeyError: An error
+        """
         if hasattr(self, key):
             setattr(self, key, value)
         if key in self.data:
@@ -112,9 +154,23 @@ class Message(pydantic.BaseModel, Renderable):
         raise KeyError(f'{key}')
 
     def prompt(self, model: 'AIModel', **kwarg_overrides) -> 'AIResponse':
+        """prompt the ai model with the message
+
+        Args:
+            model (AIModel): The model to prmopt
+
+        Returns:
+            AIResponse: the response
+        """
         return model(self, **kwarg_overrides)
 
     def reader(self) -> 'Reader':
+        """Get the reader for the prompt
+
+        Returns:
+            Reader: Returns the base reader
+        """
+        # TODO: update this to allow it to change
         return NullRead()
 
     def clone(self) -> typing.Self:
@@ -129,6 +185,11 @@ class Message(pydantic.BaseModel, Renderable):
         )
 
     def aslist(self) -> typing.List['Message']:
+        """Get the message as a list
+
+        Returns:
+            typing.List[Message]: The message as a list
+        """
         return [self]
     
     def render(self) -> str:
@@ -141,9 +202,17 @@ class Message(pydantic.BaseModel, Renderable):
 
 
 class TextMessage(Message):
+    """A message that contains text. Typically used for LLMs
+    """
 
-    def __init__(self, source: str, text: typing.Union[str, 'Cue']) -> 'Message':
+    def __init__(self, source: str, text: typing.Union[str, 'Cue']):
+        """Create a text message with a source
 
+        Args:
+            source (str): the source of the message
+            text (typing.Union[str, Cue]): the content of the message
+
+        """
         super().__init__(
             source=source,
             data={
@@ -152,6 +221,11 @@ class TextMessage(Message):
         )
 
     def reader(self) -> 'Reader':
+        """The reader to use
+
+        Returns:
+            Reader: The reader used by message
+        """
         text = self['text']
         if isinstance(text, Cue) and text.out is not None:
             return text.out
@@ -181,10 +255,26 @@ class TextMessage(Message):
 
     @property
     def text(self) -> str:
+        """Get the text for the message
+
+        Returns:
+            str: The text for the message
+        """
         return self.data['text']
 
 
 def stream_text(stream: typing.Iterator[typing.Tuple[AIResponse, AIResponse]]) -> typing.Iterator[TextMessage]:
+    """Stream the text response from an AI Engine
+
+    Args:
+        stream (typing.Iterator[typing.Tuple[AIResponse, AIResponse]]): The stream to execute
+
+    Returns:
+        typing.Iterator[TextMessage]: 
+
+    Yields:
+        Iterator[typing.Iterator[TextMessage]]: 
+    """
     
     for _, a2 in stream:
         yield a2.message
@@ -197,13 +287,20 @@ class Dialog(pydantic.BaseModel):
 
     messages: typing.List[Message] = pydantic.Field(default_factory=list)
 
+    def __init__(self, messages):
+        """Create a dialog
+
+        Args:
+            messages: The messages
+        """
+        super().__init__(messages=messages)
+
     def __iter__(self) -> typing.Iterator[Message]:
         """Iterate over each message in the dialog
 
         Yields:
             Iterator[typing.Iterator[Message]]: Each message in the dialog
         """
-
         for message in self.messages:
             yield message
 
@@ -408,6 +505,12 @@ class Dialog(pydantic.BaseModel):
         )
 
     def render(self) -> str:
+        """Render the dialog as a series of turns 
+        <source>: <text>
+
+        Returns:
+            str: The dialog
+        """
         return '\n'.join(
             message.render() for message in self.messages
         )
@@ -477,6 +580,11 @@ class Dialog(pydantic.BaseModel):
         return self.messages
     
     def __len__(self) -> int:
+        """Get the size of the dialog
+
+        Returns:
+            int: the number of turns in the dialog
+        """
         return len(self.messages)
 
 
@@ -590,6 +698,7 @@ class AIModel(Module, ABC):
         yield result
 
     async def _collect_results(generator, index, results, queue):
+        
         async for item in generator:
             results[index] = item
             await queue.put(results[:])  # Put a copy of the current results
@@ -622,4 +731,12 @@ class AIModel(Module, ABC):
             active_generators = sum(result is not None for result in current_results)
 
     def __call__(self, prompt: AIPrompt, **kwarg_override) -> AIResponse:
+        """Execute the AIModel
+
+        Args:
+            prompt (AIPrompt): The prompt
+
+        Returns:
+            AIResponse: Get the response from the AI
+        """
         return self.forward(prompt, **kwarg_override)

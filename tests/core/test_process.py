@@ -54,43 +54,43 @@ class WaitAppend(core.Module):
         return name + self._append
 
 
-class MyProcess:
+# class MyProcess:
 
-    @p.processf
-    def process_test_method(self, x, y):
-        return x + y
-
-
-@p.processf
-def process_test_func(x, y):
-    return x + y
+#     @p.processfunc
+#     def process_test_method(self, x, y):
+#         return x + y
 
 
-class TestProcessDecorator:
+# @p.processfunc
+# def process_test_func(x, y):
+#     return x + y
 
-    def test_process_decorator_with_method(self):
 
-        process = MyProcess()
-        result = process.process_test_method(2, 3)
-        assert result == 5
+# class TestProcessDecorator:
 
-    def test_process_decorator_with_function(self):
+#     def test_process_decorator_with_method(self):
 
-        result = process_test_func(2, 3)
-        assert result == 5
+#         process = MyProcess()
+#         result = process.process_test_method(2, 3)
+#         assert result == 5
 
-    def test_process_decorator_with_function_after_two(self):
+#     def test_process_decorator_with_function(self):
 
-        result = process_test_func(2, 3)
-        result = process_test_func(2, 3)
-        assert result == 5
+#         result = process_test_func(2, 3)
+#         assert result == 5
 
-    def test_process_decorator_with_method_after_two(self):
+#     def test_process_decorator_with_function_after_two(self):
 
-        process = MyProcess()
-        result = process.process_test_method(2, 3)
-        result = process.process_test_method(2, 3)
-        assert result == 5
+#         result = process_test_func(2, 3)
+#         result = process_test_func(2, 3)
+#         assert result == 5
+
+#     def test_process_decorator_with_method_after_two(self):
+
+#         process = MyProcess()
+#         result = process.process_test_method(2, 3)
+#         result = process.process_test_method(2, 3)
+#         assert result == 5
 
 
 def _s(x):

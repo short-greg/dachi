@@ -12,6 +12,15 @@ class _PartialFormatter(string.Formatter):
         super().__init__()
 
     def format(self, format_string, *args, required: bool=True, **kwargs):
+        """Format the string
+
+        Args:
+            format_string : The string to format
+            required (bool, optional): Whether the key is required. Defaults to True.
+
+        Returns:
+            str: the formatted string
+        """
         if args and kwargs:
             raise ValueError("Cannot mix positional and keyword arguments")
 
@@ -64,7 +73,7 @@ def get_str_variables(format_string: str) -> typing.List[str]:
     return variables
 
 
-str_formatter = _PartialFormatter()
+str_formatter = _PartialFormatter() # Use to format a string with keys and values, does not require all keys specified
 
 
 def escape_curly_braces(value: typing.Any, render: bool=False) -> str:
@@ -90,7 +99,7 @@ def unescape_curly_braces(value: typing.Any) -> str:
     return value
 
 
-primitives = (bool, str, int, float, type(None))
+primitives = (bool, str, int, float, type(None)) # a list of primitive types
 
 
 def is_primitive(obj) -> bool:
@@ -125,8 +134,8 @@ class _Types(Enum):
     WAITING = 'WAITING'
 
 
-UNDEFINED = _Types.UNDEFINED
-WAITING = _Types.WAITING
+UNDEFINED = _Types.UNDEFINED # Constant for UNDEFINED. usage: value is UNDEFINED
+WAITING = _Types.WAITING # Constant for WAITING when streaming. usage: value is WAITING
 
 
 def is_nested_model(

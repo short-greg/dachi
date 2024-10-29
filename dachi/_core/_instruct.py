@@ -558,10 +558,14 @@ def instructfunc(
     is_method: bool=False,
     **ai_kwargs
 ):
-    """Decorator for using a function signature
+    """Decorate a method with instructfunc
 
     Args:
-        train (bool, optional): Whether to train the function or not. Defaults to True.
+        engine (AIModel, optional): The engine for the AI . Defaults to None.
+        is_method (bool): Whether it is a method
+
+    Returns:
+        typing.Callable[[function], SignatureFunc]
     """
     def _(f):
 
@@ -581,6 +585,14 @@ def instructmethod(
     engine: AIModel=None,
     **ai_kwargs
 ):
+    """Decorate a method with instructfunc
+
+    Args:
+        engine (AIModel, optional): The engine for the AI . Defaults to None.
+
+    Returns:
+        typing.Callable[[function], SignatureFunc]
+    """
     return instructfunc(
         engine, True, **ai_kwargs
     )
@@ -593,10 +605,16 @@ def signaturefunc(
     is_method=False,
     **ai_kwargs
 ):
-    """Decorator for using a function signature
+    """Decorate a method with SignatureFunc
 
     Args:
-        train (bool, optional): Whether to train the function or not. Defaults to True.
+        engine (AIModel, optional): The engine for the AI . Defaults to None.
+        reader (Reader, optional): The reader to use for the method. Defaults to None.
+        doc (typing.Union[str, typing.Callable[[], str]], optional): A docstring to override with. Defaults to None.
+        is_method (bool): Whether the function is a method. 
+
+    Returns:
+        typing.Callable[[function], SignatureFunc]
     """
     def _(f):
 
@@ -611,12 +629,23 @@ def signaturefunc(
 
     return _
 
+
 def signaturemethod(
     engine: AIModel=None, 
     reader: Reader=None,
     doc: typing.Union[str, typing.Callable[[], str]]=None,
     **ai_kwargs
 ):
+    """Decorate a method with SignatureFunc
+
+    Args:
+        engine (AIModel, optional): The engine for the AI . Defaults to None.
+        reader (Reader, optional): The reader to use for the method. Defaults to None.
+        doc (typing.Union[str, typing.Callable[[], str]], optional): A docstring to override with. Defaults to None.
+
+    Returns:
+        typing.Callable[[function], SignatureFunc]
+    """
     return signaturefunc(
         engine, reader, doc, True, **ai_kwargs
     )

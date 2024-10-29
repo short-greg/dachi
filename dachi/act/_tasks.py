@@ -229,37 +229,67 @@ class Parallel(Task):
 
     @property
     def succeeds_on(self) -> int:
+        """Get the number required for success
 
+        Returns:
+            int: The number of successes to succeed
+        """
         return self._succeeds_on        
     
     @succeeds_on.setter
     def succeeds_on(self, succeeds_on) -> int:
+        """Set the number required for success
+
+        Args:
+            succeeds_on: the number required for success
+
+        Returns:
+            int: The number of successes to succeed
+        """
         self._succeeds_on = succeeds_on
         self._update_f()
-
         return self._succeeds_on
     
     def tick(self) -> TaskStatus:
-        
+        """Tick the task
+
+        Returns:
+            TaskStatus: The status
+        """
         self._status = self._f()
         return self._status
 
     def reset(self):
+        """Reset the task and subtasks
+        """
 
         super().reset()
         for task in self._ticked:
             task.reset()
-        self._context = {}
 
 
 class Action(Task):
+    """A standard task that executes 
+    """
 
     @abstractmethod
     def act(self) -> TaskStatus:
+        """Commit an action
+
+        Raises:
+            NotImplementedError: 
+
+        Returns:
+            TaskStatus: The status of after executing
+        """
         raise NotImplementedError
 
     def tick(self) -> TaskStatus:
+        """Execute the action
 
+        Returns:
+            TaskStatus: The resulting status
+        """
         if self._status.is_done:
             return self._status
         self._status = self.act()
@@ -273,6 +303,11 @@ class Condition(Task):
 
     @abstractmethod
     def condition(self) -> bool:
+        """Execute between
+
+        Returns:
+            bool: The result of the condition
+        """
         pass
 
     def tick(self) -> TaskStatus:
@@ -329,7 +364,8 @@ class Decorator(Task):
         return self._status
 
     def reset(self):
-
+        """Reset the task and subtask
+        """
         super().reset()
         self._task.reset()
 
@@ -337,7 +373,16 @@ class Decorator(Task):
 class Until(Decorator):
     """Loop until a condition is met
     """
-    def __init__(self, task: Task, target_status: TaskStatus= TaskStatus.SUCCESS) -> None:
+    def __init__(
+        self, task: Task,
+        target_status: TaskStatus= TaskStatus.SUCCESS
+    ) -> None:
+        """A decorator that will execute until a status is reached
+
+        Args:
+            task (Task): The sub task to run
+            target_status (TaskStatus, optional): The status to break on. Defaults to TaskStatus.SUCCESS.
+        """
         super().__init__(task)
         self.target_status = target_status
 
@@ -360,7 +405,14 @@ class Until(Decorator):
 class Unless(Decorator):
     """Loop while a condition is met
     """
+
     def __init__(self, task: Task, target_status: TaskStatus= TaskStatus.FAILURE) -> None:
+        """A decorator that will execute until a status is reached
+
+        Args:
+            task (Task): The sub task to run
+            target_status (TaskStatus, optional): The status to break on. Defaults to TaskStatus.SUCCESS.
+        """
         super().__init__(task)
         self.target_status = target_status
 
@@ -396,7 +448,16 @@ class Not(Decorator):
         return status.invert()
 
 
-def run_task(task: Task, interval: float=1./60) -> typing.Iterator[TaskStatus]:
+def run_task(task: Task, interval: typing.Optional[float]=1./60) -> typing.Iterator[TaskStatus]:
+    """Run a task until completion
+
+    Args:
+        task (Task): The task to execute
+        interval (float, optional): The interval to execute on. Defaults to 1./60.
+
+    Yields:
+        Iterator[typing.Iterator[TaskStatus]]: The status
+    """
 
     status = None
     while status == TaskStatus.RUNNING or status == TaskStatus.READY:
@@ -412,7 +473,7 @@ class StateMachine(Task):
     """
 
     def __init__(self, init_state: 'State'):
-        """
+        """Create the status
 
         Args:
             init_state (State): The starting state for the machine
@@ -444,7 +505,9 @@ class StateMachine(Task):
         return self._status
 
     def reset(self):
-
+        """Reset the state machine
+        """
+        super().reset()
         self._cur_state = self._init_state
 
 
@@ -463,7 +526,11 @@ class FixedTimer(Action):
         self._start = None
 
     def act(self) -> TaskStatus:
+        """Execute the timer
 
+        Returns:
+            TaskStatus: The TaskStatus after running
+        """
         cur = time.time()
         if self._start is None:
             self._start = cur
@@ -473,6 +540,8 @@ class FixedTimer(Action):
         return TaskStatus.RUNNING
 
     def reset(self):
+        """Reset the timer
+        """
         super().reset()
         self._start = None
 
@@ -494,7 +563,11 @@ class RandomTimer(Action):
         self._target = None
 
     def act(self) -> TaskStatus:
+        """Execute the Timer
 
+        Returns:
+            TaskStatus: The status of the task
+        """
         cur = time.time()
         if self._start is None:
             self._start = cur
@@ -506,6 +579,8 @@ class RandomTimer(Action):
         return TaskStatus.RUNNING
 
     def reset(self):
+        """Reset the task
+        """
         super().reset()
         self._start = None
         self._target = None

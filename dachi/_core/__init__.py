@@ -18,7 +18,6 @@ from ._process import (
     Partial, 
     ParallelModule, 
     parallel_loop,
-    processf, 
     MultiModule, 
     ModuleList,
     Sequential, 

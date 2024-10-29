@@ -37,6 +37,11 @@ class Agent(object):
         self._queued = []
 
     def act(self) -> TaskStatus:
+        """Execute the agent
+
+        Returns:
+            TaskStatus: The resulting status
+        """
         if self._sango is None:
             return TaskStatus.SUCCESS
         return self._sango.tick()

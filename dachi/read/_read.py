@@ -198,11 +198,21 @@ class DualRead(Reader):
 
 
 class KVRead(Reader):
+    """Create a Reader of a list of key values
+    """
 
     sep: str = '::'
     key_descr: typing.Optional[typing.Union[typing.Type[pydantic.BaseModel], typing.Dict]] = None
     
     def read_text(self, message: str) -> typing.Dict:
+        """Read in the list of key values
+
+        Args:
+            message (str): The message to read
+
+        Returns:
+            typing.Dict: A dictionary of keys and values
+        """
         lines = message.splitlines()
         result = {}
         for line in lines:
@@ -214,45 +224,46 @@ class KVRead(Reader):
         return result
     
     def load_data(self, data: typing.Dict) -> typing.Dict:
-        """
+        """Load data does not do anything as the result
+        is a dictionary.
 
         Args:
-            data (typing.Dict): 
+            data (typing.Dict): The data to load
 
         Returns:
-            typing.Dict: 
+            typing.Dict: The dictionary of data
         """
         return data
 
     def dump_data(self, data: typing.Dict) -> typing.Dict:
-        """
+        """Convert the data to a dictionary
 
         Args:
-            data (typing.Dict): 
+            data (typing.Dict): The data to load
 
         Returns:
-            typing.Dict: 
+            typing.Dict: The dumped data
         """
         return data
 
     def write_text(self, data: typing.Dict) -> str:
-        """
+        """Write data as text
 
         Args:
-            data (typing.Dict): 
+            data (typing.Dict): The data to write
 
         Returns:
-            str: 
+            str: The keys and values as text
         """
         return '\n'.join(
             f'{k}{self.sep}{render(v)}' for k, v in data.items()
         )
 
     def template(self) -> str:
-        """
+        """Get the template for the Keys and Values
 
         Returns:
-            str: 
+            str: The template
         """
         if self.key_descr is None:
             key_descr = {
@@ -276,7 +287,7 @@ class KVRead(Reader):
 
 
 class JSONRead(Reader):
-    """
+    """Use to read from a JSON
     """
 
     key_descr: typing.Optional[typing.Dict] = None
@@ -297,13 +308,14 @@ class JSONRead(Reader):
             return {}
     
     def load_data(self, data: typing.Dict) -> typing.Dict:
-        """_summary_
+        """Load the data from a dictionary. Since JSONs are just a dict
+        this does nothing
 
         Args:
-            data (typing.Dict): _description_
+            data (typing.Dict): The data to load
 
         Returns:
-            typing.Dict: Convert the
+            typing.Dict: The result
         """
         return data
 

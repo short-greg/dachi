@@ -151,17 +151,33 @@ class ParallelModule(Module, ABC):
     """
 
     def __init__(self, modules: typing.Union[typing.List[Module], Module]):
+        """
 
+        Args:
+            modules (typing.Union[typing.List[Module], Module]): 
+        """
         self._modules = modules
 
     @abstractmethod
     def forward(self, *args, **kwargs) -> typing.List:
+        """Execute the parallel module
+
+        Returns:
+            typing.List: The results of the parallel module
+        """
         pass
 
 
 class MultiModule(ParallelModule):
+    """A module that executes each of the modules it wraps in a loop
+    """
     
     def forward(self, *args, **kwargs) -> typing.List:
+        """Loop over all of the modules and execute them
+
+        Returns:
+            typing.List: The output of all the modules
+        """
         res = []
         for module, cur_args, cur_kwargs in parallel_loop(self._modules, *args, **kwargs):
            res.append(module(*cur_args, **cur_kwargs))
@@ -200,48 +216,58 @@ class AsyncModule(ParallelModule):
         return asyncio.run(self.async_forward(*args, **kwargs))
 
 
-class _ProcessMethod(Module):
+# class _ProcessMethod(Module):
+#     """
+#     """
 
-    def __init__(self, f: typing.Callable, instance=None):
-        self.f = f
-        self.instance = instance
-        self._stored = None
-        self._async_f = None
+#     def __init__(self, f: typing.Callable, instance=None):
+#         self.f = f
+#         self.instance = instance
+#         self._stored = None
+#         self._async_f = None
 
-    def forward(self, *args, **kwargs) -> typing.Any:
-        if self.instance:
-            return self.f(self.instance, *args, **kwargs)
-        return self.f(*args, **kwargs)
+#     def forward(self, *args, **kwargs) -> typing.Any:
+#         if self.instance:
+#             return self.f(self.instance, *args, **kwargs)
+#         return self.f(*args, **kwargs)
 
-    async def async_forward(self, *args, **kwargs) -> typing.Any:
+#     async def async_forward(self, *args, **kwargs) -> typing.Any:
         
-        if self._async_f:
-            self._async_f(*args, **kwargs)
-        return self.forward(*args, **kwargs)
+#         if self._async_f:
+#             self._async_f(*args, **kwargs)
+#         return self.forward(*args, **kwargs)
 
-    def __get__(self, instance, owner):
+#     def __get__(self, instance, owner):
 
-        if self._stored is not None and instance is self._stored:
-            return self._stored
-        self._stored = _ProcessMethod(self.f, instance)
-        return self._stored
+#         if self._stored is not None and instance is self._stored:
+#             return self._stored
+#         self._stored = _ProcessMethod(self.f, instance)
+#         return self._stored
     
-    @classmethod
-    def async_(cls, f):
+#     @classmethod
+#     def async_(cls, f):
 
-        cls._async_f = f
+#         cls._async_f = f
 
+# TODO: Decide whether to remove this
+# def processfunc(f):
+#     """Decorator to create a module from a method
 
-def processf(f):
+#     Args:
+#         f (_type_): _description_
 
-    @wraps(f)
-    def wrapper(*args, **kwargs):
-        return f(*args, **kwargs)
+#     Returns:
+#         _type_: _description_
+#     """
 
-    if hasattr(f, '__self__') or '__self__' in dir(f):
-        return _ProcessMethod(f)
-    else:
-        return _ProcessMethod(wrapper)
+#     @wraps(f)
+#     def wrapper(*args, **kwargs):
+#         return f(*args, **kwargs)
+
+#     if hasattr(f, '__self__') or '__self__' in dir(f):
+#         return _ProcessMethod(f)
+#     else:
+#         return _ProcessMethod(wrapper)
 
 
 class ModuleList(Module):
@@ -559,6 +585,11 @@ class Streamer(object):
 
     @property
     def complete(self) -> bool:
+        """Check if the stream has completed
+
+        Returns:
+            bool: True if the stream is complete
+        """
         return self._output is not UNDEFINED
 
     def __call__(self) -> typing.Union[Partial]:

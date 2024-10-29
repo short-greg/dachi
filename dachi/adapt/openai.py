@@ -18,8 +18,15 @@ if len(missing) > 0:
 
 
 class OpenAIChatModel(AIModel):
+    """A model that uses OpenAI's Chat API
+    """
 
     def __init__(self, model: str, **kwargs) -> None:
+        """Create an OpenAIChat model
+
+        Args:
+            model (str): The name of the model
+        """
         super().__init__()
         self.model = model
         self.kwargs = kwargs
@@ -41,8 +48,15 @@ class OpenAIChatModel(AIModel):
             'content': text
         }
 
-    def forward(self, prompt: AIPrompt, **kwarg_override) -> Dict:
+    def forward(self, prompt: AIPrompt, **kwarg_override) -> AIResponse:
+        """Execute the model
 
+        Args:
+            prompt (AIPrompt): The message to send the model
+
+        Returns:
+            AIResponse: the response from the model
+        """
         kwargs = {
             **self.kwargs,
             **kwarg_override
@@ -70,7 +84,14 @@ class OpenAIChatModel(AIModel):
         self, prompt: AIPrompt, 
         **kwarg_override
     ) -> typing.Iterator[typing.Tuple[AIResponse, AIResponse]]:
+        """Stream the model
 
+        Args:
+            prompt (AIPrompt): the model prmopt
+
+        Yields:
+            Iterator[typing.Iterator[typing.Tuple[AIResponse, AIResponse]]]: the responses from the model
+        """
         kwargs = {
             **self.kwargs,
             **kwarg_override
@@ -107,6 +128,14 @@ class OpenAIChatModel(AIModel):
         self, prompt: AIPrompt, 
         **kwarg_override
     ) -> typing.Tuple[str, typing.Dict]:
+        """
+
+        Args:
+            prompt (AIPrompt): The 
+
+        Returns:
+            typing.Tuple[str, typing.Dict]: _description_
+        """
         client = openai.AsyncOpenAI()
 
         kwargs = {
@@ -128,6 +157,14 @@ class OpenAIChatModel(AIModel):
         )
 
     async def async_stream_forward(self, prompt: AIPrompt, **kwarg_override) -> AsyncIterator[typing.Tuple[AIResponse, AIResponse]]:
+        """Stream the model asyncrhonously
+
+        Args:
+            prompt (AIPrompt): The prompt for the model
+
+        Yields:
+            Iterator[AsyncIterator[typing.Tuple[AIResponse, AIResponse]]]: The response from the model
+        """
 
         kwargs = {
             **self.kwargs,
@@ -161,9 +198,19 @@ class OpenAIChatModel(AIModel):
 
 
 class OpenAIMessage(TextMessage):
+    """A text message made to work with OpenAI. Especially makes
+    using prompt more straightforward
+    """
     
     def prompt(self, model: typing.Union[AIModel, str], **kwarg_overrides) -> AIResponse:
-        
+        """prompt the model
+
+        Args:
+            model (typing.Union[AIModel, str]): The model to execute
+
+        Returns:
+            AIResponse: The response from the model
+        """
         if isinstance(model, str):
             model = OpenAIChatModel(model, **kwarg_overrides)
 

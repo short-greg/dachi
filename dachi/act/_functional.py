@@ -29,22 +29,20 @@ async def _parallel(
     success_on: int=-1, 
     fails_on: int=1, success_priority: bool=True
 ) -> TaskStatus:
-    """
+    """Run in parallel
 
     Args:
         tasks (typing.List[TASK]): The tasks to run
-        state (typing.Dict): 
-        success_on (int): 
-        fails_on (int): 
-        success_priority (bool)
+        success_on (int): The number required for success
+        fails_on (int): The number 
+        success_priority (bool): The 
 
     Raises:
-        ValueError: 
+        ValueError: If the value is not defined
 
     Returns:
-        TaskStatus: 
+        TaskStatus: The resulting status
     """
-    print(tasks, success_on, fails_on, success_priority)
     tg_tasks = []
     async with asyncio.TaskGroup() as tg:
 

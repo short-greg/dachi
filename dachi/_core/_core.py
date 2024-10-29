@@ -42,10 +42,10 @@ class Storable(ABC):
         return self._id
 
     def load_state_dict(self, state_dict: typing.Dict):
-        """
+        """Load the state dict for the object
 
         Args:
-            state_dict (typing.Dict): 
+            state_dict (typing.Dict): The state dict
         """
         for k, v in self.__dict__.items():
             if isinstance(v, Storable):
@@ -54,10 +54,10 @@ class Storable(ABC):
                 self.__dict__[k] = state_dict[k]
         
     def state_dict(self) -> typing.Dict:
-        """
+        """Retrieve the state dict for the object
 
         Returns:
-            typing.Dict: 
+            typing.Dict: The state dict
         """
         cur = {}
 
@@ -223,6 +223,11 @@ class Reader(pydantic.BaseModel, Templatable, ABC):
 
     @abstractmethod
     def template(self) -> str:
+        """Get the template for the reader
+
+        Returns:
+            str: The template as a string
+        """
         pass
 
 
@@ -414,6 +419,11 @@ class Param(pydantic.BaseModel, Renderable, Storable):
         return self.cue.read_out(data)
     
     def state_dict(self) -> typing.Dict:
+        """Get the state dict for the Param
+
+        Returns:
+            typing.Dict: the state dict
+        """
         
         return {
             'name': self.name,
@@ -423,7 +433,11 @@ class Param(pydantic.BaseModel, Renderable, Storable):
         }
 
     def load_state_dict(self, params: typing.Dict):
+        """Load the state dict for the Param
         
+        Args:
+            params (typing.Dict): the state dict
+        """
         self.name = params['name']
         self.cue = self.cue.load_state_dict(params['cue'])
         self.training = params['training']

@@ -24,30 +24,68 @@ class TaskStatus(Enum):
 
     @property
     def is_done(self) -> bool:
+        """Get whether the task has succeeded or failed
+
+        Returns:
+            bool: Whether the task is "done"
+        """
         return self == TaskStatus.FAILURE or self == TaskStatus.SUCCESS
     
     @property
     def in_progress(self) -> bool:
+        """Get whether the task is in progress
+
+        Returns:
+            bool: whether the task is still running
+        """
         return self == TaskStatus.RUNNING or self == TaskStatus.WAITING
     
     @property
     def ready(self) -> bool:
+        """Get whether the task is ready to be executed
+
+        Returns:
+            bool: Whether the task is ready to be executed
+        """
         return self == TaskStatus.READY
     
     @property
     def failure(self) -> bool:
+        """Get whether the task has failed
+
+        Returns:
+            bool: whether the task has failed
+        """
         return self == TaskStatus.FAILURE
     
     @property
     def success(self) -> bool:
+        """Get whether the task 
+
+        Returns:
+            bool: Whether the task has succeeded
+        """
         return self == TaskStatus.SUCCESS
     
     @property
     def running(self) -> bool:
+        """Get whether the task is running
+
+        Returns:
+            bool: Whether the task is running or not
+        """
         return self == TaskStatus.RUNNING
     
     @classmethod
     def from_bool(cls, val: bool) -> 'TaskStatus':
+        """Convert a boolean to a TaskStatus
+
+        Args:
+            val (bool): The value to convert
+
+        Returns:
+            TaskStatus: The status
+        """
         return TaskStatus.SUCCESS if val is True else TaskStatus.FAILURE
     
     def __or__(self, other: 'TaskStatus') -> 'TaskStatus':
@@ -148,12 +186,10 @@ class Task(Storable):
         raise NotImplementedError
 
     def __call__(self) -> TaskStatus:
-        """
-
-        Args:
+        """Execute the task
 
         Returns:
-            TaskStatus: _description_
+            TaskStatus: The status of the task after execution
         """
         return self.tick()
 
@@ -165,17 +201,37 @@ class Task(Storable):
     
     @property
     def status(self) -> TaskStatus:
+        """The status
+
+        Returns:
+            TaskStatus: 
+        """
         return self._status
 
     @property
     def id(self):
+        """Get the id for the task
+
+        Returns:
+            The id of the task 
+        """
         return self._id
 
 
 class ToStatus(object):
+    """Use to convert a value to a status
+    """
 
     @abstractmethod
     def __call__(self, val) -> TaskStatus:
+        """Convert the value to a status
+
+        Args:
+            val: The value to convert
+
+        Returns:
+            TaskStatus: The status
+        """
         pass
 
 
@@ -195,17 +251,27 @@ def from_bool(status: bool) -> TaskStatus:
 
 
 class State(object):
+    """Use State creating a state machine
+    """
 
     @abstractmethod
     def update(self) -> typing.Union['State', TaskStatus]:
+        """Update the 
+
+        Returns: bool
+            typing.Union['State', TaskStatus]: The new State/Status
+        """
         pass
 
 
 class Router(object):
+    """Use to a state
+    """
 
     @abstractmethod
     def __call__(self, val) -> TaskStatus | State:
         pass
+
 
 ROUTE = Router | typing.Callable[[typing.Any], TaskStatus | State]
 

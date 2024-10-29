@@ -16,7 +16,7 @@ S = typing.TypeVar('S', bound=pydantic.BaseModel)
 
 
 class Media:
-    """
+    """Use to store media
     """
     descr: str
     data: str
@@ -25,7 +25,6 @@ class Media:
 class DataList(pydantic.BaseModel, typing.Generic[S]):
     """Create a list of data that inherit from pydantic.BaseModel
     """
-
     data: typing.List[S]
 
     def __getitem__(self, key) -> typing.Any:
