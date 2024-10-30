@@ -99,7 +99,8 @@ def unescape_curly_braces(value: typing.Any) -> str:
     return value
 
 
-primitives = (bool, str, int, float, type(None)) # a list of primitive types
+primitives = (bool, str, int, float, type(None))
+"""a list of primitive types"""
 
 
 def is_primitive(obj) -> bool:
@@ -172,7 +173,7 @@ def get_member(obj, loc: str):
     """Get a member from an object recursively
 
     Args:
-        obj (_type_): the object
+        obj : the object
         loc (str): the location as a string, use '.' to indicate sub objects
 
     Returns:

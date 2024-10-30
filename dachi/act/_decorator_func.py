@@ -210,7 +210,7 @@ class CondFunc:
         return task
 
 
-def _get(obj, key):
+def _get_str(obj, key):
 
     return get_member(obj, key) if isinstance(key, str) else key
             
@@ -235,7 +235,7 @@ class TaskFunc:
         """
         self.f = f
         self.instance = instance
-        self.is_methods = is_method
+        self.is_method = is_method
         self._to_status = to_status
         self._out = out
 
@@ -253,8 +253,8 @@ class TaskFunc:
             to_status = self._to_status
             return F.taskf(self.f, *args, out=out, to_status=to_status, **kwargs)
         else:
-            to_status = _get(instance, self._to_status)
-            out = _get(instance, self._out)
+            to_status = _get_str(instance, self._to_status)
+            out = _get_str(instance, self._out)
             return F.taskf(
                 self.f, instance, out=out, to_status=to_status, 
                 *args, **kwargs
