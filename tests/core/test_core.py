@@ -1,128 +1,66 @@
 from dachi._core import _core
-# from dachi._core import _instruct as core
-from dachi._core import Struct, str_formatter
-import pytest
-from pydantic import Field
-
 import asyncio
-from typing import Any, Iterator, Tuple
 import pytest
-from dachi._core import _process as p
+from pydantic import BaseModel
+
+from typing import Any, Iterator, Tuple
+
 from dachi._core._core import Module
 import typing
 
 
-class SimpleStruct(_core.Struct):
+class SimpleStruct(BaseModel):
 
     x: str
 
 
-class SimpleStruct2(_core.Struct):
+class SimpleStruct2(BaseModel):
 
     x: str
     y: int
 
 
-class NestedStruct(_core.Struct):
+class NestedStruct(BaseModel):
 
     simple: SimpleStruct
 
 
-class TestStruct(object):
+class WriteOut(Module):
 
-    def test_simple_struct_gets_string(self):
+    def forward(self, x: str) -> str:
 
-        struct = SimpleStruct(x="2")
-        assert struct.x == '2'
-    
-    def test_template_gives_correct_template(self):
+        return x
 
-        struct = SimpleStruct(x="2")
-        template = struct.template()
-        print(template)
-        assert template['x'].is_required is True
-        assert template['x'].type_ == type('text')
-
-    def test_template_gives_correct_template_with_nested(self):
-
-        struct = NestedStruct(simple=SimpleStruct(x="2"))
-        template = struct.template()
-        assert template['simple']['x'].is_required is True
-        assert template['simple']['x'].type_ == type('text')
-
-    def test_to_text_converts_to_text(self):
-        struct = SimpleStruct(x="2")
-        text = struct.to_text()
-        assert "2" in text
-
-    def test_to_text_doubles_the_braces(self):
-        struct = SimpleStruct(x="2")
-        text = struct.to_text(True)
-        assert "{{" in text
-        assert "}}" in text
-
-    def test_to_text_works_for_nested(self):
-        struct = NestedStruct(simple=SimpleStruct(x="2"))
-        text = struct.to_text(True)
-        assert text.count('{{') == 2
-        assert text.count("}}") == 2
-
-    def test_render_works_for_nested(self):
-        struct = NestedStruct(simple=SimpleStruct(x="2"))
-        text = struct.render()
-        assert text.count('{{') == 2
-        assert text.count("}}") == 2
-
-    def test_to_dict_converts_to_a_dict(self):
-        struct = SimpleStruct(x="2")
-        d = struct.to_dict()
-        assert d['x'] == "2"
+    def stream_forward(self, x: str) -> Iterator[Tuple[Any, Any]]:
+        
+        out = ''
+        for c in x:
+            out = out + c
+            yield out, c
 
 
-class TestIsNestedModel:
-
-    def test_is_nested_model_returns_true_for_nested(self):
-
-        assert _core.is_nested_model(NestedStruct) is True
-
-    def test_is_nested_model_returns_false_for_not_nested(self):
-
-        assert _core.is_nested_model(SimpleStruct) is False
-
-
-class Evaluation(Struct):
+class Evaluation(BaseModel):
 
     text: str
     score: float
 
 
-class TestIsUndefined(object):
 
-    def test_is_undefined(self):
-
-        assert _core.is_undefined(
-            _core.UNDEFINED
-        )
-
-    def test_not_is_undefined(self):
-
-        assert not _core.is_undefined(
-            1
-        )
+# Test Storable
 
 
-class TestInstruction(object):
+class TestCue(object):
 
     def test_instruction_renders_with_text(self):
 
-        instruction = _core.Instruction(
+        cue = _core.Cue(
             text='x'
         )
-        assert instruction.render() == 'x'
+        assert cue.render() == 'x'
 
     # def test_read_(self):
 
-    #     instruction = _core.Instruction(
+    #     instruction = _core.Cue(
     #         text='x', out=_core.StructRead(
     #             name='F1',
     #             out_cls=SimpleStruct
@@ -134,43 +72,43 @@ class TestInstruction(object):
     def test_instruction_text_is_correct(self):
 
         text = 'Evaluate the quality of the CSV'
-        instruction = _core.Instruction(
+        cue = _core.Cue(
             name='Evaluate',
             text=text
         )
-        assert instruction.text == text
+        assert cue.text == text
 
     def test_render_returns_the_instruction_text(self):
 
         text = 'Evaluate the quality of the CSV'
-        instruction = _core.Instruction(
+        cue = _core.Cue(
             name='Evaluate',
             text=text
         )
-        assert instruction.render() == text
+        assert cue.render() == text
 
     def test_i_returns_the_instruction(self):
 
         text = 'Evaluate the quality of the CSV'
-        instruction = _core.Instruction(
+        cue = _core.Cue(
             name='Evaluate',
             text=text
         )
-        assert instruction.i() is instruction
+        assert cue.i() is cue
 
 
 class TestParam(object):
 
     def test_get_x_from_param(self):
 
-        instruction = _core.Param(
-            name='X', instruction='x'
+        cue = _core.Param(
+            name='X', cue='x'
         )
-        assert instruction.render() == 'x'
+        assert cue.render() == 'x'
 
     # def test_param_with_instruction_passed_in(self):
 
-    #     instruction = _core.Instruction(
+    #     instruction = _core.Cue(
     #         text='x', out=_core.StructRead(
     #             name='F1',
     #             out_cls=SimpleStruct
@@ -184,7 +122,7 @@ class TestParam(object):
 
 #     def test_read_reads_the_object(self):
 
-#         instruction = _core.Instruction(
+#         instruction = _core.Cue(
 #             text='x', out=_core.StructRead(
 #                 name='F1',
 #                 out_cls=SimpleStruct
@@ -195,6 +133,10 @@ class TestParam(object):
 #         )
 #         simple = SimpleStruct(x='2')
 #         assert param.reads(simple.to_text()).x == '2'
+
+
+
+# Test render: Add more tests - Two few
 
 
 class TestRender:
@@ -240,25 +182,11 @@ class NestedModule(Module):
         self.child = child
         self.p = _core.Param(
             name='p',
-            instruction=_core.Instruction(text='Do this')
+            cue=_core.Cue(text='Do this')
         )
 
     def forward(self) -> Any:
         return None
-
-
-class WriteOut(Module):
-
-    def forward(self, x: str) -> str:
-
-        return x
-
-    def stream_forward(self, x: str) -> Iterator[Tuple[Any, Any]]:
-        
-        out = ''
-        for c in x:
-            out = out + c
-            yield out, c
 
 
 class TestModule:
@@ -334,18 +262,18 @@ class TestParam:
 
         param = _core.Param(
             name='p',
-            instruction=_core.Instruction(
+            cue=_core.Cue(
                 text='simple instruction'
             )
         )
-        target = param.instruction.render()
+        target = param.cue.render()
         assert param.render() == target
 
     def test_param_updates_the_instruction(self):
 
         param = _core.Param(
             name='p',
-            instruction=_core.Instruction(
+            cue=_core.Cue(
                 text='simple instruction'
             ),
             training=True

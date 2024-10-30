@@ -1,14 +1,14 @@
 from dachi.act import _build as build
 from dachi.act import _tasks as tasks, Not, Sequence
 
-from .test_behavior import ATask
+from .test_tasks import ATask
 
 
 class TestParallel:
 
     def test_parallel_creates_a_parallel_node(self):
 
-        with build.parallel() as parallel:
+        with build.build_parallel() as parallel:
 
             parallel.tasks.append(ATask())
             parallel.tasks.append(ATask())
@@ -16,7 +16,7 @@ class TestParallel:
 
     def test_parallel_creates_a_parallel_node_with_correct_fails_on(self):
 
-        with build.parallel() as parallel:
+        with build.build_parallel() as parallel:
 
             parallel.tasks.append(ATask())
             parallel.tasks.append(ATask())
@@ -28,7 +28,7 @@ class TestSelector:
 
     def test_selector_creates_a_parallel_node(self):
 
-        with build.select() as selector:
+        with build.build_select() as selector:
 
             selector.tasks.append(ATask())
             selector.tasks.append(ATask())
@@ -39,7 +39,7 @@ class TestSequence:
 
     def test_sequence_creates_a_parallel_node(self):
 
-        with build.sequence() as sequence:
+        with build.build_sequence() as sequence:
 
             sequence.tasks.append(ATask())
             sequence.tasks.append(ATask())
@@ -50,13 +50,13 @@ class TestSango:
 
     def test_sango_creates_a_tree(self):
 
-        with build.sango() as tree:
+        with build.build_sango() as tree:
 
-            with build.sequence(tree) as sequence:
+            with build.build_sequence(tree) as sequence:
 
                 sequence.tasks.append(ATask())
                 sequence.tasks.append(ATask())
-        assert isinstance(tree, tasks.Sango)
+        assert isinstance(tree, tasks.Root)
         assert isinstance(tree.root, Sequence)
 
 
@@ -65,7 +65,7 @@ class TestWhile:
     def test_sango_creates_a_tree(self):
 
 
-        with build.while_(build.sequence()) as while_:
+        with build.build_unless(build.build_sequence()) as while_:
 
             while_.task.tasks.append(ATask())
             while_.task.tasks.append(ATask())
@@ -76,7 +76,7 @@ class TestUntil:
 
     def test_sango_creates_a_tree(self):
 
-        with build.until_(build.sequence()) as until_:
+        with build.build_until(build.build_sequence()) as until_:
 
             until_.task.tasks.append(ATask())
             until_.task.tasks.append(ATask())
@@ -87,7 +87,7 @@ class TestNot:
 
     def test_not_creates_a_negative_node(self):
 
-        with build.not_(build.sequence()) as not_:
+        with build.build_not(build.build_sequence()) as not_:
 
             not_.task.tasks.append(ATask())
             not_.task.tasks.append(ATask())
@@ -95,7 +95,7 @@ class TestNot:
 
     def test_not_decorates_a_sequence(self):
 
-        with build.not_(build.sequence()) as not_:
+        with build.build_not(build.build_sequence()) as not_:
 
             not_.task.tasks.append(ATask())
             not_.task.tasks.append(ATask())

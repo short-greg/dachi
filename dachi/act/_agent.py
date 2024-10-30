@@ -1,10 +1,10 @@
-from . import TaskStatus
+from ._tasks import TaskStatus, Task
 import threading
 import typing
 
 import time
 from enum import Enum
-from . import Sango
+from . import Root
 
 
 class AgentStatus(Enum):
@@ -20,7 +20,9 @@ class Agent(object):
     """Agent class
     """
 
-    def __init__(self, sango: Sango=None, interval: float=None):
+    def __init__(
+        self, sango: Root=None, interval: float=None
+    ):
         """
 
         Args:
@@ -35,6 +37,11 @@ class Agent(object):
         self._queued = []
 
     def act(self) -> TaskStatus:
+        """Execute the agent
+
+        Returns:
+            TaskStatus: The resulting status
+        """
         if self._sango is None:
             return TaskStatus.SUCCESS
         return self._sango.tick()

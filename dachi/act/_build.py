@@ -3,16 +3,17 @@ from . import _tasks as behavior
 import typing
 
 
-class sango(object):
+class build_sango(object):
+    """Base context method to build a behavior tree
+    """
 
     def __init__(self) -> None:
         """Create the behavior tree. This is the root node
         """
         super().__init__()
-        self._sango = behavior.Sango()
+        self._sango = behavior.Root()
 
     def __enter__(self):
-        
         return self._sango
     
     def __exit__(self, exc_type, exc_value, traceback):
@@ -21,7 +22,9 @@ class sango(object):
             raise
 
 
-class composite(object):
+class build_composite(object):
+    """Base context method to build a task decorator
+    """
 
     def __init__(self, child: behavior.Task, parent: behavior.Task=None) -> None:
         """Create a composite node that uses a list to store all of the subtasks
@@ -35,7 +38,7 @@ class composite(object):
         
         if parent is None:
             pass
-        elif isinstance(parent, behavior.Sango):
+        elif isinstance(parent, behavior.Root):
             parent.root = child
         elif isinstance(parent, behavior.Serial):
             parent.add(child)
@@ -66,24 +69,27 @@ class composite(object):
             raise
 
 
-class decorate(object):
+class build_decorate(object):
+    """Base context method to build a task decorator
+    """
 
     def __init__(
         self, decorate: typing.Type[behavior.Decorator], 
-        decorated: typing.Union['decorate', composite], parent: behavior.Task=None
+        decorated: typing.Union['build_decorate', build_composite], parent: behavior.Task=None,
+        **kwargs
     ) -> None:
         """Decorate the task
 
         """
         super().__init__()
         assert decorated.parent is None
-        self._decorated = decorate(decorated.task)
+        self._decorated = decorate(decorated.task, **kwargs)
 
         self._parent = parent
         
         if parent is None:
             pass
-        elif isinstance(parent, behavior.Sango):
+        elif isinstance(parent, behavior.Root):
             parent.root = self._decorated
         elif isinstance(parent, behavior.Serial):
             parent.add(self._decorated)
@@ -115,7 +121,9 @@ class decorate(object):
             raise
 
 
-class sequence(composite):
+class build_sequence(build_composite):
+    """Context method to build a sequence task
+    """
 
     def __init__(self, parent: behavior.Task=None) -> None:
         """Create a Sequence task
@@ -126,7 +134,9 @@ class sequence(composite):
         super().__init__(behavior.Sequence([]), parent)
 
 
-class select(composite):
+class build_select(build_composite):
+    """Context method to build a Selector task
+    """
 
     def __init__(self, parent: behavior.Task=None) -> None:
         """Create a selector task
@@ -137,10 +147,12 @@ class select(composite):
         super().__init__(behavior.Selector([]), parent)
 
 
-fallback = select
+build_fallback = build_select
 
 
-class parallel(composite):
+class build_parallel(build_composite):
+    """Context manager to build an Parallel task
+    """
 
     def __init__(
         self, parent: behavior.Task=None, 
@@ -162,9 +174,11 @@ class parallel(composite):
         )
 
 
-class not_(decorate):
+class build_not(build_decorate):
+    """Context manager to build an Not decorated task
+    """
 
-    def __init__(self, decorated: composite, parent: Task = None) -> None:
+    def __init__(self, decorated: build_composite, parent: Task = None) -> None:
         """Invert the output of a composite task
 
         Args:
@@ -174,25 +188,29 @@ class not_(decorate):
         super().__init__(behavior.Not, decorated, parent)
 
 
-class while_(decorate):
+class build_unless(build_decorate):
+    """Context manager to build an Unless decorated task
+    """
 
-    def __init__(self, decorated, parent: Task = None) -> None:
+    def __init__(self, decorated, parent: Task = None, target_status: behavior.TaskStatus=behavior.TaskStatus.FAILURE) -> None:
         """Loop over the subtask while it 'succeeds'
 
         Args:
             decorated: The task to loop over
             parent (Task, optional): The parent task. Defaults to None.
         """
-        super().__init__(behavior.Unless, decorated, parent)
+        super().__init__(behavior.Unless, decorated, parent, target_status=target_status)
 
 
-class until_(decorate):
+class build_until(build_decorate):
+    """Context manager to build an Until decorated task
+    """
 
-    def __init__(self, decorated: composite, parent: Task = None) -> None:
+    def __init__(self, decorated: build_composite, parent: Task = None, target_status: behavior.TaskStatus=behavior.TaskStatus.SUCCESS) -> None:
         """Loop over the subtask until it 'succeeds'
 
         Args:
             decorated: The task to loop over
             parent (Task, optional): The parent task. Defaults to None.
         """
-        super().__init__(behavior.Until, decorated, parent)
+        super().__init__(behavior.Until, decorated, parent, target_status=target_status)
