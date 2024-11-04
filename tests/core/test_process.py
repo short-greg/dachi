@@ -1,13 +1,6 @@
-from typing import Any, Iterator, Tuple
-import pytest
-from dachi._core import _process as p
-from dachi._core._core import Module
-from .test_core import WriteOut
 from typing import Any
-# from dachi._core import Args
 from dachi._core import _process as core
 from dachi._core import _process
-from .test_core import SimpleStruct        
 import numpy as np
 
 
@@ -31,7 +24,6 @@ class Append2(core.Module):
         return val1 + val2 + self._append
 
 
-# use for "reducing"
 class RefinerAppender(core.Module):
 
     def __init__(self, append: str):
@@ -52,45 +44,6 @@ class WaitAppend(core.Module):
 
     def forward(self, name: str='') -> Any:
         return name + self._append
-
-
-# class MyProcess:
-
-#     @p.processfunc
-#     def process_test_method(self, x, y):
-#         return x + y
-
-
-# @p.processfunc
-# def process_test_func(x, y):
-#     return x + y
-
-
-# class TestProcessDecorator:
-
-#     def test_process_decorator_with_method(self):
-
-#         process = MyProcess()
-#         result = process.process_test_method(2, 3)
-#         assert result == 5
-
-#     def test_process_decorator_with_function(self):
-
-#         result = process_test_func(2, 3)
-#         assert result == 5
-
-#     def test_process_decorator_with_function_after_two(self):
-
-#         result = process_test_func(2, 3)
-#         result = process_test_func(2, 3)
-#         assert result == 5
-
-#     def test_process_decorator_with_method_after_two(self):
-
-#         process = MyProcess()
-#         result = process.process_test_method(2, 3)
-#         result = process.process_test_method(2, 3)
-#         assert result == 5
 
 
 def _s(x):

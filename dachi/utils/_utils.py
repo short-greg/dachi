@@ -135,8 +135,10 @@ class _Types(Enum):
     WAITING = 'WAITING'
 
 
-UNDEFINED = _Types.UNDEFINED # Constant for UNDEFINED. usage: value is UNDEFINED
-WAITING = _Types.WAITING # Constant for WAITING when streaming. usage: value is WAITING
+UNDEFINED = _Types.UNDEFINED
+"""Constant for UNDEFINED. usage: value is UNDEFINED"""
+WAITING = _Types.WAITING
+"""Constant for WAITING when streaming. usage: value is WAITING"""
 
 
 def is_nested_model(

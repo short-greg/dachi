@@ -270,7 +270,6 @@ class TaskFunc:
     def __get__(self, instance, owner):
         """Add the task to the instance if not already there
         """
-
         if self.f.__name__ in instance.__dict__:
             return instance.__dict__[self.f.__name__]
         
@@ -292,7 +291,6 @@ def _get(self, override, base):
     Returns:
         Any
     """
-    
     base = base or override
     if base is None:
         raise ValueError('Value has not been defined')
@@ -310,7 +308,6 @@ def sequencefunc(ctx: Context=None, is_method: bool=False):
     Returns: The task
     """
     def _(f):
-
         return CompositeFunc(f, F.sequencef, ctx, is_method)
     return _
 
