@@ -3,7 +3,7 @@ from dachi._core import _process as p
 from dachi.utils import WAITING
 from dachi.graph import _core as g
 from ..core.test_process import (
-    Append, # process_test_func, # WriteOut
+    Append, WriteOut # process_test_func, # 
 )
 
 
@@ -56,59 +56,59 @@ class TestLink:
             t.probe({})
 
 
-# class TestStreamLink:
+class TestStreamLink:
 
-#     def test_call_returns_t_with_streamer(self):
+    def test_call_returns_t_with_streamer(self):
 
-#         writer = WriteOut()
-#         t = g.stream_link(writer, g.T('xyz'))
-#         partial = t.val()
-#         assert partial.cur == 'x'
-#         assert partial.dx == 'x'
+        writer = WriteOut('hi')
+        t = g.stream_link(writer, g.T('xyz'))
+        partial = t.val()
+        assert partial.cur == 'x'
+        assert partial.dx == 'x'
 
-#     def test_call_returns_undefined_if_t_undefined(self):
+    def test_call_returns_undefined_if_t_undefined(self):
 
-#         writer = WriteOut()
-#         t = g.stream_link(writer, g.T())
-#         assert t.is_undefined()
+        writer = WriteOut('hi')
+        t = g.stream_link(writer, g.T())
+        assert t.is_undefined()
 
-# # #     # TODO* make this return partial
-#     def test_chained_after_stream_appends(self):
+# #     # TODO* make this return partial
+    def test_chained_after_stream_appends(self):
 
-#         writer = WriteOut()
-#         append = Append('_t')
-#         t = g.stream_link(writer, g.T('xyz'))
-#         t = g.link(append, t)
-#         assert t.val.cur == 'x_t'
+        writer = WriteOut('hi')
+        append = Append('_t')
+        t = g.stream_link(writer, g.T('xyz'))
+        t = g.link(append, t)
+        assert t.val.cur == 'x_t'
 
-#     def test_stream_completes_the_stream(self):
+    def test_stream_completes_the_stream(self):
 
-#         writer = WriteOut()
-#         append = Append('_t')
+        writer = WriteOut('hi')
+        append = Append('_t')
 
-#         for t in g.stream(writer, g.T('xyz')):
-#             t = g.link(append, t)
+        for t in g.stream(writer, g.T('xyz')):
+            t = g.link(append, t)
         
-#         assert t.val.cur == 'xyz_t'
+        assert t.val.cur == 'xyzhi_t'
 
 
-# class TestWait:
+class TestWait:
 
-#     def test_wait_results_in_waiting(self):
+    def test_wait_results_in_waiting(self):
 
-#         writer = WriteOut()
-#         t = g.stream_link(writer, g.T('xyz'))
-#         t = g.wait(t)
+        writer = WriteOut('hi')
+        t = g.stream_link(writer, g.T('xyz'))
+        t = g.wait(t)
 
-#         assert t.val is WAITING
+        assert t.val is WAITING
 
-#     def test_wait(self):
+    def test_wait(self):
 
-#         append = Append('_t')
-#         t = g.link(append, g.T('xyz'))
-#         t = g.wait(t)
+        append = Append('_t')
+        t = g.link(append, g.T('xyz'))
+        t = g.wait(t)
 
-#         assert t.val == 'xyz_t'
+        assert t.val == 'xyz_t'
 
 
 # class TestDecorator:

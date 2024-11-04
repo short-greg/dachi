@@ -36,6 +36,26 @@ class RefinerAppender(core.Module):
         return cur + val + self._append
 
 
+
+class WriteOut(core.Module):
+
+    def __init__(self, append: str):
+        super().__init__()
+        self._append = append
+
+    def forward(self, val: str) -> Any:
+        return val + self._append
+
+    def stream_forward(self, val: str) -> Any:
+        cur = ''
+        for v in val:
+            cur += v
+            yield cur, v
+        for v in self._append:
+            cur += v
+            yield cur, v
+
+
 class WaitAppend(core.Module):
 
     def __init__(self, append: str):
