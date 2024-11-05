@@ -1,6 +1,6 @@
 import pytest
 from dachi._core import _process as p
-from dachi.utils import WAITING
+from dachi.utils import WAITING, UNDEFINED
 from dachi.graph import _core as g
 from ..core.test_process import (
     Append, WriteOut # process_test_func, # 
@@ -11,6 +11,111 @@ class MyProcess:
 
     def forward(self, x, y):
         return x + y
+
+
+class TestT:
+
+    def test_src_returns_src(self):
+        p = MyProcess()
+        src = g.ModSrc(p, (0, 1))
+        t = g.T(src=src)
+        assert t.src == src
+
+    def test_g_returns_src(self):
+        p = MyProcess()
+        src = g.ModSrc(p, (0, 1))
+        t = g.T(src=src)
+        assert t.val == UNDEFINED
+
+    def test_label_updates_the_label(self):
+        p = MyProcess()
+        src = g.ModSrc(p, (0, 1))
+        t = g.T(src=src)
+        t = t.label(name='x')
+        assert t.name == 'x'
+
+    def test_is_undefined_returns_true(self):
+        p = MyProcess()
+        src = g.ModSrc(p, (0, 1))
+        t = g.T(src=src)
+        t = t.label(name='x')
+        assert t.is_undefined()
+
+    def test_is_undefined_returns_true(self):
+        p = MyProcess()
+        src = g.ModSrc(p, (0, 1))
+        t = g.T(1, src=src)
+        t = t.label(name='x')
+        assert not t.is_undefined()
+
+    def test_get_item_returns_first_item(self):
+        p = MyProcess()
+        src = g.ModSrc(p, (0, 1))
+        t = g.T([1, 2], src=src)
+        t = t.label(name='x')
+        assert t[0].val == 1
+
+    def test_detach_has_no_source(self):
+        p = MyProcess()
+        src = g.ModSrc(p, (0, 1))
+        t = g.T([1, 2], src=src)
+        t = t.detach()
+        assert t.src is None
+    
+
+class TestVar:
+
+    def test_var_returns_value(self):
+
+        var = g.Var(1)
+        assert var() == 1
+
+    def test_var_returns_value_with_factory(self):
+
+        var = g.Var(default_factory=lambda: 3)
+        assert var() == 3
+
+    def test_var_has_no_incoming(self):
+
+        var = g.Var(1)
+        assert len(list(var.incoming())) == 0
+
+
+class TestIdxSrc:
+
+    def test_var_returns_value(self):
+
+        var = g.Var(1)
+        assert var() == 1
+
+    def test_var_returns_value_with_factory(self):
+
+        var = g.Var(default_factory=lambda: 3)
+        assert var() == 3
+
+    def test_var_has_no_incoming(self):
+
+        var = g.Var(1)
+        assert len(list(var.incoming())) == 0
+
+
+class TestWaitSrc:
+
+    def test_returns_waiting(self):
+
+        writer = WriteOut('hi')
+        t = g.stream_link(writer, g.T('bye'))
+        src = g.WaitSrc(t)
+        assert src() == WAITING
+
+    def test_returns_value_if_finished(self):
+
+        writer = WriteOut('hi')
+        t = g.stream_link(writer, g.T(''))
+        src = g.WaitSrc(t)
+        src()
+        src()
+        assert src() == 'hi'
 
 
 class TestLink:

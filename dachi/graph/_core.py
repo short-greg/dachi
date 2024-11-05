@@ -142,10 +142,10 @@ class Src(ABC):
         pass
 
     @abstractmethod
-    def forward(self, by: typing.Dict['T', typing.Any]) -> typing.Any:
+    def forward(self, by: typing.Dict['T', typing.Any]=None) -> typing.Any:
         pass
 
-    def __call__(self, by: typing.Dict['T', typing.Any]) -> typing.Any:
+    def __call__(self, by: typing.Dict['T', typing.Any]=None) -> typing.Any:
         return self.forward(by)
 
 
@@ -175,7 +175,7 @@ class StreamSrc(Src):
         for incoming in self._args.incoming:
             yield incoming
 
-    def forward(self, by: typing.Dict['T', typing.Any]) -> typing.Any:
+    def forward(self, by: typing.Dict['T', typing.Any]=None) -> typing.Any:
         """
 
         Args:
@@ -184,12 +184,15 @@ class StreamSrc(Src):
         Returns:
             Streamer: the streamer used by the module
         """
+        by = by or {}
         if self in by:
             value: Streamer = by[self]
             return value
     
         args = self._args.iterate(by)        
-        streamer = by[self] = self._module.streamer(*args.args, **args.kwargs)
+        streamer = by[self] = self._module.streamer(
+            *args.args, **args.kwargs
+        )
         return streamer
     
     def __call__(self, by: typing.Dict['T', typing.Any]) -> typing.Any:
@@ -314,8 +317,6 @@ class TArgs(object):
         by = by or {}
         args = []
         kwargs = {}
-        print('Stage 1')
-        print(by)
         for arg in self._args:
             is_t = isinstance(arg, T)
             print('k: ', arg, arg in by)
@@ -335,9 +336,7 @@ class TArgs(object):
             else:
                 args.append(arg)
             
-        print('Stage 2')
         for k, arg in self._kwargs.items():
-            print('k: ', arg, arg in by)
             is_t = isinstance(arg, T)
             if is_t and arg in by:
                 kwargs[k] = by[arg]
@@ -352,6 +351,7 @@ class TArgs(object):
         
     def __call__(self, by: typing.Dict['T', typing.Any]) -> Self:
         return self.forward(by)
+
 
 class ParallelSrc(Src):
     """Create a Src for processing Parallel modules
@@ -376,7 +376,7 @@ class ParallelSrc(Src):
             for incoming in arg.incoming():
                 yield incoming
 
-    def forward(self, by: typing.Dict['T', typing.Any]) -> typing.Any:
+    def forward(self, by: typing.Dict['T', typing.Any]=None) -> typing.Any:
         """Execute the Parallel module
 
         Args:
@@ -385,6 +385,7 @@ class ParallelSrc(Src):
         Returns:
             typing.Any: _description_
         """
+        by = by or {}
         if isinstance(self._args, TArgs):
             args = args(by)
             return self._module(args) # .val
@@ -433,6 +434,8 @@ class ModSrc(Src):
         """
         super().__init__()
         self.mod = mod
+        if not isinstance(args, TArgs):
+            args = TArgs(*args)
         self._args = args
 
     def incoming(self) -> typing.Iterator['T']:
@@ -444,7 +447,7 @@ class ModSrc(Src):
         for t in self._args.incoming():
             yield t
 
-    def forward(self, by: typing.Dict[T, typing.Any]) -> typing.Any:
+    def forward(self, by: typing.Dict[T, typing.Any]=None) -> typing.Any:
         """Execute the module that generates the T
 
         Args:
@@ -453,44 +456,47 @@ class ModSrc(Src):
         Returns:
             typing.Any: The value output by the module
         """
+        by = by or {}
         args = self._args(by)
         return link(self.mod, *args.args, **args.kwargs).val
 
 
-class WaitSrc(Src):
-    """Indicates to wait until completed
-    """
+# class WaitSrc(Src):
+#     """Indicates to wait until completed
+#     """
 
-    def __init__(self, incoming: T):
-        """
+#     def __init__(self, incoming: T):
+#         """
 
-        Args:
-            incoming (T): 
-        """
-        super().__init__()
-        self._incoming = incoming
+#         Args:
+#             incoming (T): 
+#         """
+#         super().__init__()
+#         self._incoming = incoming
 
-    def incoming(self) -> typing.Iterator['T']:
-        """
-        Yields:
-            T: The incoming Transmission
-        """
-        yield self._incoming
+#     def incoming(self) -> typing.Iterator['T']:
+#         """
+#         Yields:
+#             T: The incoming Transmission
+#         """
+#         yield self._incoming
 
-    def forward(self, by: typing.Dict[T, typing.Any]) -> typing.Any:
-        """
-        Args:
-            by (typing.Dict[T, typing.Any]): The input to the network
+#     def forward(self, by: typing.Dict[T, typing.Any]=None) -> typing.Any:
+#         """
+#         Args:
+#             by (typing.Dict[T, typing.Any]): The input to the network
 
-        Returns:
-            typing.Any: The output of the Src
-        """
-        if isinstance(self._incoming.val, Partial) and not self._incoming.val.complete:
-            return WAITING
+#         Returns:
+#             typing.Any: The output of the Src
+#         """
+#         by = by or {}
+#         val = self._incoming.probe(by)
+#         if isinstance(self._incoming.val, Partial) and not self._incoming.val.complete:
+#             return WAITING
 
-        if isinstance(self._incoming.val, Streamer) and not self._incoming.val.complete:
-            return WAITING
-        return self._incoming.val
+#         if isinstance(self._incoming.val, Streamer) and not self._incoming.val.complete:
+#             return WAITING
+#         return self._incoming.val
     
 
 def wait(t: T) -> T:
@@ -531,7 +537,7 @@ class WaitSrc(Src):
         """
         yield self._incoming
 
-    def forward(self, by: typing.Dict[T, typing.Any]) -> typing.Any:
+    def forward(self, by: typing.Dict[T, typing.Any]=None) -> typing.Any:
         """
         Args:
             by (typing.Dict[T, typing.Any]): The input to the network
@@ -539,12 +545,25 @@ class WaitSrc(Src):
         Returns:
             typing.Any: The output of the Src
         """
-        if isinstance(self._incoming.val, Partial) and not self._incoming.val.complete:
-            return WAITING
+        by = by or {}
+        
+        val = self._incoming.probe(by)
 
-        if isinstance(self._incoming.val, Streamer) and not self._incoming.val.complete:
+        if isinstance(val, Partial) and not val.complete:
             return WAITING
-        return self._incoming.val
+        elif isinstance(val, Partial):
+            return val.cur
+
+        if isinstance(val, Streamer):
+        
+            if not val.complete:
+                res = val()
+                if res.complete:
+                    return res.cur
+                return WAITING
+            return val.output.cur
+            
+        return val
 
 
 def wait(t: T) -> T:
@@ -590,7 +609,7 @@ class Var(Src):
         if False:
             yield False
         
-    def forward(self, by: typing.Dict[T, typing.Any]) -> typing.Any:
+    def forward(self, by: typing.Dict[T, typing.Any]=None) -> typing.Any:
         """
 
         Args:
@@ -602,6 +621,7 @@ class Var(Src):
         Returns:
             typing.Any: The value of the variable. If the 
         """
+        by = by or {}
         if self.default is not None:
             return self.default
         return self.default_factory()
@@ -626,7 +646,7 @@ class IdxSrc(Src):
         """
         yield self.t
 
-    def forward(self, by: typing.Dict[T, typing.Any]) -> typing.Any:
+    def forward(self, by: typing.Dict[T, typing.Any]=None) -> typing.Any:
         """
         Args:
             by (typing.Dict[T, typing.Any]): The input to the network
@@ -634,6 +654,7 @@ class IdxSrc(Src):
         Returns:
             typing.Any: The indexed value
         """
+        by = by or {}
         val = self.t.probe(by)
         if is_undefined(val):
             return val
@@ -753,28 +774,3 @@ def stream(module: 'Module', *args, interval: float=None, **kwargs) -> typing.It
             if interval is not None:
                 time.sleep(interval)
             yield t
-
-
-# def stream(module: 'Module', *args, interval: float=None, **kwargs) -> typing.Iterator[T]:
-#     """Use to loop over a streamable module until complete
-
-#     Args:
-#         module (Module): The module to stream over
-#         interval (float, optional): The interval to stream over. Defaults to None.
-
-#     Raises:
-#         RuntimeError: If the module is not "Streamable"
-
-#     Yields:
-#         Iterator[typing.Iterator[T]]: _description_
-#     """
-#     if not isinstance(module, Module):
-#         raise RuntimeError('Stream only works for streamable modules')
-#     t = module.link(*args, **kwargs)
-#     yield t
-
-#     if isinstance(t.val, Streamer):
-#         while not t.val.complete:
-#             if interval is not None:
-#                 time.sleep(interval)
-#             yield t

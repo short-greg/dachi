@@ -592,7 +592,7 @@ class Streamer(object):
         """
         return self._output is not UNDEFINED
 
-    def __call__(self) -> typing.Union[Partial]:
+    def __call__(self) -> Partial:
         """Query the streamer and returned updated value if updated
 
         Returns:
@@ -603,10 +603,20 @@ class Streamer(object):
         try:
             self._prev = self._cur
             self._cur, self._dx = next(self._stream)
+            print('Cur = ', self._cur)
             return Partial(self._cur, self._prev, self._dx, False)    
         except StopIteration:
             self._output = Partial(self._cur, self._prev, self._dx, True) 
             return self._output
+    
+    @property
+    def output(self) -> typing.Optional[Partial]:
+        """Get the output of the streamer. Will be undefined if not complete
+
+        Returns:
+            typing.Any: The output of the Streamer
+        """
+        return self._output
         
     def __iter__(self) -> typing.Iterator[Partial]:
         """Iterate over the stream
