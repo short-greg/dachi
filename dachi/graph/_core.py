@@ -355,7 +355,7 @@ class TArgs(object):
 
 class ModSrc(Src):
 
-    def __init__(self, mod: 'Module', args: TArgs):
+    def __init__(self, mod: 'Module', args: TArgs=None):
         """Create a Src for the transmission output by a module
 
         Args:
@@ -364,6 +364,8 @@ class ModSrc(Src):
         """
         super().__init__()
         self.mod = mod
+        if args is None:
+            args = tuple()
         if not isinstance(args, TArgs):
             args = TArgs(*args)
         self._args = args
@@ -389,6 +391,20 @@ class ModSrc(Src):
         by = by or {}
         args = self._args(by)
         return link(self.mod, *args.args, **args.kwargs).val
+    
+    @classmethod
+    def create(cls, mod: 'Module', *args, **kwargs) -> Self:
+        """Classmethod to create a ModSrc with args and kwargs
+
+        Args:
+            mod (Module): The module
+
+        Returns:
+            Self: The ModSrc
+        """
+        return cls(
+            mod, TArgs(*args, **kwargs)
+        )
     
 
 def wait(t: T) -> T:

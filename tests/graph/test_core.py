@@ -62,6 +62,23 @@ class TestT:
         t = t.detach()
         assert t.src is None
     
+    def test_async_module_works_with_async(self):
+        module = p.AsyncModule(
+            Append('x')
+        )
+        src = g.ModSrc.create(module, p.P(['hi']))
+        res = src()
+        assert res == ['hix']
+    
+    def test_async_module_works_with_multiple_async(self):
+        module = p.AsyncModule([
+            Append('x'),
+            Append('y')
+        ])
+        src = g.ModSrc.create(module, p.P(['hi', 'hi']))
+        res = src()
+        assert res == ['hix', 'hiy']
+    
 
 class TestVar:
 
@@ -231,4 +248,3 @@ class TestParallelLink:
         t = g.link(append, 'x')
         t = g.link(append, t)
         assert t.val == 'x_t_t'
-
