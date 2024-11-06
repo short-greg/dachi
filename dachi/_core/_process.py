@@ -216,60 +216,6 @@ class AsyncModule(ParallelModule):
         return asyncio.run(self.async_forward(*args, **kwargs))
 
 
-# class _ProcessMethod(Module):
-#     """
-#     """
-
-#     def __init__(self, f: typing.Callable, instance=None):
-#         self.f = f
-#         self.instance = instance
-#         self._stored = None
-#         self._async_f = None
-
-#     def forward(self, *args, **kwargs) -> typing.Any:
-#         if self.instance:
-#             return self.f(self.instance, *args, **kwargs)
-#         return self.f(*args, **kwargs)
-
-#     async def async_forward(self, *args, **kwargs) -> typing.Any:
-        
-#         if self._async_f:
-#             self._async_f(*args, **kwargs)
-#         return self.forward(*args, **kwargs)
-
-#     def __get__(self, instance, owner):
-
-#         if self._stored is not None and instance is self._stored:
-#             return self._stored
-#         self._stored = _ProcessMethod(self.f, instance)
-#         return self._stored
-    
-#     @classmethod
-#     def async_(cls, f):
-
-#         cls._async_f = f
-
-# TODO: Decide whether to remove this
-# def processfunc(f):
-#     """Decorator to create a module from a method
-
-#     Args:
-#         f (_type_): _description_
-
-#     Returns:
-#         _type_: _description_
-#     """
-
-#     @wraps(f)
-#     def wrapper(*args, **kwargs):
-#         return f(*args, **kwargs)
-
-#     if hasattr(f, '__self__') or '__self__' in dir(f):
-#         return _ProcessMethod(f)
-#     else:
-#         return _ProcessMethod(wrapper)
-
-
 class ModuleList(Module):
     """Use to have a list of modules
     """
@@ -800,3 +746,58 @@ def stream_thread(module, *args, **kwargs) -> StreamRunner:
     return StreamRunner(
         module, *args, **kwargs
     )
+
+
+
+# class _ProcessMethod(Module):
+#     """
+#     """
+
+#     def __init__(self, f: typing.Callable, instance=None):
+#         self.f = f
+#         self.instance = instance
+#         self._stored = None
+#         self._async_f = None
+
+#     def forward(self, *args, **kwargs) -> typing.Any:
+#         if self.instance:
+#             return self.f(self.instance, *args, **kwargs)
+#         return self.f(*args, **kwargs)
+
+#     async def async_forward(self, *args, **kwargs) -> typing.Any:
+        
+#         if self._async_f:
+#             self._async_f(*args, **kwargs)
+#         return self.forward(*args, **kwargs)
+
+#     def __get__(self, instance, owner):
+
+#         if self._stored is not None and instance is self._stored:
+#             return self._stored
+#         self._stored = _ProcessMethod(self.f, instance)
+#         return self._stored
+    
+#     @classmethod
+#     def async_(cls, f):
+
+#         cls._async_f = f
+
+# TODO: Decide whether to remove this
+# def processfunc(f):
+#     """Decorator to create a module from a method
+
+#     Args:
+#         f (_type_): _description_
+
+#     Returns:
+#         _type_: _description_
+#     """
+
+#     @wraps(f)
+#     def wrapper(*args, **kwargs):
+#         return f(*args, **kwargs)
+
+#     if hasattr(f, '__self__') or '__self__' in dir(f):
+#         return _ProcessMethod(f)
+#     else:
+#         return _ProcessMethod(wrapper)

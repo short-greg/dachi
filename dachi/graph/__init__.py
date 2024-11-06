@@ -1,6 +1,6 @@
 from ._core import (
     link, Src, StreamSrc, ModSrc, WaitSrc, Var, T, TArgs,
-    paraellel_link, stream_link, wait, stream, ParallelSrc, 
+    stream_link, wait, stream, 
     IdxSrc,
 )
 from ..graph._network import (

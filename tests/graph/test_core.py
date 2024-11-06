@@ -216,20 +216,19 @@ class TestWait:
         assert t.val == 'xyz_t'
 
 
-# class TestDecorator:
+class TestParallelLink:
 
-#     def test_process_decorator_with_method_link(self):
+    def test_module_outputs_t_with_correct_value(self):
 
-#         process = MyProcess()
-#         t1 = g.T(val=2)
-#         result = g.link(process.process_test_method, t1, 3)
-#         assert result.val == 5
+        append = Append('_t')
+        t = g.link(append, ('x'))
+        assert t.val == 'x_t'
+        assert t.src.mod is append
 
-#     def test_process_decorator_with_function_after_two(self):
+    def test_chaining_appends_produces_correct_value(self):
 
-#         t1 = g.T(val=2)
-#         result = g.link(process_test_func, t1, 3)
-#         result = g.link(process_test_func, t1, 3)
-#         assert result.val == 5
+        append = Append('_t')
+        t = g.link(append, 'x')
+        t = g.link(append, t)
+        assert t.val == 'x_t_t'
 
-# # TODO: Add more tests
