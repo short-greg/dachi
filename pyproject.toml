@@ -32,5 +32,3 @@ roman = '>=4, <5'
 pytest = "^6"
 flake8 = "^3"
 isort = "^5"
-black = "^21"
-blacken-docs = "^1"
