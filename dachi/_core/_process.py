@@ -1,6 +1,5 @@
 # 1st party
 from abc import ABC, abstractmethod
-from abc import ABC
 import typing
 from typing import Self, Any
 import itertools
@@ -16,7 +15,7 @@ import numpy as np
 
 # local
 from ._core import Module
-from dachi._core._core import Param
+from ._core import Param
 from ..utils import UNDEFINED, Renderable
 from ._core import render
 

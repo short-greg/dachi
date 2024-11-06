@@ -215,3 +215,82 @@ class OpenAIMessage(TextMessage):
             model = OpenAIChatModel(model, **kwarg_overrides)
 
         return super().prompt(model, **kwarg_overrides)
+
+
+class OpenEmbeddingModel(AIModel):
+
+    def __init__(self, model: str, **kwargs) -> None:
+        super().__init__()
+        self.model = model
+        self.kwargs = kwargs
+
+    def convert(self, message: Message) -> typing.Dict:
+        """Convert the messages to a format to use for the OpenAI API
+
+        Args:
+            messages (typing.List[Message]): The messages
+
+        Returns:
+            typing.List[typing.Dict]: The input to the API
+        """
+        return list(
+            render(text_i) for text_i in message['texts']
+        )
+
+
+    def forward(self, prompt: AIPrompt, **kwarg_override) -> Dict:
+
+        kwargs = {
+            **self.kwargs,
+            **kwarg_override
+        }
+        client = openai.OpenAI()
+
+        response = client.embeddings.create(
+            model=self.model,
+            input=self.convert(prompt),
+            **kwargs
+        )
+        embeddings = [e for e in response.data]
+        
+        return AIResponse(
+            embeddings,
+            response,
+            embeddings
+        )
+
+    def stream_forward(
+        self, prompt: AIPrompt, 
+        **kwarg_override
+    ) -> typing.Iterator[typing.Tuple[AIResponse, AIResponse]]:
+
+        response = self.forward(prompt, **kwarg_override)
+        yield response, response
+        
+    async def async_forward(
+        self, prompt: AIPrompt, 
+        **kwarg_override
+    ) -> typing.Tuple[str, typing.Dict]:
+        client = openai.AsyncOpenAI()
+
+        kwargs = {
+            **self.kwargs,
+            **kwarg_override
+        }
+        response = client.embeddings.create(
+            model=self.model,
+            input=self.convert(prompt),
+            **kwargs
+        )
+        embeddings = [e for e in response.data]
+        
+        return AIResponse(
+            embeddings,
+            response,
+            embeddings
+        )
+
+    async def async_stream_forward(self, prompt: AIPrompt, **kwarg_override) -> AsyncIterator[typing.Tuple[AIResponse, AIResponse]]:
+
+        response = await self.async_forward(prompt, **kwarg_override)
+        yield response, response
