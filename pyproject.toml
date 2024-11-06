@@ -19,6 +19,7 @@ packages = [
     {include="dachi/utils"},
     {include="dachi/act"},
     {include="dachi/adapt"},
+    {include="dachi/graph"},
 ]
 
 [tool.poetry.dependencies]
