@@ -1,10 +1,10 @@
 # 1st party
 import typing
+import asyncio
 from abc import ABC, abstractmethod
 from typing import Self
 import typing
 
-import asyncio
 from ._core import (
     Instruct, Cue, Reader, 
     render, NullRead, Module

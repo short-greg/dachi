@@ -2,9 +2,13 @@ from typing import AsyncIterator, Dict
 import pkg_resources
 import openai
 import typing
+from typing import Dict, List
 
 from .._core import Message, AIPrompt
-from .._core import AIModel, AIResponse, Cue, TextMessage
+from .._core import AIModel, AIResponse, Cue, TextMessage, render
+
+from typing import Dict, List
+
 
 # TODO: add utility for this
 required = {'openai'}
@@ -218,8 +222,15 @@ class OpenAIMessage(TextMessage):
 
 
 class OpenEmbeddingModel(AIModel):
+    """
+    """
 
     def __init__(self, model: str, **kwargs) -> None:
+        """Create an OpenEmbeddingModel
+
+        Args:
+            model (str): The name of the model
+        """
         super().__init__()
         self.model = model
         self.kwargs = kwargs
@@ -237,8 +248,15 @@ class OpenEmbeddingModel(AIModel):
             render(text_i) for text_i in message['texts']
         )
 
-
     def forward(self, prompt: AIPrompt, **kwarg_override) -> Dict:
+        """Execute the Embedding model
+
+        Args:
+            prompt (AIPrompt): _description_
+
+        Returns:
+            Dict: _description_
+        """
 
         kwargs = {
             **self.kwargs,
@@ -294,3 +312,39 @@ class OpenEmbeddingModel(AIModel):
 
         response = await self.async_forward(prompt, **kwarg_override)
         yield response, response
+
+
+class OpenAIEmbeddingAdapter(AIModel):
+    """Adapter for calling OpenAI's Embedding API"""
+
+    def __init__(self, api_key: str, model_name: str = 'text-embedding-ada-002'):
+        openai.api_key = api_key
+        self.model_name = model_name
+
+    def convert(self, message: Message) -> str:
+        """Convert a Message to the format needed for OpenAI's Embedding API"""
+        if isinstance(message, TextMessage):
+            return message.text
+        else:
+            raise TypeError("Unsupported message type")
+
+    def forward(self, prompt: AIPrompt, **kwarg_override) -> List[AIResponse]:
+        """Run a query to the OpenAI Embedding API"""
+        # Convert messages and extract text
+        texts_to_embed = [self.convert(message) for message in prompt.aslist()]
+
+        # Send request to OpenAI Embedding API
+        response = openai.Embedding.create(
+            model=self.model_name,
+            input=texts_to_embed
+        )
+
+        # Generate AIResponse objects
+        return [
+            AIResponse(message=TextMessage(source="embedding_result", text=text), source={"embedding": data['embedding']})
+            for text, data in zip(texts_to_embed, response['data'])
+        ]
+
+    async def async_forward(self, prompt: AIPrompt, **kwarg_override) -> List[AIResponse]:
+        """Run an asynchronous query to the OpenAI Embedding API"""
+        return self.forward(prompt, **kwarg_override)  # Use sync forward for simplicity

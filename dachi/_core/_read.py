@@ -9,7 +9,6 @@ from ..utils import (
     StructLoadException
 )
 from ._core import Reader, render
-
 from pydantic_core import PydanticUndefined
 
 

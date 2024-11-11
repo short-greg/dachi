@@ -20,10 +20,6 @@ from ..utils import (
 S = typing.TypeVar('S', bound=pydantic.BaseModel)
 
 
-# TODO: Make "struct" storable?
-#  Module as well
-# Consider whether to remove
-
 class Storable(ABC):
     """Object to serialize objects to make them easy to recover
     """
