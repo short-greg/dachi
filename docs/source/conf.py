@@ -27,7 +27,7 @@ copyright = "2024, Greg Short"
 author = "Greg Short"
 
 # The full version, including alpha/beta/rc tags
-release = "0.0.0"
+release = "0.0.1"
 
 
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))

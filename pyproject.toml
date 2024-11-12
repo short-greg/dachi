@@ -4,7 +4,7 @@ build-backend = "poetry.masonry.api"
 
 [tool.poetry]
 name = "dachi"
-version = "0.0.0"
+version = "0.0.1"
 description = "A framework for flexibly creating AI agents."
 homepage = "https://github.com/short-greg/dachi"
 repository = "https://github.com/short-greg/dachi"
