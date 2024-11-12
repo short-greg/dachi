@@ -114,7 +114,7 @@ class AIPrompt(pydantic.BaseModel, ABC):
             yield message
 
 
-class Message(pydantic.BaseModel, Renderable):
+class Message(AIPrompt, Renderable):
     """A prompt that consists of a single message to send the AI
     """
 
@@ -153,6 +153,17 @@ class Message(pydantic.BaseModel, Renderable):
             self.data[key] = value
         raise KeyError(f'{key}')
 
+    def process_response(self, response: 'AIResponse') -> 'AIResponse':
+        """Process the response of the Model
+
+        Args:
+            response (AIResponse): The response to process
+
+        Returns:
+            AIResponse: The updated response
+        """
+        return response
+
     def prompt(self, model: 'AIModel', **kwarg_overrides) -> 'AIResponse':
         """prompt the ai model with the message
 
@@ -172,6 +183,30 @@ class Message(pydantic.BaseModel, Renderable):
         """
         # TODO: update this to allow it to change
         return NullRead()
+
+    def instruct(
+        self, instruct: 'Instruct', 
+        ai_model: 'AIModel', 
+    ) -> AIResponse:
+        """Instruct the AI
+
+        Args:
+            instruct (Instruct): The cue to use
+            ai_model (AIModel): The AIModel to use
+            ind (int, optional): The index to set to. Defaults to 0.
+            replace (bool, optional): Whether to replace at the index if already set. Defaults to True.
+
+        Returns:
+            AIResponse: The output from the AI
+        """
+        # TODO: Think if I want to remove this 
+        # circular dependency
+        dialog = Dialog(
+            [self]
+        )
+        return dialog.instruct(
+            instruct, ai_model, 0, False
+        )
 
     def clone(self) -> typing.Self:
         """Do a shallow copy of the message
@@ -280,7 +315,7 @@ def stream_text(stream: typing.Iterator[typing.Tuple[AIResponse, AIResponse]]) -
         yield a2.message
 
 
-class Dialog(pydantic.BaseModel):
+class Dialog(AIPrompt):
     """A Dialog stores the interactions between the system/user and the assistant
     (i.e. the prompts and the responses)
     """
@@ -373,6 +408,20 @@ class Dialog(pydantic.BaseModel):
             message (Message): The message to add
         """
         self.messages.append(message)
+
+    def process_response(self, response: 'AIResponse') -> 'AIResponse':
+        """Process the response of the Model
+
+        Args:
+            response (AIResponse): The response to process
+
+        Returns:
+            AIResponse: The updated response
+        """
+        p = self.reader()
+        response = response.clone()
+        response.val = p.read(response.message)
+        return response
 
     def add(self, message: Message, ind: typing.Optional[int]=None, replace: bool=False):
         """Add a message to the dialog
@@ -554,7 +603,9 @@ class Dialog(pydantic.BaseModel):
             self.append(response.message)
         return response
 
-    def stream_prompt(self, model: 'AIModel', append: bool=True, **kwarg_override) -> typing.Iterator[typing.Tuple['AIResponse', 'AIResponse']]:
+    def stream_prompt(
+        self, model: 'AIModel', append: bool=True, **kwarg_override
+    ) -> typing.Iterator[typing.Tuple['AIResponse', 'AIResponse']]:
         """Prompt the AI
 
         Args:
@@ -684,7 +735,9 @@ class AIModel(Module, ABC):
             task.result() for task in tasks
         )
     
-    async def async_stream_forward(self, prompt: AIPrompt, **kwarg_override) -> typing.AsyncIterator[AIResponse]:
+    async def async_stream_forward(
+        self, prompt: AIPrompt, **kwarg_override
+    ) -> typing.AsyncIterator[AIResponse]:
         """Run this query for asynchronous streaming operations
         The default behavior is simply to call the query
 

@@ -24,9 +24,14 @@ if len(missing) > 0:
 class AnthropicModel(AIModel):
     """Adapter for calling Anthropic's Messages API"""
 
-    def __init__(self, api_key: str, model_name: str = 'claude-3.5-sonnet'):
-        self.client = anthropic.Anthropic(api_key=api_key)
+    def __init__(
+        self, model_name: str = 'claude-3.5-sonnet', 
+        client_kwargs: typing.Dict=None, 
+        **kwargs
+    ):
+        self.client_kwargs = client_kwargs or {}
         self.model_name = model_name
+        self.kwargs = kwargs
 
     def convert(self, message: Message) -> Dict:
         """Convert a Message to the format needed for Anthropic's Messages API"""
@@ -39,11 +44,18 @@ class AnthropicModel(AIModel):
         self, prompt: AIPrompt, **kwarg_override
     ) -> AIResponse:
         """Run a standard query to the Anthropic Messages API"""
+        
+        kwargs = {
+            **self.kwargs,
+            **kwarg_override
+        }
+        kwargs['max_tokens'] = kwargs.get('max_tokens', 100)
+        client = anthropic.Anthropic(**self.client_kwargs)
         messages = self.convert_messages(prompt.aslist())
-        response = self.client.messages.create(
+        response = client.messages.create(
             model=self.model_name,
             messages=messages,
-            max_tokens_to_sample=kwarg_override.get("max_tokens", 100)
+            **kwargs
         )
         response_message = TextMessage(
             source="assistant", text=response['completion']
@@ -54,12 +66,19 @@ class AnthropicModel(AIModel):
         self, prompt: AIPrompt, **kwarg_override
     ) -> Iterator[AIResponse]:
         """Stream response from Anthropic's Messages API"""
+
+        kwargs = {
+            **self.kwargs,
+            **kwarg_override
+        }
+        kwargs['max_tokens'] = kwargs.get('max_tokens', 100)
+        client = anthropic.Anthropic(**self.client_kwargs)
         messages = self.convert_messages(prompt.aslist())
-        response_generator = self.client.messages.create(
+        response_generator = client.messages.create(
             model=self.model_name,
             messages=messages,
-            max_tokens_to_sample=kwarg_override.get("max_tokens", 100),
-            stream=True
+            stream=True,
+            **kwargs
         )
         for chunk in response_generator:
             response_message = TextMessage(
@@ -71,11 +90,17 @@ class AnthropicModel(AIModel):
         self, prompt: AIPrompt, **kwarg_override
     ) -> AIResponse:
         """Run an asynchronous query to the Anthropic Messages API"""
+        kwargs = {
+            **self.kwargs,
+            **kwarg_override
+        }
+        kwargs['max_tokens'] = kwargs.get('max_tokens', 100)
+        client = anthropic.Anthropic(**self.client_kwargs)
         messages = self.convert_messages(prompt.aslist())
-        response = await self.client.messages.acreate(
+        response = await client.messages.acreate(
             model=self.model_name,
             messages=messages,
-            max_tokens_to_sample=kwarg_override.get("max_tokens", 100)
+            **kwargs
         )
         response_message = TextMessage(source="assistant", text=response['completion'])
         return AIResponse(message=response_message, source=response)
@@ -84,12 +109,18 @@ class AnthropicModel(AIModel):
         self, prompt: AIPrompt, **kwarg_override
     ) -> AsyncIterator[AIResponse]:
         """Run asynchronous streaming query to Anthropic's Messages API"""
+        kwargs = {
+            **self.kwargs,
+            **kwarg_override
+        }
+        kwargs['max_tokens'] = kwargs.get('max_tokens', 100)
+        client = anthropic.Anthropic(**self.client_kwargs)
         messages = self.convert_messages(prompt.aslist())
-        async for chunk in self.client.messages.acreate(
+        async for chunk in client.messages.acreate(
             model=self.model_name,
             messages=messages,
-            max_tokens_to_sample=kwarg_override.get("max_tokens", 100),
-            stream=True
+            stream=True,
+            **kwargs
         ):
             response_message = TextMessage(source="assistant", text=chunk['completion'])
             yield AIResponse(message=response_message, source=chunk)
@@ -113,59 +144,3 @@ class AnthropicMessage(TextMessage):
             model = AnthropicModel(model, **kwarg_overrides)
 
         return super().prompt(model, **kwarg_overrides)
-
-
-class AnthropicEmbeddingModel(AIModel):
-    """Adapter for calling Anthropic's Embedding API"""
-
-    def __init__(self, api_key: str, model_name: str = 'claude-embedding'):
-        self.client = anthropic.Anthropic(api_key=api_key)
-        self.model_name = model_name
-
-    def convert(self, message: Message) -> Dict:
-        """Convert a Message to the format needed for Anthropic's Embedding API"""
-        if isinstance(message, TextMessage):
-            return {
-                "role": message.source,
-                "content": message.text
-            }
-        else:
-            raise TypeError("Unsupported message type")
-
-    def forward(self, prompt: AIPrompt, **kwarg_override) -> AIResponse:
-        """Run a standard query to the Anthropic Embedding API"""
-        # Extract text content from messages
-        messages = self.convert_messages(prompt.aslist())
-        texts_to_embed = [msg['content'] for msg in messages]
-        
-        response = self.client.embeddings.create(
-            model=self.model_name,
-            input=texts_to_embed
-        )
-        
-        # Create an AIResponse for each embedded message
-        responses = []
-        for text, embedding in zip(texts_to_embed, response['embeddings']):
-            response_message = TextMessage(source="embedding_result", text=text)
-            responses.append(AIResponse(message=response_message, source=embedding))
-
-        return responses  # Returning a list of AIResponse objects for each embedded input
-
-    async def async_forward(self, prompt: AIPrompt, **kwarg_override) -> List[AIResponse]:
-        """Run an asynchronous query to the Anthropic Embedding API"""
-        messages = self.convert_messages(prompt.aslist())
-        texts_to_embed = [msg['content'] for msg in messages]
-        
-        response = await self.client.embeddings.acreate(
-            model=self.model_name,
-            input=texts_to_embed
-        )
-        
-        # Create an AIResponse for each embedded message
-        responses = []
-        for text, embedding in zip(texts_to_embed, response['embeddings']):
-            response_message = TextMessage(
-                source="embedding_result", text=text)
-            responses.append(AIResponse(message=response_message, source=embedding))
-
-        return responses

@@ -25,13 +25,14 @@ class OpenAIChatModel(AIModel):
     """A model that uses OpenAI's Chat API
     """
 
-    def __init__(self, model: str, **kwargs) -> None:
+    def __init__(self, model: str, client_kwargs: typing.Dict=None, **kwargs) -> None:
         """Create an OpenAIChat model
 
         Args:
             model (str): The name of the model
         """
         super().__init__()
+        self.client_kwargs = client_kwargs or {}
         self.model = model
         self.kwargs = kwargs
 
@@ -65,7 +66,7 @@ class OpenAIChatModel(AIModel):
             **self.kwargs,
             **kwarg_override
         }
-        client = openai.OpenAI()
+        client = openai.OpenAI(**self.client_kwargs)
 
         response = client.chat.completions.create(
             model=self.model,
@@ -101,7 +102,7 @@ class OpenAIChatModel(AIModel):
             **kwarg_override
         }
         
-        client = openai.OpenAI()
+        client = openai.OpenAI(**self.client_kwargs)
         query = client.chat.completions.create(
             model=self.model,
             messages=self.convert_messages(prompt.aslist()),
@@ -140,7 +141,7 @@ class OpenAIChatModel(AIModel):
         Returns:
             typing.Tuple[str, typing.Dict]: _description_
         """
-        client = openai.AsyncOpenAI()
+        client = openai.AsyncOpenAI(**self.client_kwargs)
 
         kwargs = {
             **self.kwargs,
@@ -174,7 +175,7 @@ class OpenAIChatModel(AIModel):
             **self.kwargs,
             **kwarg_override
         }
-        client = openai.AsyncOpenAI()
+        client = openai.AsyncOpenAI(**self.client_kwargs)
         query = await client.chat.completions.create(
             model=self.model,
             messages=self.convert(prompt.aslist()),
@@ -252,10 +253,10 @@ class OpenEmbeddingModel(AIModel):
         """Execute the Embedding model
 
         Args:
-            prompt (AIPrompt): _description_
+            prompt (AIPrompt): 
 
         Returns:
-            Dict: _description_
+            Dict: 
         """
 
         kwargs = {
@@ -314,7 +315,7 @@ class OpenEmbeddingModel(AIModel):
         yield response, response
 
 
-class OpenAIEmbeddingAdapter(AIModel):
+class OpenAIEmbeddingModel(AIModel):
     """Adapter for calling OpenAI's Embedding API"""
 
     def __init__(self, api_key: str, model_name: str = 'text-embedding-ada-002'):
