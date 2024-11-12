@@ -4,6 +4,7 @@ import voyageai
 from typing import Dict, List
 import asyncio
 
+
 from .._core import Message, AIPrompt
 from .._core import AIModel, AIResponse, TextMessage
 
@@ -21,9 +22,12 @@ from typing import List, Dict
 class VoyageAIEmbeddingModel(AIModel):
     """Adapter for calling VoyageAI's Embedding API"""
 
-    def __init__(self, api_key: str, model_name: str = 'voyage-2'):
+    def __init__(
+        self, model_name: str = 'voyage-2', 
+        client_args: Dict=None
+    ):
         # Initialize VoyageAI client with the API key
-        voyageai.configure(api_key=api_key)
+        self.client_args = client_args or {}
         self.model_name = model_name
 
     def convert(self, message: Message) -> str:
@@ -33,17 +37,24 @@ class VoyageAIEmbeddingModel(AIModel):
         else:
             raise TypeError("Unsupported message type")
 
-    def forward(self, prompt: AIPrompt, **kwarg_override) -> List[AIResponse]:
+    def forward(
+        self, prompt: AIPrompt, **kwarg_override
+    ) -> List[AIResponse]:
         """Run a query to the VoyageAI Embedding API"""
         # Extract text content from messages
-        texts_to_embed = [self.convert(message) for message in prompt.aslist()]
+
+        texts_to_embed = [
+            self.convert(message) for message in prompt.aslist()
+        ]
 
         # Send request to VoyageAI Embedding API
-        client = voyageai.Client()
+        client = voyageai.Client(**self.client_args)
         response = client.embed(
             texts=texts_to_embed,
             model=self.model_name,
-            input_type=kwarg_override.get("input_type", "document")  # Can be 'document' or 'query'
+            input_type=kwarg_override.get(
+                "input_type", "document"
+            )  # Can be 'document' or 'query'
         )
 
         # Generate AIResponse objects
