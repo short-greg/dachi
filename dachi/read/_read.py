@@ -7,6 +7,7 @@ import inspect
 from io import StringIO
 import pandas as pd
 import pydantic
+import yaml
 
 # local
 from .._core._core import (
@@ -17,6 +18,7 @@ from ..utils import (
     struct_template,
     model_to_text,
     escape_curly_braces, 
+    is_primitive
 )
 from ..data._structs import DataList
 
@@ -121,6 +123,14 @@ class CSVRead(Reader):
         return data # StructList[S].load_records(data)
 
     def dump_data(self, data: typing.List) -> typing.Any:
+        """Doesnt do anything because write_text expects a list
+
+        Args:
+            data (typing.List): the data to dump
+
+        Returns:
+            typing.Any: the data
+        """
         return data
 
     def write_text(self, data: typing.Any) -> str:
@@ -160,10 +170,17 @@ class CSVRead(Reader):
             cols = self.cols
 
         result = []
-        header = ['Index']
-        first = ['1']
-        last = ['N']
-        mid = '...'
+
+        header = []
+        first = []
+        last = []
+        mid = []
+        if self.indexed:
+            header.append('Index')
+            first.append('1')
+            last.append('N')
+            mid.append('...')
+    
         for name, descr, type_ in cols:
             header.append(name)
             first.append(f'{descr} <{type_}>')
@@ -286,6 +303,99 @@ class KVRead(Reader):
         )
 
 
+class IndexRead(Reader):
+    """Create a Reader of a list of key values
+    """
+
+    sep: str = '::'
+    key_descr: typing.Optional[str] = None
+    key_type: typing.Optional[typing.Type] = None
+    
+    def read_text(self, message: str) -> typing.Dict:
+        """Read in the list of key values
+
+        Args:
+            message (str): The message to read
+
+        Returns:
+            typing.Dict: A dictionary of keys and values
+        """
+        lines = message.splitlines()
+        result = []
+        for line in lines:
+            try:
+                idx, value = line.split(self.sep)
+                result.append(value)
+            except ValueError:
+                pass
+        return result
+    
+    def load_data(self, data: typing.Dict) -> typing.Dict:
+        """Load data does not do anything as the result
+        is a dictionary.
+
+        Args:
+            data (typing.Dict): The data to load
+
+        Returns:
+            typing.Dict: The dictionary of data
+        """
+        return data
+
+    def dump_data(self, data: typing.Dict) -> typing.Dict:
+        """Convert the data to a dictionary
+
+        Args:
+            data (typing.Dict): The data to load
+
+        Returns:
+            typing.Dict: The dumped data
+        """
+        return data
+
+    def write_text(self, data: typing.List) -> str:
+        """Write data as text
+
+        Args:
+            data (typing.Dict): The data to write
+
+        Returns:
+            str: The keys and values as text
+        """
+        return '\n'.join(
+            f'{k}{self.sep}{render(v)}' for k, v in enumerate(data)
+        )
+
+    def template(self, count: int=None) -> str:
+        """Get the template for the Keys and Values
+
+        Returns:
+            str: The template
+        """
+        key_descr = (
+            'The value for the key.' if self.key_descr is None else self.key_descr
+        )
+        
+        if self.key_type is not None:
+            key_descr = key_descr + f' ({self.key_type})'
+        key_descr = f'<{key_descr}>'
+        
+        if count is None:
+            lines = [
+                f'1{self.sep}{key_descr}',
+                f'...',
+                f'N{self.sep}{key_descr}',
+            ]
+        else:
+            lines = [
+                f'1{self.sep}{key_descr}',
+                f'...',
+                f'count{self.sep}{key_descr}',
+            ]
+        
+        return '\n'.join(lines)
+
+
 class JSONRead(Reader):
     """Use to read from a JSON
     """
@@ -348,3 +458,67 @@ class JSONRead(Reader):
             str: The template for the output
         """
         return escape_curly_braces(self.key_descr)
+
+
+class YAMLRead(Reader):
+    """Use to read from a Yaml
+    """
+
+    key_descr: typing.Optional[typing.Dict] = None
+
+    def read_text(self, message: str) -> typing.Dict:
+        """Read in the JSON
+
+        Args:
+            text (str): The JSON to read in
+
+        Returns:
+            typing.Dict: The result - if it fails, will return an empty dict
+        """
+        try: 
+            result = yaml.safe_load(message)
+            return result
+        except yaml.YAMLError:
+            return {}
+    
+    def load_data(self, data: typing.Dict) -> typing.Dict:
+        """Load the data from a dictionary. Since JSONs are just a dict
+        this does nothing
+
+        Args:
+            data (typing.Dict): The data to load
+
+        Returns:
+            typing.Dict: The result
+        """
+        return data
+
+    def dump_data(self, data: typing.Dict) -> typing.Dict:
+        """Does not do anything 
+
+        Args:
+            data (typing.Any): The data 
+
+        Returns:
+            typing.Any: The data
+        """
+        return data
+
+    def write_text(self, data: typing.Any) -> str:
+        """Write the data to a a string
+
+        Args:
+            data (typing.Any): The data to write
+
+        Returns:
+            str: The string version of the data
+        """
+        return yaml.safe_dump(data)
+
+    def template(self) -> str:
+        """Output the template for the class
+
+        Returns:
+            str: The template for the output
+        """
+        return yaml.safe_dump(self.key_descr)

@@ -73,10 +73,10 @@ class MultiRead(Reader):
         """
 
         Args:
-            message (str): _description_
+            message (str): The message containing multiple outputs
 
         Returns:
-            typing.Dict: _description_
+            typing.Dict: The outputs contained in a dictionary
         """
         structs = []
 
