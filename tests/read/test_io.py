@@ -72,12 +72,24 @@ class TestCSVRead(object):
 
         out = _core.CSVRead(
             name='F1',
-            indexed=False,
+            indexed=True,
             cols=[('x', 'X value', 'int'), ('y', 'Y value', 'str')]
         )
 
         temp = out.template()
         assert 'N,' in temp
+        assert 'X value <int>' in temp
+
+    def test_template_outputs_a_valid_template_for_not_indexed(self):
+
+        out = _core.CSVRead(
+            name='F1',
+            indexed=False,
+            cols=[('x', 'X value', 'int'), ('y', 'Y value', 'str')]
+        )
+
+        temp = out.template()
+        assert 'N,' not in temp
         assert 'X value <int>' in temp
 
 
@@ -143,3 +155,60 @@ class TestJSONRead(object):
         )
         simple2 = out.template()
         assert 'x' in simple2
+
+
+class TestYAMLRead(object):
+
+    def test_out_creates_out_class(self):
+
+        out = _core.YAMLRead(
+            name='F1',
+            key_descr={
+                'x': 'The value of x',
+                'y': 'The value of y'
+            }
+        )
+        simple = SimpleStruct2(x='hi', y=1)
+        d = model_to_text(simple)
+        simple2 = out.read(d)
+        assert simple.x == simple2['x']
+
+    def test_out_template(self):
+
+        out = _core.YAMLRead(
+            name='F1',
+            key_descr={
+                'x': 'The value of x',
+                'y': 'The value of y'
+            }
+        )
+        simple2 = out.template()
+        assert 'x' in simple2
+
+
+class TestIndexRead(object):
+
+    def test_out_reads_in_the_class(self):
+
+        k = '1::1\n'
+        k += '2::4\n'
+
+        out = _core.IndexRead(
+            name='F1',
+            key_descr='the number of people'
+        )
+
+        result = out.read(k)
+        assert result[0] == '1'
+        assert result[1] == '4'
+
+    def test_template_contains_key(self):
+
+        out = _core.IndexRead(
+            name='F1',
+            key_descr='the number of people'
+        )
+        temp = out.template()
+        assert '1::' in temp
+        assert 'N::' in temp
+

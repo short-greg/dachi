@@ -174,13 +174,12 @@ class CSVRead(Reader):
         header = []
         first = []
         last = []
-        mid = []
+        mid = '...'
         if self.indexed:
             header.append('Index')
             first.append('1')
             last.append('N')
-            mid.append('...')
-    
+            
         for name, descr, type_ in cols:
             header.append(name)
             first.append(f'{descr} <{type_}>')
