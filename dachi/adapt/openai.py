@@ -85,7 +85,7 @@ class OpenAIChatModel(AIModel):
             val
         )
 
-    def stream_forward(
+    def stream(
         self, prompt: AIPrompt, 
         **kwarg_override
     ) -> typing.Iterator[typing.Tuple[AIResponse, AIResponse]]:
@@ -129,7 +129,7 @@ class OpenAIChatModel(AIModel):
                 dx, chunk, dx_val
             )
     
-    async def async_forward(
+    async def aforward(
         self, prompt: AIPrompt, 
         **kwarg_override
     ) -> typing.Tuple[str, typing.Dict]:
@@ -161,7 +161,7 @@ class OpenAIChatModel(AIModel):
             p.read(text)
         )
 
-    async def async_stream_forward(self, prompt: AIPrompt, **kwarg_override) -> AsyncIterator[typing.Tuple[AIResponse, AIResponse]]:
+    async def astream(self, prompt: AIPrompt, **kwarg_override) -> AsyncIterator[typing.Tuple[AIResponse, AIResponse]]:
         """Stream the model asyncrhonously
 
         Args:
@@ -278,7 +278,7 @@ class OpenEmbeddingModel(AIModel):
             embeddings
         )
 
-    def stream_forward(
+    def stream(
         self, prompt: AIPrompt, 
         **kwarg_override
     ) -> typing.Iterator[typing.Tuple[AIResponse, AIResponse]]:
@@ -286,7 +286,7 @@ class OpenEmbeddingModel(AIModel):
         response = self.forward(prompt, **kwarg_override)
         yield response, response
         
-    async def async_forward(
+    async def aforward(
         self, prompt: AIPrompt, 
         **kwarg_override
     ) -> typing.Tuple[str, typing.Dict]:
@@ -309,9 +309,9 @@ class OpenEmbeddingModel(AIModel):
             embeddings
         )
 
-    async def async_stream_forward(self, prompt: AIPrompt, **kwarg_override) -> AsyncIterator[typing.Tuple[AIResponse, AIResponse]]:
+    async def astream(self, prompt: AIPrompt, **kwarg_override) -> AsyncIterator[typing.Tuple[AIResponse, AIResponse]]:
 
-        response = await self.async_forward(prompt, **kwarg_override)
+        response = await self.aforward(prompt, **kwarg_override)
         yield response, response
 
 
@@ -346,6 +346,6 @@ class OpenAIEmbeddingModel(AIModel):
             for text, data in zip(texts_to_embed, response['data'])
         ]
 
-    async def async_forward(self, prompt: AIPrompt, **kwarg_override) -> List[AIResponse]:
+    async def aforward(self, prompt: AIPrompt, **kwarg_override) -> List[AIResponse]:
         """Run an asynchronous query to the OpenAI Embedding API"""
         return self.forward(prompt, **kwarg_override)  # Use sync forward for simplicity

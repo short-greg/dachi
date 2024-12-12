@@ -3,10 +3,20 @@ from enum import Enum
 from abc import abstractmethod
 import typing
 from dataclasses import dataclass
+import inspect
+from typing import Any
+
+# 3rd party
+import pydantic
 
 # local
-from .._core import Storable
+from .._core import Storable, render
 
+# TODO: Add in Action (For GOAP)
+
+from .._core import Reader
+from ..read import JSONRead
+from ..utils import UNDEFINED, Renderable, Templatable
 
 class TaskStatus(Enum):
     """Status of a Behavior Tree task
@@ -275,4 +285,95 @@ class Router(object):
 
 ROUTE = Router | typing.Callable[[typing.Any], TaskStatus | State]
 
-# TODO: Add in Action (For GOAP)
+
+
+class IOField(object):
+
+    def __init__(
+        self, name: str, type_: typing.Optional[typing.Type]=None, default: typing.Any=UNDEFINED, read: Reader=None
+    ):
+        self.name = name
+        self.type_ = type_
+        self.default = default
+        self.read = read
+
+
+def get_function_info(func: Any):
+    if not callable(func):
+        raise ValueError("Provided argument is not callable.")
+    
+    # Get the function name
+    name = func.__name__
+
+    # Get the docstring
+    docstring = inspect.getdoc(func)
+
+    # Get the signature
+    signature = inspect.signature(func)
+    parameters = []
+    for name, param in signature.parameters.items():
+        parameter_info = {
+            "name": name,
+            "type": param.annotation if param.annotation is not inspect.Parameter.empty else None,
+            "default": param.default if param.default is not inspect.Parameter.empty else None,
+            "keyword_only": param.kind == inspect.Parameter.KEYWORD_ONLY
+        }
+        parameters.append(parameter_info)
+
+    # Get the return type
+    return_type = signature.return_annotation if signature.return_annotation is not inspect.Parameter.empty else None
+
+    return {
+        "name": name,
+        "docstring": docstring,
+        "parameters": parameters,
+        "return_type": return_type
+    }
+
+
+
+
+
+
+# from .._core import AIModel, AIPrompt, Dialog
+# import threading
+
+# class Step:
+#     pass
+
+# class LLMAgent(object):
+
+#     __template__: str = ""
+#     __out__: Reader = None
+
+#     def __init__(
+#         self, model: AIModel, reader: Reader, check: typing.Callable[[typing.Any], TaskStatus]=None
+#     ):
+#         super().__init__()
+#         self.model = model
+#         self.reader = reader
+#         self.check = check
+#         self.dialog = Dialog()
+#         # set the reader on the dialog
+#         # set the system message
+#         # based on the template
+
+#     def reset(self):
+#         # Reset the dialog
+#         pass
+
+#     def llm(self):
+#         pass
+
+#     def forward(self, message) -> typing.Iterator[Step]:
+
+#         while not complete:
+#             self.dialog.append(message)
+#             result = self.model(self.dialog)
+#             self.dialog.append(result.message)
+#             complete = self.check(self.dialog)
+
+
+
+# agent = LLMAgent()
+# response = agent

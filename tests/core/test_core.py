@@ -31,7 +31,7 @@ class WriteOut(Module):
 
         return x
 
-    def stream_forward(self, x: str) -> Iterator[Tuple[Any, Any]]:
+    def stream(self, x: str) -> Iterator[Tuple[Any, Any]]:
         
         out = ''
         for c in x:
@@ -206,7 +206,7 @@ class TestModule:
             async with asyncio.TaskGroup() as tg:
                 for data_i in data:
                     tasks.append(
-                        tg.create_task(module.async_forward(data_i))
+                        tg.create_task(module.aforward(data_i))
                     )
 
             return list(task.result() for task in tasks)
@@ -222,7 +222,7 @@ class TestModule:
         module = Append('t')
 
         res = ''
-        for x, dx in module.stream_forward('xyz'):
+        for x, dx in module.stream('xyz'):
             res += dx
         assert res == 'xyzt'
 
@@ -251,7 +251,7 @@ class TestModule:
 
         writer = WriteOut()
         results = []
-        for x, dx in writer.stream_forward('xyz'):
+        for x, dx in writer.stream('xyz'):
             results.append(dx)
         assert results == list('xyz')
 

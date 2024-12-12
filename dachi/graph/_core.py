@@ -606,7 +606,7 @@ def stream_link(module: 'Module', *args, **kwargs) -> T:
         args = args.eval()
 
         return T(
-            Streamer(module.stream_forward(*args.args, **args.kwargs)),
+            Streamer(module.stream(*args.args, **args.kwargs)),
             StreamSrc(module, args)
         )
 

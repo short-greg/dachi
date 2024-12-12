@@ -63,7 +63,7 @@ class VoyageAIEmbeddingModel(AIModel):
             for text, embedding in zip(texts_to_embed, response.embeddings)
         ]
 
-    async def async_forward(self, prompt: AIPrompt, **kwarg_override) -> List[AIResponse]:
+    async def aforward(self, prompt: AIPrompt, **kwarg_override) -> List[AIResponse]:
         """Run an asynchronous query to the VoyageAI Embedding API"""
         # Use asyncio to perform async embedding retrieval with a blocking method
         loop = asyncio.get_event_loop()

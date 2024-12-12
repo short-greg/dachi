@@ -123,6 +123,25 @@ def render(
     return str(x)
 
 
+def is_renderable(obj: typing.Any) -> bool:
+    """Return whether an object is renderable
+
+    Args:
+        obj (typing.Any): The object to check
+
+    Returns:
+        bool: whether the object is renderable
+    """
+
+    return (
+        isinstance(obj, Renderable)
+        or is_primitive(obj)
+        or isinstance(obj, list)
+        or isinstance(obj, dict)
+        or isinstance(obj, pydantic.BaseModel)
+    )
+
+
 def render_multi(xs: typing.Iterable[typing.Any]) -> typing.List[str]:
     """Convert an input to text. Will use the text for an cue,
     the render() method for a description and convert any other value to
@@ -503,7 +522,7 @@ class Module(Storable, ABC):
                         yielded.add(id(v))
                         yield v
     
-    async def async_forward(self, *args, **kwargs) -> typing.Any:
+    async def aforward(self, *args, **kwargs) -> typing.Any:
         """Execute the forward method asynchronously
 
         Returns:
@@ -512,7 +531,7 @@ class Module(Storable, ABC):
         res = self.forward(*args, **kwargs)
         return res
 
-    def stream_forward(self, *args, **kwargs) -> typing.Iterator[
+    def stream(self, *args, **kwargs) -> typing.Iterator[
         typing.Tuple[typing.Any, typing.Any]
     ]:
         """Stream the output
@@ -524,13 +543,13 @@ class Module(Storable, ABC):
         res = self.forward(*args, **kwargs) 
         yield res, res
 
-    async def async_stream_forward(self, *args, **kwargs) -> typing.AsyncIterator:
+    async def astream(self, *args, **kwargs) -> typing.AsyncIterator:
         """
         Returns:
             Streamer: The Streamer to loop over
         """
 
-        for d, dx in self.stream_forward(*args, **kwargs):
+        for d, dx in self.stream(*args, **kwargs):
             yield d, dx
 
     def state_dict(self):

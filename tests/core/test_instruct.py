@@ -1,4 +1,4 @@
-from dachi._core import _instruct as core
+from dachi.ai import _instruct as core
 from .test_core import SimpleStruct
 from .test_ai import DummyAIModel
 
@@ -123,7 +123,7 @@ class TestSignatureF:
                 pass
 
         x = X()
-        for d, dx in x.signaturep.stream_forward(2):
+        for d, dx in x.signaturep.stream(2):
             pass
 
         assert d == 'Great!'

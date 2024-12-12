@@ -469,7 +469,7 @@ def _stream_model(model: AIModel, prompt: AIPrompt, ctx: Context, *args, interva
         interval (float, optional): The interval to run at. Defaults to 1./60.
     """
     print('Executing thread')
-    for x, dx in model.stream_forward(prompt, *args, **kwargs):
+    for x, dx in model.stream(prompt, *args, **kwargs):
         ctx['x'] = x
         ctx['dx'].append(dx)
         time.sleep(interval)

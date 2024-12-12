@@ -62,7 +62,7 @@ class AnthropicModel(AIModel):
         )
         return AIResponse(message=response_message, source=response)
 
-    def stream_forward(
+    def stream(
         self, prompt: AIPrompt, **kwarg_override
     ) -> Iterator[AIResponse]:
         """Stream response from Anthropic's Messages API"""
@@ -86,7 +86,7 @@ class AnthropicModel(AIModel):
             )
             yield AIResponse(message=response_message, source=chunk)
 
-    async def async_forward(
+    async def aforward(
         self, prompt: AIPrompt, **kwarg_override
     ) -> AIResponse:
         """Run an asynchronous query to the Anthropic Messages API"""
@@ -105,7 +105,7 @@ class AnthropicModel(AIModel):
         response_message = TextMessage(source="assistant", text=response['completion'])
         return AIResponse(message=response_message, source=response)
 
-    async def async_stream_forward(
+    async def astream(
         self, prompt: AIPrompt, **kwarg_override
     ) -> AsyncIterator[AIResponse]:
         """Run asynchronous streaming query to Anthropic's Messages API"""

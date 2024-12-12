@@ -12,6 +12,7 @@ from functools import wraps
 
 # 3rd party
 import numpy as np
+import griffe
 
 # local
 from ._core import Module
@@ -187,7 +188,7 @@ class AsyncModule(ParallelModule):
     """A type of Parallel module that makes use of 
     Python's Async
     """
-    async def async_forward(self, *args, **kwargs) -> typing.List:
+    async def aforward(self, *args, **kwargs) -> typing.List:
         """The asynchronous method to use for inputs
 
         Args:
@@ -200,7 +201,7 @@ class AsyncModule(ParallelModule):
         async with asyncio.TaskGroup() as tg:
             for module, cur_args, cur_kwargs in parallel_loop(self._modules, *args, **kwargs):
                 tasks.append(tg.create_task(
-                    module.async_forward(*cur_args, **cur_kwargs)
+                    module.aforward(*cur_args, **cur_kwargs)
                 ))
 
         return list(
@@ -212,7 +213,7 @@ class AsyncModule(ParallelModule):
         Returns:
             typing.Tuple: The output for the paralell module
         """
-        return asyncio.run(self.async_forward(*args, **kwargs))
+        return asyncio.run(self.aforward(*args, **kwargs))
 
 
 class ModuleList(Module):
@@ -452,7 +453,7 @@ async def _async_map(f: Module, *args, **kwargs) -> typing.Tuple[typing.Any]:
         
         for cur_f, a, kv in parallel_loop(f, *args, **kwargs):
 
-            tasks.append(tg.create_task(cur_f.async_forward(*a, **kv)))
+            tasks.append(tg.create_task(cur_f.aforward(*a, **kv)))
 
     return tuple(
         t.result() for t in tasks
@@ -652,7 +653,7 @@ class StreamRunner(object):
         """
 
         self.status = RunStatus.RUNNING
-        for d, dx in module.stream_forward(*args, **kwargs):
+        for d, dx in module.stream(*args, **kwargs):
             self._result_dx.append(dx)
             self._results.append(d)
 
@@ -745,3 +746,113 @@ def stream_thread(module, *args, **kwargs) -> StreamRunner:
     return StreamRunner(
         module, *args, **kwargs
     )
+
+
+# import pydantic
+
+# class Tool(pydantic.BaseModel):
+
+#     name: str
+#     descr: str
+#     args: typing.List[IOField]
+#     kwargs: typing.List[IOField]
+#     return_value: typing.Union[IOField, typing.Tuple[IOField]]
+#     f: typing.Callable
+
+#     def __init__(self, f, name, descr, args=None, kwargs=None, return_value=None):
+
+#         super().__init_subclass__(
+#             name=name, descr=descr, args=args or [],
+#             kwargs=kwargs or {}, 
+#             return_value=return_value
+#         )
+
+#     def forward(self, *args, **kwargs):
+
+#         return self.f(*args, **kwargs)
+
+#     @classmethod
+#     def from_f(cls, f):
+
+#         f_info = get_function_info(f)
+#         args = []
+#         kwargs = {}
+#         for p in f_info['parameters']:
+#             arg = IOField(
+#                 p['name'], p['type'], p['default'],
+#             )
+#             if p['keyword_only']:
+#                 kwargs[p['name']] = arg
+#             else:
+#                 args.append(arg)
+
+#         return Tool(
+#             f, f_info['name'], f_info['docstring'],
+#             args, kwargs, f_info['return_value']
+#         )
+
+#     @classmethod
+#     def from_docstring(cls, f, parser: str='google'):
+
+#         docstring = griffe.Docstring(f.__doc__)
+#         parsed = docstring.parse(parser)
+
+#         for p in parsed:
+#             d = p.as_dict()
+#             if d['kind']
+
+
+#         f_info = get_function_info(f)
+#         args = []
+#         kwargs = {}
+#         for p in f_info['parameters']:
+#             arg = IOField(
+#                 p['name'], p['type'], p['default'],
+#             )
+#             if p['keyword_only']:
+#                 kwargs[p['name']] = arg
+#             else:
+#                 args.append(arg)
+
+#         return Tool(
+#             f, f_info['name'], f_info['docstring'],
+#             args, kwargs, f_info['return_value']
+#         )
+
+
+
+# %%
+
+from griffe import Docstring, Function, Parameters, Parameter, ParameterKind
+
+function = Function(
+    "func",
+    parameters=Parameters(
+        Parameter("param1", annotation="str", kind=ParameterKind.positional_or_keyword),
+        Parameter("param2", annotation="int", kind=ParameterKind.keyword_only),
+    ),
+)
+text = """
+Hello I'm a docstring!
+
+Args:
+    param1: Description.
+    param2: Description.
+Returns:
+    The value
+"""
+docstring = Docstring(text, lineno=1, parent=function)
+parsed = docstring.parse("google")
+
+print(parsed)
+
+print(parsed[0].as_dict())
+print(parsed[1].as_dict())
+print(parsed[2].as_dict())
+
+p: Parameter = parsed[1].value[0]
+
+print(p.annotation)
+
+
+# %%

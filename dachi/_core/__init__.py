@@ -3,16 +3,19 @@ from ._core import (
     Storable, render,
     render_multi, 
     Module, Cue,
-    Param
+    Param, is_renderable
 
 )
 from ._read import (
     MultiRead, PrimRead, PydanticRead
 )
-from ._ai import (
-    AIModel, AIPrompt, AIResponse, Dialog, Message,
-    TextMessage, Data,
-    stream_text
+# from ..ai._ai import (
+#     AIModel, AIPrompt, AIResponse, Dialog, Message,
+#     TextMessage, Data,
+#     stream_text
+# )
+from ._messages import (
+    Message, CueMessage, TextMessage, Dialog
 )
 from ._process import (
     Partial, 
@@ -35,7 +38,7 @@ from ._process import (
     RunStatus,
     StreamRunner
 )
-from ._instruct import (
+from ..ai._instruct import (
     validate_out, 
     InstructCall, SignatureFunc, signaturefunc,
     signaturemethod, instructfunc,

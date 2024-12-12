@@ -6,7 +6,7 @@ from typing import Any, Iterator, Tuple
 import pytest
 from dachi._core import _process as p
 from dachi._core._core import Module
-from dachi._core import _ai
+from dachi.ai import _ai
 import typing
 
 
@@ -34,7 +34,7 @@ class DummyAIModel(_ai.AIModel):
             _ai.TextMessage('assistant', self.target), result, self.target
         )
     
-    def stream_forward(self, prompt: _ai.AIPrompt, **kwarg_override) -> Iterator[Tuple[_ai.AIResponse]]:
+    def stream(self, prompt: _ai.AIPrompt, **kwarg_override) -> Iterator[Tuple[_ai.AIResponse]]:
         message = prompt.aslist()[0]
         result = self.convert(message)
 

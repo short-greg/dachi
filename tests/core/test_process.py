@@ -46,7 +46,7 @@ class WriteOut(core.Module):
     def forward(self, val: str) -> Any:
         return val + self._append
 
-    def stream_forward(self, val: str) -> Any:
+    def stream(self, val: str) -> Any:
         cur = ''
         for v in val:
             cur += v
