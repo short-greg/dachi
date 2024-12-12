@@ -49,7 +49,7 @@ class OpenAIChatModel(AIModel):
         if isinstance(text, Cue):
             text = text.render()
         return {
-            'role': message.source,
+            'role': message.role,
             'content': text
         }
 
@@ -342,7 +342,7 @@ class OpenAIEmbeddingModel(AIModel):
 
         # Generate AIResponse objects
         return [
-            AIResponse(message=TextMessage(source="embedding_result", text=text), source={"embedding": data['embedding']})
+            AIResponse(message=TextMessage(source="embedding_result", content=text), source={"embedding": data['embedding']})
             for text, data in zip(texts_to_embed, response['data'])
         ]
 

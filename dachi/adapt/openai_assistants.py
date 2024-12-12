@@ -58,7 +58,7 @@ class OpenAIAssistantsModel(AIModel):
     def convert(self, message: Message) -> Dict:
         """Convert a Message to the format needed for the Assistants API."""
         return {
-            "role": message.source,
+            "role": message.role,
             "content": message.text
         }
 

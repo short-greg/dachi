@@ -9,13 +9,12 @@ from ._core import (
 from ._read import (
     MultiRead, PrimRead, PydanticRead
 )
-# from ..ai._ai import (
-#     AIModel, AIPrompt, AIResponse, Dialog, Message,
-#     TextMessage, Data,
-#     stream_text
-# )
+
 from ._messages import (
-    Message, CueMessage, TextMessage, Dialog
+    Message, CueMessage, TextMessage, Dialog,
+    ToolArrayParam, ToolMessage, ToolObjParam,
+    ToolOptionMessage, ToolParam, ObjMessage,
+    MessageConverter, EmbeddingMessage, FunctionMessage,
 )
 from ._process import (
     Partial, 
@@ -38,10 +37,15 @@ from ._process import (
     RunStatus,
     StreamRunner
 )
-from ..ai._instruct import (
-    validate_out, 
-    InstructCall, SignatureFunc, signaturefunc,
-    signaturemethod, instructfunc,
-    InstructFunc, instructmethod,
+# from ..ai._ai import (
+#     AIModel, AIPrompt, AIResponse, Dialog, Message,
+#     TextMessage, Data,
+#     stream_text
+# )
+# from ..ai._instruct import (
+#     validate_out, 
+#     InstructCall, SignatureFunc, signaturefunc,
+#     signaturemethod, instructfunc,
+#     InstructFunc, instructmethod,
 
-)
+# )

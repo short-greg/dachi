@@ -142,7 +142,7 @@ class TestMessage(object):
     def test_message_sets_data(self):
 
         message = _ai.Message(source='assistant', data={'question': 'How?'})
-        assert message.source == 'assistant'
+        assert message.role == 'assistant'
         assert message.data['question'] == 'How?'
 
     def test_message_clones_correctly(self):

@@ -1,6 +1,5 @@
 # 1st party
 import typing
-import asyncio
 from abc import ABC, abstractmethod
 from typing import Self
 import typing
@@ -28,12 +27,21 @@ class Message(pydantic.Model, Renderable):
     """A prompt that consists of a single message to send the AI
     """
 
-    source: str # The source of the messsage (user, assistant etc)
+    role: str # The source of the messsage (user, assistant etc)
     data: typing.Dict[str, typing.Any] # The contents of the message
+    delta: typing.Dict[str, typing.Any] = None # the delta of the data if used for the model
 
-    def __init__(self, source: str, **data):
+    def __init__(
+        self, source: str, delta: typing.Dict=None, **data
+    ):
+        """Create a message
 
-        super().__init__(source=source, data=data)
+        Args:
+            source (str): The source of the message
+            delta (typing.Dict, optional): The delta of the data - use when streaming. Defaults to None.
+        """
+
+        super().__init__(source=source, data=data, delta=delta)
 
     def __getitem__(self, key: str) -> typing.Any:
         """Get an item from the message
@@ -42,16 +50,15 @@ class Message(pydantic.Model, Renderable):
             key (str): The key to retrieve for
 
         Raises:
-            KeyError: 
-
+            KeyError: If key is not valid
         """
         if hasattr(self, key):
             return getattr(self, key)
         if key in self.data:
             return self.data[key]
-        raise KeyError(f'{key}')
+        raise KeyError(f'{key} is not a member of {type(self)}')
 
-    def __setitem__(self, key: str, value: typing.Any):
+    def __setitem__(self, key: str, value: typing.Any) -> typing.Any:
         """Set an item in the message
 
         Args:
@@ -63,101 +70,57 @@ class Message(pydantic.Model, Renderable):
         """
         if hasattr(self, key):
             setattr(self, key, value)
-        if key in self.data:
-            self.data[key] = value
-        raise KeyError(f'{key}')
+        self.data[key] = value
+        return value
 
-    # def process_response(self, response: 'AIResponse') -> 'AIResponse':
-    #     """Process the response of the Model
-
-    #     Args:
-    #         response (AIResponse): The response to process
+    # def clone(self) -> typing.Self:
+    #     """Do a shallow copy of the message
 
     #     Returns:
-    #         AIResponse: The updated response
+    #         Message: The cloned message
     #     """
-    #     return response
-
-    # def prompt(self, model: 'AIModel', **kwarg_overrides) -> 'AIResponse':
-    #     """prompt the ai model with the message
-
-    #     Args:
-    #         model (AIModel): The model to prmopt
-
-    #     Returns:
-    #         AIResponse: the response
-    #     """
-    #     return model(self, **kwarg_overrides)
-
-    # def instruct(
-    #     self, instruct: 'Instruct', 
-    #     ai_model: 'AIModel', 
-    # ) -> AIResponse:
-    #     """Instruct the AI
-
-    #     Args:
-    #         instruct (Instruct): The cue to use
-    #         ai_model (AIModel): The AIModel to use
-    #         ind (int, optional): The index to set to. Defaults to 0.
-    #         replace (bool, optional): Whether to replace at the index if already set. Defaults to True.
-
-    #     Returns:
-    #         AIResponse: The output from the AI
-    #     """
-    #     # TODO: Think if I want to remove this 
-    #     # circular dependency
-    #     dialog = Dialog(
-    #         [self]
+    #     return self.__class__(
+    #         role=self.role,
+    #         data=self.data,
+    #         delta=self.delta
     #     )
-    #     return dialog.instruct(
-    #         instruct, ai_model, 0, False
-    #     )
-
-    # def reader(self) -> 'Reader':
-    #     """Get the reader for the prompt
-
-    #     Returns:
-    #         Reader: Returns the base reader
-    #     """
-    #     # TODO: update this to allow it to change
-    #     return NullRead()
-
-    def clone(self) -> typing.Self:
-        """Do a shallow copy of the message
-
-        Returns:
-            Message: The cloned message
-        """
-        return self.__class__(
-            source=self.source,
-            data=self.data
-        )
-
-    # def aslist(self) -> typing.List['Message']:
-    #     """Get the message as a list
-
-    #     Returns:
-    #         typing.List[Message]: The message as a list
-    #     """
-    #     return [self]
     
     def render(self) -> str:
         """Render the message
 
         Returns:
-            str: Return the message and the source
+            str: Return the message and the role
         """
-        return f'{self.source}: {render(self.data)}'
+        return f'{self.role}: {render(self.data)}'
 
 
 class MessageConverter(ABC):
+    """Use the message converter to convert between
+    the message and what is used in the API
+    """
 
     @abstractmethod
-    def to_message(self, message: typing.Dict) -> Message:
+    def to_message(self, response: typing.Dict) -> Message:
+        """Convert from an AI response to a message
+
+        Args:
+            response (typing.Dict): The response to convert
+
+        Returns:
+            Message: the message from the API
+        """
         pass
 
     @abstractmethod
     def from_message(self, message: Message) -> typing.Dict:
+        """_summary_
+
+        Args:
+            message (Message): 
+
+        Returns:
+            typing.Dict: _description_
+        """
         pass
 
 
@@ -165,19 +128,23 @@ class EmbeddingMessage(Message):
     """A message that contains text. Typically used for LLMs
     """
 
-    def __init__(self, source: str, embedding: np.array, source_data: typing.Any):
-        """Create a text message with a source
+    def __init__(
+        self, role: str, embedding: np.array, 
+        source: typing.Any
+    ):
+        """Create an embeddign message 
 
         Args:
-            source (str): the source of the message
-            text (typing.Union[str, Cue]): the content of the message
+            role (str): the role of the message
+            embedding (typing.Union[str, Cue]): the content of the message
+            source_data (typing.Any)
 
         """
         super().__init__(
-            source=source,
+            role=role,
             data={
                 'embedding': embedding,
-                'source_data': source_data
+                'source': source
             }
         )
 
@@ -187,23 +154,21 @@ class EmbeddingMessage(Message):
         Returns:
             str: Return the message and the text for the message
         """
-        pass
-        # text = self.data['text']
-        # return f'{self.source}: {
-        #     text.render() if isinstance(text, Cue) else text
-        # }'
+        
+        data = self.source
+        return f'{self.role}: {render(data)}'
 
-    def clone(self) -> typing.Self:
-        """Do a shallow copy of the message
+    # def clone(self) -> typing.Self:
+    #     """Do a shallow copy of the message
 
-        Returns:
-            Message: The cloned message
-        """
-        return self.__class__(
-            source=self.source,
-            embedding=self.embedding,
-            source_data=self.source_data
-        )
+    #     Returns:
+    #         Message: The cloned message
+    #     """
+    #     return self.__class__(
+    #         role=self.role,
+    #         embedding=self.embedding,
+    #         source=self.source
+    #     )
 
     @property
     def text(self) -> str:
@@ -212,60 +177,27 @@ class EmbeddingMessage(Message):
         Returns:
             str: The text for the message
         """
-        return self.data['source_data']
-
-# Use this later
-
-# def embedding_df(messages: typing.List[EmbeddingMessage]) -> pd.DataFrame:
-#     """Create a dataframe from embedding messages
-
-#     Args:
-#         messages (typing.List[EmbeddingMessage]): The messages to create from
-
-#     Returns:
-#         pd.DataFrame: The dataframe
-#     """
-    
-#     rows = [
-#         {
-#             "embedding": row.data['embedding'], 
-#             "source": row.source, 
-#             "data": row["source_data"]
-#             **row.data["meta"]
-#         } for row in messages
-#     ]
-#     return pd.DataFrame(rows)
+        return self.data['source']
 
 
 class TextMessage(Message):
     """A message that contains text. Typically used for LLMs
     """
 
-    def __init__(self, source: str, text: typing.Union[str, 'Cue']):
+    def __init__(self, source: str, content: str):
         """Create a text message with a source
 
         Args:
             source (str): the source of the message
-            text (typing.Union[str, Cue]): the content of the message
+            content (typing.Union[str, Cue]): the content of the message
 
         """
         super().__init__(
             source=source,
             data={
-                'text': text
+                'content': content
             }
         )
-
-    # def reader(self) -> 'Reader':
-    #     """The reader to use
-
-    #     Returns:
-    #         Reader: The reader used by message
-    #     """
-    #     text = self['text']
-    #     if isinstance(text, Cue) and text.out is not None:
-    #         return text.out
-    #     return NullRead(name='')
     
     def render(self) -> str:
         """Render the text message
@@ -273,21 +205,19 @@ class TextMessage(Message):
         Returns:
             str: Return the message and the text for the message
         """
-        text = self.data['text']
-        return f'{self.source}: {
-            text.render() if isinstance(text, Cue) else text
-        }'
+        text = self.data['content']
+        return f'{self.role}: {text}'
 
-    def clone(self) -> typing.Self:
-        """Do a shallow copy of the message
+    # def clone(self) -> typing.Self:
+    #     """Do a shallow copy of the message
 
-        Returns:
-            Message: The cloned message
-        """
-        return self.__class__(
-            source=self.source,
-            text=self.data['text']
-        )
+    #     Returns:
+    #         Message: The cloned message
+    #     """
+    #     return self.__class__(
+    #         source=self.role,
+    #         content=self.data['content']
+    #     )
 
     @property
     def text(self) -> str:
@@ -296,7 +226,7 @@ class TextMessage(Message):
         Returns:
             str: The text for the message
         """
-        return self.data['text']
+        return self.content
 
 
 class CueMessage(Message):
@@ -308,7 +238,7 @@ class CueMessage(Message):
 
         Args:
             source (str): the source of the message
-            text (typing.Union[str, Cue]): the content of the message
+            cue (Cue): the cue specified by the message
 
         """
         super().__init__(
@@ -324,8 +254,7 @@ class CueMessage(Message):
         Returns:
             Reader: The reader used by message
         """
-        cue = self['cue']
-        return cue.out
+        return self.cue.out
 
     def render(self) -> str:
         """Render the text message
@@ -334,20 +263,20 @@ class CueMessage(Message):
             str: Return the message and the text for the message
         """
         text = self.cue.text
-        return f'{self.source}: {
-            text.render() if isinstance(text, Cue) else text
+        return f'{self.role}: {
+            text.render()
         }'
 
-    def clone(self) -> typing.Self:
-        """Do a shallow copy of the message
+    # def clone(self) -> typing.Self:
+    #     """Do a shallow copy of the message
 
-        Returns:
-            Message: The cloned message
-        """
-        return self.__class__(
-            source=self.source,
-            text=self.data['text']
-        )
+    #     Returns:
+    #         Message: The cloned message
+    #     """
+    #     return self.__class__(
+    #         source=self.role,
+    #         cue=self.cue
+    #     )
 
     @property
     def text(self) -> str:
@@ -363,19 +292,20 @@ class ObjMessage(Message):
     """A message that contains text. Typically used for LLMs
     """
 
-    def __init__(self, source: str, obj: typing.Any, text_source: str):
+    def __init__(self, role: str, obj: typing.Any, source: str):
         """Create a text message with a source
 
         Args:
+            role (str): the role of the message
+            obj : The data in the message after processing
             source (str): the source of the message
-            text (typing.Union[str, Cue]): the content of the message
 
         """
         super().__init__(
-            source=source,
+            source=role,
             data={
-                'object': obj,
-                'text_source': text_source
+                'obj': obj,
+                'source': source
             }
         )
 
@@ -385,21 +315,22 @@ class ObjMessage(Message):
         Returns:
             str: Return the message and the text for the message
         """
-        obj = self.object
-        return f'{self.source}: {
-            obj.render() if is_renderable(obj) else self.text_source
+        obj = self.obj
+        return f'{self.role}: {
+            render(obj) if is_renderable(obj) else self.source
         }'
 
-    def clone(self) -> typing.Self:
-        """Do a shallow copy of the message
+    # def clone(self) -> typing.Self:
+    #     """Do a shallow copy of the message
 
-        Returns:
-            Message: The cloned message
-        """
-        return self.__class__(
-            source=self.source,
-            text=self.data['text']
-        )
+    #     Returns:
+    #         Message: The cloned message
+    #     """
+    #     return self.__class__(
+    #         role=self.role,
+    #         obj=self.obj,
+    #         source=self.source
+    #     )
 
     @property
     def text(self) -> str:
@@ -408,8 +339,9 @@ class ObjMessage(Message):
         Returns:
             str: The text for the message
         """
-        return self.text_source
+        return self.source
 
+import copy
 
 class ToolParam(BaseModel, Renderable):
     name: str
@@ -424,11 +356,11 @@ class ToolParam(BaseModel, Renderable):
     default: typing.Optional[typing.Any] = None
     format: typing.Optional[str] = None
 
-    def to_dict(self):
-        pass
-
     def render(self) -> str:
-        pass
+        return render(self)
+    
+    # def clone(self) -> 'ToolParam':
+    #     pass
 
 
 class ToolObjParam(ToolParam):
@@ -436,20 +368,19 @@ class ToolObjParam(ToolParam):
 
 
 class ToolArrayParam(ToolParam):
-    items: ToolParam  # Specifies the type of items in the array
+    items: typing.List[ToolParam]
 
-    def __init__(self, name: str, type_: str, descr: str='', **kwargs):
+    def __init__(self, name: str, items: typing.List[ToolParam], descr: str='', 
+            **kwargs):
+        """Create an array of tools
 
+        Args:
+            name (str): The name of the array
+            items (typing.List[ToolParam]): The items in the array
+            descr (str, optional): The description. Defaults to ''.
+        """
         super().__init__(
-            name=name, type_=type_, descr=descr, **kwargs
-        )
-
-    def __init__(
-        self, name: str, params: typing.List[ToolParam], type_: str, descr: str='', **kwargs
-    ):
-
-        super().__init__(
-            name=name, type_=type_, descr=descr, params=params, **kwargs
+            name=name, type_="array", items=items, descr=descr, **kwargs
         )
 
 
@@ -479,18 +410,7 @@ class FunctionMessage(Message):
         Returns:
             str: Return the message and the text for the message
         """
-        return f'{self.source}: [{self.name}] => {str(self.content)}'
-
-    def clone(self) -> typing.Self:
-        """Do a shallow copy of the message
-
-        Returns:
-            Message: The cloned message
-        """
-        return self.__class__(
-            source=self.source,
-            text=self.data['text']
-        )
+        return f'{self.role}: [{self.name}] => {str(self.content)}'
 
     @property
     def text(self) -> str:
@@ -501,19 +421,31 @@ class FunctionMessage(Message):
         """
         return f"{self.name} => {self.content}"
 
+    # def clone(self) -> typing.Self:
+    #     """Do a shallow copy of the message
+
+    #     Returns:
+    #         Message: The cloned message
+    #     """
+    #     return self.__class__(
+    #         source=self.role,
+    #         text=self.data['text']
+    #     )
 
 class ToolOptionMessage(object):
 
-    def __init__(self, name: str, type_: str, param: ToolParam, descr: str=None, required: typing.List[str]=None, strict: bool=True):
+    def __init__(
+        self, name: str, type_: str, param: ToolParam, descr: str=None, required: typing.List[str]=None, strict: bool=True
+    ):
         """Create a text message with a source
 
         Args:
-            source (str): the source of the message
+            role (str): the source of the message
             text (typing.Union[str, Cue]): the content of the message
 
         """
         super().__init__(
-            source='tool',
+            role='tool',
             data={
                 'name': name,
                 'type_': type_,
@@ -539,16 +471,21 @@ class ToolOptionMessage(object):
             obj.render() if is_renderable(obj) else self.text_source
         }'
 
-    def clone(self) -> typing.Self:
-        """Do a shallow copy of the message
+    # def clone(self) -> typing.Self:
+    #     """Do a shallow copy of the message
 
-        Returns:
-            Message: The cloned message
-        """
-        return self.__class__(
-            source=self.source,
-            text=self.data['text']
-        )
+    #     Returns:
+    #         Message: The cloned message
+    #     """
+    #     return self.__class__(
+    #         role=self.role,
+    #         name=self.name,
+    #         param=self.param.clone(),
+    #         descr=self.descr,
+    #         required=[*self.required],
+    #         strict=self.strict
+
+    #     )
 
     @property
     def text(self) -> str:
@@ -567,19 +504,19 @@ class FunctionCall(pydantic.BaseModel):
 
 
 class ToolMessage(Message):
-    """A message that contains text. Typically used for LLMs
+    """A message that contains a function call
     """
 
     def __init__(self, function_call: FunctionCall, text: str=''):
-        """Create a text message with a source
+        """Create a text message with a role
 
         Args:
-            source (str): the source of the message
+            role (str): the role of the message
             text (typing.Union[str, Cue]): the content of the message
 
         """
         super().__init__(
-            source='assistant',
+            role='assistant',
             data={
                 'function_call': function_call,
                 'text': text
@@ -597,7 +534,7 @@ class ToolMessage(Message):
         # d['param'] = d['param'].to_dict()
 
         # obj = self.object
-        # return f'{self.source}: {
+        # return f'{self.role}: {
         #     obj.render() if is_renderable(obj) else self.text_source
         # }'
 
@@ -608,10 +545,6 @@ class ToolMessage(Message):
             Message: The cloned message
         """
         pass
-        # return self.__class__(
-        #     source=self.source,
-        #     text=self.data['text']
-        # )
 
     @property
     def text(self) -> str:
@@ -716,78 +649,6 @@ class Dialog(pydantic.BaseModel, Renderable):
         """
         self.messages.append(message)
 
-    # def process_response(self, response: 'AIResponse') -> 'AIResponse':
-    #     """Process the response of the Model
-
-    #     Args:
-    #         response (AIResponse): The response to process
-
-    #     Returns:
-    #         AIResponse: The updated response
-    #     """
-    #     p = self.reader()
-    #     response = response.clone()
-    #     response.val = p.read(response.message)
-    #     return response
-
-    # def instruct(
-    #     self, instruct: 'Instruct', ai_model: 'AIModel', 
-    #     ind: int=0, replace: bool=True
-    # ) -> AIResponse:
-    #     """Instruct the AI
-
-    #     Args:
-    #         instruct (Instruct): The cue to use
-    #         ai_model (AIModel): The AIModel to use
-    #         ind (int, optional): The index to set to. Defaults to 0.
-    #         replace (bool, optional): Whether to replace at the index if already set. Defaults to True.
-
-    #     Returns:
-    #         AIResponse: The output from the AI
-    #     """
-    #     cue = instruct.i()
-        
-    #     self.system(cue, ind, replace)
-    #     response = ai_model.forward(self.messages)
-    #     response = self.process_response(response)
-    #     self.assistant(response.content)
-    #     return response
-
-    # def prompt(self, model: 'AIModel', append: bool=True) -> 'AIResponse':
-    #     """Prompt the AI
-
-    #     Args:
-    #         model (AIModel): The model to usee
-    #         append (bool, optional): Whether to append the output. Defaults to True.
-
-    #     Returns:
-    #         AIResponse: The response from the AI
-    #     """
-    #     response = model(self)
-
-    #     if append:
-    #         self.append(response.message)
-    #     return response
-
-    # def stream_prompt(
-    #     self, model: 'AIModel', append: bool=True, **kwarg_override
-    # ) -> typing.Iterator[typing.Tuple['AIResponse', 'AIResponse']]:
-    #     """Prompt the AI
-
-    #     Args:
-    #         model (AIModel): The model to usee
-    #         append (bool, optional): Whether to append the output. Defaults to True.
-
-    #     Returns:
-    #         AIResponse: The response from the AI
-    #     """
-    #     for d, dx in model.stream(self, **kwarg_override):
-    #         yield d, dx
-
-    #     if append:
-    #         self.append(d.message)
-    #     return d
-
     def add(self, message: Message, ind: typing.Optional[int]=None, replace: bool=False):
         """Add a message to the dialog
 
@@ -815,16 +676,6 @@ class Dialog(pydantic.BaseModel, Renderable):
             self.messages[ind] = message
         else:
             self.messages.insert(ind, message)
-        
-    def clone(self) -> 'Dialog':
-        """Clones the dialog
-
-        Returns:
-            Dialog: A dialog cloned with shallow copying of the messages
-        """
-        return Dialog(
-            messages=[message.clone() for message in self.messages]
-        )
 
     def extend(self, dialog: typing.Union['Dialog', typing.List[Message]]):
         """Extend the dialog with another dialog or a list of messages
@@ -837,11 +688,11 @@ class Dialog(pydantic.BaseModel, Renderable):
         
         self.messages.extend(dialog)
 
-    def message(self, source: str, text: typing.Optional[str]=None, _ind: typing.Optional[int]=None, _replace: bool=False, **kwargs):
+    def message(self, role: str, text: typing.Optional[str]=None, _ind: typing.Optional[int]=None, _replace: bool=False, **kwargs):
         """Add a message to the 
 
         Args:
-            source (str): the source of the message
+            role (str): the role of the message
             text (typing.Optional[str], optional): The text message. Defaults to None.
             _ind (typing.Optional[int], optional): The index to set at. Defaults to None.
             _replace (bool, optional): Whether to replace the the text at the index. Defaults to False.
@@ -850,7 +701,7 @@ class Dialog(pydantic.BaseModel, Renderable):
             ValueError: If no message was passed in
         """
         if len(kwargs) == 0 and text is not None:
-            message = TextMessage(source, text)
+            message = TextMessage(role, text)
         elif text is not None:
             message = Message(text=text, **kwargs)
         elif text is None:
@@ -880,7 +731,10 @@ class Dialog(pydantic.BaseModel, Renderable):
         """
         self.message('assistant', text, _ind, _replace, **kwargs)
 
-    def system(self, text: str=None, _ind=None, _replace: bool=False, **kwargs):
+    def system(
+        self, text: str=None, _ind=None, 
+        _replace: bool=False, **kwargs
+    ):
         """Add a system message
 
         Args:
@@ -903,24 +757,24 @@ class Dialog(pydantic.BaseModel, Renderable):
                     return r.reader
         return NullRead(name='')
     
-    def exclude(self, *source: str) -> 'Dialog':
+    def exclude(self, *role: str) -> 'Dialog':
 
-        exclude = set(source)
+        exclude = set(role)
         return Dialog(
             messages=[message for message in self.messages
-            if message.source not in exclude]
+            if message.role not in exclude]
         )
     
-    def include(self, *source: str) -> 'Dialog':
-        include = set(source)
+    def include(self, *role: str) -> 'Dialog':
+        include = set(role)
         return Dialog(
             messages=[message for message in self.messages
-            if message.source in include]
+            if message.role in include]
         )
 
     def render(self) -> str:
         """Render the dialog as a series of turns 
-        <source>: <text>
+        <role>: <text>
 
         Returns:
             str: The dialog
@@ -944,3 +798,37 @@ class Dialog(pydantic.BaseModel, Renderable):
             int: the number of turns in the dialog
         """
         return len(self.messages)
+        
+    # def clone(self) -> 'Dialog':
+    #     """Clones the dialog
+
+    #     Returns:
+    #         Dialog: A dialog cloned with shallow copying of the messages
+    #     """
+    #     return Dialog(
+    #         messages=[message.clone() for message in self.messages]
+    #     )
+
+
+# Use this later
+
+# def embedding_df(messages: typing.List[EmbeddingMessage]) -> pd.DataFrame:
+#     """Create a dataframe from embedding messages
+
+#     Args:
+#         messages (typing.List[EmbeddingMessage]): The messages to create from
+
+#     Returns:
+#         pd.DataFrame: The dataframe
+#     """
+    
+#     rows = [
+#         {
+#             "embedding": row.data['embedding'], 
+#             "source": row.source, 
+#             "data": row["source_data"]
+#             **row.data["meta"]
+#         } for row in messages
+#     ]
+#     return pd.DataFrame(rows)
+

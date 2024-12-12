@@ -36,7 +36,7 @@ class AnthropicModel(AIModel):
     def convert(self, message: Message) -> Dict:
         """Convert a Message to the format needed for Anthropic's Messages API"""
         return {
-            "role": message.source,
+            "role": message.role,
             "content": message.text
         }
 
@@ -58,7 +58,7 @@ class AnthropicModel(AIModel):
             **kwargs
         )
         response_message = TextMessage(
-            source="assistant", text=response['completion']
+            source="assistant", content=response['completion']
         )
         return AIResponse(message=response_message, source=response)
 
@@ -82,7 +82,7 @@ class AnthropicModel(AIModel):
         )
         for chunk in response_generator:
             response_message = TextMessage(
-                source="assistant", text=chunk['completion']
+                source="assistant", content=chunk['completion']
             )
             yield AIResponse(message=response_message, source=chunk)
 
@@ -102,7 +102,7 @@ class AnthropicModel(AIModel):
             messages=messages,
             **kwargs
         )
-        response_message = TextMessage(source="assistant", text=response['completion'])
+        response_message = TextMessage(source="assistant", content=response['completion'])
         return AIResponse(message=response_message, source=response)
 
     async def astream(
@@ -122,7 +122,7 @@ class AnthropicModel(AIModel):
             stream=True,
             **kwargs
         ):
-            response_message = TextMessage(source="assistant", text=chunk['completion'])
+            response_message = TextMessage(source="assistant", content=chunk['completion'])
             yield AIResponse(message=response_message, source=chunk)
 
 

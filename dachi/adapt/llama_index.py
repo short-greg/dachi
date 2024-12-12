@@ -28,7 +28,7 @@ class LlamaIndexAIModel(AIModel):
         Returns:
             Dict: The format required by LLMChatComponent.
         """
-        return {"content": message["text"], "role": message.source}
+        return {"content": message["text"], "role": message.role}
 
     def forward(self, prompt: AIPrompt, **kwarg_override) -> AIResponse:
         """
@@ -48,7 +48,7 @@ class LlamaIndexAIModel(AIModel):
         text = response["content"]
 
         return AIResponse(
-            message=TextMessage(role="assistant", text=text),
+            message=TextMessage(role="assistant", content=text),
             raw_response=response,
             processed_output=prompt.reader().read(text),
         )
@@ -75,12 +75,12 @@ class LlamaIndexAIModel(AIModel):
 
             yield (
                 AIResponse(
-                    message=TextMessage(role="assistant", text=cur_message),
+                    message=TextMessage(role="assistant", content=cur_message),
                     raw_response=chunk,
                     processed_output=reader.read(cur_message),
                 ),
                 AIResponse(
-                    message=TextMessage(role="assistant", text=delta),
+                    message=TextMessage(role="assistant", content=delta),
                     raw_response=chunk,
                     processed_output=reader.read(delta),
                 ),
@@ -104,7 +104,7 @@ class LlamaIndexAIModel(AIModel):
         text = response["content"]
 
         return AIResponse(
-            message=TextMessage(role="assistant", text=text),
+            message=TextMessage(role="assistant", content=text),
             raw_response=response,
             processed_output=prompt.reader().read(text),
         )
@@ -131,12 +131,12 @@ class LlamaIndexAIModel(AIModel):
 
             yield (
                 AIResponse(
-                    message=TextMessage(role="assistant", text=cur_message),
+                    message=TextMessage(role="assistant", content=cur_message),
                     raw_response=chunk,
                     processed_output=reader.read(cur_message),
                 ),
                 AIResponse(
-                    message=TextMessage(role="assistant", text=delta),
+                    message=TextMessage(role="assistant", content=delta),
                     raw_response=chunk,
                     processed_output=reader.read(delta),
                 ),

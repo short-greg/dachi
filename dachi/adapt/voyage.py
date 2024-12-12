@@ -59,7 +59,7 @@ class VoyageAIEmbeddingModel(AIModel):
 
         # Generate AIResponse objects
         return [
-            AIResponse(message=TextMessage(source="embedding_result", text=text), source={"embedding": embedding})
+            AIResponse(message=TextMessage(source="embedding_result", content=text), source={"embedding": embedding})
             for text, embedding in zip(texts_to_embed, response.embeddings)
         ]
 
