@@ -4,11 +4,12 @@ import openai
 import typing
 from typing import Dict, List
 
-from .._core import Message, AIPrompt
-from .._core import AIModel, AIResponse, Cue, TextMessage, render
+# from .._core import Message, AIPrompt
+# from .._core import AIModel, AIResponse, Cue, TextMessage, render
+from .._core import Message, Dialog, Cue
+from ..ai import LLModel
 
 from typing import Dict, List
-
 
 # TODO: add utility for this
 required = {'openai'}
@@ -21,10 +22,9 @@ if len(missing) > 0:
     raise RuntimeError(f'To use this module openai must be installed.')
 
 
-class OpenAIChatModel(AIModel):
+class OpenAIChatModel(LLModel):
     """A model that uses OpenAI's Chat API
     """
-
     def __init__(self, model: str, client_kwargs: typing.Dict=None, **kwargs) -> None:
         """Create an OpenAIChat model
 
@@ -36,24 +36,23 @@ class OpenAIChatModel(AIModel):
         self.model = model
         self.kwargs = kwargs
 
-    def convert(self, message: Message) -> typing.Dict:
-        """Convert the messages to a format to use for the OpenAI API
+    def create_prompt(self, prompt: typing.Union[Message, Dialog], **kwarg_override):
 
-        Args:
-            messages (typing.List[Message]): The messages
-
-        Returns:
-            typing.List[typing.Dict]: The input to the API
-        """
-        text = message['text']
-        if isinstance(text, Cue):
-            text = text.render()
-        return {
-            'role': message.role,
-            'content': text
+        tools = self.get_tools(prompt)
+        messages = self.get_messages(prompt)
+        
+        kwargs = {
+            **self.kwargs,
+            **kwarg_override
         }
 
-    def forward(self, prompt: AIPrompt, **kwarg_override) -> AIResponse:
+        # add tools
+        if tools is not None:
+            pass
+
+        return 
+
+    def forward(self, prompt: typing.Union[Message, Dialog], **kwarg_override) -> Message:
         """Execute the model
 
         Args:
@@ -62,10 +61,11 @@ class OpenAIChatModel(AIModel):
         Returns:
             AIResponse: the response from the model
         """
-        kwargs = {
-            **self.kwargs,
-            **kwarg_override
-        }
+        # Need to extract the tools
+
+
+        prompt = self.create_prompt(prompt)
+
         client = openai.OpenAI(**self.client_kwargs)
 
         response = client.chat.completions.create(
@@ -349,3 +349,45 @@ class OpenAIEmbeddingModel(AIModel):
     async def aforward(self, prompt: AIPrompt, **kwarg_override) -> List[AIResponse]:
         """Run an asynchronous query to the OpenAI Embedding API"""
         return self.forward(prompt, **kwarg_override)  # Use sync forward for simplicity
+
+
+    # def convert(self, message: Message) -> typing.Dict:
+    #     """Convert the messages to a format to use for the OpenAI API
+
+    #     Args:
+    #         messages (typing.List[Message]): The messages
+
+    #     Returns:
+    #         typing.List[typing.Dict]: The input to the API
+    #     """
+    #     text = message['text']
+    #     if isinstance(text, Cue):
+    #         text = text.render()
+    #     return {
+    #         'role': message.role,
+    #         'content': text
+    #     }
+
+    # def system(self, text: typing.Union[Cue, str]) -> Message:
+    #     if isinstance(text, Cue):
+    #         return LLMSystemMessage(
+    #             cue=cue 
+    #         )
+    #     return LLMSystemMessage(
+    #         text=text
+    #     )
+    
+    # def user(self, text: str) -> Message:
+    #     return LLMUserMessage(
+    #         text=text, 
+    #     )
+
+    # def tool(self) -> Message:
+    #     return LLMToolMessage(
+            
+    #     )
+
+    # def assistant(self) -> Message:
+    #     return LLMAssistantMessage(
+            
+    #     )

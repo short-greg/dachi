@@ -21,29 +21,19 @@ import pandas as pd
 import numpy as np
 
 
-# Add in delta to the message
+from pydantic import BaseModel, Field
+from typing import Dict, Any
 
-class Message(pydantic.Model, Renderable):
-    """A prompt that consists of a single message to send the AI
-    """
 
-    role: str # The source of the messsage (user, assistant etc)
-    data: typing.Dict[str, typing.Any] # The contents of the message
-    delta: typing.Dict[str, typing.Any] = None # the delta of the data if used for the model
+class Delta(pydantic.BaseModel):
 
-    def __init__(
-        self, source: str, delta: typing.Dict=None, **data
-    ):
-        """Create a message
+    data: typing.Dict[str, typing.Any]
 
-        Args:
-            source (str): The source of the message
-            delta (typing.Dict, optional): The delta of the data - use when streaming. Defaults to None.
-        """
+    def __init__(self, **data):
 
-        super().__init__(source=source, data=data, delta=delta)
+        super().__init__(data=data)
 
-    def __getitem__(self, key: str) -> typing.Any:
+    def __getattr__(self, key: str) -> typing.Any:
         """Get an item from the message
 
         Args:
@@ -52,13 +42,13 @@ class Message(pydantic.Model, Renderable):
         Raises:
             KeyError: If key is not valid
         """
-        if hasattr(self, key):
-            return getattr(self, key)
         if key in self.data:
             return self.data[key]
         raise KeyError(f'{key} is not a member of {type(self)}')
 
-    def __setitem__(self, key: str, value: typing.Any) -> typing.Any:
+    def __setattr__(
+        self, key: str, value: typing.Any
+    ) -> typing.Any:
         """Set an item in the message
 
         Args:
@@ -68,280 +58,49 @@ class Message(pydantic.Model, Renderable):
         Raises:
             KeyError: An error
         """
-        if hasattr(self, key):
-            setattr(self, key, value)
         self.data[key] = value
         return value
 
-    # def clone(self) -> typing.Self:
-    #     """Do a shallow copy of the message
 
-    #     Returns:
-    #         Message: The cloned message
-    #     """
-    #     return self.__class__(
-    #         role=self.role,
-    #         data=self.data,
-    #         delta=self.delta
-    #     )
+class FileBase(pydantic.BaseModel):
+
+    type_: str
+    description: str
+
+
+class ChatMessage(pydantic.BaseModel, ABC):
     
-    def render(self) -> str:
-        """Render the message
-
-        Returns:
-            str: Return the message and the role
-        """
-        return f'{self.role}: {render(self.data)}'
+    alias: typing.Optional[str] = None
+    role: str
+    text: typing.Optional[str] = None
+    files: typing.Optional[FileBase]=None,
 
 
-class MessageConverter(ABC):
-    """Use the message converter to convert between
-    the message and what is used in the API
-    """
+class ByteFile(FileBase):
 
-    @abstractmethod
-    def to_message(self, response: typing.Dict) -> Message:
-        """Convert from an AI response to a message
-
-        Args:
-            response (typing.Dict): The response to convert
-
-        Returns:
-            Message: the message from the API
-        """
-        pass
-
-    @abstractmethod
-    def from_message(self, message: Message) -> typing.Dict:
-        """_summary_
-
-        Args:
-            message (Message): 
-
-        Returns:
-            typing.Dict: _description_
-        """
-        pass
-
-
-class EmbeddingMessage(Message):
-    """A message that contains text. Typically used for LLMs
-    """
-
-    def __init__(
-        self, role: str, embedding: np.array, 
-        source: typing.Any
-    ):
-        """Create an embeddign message 
-
-        Args:
-            role (str): the role of the message
-            embedding (typing.Union[str, Cue]): the content of the message
-            source_data (typing.Any)
-
-        """
-        super().__init__(
-            role=role,
-            data={
-                'embedding': embedding,
-                'source': source
-            }
-        )
-
-    def render(self) -> str:
-        """Render the text message
-
-        Returns:
-            str: Return the message and the text for the message
-        """
-        
-        data = self.source
-        return f'{self.role}: {render(data)}'
-
-    # def clone(self) -> typing.Self:
-    #     """Do a shallow copy of the message
-
-    #     Returns:
-    #         Message: The cloned message
-    #     """
-    #     return self.__class__(
-    #         role=self.role,
-    #         embedding=self.embedding,
-    #         source=self.source
-    #     )
-
-    @property
-    def text(self) -> str:
-        """Get the text for the message
-
-        Returns:
-            str: The text for the message
-        """
-        return self.data['source']
-
-
-class TextMessage(Message):
-    """A message that contains text. Typically used for LLMs
-    """
-
-    def __init__(self, source: str, content: str):
-        """Create a text message with a source
-
-        Args:
-            source (str): the source of the message
-            content (typing.Union[str, Cue]): the content of the message
-
-        """
-        super().__init__(
-            source=source,
-            data={
-                'content': content
-            }
-        )
+    bytes: str
     
-    def render(self) -> str:
-        """Render the text message
 
-        Returns:
-            str: Return the message and the text for the message
-        """
-        text = self.data['content']
-        return f'{self.role}: {text}'
+class URLFile(FileBase):
 
-    # def clone(self) -> typing.Self:
-    #     """Do a shallow copy of the message
+    url: str
+    
 
-    #     Returns:
-    #         Message: The cloned message
-    #     """
-    #     return self.__class__(
-    #         source=self.role,
-    #         content=self.data['content']
-    #     )
-
-    @property
-    def text(self) -> str:
-        """Get the text for the message
-
-        Returns:
-            str: The text for the message
-        """
-        return self.content
+class Schema(pydantic.BaseModel):
+    
+    @abstractmethod
+    def to_str(self) -> str:
+        raise NotImplementedError
 
 
-class CueMessage(Message):
-    """A message that contains text. Typically used for LLMs
-    """
+class JSONSchema(Schema):
+    """A general-purpose class to store and represent JSON Schemas."""
+    schema_cls: typing.Type[pydantic.BaseModel] = Field(..., description="The Pydantic model class for this schema")
 
-    def __init__(self, source: str, cue: Cue):
-        """Create a text message with a source
+    def to_dict(self) -> typing.Dict:
+        """Convert the schema to a JSON string."""
+        return self.schema_cls.model_json_schema()
 
-        Args:
-            source (str): the source of the message
-            cue (Cue): the cue specified by the message
-
-        """
-        super().__init__(
-            source=source,
-            data={
-                'cue': cue
-            }
-        )
-        
-    def reader(self) -> 'Reader':
-        """The reader to use
-
-        Returns:
-            Reader: The reader used by message
-        """
-        return self.cue.out
-
-    def render(self) -> str:
-        """Render the text message
-
-        Returns:
-            str: Return the message and the text for the message
-        """
-        text = self.cue.text
-        return f'{self.role}: {
-            text.render()
-        }'
-
-    # def clone(self) -> typing.Self:
-    #     """Do a shallow copy of the message
-
-    #     Returns:
-    #         Message: The cloned message
-    #     """
-    #     return self.__class__(
-    #         source=self.role,
-    #         cue=self.cue
-    #     )
-
-    @property
-    def text(self) -> str:
-        """Get the text for the message
-
-        Returns:
-            str: The text for the message
-        """
-        return self.cue.text
-
-
-class ObjMessage(Message):
-    """A message that contains text. Typically used for LLMs
-    """
-
-    def __init__(self, role: str, obj: typing.Any, source: str):
-        """Create a text message with a source
-
-        Args:
-            role (str): the role of the message
-            obj : The data in the message after processing
-            source (str): the source of the message
-
-        """
-        super().__init__(
-            source=role,
-            data={
-                'obj': obj,
-                'source': source
-            }
-        )
-
-    def render(self) -> str:
-        """Render the text message
-
-        Returns:
-            str: Return the message and the text for the message
-        """
-        obj = self.obj
-        return f'{self.role}: {
-            render(obj) if is_renderable(obj) else self.source
-        }'
-
-    # def clone(self) -> typing.Self:
-    #     """Do a shallow copy of the message
-
-    #     Returns:
-    #         Message: The cloned message
-    #     """
-    #     return self.__class__(
-    #         role=self.role,
-    #         obj=self.obj,
-    #         source=self.source
-    #     )
-
-    @property
-    def text(self) -> str:
-        """Get the text for the message
-
-        Returns:
-            str: The text for the message
-        """
-        return self.source
-
-import copy
 
 class ToolParam(BaseModel, Renderable):
     name: str
@@ -358,9 +117,6 @@ class ToolParam(BaseModel, Renderable):
 
     def render(self) -> str:
         return render(self)
-    
-    # def clone(self) -> 'ToolParam':
-    #     pass
 
 
 class ToolObjParam(ToolParam):
@@ -370,8 +126,7 @@ class ToolObjParam(ToolParam):
 class ToolArrayParam(ToolParam):
     items: typing.List[ToolParam]
 
-    def __init__(self, name: str, items: typing.List[ToolParam], descr: str='', 
-            **kwargs):
+    def __init__(self, name: str, items: typing.List[ToolParam], descr: str='', **kwargs):
         """Create an array of tools
 
         Args:
@@ -384,183 +139,104 @@ class ToolArrayParam(ToolParam):
         )
 
 
-class FunctionMessage(Message):
-    """A message that contains text. Typically used for LLMs
-    """
+class Tool(pydantic.BaseModel):
+    
+    type_: str
 
-    def __init__(self, source: str, name: str, content: typing.Any):
-        """Create a text message with a source
 
-        Args:
-            source (str): the source of the message
-            text (typing.Union[str, Cue]): the content of the message
-
-        """
-        super().__init__(
-            source=source,
-            data={
-                'name': name,
-                'content': content
-            }
-        )
-
-    def render(self) -> str:
-        """Render the text message
-
-        Returns:
-            str: Return the message and the text for the message
-        """
-        return f'{self.role}: [{self.name}] => {str(self.content)}'
-
-    @property
-    def text(self) -> str:
-        """Get the text for the message
-
-        Returns:
-            str: The text for the message
-        """
-        return f"{self.name} => {self.content}"
-
-    # def clone(self) -> typing.Self:
-    #     """Do a shallow copy of the message
-
-    #     Returns:
-    #         Message: The cloned message
-    #     """
-    #     return self.__class__(
-    #         source=self.role,
-    #         text=self.data['text']
-    #     )
-
-class ToolOptionMessage(object):
+class FunctionTool(Tool):
+    
+    name: str
+    params: typing.Optional[typing.List[ToolParam]]
+    descr: typing.Optional[str] = None
 
     def __init__(
-        self, name: str, type_: str, param: ToolParam, descr: str=None, required: typing.List[str]=None, strict: bool=True
+        self, name: str, params: typing.List[ToolParam], descr: str=None
     ):
-        """Create a text message with a source
-
-        Args:
-            role (str): the source of the message
-            text (typing.Union[str, Cue]): the content of the message
-
-        """
         super().__init__(
-            role='tool',
-            data={
-                'name': name,
-                'type_': type_,
-                'param': param,
-                'descr': descr,
-                'required': required,
-                'strict': strict
-            }
+            type_='function', name=name, params=params, descr=descr
         )
-    
-    def render(self) -> str:
-        """Render the text message
-
-        Returns:
-            str: Return the message and the text for the message
-        """
-
-        d = self.data
-        d['param'] = d['param'].to_dict()
-
-        obj = self.object
-        return f'{self.source}: {
-            obj.render() if is_renderable(obj) else self.text_source
-        }'
-
-    # def clone(self) -> typing.Self:
-    #     """Do a shallow copy of the message
-
-    #     Returns:
-    #         Message: The cloned message
-    #     """
-    #     return self.__class__(
-    #         role=self.role,
-    #         name=self.name,
-    #         param=self.param.clone(),
-    #         descr=self.descr,
-    #         required=[*self.required],
-    #         strict=self.strict
-
-    #     )
-
-    @property
-    def text(self) -> str:
-        """Get the text for the message
-
-        Returns:
-            str: The text for the message
-        """
-        return self.data.text_source
 
 
-class FunctionCall(pydantic.BaseModel):
+class SystemMessage(ChatMessage):
+
+    cue: typing.Optional[Cue] = None
+    schema: typing.Optional[Schema] = None
+    tools: typing.Optional[typing.List[Tool]] = None
+
+    def __init__(
+        self,  instruction: typing.Union[Cue, str],
+        files: typing.Optional[FileBase]=None,
+        schema: typing.Optional[Schema]=None,
+        tools: typing.Optional[typing.List[Tool]]=None,
+        alias: str=None
+    ):
+        if isinstance(instruction, Cue):
+            cue = instruction
+            text = None
+        else:
+            cue = None
+            text = instruction
+        super().__init__(
+            alias=alias, role='system', 
+            text=text, cue=cue, tools=tools, files=files,
+            schema=schema
+        )
+
+
+class AssistantMessage(ChatMessage):
+
+    response: typing.Optional[typing.Any] = None
+    delta: typing.Optional[Delta] = None
+    parsed: typing.Optional[typing.Any] = None
+
+    def __init__(
+        self,  text: str,
+        files: typing.Optional[FileBase]=None,
+        response: typing.Optional[typing.Any]=None,
+        delta: Delta=None, alias: str=None, parsed: typing.Optional[typing.Any]=None
+    ):
+        super().__init__(
+            alias=alias, role='assistant', text=text,
+            response=response, files=files, delta=delta,
+            parsed=parsed
+
+        )
+
+
+class ToolMessage(ChatMessage):
 
     name: str
-    arguments: typing.Dict
+    return_value: str
 
-
-class ToolMessage(Message):
-    """A message that contains a function call
-    """
-
-    def __init__(self, function_call: FunctionCall, text: str=''):
-        """Create a text message with a role
-
-        Args:
-            role (str): the role of the message
-            text (typing.Union[str, Cue]): the content of the message
-
-        """
+    def __init__(
+        self, 
+        return_value: str,
+        alias: str=None,
+        files: typing.Optional[FileBase]=None,
+    ):
         super().__init__(
-            role='assistant',
-            data={
-                'function_call': function_call,
-                'text': text
-            }
+            alias, role='tool', text=return_value,
+            files=files
         )
 
-    def render(self) -> str:
-        """Render the text message
 
-        Returns:
-            str: Return the message and the text for the message
-        """
-        pass
-        # d = self.data
-        # d['param'] = d['param'].to_dict()
+class UserMessage(ChatMessage):
 
-        # obj = self.object
-        # return f'{self.role}: {
-        #     obj.render() if is_renderable(obj) else self.text_source
-        # }'
-
-    def clone(self) -> typing.Self:
-        """Do a shallow copy of the message
-
-        Returns:
-            Message: The cloned message
-        """
-        pass
-
-    @property
-    def text(self) -> str:
-        """Get the text for the message
-
-        Returns:
-            str: The text for the message
-        """
-        pass
+    def __init__(
+        self, text: str=None, alias: typing.Optional[str]=None,
+        files: typing.Optional[str]=None
+    ):
+        super().__init__(
+            role='user', text=text, alias=alias, files=files
+        )
 
 
 class Dialog(pydantic.BaseModel, Renderable):
     """A Dialog stores the interactions between the system/user and the assistant
     (i.e. the prompts and the responses)
     """
-    messages: typing.List[Message] = pydantic.Field(default_factory=list)
+    messages: typing.List[ChatMessage] = pydantic.Field(default_factory=list)
 
     def __init__(self, messages=None):
         """Create a dialog
@@ -570,7 +246,7 @@ class Dialog(pydantic.BaseModel, Renderable):
         """
         super().__init__(messages=messages or [])
 
-    def __iter__(self) -> typing.Iterator[Message]:
+    def __iter__(self) -> typing.Iterator[ChatMessage]:
         """Iterate over each message in the dialog
 
         Yields:
@@ -592,7 +268,7 @@ class Dialog(pydantic.BaseModel, Renderable):
             self.messages + other.messages
         )
 
-    def __getitem__(self, idx) -> Message:
+    def __getitem__(self, idx) -> ChatMessage:
         """Retrieve a value from the dialog
 
         Args:
@@ -616,12 +292,12 @@ class Dialog(pydantic.BaseModel, Renderable):
         self.messages[idx] = message
         return self
 
-    def insert(self, index: int, message: Message):
+    def insert(self, index: int, message: ChatMessage):
         """Insert a value into the dialog
 
         Args:
             index (int): The index to insert at
-            message (Message): The message to insert
+            message (ChatMessage): The message to insert
         """
         self.messages.insert(index, message)
 
@@ -633,15 +309,15 @@ class Dialog(pydantic.BaseModel, Renderable):
         """
         self.messages.pop(index)
 
-    def remove(self, message: Message):
+    def remove(self, message: ChatMessage):
         """Remove a message from the dialog
 
         Args:
-            message (Message): The message to remove
+            message (ChatMessage): The message to remove
         """
         self.messages.remove(message)
 
-    def append(self, message: Message):
+    def append(self, message: ChatMessage):
         """Append a message to the end of the dialog
 
         Args:
@@ -649,7 +325,7 @@ class Dialog(pydantic.BaseModel, Renderable):
         """
         self.messages.append(message)
 
-    def add(self, message: Message, ind: typing.Optional[int]=None, replace: bool=False):
+    def add(self, message: ChatMessage, ind: typing.Optional[int]=None, replace: bool=False):
         """Add a message to the dialog
 
         Args:
@@ -677,7 +353,7 @@ class Dialog(pydantic.BaseModel, Renderable):
         else:
             self.messages.insert(ind, message)
 
-    def extend(self, dialog: typing.Union['Dialog', typing.List[Message]]):
+    def extend(self, dialog: typing.Union['Dialog', typing.List[ChatMessage]]):
         """Extend the dialog with another dialog or a list of messages
 
         Args:
@@ -687,62 +363,6 @@ class Dialog(pydantic.BaseModel, Renderable):
             dialog = dialog.messages
         
         self.messages.extend(dialog)
-
-    def message(self, role: str, text: typing.Optional[str]=None, _ind: typing.Optional[int]=None, _replace: bool=False, **kwargs):
-        """Add a message to the 
-
-        Args:
-            role (str): the role of the message
-            text (typing.Optional[str], optional): The text message. Defaults to None.
-            _ind (typing.Optional[int], optional): The index to set at. Defaults to None.
-            _replace (bool, optional): Whether to replace the the text at the index. Defaults to False.
-
-        Raises:
-            ValueError: If no message was passed in
-        """
-        if len(kwargs) == 0 and text is not None:
-            message = TextMessage(role, text)
-        elif text is not None:
-            message = Message(text=text, **kwargs)
-        elif text is None:
-            message = Message(**kwargs)
-        else:
-            raise ValueError('No message has been passed. The text and kwargs are empty')
-
-        self.add(message, _ind, _replace)
-
-    def user(self, text: str=None, _ind: int=None, _replace: bool=False, **kwargs):
-        """Add a user message
-
-        Args:
-            text (str, optional): The text for the message. Defaults to None.
-            _ind (int, optional): The index to add to. Defaults to None.
-            _replace (bool, optional): Whether to replace at the index. Defaults to False.
-        """
-        self.message('user', text, _ind, _replace, **kwargs)
-
-    def assistant(self, text: str=None, _ind=None, _replace: bool=False, **kwargs):
-        """Add an assistant message
-
-        Args:
-            text (str, optional): The text for the message. Defaults to None.
-            _ind (int, optional): The index to add to. Defaults to None.
-            _replace (bool, optional): Whether to replace at the index. Defaults to False.
-        """
-        self.message('assistant', text, _ind, _replace, **kwargs)
-
-    def system(
-        self, text: str=None, _ind=None, 
-        _replace: bool=False, **kwargs
-    ):
-        """Add a system message
-
-        Args:
-            text (str, optional): The text for the message. Defaults to None.
-            _ind (int, optional): The index to add to. Defaults to None.
-            _replace (bool, optional): Whether to replace at the index. Defaults to False.
-        """
-        self.message('system', text, _ind, _replace, **kwargs)
 
     def reader(self) -> 'Reader':
         """Get the "Reader" for the dialog. By default will use the last one
@@ -756,21 +376,6 @@ class Dialog(pydantic.BaseModel, Renderable):
                 if r.reader is not None:
                     return r.reader
         return NullRead(name='')
-    
-    def exclude(self, *role: str) -> 'Dialog':
-
-        exclude = set(role)
-        return Dialog(
-            messages=[message for message in self.messages
-            if message.role not in exclude]
-        )
-    
-    def include(self, *role: str) -> 'Dialog':
-        include = set(role)
-        return Dialog(
-            messages=[message for message in self.messages
-            if message.role in include]
-        )
 
     def render(self) -> str:
         """Render the dialog as a series of turns 
@@ -799,15 +404,514 @@ class Dialog(pydantic.BaseModel, Renderable):
         """
         return len(self.messages)
         
-    # def clone(self) -> 'Dialog':
-    #     """Clones the dialog
+    def clone(self) -> 'Dialog':
+        """Clones the dialog
 
-    #     Returns:
-    #         Dialog: A dialog cloned with shallow copying of the messages
+        Returns:
+            Dialog: A dialog cloned with shallow copying of the messages
+        """
+        return Dialog(
+            messages=[message for message in self.messages]
+        )
+
+    @property
+    def cue(self) -> typing.Optional[Cue]:
+        """Get the final cue in the dialog
+
+        Returns:
+            Cue: The last cue in the dialog
+        """
+        cue = None
+        for message in self.messages:
+            if isinstance(message, SystemMessage):
+                if message.cue is not None:
+                    cue = message.cue
+        return cue
+
+        
+
+    # def message(self, role: str, text: typing.Optional[str]=None, _ind: typing.Optional[int]=None, _replace: bool=False, **kwargs):
+    #     """Add a message to the 
+
+    #     Args:
+    #         role (str): the role of the message
+    #         text (typing.Optional[str], optional): The text message. Defaults to None.
+    #         _ind (typing.Optional[int], optional): The index to set at. Defaults to None.
+    #         _replace (bool, optional): Whether to replace the the text at the index. Defaults to False.
+
+    #     Raises:
+    #         ValueError: If no message was passed in
     #     """
-    #     return Dialog(
-    #         messages=[message.clone() for message in self.messages]
-    #     )
+    #     if len(kwargs) == 0 and text is not None:
+    #         message = TextMessage(role, text)
+    #     elif text is not None:
+    #         message = Message(text=text, **kwargs)
+    #     elif text is None:
+    #         message = Message(**kwargs)
+    #     else:
+    #         raise ValueError('No message has been passed. The text and kwargs are empty')
+
+    #     self.add(message, _ind, _replace)
+
+    # def user(self, text: str=None, _ind: int=None, _replace: bool=False, **kwargs):
+    #     """Add a user message
+
+    #     Args:
+    #         text (str, optional): The text for the message. Defaults to None.
+    #         _ind (int, optional): The index to add to. Defaults to None.
+    #         _replace (bool, optional): Whether to replace at the index. Defaults to False.
+    #     """
+    #     self.message('user', text, _ind, _replace, **kwargs)
+
+    # def assistant(self, text: str=None, _ind=None, _replace: bool=False, **kwargs):
+    #     """Add an assistant message
+
+    #     Args:
+    #         text (str, optional): The text for the message. Defaults to None.
+    #         _ind (int, optional): The index to add to. Defaults to None.
+    #         _replace (bool, optional): Whether to replace at the index. Defaults to False.
+    #     """
+    #     self.message('assistant', text, _ind, _replace, **kwargs)
+
+    # def system(
+    #     self, text: str=None, _ind=None, 
+    #     _replace: bool=False, **kwargs
+    # ):
+    #     """Add a system message
+
+    #     Args:
+    #         text (str, optional): The text for the message. Defaults to None.
+    #         _ind (int, optional): The index to add to. Defaults to None.
+    #         _replace (bool, optional): Whether to replace at the index. Defaults to False.
+    #     """
+    #     self.message('system', text, _ind, _replace, **kwargs)
+
+# class ToolOption(pydantic.BaseModel):
+
+#     # type_ = function
+#     def __init__(
+#         self, tools: typing.List[Tool], delta: typing.Optional[Delta]=None
+        
+#         # name: str, type_: str, param: ToolParam, descr: str=None, required: typing.List[str]=None, strict: bool=True, delta: Delta=None
+#     ):
+#         """Create a text message with a role
+
+#         Args:
+#             role (str): the role of the message
+#             text (typing.Union[str, Cue]): the content of the message
+
+#         """
+#         super().__init__(
+#             tools=tools,
+#         )
+    
+#     def render(self) -> str:
+#         """Render the text message
+
+#         Returns:
+#             str: Return the message and the text for the message
+#         """
+#         text = 'Tool: [{}]'.format(
+#             ','.join(f'{tool.name}: {tool.type_}' for tool in self.tools
+#         ))
+#         return text
+
+#     @property
+#     def text(self) -> str:
+#         """Get the text for the message
+
+#         Returns:
+#             str: The text for the message
+#         """
+#         text = '[{}]'.format(
+#             ','.join(f'{tool.name}' for tool in self.tools
+#         ))
+#         return text
+
+
+# class MessageConverter(ABC):
+#     """Use the message converter to convert between
+#     the message and what is used in the API
+#     """
+
+#     @abstractmethod
+#     def to_message(self, response: typing.Dict) -> Message:
+#         """Convert from an AI response to a message
+
+#         Args:
+#             response (typing.Dict): The response to convert
+
+#         Returns:
+#             Message: the message from the API
+#         """
+#         pass
+
+#     @abstractmethod
+#     def from_message(self, message: Message) -> typing.Dict:
+#         """_summary_
+
+#         Args:
+#             message (Message): 
+
+#         Returns:
+#             typing.Dict: _description_
+#         """
+#         pass
+
+
+# class EmbeddingMessage(Message):
+#     """A message that contains text. Typically used for LLMs
+#     """
+
+#     def __init__(
+#         self, role: str, embedding: np.array, 
+#         source: typing.Any
+#     ):
+#         """Create an embeddign message 
+
+#         Args:
+#             role (str): the role of the message
+#             embedding (typing.Union[str, Cue]): the content of the message
+#             source_data (typing.Any)
+
+#         """
+#         super().__init__(
+#             role=role,
+#             embedding=embedding,
+#             source=source
+#         )
+
+#     def render(self) -> str:
+#         """Render the text message
+
+#         Returns:
+#             str: Return the message and the text for the message
+#         """
+        
+#         data = self.source
+#         return f'{self.role}: {render(data)}'
+
+#     @property
+#     def text(self) -> str:
+#         """Get the text for the message
+
+#         Returns:
+#             str: The text for the message
+#         """
+#         return self.data['source']
+
+
+# class TextMessage(Message):
+#     """A message that contains text. Typically used for LLMs
+#     """
+
+#     def __init__(self, role: str, content: str, delta: Delta=None):
+#         """Create a text message with a source
+
+#         Args:
+#             source (str): the source of the message
+#             content (typing.Union[str, Cue]): the content of the message
+
+#         """
+#         super().__init__(
+#             role=role,
+#             content=content,
+#             delta=delta
+#         )
+    
+#     def render(self) -> str:
+#         """Render the text message
+
+#         Returns:
+#             str: Return the message and the text for the message
+#         """
+#         text = self.data['content']
+#         return f'{self.role}: {text}'
+
+#     @property
+#     def text(self) -> str:
+#         """Get the text for the message
+
+#         Returns:
+#             str: The text for the message
+#         """
+#         return self.content
+
+
+# class CueMessage(Message):
+#     """A message that contains text. Typically used for LLMs
+#     """
+
+#     def __init__(self, role: str, cue: Cue, delta: Delta=None):
+#         """Create a text message with a source
+
+#         Args:
+#             source (str): the source of the message
+#             cue (Cue): the cue specified by the message
+
+#         """
+#         super().__init__(
+#             role=role,
+#             cue=cue,
+#             delta=delta
+#         )
+        
+#     @property
+#     def reader(self) -> 'Reader':
+#         """The reader to use
+
+#         Returns:
+#             Reader: The reader used by message
+#         """
+#         return self.cue.out
+
+#     def render(self) -> str:
+#         """Render the text message
+
+#         Returns:
+#             str: Return the message and the text for the message
+#         """
+#         text = self.cue.text
+#         return f'{self.role}: {
+#             text.render()
+#         }'
+
+#     @property
+#     def text(self) -> str:
+#         """Get the text for the message
+
+#         Returns:
+#             str: The text for the message
+#         """
+#         return self.cue.text
+
+
+# class ObjMessage(Message):
+#     """A message that contains text. Typically used for LLMs
+#     """
+
+#     def __init__(self, role: str, obj: typing.Any, source: str, delta: Delta=None):
+#         """Create a text message with a source
+
+#         Args:
+#             role (str): the role of the message
+#             obj : The data in the message after processing
+#             source (str): the source of the message
+
+#         """
+#         super().__init__(
+#             role=role,
+#             obj=obj,
+#             source=source,
+#             delta=delta
+#         )
+
+#     def render(self) -> str:
+#         """Render the text message
+
+#         Returns:
+#             str: Return the message and the text for the message
+#         """
+#         obj = self.obj
+#         return f'{self.role}: {
+#             render(obj) if is_renderable(obj) else self.source
+#         }'
+
+#     @property
+#     def text(self) -> str:
+#         """Get the text for the message
+
+#         Returns:
+#             str: The text for the message
+#         """
+#         return self.source
+
+
+# class ToolParam(BaseModel, Renderable):
+#     name: str
+#     type_: str
+#     descr: str = ''
+#     required: typing.List[str] = Field(default_factory=list)
+#     enum: typing.Optional[typing.List[typing.Any]] = None
+#     minimum: typing.Optional[float] = None
+#     maximum: typing.Optional[float] = None
+#     minLength: typing.Optional[int] = None
+#     maxLength: typing.Optional[int] = None
+#     default: typing.Optional[typing.Any] = None
+#     format: typing.Optional[str] = None
+
+#     def render(self) -> str:
+#         return render(self)
+
+
+# class ToolObjParam(ToolParam):
+#     params: typing.List[ToolParam] = Field(default_factory=list)
+
+
+# class ToolArrayParam(ToolParam):
+#     items: typing.List[ToolParam]
+
+#     def __init__(self, name: str, items: typing.List[ToolParam], descr: str='', **kwargs):
+#         """Create an array of tools
+
+#         Args:
+#             name (str): The name of the array
+#             items (typing.List[ToolParam]): The items in the array
+#             descr (str, optional): The description. Defaults to ''.
+#         """
+#         super().__init__(
+#             name=name, type_="array", items=items, descr=descr, **kwargs
+#         )
+
+
+# class FunctionMessage(Message):
+#     """A message that contains text. Typically used for LLMs
+#     """
+
+#     def __init__(self, role: str, name: str, response: typing.Any, delta: Delta=None):
+#         """Create a text message with a role
+
+#         Args:
+#             role (str): the role of the message
+#             name (str): the name of the function
+#             response : The response from the function
+#             delta: any change in the function output
+
+#         """
+#         super().__init__(
+#             role=role,
+#             name=name,
+#             response=response,
+#             delta=delta
+#         )
+
+#     def render(self) -> str:
+#         """Render the text message
+
+#         Returns:
+#             str: Return the message and the text for the message
+#         """
+#         return f'{self.role}: [{self.name}] => {str(self.response)}'
+
+#     @property
+#     def text(self) -> str:
+#         """Get the text for the message
+
+#         Returns:
+#             str: The text for the message
+#         """
+#         return f"{self.name} => {self.response}"
+
+
+# class Tool(pydantic.BaseModel):
+    
+#     type_: str
+
+
+# class FunctionTool(Tool):
+    
+#     name: str
+#     params: typing.Optional[typing.List[ToolParam]]
+#     descr: typing.Optional[str] = None
+
+#     def __init__(
+#         self, name: str, params: typing.List[ToolParam], descr: str=None
+#     ):
+#         super().__init__(
+#             type_='function', name=name, params=params, descr=descr
+#         )
+
+
+# class ToolOptionMessage(Message):
+
+#     # type_ = function
+#     def __init__(
+#         self, tools: typing.List[Tool], delta: typing.Optional[Delta]=None
+        
+#         # name: str, type_: str, param: ToolParam, descr: str=None, required: typing.List[str]=None, strict: bool=True, delta: Delta=None
+#     ):
+#         """Create a text message with a role
+
+#         Args:
+#             role (str): the role of the message
+#             text (typing.Union[str, Cue]): the content of the message
+
+#         """
+#         super().__init__(
+#             role='system',
+#             tools=tools,
+#             delta=delta
+#         )
+    
+#     def render(self) -> str:
+#         """Render the text message
+
+#         Returns:
+#             str: Return the message and the text for the message
+#         """
+#         text = 'Tool: [{}]'.format(
+#             ','.join(f'{tool.name}: {tool.type_}' for tool in self.tools
+#         ))
+#         return text
+
+#     @property
+#     def text(self) -> str:
+#         """Get the text for the message
+
+#         Returns:
+#             str: The text for the message
+#         """
+#         text = '[{}]'.format(
+#             ','.join(f'{tool.name}' for tool in self.tools
+#         ))
+#         return text
+
+
+# class FunctionCall(pydantic.BaseModel):
+
+#     name: str
+#     arguments: typing.Dict
+
+
+# class ToolUseMessage(Message):
+#     """A message that contains a function call
+#     """
+
+#     def __init__(self, function_call: FunctionCall, content: str='', delta: Delta=None):
+#         """Create a text message with a role
+
+#         Args:
+#             role (str): the role of the message
+#             text (typing.Union[str, Cue]): the content of the message
+
+#         """
+#         super().__init__(
+#             role='assistant',
+#             function_call=function_call,
+#             content=content,
+#             delta=delta
+#         )
+
+#     def render(self) -> str:
+#         """Render the text message
+
+#         Returns:
+#             str: Return the message and the text for the message
+#         """
+#         return (
+#             f"{self.role}: {self.content}"
+#         )
+
+#     @property
+#     def text(self) -> str:
+#         """Get the text for the message
+
+#         Returns:
+#             str: The text for the message
+#         """
+#         return self.content
+
+
 
 
 # Use this later
@@ -832,3 +936,97 @@ class Dialog(pydantic.BaseModel, Renderable):
 #     ]
 #     return pd.DataFrame(rows)
 
+
+
+# Add in delta to the message
+
+# 
+# message(
+#     role='system',
+#     content=Text(...),
+#     cls=...,
+#     dx=None
+# )
+
+# by default it returns the 
+# dialog.... This seems easier
+# to use.. even if dialog is 
+
+# add a message
+# dialog.append(model.system())
+# dialog[0] = 
+# dialog.append(model.system(tools=...))
+# dialog.append(model.function(response, dialog=...))
+# model.assistant()
+# model.user()
+# message, dialog = model.forward(role, message, dialog)
+# message, 
+# for message, dialog in model.stream(message, dialog)
+# message.
+# if you don't pass a
+# message = model.prompt(
+#   text=...
+# )
+# message, dialog = model.prompt('Help me figure this out', dialog=dialog)
+# message.content.text
+# message.content.images
+# message.content.source ...
+
+# message, dialog = model.forward(...)
+# 
+
+
+
+# class Message(pydantic.BaseModel, Renderable):
+#     """A prompt that consists of a single message to send the AI
+#     """
+#     role: str # The source of the messsage (user, assistant etc)
+#     data: typing.Dict[str, typing.Any] # The contents of the message
+#     delta: typing.Optional[Delta] = None # the delta of the data if used for the model
+
+#     def __init__(
+#         self, role: str, delta: 'Message'=None, **data
+#     ):
+#         """Create a message
+
+#         Args:
+#             role (str): The rolee of the message
+#             delta (typing.Dict, optional): The delta of the data - use when streaming. Defaults to None.
+#         """
+#         super().__init__(role=role, data=data, delta=delta)
+
+#     def __getattr__(self, key: str) -> typing.Any:
+#         """Get an item from the message
+
+#         Args:
+#             key (str): The key to retrieve for
+
+#         Raises:
+#             KeyError: If key is not valid
+#         """
+#         if key in self.data:
+#             return self.data[key]
+#         raise KeyError(f'{key} is not a member of {type(self)}')
+
+#     def __setattr__(
+#         self, key: str, value: typing.Any
+#     ) -> typing.Any:
+#         """Set an item in the message
+
+#         Args:
+#             key (str): The key to set for
+#             value (typing.Any): The value to set
+
+#         Raises:
+#             KeyError: An error
+#         """
+#         self.data[key] = value
+#         return value
+
+#     def render(self) -> str:
+#         """Render the message
+
+#         Returns:
+#             str: Return the message and the role
+#         """
+#         return f'{self.role}: {render(self.data)}'

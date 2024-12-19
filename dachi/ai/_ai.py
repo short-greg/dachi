@@ -9,10 +9,9 @@ from .._core._core import (
 )
 from .._core import Message, Dialog
 
-
-
 PROMPT = typing.Union[Message, Dialog]
 MESSAGE = typing.Union[Message, typing.List[Message]]
+
 
 class EmbeddingModel(Module, ABC):
     """APIAdapter allows one to adapt various WebAPI or otehr
@@ -75,14 +74,7 @@ class EmbeddingModel(Module, ABC):
         """
         result = self.forward(message, **kwarg_override)
         yield result
-
-    # async def _collect_results(generator, index, results, queue):
-        
-    #     async for item in generator:
-    #         results[index] = item
-    #         await queue.put(results[:])  # Put a copy of the current results
-    #     results[index] = None  # Mark this generator as completed
-
+    
     def __call__(self, message: MESSAGE, **kwarg_override) -> Message:
         """Execute the AIModel
 
@@ -93,6 +85,49 @@ class EmbeddingModel(Module, ABC):
             AIResponse: Get the response from the AI
         """
         return self.forward(message, **kwarg_override)
+
+
+def exclude_role(messages: typing.Iterable[Message], *role: str) -> typing.List[Message]:
+
+    exclude = set(role)
+    return [message for message in messages
+        if message.role not in exclude]
+
+
+def include_role(messages: typing.Iterable[Message], *role: str) -> typing.List[Message]:
+    include = set(role)
+    return [message for message in messages
+        if message.role in include]
+
+
+def exclude_type(messages: typing.Iterable[Message], *type_: str) -> typing.List[Message]:
+
+    exclude = set(type_)
+    filtered = []
+    for message in messages:
+        exclude_cur = False
+        for i in exclude:
+            exclude_cur = exclude_cur or isinstance(
+                message, i
+            )
+        if exclude_cur:
+            filtered.append(message)
+    return filtered
+
+
+def include_type(messages: typing.Iterable[Message], *type_: str) -> typing.List[Message]:
+
+    exclude = set(type_)
+    filtered = []
+    for message in messages:
+        exclude_cur = False
+        for i in exclude:
+            exclude_cur = exclude_cur or isinstance(
+                message, i
+            )
+        if exclude_cur:
+            filtered.append(message)
+    return filtered
 
 
 class LLModel(Module, ABC):
@@ -174,6 +209,15 @@ class LLModel(Module, ABC):
             AIResponse: Get the response from the AI
         """
         return self.forward(prompt, **kwarg_override)
+
+
+    # async def _collect_results(generator, index, results, queue):
+        
+    #     async for item in generator:
+    #         results[index] = item
+    #         await queue.put(results[:])  # Put a copy of the current results
+    #     results[index] = None  # Mark this generator as completed
+
 
     # async def bulk_async_forward(
     #     self, prompt: typing.List[AIPrompt], **kwarg_override

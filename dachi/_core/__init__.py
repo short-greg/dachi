@@ -12,7 +12,7 @@ from ._read import (
 
 from ._messages import (
     Message, CueMessage, TextMessage, Dialog,
-    ToolArrayParam, ToolMessage, ToolObjParam,
+    ToolArrayParam, ToolUseMessage, ToolObjParam,
     ToolOptionMessage, ToolParam, ObjMessage,
     MessageConverter, EmbeddingMessage, FunctionMessage,
 )

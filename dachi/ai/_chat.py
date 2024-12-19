@@ -2,9 +2,7 @@ import typing
 
 from .. import _core as core
 
-
 # add in tools
-
 
 class Chat(core.Module):
 
@@ -44,9 +42,12 @@ class Chat(core.Module):
         cue: core.Cue = self.dialog.cue()
         self.dialog.append(response)
         return cue.read(response)
-    
-    def stream(self, text: str='', source: str='user', **data):
 
+    async def astream(self, text: str='', source: str='user', **data):
+        pass
+
+    def stream(self, text: str='', source: str='user', **data):
+        pass
         # prepare the ToolOption message (?) # says what tools
         #  are available
         # prepare the other mesages
@@ -95,6 +96,3 @@ class Chat(core.Module):
         # self.dialog.append(response)
         # return cue.read(response)
     
-    async def astream(self, text: str='', source: str='user', **data):
-        pass
-

@@ -90,7 +90,7 @@ class TemplateField(Renderable):
 
 
 def model_template(model_cls: typing.Type[pydantic.BaseModel]) -> str:
-    """Get the template for a pydantic.Model
+    """Get the template for a pydantic.BaseModel
 
     Args:
         model_cls (typing.Type[pydantic.BaseModel]): The model to retrieve for
