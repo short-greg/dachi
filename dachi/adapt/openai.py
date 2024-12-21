@@ -6,8 +6,10 @@ from typing import Dict, List
 
 # from .._core import Message, AIPrompt
 # from .._core import AIModel, AIResponse, Cue, TextMessage, render
-from .._core import Message, Dialog, Cue
-from ..ai import LLModel
+from .._core import Module, AssistantMsg,
+from ..utils import UNDEFINED
+from ..ai import LLM, LLM_PROMPT, LLM_RESPONSE
+from abc import abstractmethod, ABC
 
 from typing import Dict, List
 
@@ -22,9 +24,11 @@ if len(missing) > 0:
     raise RuntimeError(f'To use this module openai must be installed.')
 
 
-class OpenAIChatModel(LLModel):
-    """A model that uses OpenAI's Chat API
+class OpenAILLM(Module):
+    """APIAdapter allows one to adapt various WebAPI or otehr
+    API for a consistent interface
     """
+
     def __init__(self, model: str, client_kwargs: typing.Dict=None, **kwargs) -> None:
         """Create an OpenAIChat model
 
@@ -36,23 +40,7 @@ class OpenAIChatModel(LLModel):
         self.model = model
         self.kwargs = kwargs
 
-    def create_prompt(self, prompt: typing.Union[Message, Dialog], **kwarg_override):
-
-        tools = self.get_tools(prompt)
-        messages = self.get_messages(prompt)
-        
-        kwargs = {
-            **self.kwargs,
-            **kwarg_override
-        }
-
-        # add tools
-        if tools is not None:
-            pass
-
-        return 
-
-    def forward(self, prompt: typing.Union[Message, Dialog], **kwarg_override) -> Message:
+    def forward(self, prompt: LLM_PROMPT, **kwarg_override) -> LLM_RESPONSE:
         """Execute the model
 
         Args:
@@ -62,33 +50,25 @@ class OpenAIChatModel(LLModel):
             AIResponse: the response from the model
         """
         # Need to extract the tools
-
-
         prompt = self.create_prompt(prompt)
+        kwargs = {**self.kwargs, **kwarg_override}
 
         client = openai.OpenAI(**self.client_kwargs)
-
         response = client.chat.completions.create(
             model=self.model,
-            messages=self.convert_messages(prompt.aslist()),
+            messages=...,
             **kwargs
         )
-        p = prompt.reader()
         text = response.choices[0].message.content
-        message = TextMessage('assistant', text)
-        
-        val = p.read(text)
-        
-        return AIResponse(
-            message,
-            response,
-            val
-        )
+        parsed = prompt.reader().read(text)
+
+        message = AssistantMsg(text=text, parsed=parsed)
+        return prompt.add(message)
 
     def stream(
-        self, prompt: AIPrompt, 
+        self, prompt: LLM_PROMPT, 
         **kwarg_override
-    ) -> typing.Iterator[typing.Tuple[AIResponse, AIResponse]]:
+    ) -> typing.Iterator[LLM_RESPONSE]:
         """Stream the model
 
         Args:
@@ -128,227 +108,377 @@ class OpenAIChatModel(LLModel):
             ), AIResponse(
                 dx, chunk, dx_val
             )
-    
+
+
     async def aforward(
-        self, prompt: AIPrompt, 
-        **kwarg_override
-    ) -> typing.Tuple[str, typing.Dict]:
-        """
+        self, prompt: LLM_PROMPT, **kwarg_override
+    ) -> LLM_RESPONSE:
+        """Run this query for asynchronous operations
+        The default behavior is simply to call the query
 
         Args:
-            prompt (AIPrompt): The 
+            data: Data to pass to the API
 
         Returns:
-            typing.Tuple[str, typing.Dict]: _description_
+            typing.Any: 
         """
-        client = openai.AsyncOpenAI(**self.client_kwargs)
+        return self.forward(prompt, **kwarg_override)
 
-        kwargs = {
-            **self.kwargs,
-            **kwarg_override
-        }
-        p = prompt.reader()
-
-        response = await client.chat.completions.create(
-            model=self.model,
-            messages=self.convert(prompt),
-            **kwargs
-        )
-        text = response.choices[0].message.content
-        return AIResponse(
-            TextMessage('assistant', text),
-            response,
-            p.read(text)
-        )
-
-    async def astream(self, prompt: AIPrompt, **kwarg_override) -> AsyncIterator[typing.Tuple[AIResponse, AIResponse]]:
-        """Stream the model asyncrhonously
+    async def astream(
+        self, prompt: LLM_PROMPT, **kwarg_override
+    ) -> typing.AsyncIterator[LLM_RESPONSE]:
+        """Run this query for asynchronous streaming operations
+        The default behavior is simply to call the query
 
         Args:
-            prompt (AIPrompt): The prompt for the model
+            prompt (AIPrompt): The data to pass to the API
 
         Yields:
-            Iterator[AsyncIterator[typing.Tuple[AIResponse, AIResponse]]]: The response from the model
+            typing.Dict: The data returned from the API
         """
+        result = self.forward(prompt, **kwarg_override)
+        yield result
 
-        kwargs = {
-            **self.kwargs,
-            **kwarg_override
-        }
-        client = openai.AsyncOpenAI(**self.client_kwargs)
-        query = await client.chat.completions.create(
-            model=self.model,
-            messages=self.convert(prompt.aslist()),
-            stream=True,
-            **kwargs
-        )
-        p = prompt.reader()
+    def __call__(self, prompt: LLM_PROMPT, **kwarg_override) -> LLM_RESPONSE:
+        """Execute the AIModel
 
-        cur_message = ''
-        async for chunk in query:
-            delta = chunk.choices[0].delta.content
-            if delta is None:
-                delta = ''
-            cur_message = cur_message + delta
+        Args:
+            prompt (AIPrompt): The prompt
 
-            yield AIResponse(
-                TextMessage('assistant', cur_message),
-                chunk,
-                p.stream_read(cur_message),
-            ), AIResponse(
-                TextMessage('assistant', delta),
-                chunk,
-                None
-            )
+        Returns:
+            AIResponse: Get the response from the AI
+        """
+        return self.forward(prompt, **kwarg_override)
 
 
-class OpenAIMessage(TextMessage):
-    """A text message made to work with OpenAI. Especially makes
-    using prompt more straightforward
-    """
+
+# class OpenAIChatModel(LLM):
+#     """A model that uses OpenAI's Chat API
+#     """
+#     def __init__(self, model: str, client_kwargs: typing.Dict=None, **kwargs) -> None:
+#         """Create an OpenAIChat model
+
+#         Args:
+#             model (str): The name of the model
+#         """
+#         super().__init__()
+#         self.client_kwargs = client_kwargs or {}
+#         self.model = model
+#         self.kwargs = kwargs
+
+#     def create_prompt(self, prompt: typing.Union[Message, Dialog], **kwarg_override):
+
+#         tools = self.get_tools(prompt)
+#         messages = self.get_messages(prompt)
+        
+#         kwargs = {
+#             **self.kwargs,
+#             **kwarg_override
+#         }
+
+#         # add tools
+#         if tools is not None:
+#             pass
+
+#         return 
+
+#     def forward(self, prompt: typing.Union[Message, Dialog], **kwarg_override) -> Message:
+#         """Execute the model
+
+#         Args:
+#             prompt (AIPrompt): The message to send the model
+
+#         Returns:
+#             AIResponse: the response from the model
+#         """
+#         # Need to extract the tools
+
+
+#         prompt = self.create_prompt(prompt)
+
+#         client = openai.OpenAI(**self.client_kwargs)
+
+#         response = client.chat.completions.create(
+#             model=self.model,
+#             messages=self.convert_messages(prompt.aslist()),
+#             **kwargs
+#         )
+#         p = prompt.reader()
+#         text = response.choices[0].message.content
+#         message = TextMessage('assistant', text)
+        
+#         val = p.read(text)
+        
+#         return AIResponse(
+#             message,
+#             response,
+#             val
+#         )
+
+#     def stream(
+#         self, prompt: AIPrompt, 
+#         **kwarg_override
+#     ) -> typing.Iterator[typing.Tuple[AIResponse, AIResponse]]:
+#         """Stream the model
+
+#         Args:
+#             prompt (AIPrompt): the model prmopt
+
+#         Yields:
+#             Iterator[typing.Iterator[typing.Tuple[AIResponse, AIResponse]]]: the responses from the model
+#         """
+#         kwargs = {
+#             **self.kwargs,
+#             **kwarg_override
+#         }
+        
+#         client = openai.OpenAI(**self.client_kwargs)
+#         query = client.chat.completions.create(
+#             model=self.model,
+#             messages=self.convert_messages(prompt.aslist()),
+#             stream=True,
+#             **kwargs
+#         )
+#         cur_message = ''
+#         p = prompt.reader()
+#         for chunk in query:
+#             delta = chunk.choices[0].delta.content
+
+#             if delta is None:
+#                 delta = ''
+            
+#             cur_message = cur_message + delta
+            
+#             message = TextMessage('assistant', cur_message)
+#             dx = TextMessage('assistant', delta)
+
+#             dx_val = p.read(delta)
+#             yield AIResponse(
+#                 message, chunk, p.read(cur_message)
+#             ), AIResponse(
+#                 dx, chunk, dx_val
+#             )
     
-    def prompt(self, model: typing.Union[AIModel, str], **kwarg_overrides) -> AIResponse:
-        """prompt the model
+#     async def aforward(
+#         self, prompt: AIPrompt, 
+#         **kwarg_override
+#     ) -> typing.Tuple[str, typing.Dict]:
+#         """
 
-        Args:
-            model (typing.Union[AIModel, str]): The model to execute
+#         Args:
+#             prompt (AIPrompt): The 
 
-        Returns:
-            AIResponse: The response from the model
-        """
-        if isinstance(model, str):
-            model = OpenAIChatModel(model, **kwarg_overrides)
+#         Returns:
+#             typing.Tuple[str, typing.Dict]: _description_
+#         """
+#         client = openai.AsyncOpenAI(**self.client_kwargs)
 
-        return super().prompt(model, **kwarg_overrides)
+#         kwargs = {
+#             **self.kwargs,
+#             **kwarg_override
+#         }
+#         p = prompt.reader()
+
+#         response = await client.chat.completions.create(
+#             model=self.model,
+#             messages=self.convert(prompt),
+#             **kwargs
+#         )
+#         text = response.choices[0].message.content
+#         return AIResponse(
+#             TextMessage('assistant', text),
+#             response,
+#             p.read(text)
+#         )
+
+#     async def astream(self, prompt: AIPrompt, **kwarg_override) -> AsyncIterator[typing.Tuple[AIResponse, AIResponse]]:
+#         """Stream the model asyncrhonously
+
+#         Args:
+#             prompt (AIPrompt): The prompt for the model
+
+#         Yields:
+#             Iterator[AsyncIterator[typing.Tuple[AIResponse, AIResponse]]]: The response from the model
+#         """
+
+#         kwargs = {
+#             **self.kwargs,
+#             **kwarg_override
+#         }
+#         client = openai.AsyncOpenAI(**self.client_kwargs)
+#         query = await client.chat.completions.create(
+#             model=self.model,
+#             messages=self.convert(prompt.aslist()),
+#             stream=True,
+#             **kwargs
+#         )
+#         p = prompt.reader()
+
+#         cur_message = ''
+#         async for chunk in query:
+#             delta = chunk.choices[0].delta.content
+#             if delta is None:
+#                 delta = ''
+#             cur_message = cur_message + delta
+
+#             yield AIResponse(
+#                 TextMessage('assistant', cur_message),
+#                 chunk,
+#                 p.stream_read(cur_message),
+#             ), AIResponse(
+#                 TextMessage('assistant', delta),
+#                 chunk,
+#                 None
+#             )
 
 
-class OpenEmbeddingModel(AIModel):
-    """
-    """
+# class OpenAIMessage(TextMessage):
+#     """A text message made to work with OpenAI. Especially makes
+#     using prompt more straightforward
+#     """
+    
+#     def prompt(self, model: typing.Union[AIModel, str], **kwarg_overrides) -> AIResponse:
+#         """prompt the model
 
-    def __init__(self, model: str, **kwargs) -> None:
-        """Create an OpenEmbeddingModel
+#         Args:
+#             model (typing.Union[AIModel, str]): The model to execute
 
-        Args:
-            model (str): The name of the model
-        """
-        super().__init__()
-        self.model = model
-        self.kwargs = kwargs
+#         Returns:
+#             AIResponse: The response from the model
+#         """
+#         if isinstance(model, str):
+#             model = OpenAIChatModel(model, **kwarg_overrides)
 
-    def convert(self, message: Message) -> typing.Dict:
-        """Convert the messages to a format to use for the OpenAI API
+#         return super().prompt(model, **kwarg_overrides)
 
-        Args:
-            messages (typing.List[Message]): The messages
 
-        Returns:
-            typing.List[typing.Dict]: The input to the API
-        """
-        return list(
-            render(text_i) for text_i in message['texts']
-        )
+# class OpenEmbeddingModel(AIModel):
+#     """
+#     """
 
-    def forward(self, prompt: AIPrompt, **kwarg_override) -> Dict:
-        """Execute the Embedding model
+#     def __init__(self, model: str, **kwargs) -> None:
+#         """Create an OpenEmbeddingModel
 
-        Args:
-            prompt (AIPrompt): 
+#         Args:
+#             model (str): The name of the model
+#         """
+#         super().__init__()
+#         self.model = model
+#         self.kwargs = kwargs
 
-        Returns:
-            Dict: 
-        """
+#     def convert(self, message: Message) -> typing.Dict:
+#         """Convert the messages to a format to use for the OpenAI API
 
-        kwargs = {
-            **self.kwargs,
-            **kwarg_override
-        }
-        client = openai.OpenAI()
+#         Args:
+#             messages (typing.List[Message]): The messages
 
-        response = client.embeddings.create(
-            model=self.model,
-            input=self.convert(prompt),
-            **kwargs
-        )
-        embeddings = [e for e in response.data]
+#         Returns:
+#             typing.List[typing.Dict]: The input to the API
+#         """
+#         return list(
+#             render(text_i) for text_i in message['texts']
+#         )
+
+#     def forward(self, prompt: AIPrompt, **kwarg_override) -> Dict:
+#         """Execute the Embedding model
+
+#         Args:
+#             prompt (AIPrompt): 
+
+#         Returns:
+#             Dict: 
+#         """
+
+#         kwargs = {
+#             **self.kwargs,
+#             **kwarg_override
+#         }
+#         client = openai.OpenAI()
+
+#         response = client.embeddings.create(
+#             model=self.model,
+#             input=self.convert(prompt),
+#             **kwargs
+#         )
+#         embeddings = [e for e in response.data]
         
-        return AIResponse(
-            embeddings,
-            response,
-            embeddings
-        )
+#         return AIResponse(
+#             embeddings,
+#             response,
+#             embeddings
+#         )
 
-    def stream(
-        self, prompt: AIPrompt, 
-        **kwarg_override
-    ) -> typing.Iterator[typing.Tuple[AIResponse, AIResponse]]:
+#     def stream(
+#         self, prompt: AIPrompt, 
+#         **kwarg_override
+#     ) -> typing.Iterator[typing.Tuple[AIResponse, AIResponse]]:
 
-        response = self.forward(prompt, **kwarg_override)
-        yield response, response
+#         response = self.forward(prompt, **kwarg_override)
+#         yield response, response
         
-    async def aforward(
-        self, prompt: AIPrompt, 
-        **kwarg_override
-    ) -> typing.Tuple[str, typing.Dict]:
-        client = openai.AsyncOpenAI()
+#     async def aforward(
+#         self, prompt: AIPrompt, 
+#         **kwarg_override
+#     ) -> typing.Tuple[str, typing.Dict]:
+#         client = openai.AsyncOpenAI()
 
-        kwargs = {
-            **self.kwargs,
-            **kwarg_override
-        }
-        response = client.embeddings.create(
-            model=self.model,
-            input=self.convert(prompt),
-            **kwargs
-        )
-        embeddings = [e for e in response.data]
+#         kwargs = {
+#             **self.kwargs,
+#             **kwarg_override
+#         }
+#         response = client.embeddings.create(
+#             model=self.model,
+#             input=self.convert(prompt),
+#             **kwargs
+#         )
+#         embeddings = [e for e in response.data]
         
-        return AIResponse(
-            embeddings,
-            response,
-            embeddings
-        )
+#         return AIResponse(
+#             embeddings,
+#             response,
+#             embeddings
+#         )
 
-    async def astream(self, prompt: AIPrompt, **kwarg_override) -> AsyncIterator[typing.Tuple[AIResponse, AIResponse]]:
+#     async def astream(self, prompt: AIPrompt, **kwarg_override) -> AsyncIterator[typing.Tuple[AIResponse, AIResponse]]:
 
-        response = await self.aforward(prompt, **kwarg_override)
-        yield response, response
+#         response = await self.aforward(prompt, **kwarg_override)
+#         yield response, response
 
 
-class OpenAIEmbeddingModel(AIModel):
-    """Adapter for calling OpenAI's Embedding API"""
+# class OpenAIEmbeddingModel(AIModel):
+#     """Adapter for calling OpenAI's Embedding API"""
 
-    def __init__(self, api_key: str, model_name: str = 'text-embedding-ada-002'):
-        openai.api_key = api_key
-        self.model_name = model_name
+#     def __init__(self, api_key: str, model_name: str = 'text-embedding-ada-002'):
+#         openai.api_key = api_key
+#         self.model_name = model_name
 
-    def convert(self, message: Message) -> str:
-        """Convert a Message to the format needed for OpenAI's Embedding API"""
-        if isinstance(message, TextMessage):
-            return message.text
-        else:
-            raise TypeError("Unsupported message type")
+#     def convert(self, message: Message) -> str:
+#         """Convert a Message to the format needed for OpenAI's Embedding API"""
+#         if isinstance(message, TextMessage):
+#             return message.text
+#         else:
+#             raise TypeError("Unsupported message type")
 
-    def forward(self, prompt: AIPrompt, **kwarg_override) -> List[AIResponse]:
-        """Run a query to the OpenAI Embedding API"""
-        # Convert messages and extract text
-        texts_to_embed = [self.convert(message) for message in prompt.aslist()]
+#     def forward(self, prompt: AIPrompt, **kwarg_override) -> List[AIResponse]:
+#         """Run a query to the OpenAI Embedding API"""
+#         # Convert messages and extract text
+#         texts_to_embed = [self.convert(message) for message in prompt.aslist()]
 
-        # Send request to OpenAI Embedding API
-        response = openai.Embedding.create(
-            model=self.model_name,
-            input=texts_to_embed
-        )
+#         # Send request to OpenAI Embedding API
+#         response = openai.Embedding.create(
+#             model=self.model_name,
+#             input=texts_to_embed
+#         )
 
-        # Generate AIResponse objects
-        return [
-            AIResponse(message=TextMessage(source="embedding_result", content=text), source={"embedding": data['embedding']})
-            for text, data in zip(texts_to_embed, response['data'])
-        ]
+#         # Generate AIResponse objects
+#         return [
+#             AIResponse(message=TextMessage(source="embedding_result", content=text), source={"embedding": data['embedding']})
+#             for text, data in zip(texts_to_embed, response['data'])
+#         ]
 
-    async def aforward(self, prompt: AIPrompt, **kwarg_override) -> List[AIResponse]:
-        """Run an asynchronous query to the OpenAI Embedding API"""
-        return self.forward(prompt, **kwarg_override)  # Use sync forward for simplicity
+#     async def aforward(self, prompt: AIPrompt, **kwarg_override) -> List[AIResponse]:
+#         """Run an asynchronous query to the OpenAI Embedding API"""
+#         return self.forward(prompt, **kwarg_override)  # Use sync forward for simplicity
 
 
     # def convert(self, message: Message) -> typing.Dict:

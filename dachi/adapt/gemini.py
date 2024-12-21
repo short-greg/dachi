@@ -1,9 +1,9 @@
-from .openai import OpenAIChatModel
+from .openai import OpenAILLM
 import typing
 import os
 
 
-class GeminiChatModel(OpenAIChatModel):
+class GeminiChatModel(OpenAILLM):
     """A model that uses the Gemini API through the OpenAI library"""
 
     def __init__(

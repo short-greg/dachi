@@ -25,55 +25,19 @@ from pydantic import BaseModel, Field
 from typing import Dict, Any
 
 
-class Delta(pydantic.BaseModel):
-
-    data: typing.Dict[str, typing.Any]
-
-    def __init__(self, **data):
-
-        super().__init__(data=data)
-
-    def __getattr__(self, key: str) -> typing.Any:
-        """Get an item from the message
-
-        Args:
-            key (str): The key to retrieve for
-
-        Raises:
-            KeyError: If key is not valid
-        """
-        if key in self.data:
-            return self.data[key]
-        raise KeyError(f'{key} is not a member of {type(self)}')
-
-    def __setattr__(
-        self, key: str, value: typing.Any
-    ) -> typing.Any:
-        """Set an item in the message
-
-        Args:
-            key (str): The key to set for
-            value (typing.Any): The value to set
-
-        Raises:
-            KeyError: An error
-        """
-        self.data[key] = value
-        return value
-
-
 class FileBase(pydantic.BaseModel):
 
     type_: str
     description: str
 
 
-class ChatMessage(pydantic.BaseModel, ABC):
+class ChatMsg(pydantic.BaseModel, ABC):
     
-    alias: typing.Optional[str] = None
-    role: str
-    text: typing.Optional[str] = None
-    files: typing.Optional[FileBase]=None,
+    alias: typing.Optional[str] = pydantic.Field(
+        None, description="An alternative name for the role for the message")
+    role: str = pydantic.Field(description="The name for the role for the message.")
+    text: typing.Optional[str] = pydantic.Field(None, description="The text from the LLM if it is a text message")
+    files: typing.Optional[FileBase] = None
 
 
 class ByteFile(FileBase):
@@ -158,16 +122,16 @@ class FunctionTool(Tool):
         )
 
 
-class SystemMessage(ChatMessage):
+class SystemMsg(ChatMsg):
 
     cue: typing.Optional[Cue] = None
-    schema: typing.Optional[Schema] = None
+    scheme: typing.Optional[Schema] = None
     tools: typing.Optional[typing.List[Tool]] = None
 
     def __init__(
         self,  instruction: typing.Union[Cue, str],
         files: typing.Optional[FileBase]=None,
-        schema: typing.Optional[Schema]=None,
+        scheme: typing.Optional[Schema]=None,
         tools: typing.Optional[typing.List[Tool]]=None,
         alias: str=None
     ):
@@ -180,21 +144,41 @@ class SystemMessage(ChatMessage):
         super().__init__(
             alias=alias, role='system', 
             text=text, cue=cue, tools=tools, files=files,
-            schema=schema
+            schema=scheme
         )
 
 
-class AssistantMessage(ChatMessage):
+class DeltaMsg(ChatMsg):
 
-    response: typing.Optional[typing.Any] = None
-    delta: typing.Optional[Delta] = None
+    response: typing.Optional[typing.Any] = pydantic.Field(
+        None, description="The raw response from the API")
     parsed: typing.Optional[typing.Any] = None
 
     def __init__(
         self,  text: str,
         files: typing.Optional[FileBase]=None,
         response: typing.Optional[typing.Any]=None,
-        delta: Delta=None, alias: str=None, parsed: typing.Optional[typing.Any]=None
+        parsed: typing.Optional[typing.Any]=None
+    ):
+
+        super().__init__(
+            alias=None, role='assistant', text=text, files=files,
+            response=response, parsed=parsed
+        )
+
+
+class AssistantMsg(ChatMsg):
+
+    tool: typing.Optional[Dict] = pydantic.Field(None, description="The tool to use if using a tool")
+    response: typing.Optional[typing.Any] = pydantic.Field(None, description="The raw response the API returns")
+    delta: typing.Optional[DeltaMsg] = pydantic.Field(None, description="The change in the response")
+    parsed: typing.Optional[typing.Any] = pydantic.Field(None, description="Parsed result if a structured response is used")
+
+    def __init__(
+        self,  text: str,
+        files: typing.Optional[FileBase]=None,
+        response: typing.Optional[typing.Any]=None,
+        delta: DeltaMsg=None, alias: str=None, parsed: typing.Optional[typing.Any]=None
     ):
         super().__init__(
             alias=alias, role='assistant', text=text,
@@ -204,7 +188,7 @@ class AssistantMessage(ChatMessage):
         )
 
 
-class ToolMessage(ChatMessage):
+class ToolMsg(ChatMsg):
 
     name: str
     return_value: str
@@ -221,11 +205,11 @@ class ToolMessage(ChatMessage):
         )
 
 
-class UserMessage(ChatMessage):
+class UserMsg(ChatMsg):
 
     def __init__(
         self, text: str=None, alias: typing.Optional[str]=None,
-        files: typing.Optional[str]=None
+        files: typing.Optional[FileBase]=None
     ):
         super().__init__(
             role='user', text=text, alias=alias, files=files
@@ -236,7 +220,10 @@ class Dialog(pydantic.BaseModel, Renderable):
     """A Dialog stores the interactions between the system/user and the assistant
     (i.e. the prompts and the responses)
     """
-    messages: typing.List[ChatMessage] = pydantic.Field(default_factory=list)
+
+    @abstractmethod
+    def messages(self) -> typing.Iterator[ChatMsg]:
+        pass
 
     def __init__(self, messages=None):
         """Create a dialog
@@ -246,13 +233,13 @@ class Dialog(pydantic.BaseModel, Renderable):
         """
         super().__init__(messages=messages or [])
 
-    def __iter__(self) -> typing.Iterator[ChatMessage]:
+    def __iter__(self) -> typing.Iterator[ChatMsg]:
         """Iterate over each message in the dialog
 
         Yields:
             Iterator[typing.Iterator[Message]]: Each message in the dialog
         """
-        for message in self.messages:
+        for message in self.messages():
             yield message
 
     def __add__(self, other: 'Dialog') -> 'Dialog':
@@ -264,11 +251,12 @@ class Dialog(pydantic.BaseModel, Renderable):
         Returns:
             Dialog: The concatenated dialog
         """
-        return Dialog(
-            self.messages + other.messages
-        )
+        pass
+        # return Dialog(
+        #     self.messages + other.messages
+        # )
 
-    def __getitem__(self, idx) -> ChatMessage:
+    def __getitem__(self, idx) -> ChatMsg:
         """Retrieve a value from the dialog
 
         Args:
@@ -279,6 +267,7 @@ class Dialog(pydantic.BaseModel, Renderable):
         """
         return self.messages[idx]
 
+    @abstractmethod
     def __setitem__(self, idx, message) -> Self:
         """Set idx with a message
 
@@ -289,43 +278,57 @@ class Dialog(pydantic.BaseModel, Renderable):
         Returns:
             Dialog: The updated dialog
         """
-        self.messages[idx] = message
-        return self
+        pass
+        # self.messages[idx] = message
+        # return self
 
-    def insert(self, index: int, message: ChatMessage):
-        """Insert a value into the dialog
-
-        Args:
-            index (int): The index to insert at
-            message (ChatMessage): The message to insert
-        """
-        self.messages.insert(index, message)
-
-    def pop(self, index: int):
+    @abstractmethod
+    def pop(self, index: int) -> ChatMsg:
         """Remove a value from the dialog
 
         Args:
             index (int): The index to pop
         """
-        self.messages.pop(index)
+        pass
+        # return self.messages.pop(index)
 
-    def remove(self, message: ChatMessage):
+    @abstractmethod
+    def remove(self, message: ChatMsg):
         """Remove a message from the dialog
 
         Args:
             message (ChatMessage): The message to remove
         """
-        self.messages.remove(message)
+        pass
 
-    def append(self, message: ChatMessage):
-        """Append a message to the end of the dialog
+    def user(self, text: str, alias: str=None, files: FileBase=None, ind: int=None) -> 'Dialog':
+        message = UserMsg(
+            text=text, alias=alias, files=files
+        )
+        return self.add(message, ind=ind)
 
-        Args:
-            message (Message): The message to add
-        """
-        self.messages.append(message)
+    def tool(self, return_value: str=None, alias: str=None, files: FileBase=None, ind: int=None) -> 'Dialog':
+        message = ToolMsg(
+            return_value=return_value, alias=alias, files=files
+        )
+        return self.add(
+            message, ind
+        )
 
-    def add(self, message: ChatMessage, ind: typing.Optional[int]=None, replace: bool=False):
+    def system(self, instruction: typing.Union[Cue, str]=None, files: FileBase=None, schema: Schema=None, tools: typing.List[Tool]=None, alias: str=None, ind: int=None) -> 'Dialog':
+        
+        message = SystemMsg(
+            instruction, files, schema, tools, alias
+        )
+        return self.add(
+            message, ind
+        )
+
+    def assistant(self, text: str=None, files: FileBase=None, response: typing.Any=None, delta: DeltaMsg=None, alias: str=None, parsed: typing.Any=None, ind: int=None) -> 'Dialog':
+        message = AssistantMsg(text=text, files=files, response=response, delta=delta, alias=alias, parsed=parsed)
+        return self.add(message, ind)
+
+    def add(self, message: ChatMsg, ind: typing.Optional[int]=None, replace: bool=False) -> 'Dialog':
         """Add a message to the dialog
 
         Args:
@@ -353,16 +356,13 @@ class Dialog(pydantic.BaseModel, Renderable):
         else:
             self.messages.insert(ind, message)
 
-    def extend(self, dialog: typing.Union['Dialog', typing.List[ChatMessage]]):
+    def extend(self, dialog: typing.Union['Dialog', typing.Iterable[ChatMsg]]) -> 'Dialog':
         """Extend the dialog with another dialog or a list of messages
 
         Args:
             dialog (typing.Union[&#39;Dialog&#39;, typing.List[Message]]): _description_
         """
-        if isinstance(dialog, Dialog):
-            dialog = dialog.messages
-        
-        self.messages.extend(dialog)
+        pass
 
     def reader(self) -> 'Reader':
         """Get the "Reader" for the dialog. By default will use the last one
@@ -371,11 +371,7 @@ class Dialog(pydantic.BaseModel, Renderable):
         Returns:
             Reader: The reader to retrieve
         """
-        for r in reversed(self.messages):
-            if isinstance(r, Cue):
-                if r.reader is not None:
-                    return r.reader
-        return NullRead(name='')
+        pass
 
     def render(self) -> str:
         """Render the dialog as a series of turns 
@@ -388,21 +384,23 @@ class Dialog(pydantic.BaseModel, Renderable):
             message.render() for message in self.messages
         )
 
-    def aslist(self) -> typing.List['Message']:
+    def aslist(self) -> typing.List['ChatMsg']:
         """Retrieve the message list
 
         Returns:
             typing.List[Message]: the messages in the dialog
         """
-        return self.messages
+        return list(self.messages())
     
+    @abstractmethod
     def __len__(self) -> int:
         """Get the size of the dialog
 
         Returns:
             int: the number of turns in the dialog
         """
-        return len(self.messages)
+        pass
+        # return len(self.messages)
         
     def clone(self) -> 'Dialog':
         """Clones the dialog
@@ -410,20 +408,242 @@ class Dialog(pydantic.BaseModel, Renderable):
         Returns:
             Dialog: A dialog cloned with shallow copying of the messages
         """
-        return Dialog(
-            messages=[message for message in self.messages]
-        )
+        pass
 
-    @property
-    def cue(self) -> typing.Optional[Cue]:
-        """Get the final cue in the dialog
+    # @property
+    # def cue(self) -> typing.Optional[Cue]:
+    #     """Get the final cue in the dialog
+
+    #     Returns:
+    #         Cue: The last cue in the dialog
+    #     """
+    #     pass
+
+    # def append(self, message: ChatMessage):
+    #     """Append a message to the end of the dialog
+
+    #     Args:
+    #         message (Message): The message to add
+    #     """
+    #     self.messages.append(message)
+
+    # def insert(self, index: int, message: ChatMessage):
+    #     """Insert a value into the dialog
+
+    #     Args:
+    #         index (int): The index to insert at
+    #         message (ChatMessage): The message to insert
+    #     """
+    #     self.messages.insert(index, message)
+
+class ListDialog(Dialog):
+
+    _messages: typing.List[ChatMsg] = pydantic.PrivateAttr(default_factory=list)
+
+    def __init__(self, messages=None):
+        """Create a dialog
+
+        Args:
+            messages: The messages
+        """
+        super().__init__(_messages=messages)
+
+    def __iter__(self) -> typing.Iterator[ChatMsg]:
+        """Iterate over each message in the dialog
+
+        Yields:
+            Iterator[typing.Iterator[Message]]: Each message in the dialog
+        """
+        for message in self.messages:
+            yield message
+
+    def __add__(self, other: 'Dialog') -> 'Dialog':
+        """Concatenate two dialogs together
+
+        Args:
+            other (Dialog): The other dialog to concatenate
 
         Returns:
-            Cue: The last cue in the dialog
+            Dialog: The concatenated dialog
         """
-        cue = None
-        for message in self.messages:
-            if isinstance(message, SystemMessage):
-                if message.cue is not None:
-                    cue = message.cue
-        return cue
+        return Dialog(
+            self._messages + other.aslist()
+        )
+
+    def __getitem__(self, idx) -> ChatMsg:
+        """Retrieve a value from the dialog
+
+        Args:
+            idx : The index to add at
+
+        Returns:
+            Message: The message in the dialog
+        """
+        return self._messages[idx]
+
+    def __setitem__(self, idx, message) -> Self:
+        """Set idx with a message
+
+        Args:
+            idx: The index to set
+            message: The message to set
+
+        Returns:
+            Dialog: The updated dialog
+        """
+        self._messages[idx] = message
+        return self
+
+    def pop(self, index: int) -> ChatMsg:
+        """Remove a value from the dialog
+
+        Args:
+            index (int): The index to pop
+        """
+        return self._messages.pop(index)
+
+    def remove(self, message: ChatMsg):
+        """Remove a message from the dialog
+
+        Args:
+            message (ChatMessage): The message to remove
+        """
+        self._messages.remove(message)
+
+    def add(self, message: ChatMsg, ind: typing.Optional[int]=None, replace: bool=False):
+        """Add a message to the dialog
+
+        Args:
+            message (Message): The message to add
+            ind (typing.Optional[int], optional): The index to add. Defaults to None.
+            replace (bool, optional): Whether to replace at the index. Defaults to False.
+
+        Raises:
+            ValueError: If the index is not correct
+        """
+        if ind is not None and ind < 0:
+            ind = max(len(self.messages) + ind, 0)
+
+        messages = [*self._messages]
+        if ind is None or ind == len(self.messages):
+            if not replace or ind == len(self.messages):
+                messages.append(message)
+            else:
+                messages[-1] = message
+        elif ind > len(self.messages):
+            raise ValueError(
+                f'The index {ind} is out of bounds '
+                f'for size {len(self.messages)}')
+        elif replace:
+            messages[ind] = message
+        else:
+            messages.insert(ind, message)
+        return ListDialog(
+            messages
+        )
+
+    def extend(self, dialog: typing.Union['Dialog', typing.List[ChatMsg]]):
+        """Extend the dialog with another dialog or a list of messages
+
+        Args:
+            dialog (typing.Union[&#39;Dialog&#39;, typing.List[Message]]): _description_
+        """
+        if isinstance(dialog, Dialog):
+            dialog = dialog.aslist()
+        
+        messages = [
+            self._messages + dialog
+        ]
+        return ListDialog(messages)
+
+    def __len__(self) -> int:
+        """Get the size of the dialog
+
+        Returns:
+            int: the number of turns in the dialog
+        """
+        return len(self._messages)
+        
+    def clone(self) -> typing.Self:
+        """Clones the dialog
+
+        Returns:
+            Dialog: A dialog cloned with shallow copying of the messages
+        """
+        return ListDialog(
+            messages=[message for message in self.messages]
+        )
+    
+    # def insert(self, index: int, message: ChatMessage):
+    #     """Insert a value into the dialog
+
+    #     Args:
+    #         index (int): The index to insert at
+    #         message (ChatMessage): The message to insert
+    #     """
+    #     self.messages.insert(index, message)
+
+    # def reader(self) -> 'Reader':
+    #     """Get the "Reader" for the dialog. By default will use the last one
+    #     that is available.
+
+    #     Returns:
+    #         Reader: The reader to retrieve
+    #     """
+    #     for r in reversed(self.messages):
+    #         if isinstance(r, Cue):
+    #             if r.reader is not None:
+    #                 return r.reader
+    #     return NullRead(name='')
+
+    # def append(self, message: ChatMessage):
+    #     """Append a message to the end of the dialog
+
+    #     Args:
+    #         message (Message): The message to add
+    #     """
+    #     self.messages.append(message)
+
+
+    # def render(self) -> str:
+    #     """Render the dialog as a series of turns 
+    #     <role>: <text>
+
+    #     Returns:
+    #         str: The dialog
+    #     """
+    #     return '\n'.join(
+    #         message.render() for message in self.messages
+    #     )
+
+    # def aslist(self) -> typing.List['ChatMessage']:
+    #     """Retrieve the message list
+
+    #     Returns:
+    #         typing.List[Message]: the messages in the dialog
+    #     """
+    #     return self.messages
+
+    # @property
+    # def cue(self) -> typing.Optional[Cue]:
+    #     """Get the final cue in the dialog
+
+    #     Returns:
+    #         Cue: The last cue in the dialog
+    #     """
+    #     cue = None
+    #     for message in self.messages:
+    #         if isinstance(message, SystemMessage):
+    #             if message.cue is not None:
+    #                 cue = message.cue
+    #     return cue
+
+
+# dialog = dialog.add(...)
+# dialog = dialog.insert(...)
+# dialog = dialog.replace(...)
+# dialog[0] = .. # mutable
+
+# # this will make it possible to use "turns"
+# dialog.
+

@@ -12,7 +12,7 @@ from .._core._core import (
     Cue, render, Param, 
     Instruct, Reader, NullRead,
 )
-from ._ai import LLModel
+from ._ai import LLM
 
 from .._core import (
     Dialog, TextMessage
@@ -114,7 +114,7 @@ class SignatureFunc(Module, Instruct):
     the function signature
     """
     def __init__(
-        self, f: typing.Callable, engine: typing.Union[LLModel, str, typing.Callable[[], LLModel]], 
+        self, f: typing.Callable, engine: typing.Union[LLM, str, typing.Callable[[], LLM]], 
         dialog_factory: typing.Optional[typing.Callable[[], Dialog]]=None,
         doc: typing.Optional[str]=None,
         reader: typing.Optional[Reader]=None,
@@ -178,7 +178,7 @@ class SignatureFunc(Module, Instruct):
 
     def spawn(
         self, 
-        engine: LLModel=None, 
+        engine: LLM=None, 
         dialog_factory: typing.Optional[typing.Callable[[], Dialog]]=None,
         train: bool=False
     ) -> 'SignatureFunc':
@@ -280,7 +280,7 @@ class SignatureFunc(Module, Instruct):
 
     def forward(
         self, *args,
-        _engine: LLModel=None, **kwargs
+        _engine: LLM=None, **kwargs
     ) -> typing.Any:
         """Execute the cue and get the output 
 
@@ -299,7 +299,7 @@ class SignatureFunc(Module, Instruct):
 
         if isinstance(engine, str) and instance is not None:
             engine = get_member(instance, engine)
-        elif not isinstance(engine, LLModel) and isinstance(engine, typing.Callable):
+        elif not isinstance(engine, LLM) and isinstance(engine, typing.Callable):
             engine = engine()
 
         cue = self.i(*args,  **kwargs)
@@ -311,7 +311,7 @@ class SignatureFunc(Module, Instruct):
 
     def stream(
         self, *args,
-        _engine: LLModel=None, **kwargs
+        _engine: LLM=None, **kwargs
     ) -> typing.Iterator[typing.Tuple[typing.Any, typing.Any]]:
         """Execute the cue and get the output 
 
@@ -330,7 +330,7 @@ class SignatureFunc(Module, Instruct):
 
         if isinstance(engine, str) and instance is not None:
             engine = get_member(instance, engine)
-        elif not isinstance(engine, LLModel) and isinstance(engine, typing.Callable[[], LLModel]):
+        elif not isinstance(engine, LLM) and isinstance(engine, typing.Callable[[], LLM]):
             engine = engine()
 
         cue = self.i(*args,  **kwargs)
@@ -343,7 +343,7 @@ class SignatureFunc(Module, Instruct):
 
     async def aforward(
         self, *args, 
-        _engine: LLModel=None, 
+        _engine: LLM=None, 
         **kwargs
     ) -> typing.Any:
         """Execute the cue and get the output
@@ -398,7 +398,7 @@ class InstructFunc(Module, Instruct):
     """
 
     def __init__(
-        self, f: typing.Callable, engine: typing.Union[LLModel, str, typing.Callable[[], LLModel]], 
+        self, f: typing.Callable, engine: typing.Union[LLM, str, typing.Callable[[], LLM]], 
         dialog_factory: typing.Optional[typing.Callable[[], Dialog]]=None,
         ai_kwargs=None,
         is_method: bool=False,
@@ -459,7 +459,7 @@ class InstructFunc(Module, Instruct):
             result = result()
         return result
 
-    def forward(self, *args, _engine: LLModel=None, **kwargs) -> typing.Any:        
+    def forward(self, *args, _engine: LLM=None, **kwargs) -> typing.Any:        
         """Execute the instruct method and then process the output
 
         Args:
@@ -476,7 +476,7 @@ class InstructFunc(Module, Instruct):
         engine = _engine or self.engine
         if isinstance(engine, str) and instance is not None:
             engine = get_member(instance, engine)
-        elif not isinstance(engine, LLModel) and isinstance(engine, typing.Callable):
+        elif not isinstance(engine, LLM) and isinstance(engine, typing.Callable):
             engine = engine()
 
         cue = self.i(*args, **kwargs)
@@ -487,7 +487,7 @@ class InstructFunc(Module, Instruct):
 
     def stream(
         self, *args,
-        _engine: LLModel=None, **kwargs
+        _engine: LLM=None, **kwargs
     ) -> typing.Iterator[typing.Tuple[typing.Any, typing.Any]]:
         """Execute the cue and get the output 
 
@@ -507,7 +507,7 @@ class InstructFunc(Module, Instruct):
         if isinstance(engine, str) and self._instance is not None:
             engine = get_member(instance, engine)
         
-        elif not isinstance(engine, LLModel) and isinstance(engine, typing.Callable[[], LLModel]):
+        elif not isinstance(engine, LLM) and isinstance(engine, typing.Callable[[], LLM]):
             engine = engine()
 
         cue = self.i(*args,  **kwargs)
@@ -557,7 +557,7 @@ class InstructFunc(Module, Instruct):
 
 
 def instructfunc(
-    engine: LLModel=None,
+    engine: LLM=None,
     is_method: bool=False,
     **ai_kwargs
 ):
@@ -585,7 +585,7 @@ def instructfunc(
 
 
 def instructmethod(
-    engine: LLModel=None,
+    engine: LLM=None,
     **ai_kwargs
 ):
     """Decorate a method with instructfunc
@@ -602,7 +602,7 @@ def instructmethod(
 
 
 def signaturefunc(
-    engine: LLModel=None, 
+    engine: LLM=None, 
     reader: Reader=None,
     doc: typing.Union[str, typing.Callable[[], str]]=None,
     is_method=False,
@@ -634,7 +634,7 @@ def signaturefunc(
 
 
 def signaturemethod(
-    engine: LLModel=None, 
+    engine: LLM=None, 
     reader: Reader=None,
     doc: typing.Union[str, typing.Callable[[], str]]=None,
     **ai_kwargs

@@ -7,10 +7,16 @@ import typing
 from .._core._core import (
     Module
 )
-from .._core import Message, Dialog
+from .._core import (
+    ChatMsg, Dialog, ToolMsg,
+    UserMsg, AssistantMsg, SystemMsg, ListDialog
+)
 
-PROMPT = typing.Union[Message, Dialog]
-MESSAGE = typing.Union[Message, typing.List[Message]]
+PROMPT = typing.Union[ChatMsg, Dialog]
+MESSAGE = typing.Union[ChatMsg, typing.List[ChatMsg]]
+
+LLM_RESPONSE = typing.Union[ChatMsg, typing.Tuple[ChatMsg, Dialog]]
+LLM_PROMPT = typing.Union[ChatMsg, Dialog, str]
 
 
 class EmbeddingModel(Module, ABC):
@@ -19,7 +25,7 @@ class EmbeddingModel(Module, ABC):
     """
 
     @abstractmethod
-    def forward(self, message: MESSAGE, **kwarg_override) -> Message:
+    def forward(self, message: MESSAGE, **kwarg_override) -> ChatMsg:
         """Run a standard query to the API
 
         Args:
@@ -30,7 +36,9 @@ class EmbeddingModel(Module, ABC):
         """
         pass
 
-    def stream(self, message: MESSAGE, **kwarg_override) -> typing.Iterator[Message]:
+    def stream(
+        self, message: MESSAGE, **kwarg_override
+    ) -> typing.Iterator[ChatMsg]:
         """API that allows for streaming the response
 
         Args:
@@ -48,7 +56,7 @@ class EmbeddingModel(Module, ABC):
     
     async def aforward(
         self, message: MESSAGE, **kwarg_override
-    ) -> Message:
+    ) -> ChatMsg:
         """Run this query for asynchronous operations
         The default behavior is simply to call the query
 
@@ -62,7 +70,7 @@ class EmbeddingModel(Module, ABC):
 
     async def astream(
         self, message: MESSAGE, **kwarg_override
-    ) -> typing.AsyncIterator[Message]:
+    ) -> typing.AsyncIterator[ChatMsg]:
         """Run this query for asynchronous streaming operations
         The default behavior is simply to call the query
 
@@ -75,7 +83,7 @@ class EmbeddingModel(Module, ABC):
         result = self.forward(message, **kwarg_override)
         yield result
     
-    def __call__(self, message: MESSAGE, **kwarg_override) -> Message:
+    def __call__(self, message: MESSAGE, **kwarg_override) -> ChatMsg:
         """Execute the AIModel
 
         Args:
@@ -87,20 +95,20 @@ class EmbeddingModel(Module, ABC):
         return self.forward(message, **kwarg_override)
 
 
-def exclude_role(messages: typing.Iterable[Message], *role: str) -> typing.List[Message]:
+def exclude_role(messages: typing.Iterable[ChatMsg], *role: str) -> typing.List[ChatMsg]:
 
     exclude = set(role)
     return [message for message in messages
         if message.role not in exclude]
 
 
-def include_role(messages: typing.Iterable[Message], *role: str) -> typing.List[Message]:
+def include_role(messages: typing.Iterable[ChatMsg], *role: str) -> typing.List[ChatMsg]:
     include = set(role)
     return [message for message in messages
         if message.role in include]
 
 
-def exclude_type(messages: typing.Iterable[Message], *type_: str) -> typing.List[Message]:
+def exclude_type(messages: typing.Iterable[ChatMsg], *type_: str) -> typing.List[ChatMsg]:
 
     exclude = set(type_)
     filtered = []
@@ -115,7 +123,7 @@ def exclude_type(messages: typing.Iterable[Message], *type_: str) -> typing.List
     return filtered
 
 
-def include_type(messages: typing.Iterable[Message], *type_: str) -> typing.List[Message]:
+def include_type(messages: typing.Iterable[ChatMsg], *type_: str) -> typing.List[ChatMsg]:
 
     exclude = set(type_)
     filtered = []
@@ -130,15 +138,25 @@ def include_type(messages: typing.Iterable[Message], *type_: str) -> typing.List
     return filtered
 
 
-class LLModel(Module, ABC):
+class LLM(Module, ABC):
     """APIAdapter allows one to adapt various WebAPI or otehr
     API for a consistent interface
     """
+
+    def create_dialog(self, prompt: LLM_PROMPT):
+        if isinstance(prompt, Dialog):
+            return ListDialog([prompt])
+        return prompt
+    
+    @abstractmethod
+    def to_prompt(self, dialog: Dialog) -> typing.List[typing.Dict]:
+        pass
+
     @abstractmethod
     def forward(
-        self, prompt: typing.Union[Message, Dialog], 
+        self, prompt: LLM_PROMPT, 
         **kwarg_override
-    ) -> Message:
+    ) -> LLM_RESPONSE:
         """Run a standard query to the API
 
         Args:
@@ -150,9 +168,9 @@ class LLModel(Module, ABC):
         pass
 
     def stream(
-        self, prompt: typing.Union[Message, Dialog], 
+        self, prompt: LLM_PROMPT, 
         **kwarg_override
-    ) -> typing.Iterator[Message]:
+    ) -> typing.Iterator[LLM_RESPONSE]:
         """API that allows for streaming the response
 
         Args:
@@ -169,8 +187,8 @@ class LLModel(Module, ABC):
         yield self.forward(prompt, **kwarg_override)
     
     async def aforward(
-        self, prompt: typing.Union[Message, Dialog], **kwarg_override
-    ) -> Message:
+        self, prompt: LLM_PROMPT, **kwarg_override
+    ) -> LLM_RESPONSE:
         """Run this query for asynchronous operations
         The default behavior is simply to call the query
 
@@ -183,8 +201,8 @@ class LLModel(Module, ABC):
         return self.forward(prompt, **kwarg_override)
 
     async def astream(
-        self, prompt: typing.Union[Message, Dialog], **kwarg_override
-    ) -> typing.AsyncIterator[Message]:
+        self, prompt: LLM_PROMPT, **kwarg_override
+    ) -> typing.AsyncIterator[LLM_RESPONSE]:
         """Run this query for asynchronous streaming operations
         The default behavior is simply to call the query
 
@@ -197,14 +215,7 @@ class LLModel(Module, ABC):
         result = self.forward(prompt, **kwarg_override)
         yield result
 
-    async def _collect_results(generator, index, results, queue):
-        
-        async for item in generator:
-            results[index] = item
-            await queue.put(results[:])  # Put a copy of the current results
-        results[index] = None  # Mark this generator as completed
-
-    def __call__(self, prompt: typing.Union[Message, Dialog], **kwarg_override) -> Message:
+    def __call__(self, prompt: LLM_PROMPT, **kwarg_override) -> LLM_RESPONSE:
         """Execute the AIModel
 
         Args:
@@ -214,3 +225,16 @@ class LLModel(Module, ABC):
             AIResponse: Get the response from the AI
         """
         return self.forward(prompt, **kwarg_override)
+
+    def create_dialog(self, prompt: LLM_PROMPT):
+        if isinstance(prompt, Dialog):
+            return ListDialog([prompt])
+        return prompt
+
+    # async def _collect_results(generator, index, results, queue):
+        
+    #     async for item in generator:
+    #         results[index] = item
+    #         await queue.put(results[:])  # Put a copy of the current results
+    #     results[index] = None  # Mark this generator as completed
+
