@@ -324,4 +324,3 @@ class PydanticRead(Reader, typing.Generic[S]):
         """
         # return self._out_cls.template()
         return render(struct_template(self._out_cls), escape_braces, self.template_renderer) 
-

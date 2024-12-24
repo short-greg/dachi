@@ -5,215 +5,34 @@ from typing import Self
 import typing
 
 from ._core import (
-    Cue, Reader, 
-    render, NullRead
+    Reader, 
 )
 from ._core import Renderable
-from .._core import is_renderable, render
 
 # 3rd party
 import pydantic
-from pydantic import Field
-
-from pydantic import BaseModel, Field
-import typing
-import pandas as pd
-import numpy as np
 
 
-from pydantic import BaseModel, Field
-from typing import Dict, Any
+class Msg(dict):
 
+    def __init__(self, type_: str='data', meta: typing.Dict=None, delta: typing.Dict=None, **kwargs):
+        super().__init__(
+            type_=type_, meta=meta, delta=delta, **kwargs
+        )
 
-class FileBase(pydantic.BaseModel):
-
-    type_: str
-    description: str
-
-
-class ChatMsg(pydantic.BaseModel, ABC):
+    @property
+    def type(self) -> str:
+        return self['type_']
     
-    alias: typing.Optional[str] = pydantic.Field(
-        None, description="An alternative name for the role for the message")
-    role: str = pydantic.Field(description="The name for the role for the message.")
-    text: typing.Optional[str] = pydantic.Field(None, description="The text from the LLM if it is a text message")
-    files: typing.Optional[FileBase] = None
-
-
-class ByteFile(FileBase):
-
-    bytes: str
-    
-
-class URLFile(FileBase):
-
-    url: str
-    
-
-class Schema(pydantic.BaseModel):
-    
-    @abstractmethod
-    def to_str(self) -> str:
-        raise NotImplementedError
-
-
-class JSONSchema(Schema):
-    """A general-purpose class to store and represent JSON Schemas."""
-    schema_cls: typing.Type[pydantic.BaseModel] = Field(..., description="The Pydantic model class for this schema")
-
     def to_dict(self) -> typing.Dict:
-        """Convert the schema to a JSON string."""
-        return self.schema_cls.model_json_schema()
 
-
-class ToolParam(BaseModel, Renderable):
-    name: str
-    type_: str
-    descr: str = ''
-    required: typing.List[str] = Field(default_factory=list)
-    enum: typing.Optional[typing.List[typing.Any]] = None
-    minimum: typing.Optional[float] = None
-    maximum: typing.Optional[float] = None
-    minLength: typing.Optional[int] = None
-    maxLength: typing.Optional[int] = None
-    default: typing.Optional[typing.Any] = None
-    format: typing.Optional[str] = None
-
-    def render(self) -> str:
-        return render(self)
-
-
-class ToolObjParam(ToolParam):
-    params: typing.List[ToolParam] = Field(default_factory=list)
-
-
-class ToolArrayParam(ToolParam):
-    items: typing.List[ToolParam]
-
-    def __init__(self, name: str, items: typing.List[ToolParam], descr: str='', **kwargs):
-        """Create an array of tools
-
-        Args:
-            name (str): The name of the array
-            items (typing.List[ToolParam]): The items in the array
-            descr (str, optional): The description. Defaults to ''.
-        """
-        super().__init__(
-            name=name, type_="array", items=items, descr=descr, **kwargs
-        )
-
-
-class Tool(pydantic.BaseModel):
-    
-    type_: str
-
-
-class FunctionTool(Tool):
-    
-    name: str
-    params: typing.Optional[typing.List[ToolParam]]
-    descr: typing.Optional[str] = None
-
-    def __init__(
-        self, name: str, params: typing.List[ToolParam], descr: str=None
-    ):
-        super().__init__(
-            type_='function', name=name, params=params, descr=descr
-        )
-
-
-class SystemMsg(ChatMsg):
-
-    cue: typing.Optional[Cue] = None
-    scheme: typing.Optional[Schema] = None
-    tools: typing.Optional[typing.List[Tool]] = None
-
-    def __init__(
-        self,  instruction: typing.Union[Cue, str],
-        files: typing.Optional[FileBase]=None,
-        scheme: typing.Optional[Schema]=None,
-        tools: typing.Optional[typing.List[Tool]]=None,
-        alias: str=None
-    ):
-        if isinstance(instruction, Cue):
-            cue = instruction
-            text = None
-        else:
-            cue = None
-            text = instruction
-        super().__init__(
-            alias=alias, role='system', 
-            text=text, cue=cue, tools=tools, files=files,
-            schema=scheme
-        )
-
-
-class DeltaMsg(ChatMsg):
-
-    response: typing.Optional[typing.Any] = pydantic.Field(
-        None, description="The raw response from the API")
-    parsed: typing.Optional[typing.Any] = None
-
-    def __init__(
-        self,  text: str,
-        files: typing.Optional[FileBase]=None,
-        response: typing.Optional[typing.Any]=None,
-        parsed: typing.Optional[typing.Any]=None
-    ):
-
-        super().__init__(
-            alias=None, role='assistant', text=text, files=files,
-            response=response, parsed=parsed
-        )
-
-
-class AssistantMsg(ChatMsg):
-
-    tool: typing.Optional[Dict] = pydantic.Field(None, description="The tool to use if using a tool")
-    response: typing.Optional[typing.Any] = pydantic.Field(None, description="The raw response the API returns")
-    delta: typing.Optional[DeltaMsg] = pydantic.Field(None, description="The change in the response")
-    parsed: typing.Optional[typing.Any] = pydantic.Field(None, description="Parsed result if a structured response is used")
-
-    def __init__(
-        self,  text: str,
-        files: typing.Optional[FileBase]=None,
-        response: typing.Optional[typing.Any]=None,
-        delta: DeltaMsg=None, alias: str=None, parsed: typing.Optional[typing.Any]=None
-    ):
-        super().__init__(
-            alias=alias, role='assistant', text=text,
-            response=response, files=files, delta=delta,
-            parsed=parsed
-
-        )
-
-
-class ToolMsg(ChatMsg):
-
-    name: str
-    return_value: str
-
-    def __init__(
-        self, 
-        return_value: str,
-        alias: str=None,
-        files: typing.Optional[FileBase]=None,
-    ):
-        super().__init__(
-            alias, role='tool', text=return_value,
-            files=files
-        )
-
-
-class UserMsg(ChatMsg):
-
-    def __init__(
-        self, text: str=None, alias: typing.Optional[str]=None,
-        files: typing.Optional[FileBase]=None
-    ):
-        super().__init__(
-            role='user', text=text, alias=alias, files=files
-        )
+        d = {**self}
+        del d['type_']
+        if 'meta' in d:
+            del d['meta']
+        if 'delta' in d:
+            del d['delta']
+        return d
 
 
 class Dialog(pydantic.BaseModel, Renderable):
@@ -222,18 +41,18 @@ class Dialog(pydantic.BaseModel, Renderable):
     """
 
     @abstractmethod
-    def messages(self) -> typing.Iterator[ChatMsg]:
+    def messages(self) -> typing.Iterator[Msg]:
         pass
 
-    def __init__(self, messages=None):
+    def __init__(self):
         """Create a dialog
 
         Args:
             messages: The messages
         """
-        super().__init__(messages=messages or [])
+        super().__init__()
 
-    def __iter__(self) -> typing.Iterator[ChatMsg]:
+    def __iter__(self) -> typing.Iterator[Msg]:
         """Iterate over each message in the dialog
 
         Yields:
@@ -242,21 +61,7 @@ class Dialog(pydantic.BaseModel, Renderable):
         for message in self.messages():
             yield message
 
-    def __add__(self, other: 'Dialog') -> 'Dialog':
-        """Concatenate two dialogs together
-
-        Args:
-            other (Dialog): The other dialog to concatenate
-
-        Returns:
-            Dialog: The concatenated dialog
-        """
-        pass
-        # return Dialog(
-        #     self.messages + other.messages
-        # )
-
-    def __getitem__(self, idx) -> ChatMsg:
+    def __getitem__(self, idx) -> Msg:
         """Retrieve a value from the dialog
 
         Args:
@@ -283,7 +88,7 @@ class Dialog(pydantic.BaseModel, Renderable):
         # return self
 
     @abstractmethod
-    def pop(self, index: int) -> ChatMsg:
+    def pop(self, index: int) -> Msg:
         """Remove a value from the dialog
 
         Args:
@@ -293,7 +98,7 @@ class Dialog(pydantic.BaseModel, Renderable):
         # return self.messages.pop(index)
 
     @abstractmethod
-    def remove(self, message: ChatMsg):
+    def remove(self, message: Msg):
         """Remove a message from the dialog
 
         Args:
@@ -301,34 +106,7 @@ class Dialog(pydantic.BaseModel, Renderable):
         """
         pass
 
-    def user(self, text: str, alias: str=None, files: FileBase=None, ind: int=None) -> 'Dialog':
-        message = UserMsg(
-            text=text, alias=alias, files=files
-        )
-        return self.add(message, ind=ind)
-
-    def tool(self, return_value: str=None, alias: str=None, files: FileBase=None, ind: int=None) -> 'Dialog':
-        message = ToolMsg(
-            return_value=return_value, alias=alias, files=files
-        )
-        return self.add(
-            message, ind
-        )
-
-    def system(self, instruction: typing.Union[Cue, str]=None, files: FileBase=None, schema: Schema=None, tools: typing.List[Tool]=None, alias: str=None, ind: int=None) -> 'Dialog':
-        
-        message = SystemMsg(
-            instruction, files, schema, tools, alias
-        )
-        return self.add(
-            message, ind
-        )
-
-    def assistant(self, text: str=None, files: FileBase=None, response: typing.Any=None, delta: DeltaMsg=None, alias: str=None, parsed: typing.Any=None, ind: int=None) -> 'Dialog':
-        message = AssistantMsg(text=text, files=files, response=response, delta=delta, alias=alias, parsed=parsed)
-        return self.add(message, ind)
-
-    def add(self, message: ChatMsg, ind: typing.Optional[int]=None, replace: bool=False) -> 'Dialog':
+    def add(self, message: Msg, ind: typing.Optional[int]=None, replace: bool=False) -> 'Dialog':
         """Add a message to the dialog
 
         Args:
@@ -340,10 +118,10 @@ class Dialog(pydantic.BaseModel, Renderable):
             ValueError: If the index is not correct
         """
         if ind is not None and ind < 0:
-            ind = max(len(self.messages) + ind, 0)
+            ind = max(len(self) + ind, 0)
 
-        if ind is None or ind == len(self.messages):
-            if not replace or ind == len(self.messages):
+        if ind is None or ind == len(self):
+            if not replace or ind == len(self):
                 self.messages.append(message)
             else:
                 self.messages[-1] = message
@@ -356,7 +134,7 @@ class Dialog(pydantic.BaseModel, Renderable):
         else:
             self.messages.insert(ind, message)
 
-    def extend(self, dialog: typing.Union['Dialog', typing.Iterable[ChatMsg]]) -> 'Dialog':
+    def extend(self, dialog: typing.Union['Dialog', typing.Iterable[Msg]]) -> 'Dialog':
         """Extend the dialog with another dialog or a list of messages
 
         Args:
@@ -384,7 +162,7 @@ class Dialog(pydantic.BaseModel, Renderable):
             message.render() for message in self.messages
         )
 
-    def aslist(self) -> typing.List['ChatMsg']:
+    def aslist(self) -> typing.List['Msg']:
         """Retrieve the message list
 
         Returns:
@@ -410,37 +188,12 @@ class Dialog(pydantic.BaseModel, Renderable):
         """
         pass
 
-    # @property
-    # def cue(self) -> typing.Optional[Cue]:
-    #     """Get the final cue in the dialog
-
-    #     Returns:
-    #         Cue: The last cue in the dialog
-    #     """
-    #     pass
-
-    # def append(self, message: ChatMessage):
-    #     """Append a message to the end of the dialog
-
-    #     Args:
-    #         message (Message): The message to add
-    #     """
-    #     self.messages.append(message)
-
-    # def insert(self, index: int, message: ChatMessage):
-    #     """Insert a value into the dialog
-
-    #     Args:
-    #         index (int): The index to insert at
-    #         message (ChatMessage): The message to insert
-    #     """
-    #     self.messages.insert(index, message)
 
 class ListDialog(Dialog):
 
-    _messages: typing.List[ChatMsg] = pydantic.PrivateAttr(default_factory=list)
+    _messages: typing.List[Msg] = pydantic.PrivateAttr(default_factory=list)
 
-    def __init__(self, messages=None):
+    def __init__(self, messages: typing.Iterable[Msg]=None):
         """Create a dialog
 
         Args:
@@ -448,13 +201,13 @@ class ListDialog(Dialog):
         """
         super().__init__(_messages=messages)
 
-    def __iter__(self) -> typing.Iterator[ChatMsg]:
+    def __iter__(self) -> typing.Iterator[Msg]:
         """Iterate over each message in the dialog
 
         Yields:
             Iterator[typing.Iterator[Message]]: Each message in the dialog
         """
-        for message in self.messages:
+        for message in self.messages():
             yield message
 
     def __add__(self, other: 'Dialog') -> 'Dialog':
@@ -470,7 +223,7 @@ class ListDialog(Dialog):
             self._messages + other.aslist()
         )
 
-    def __getitem__(self, idx) -> ChatMsg:
+    def __getitem__(self, idx) -> Msg:
         """Retrieve a value from the dialog
 
         Args:
@@ -494,7 +247,7 @@ class ListDialog(Dialog):
         self._messages[idx] = message
         return self
 
-    def pop(self, index: int) -> ChatMsg:
+    def pop(self, index: int) -> Msg:
         """Remove a value from the dialog
 
         Args:
@@ -502,7 +255,7 @@ class ListDialog(Dialog):
         """
         return self._messages.pop(index)
 
-    def remove(self, message: ChatMsg):
+    def remove(self, message: Msg):
         """Remove a message from the dialog
 
         Args:
@@ -510,7 +263,7 @@ class ListDialog(Dialog):
         """
         self._messages.remove(message)
 
-    def add(self, message: ChatMsg, ind: typing.Optional[int]=None, replace: bool=False):
+    def add(self, message: Msg, ind: typing.Optional[int]=None, replace: bool=False):
         """Add a message to the dialog
 
         Args:
@@ -522,18 +275,18 @@ class ListDialog(Dialog):
             ValueError: If the index is not correct
         """
         if ind is not None and ind < 0:
-            ind = max(len(self.messages) + ind, 0)
+            ind = max(len(self) + ind, 0)
 
         messages = [*self._messages]
-        if ind is None or ind == len(self.messages):
-            if not replace or ind == len(self.messages):
+        if ind is None or ind == len(self):
+            if not replace or ind == len(self):
                 messages.append(message)
             else:
                 messages[-1] = message
-        elif ind > len(self.messages):
+        elif ind > len(self._messages):
             raise ValueError(
                 f'The index {ind} is out of bounds '
-                f'for size {len(self.messages)}')
+                f'for size {len(self)}')
         elif replace:
             messages[ind] = message
         else:
@@ -542,7 +295,7 @@ class ListDialog(Dialog):
             messages
         )
 
-    def extend(self, dialog: typing.Union['Dialog', typing.List[ChatMsg]]):
+    def extend(self, dialog: typing.Union['Dialog', typing.List[Msg]]):
         """Extend the dialog with another dialog or a list of messages
 
         Args:
@@ -571,9 +324,64 @@ class ListDialog(Dialog):
             Dialog: A dialog cloned with shallow copying of the messages
         """
         return ListDialog(
-            messages=[message for message in self.messages]
+            messages=[message for message in self._messages]
         )
-    
+
+
+    # def user(self, text: str, alias: str=None, files: FileBase=None, ind: int=None) -> 'Dialog':
+    #     message = UserMsg(
+    #         text=text, alias=alias, files=files
+    #     )
+    #     return self.add(message, ind=ind)
+
+    # def tool(self, return_value: str=None, alias: str=None, files: FileBase=None, ind: int=None) -> 'Dialog':
+    #     message = ToolMsg(
+    #         return_value=return_value, alias=alias, files=files
+    #     )
+    #     return self.add(
+    #         message, ind
+    #     )
+
+    # def system(self, instruction: typing.Union[Cue, str]=None, files: FileBase=None, schema: Schema=None, tools: typing.List[Tool]=None, alias: str=None, ind: int=None) -> 'Dialog':
+        
+    #     message = SystemMsg(
+    #         instruction, files, schema, tools, alias
+    #     )
+    #     return self.add(
+    #         message, ind
+    #     )
+
+    # def assistant(self, text: str=None, files: FileBase=None, response: typing.Any=None, delta: DeltaMsg=None, alias: str=None, parsed: typing.Any=None, ind: int=None) -> 'Dialog':
+    #     message = AssistantMsg(text=text, files=files, response=response, delta=delta, alias=alias, parsed=parsed)
+    #     return self.add(message, ind)
+
+
+    # @property
+    # def cue(self) -> typing.Optional[Cue]:
+    #     """Get the final cue in the dialog
+
+    #     Returns:
+    #         Cue: The last cue in the dialog
+    #     """
+    #     pass
+
+    # def append(self, message: ChatMessage):
+    #     """Append a message to the end of the dialog
+
+    #     Args:
+    #         message (Message): The message to add
+    #     """
+    #     self.messages.append(message)
+
+    # def insert(self, index: int, message: ChatMessage):
+    #     """Insert a value into the dialog
+
+    #     Args:
+    #         index (int): The index to insert at
+    #         message (ChatMessage): The message to insert
+    #     """
+    #     self.messages.insert(index, message)
+
     # def insert(self, index: int, message: ChatMessage):
     #     """Insert a value into the dialog
 
@@ -647,3 +455,320 @@ class ListDialog(Dialog):
 # # this will make it possible to use "turns"
 # dialog.
 
+
+
+# class FileBase(pydantic.BaseModel):
+
+#     type_: str
+#     description: str
+
+
+# class ChatMsg(pydantic.BaseModel, ABC):
+    
+#     alias: typing.Optional[str] = pydantic.Field(
+#         None, description="An alternative name for the role for the message")
+#     text: typing.Optional[str] = pydantic.Field(None, description="The text from the LLM if it is a text message")
+#     files: typing.Optional[FileBase] = None
+
+
+# class ByteFile(FileBase):
+
+#     bytes: str
+#     detail: str = None
+#     mime_type: str
+
+#     def content(self) -> typing.Dict:
+
+#         return {
+#             'type': 'image',
+#             'image': self.bytes,
+#             "mime_type": self.mime_type
+#         }
+
+
+# class URLFile(FileBase):
+
+#     url: str
+#     detail: str = None
+
+#     def content(self) -> typing.Dict:
+
+#         return {
+#             'type': 'image_url',
+#             'image_url': self.url
+#         }
+    
+
+# class Schema(pydantic.BaseModel):
+    
+#     @abstractmethod
+#     def to_str(self) -> str:
+#         raise NotImplementedError
+
+
+# class JSONSchema(Schema):
+#     """A general-purpose class to store and represent JSON Schemas."""
+#     schema_cls: typing.Type[pydantic.BaseModel] = Field(..., description="The Pydantic model class for this schema")
+
+#     def to_dict(self) -> typing.Dict:
+#         """Convert the schema to a JSON string."""
+#         return self.schema_cls.model_json_schema()
+
+
+# class ToolParam(BaseModel, Renderable):
+#     name: str
+#     type_: str
+#     descr: str = ''
+#     required: typing.List[str] = Field(default_factory=list)
+#     enum: typing.Optional[typing.List[typing.Any]] = None
+#     minimum: typing.Optional[float] = None
+#     maximum: typing.Optional[float] = None
+#     minLength: typing.Optional[int] = None
+#     maxLength: typing.Optional[int] = None
+#     default: typing.Optional[typing.Any] = None
+#     format: typing.Optional[str] = None
+
+#     def render(self) -> str:
+#         return render(self)
+
+
+# class ToolObjParam(ToolParam):
+#     params: typing.List[ToolParam] = Field(default_factory=list)
+
+
+# class ToolArrayParam(ToolParam):
+#     items: typing.List[ToolParam]
+
+#     def __init__(self, name: str, items: typing.List[ToolParam], descr: str='', **kwargs):
+#         """Create an array of tools
+
+#         Args:
+#             name (str): The name of the array
+#             items (typing.List[ToolParam]): The items in the array
+#             descr (str, optional): The description. Defaults to ''.
+#         """
+#         super().__init__(
+#             name=name, type_="array", items=items, descr=descr, **kwargs
+#         )
+
+
+# class Tool(pydantic.BaseModel):
+    
+#     type_: str
+
+
+# class FunctionTool(Tool):
+    
+#     name: str
+#     params: typing.Optional[typing.List[ToolParam]]
+#     descr: typing.Optional[str] = None
+
+#     def __init__(
+#         self, name: str, params: typing.List[ToolParam], descr: str=None
+#     ):
+#         super().__init__(
+#             type_='function', name=name, params=params, descr=descr
+#         )
+
+
+# class SystemMsg(ChatMsg):
+
+#     cue: typing.Optional[Cue] = None
+#     scheme: typing.Optional[Schema] = None
+#     tools: typing.Optional[typing.List[Tool]] = None
+
+#     def __init__(
+#         self,  instruction: typing.Union[Cue, str],
+#         files: typing.Optional[FileBase]=None,
+#         scheme: typing.Optional[Schema]=None,
+#         tools: typing.Optional[typing.List[Tool]]=None,
+#         alias: str=None
+#     ):
+#         if isinstance(instruction, Cue):
+#             cue = instruction
+#             text = None
+#         else:
+#             cue = None
+#             text = instruction
+#         super().__init__(
+#             alias=alias, 
+#             text=text, cue=cue, tools=tools, files=files,
+#             schema=scheme
+#         )
+
+
+# class DeltaMsg(ChatMsg):
+
+#     response: typing.Optional[typing.Any] = pydantic.Field(
+#         None, description="The raw response from the API")
+#     parsed: typing.Optional[typing.Any] = None
+
+#     def __init__(
+#         self,  text: str,
+#         files: typing.Optional[FileBase]=None,
+#         response: typing.Optional[typing.Any]=None,
+#         parsed: typing.Optional[typing.Any]=None
+#     ):
+
+#         super().__init__(
+#             alias=None, text=text, files=files,
+#             response=response, parsed=parsed
+#         )
+
+
+# class AssistantMsg(ChatMsg):
+
+#     tool: typing.Optional[Dict] = pydantic.Field(None, description="The tool to use if using a tool")
+#     response: typing.Optional[typing.Any] = pydantic.Field(None, description="The raw response the API returns")
+#     delta: typing.Optional[DeltaMsg] = pydantic.Field(None, description="The change in the response")
+#     parsed: typing.Optional[typing.Any] = pydantic.Field(None, description="Parsed result if a structured response is used")
+
+#     def __init__(
+#         self,  text: str,
+#         files: typing.Optional[FileBase]=None,
+#         response: typing.Optional[typing.Any]=None,
+#         delta: DeltaMsg=None, alias: str=None, parsed: typing.Optional[typing.Any]=None
+#     ):
+#         super().__init__(
+#             alias=alias, text=text,
+#             response=response, files=files, delta=delta,
+#             parsed=parsed
+
+#         )
+
+
+# class ToolMsg(ChatMsg):
+
+#     name: str
+#     return_value: str
+
+#     def __init__(
+#         self, 
+#         return_value: str,
+#         alias: str=None,
+#         files: typing.Optional[FileBase]=None,
+#     ):
+#         super().__init__(
+#             alias, text=return_value,
+#             files=files
+#         )
+
+
+# class UserMsg(ChatMsg):
+
+#     def __init__(
+#         self, text: str=None, alias: typing.Optional[str]=None,
+#         files: typing.Optional[FileBase]=None
+#     ):
+#         super().__init__(
+#             text=text, alias=alias, files=files
+#         )
+
+
+
+
+# from griffe import Docstring, Function, Parameters, Parameter, ParameterKind
+
+# function = Function(
+#     "func",
+#     parameters=Parameters(
+#         Parameter("param1", annotation="str", kind=ParameterKind.positional_or_keyword),
+#         Parameter("param2", annotation="int", kind=ParameterKind.keyword_only),
+#     ),
+# )
+# text = """
+# Hello I'm a docstring!
+
+# Args:
+#     param1: Description.
+#     param2: Description.
+# Returns:
+#     The value
+# """
+# docstring = Docstring(text, lineno=1, parent=function)
+# parsed = docstring.parse("google")
+
+# print(parsed)
+
+# print(parsed[0].as_dict())
+# print(parsed[1].as_dict())
+# print(parsed[2].as_dict())
+
+# p: Parameter = parsed[1].value[0]
+
+# print(p.annotation)
+
+
+# # %%
+
+
+# import pydantic
+
+# class Tool(pydantic.BaseModel):
+
+#     name: str
+#     descr: str
+#     args: typing.List[IOField]
+#     kwargs: typing.List[IOField]
+#     return_value: typing.Union[IOField, typing.Tuple[IOField]]
+#     f: typing.Callable
+
+#     def __init__(self, f, name, descr, args=None, kwargs=None, return_value=None):
+
+#         super().__init_subclass__(
+#             name=name, descr=descr, args=args or [],
+#             kwargs=kwargs or {}, 
+#             return_value=return_value
+#         )
+
+#     def forward(self, *args, **kwargs):
+
+#         return self.f(*args, **kwargs)
+
+#     @classmethod
+#     def from_f(cls, f):
+
+#         f_info = get_function_info(f)
+#         args = []
+#         kwargs = {}
+#         for p in f_info['parameters']:
+#             arg = IOField(
+#                 p['name'], p['type'], p['default'],
+#             )
+#             if p['keyword_only']:
+#                 kwargs[p['name']] = arg
+#             else:
+#                 args.append(arg)
+
+#         return Tool(
+#             f, f_info['name'], f_info['docstring'],
+#             args, kwargs, f_info['return_value']
+#         )
+
+#     @classmethod
+#     def from_docstring(cls, f, parser: str='google'):
+
+#         docstring = griffe.Docstring(f.__doc__)
+#         parsed = docstring.parse(parser)
+
+#         for p in parsed:
+#             d = p.as_dict()
+#             if d['kind']
+
+
+#         f_info = get_function_info(f)
+#         args = []
+#         kwargs = {}
+#         for p in f_info['parameters']:
+#             arg = IOField(
+#                 p['name'], p['type'], p['default'],
+#             )
+#             if p['keyword_only']:
+#                 kwargs[p['name']] = arg
+#             else:
+#                 args.append(arg)
+
+#         return Tool(
+#             f, f_info['name'], f_info['docstring'],
+#             args, kwargs, f_info['return_value']
+#         )

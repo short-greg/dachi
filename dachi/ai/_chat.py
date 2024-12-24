@@ -7,11 +7,19 @@ from .. import _core as core
 class Chat(core.Module):
 
     def __init__(
-        self, model: core.ChatModel, auto_tool: bool=False
+        self, dialog: core.Dialog=None, cue_args: typing.Dict=None, mod: core.Module=None
     ):
         super().__init__()
-        self.model = model
-        self.dialog = core.Dialog()
+        self.dialog = dialog or core.Dialog()
+        self.cue_args = cue_args or {}
+        self.mod = mod
+
+    def cue(self, **kwargs) -> 'Chat':
+
+        return Chat(
+            self.model, self.dialog.clone(), 
+            {**kwargs}
+        )
 
     def __getitem__(self, idx: int) -> core.Message:
 
@@ -27,13 +35,25 @@ class Chat(core.Module):
         for m in self.dialog:
             return m
 
-    def forward(self, text: str='', source: str='user', **data):
-        message = core.Message(source=source, text=text, data=data)
-        self.dialog.append(message)
-        response = self.model(self.dialog.to_messages())
-        cue: core.Cue = self.dialog.cue()
-        self.dialog.append(response)
-        return cue.read(response)
+    def forward(self, *args, f: typing.Callable=None, **kwargs) -> typing.Tuple[core.Msg, 'Chat']:
+
+        if f is not None:
+            message = f(*args, **kwargs)
+        elif self.mod is not None:
+            message = self.mod(*args, **kwargs)
+        else:
+            raise ValueError('')
+        
+        dialog = self.dialog.add(message)
+        return Chat(
+            dialog, {**self.cue_args}, self.mod 
+        )
+        # message = core.Message(source=source, text=text, data=data)
+        # self.dialog.append(message)
+        # response = self.model(self.dialog.to_messages())
+        # cue: core.Cue = self.dialog.cue()
+        # self.dialog.append(response)
+        # return cue.read(response)
     
     async def aforward(self, text: str='', source: str='user', **data):
         message = core.Message(source=source, text=text, data=data)
