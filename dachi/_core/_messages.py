@@ -44,14 +44,6 @@ class Dialog(pydantic.BaseModel, Renderable):
     def messages(self) -> typing.Iterator[Msg]:
         pass
 
-    def __init__(self):
-        """Create a dialog
-
-        Args:
-            messages: The messages
-        """
-        super().__init__()
-
     def __iter__(self) -> typing.Iterator[Msg]:
         """Iterate over each message in the dialog
 
@@ -61,6 +53,7 @@ class Dialog(pydantic.BaseModel, Renderable):
         for message in self.messages():
             yield message
 
+    @abstractmethod
     def __getitem__(self, idx) -> Msg:
         """Retrieve a value from the dialog
 
@@ -70,7 +63,8 @@ class Dialog(pydantic.BaseModel, Renderable):
         Returns:
             Message: The message in the dialog
         """
-        return self.messages[idx]
+        pass
+        # return self.messages[idx]
 
     @abstractmethod
     def __setitem__(self, idx, message) -> Self:
@@ -106,6 +100,7 @@ class Dialog(pydantic.BaseModel, Renderable):
         """
         pass
 
+    @abstractmethod
     def add(self, message: Msg, ind: typing.Optional[int]=None, replace: bool=False) -> 'Dialog':
         """Add a message to the dialog
 
@@ -117,23 +112,25 @@ class Dialog(pydantic.BaseModel, Renderable):
         Raises:
             ValueError: If the index is not correct
         """
-        if ind is not None and ind < 0:
-            ind = max(len(self) + ind, 0)
+        pass
+        # if ind is not None and ind < 0:
+        #     ind = max(len(self) + ind, 0)
 
-        if ind is None or ind == len(self):
-            if not replace or ind == len(self):
-                self.messages.append(message)
-            else:
-                self.messages[-1] = message
-        elif ind > len(self.messages):
-            raise ValueError(
-                f'The index {ind} is out of bounds '
-                f'for size {len(self.messages)}')
-        elif replace:
-            self.messages[ind] = message
-        else:
-            self.messages.insert(ind, message)
+        # if ind is None or ind == len(self):
+        #     if not replace or ind == len(self):
+        #         self.messages.append(message)
+        #     else:
+        #         self.messages[-1] = message
+        # elif ind > len(self.messages):
+        #     raise ValueError(
+        #         f'The index {ind} is out of bounds '
+        #         f'for size {len(self.messages)}')
+        # elif replace:
+        #     self.messages[ind] = message
+        # else:
+        #     self.messages.insert(ind, message)
 
+    @abstractmethod
     def extend(self, dialog: typing.Union['Dialog', typing.Iterable[Msg]]) -> 'Dialog':
         """Extend the dialog with another dialog or a list of messages
 
@@ -142,6 +139,7 @@ class Dialog(pydantic.BaseModel, Renderable):
         """
         pass
 
+    @abstractmethod
     def reader(self) -> 'Reader':
         """Get the "Reader" for the dialog. By default will use the last one
         that is available.
@@ -159,7 +157,7 @@ class Dialog(pydantic.BaseModel, Renderable):
             str: The dialog
         """
         return '\n'.join(
-            message.render() for message in self.messages
+            message.render() for message in self.messages()
         )
 
     def aslist(self) -> typing.List['Msg']:

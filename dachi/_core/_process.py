@@ -243,7 +243,7 @@ class ModuleList(Module):
                 for child in module.children(recurse):
                     yield child
 
-    def parameters(self, recurse: bool = True) -> typing.Iterator[Param]:
+    def _parameters(self, recurse: bool = True) -> typing.Iterator[Param]:
         """Get the parameters in the ModuleList
 
         Args:
@@ -253,7 +253,7 @@ class ModuleList(Module):
             Param: The params in the ModuleList
         """
         for module in self._modules:
-            for p in module.parameters(recurse):
+            for p in module._parameters(recurse):
                 yield p
         
     def forward(self) -> Any:

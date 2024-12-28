@@ -244,7 +244,7 @@ class TestModule:
         
         module = NestedModule(NestedModule(Append('a')))
 
-        children = list(module.parameters())
+        children = list(module._parameters())
         assert len(children) == 2
 
     def test_streamable_streams_characters(self):

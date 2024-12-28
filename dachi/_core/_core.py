@@ -480,7 +480,7 @@ class Module(Storable, ABC):
         """
         return self.forward(*args, **kwargs)
 
-    def parameters(self, recurse: bool=True) -> typing.Iterator['Param']:
+    def _parameters(self, recurse: bool=True) -> typing.Iterator['Param']:
         """Loop over the parameters for the module
 
         Yields:
@@ -495,7 +495,7 @@ class Module(Storable, ABC):
                 
                 yield v
             if recurse and isinstance(v, Module):
-                for v in v.parameters(True):
+                for v in v._parameters(True):
                     if id(v) in yielded:
                         continue
                     yielded.add(id(v))
@@ -559,7 +559,7 @@ class Module(Storable, ABC):
             state_dict[i] = child.state_dict()
         
         params = {}
-        for i, param in enumerate(self.parameters(False)):
+        for i, param in enumerate(self._parameters(False)):
             params[i] = param.state_dict()
         state_dict['__params__'] = params
 
@@ -572,5 +572,5 @@ class Module(Storable, ABC):
             child.load_state_dict(cur_dict)
 
         params = state_dict['__params__']
-        for i, cur in enumerate(self.parameters(False)):
+        for i, cur in enumerate(self._parameters(False)):
             cur.load_state_dict(params[i])
