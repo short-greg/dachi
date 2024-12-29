@@ -114,3 +114,55 @@ class LLM(Module, ABC):
             AIResponse: Get the response from the AI
         """
         return self.forward(prompt, **kwarg_override)
+    
+    def get(self, x: typing.Union[str, typing.Callable], dx: typing.Union[str, typing.Callable]):
+        return Get(self, x, dx)
+
+
+class Get(Module):
+    """Use to convert a message response to a 
+    """
+
+    def __init__(self, llm: LLM, x: typing.Union[str, typing.Callable], dx: typing.Union[str, typing.Callable]):
+        """
+
+        Args:
+            llm (LLM): 
+            content (str): 
+            dx (str): 
+        """
+        super().__init__()
+        self._llm = llm
+        self._dx = dx
+        self._x = x
+
+    def forward(self, prompt, **kwarg_override) -> typing.Any:
+        msg = self._llm.forward(prompt, **kwarg_override)
+        if isinstance(self._x, str):
+            yield msg[self._x]
+        else:
+            yield self._x(msg)
+    
+    async def aforward(self, prompt, **kwarg_override) -> typing.Any:
+        msg = self._llm.aforward(prompt, **kwarg_override)
+        if isinstance(self._x, str):
+            yield msg[self._x]
+        else:
+            yield self._x(msg)
+        return [self._x]
+    
+    def stream(self, prompt, **kwarg_override) -> typing.Iterator:
+        
+        for msg in self._llm.stream(prompt, **kwarg_override):
+            if isinstance(self._dx, str):
+                yield msg[self._dx]
+            else:
+                yield self._dx(msg)
+    
+    async def astream(self, prompt, **kwarg_override) -> typing.AsyncIterator:
+        async for msg in self._llm.astream(prompt, **kwarg_override):
+            if isinstance(self._dx, str):
+                yield msg[self._dx]
+            else:
+                yield self._dx(msg)
+

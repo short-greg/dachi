@@ -5,11 +5,11 @@ import typing
 from functools import singledispatch
 from .._core import (
     Module, AssistantMsg, DeltaMsg, Dialog, 
-    ListDialog, Reader, Schema, ChatMsg,
+    ListDialog, Reader, Schema, Msg,
     SystemMsg, ToolMsg, UserMsg
 )
 from ..utils import UNDEFINED
-from ..ai import LLM, LLM_PROMPT, LLM_RESPONSE
+from ..ai import LLM, LLM_PROMPT, Get
 from abc import abstractmethod, ABC
 
 from typing import Dict, List
@@ -23,6 +23,282 @@ missing = required - installed
 if len(missing) > 0:
 
     raise RuntimeError(f'To use this module openai must be installed.')
+
+
+class OpenAILLM(LLM):
+    """APIAdapter allows one to adapt various WebAPI or otehr
+    API for a consistent interface
+    """
+
+    def __init__(self, model: str, client_kwargs: typing.Dict=None, **kwargs) -> None:
+        """Create an OpenAIChat model
+
+        Args:
+            model (str): The name of the model
+        """
+        super().__init__()
+        self.client_kwargs = client_kwargs or {}
+        self.model = model
+        self.kwargs = kwargs
+
+    def prepare_dialog(self, prompt: typing.Union[Dialog, Msg]) -> Dialog:
+        if isinstance(prompt, Msg):
+            prompt = ListDialog([prompt])
+
+        return prompt
+    
+    def process_response(self, response) -> Msg:
+        pass
+
+    def process_delta_response(self, delta_response, response=None) -> Msg:
+        pass
+
+    def forward(self, prompt: LLM_PROMPT, **kwarg_override) -> Msg:
+        """Execute the model
+
+        Args:
+            prompt (AIPrompt): The message to send the model
+
+        Returns:
+            AIResponse: the response from the model
+        """
+        kwargs = {**self.kwargs, **kwarg_override}
+        dialog = self.prepare_dialog(
+            prompt
+        )
+        messages = list(dialog.messages())
+        client = openai.OpenAI(**self.client_kwargs)
+        response = client.chat.completions.create(
+            model=self.model,
+            messages=messages,
+            **kwargs
+        )
+        return self.process_response(response)
+
+    async def aforward(self, prompt: LLM_PROMPT, **kwarg_override) -> Msg:
+        """Execute the model
+
+        Args:
+            prompt (AIPrompt): The message to send the model
+
+        Returns:
+            AIResponse: the response from the model
+        """
+        kwargs = {**self.kwargs, **kwarg_override}
+        dialog = self.prepare_dialog(
+            prompt
+        )
+        messages = list(dialog.messages())
+        client = openai.AsyncOpenAI(**self.client_kwargs)
+        response = client.chat.completions.create(
+            model=self.model,
+            messages=messages,
+            **kwargs
+        )
+        return self.process_response(response)
+
+    def stream(self, prompt: LLM_PROMPT, **kwarg_override) -> typing.Iterator[Msg]:
+        """Execute the model
+
+        Args:
+            prompt (AIPrompt): The message to send the model
+
+        Returns:
+            AIResponse: the response from the model
+        """
+        kwargs = {**self.kwargs, **kwarg_override}
+        dialog = self.prepare_dialog(
+            prompt
+        )
+        messages = list(dialog.messages())
+        client = openai.OpenAI(**self.client_kwargs)
+        stream = client.chat.completions.create(
+            model=self.model,
+            messages=messages,
+            stream=True,
+            **kwargs
+        )
+        response = None
+        for chunk in stream:
+            yield self.process_delta_response(chunk, response)
+
+    async def astream(self, prompt: LLM_PROMPT, **kwarg_override) -> typing.AsyncIterator[Msg]:
+        """Execute the model
+
+        Args:
+            prompt (AIPrompt): The message to send the model
+
+        Returns:
+            AIResponse: the response from the model
+        """
+        kwargs = {**self.kwargs, **kwarg_override}
+        dialog = self.prepare_dialog(
+            prompt
+        )
+        messages = list(dialog.messages())
+        client = openai.AsyncOpenAI(**self.client_kwargs)
+        stream = client.chat.completions.create(
+            model=self.model,
+            messages=messages,
+            stream=True,
+            **kwargs
+        )
+        response = None
+        async for chunk in stream:
+            yield self.process_delta_response(chunk, response)
+
+    def get_text(self, x: str='content', dx: str=lambda msg: msg['dx']['content']):
+        return Get(
+            self, x, dx
+        )
+
+        # client = openai.OpenAI(**self.client_kwargs)
+        # response = client.chat.completions.create(
+        #     model=self.model,
+        #     messages=self.to_prompt(dialog),
+        #     **kwargs
+        # )
+        # message = process_api_response(
+        #     response, dialog.reader(), dialog.schema
+        # )
+        # # text = response.choices[0].message.content
+        # # parsed = prompt.reader().read(text)
+
+        # # message = AssistantMsg(text=text, parsed=parsed)
+        # return message, dialog.add(message)
+
+    # def stream(
+    #     self, prompt: LLM_PROMPT, 
+    #     **kwarg_override
+    # ) -> typing.Iterator[LLM_RESPONSE]:
+    #     """Stream the model
+
+    #     Args:
+    #         prompt (AIPrompt): the model prmopt
+
+    #     Yields:
+    #         Iterator[typing.Iterator[typing.Tuple[AIResponse, AIResponse]]]: the responses from the model
+    #     """
+    #     kwargs = {**self.kwargs, **kwarg_override}
+    #     dialog, kwargs = self.prepare_dialog(
+    #         prompt, kwargs
+    #     )
+        
+    #     client = openai.OpenAI(**self.client_kwargs)
+    #     query = client.chat.completions.create(
+    #         model=self.model,
+    #         messages=self.convert_messages(prompt.aslist()),
+    #         stream=True,
+    #         **kwargs
+    #     )
+    #     cur_message = ''
+
+    #     #p = dialog.reader()
+    #     msg = AssistantMsg('')
+    #     for chunk in query:
+    #         delta = chunk.choices[0].delta.content
+
+    #         if delta is None:
+    #             delta = ''
+            
+    #         cur_message = cur_message + delta
+    #         message = process_delta_api_response(
+    #             chunk, msg, dialog.reader(), dialog.schema
+    #         )
+    #         # message = AssistantMsg(
+    #         #     cur_message, delta=DeltaMsg(text=delta)
+    #         # )
+    #         # dx_val = p.read(delta)
+
+    #         yield message, dialog.add(message)
+    #         # dx_val = p.read(delta)
+
+    # async def aforward(
+    #     self, prompt: LLM_PROMPT, **kwarg_override
+    # ) -> LLM_RESPONSE:
+    #     """Run this query for asynchronous operations
+    #     The default behavior is simply to call the query
+
+    #     Args:
+    #         data: Data to pass to the API
+
+    #     Returns:
+    #         typing.Any: 
+    #     """
+    #     kwargs = {**self.kwargs, **kwarg_override}
+    #     dialog, kwargs = self.prepare_dialog(
+    #         prompt, kwargs
+    #     )
+
+    #     client = openai.AsyncOpenAI(**self.client_kwargs)
+    #     response = await client.chat.completions.create(
+    #         model=self.model,
+    #         messages=self.to_prompt(dialog),
+    #         **kwargs
+    #     )
+    #     # text = response.choices[0].message.content
+    #     # parsed = prompt.reader().read(text)
+
+    #     message = process_api_response(
+    #         response, dialog.reader(), dialog.schema
+    #     )
+    #     # message = AssistantMsg(text=text, parsed=parsed)
+    #     return message, dialog.add(message)
+
+    # async def astream(
+    #     self, prompt: LLM_PROMPT, **kwarg_override
+    # ) -> typing.AsyncIterator[LLM_RESPONSE]:
+    #     """Run this query for asynchronous streaming operations
+    #     The default behavior is simply to call the query
+
+    #     Args:
+    #         prompt (AIPrompt): The data to pass to the API
+
+    #     Yields:
+    #         typing.Dict: The data returned from the API
+    #     """
+    #     kwargs = {**self.kwargs, **kwarg_override}
+    #     dialog, kwargs = self.prepare_dialog(
+    #         prompt, kwargs
+    #     )
+        
+    #     client = openai.AsyncOpenAI(**self.client_kwargs)
+    #     query = await client.chat.completions.create(
+    #         model=self.model,
+    #         messages=self.convert_messages(prompt.aslist()),
+    #         stream=True,
+    #         **kwargs
+    #     )
+    #     cur_message = ''
+    #     #p = dialog.reader()
+    #     async for chunk in query:
+    #         # delta = chunk.choices[0].delta.content
+    #         message = process_delta_api_response(
+    #             chunk, dialog.reader(), dialog.schema
+    #         )
+    #         yield message, dialog.add(message)
+            
+
+    #         # if delta is None:
+    #         #     delta = ''
+            
+    #         # cur_message = cur_message + delta
+            
+    #         # message = AssistantMsg(
+    #         #     cur_message, delta=DeltaMsg(text=delta)
+    #         # )
+    #         # dx_val = p.read(delta)
+
+    # def __call__(self, prompt: LLM_PROMPT, **kwarg_override) -> LLM_RESPONSE:
+    #     """Execute the AIModel
+
+    #     Args:
+    #         prompt (AIPrompt): The prompt
+
+    #     Returns:
+    #         AIResponse: Get the response from the AI
+    #     """
+    #     return self.forward(prompt, **kwarg_override)
 
 
 

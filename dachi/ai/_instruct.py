@@ -1,9 +1,8 @@
 # 1st party
 import typing
-from functools import wraps, update_wrapper
+from functools import wraps
 import inspect
 from itertools import chain
-
 from typing import Any, Iterator, AsyncIterator
 import inspect
 
@@ -17,14 +16,8 @@ from .._core._core import (
 )
 from ._ai import LLM
 
-from .._core import (
-    Dialog, TextMessage
-)
-from .._core._read import (
-    PydanticRead, PrimRead
-)
 from ..utils._utils import (
-    str_formatter, primitives, get_member
+    str_formatter
 )
 from .._core._process import Module
 
@@ -61,10 +54,6 @@ def get_iterator_type(func) -> Any:
         elif issubclass(return_type.__origin__, AsyncIterator):
             return return_type.__args__[0]  # Type of the async iterator
     return None
-
-
-# Make this a cue
-# and a parameter
 
 
 X = typing.Union[str, Cue]
