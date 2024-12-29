@@ -2,11 +2,6 @@ import typing
 
 from .. import _core as core
 
-# add in tools
-
-# for dx, response in chat.stream():
-#    pass
-
 
 class Chat(core.Module):
 
@@ -74,53 +69,3 @@ class Chat(core.Module):
             yield message.delta, Chat(
                 dialog, {**self.cue_args}, self.mod 
             )
-
-        # prepare the ToolOption message (?) # says what tools
-        #  are available
-        # prepare the other mesages
-        # 
-        # retrieve the response
-        # execute the "cue" if it exists.. controls
-        #    what is 
-        # execute the "filter" if it exists.. controls
-        #   what is returned
-        # 
-
-        # message = core.Message(source=source, text=text, data=data)
-        # self.dialog.append(message)
-        # response = ''
-        # cue: core.Cue = self.dialog.cue()
-
-        # # 1) the cue can be streamed
-        # # 2) the cue cannot be streamed
-        # # 3) the cue can partially be streamed
-        # # 4) the cue doesn't exist
-
-        # # 5) Returns a tool
-        # # 6) 
-
-        # # This must tra
-        # tokens = []
-        # for token in self.model.stream(self.dialog.to_messages()):
-
-        #     if token.is_tool():
-        #         if token.is_complete():
-        #             pass
-        #     elif token.is_end():
-        #         pass
-        #     elif cue is None:
-        #         pass
-        #     elif cue.multi:
-        #         pass
-        #     else:
-        #         try:
-        #             cue.read(dx)
-        #         except cue.ReadError:
-        #             # if the read error fails here assume 
-        #             # it is not ready
-        #             yield dx
-        
-        # self.dialog.append(response)
-        # return cue.read(response)
-
-
