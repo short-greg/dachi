@@ -4,13 +4,17 @@ from .. import _core as core
 
 # add in tools
 
+# for dx, response in chat.stream():
+#    pass
+
+
 class Chat(core.Module):
 
     def __init__(
         self, dialog: core.Dialog=None, cue_args: typing.Dict=None, mod: core.Module=None
     ):
         super().__init__()
-        self.dialog = dialog or core.Dialog()
+        self.dialog = dialog or core.ListDialog()
         self.cue_args = cue_args or {}
         self.mod = mod
 
@@ -37,37 +41,40 @@ class Chat(core.Module):
 
     def forward(self, *args, f: typing.Callable=None, **kwargs) -> typing.Tuple[core.Msg, 'Chat']:
 
-        if f is not None:
-            message = f(*args, **kwargs)
-        elif self.mod is not None:
-            message = self.mod(*args, **kwargs)
-        else:
-            raise ValueError('')
-        
+        f_ = f if f is not None else self.mod.forward
+        message =  f_(*args, **kwargs)
         dialog = self.dialog.add(message)
         return Chat(
             dialog, {**self.cue_args}, self.mod 
         )
-        # message = core.Message(source=source, text=text, data=data)
-        # self.dialog.append(message)
-        # response = self.model(self.dialog.to_messages())
-        # cue: core.Cue = self.dialog.cue()
-        # self.dialog.append(response)
-        # return cue.read(response)
     
-    async def aforward(self, text: str='', source: str='user', **data):
-        message = core.Message(source=source, text=text, data=data)
-        self.dialog.append(message)
-        response = self.model(self.dialog.to_messages())
-        cue: core.Cue = self.dialog.cue()
-        self.dialog.append(response)
-        return cue.read(response)
+    async def aforward(self, *args, f: typing.Callable=None, **kwargs) -> typing.Tuple[core.Msg, 'Chat']:
 
-    async def astream(self, text: str='', source: str='user', **data):
-        pass
+        f_ = f if f is not None else self.mod.aforward
+        message = await f_(*args, **kwargs)
+        dialog = self.dialog.add(message)
+        return Chat(
+            dialog, {**self.cue_args}, self.mod 
+        )
 
-    def stream(self, text: str='', source: str='user', **data):
-        pass
+    def stream(self, *args, f: typing.Callable=None, **kwargs) -> typing.Iterator[typing.Tuple[core.Msg, 'Chat']]:
+
+        f_ = f if f is not None else self.mod.stream
+        for message in f_(*args, **kwargs):
+            dialog = self.dialog.add(message)
+            yield message.delta, Chat(
+                dialog, {**self.cue_args}, self.mod 
+            )
+
+    async def astream(self, *args, f: typing.Callable=None, **kwargs) -> typing.AsyncIterator[typing.Tuple[core.Msg, 'Chat']]:
+
+        f_ = f if f is not None else self.mod.astream
+        async for message in await f_(*args, **kwargs):
+            dialog = self.dialog.add(message)
+            yield message.delta, Chat(
+                dialog, {**self.cue_args}, self.mod 
+            )
+
         # prepare the ToolOption message (?) # says what tools
         #  are available
         # prepare the other mesages
@@ -115,4 +122,5 @@ class Chat(core.Module):
         
         # self.dialog.append(response)
         # return cue.read(response)
-    
+
+
