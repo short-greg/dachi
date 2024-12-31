@@ -1,4 +1,3 @@
-import typing
 from .. import _core as core
 
 

@@ -32,15 +32,6 @@ class LLM(Module, ABC):
     API for a consistent interface
     """
 
-    def create_dialog(self, prompt):
-        if isinstance(prompt, Dialog):
-            return ListDialog([prompt])
-        return prompt
-    
-    @abstractmethod
-    def to_prompt(self, dialog: Dialog) -> typing.List[typing.Dict]:
-        pass
-
     @abstractmethod
     def forward(
         self, prompt, 
@@ -117,6 +108,14 @@ class LLM(Module, ABC):
     
     def get(self, x: typing.Union[str, typing.Callable], dx: typing.Union[str, typing.Callable]):
         return Get(self, x, dx)
+
+    # def create_dialog(self, prompt):
+    #     if isinstance(prompt, Dialog):
+    #         return ListDialog([prompt])
+    #     return prompt
+    # @abstractmethod
+    # def to_prompt(self, dialog: Dialog) -> typing.List[typing.Dict]:
+    #     pass
 
 
 class Get(Module):

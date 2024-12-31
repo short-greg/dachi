@@ -14,8 +14,17 @@ import pydantic
 
 
 class Msg(dict):
+    """A Msg used for a dialog
+    """
 
     def __init__(self, type_: str='data', meta: typing.Dict=None, delta: typing.Dict=None, **kwargs):
+        """Create a Message
+
+        Args:
+            type_ (str, optional): The type of message. Defaults to 'data'.
+            meta (typing.Dict, optional): Any additional information not related to the message specifically. Defaults to None.
+            delta (typing.Dict, optional): The change in the message. Defaults to None.
+        """
         super().__init__(
             type_=type_, meta=meta, delta=delta, **kwargs
         )
@@ -64,7 +73,6 @@ class Dialog(pydantic.BaseModel, Renderable):
             Message: The message in the dialog
         """
         pass
-        # return self.messages[idx]
 
     @abstractmethod
     def __setitem__(self, idx, message) -> Self:
@@ -78,8 +86,6 @@ class Dialog(pydantic.BaseModel, Renderable):
             Dialog: The updated dialog
         """
         pass
-        # self.messages[idx] = message
-        # return self
 
     @abstractmethod
     def pop(self, index: int) -> Msg:
@@ -89,7 +95,6 @@ class Dialog(pydantic.BaseModel, Renderable):
             index (int): The index to pop
         """
         pass
-        # return self.messages.pop(index)
 
     @abstractmethod
     def remove(self, message: Msg):
@@ -100,8 +105,27 @@ class Dialog(pydantic.BaseModel, Renderable):
         """
         pass
 
+    def add(self, type_: str='data', delta: typing.Dict=None, meta: typing.Dict=None, ind: typing.Optional[int]=None, replace: bool=False, **kwargs) -> 'Dialog':
+        """Add a message to the dialog
+
+        Args:
+            type_ (str, optional): The type of message. Defaults to 'data'.
+            delta (typing.Dict, optional): The change in the message. Defaults to None.
+            meta (typing.Dict, optional): Any other information that is not a part of the message. Defaults to None.
+            ind (typing.Optional[int], optional): The index to add it to. Defaults to None.
+            replace (bool, optional): Whether to replace the value at the index or offset it. Defaults to False.
+
+        Returns:
+            Dialog: The dialog with the message appended
+        """
+        msg = Msg(
+            type_=type_, meta=meta, 
+            delta=delta, **kwargs
+        )
+        return self.append(msg, ind, replace)
+
     @abstractmethod
-    def add(self, message: Msg, ind: typing.Optional[int]=None, replace: bool=False) -> 'Dialog':
+    def append(self, message: Msg, ind: typing.Optional[int]=None, replace: bool=False) -> 'Dialog':
         """Add a message to the dialog
 
         Args:
@@ -113,22 +137,6 @@ class Dialog(pydantic.BaseModel, Renderable):
             ValueError: If the index is not correct
         """
         pass
-        # if ind is not None and ind < 0:
-        #     ind = max(len(self) + ind, 0)
-
-        # if ind is None or ind == len(self):
-        #     if not replace or ind == len(self):
-        #         self.messages.append(message)
-        #     else:
-        #         self.messages[-1] = message
-        # elif ind > len(self.messages):
-        #     raise ValueError(
-        #         f'The index {ind} is out of bounds '
-        #         f'for size {len(self.messages)}')
-        # elif replace:
-        #     self.messages[ind] = message
-        # else:
-        #     self.messages.insert(ind, message)
 
     @abstractmethod
     def extend(self, dialog: typing.Union['Dialog', typing.Iterable[Msg]]) -> 'Dialog':
@@ -188,6 +196,8 @@ class Dialog(pydantic.BaseModel, Renderable):
 
 
 class ListDialog(Dialog):
+    """A Dialog that uses a list data structure.
+    """
 
     _messages: typing.List[Msg] = pydantic.PrivateAttr(default_factory=list)
 
@@ -261,7 +271,7 @@ class ListDialog(Dialog):
         """
         self._messages.remove(message)
 
-    def add(self, message: Msg, ind: typing.Optional[int]=None, replace: bool=False):
+    def append(self, message: Msg, ind: typing.Optional[int]=None, replace: bool=False):
         """Add a message to the dialog
 
         Args:
@@ -324,3 +334,9 @@ class ListDialog(Dialog):
         return ListDialog(
             messages=[message for message in self._messages]
         )
+
+
+# 
+# response = chat('hi', f=llm)
+# 
+# 
