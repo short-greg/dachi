@@ -22,6 +22,7 @@ class build_sango(object):
             raise
 
 
+
 class build_composite(object):
     """Base context method to build a task decorator
     """

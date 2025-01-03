@@ -4,13 +4,10 @@ import typing
 
 from functools import singledispatch
 from .._core import (
-    Module, AssistantMsg, DeltaMsg, Dialog, 
-    ListDialog, Reader, Schema, Msg,
-    SystemMsg, ToolMsg, UserMsg
+    Module, Dialog,  Msg
 )
 from ..utils import UNDEFINED
 from ..ai import LLM, LLM_PROMPT, Get
-from abc import abstractmethod, ABC
 
 from typing import Dict, List
 
@@ -41,17 +38,76 @@ class OpenAILLM(LLM):
         self.model = model
         self.kwargs = kwargs
 
-    def prepare_dialog(self, prompt: typing.Union[Dialog, Msg]) -> Dialog:
-        if isinstance(prompt, Msg):
-            prompt = ListDialog([prompt])
-
-        return prompt
-    
     def process_response(self, response) -> Msg:
-        pass
+        """
+        Processes the response from the OpenAI API and returns a Msg object.
+        Args:
+            response: The response object from the OpenAI API.
+        Returns:
+            Msg: A message object containing the role, type, tool, and meta information
+                 based on the response. If the response includes a function call, the
+                 message type is set to 'function' and includes the function name and
+                 arguments. Otherwise, the message content is set to the response content.
+        """
+        if response.choices[0].message.function_call:
+            return Msg(
+                role='assistant',
+                type_='function',
+                tool={
+                    'name': response.choices[0].message.function_call.name,
+                    'arguments': response.choices[0].message.function_call.arguments
+                },
+                meta={'response': response}
+            )
+        else:
+            return Msg(
+                role='assistant', 
+                content=response.choices[0].message.content,
+                meta={'response': response}
+            )
 
-    def process_delta_response(self, delta_response, response=None) -> Msg:
-        pass
+    def process_delta_response(self, delta_response, response: Msg=None) -> Msg:
+        """
+        Processes a delta response and updates or creates a Msg object accordingly. It aggregates the message sent from the AI and sets the delta in the Delta dictionary of Msg
+        Args:
+            delta_response (object): The delta response object containing choices with delta information.
+            response (Msg, optional): An existing Msg object to update. Defaults to None.
+        Returns:
+            Msg: The updated or newly created Msg object.
+        """ 
+        if delta_response.choices[0].delta.function_call:
+            if response is None:
+                response = Msg(
+                    role='assistant',
+                    type_='function',
+                    tool={
+                    'name': delta_response.choices[0].delta.function_call.name,
+                    'arguments': delta_response.choices[0].delta.function_call.arguments
+                    },
+                    meta={'delta': delta_response}
+                )
+            else:
+                if response.tool is None:
+                    response.tool = {
+                        'name': delta_response.choices[0].delta.function_call.name,
+                        'arguments': delta_response.choices[0].delta.function_call.arguments
+                    }
+                else:
+                    response.tool['arguments'] += delta_response.choices[0].delta.function_call.arguments
+            response.meta['delta'] = delta_response
+
+        elif delta_response.choices[0].delta.content:
+            if response is None:
+                response = Msg(
+                    role='assistant',
+                    content=delta_response.choices[0].delta.content,
+                    meta={'delta': delta_response}
+                )
+            else:
+                response.content = (response.content or '') + delta_response.choices[0].delta.content
+                response.meta['delta'] = delta_response
+
+        return response
 
     def forward(self, prompt: LLM_PROMPT, **kwarg_override) -> Msg:
         """Execute the model

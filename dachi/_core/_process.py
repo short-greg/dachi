@@ -257,12 +257,7 @@ class ModuleList(Module):
                 yield p
         
     def forward(self) -> Any:
-        """
-
-        Raises:
-            ValueError: If called because ModuleList cannot be __call__
-
-        """
+        """Pass the value forward"""
         raise ValueError('Cannot pass forward with ModuleList')
     
     def __len__(self) -> int:

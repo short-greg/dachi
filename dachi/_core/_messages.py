@@ -18,7 +18,7 @@ class Msg(dict):
     """
 
     def __init__(self, type_: str='data', meta: typing.Dict=None, delta: typing.Dict=None, **kwargs):
-        """Create a Message
+        """Create a Msg
 
         Args:
             type_ (str, optional): The type of message. Defaults to 'data'.
@@ -31,10 +31,19 @@ class Msg(dict):
 
     @property
     def type(self) -> str:
+        """Get the type of the message"""
         return self['type_']
     
+    def __getattr__(self, key) -> typing.Any:
+        """Get an attribute of the message"""
+        return object.__getattribute__(self, key)
+    
+    def __setattr__(self, name, value):
+        """Set an attribute of the message"""
+        return object.__setattr__(self, name, value)
+    
     def to_dict(self) -> typing.Dict:
-
+        """Convert the message to a dictionary"""
         d = {**self}
         del d['type_']
         if 'meta' in d:
@@ -51,13 +60,14 @@ class Dialog(pydantic.BaseModel, Renderable):
 
     @abstractmethod
     def messages(self) -> typing.Iterator[Msg]:
+        """Iterate over each message in the dialog"""
         pass
 
     def __iter__(self) -> typing.Iterator[Msg]:
         """Iterate over each message in the dialog
 
         Yields:
-            Iterator[typing.Iterator[Message]]: Each message in the dialog
+            Iterator[typing.Iterator[Msg]]: Each message in the dialog
         """
         for message in self.messages():
             yield message
@@ -70,7 +80,7 @@ class Dialog(pydantic.BaseModel, Renderable):
             idx : The index to add at
 
         Returns:
-            Message: The message in the dialog
+            Msg: The message in the dialog
         """
         pass
 
@@ -101,11 +111,11 @@ class Dialog(pydantic.BaseModel, Renderable):
         """Remove a message from the dialog
 
         Args:
-            message (ChatMessage): The message to remove
+            message (Msg): The message to remove
         """
         pass
 
-    def add(self, type_: str='data', delta: typing.Dict=None, meta: typing.Dict=None, ind: typing.Optional[int]=None, replace: bool=False, **kwargs) -> 'Dialog':
+    def add(self, type_: str='data', delta: typing.Dict=None, meta: typing.Dict=None, ind: typing.Optional[int]=None, replace: bool=False, inplace: bool=False, **kwargs) -> 'Dialog':
         """Add a message to the dialog
 
         Args:
@@ -122,14 +132,14 @@ class Dialog(pydantic.BaseModel, Renderable):
             type_=type_, meta=meta, 
             delta=delta, **kwargs
         )
-        return self.append(msg, ind, replace)
+        return self.append(msg, ind, replace, inplace=inplace)
 
     @abstractmethod
-    def append(self, message: Msg, ind: typing.Optional[int]=None, replace: bool=False) -> 'Dialog':
+    def append(self, message: Msg, ind: typing.Optional[int]=None, replace: bool=False, inplace: bool=False) -> 'Dialog':
         """Add a message to the dialog
 
         Args:
-            message (Message): The message to add
+            message (Msg): The message to add
             ind (typing.Optional[int], optional): The index to add. Defaults to None.
             replace (bool, optional): Whether to replace at the index. Defaults to False.
 
@@ -139,11 +149,11 @@ class Dialog(pydantic.BaseModel, Renderable):
         pass
 
     @abstractmethod
-    def extend(self, dialog: typing.Union['Dialog', typing.Iterable[Msg]]) -> 'Dialog':
+    def extend(self, dialog: typing.Union['Dialog', typing.Iterable[Msg]], inplace: bool=False) -> 'Dialog':
         """Extend the dialog with another dialog or a list of messages
 
         Args:
-            dialog (typing.Union[&#39;Dialog&#39;, typing.List[Message]]): _description_
+            dialog (typing.Union[&#39;Dialog&#39;, typing.List[Msg]]): _description_
         """
         pass
 
@@ -172,7 +182,7 @@ class Dialog(pydantic.BaseModel, Renderable):
         """Retrieve the message list
 
         Returns:
-            typing.List[Message]: the messages in the dialog
+            typing.List[Msg]: the messages in the dialog
         """
         return list(self.messages())
     
@@ -213,7 +223,7 @@ class ListDialog(Dialog):
         """Iterate over each message in the dialog
 
         Yields:
-            Iterator[typing.Iterator[Message]]: Each message in the dialog
+            Iterator[typing.Iterator[Msg]]: Each message in the dialog
         """
         for message in self.messages():
             yield message
@@ -238,7 +248,7 @@ class ListDialog(Dialog):
             idx : The index to add at
 
         Returns:
-            Message: The message in the dialog
+            Msg: The message in the dialog
         """
         return self._messages[idx]
 
@@ -267,15 +277,15 @@ class ListDialog(Dialog):
         """Remove a message from the dialog
 
         Args:
-            message (ChatMessage): The message to remove
+            message (Msg): The message to remove
         """
         self._messages.remove(message)
 
-    def append(self, message: Msg, ind: typing.Optional[int]=None, replace: bool=False):
+    def append(self, message: Msg, ind: typing.Optional[int]=None, replace: bool=False, inplace: bool=False):
         """Add a message to the dialog
 
         Args:
-            message (Message): The message to add
+            message (Msg): The message to add
             ind (typing.Optional[int], optional): The index to add. Defaults to None.
             replace (bool, optional): Whether to replace at the index. Defaults to False.
 
@@ -299,15 +309,18 @@ class ListDialog(Dialog):
             messages[ind] = message
         else:
             messages.insert(ind, message)
+        if inplace:
+            self._messages = messages
+            return self
         return ListDialog(
             messages
         )
 
-    def extend(self, dialog: typing.Union['Dialog', typing.List[Msg]]):
+    def extend(self, dialog: typing.Union['Dialog', typing.List[Msg]], inplace: bool=False):
         """Extend the dialog with another dialog or a list of messages
 
         Args:
-            dialog (typing.Union[&#39;Dialog&#39;, typing.List[Message]]): _description_
+            dialog (typing.Union[&#39;Dialog&#39;, typing.List[Msg]]): _description_
         """
         if isinstance(dialog, Dialog):
             dialog = dialog.aslist()
@@ -315,6 +328,9 @@ class ListDialog(Dialog):
         messages = [
             self._messages + dialog
         ]
+        if inplace:
+            self._messages = messages
+            return self
         return ListDialog(messages)
 
     def __len__(self) -> int:
@@ -334,9 +350,3 @@ class ListDialog(Dialog):
         return ListDialog(
             messages=[message for message in self._messages]
         )
-
-
-# 
-# response = chat('hi', f=llm)
-# 
-# 

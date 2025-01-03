@@ -6,13 +6,10 @@ from itertools import chain
 from typing import Any, Iterator, AsyncIterator
 import inspect
 
-import pydantic
-
 # local
 from .._core._core import (
-    render, 
-    Cue, render, Param, 
-    Instruct, Reader, NullRead,
+    Cue, Param, 
+    Instruct, Reader
 )
 from ._ai import LLM
 
@@ -21,7 +18,6 @@ from ..utils._utils import (
 )
 from .._core._process import Module
 
-import inspect
 
 # TODO: SIMPLIFY THESE FUNCTIONS
 
@@ -142,7 +138,13 @@ class InstructCall(Module, Instruct):
 class IFunc(object):
 
     def __init__(self, f, is_method: bool, instance=None):
-        
+        """Create a function wrapper for an instruct
+
+        Args:
+            f: The function to wrap
+            is_method (bool): Whether the function is a method
+            instance (optional): The instance if this is a method. Defaults to None.
+        """
         self._f = f
         self._is_async = is_async_function(f)
         self._is_generator = is_generator_function(f)
@@ -156,7 +158,16 @@ class IFunc(object):
         self._return_annotation = inspect.signature(f).return_annotation
     
     def fparams(self, instance, *args, **kwargs):
-        
+        """Get the parameters for the function
+
+        Args:
+            instance: The instance if this is a method
+            args: The arguments to use
+            kwargs: The keyword arguments to use
+
+        Returns:
+            dict: The parameters
+        """
         param_values = list(self._parameters.values())
         values = {}
 
@@ -175,7 +186,14 @@ class IFunc(object):
         return values
             
     def get_instance(self, args):
+        """Get the instance for the function
 
+        Args:
+            args: The arguments to use
+
+        Returns:
+            tuple: The instance and the arguments
+        """
         if not self._is_method:
             return None, args
         
@@ -184,7 +202,15 @@ class IFunc(object):
         return args[0], args[1:]
     
     def get_member(self, member: str, args):
-        
+        """Get the member for the function
+
+        Args:
+            member: The member to get
+            args: The arguments to use
+
+        Returns:
+            The member
+        """
         instance, _ = self.get_instance(args)
 
         if instance is None:
@@ -194,10 +220,24 @@ class IFunc(object):
 
     @property
     def docstring(self):
+        """Get the docstring for the function
+
+        Returns:
+            str: The docstring
+        """
         return self._docstring
     
     def __call__(self, *args, instance=None, **kwargs):
-        
+        """Call the function
+
+        Args:
+            args: The arguments to use
+            instance: The instance if this is a method
+            kwargs: The keyword arguments to use
+
+        Returns:
+            The result of the function
+        """
         if instance is None:
             return self.f(*args, **kwargs)
         return self.f(instance, *args, **kwargs)
@@ -213,31 +253,85 @@ class IFunc(object):
     #             raise RuntimeError('Param has not been defined and no value')
 
 class ModuleIFunc(IFunc):
+    """ModuleIFunc is a function wrapper for an instruct that is a module
+    """
 
     async def aforward(self, *args, **kwargs):
+        """Execute the function asynchronously
 
+        Args:
+            args: The arguments to use
+            kwargs: The keyword arguments to use
+
+        Returns:
+            The result of the function
+        """
         return await self._f.aforward(*args, **kwargs)
     
     def stream(self, *args, **kwargs):
+        """Stream the function
 
+        Args:
+            args: The arguments to use
+            kwargs: The keyword arguments to use
+
+        Returns:
+            The result of the function
+        """
         for d in self._f.stream(*args, **kwargs):
             yield d
     
     async def astream(self, *args, **kwargs):
+        """Stream the function asynchronously
+
+        Args:
+            args: The arguments to use
+            kwargs: The keyword arguments to use
+
+        Returns:
+            The result of the function
+        """
         async for d in await self._f.astream(*args, **kwargs):
             yield d
 
     def forward(self, *args, **kwargs):
+        """Execute the function
+
+        Args:
+            args: The arguments to use
+            kwargs: The keyword arguments to use
+
+        Returns:
+            The result of the function
+        """
         return self._f.forward(*args, **kwargs)
     
 
 class FIFunc(IFunc):
-
+    """FIFunc is a function wrapper for an instruct that is not a module
+    """
     async def aforward(self, *args, **kwargs):
+        """Execute the function asynchronously
+
+        Args:
+            args: The arguments to use
+            kwargs: The keyword arguments to use
+
+        Returns:
+            The result of the function
+        """
         return await self._f(*args, **kwargs)
     
     def stream(self, *args, **kwargs):
+        """Stream the function
 
+        Args:
+            args: The arguments to use
+            kwargs: The keyword arguments to use
+
+        Returns:
+            The result of the function
+        """
         for d in self._f(*args, **kwargs):
             yield d
     
@@ -255,7 +349,6 @@ class SignatureFunc(Module, Instruct):
     the function signature
     """
     def __init__(
-            
         self, ifunc: IFunc, engine: typing.Callable[[typing.Any], typing.Any]=None, 
         reader: typing.Optional[Reader]=None,
         doc: typing.Union[str, typing.Callable[[], str]]=None,
@@ -316,6 +409,14 @@ class SignatureFunc(Module, Instruct):
         # update_wrapper(self, f) 
     
     def get_instance(self, args):
+        """Get the instance for the function
+
+        Args:
+            args: The arguments to use
+
+        Returns:
+            tuple: The instance and the arguments
+        """
         if not self._is_method:
             return None, args
         
@@ -324,7 +425,14 @@ class SignatureFunc(Module, Instruct):
         return self._instance, args
 
     def get_engine(self, instance):
-        
+        """Get the engine for the function
+
+        Args:
+            instance: The instance to use
+
+        Returns:
+            The engine
+        """
         if isinstance(self.engine, str):
             return object.__getattribute__(instance, self.engine)
         return self._instance
@@ -340,7 +448,7 @@ class SignatureFunc(Module, Instruct):
             SignatureMethod
         """
         if self.f.__name__ not in instance.__dict__:
-            return SignatureFunc(
+            instance.__dict__[self.f.__name__] = SignatureFunc(
                 self._ifunc,
                 engine=self._engine,
                 reader=self._reader,
@@ -349,14 +457,19 @@ class SignatureFunc(Module, Instruct):
                 ai_kwargs=self._ai_kwargs,
                 instance=self._instance
             )
-            # instance.__dict__[self.f.__name__] = SignatureFunc(
-            #     self._ifunc, self.engine, self._doc,
-            #     self._reader, self._train, self._ai_kwargs,
-            #     self._is_method, self._instance
-            # )
+    
         return instance.__dict__[self.f.__name__]
 
     def _prepare(self, *args, **kwargs):
+        """Prepare the function
+
+        Args:
+            args: The arguments to use
+            kwargs: The keyword arguments to use
+
+        Returns:
+            The cue
+        """
         instance, args = self.get_instance(args)
 
         cur_kwargs = self._ifunc(instance, *args, **kwargs)
@@ -371,7 +484,15 @@ class SignatureFunc(Module, Instruct):
         return cue
 
     def forward(self, *args, **kwargs) -> typing.Any:
+        """Execute the function
 
+        Args:
+            args: The arguments to use
+            kwargs: The keyword arguments to use
+
+        Returns:
+            The result of the function
+        """
         instance, args = self.get_instance(args)
         engine = self.get_engine(instance)
         cue = self._prepare(*args, **kwargs)
@@ -381,7 +502,15 @@ class SignatureFunc(Module, Instruct):
         return res
 
     async def aforward(self, *args, **kwargs) -> typing.Any:
+        """Execute the function asynchronously
 
+        Args:
+            args: The arguments to use
+            kwargs: The keyword arguments to use
+
+        Returns:
+            The result of the function
+        """
         instance, args = self.get_instance(args)
         engine = self.get_engine(instance)
         cue = self._prepare(*args, **kwargs)
@@ -394,7 +523,15 @@ class SignatureFunc(Module, Instruct):
         return res
 
     def stream(self, *args, **kwargs) -> typing.Any:
+        """Stream the function
 
+        Args:
+            args: The arguments to use
+            kwargs: The keyword arguments to use
+
+        Returns:
+            The result of the function
+        """
         instance, args = self.get_instance(args)
         engine = self.get_engine(instance)
         cue = self._prepare(*args, **kwargs)
@@ -410,7 +547,15 @@ class SignatureFunc(Module, Instruct):
         return v
 
     async def astream(self, *args, **kwargs) -> typing.Any:
+        """Stream the function asynchronously
 
+        Args:
+            args: The arguments to use
+            kwargs: The keyword arguments to use
+
+        Returns:
+            The result of the function
+        """
         instance, args = self.get_instance(args)
         engine = self.get_engine(instance)
         cue = self._prepare(*args, **kwargs)
@@ -426,6 +571,15 @@ class SignatureFunc(Module, Instruct):
         return v
 
     def i(self, *args, **kwargs) -> Cue:
+        """Get the cue for the function
+
+        Args:
+            args: The arguments to use
+            kwargs: The keyword arguments to use
+
+        Returns:
+            The cue
+        """ 
         cue = self._prepare(*args, **kwargs)
 
         return Cue(
@@ -497,6 +651,14 @@ class InstructFunc(Module, Instruct):
             self.__call__ = self.forward
 
     def get_instance(self, args):
+        """Get the instance for the function
+
+        Args:
+            args: The arguments to use
+
+        Returns:
+            tuple: The instance and the arguments
+        """
         if not self._is_method:
             return None, args
         
@@ -505,7 +667,14 @@ class InstructFunc(Module, Instruct):
         return self._instance, args
 
     def get_engine(self, instance):
-        
+        """Get the engine for the function
+
+        Args:
+            instance: The instance to use
+
+        Returns:
+            The engine
+        """
         if isinstance(self.engine, str):
             return object.__getattribute__(instance, self.engine)
         return self._instance
@@ -547,7 +716,15 @@ class InstructFunc(Module, Instruct):
         return res
 
     async def aforward(self, *args, **kwargs) -> typing.Any:
+        """Execute the function asynchronously
 
+        Args:
+            args: The arguments to use
+            kwargs: The keyword arguments to use
+
+        Returns:
+            The result of the function
+        """
         instance, args = self.get_instance(args)
         engine = self.get_engine(instance)
         cue = self._prepare(*args, **kwargs)

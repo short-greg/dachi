@@ -11,6 +11,7 @@ from ..data._data import Context
 
 from ..data import Buffer
 from .._core import AIModel
+from ..ai import LLMAgent
 
 
 class Root(Task):

@@ -348,6 +348,39 @@ def action(task: TASK, *args, **kwargs) -> CALL_TASK:
     return _f
 
 
+def threadedf(task: TASK, ctx: Context, *args, out: SharedBase=None, to_status: TOSTATUS=None, **kwargs) -> CALL_TASK:
+    """Use to wrap the task in a thread"""
+
+    if 'task_id' in ctx and id(task) != ctx['task_id']:
+
+        raise RuntimeError(
+            'Task context has been initialized but '
+            'the task passed in is does not match'
+        )
+
+    def _f():
+        """Run the task in a thread"""
+        def task_wrapper():
+            result = task(*args, **kwargs)
+            if out is not None:
+                out.set(result)
+            if to_status is not None:
+                status = to_status(result)
+            ctx['thread_status'] = status
+
+        if '_thread' not in ctx:
+            ctx['thread_status'] = TaskStatus.RUNNING
+            t = threading.Thread(target=task_wrapper)
+            ctx['_thread'] = t
+            t.start()
+        
+        if t.is_alive():
+            return TaskStatus.RUNNING
+        
+        return ctx['thread_status']
+    return _f
+
+
 def taskf(f, *args, out: SharedBase=None, to_status: TOSTATUS=None, **kwargs) -> CALL_TASK:
     """A generic task based on a function
 
@@ -440,8 +473,10 @@ def _run_thread(task: TASK, ctx: Context, interval: float=1./60):
 
 
 def threaded(task: TASK, ctx: Context, interval: float=1./60) -> CALL_TASK:
+    """Use to wrap the task in a thread"""
 
     def run() -> TaskStatus:
+        """Run the task in a thread"""
         if '_thread' not in ctx:
             ctx['thread_status'] = TaskStatus.RUNNING
             t = threading.Thread(target=_run_thread, args=(task, ctx, interval))

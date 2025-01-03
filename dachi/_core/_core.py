@@ -553,7 +553,7 @@ class Module(Storable, ABC):
             yield d, dx
 
     def state_dict(self):
-        
+        """Get the state dict for the module"""
         state_dict = {}
         for i, child in enumerate(self.children(False)):
             state_dict[i] = child.state_dict()
@@ -566,7 +566,7 @@ class Module(Storable, ABC):
         return state_dict
     
     def load_state_dict(self, state_dict):
-
+        """Load the state dict for the module"""
         for i, child in enumerate(self.children(False)):
             cur_dict = state_dict[i]
             child.load_state_dict(cur_dict)
