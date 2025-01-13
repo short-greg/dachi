@@ -8,7 +8,7 @@ from typing import Self
 # local
 from .._core import (
     Partial, Streamer,
-    Module, ParallelModule
+    Module
 )
 from ..utils import is_undefined
 from ..utils import UNDEFINED, WAITING
@@ -416,7 +416,6 @@ def wait(t: T) -> T:
     Returns:
         T: The T to wait for the output
     """
-
     if isinstance(t.val, Partial) or isinstance(t.val, Streamer):
         val = WAITING
     else:
@@ -430,10 +429,10 @@ class WaitSrc(Src):
     """
 
     def __init__(self, incoming: T):
-        """
+        """Create a Src to wait for the incoming transmission
 
         Args:
-            incoming (T): 
+            incoming (T): The incoming transmission
         """
         super().__init__()
         self._incoming = incoming
@@ -518,13 +517,13 @@ class Var(Src):
             yield False
         
     def forward(self, by: typing.Dict[T, typing.Any]=None) -> typing.Any:
-        """
+        """Return the value of the variable
 
         Args:
-            by (typing.Dict[T, typing.Any]): _description_
+            by (typing.Dict[T, typing.Any]): The input to the network
 
         Raises:
-            RuntimeError: _description_
+            RuntimeError: If the default value is not defined
 
         Returns:
             typing.Any: The value of the variable. If the 
@@ -536,9 +535,10 @@ class Var(Src):
 
 
 class IdxSrc(Src):
+    """Index the output of a transmission"""
 
     def __init__(self, t: T, idx):
-        """Index the 
+        """Index the output of a transmission
 
         Args:
             t (T): The Transmission to index
@@ -570,11 +570,13 @@ class IdxSrc(Src):
 
 
 def link(module: Module, *args, **kwargs) -> T:
-    """
-    Returns:
-        T: The transmission output by the module
-    """
+    """Create a link to a module
 
+    Args:
+        module (Module): The module to link to
+        *args: The arguments to the module
+        **kwargs: The keyword arguments to the module
+    """
     args = TArgs(*args, **kwargs)
     if not args.is_undefined():
         partial = args.has_partial()

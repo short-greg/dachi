@@ -8,7 +8,7 @@ import inspect
 
 # local
 from .._core._core import (
-    Cue, Param, 
+    Cue, Param,
     Instruct, Reader
 )
 from ._ai import LLM
@@ -54,7 +54,6 @@ def get_iterator_type(func) -> Any:
 
 X = typing.Union[str, Cue]
 
-# UPDATE THE FOLLOWING
 
 def validate_out(cues: typing.List[X]) -> typing.Optional[Reader]:
     """Validate an Out based on several instructions
@@ -122,7 +121,6 @@ class InstructCall(Module, Instruct):
         Returns:
             typing.Any: Execute the Instruct
         """
-        
         args = [
             arg() if isinstance(arg, InstructCall) 
             else arg for arg in self.args
@@ -241,21 +239,11 @@ class IFunc(object):
         if instance is None:
             return self.f(*args, **kwargs)
         return self.f(instance, *args, **kwargs)
-    
-    # def fill_template(self, template: str, *args, reader: Reader=None, **kwargs):
-    #     param_values = self.fparams(*args, **kwargs)
-    #     filled = set()
 
-    #     for param in param_values:
-    #         if param.name in filled:
-    #             continue
-    #         if param.default == inspect.Parameter.empty:
-    #             raise RuntimeError('Param has not been defined and no value')
 
 class ModuleIFunc(IFunc):
     """ModuleIFunc is a function wrapper for an instruct that is a module
     """
-
     async def aforward(self, *args, **kwargs):
         """Execute the function asynchronously
 
@@ -391,23 +379,6 @@ class SignatureFunc(Module, Instruct):
         else:
             self.__call__ = self.forward
 
-        # docstring = inspect.getdoc(f) if doc is None else doc
-        # self._signature = str(inspect.signature(f))
-        # self._parameters = inspect.signature(f).parameters
-        # self._return_annotation = inspect.signature(f).return_annotation
-        # if not isinstance(, typing.Callable):
-        #     docstring = Cue(text=docstring)
-        #     self._docstring = Param(
-        #         name=self.name,
-        #         cue=docstring,
-        #         training=train
-        #     )
-        # elif train:
-        #     raise ValueError('Cannot set to train if the docstring is a callable')
-        # else:
-        #     self._docstring = docstring
-        # update_wrapper(self, f) 
-    
     def get_instance(self, args):
         """Get the instance for the function
 
@@ -544,7 +515,7 @@ class SignatureFunc(Module, Instruct):
             if self._reader is not None:
                 v = self._reader.read(v)
             yield v
-        return v
+        # return v
 
     async def astream(self, *args, **kwargs) -> typing.Any:
         """Stream the function asynchronously
@@ -568,7 +539,7 @@ class SignatureFunc(Module, Instruct):
             if self._reader is not None:
                 v = self._reader.read(v)
             yield v
-        return v
+        # return v
 
     def i(self, *args, **kwargs) -> Cue:
         """Get the cue for the function
@@ -737,7 +708,7 @@ class InstructFunc(Module, Instruct):
         return res
 
     def stream(self, *args, **kwargs) -> typing.Any:
-
+        """Stream the instruction function"""
         instance, args = self.get_instance(args)
         engine = self.get_engine(instance)
         cue = self._prepare(*args, **kwargs)
@@ -750,9 +721,10 @@ class InstructFunc(Module, Instruct):
             if self._reader is not None:
                 v = self._reader.read(v)
             yield v
-        return v
+        # return v
 
     async def astream(self, *args, **kwargs) -> typing.Any:
+        """Stream the instruction function asynchronously"""
 
         instance, args = self.get_instance(args)
         engine = self.get_engine(instance)
@@ -766,9 +738,10 @@ class InstructFunc(Module, Instruct):
             if self._reader is not None:
                 v = self._reader.read(v)
             yield v
-        return v
+        # return v
 
     def i(self, *args, **kwargs) -> Cue:
+        """Get the cue for the function"""
         return self._prepare(*args, **kwargs)
 
     def spawn(

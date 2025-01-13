@@ -1,16 +1,12 @@
 from dachi._core import _core
-# from dachi._core import _instruct as core
+from dachi._core._messages import Msg
 
-import asyncio
-from typing import Any, Iterator, Tuple
-import pytest
-from dachi._core import _process as p
-from dachi._core._core import Module
+from typing import Iterator, Tuple
 from dachi.ai import _ai
 import typing
 
 
-class DummyAIModel(_ai.AIModel):
+class DummyAIModel(_ai.LLM):
     """APIAdapter allows one to adapt various WebAPI or other
     API for a consistent interface
     """
@@ -19,7 +15,7 @@ class DummyAIModel(_ai.AIModel):
         super().__init__()
         self.target = target
 
-    def forward(self, prompt: _ai.AIPrompt, **kwarg_override) -> _ai.AIResponse:
+    def forward(self, prompt: _ai.LLM_PROMPT, **kwarg_override) -> _ai.LLM_RESPONSE:
         """Run a standard query to the API
 
         Args:
@@ -34,7 +30,7 @@ class DummyAIModel(_ai.AIModel):
             _ai.TextMessage('assistant', self.target), result, self.target
         )
     
-    def stream(self, prompt: _ai.AIPrompt, **kwarg_override) -> Iterator[Tuple[_ai.AIResponse]]:
+    def stream(self, prompt: _ai.LLM_PROMPT, **kwarg_override) -> Iterator[_ai.LLM_RESPONSE]:
         message = prompt.aslist()[0]
         result = self.convert(message)
 
@@ -47,11 +43,11 @@ class DummyAIModel(_ai.AIModel):
                 _ai.TextMessage('assistant', c), result, c
             )
 
-    def convert(self, message: _ai.Message) -> typing.Dict:
+    def convert(self, message: Msg) -> typing.Dict:
         """Convert a message to the format needed for the model
 
         Args:
-            messages (Message): The messages to convert
+            messages (Msg): The messages to convert
 
         Returns:
             typing.List[typing.Dict]: The format to pass to the "model"

@@ -17,8 +17,7 @@ from .._core._core import (
 from ..utils import (
     struct_template,
     model_to_text,
-    escape_curly_braces, 
-    is_primitive
+    escape_curly_braces
 )
 from ..data._structs import DataList
 
@@ -105,8 +104,12 @@ class CSVRead(Reader):
     delim: str = ','
     cols: typing.Optional[typing.Union[typing.Type[pydantic.BaseModel], typing.List[typing.Tuple[str, str, str]]]] = None
 
-    def read_text(self, message: str):
+    def read_text(self, message: str) -> typing.Dict[str, typing.Any]:
+        """Read in the CSV
 
+        Args:
+            message (str): The message to read
+        """
         io = StringIO(message)
         df = pd.read_csv(io, sep=self.delim)
         return df.to_dict(orient='records', index=True)
@@ -123,7 +126,7 @@ class CSVRead(Reader):
         return data # StructList[S].load_records(data)
 
     def dump_data(self, data: typing.List) -> typing.Any:
-        """Doesnt do anything because write_text expects a list
+        """Doesn't do anything because write_text expects a list
 
         Args:
             data (typing.List): the data to dump
@@ -134,6 +137,14 @@ class CSVRead(Reader):
         return data
 
     def write_text(self, data: typing.Any) -> str:
+        """Write the data to a CSV
+
+        Args:
+            data (StructList[S]): The data to write
+
+        Returns:
+            str: The data as a CSV
+        """
         io = StringIO()
         data = [
             d_i.dump()
@@ -193,23 +204,44 @@ class CSVRead(Reader):
 
 
 class DualRead(Reader):
+    """A reader that convert to an intermediate format
+    """
 
     text: Reader
     data: Reader
 
     def read_text(self, message: str) -> typing.Dict:
+        """Read in the text
+
+        Args:
+            message (str): The message to read
+        """
         return self.text.read_text(message)
     
     def load_data(self, data) -> typing.Any:
+        """Load" the data
+
+        Args:
+            data (typing.Any): The data to load
+        """
         return self.data.load_data(data)
 
     def dump_data(self, data: typing.Any) -> typing.Any:
+        """Dump the data
+
+        Args:
+            data (typing.Any): The data to dump
+        """
         return self.data.dump_data(data)
 
     def write_text(self, data: typing.Any) -> str:
+        """Write text data
+        """
         return self.text.write_text(data)
 
     def template(self) -> str:
+        """Output a template for the text output
+        """
         return self.text.template()
 
 

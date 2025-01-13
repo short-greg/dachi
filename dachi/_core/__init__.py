@@ -7,7 +7,6 @@ from ._core import (
 )
 from ._read import (
     MultiRead, PrimRead, PydanticRead,
-    ReadError
 )
 
 from ._messages import (

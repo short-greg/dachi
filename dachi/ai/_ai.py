@@ -5,10 +5,65 @@ import typing
 from .._core._core import (
     Module
 )
+import pydantic
 from .._core import Msg, ListDialog, Dialog
 
-
 LLM_PROMPT = typing.Union[Dialog, Msg]
+PROMPT = typing.Union[Dialog, Msg]
+
+
+TO_MSG = typing.Callable[[typing.Any], Msg]
+FROM_MSG = typing.Callable[[Msg], typing.Any]
+
+LLM_RESPONSE = typing.Tuple[Msg, typing.Any]
+
+
+class ToolOption(pydantic.BaseModel):
+    """
+    """
+
+    name: str
+    f: typing.Callable[[typing.Any], typing.Any]
+    kwargs: typing.Dict
+
+
+class ToolSet(object):
+    """
+    """
+
+    def __init__(self, tools: typing.List[ToolOption]):
+        """
+
+        Args:
+            tools (typing.List[ToolOption]): 
+        """
+        self.tools = {
+            tool.name: tool
+            for tool in tools
+        }
+
+    def add(self, option: ToolOption):
+        """
+
+        Args:
+            option (ToolOption): 
+        """
+        self.tools[option.name] = option
+
+    def remove(self, option: ToolOption):
+        """
+
+        Args:
+            option (ToolOption): 
+        """
+        del self.tools[option.name]
+
+
+class ToolCall(pydantic.BaseModel):
+    
+    name: str
+    args: typing.Dict[str, typing.Any]
+    res_conv: typing.Callable[[typing.Any], Msg]
 
 
 def exclude_role(messages: typing.Iterable[Msg], *role: str) -> typing.List[Msg]:
@@ -37,15 +92,53 @@ def include_role(messages: typing.Iterable[Msg], *role: str) -> typing.List[Msg]
         if message.role in include]
 
 
+
 class LLM(Module, ABC):
     """APIAdapter allows one to adapt various WebAPI or otehr
     API for a consistent interface
     """
     @abstractmethod
-    def forward(
-        self, prompt, 
-        **kwarg_override
+    def user(self, *args, type_: str='data', delta: typing.Dict=None, meta: typing.Dict=None, **kwargs) -> Msg:
+        pass
+
+    @abstractmethod
+    def assistant(self, *args, type_: str='data', delta: typing.Dict=None, meta: typing.Dict=None, **kwargs) -> Msg:
+        pass
+
+    @abstractmethod
+    def system(self, *args, type_:str ='data', delta: typing.Dict=None, meta: typing.Dict=None, **kwargs) -> Msg:
+        pass
+
+    @abstractmethod
+    def tool(self, *args, type_:str ='tool', delta: typing.Dict=None, meta: typing.Dict=None, **kwargs) -> Msg:
+        pass
+
+    @abstractmethod
+    def tool_option(self, *args, **kwargs) -> ToolCall:
+        pass
+
+    def msg(
+        self, type_: str='data', meta: typing.Dict=None, delta: typing.Dict=None, **kwargs
     ) -> Msg:
+        """_summary_
+
+        Args:
+            type_ (str, optional): _description_. Defaults to 'data'.
+            meta (typing.Dict, optional): _description_. Defaults to None.
+            delta (typing.Dict, optional): _description_. Defaults to None.
+
+        Returns:
+            Msg: _description_
+        """
+        return Msg(
+            type_=type_, meta=meta, delta=delta, **kwargs
+        )
+
+    @abstractmethod
+    def forward(
+        self, prompt: LLM_PROMPT, 
+        **kwarg_override
+    ) -> typing.Tuple[Msg, typing.Any]:
         """Run a standard query to the API
 
         Args:
@@ -57,9 +150,9 @@ class LLM(Module, ABC):
         pass
 
     def stream(
-        self, prompt, 
+        self, prompt: LLM_PROMPT, 
         **kwarg_override
-    ) -> typing.Iterator[Msg]:
+    ) -> typing.Iterator[typing.Tuple[Msg, typing.Any]]:
         """API that allows for streaming the response
 
         Args:
@@ -76,8 +169,8 @@ class LLM(Module, ABC):
         yield self.forward(prompt, **kwarg_override)
     
     async def aforward(
-        self, prompt, **kwarg_override
-    ) -> Msg:
+        self, prompt: LLM_PROMPT, **kwarg_override
+    ) -> LLM_RESPONSE:
         """Run this query for asynchronous operations
         The default behavior is simply to call the query
 
@@ -90,8 +183,8 @@ class LLM(Module, ABC):
         return self.forward(prompt, **kwarg_override)
 
     async def astream(
-        self, prompt, **kwarg_override
-    ) -> typing.AsyncIterator[Msg]:
+        self, prompt: LLM_PROMPT, **kwarg_override
+    ) -> typing.AsyncIterator[LLM_RESPONSE]:
         """Run this query for asynchronous streaming operations
         The default behavior is simply to call the query
 
@@ -128,7 +221,7 @@ class LLM(Module, ABC):
 
 
 class Get(Module):
-    """Use to convert a message response to a 
+    """Use to convert a message response to a value 
     """
     def __init__(self, llm: LLM, x: typing.Union[str, typing.Callable], dx: typing.Union[str, typing.Callable]):
         """Initialize the AI class instance.
@@ -156,13 +249,16 @@ class Get(Module):
             typing.Any: The processed response, either extracted or transformed based on self._x configuration
   
         """
-        msg = self._llm.forward(prompt, **kwarg_override)
-        if isinstance(self._x, str):
-            yield msg[self._x]
-        else:
-            yield self._x(msg)
+        msg, _ = self._llm.forward(prompt, **kwarg_override)
+        return msg[self._x]
+        # if isinstance(self._x, str):
+        #     yield msg[self._x]
+        # else:
+        #     yield self._x(msg)
     
-    async def aforward(self, prompt, **kwarg_override) -> typing.Any:
+    async def aforward(
+        self, prompt, **kwarg_override
+    ) -> typing.Any:
         """
         Asynchronously forwards a prompt to the language model and yields processed results.
         This method sends a prompt to the underlying language model and processes its response
@@ -189,13 +285,12 @@ class Get(Module):
         - If _x is a string: extracts the value at that key from the response dictionary
         - If _x is a callable: applies the function to the entire response
         """
-        
-        msg = self._llm.aforward(prompt, **kwarg_override)
-        if isinstance(self._x, str):
-            yield msg[self._x]
-        else:
-            yield self._x(msg)
-        return [self._x]
+        msg, _ = self._llm.aforward(prompt, **kwarg_override)
+        # if isinstance(self._x, str):
+        #     yield msg[self._x]
+        # else:
+        #     yield self._x(msg)
+        return msg[self._x]
     
     def stream(self, prompt, **kwarg_override) -> typing.Iterator:
         """ Stream the results from the LLM and extract/process the response.
@@ -207,7 +302,7 @@ class Get(Module):
         Yields: 
             typing.Any: The processed response, either extracted or transformed based on self._x configuration
         """ 
-        for msg in self._llm.stream(prompt, **kwarg_override):
+        for msg, _ in self._llm.stream(prompt, **kwarg_override):
             if isinstance(self._dx, str):
                 yield msg[self._dx]
             else:
@@ -228,10 +323,6 @@ class Get(Module):
                 yield msg[self._dx]
             else:
                 yield self._dx(msg)
-
-
-TO_MSG = typing.Callable[[typing.Any], Msg]
-FROM_MSG = typing.Callable[[Msg], typing.Any]
 
 
 class ToMsg(ABC):

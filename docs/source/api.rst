@@ -24,8 +24,7 @@ dachi
    dachi.AIPrompt
    dachi.AIResponse
    dachi.Dialog
-   dachi.Message
-   dachi.TextMessage
+   dachi.Msg
    dachi.Data
    dachi.stream_text
    dachi.Partial
@@ -73,9 +72,7 @@ dachi.data
    dachi.data.BufferIter
    dachi.data.ContextSpawner
    dachi.data.Media
-   dachi.data.Message
    dachi.data.DataList
-   dachi.data.MediaMessage
 
 
 dachi.op

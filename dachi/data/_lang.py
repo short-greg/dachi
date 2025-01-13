@@ -13,7 +13,6 @@ class Term(pydantic.BaseModel, Renderable):
     """Use to define a term used in the AI system
     for repeated usage
     """
-
     name: str
     definition: str
     meta: typing.Dict[str, typing.Union[str, typing.List[str]]]
@@ -76,7 +75,6 @@ class Term(pydantic.BaseModel, Renderable):
 class Glossary(pydantic.BaseModel, Renderable):
     """A glossary contains a list of terms
     """
-
     terms: typing.Dict[str, Term]
 
     def __init__(self, terms: typing.List[Term] = None):
@@ -94,7 +92,6 @@ class Glossary(pydantic.BaseModel, Renderable):
         self, key: typing.Union[str, typing.Iterable[str]]
     ) -> typing.Union[str, typing.List[str]]:
         """Get an item from the glossary
-
         Args:
             key (typing.Union[str, typing.Iterable[str]]): 
 
@@ -159,7 +156,6 @@ class Glossary(pydantic.BaseModel, Renderable):
         Returns:
             Glossary: The filtered glossary
         """
-
         terms = []
         for name, term in self.terms.items():
             cur_meta = {

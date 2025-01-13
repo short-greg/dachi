@@ -7,6 +7,7 @@ from enum import Enum
 
 
 class _PartialFormatter(string.Formatter):
+    """A partial formatter that does not require all keys to be specified"""
 
     def __init__(self):
         super().__init__()

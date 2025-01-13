@@ -1,7 +1,7 @@
 import typing
 from functools import reduce
 from abc import ABC, abstractmethod
-from .._core import Message, render
+from .._core import Msg, render
 from ..utils import Renderable
 
 
@@ -656,29 +656,28 @@ class Comm(object):
     """Use to have communication between two components 
     (two agents etc)
     """
-
     def __init__(self):
         """
         """
         self._processing = []
 
-    def post(self, message: Message, callback: typing.Callable[[], Message]=None):
+    def post(self, message: Msg, callback: typing.Callable[[], Msg]=None):
         """Post a message to be received
 
         Args:
-            message (Message): 
+            message (Msg): 
             callback (optional): . Defaults to None.
         """
         self._processing.append((message, callback))
 
-    def get(self) -> Message:
+    def get(self) -> Msg:
         """Get the current message to process
 
         Raises:
             RuntimeError: 
 
         Returns:
-            Message: The message to process
+            Msg: The message to process
         """
         if self.empty():
             raise RuntimeError('No items to process')
@@ -692,7 +691,7 @@ class Comm(object):
         """
         return len(self._processing) == 0
 
-    def respond(self, with_message: Message):
+    def respond(self, with_message: Msg):
 
         if self.empty():
             raise RuntimeError(

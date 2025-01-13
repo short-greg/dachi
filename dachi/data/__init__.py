@@ -8,6 +8,5 @@ from ._data import (
 )
 from ._structs import (
     Media, 
-    Message, 
-    DataList, MediaMessage
+    DataList
 )

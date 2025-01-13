@@ -57,7 +57,6 @@ class Templatable(ABC):
         pass
 
 
-
 @dataclass
 class TemplateField(Renderable):
     """Use for rendering a field in a BaseModel

@@ -11,7 +11,6 @@ from ..utils._utils import (
 from ..utils._utils import generic_class
 from ..ai._ai import Message
 
-
 S = typing.TypeVar('S', bound=pydantic.BaseModel)
 
 
@@ -73,28 +72,28 @@ class DataList(pydantic.BaseModel, typing.Generic[S]):
         )
 
 
-class MediaMessage(Message):
-    """A message that contains media such as an image
-    """
+# class MediaMessage(Message):
+#     """A message that contains media such as an image
+#     """
 
-    def __init__(self, source: str, media: typing.List[Media]):
-        """Create a media message with a source and a media
+#     def __init__(self, source: str, media: typing.List[Media]):
+#         """Create a media message with a source and a media
 
-        Args:
-            source (str): The source for the message
-            media (typing.List[Media]): The media to use
-        """
-        super().__init__(
-            source=source,
-            data={
-                'media': media
-            }
-        )
+#         Args:
+#             source (str): The source for the message
+#             media (typing.List[Media]): The media to use
+#         """
+#         super().__init__(
+#             source=source,
+#             data={
+#                 'media': media
+#             }
+#         )
 
-    def render(self) -> str:
-        """Render the media message
+#     def render(self) -> str:
+#         """Render the media message
 
-        Returns:
-            str: The rendered message
-        """
-        return f'{self.role}: Media [{self.media}]'
+#         Returns:
+#             str: The rendered message
+#         """
+#         return f'{self.role}: Media [{self.media}]'

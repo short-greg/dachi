@@ -1,11 +1,10 @@
 from .. import _core as core
-from ._ai import LLM
 from ._chat import Chat
-from ._tool import ToolSet, Tool
 import typing
+from ._ai import ToolCall
 
 
-class LLMAgent(core.Module):
+class ChatAgent(Chat):
     """A component 
 
     Similar to Chat but has tools that can be executed
@@ -14,104 +13,116 @@ class LLMAgent(core.Module):
     # 2) Register all of the tools
     """
 
-    def __init__(
-        self,
-        func_msg: typing.Callable[[typing.Any], core.Msg], 
-        chat: Chat=None, llm: LLM=None,
-        pre: core.Module=None,
-        post: core.Module=None,
-        tools: ToolSet=None
-    ):
-        """Create an LLMAgent component
-
-        Args:
-            dialog (core.Dialog, optional): The dialog to update after each turn. Defaults to None.
-            llm (LLM, optional): The llm to use. Defaults to None.
-            pre (core.Module, optional): The pre-processing module. Defaults to None.
-            post (core.Module, optional): The post-processing module. Defaults to None.
-            tools (typing.List[core.Tool], optional): The tools to register. Defaults to None.
-        """
-        super().__init__()
-        self.func_msg = func_msg
-        self.chat = chat 
-        self.llm = llm
-        self.pre = pre or core.MsgConv()
-        self.post = post
-        self.tools = tools or ToolSet()
-        self.register_tools()
-
-    def register_tools(self):
-        """Register all tools"""
-        for tool in self.tools:
-            self.register(tool)
-
-    def register(self, tool: core.Tool):
-        """Register a single tool"""
-        # Implementation to register the tool
-        self.tools.add(tool)
-
-    def __getitem__(self, idx: int) -> core.Message:
+    def __getitem__(self, idx: int) -> core.Msg:
         """Get a message from the dialog"""
         return self.dialog[idx]
     
-    def __setitem__(self, idx: int, message: core.Message) -> core.Message:
+    def __setitem__(self, idx: int, message: core.Msg) -> core.Msg:
         """Set a message in the dialog"""
         self.dialog[idx] = message
         return message
 
-    def __iter__(self) -> typing.Iterator[core.Message]:
+    def __iter__(self) -> typing.Iterator[core.Msg]:
         """Iterate over the dialog"""
         for m in self.dialog:
             yield m
 
-    def forward(self, *args, f=None, out_msg: bool=False, **kwargs) -> typing.Tuple[core.Msg, 'LLMAgent']:
+    def forward(
+        self, *args, get_msg: bool=False, **kwargs
+    ) -> typing.Tuple[typing.Union[typing.Any, core.Msg], typing.Any]:
         """Execute a turn of the chat"""
-        res, msg = self.chat(*args, f, out_msg=True, **kwargs)
-        if msg.type_ == 'data':
-            if out_msg:
-                return res, out_msg
-            return res
-        out = self.tools(msg.name, msg.arguments)
-        response = msg.respond(out)
-        return self.forward(**response, out_msg=out_msg, f=f)
+        done = False
+        while not done:
+            res, msg = super().forward(
+                *args, out_msg=True, **kwargs
+            )
+            if isinstance(res, ToolCall):
+                result = self.tool_set(res)
+                self.dialog = self.dialog.append(res.msg(result))
+            else:
+                done = True
+
+        if get_msg:
+            return res, get_msg
+        return res
     
-    async def aforward(self, *args, f=None, out_msg: bool=False, **kwargs) -> typing.Tuple[core.Msg, 'LLMAgent']:
+    async def aforward(
+        self, *args, get_msg: bool=False, **kwargs
+    ) -> typing.Union[typing.Tuple[typing.Any, core.Msg], core.Msg]:
         """Execute a turn of the chat asynchronously"""
-        res, msg = await self.chat.aforward(*args, f, out_msg=True, **kwargs)
-        if msg.type_ == 'data':
-            if out_msg:
-                return res, out_msg
-            return res
-        out = await self.tools.aforward(msg.name, msg.arguments)
-        response = msg.respond(out)
-        return await self.aforward(**response, out_msg=out_msg, f=f)
 
-    def stream(self, *args, f=None, out_msg: bool=False, **kwargs) -> typing.Iterator[typing.Tuple[core.Msg, 'LLMAgent']]:
+        done = False
+        while not done:
+            res, msg = await super().aforward(
+                *args, get_msg=True, **kwargs
+            )
+            if msg.type_ != 'tool':
+                result = self.tool_set(res)
+                self.dialog = self.dialog.append(res.msg(result))
+            else:
+                done = True
+
+        if get_msg:
+            return res, get_msg
+        return res
+
+    def stream(
+        self, *args, get_msg: bool=False, **kwargs
+    ) -> typing.Iterator[typing.Union[typing.Tuple[typing.Any, core.Msg], core.Msg]]:
         """Stream a turn of the chat"""
-        
-        for res, msg in self.chat.stream(*args, f, out_msg=True, **kwargs):
-            if msg.type_ == 'data':
-                if out_msg:
-                    yield res, out_msg
-                yield res
-        if msg.type_ == 'data':
-            return
-        out = self.tools(msg.name, msg.arguments)
-        response = msg.respond(out)
-        for res in self.stream(**response, out_msg=out_msg, f=f):
-            yield res
 
-    async def astream(self, *args, f=None, out_msg: bool=False, **kwargs) -> typing.AsyncIterator[typing.Tuple[core.Msg, 'LLMAgent']]:
+        done = False
+        while not done:
+            for res, msg in super().stream(*args, get_msg=True, **kwargs):
+                if get_msg:
+                    yield res, msg
+                else:
+                    yield res
+
+            if isinstance(res, ToolCall):
+                result = self.tool_set(res)
+                self.dialog = self.dialog.append(res.msg(result))
+            else:
+                done = True
+
+    async def astream(
+        self, *args, get_msg: bool=False, **kwargs
+    ) -> typing.AsyncIterator[typing.Union[typing.Tuple[typing.Any, core.Msg], core.Msg]]:
         """Stream a turn of the chat asynchronously"""
-        for res, msg in self.chat.stream(*args, f, out_msg=True, **kwargs):
-            if msg.type_ == 'data':
-                if out_msg:
-                    yield res, out_msg
-                yield res
-        if msg.type_ == 'data':
-            return
-        out = self.tools(msg.name, msg.arguments)
-        response = msg.respond(out)
-        
-        async for res in await self.astream(**response, out_msg=out_msg, f=f):
-            yield res
+        done = False
+        if not done:
+
+            async for res, msg in await super().stream(*args, out_msg=True, **kwargs):
+                if msg.type_ == 'data':
+                    if get_msg:
+                        yield res, get_msg
+                    yield res
+            if isinstance(res, ToolCall):
+                result = self.tool_set(res)
+                self.dialog = self.dialog.append(res.msg(result))
+            else:
+                done = True
+
+
+# how to get a verbose output from the agent?
+# 1) don't use recursion: loop over the chat streams until it is done.. 
+# 2) output the name of the function, yield DELTA, MSG, NAME
+#    Then if name is None.. 
+# for forward
+# return MSG, STEPS
+# 3) how to handle multiple function calls? Loop over each function call
+
+
+# agent.register([f1, f2]) 
+# to_openai_tool([f1, f2]) 
+# agent could inherit from chat
+
+# 1) Test
+# 2) Implement sample openai agent
+
+# agent = LLMAgent(chat=Chat, tool=openai)
+# agent.register([f1, f2])
+# tool_prep(tool)...  # chat needs to have the tool_prep
+# for ... in agent.stream(content=...):
+#    ...
+# .. # allow it to only include the assistant messages.. or have otehr filters 

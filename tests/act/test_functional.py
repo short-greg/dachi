@@ -282,7 +282,7 @@ class TestBuffer:
 
         buffer = utils.Buffer()
         model = DummyAIModel()
-        message = core.Message(
+        message = core.Msg(
             source='user', data={'text': 'text'}
         )
         ctx = utils.Context()
@@ -299,7 +299,7 @@ class TestBuffer:
 
         buffer = utils.Buffer()
         model = DummyAIModel()
-        message = core.Message(
+        message = core.Msg(
             source='user', data={'text': 'text'}
         )
         ctx = utils.Context()
@@ -320,7 +320,7 @@ class TestSharedTask:
 
         shared = utils.Shared()
         model = DummyAIModel()
-        message = core.Message(
+        message = core.Msg(
             source='user', data={'text': 'text'}
         )
         ctx = utils.Context()
@@ -337,7 +337,7 @@ class TestSharedTask:
 
         shared = utils.Shared()
         model = DummyAIModel()
-        message = core.Message(
+        message = core.Msg(
             source='user', data={'text': 'text'}
         )
         ctx = utils.Context()
