@@ -123,11 +123,11 @@ class TestSignatureF:
                 pass
 
         x = X()
-        for d, dx in x.signaturep.stream(2):
+        for d in x.signaturep.stream(2):
             pass
 
-        assert d == 'Great!'
-        assert dx == '!'
+        assert d == '!'
+        # assert dx == '!'
 
     def test_signature_uses_the_correct_model(self):
 
@@ -182,7 +182,7 @@ class TestInstructF:
 
         assert 'Do 2' == result.text
 
-    def test_inserts_into_docstring_with_method(self):
+    def test_inserts_into_instruction_with_method(self):
 
         class X(object):
 
@@ -223,7 +223,6 @@ class TestInstructF:
 
         x = X()
         assert x.instructrep is x.instructrep
-
 
     def test_signature_uses_the_correct_model(self):
 

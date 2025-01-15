@@ -8,11 +8,9 @@ import asyncio
 import threading
 from enum import Enum
 from dataclasses import dataclass
-from functools import wraps
 
 # 3rd party
 import numpy as np
-import griffe
 
 # local
 from ._core import Module

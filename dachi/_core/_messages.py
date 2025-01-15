@@ -4,9 +4,6 @@ from abc import ABC, abstractmethod
 from typing import Self
 import typing
 
-from ._core import (
-    Reader, 
-)
 from ._core import Renderable
 
 # 3rd party
@@ -16,8 +13,7 @@ import pydantic
 class Msg(dict):
     """A Msg used for a dialog
     """
-
-    def __init__(self, type_: str='data', meta: typing.Dict=None, delta: typing.Dict=None, **kwargs):
+    def __init__(self, role: str, type_: str='data', meta: typing.Dict=None, delta: typing.Dict=None, _include_role: bool=True, **kwargs):
         """Create a Msg
 
         Args:
@@ -26,7 +22,7 @@ class Msg(dict):
             delta (typing.Dict, optional): The change in the message. Defaults to None.
         """
         super().__init__(
-            type_=type_, meta=meta, delta=delta, **kwargs
+            role=role, _include_role=_include_role, type_=type_, meta=meta, delta=delta, **kwargs
         )
 
     @property
@@ -36,13 +32,13 @@ class Msg(dict):
     
     def __getattr__(self, key) -> typing.Any:
         """Get an attribute of the message"""
-        return object.__getattribute__(self, key)
+        return self.__getitem__(key)
     
     def __setattr__(self, name, value):
         """Set an attribute of the message"""
-        return object.__setattr__(self, name, value)
+        return self.__setitem__(name, value)
     
-    def to_dict(self) -> typing.Dict:
+    def to_input(self) -> typing.Dict:
         """Convert the message to a dictionary"""
         d = {**self}
         del d['type_']
@@ -50,6 +46,8 @@ class Msg(dict):
             del d['meta']
         if 'delta' in d:
             del d['delta']
+        if self['_include_role'] is False:
+            del d['role']
         return d
 
 
@@ -115,7 +113,7 @@ class Dialog(pydantic.BaseModel, Renderable):
         """
         pass
 
-    def add(self, type_: str='data', delta: typing.Dict=None, meta: typing.Dict=None, ind: typing.Optional[int]=None, replace: bool=False, inplace: bool=False, **kwargs) -> 'Dialog':
+    def add(self, type_: str='data', delta: typing.Dict=None, meta: typing.Dict=None, _ind: typing.Optional[int]=None, _replace: bool=False, _inplace: bool=False, **kwargs) -> 'Dialog':
         """Add a message to the dialog
 
         Args:
@@ -132,10 +130,24 @@ class Dialog(pydantic.BaseModel, Renderable):
             type_=type_, meta=meta, 
             delta=delta, **kwargs
         )
-        return self.append(msg, ind, replace, inplace=inplace)
+        return self.insert(message=msg, ind=_ind, replace=_replace, inplace=_inplace)
+    
+    def append(
+        self, message: Msg, _replace: bool=False, 
+        _inplace: bool=False) -> 'Dialog':
+        """Add a message to the end of the dialog
+
+        Args:
+            message (Msg): The message to add
+            replace (bool, optional): Whether to replace at the index. Defaults to False.
+
+        Raises:
+            ValueError: If the index is not correct
+        """
+        return self.insert(message=message, ind=None, replace=_replace, inplace=_inplace)
 
     @abstractmethod
-    def append(self, message: Msg, ind: typing.Optional[int]=None, replace: bool=False, inplace: bool=False) -> 'Dialog':
+    def insert(self, message: Msg, ind: typing.Optional[int]=None, replace: bool=False, inplace: bool=False) -> 'Dialog':
         """Add a message to the dialog
 
         Args:
@@ -149,7 +161,7 @@ class Dialog(pydantic.BaseModel, Renderable):
         pass
 
     @abstractmethod
-    def extend(self, dialog: typing.Union['Dialog', typing.Iterable[Msg]], inplace: bool=False) -> 'Dialog':
+    def extend(self, dialog: typing.Union['Dialog', typing.Iterable[Msg]], _inplace: bool=False) -> 'Dialog':
         """Extend the dialog with another dialog or a list of messages
 
         Args:
@@ -157,15 +169,15 @@ class Dialog(pydantic.BaseModel, Renderable):
         """
         pass
 
-    @abstractmethod
-    def reader(self) -> 'Reader':
-        """Get the "Reader" for the dialog. By default will use the last one
-        that is available.
+    # @abstractmethod
+    # def reader(self) -> 'Reader':
+    #     """Get the "Reader" for the dialog. By default will use the last one
+    #     that is available.
 
-        Returns:
-            Reader: The reader to retrieve
-        """
-        pass
+    #     Returns:
+    #         Reader: The reader to retrieve
+    #     """
+    #     pass
 
     def render(self) -> str:
         """Render the dialog as a series of turns 
@@ -177,6 +189,14 @@ class Dialog(pydantic.BaseModel, Renderable):
         return '\n'.join(
             message.render() for message in self.messages()
         )
+    
+    def to_input(self) -> typing.List[typing.Dict]:
+        """Convert the dialog to an input to pass into an API
+
+        Returns:
+            typing.List[typing.Dict]: A list of inputs
+        """
+        return {msg.to_input() for msg in self}
 
     def aslist(self) -> typing.List['Msg']:
         """Retrieve the message list
@@ -205,11 +225,29 @@ class Dialog(pydantic.BaseModel, Renderable):
         pass
 
 
+def to_input(inp: typing.Union[typing.Iterable[Msg], Msg]) -> typing.Union[typing.List[Msg], Msg]:
+    """Convert a list of messages or a single message to an input
+
+    Args:
+        inp (typing.Union[typing.Iterable[Msg], Msg]): The inputs to convert
+
+    Returns:
+        typing.Union[typing.List[Msg], Msg]: The input
+    """
+    if isinstance(inp, Msg):
+        return inp.to_input()
+    
+    return {msg.to_input() for msg in inp}
+
+
 class ListDialog(Dialog):
     """A Dialog that uses a list data structure.
     """
 
     _messages: typing.List[Msg] = pydantic.PrivateAttr(default_factory=list)
+
+    def messages(self):
+        return self._messages
 
     def __init__(self, messages: typing.Iterable[Msg]=None):
         """Create a dialog
@@ -217,7 +255,8 @@ class ListDialog(Dialog):
         Args:
             messages: The messages
         """
-        super().__init__(_messages=messages)
+        super().__init__()
+        self._messages = messages
 
     def __iter__(self) -> typing.Iterator[Msg]:
         """Iterate over each message in the dialog
@@ -281,7 +320,7 @@ class ListDialog(Dialog):
         """
         self._messages.remove(message)
 
-    def append(self, message: Msg, ind: typing.Optional[int]=None, replace: bool=False, inplace: bool=False):
+    def insert(self, message: Msg, ind: typing.Optional[int]=None, replace: bool=False, inplace: bool=False):
         """Add a message to the dialog
 
         Args:

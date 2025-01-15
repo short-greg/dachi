@@ -8,18 +8,12 @@ from .._core._core import (
 import pydantic
 from .._core import Msg, ListDialog, Dialog
 
-LLM_PROMPT = typing.Union[Dialog, Msg]
-PROMPT = typing.Union[Dialog, Msg]
-
-
-TO_MSG = typing.Callable[[typing.Any], Msg]
-FROM_MSG = typing.Callable[[Msg], typing.Any]
-
+LLM_PROMPT = typing.Union[typing.Iterable[Msg], Msg]
 LLM_RESPONSE = typing.Tuple[Msg, typing.Any]
 
 
 class ToolOption(pydantic.BaseModel):
-    """
+    """Create an option for a tool to pass to the model
     """
 
     name: str
@@ -28,42 +22,45 @@ class ToolOption(pydantic.BaseModel):
 
 
 class ToolSet(object):
+    """A set of tools that the LLM can use
     """
-    """
-
-    def __init__(self, tools: typing.List[ToolOption]):
-        """
+    def __init__(self, tools: typing.List[ToolOption], **kwargs):
+        """The set of tools
 
         Args:
-            tools (typing.List[ToolOption]): 
+            tools (typing.List[ToolOption]): The list of tools
         """
         self.tools = {
             tool.name: tool
             for tool in tools
         }
+        self.kwargs = kwargs
 
     def add(self, option: ToolOption):
-        """
+        """Add a tool to the set
 
         Args:
-            option (ToolOption): 
+            option (ToolOption): The option to add
         """
         self.tools[option.name] = option
 
     def remove(self, option: ToolOption):
-        """
+        """Remove a tool from the tool set
 
         Args:
-            option (ToolOption): 
+            option (ToolOption): The option to add
         """
         del self.tools[option.name]
 
 
 class ToolCall(pydantic.BaseModel):
-    
-    name: str
-    args: typing.Dict[str, typing.Any]
-    res_conv: typing.Callable[[typing.Any], Msg]
+    """A response from the LLM that a tool was caleld
+    """
+
+    name: str = pydantic.Field(description="The name of the tool.")
+    args: typing.Dict[str, typing.Any] = pydantic.Field(
+        description="The arguments to the tool."
+    )
 
 
 def exclude_role(messages: typing.Iterable[Msg], *role: str) -> typing.List[Msg]:
@@ -87,51 +84,142 @@ def exclude_role(messages: typing.Iterable[Msg], *role: str) -> typing.List[Msg]
 
 
 def include_role(messages: typing.Iterable[Msg], *role: str) -> typing.List[Msg]:
+    """Filter the iterable of messages by a particular role
+
+    Args:
+        messages (typing.Iterable[Msg]): 
+
+    Returns:
+        typing.List[Msg]: 
+    """
     include = set(role)
     return [message for message in messages
         if message.role in include]
-
 
 
 class LLM(Module, ABC):
     """APIAdapter allows one to adapt various WebAPI or otehr
     API for a consistent interface
     """
-    @abstractmethod
-    def user(self, *args, type_: str='data', delta: typing.Dict=None, meta: typing.Dict=None, **kwargs) -> Msg:
-        pass
 
-    @abstractmethod
-    def assistant(self, *args, type_: str='data', delta: typing.Dict=None, meta: typing.Dict=None, **kwargs) -> Msg:
-        pass
-
-    @abstractmethod
-    def system(self, *args, type_:str ='data', delta: typing.Dict=None, meta: typing.Dict=None, **kwargs) -> Msg:
-        pass
-
-    @abstractmethod
-    def tool(self, *args, type_:str ='tool', delta: typing.Dict=None, meta: typing.Dict=None, **kwargs) -> Msg:
-        pass
-
-    @abstractmethod
-    def tool_option(self, *args, **kwargs) -> ToolCall:
-        pass
-
-    def msg(
-        self, type_: str='data', meta: typing.Dict=None, delta: typing.Dict=None, **kwargs
+    def user(
+        self, type_: str='data', 
+        delta: typing.Dict=None, 
+        meta: typing.Dict=None, **kwargs
     ) -> Msg:
-        """_summary_
+        """Create a user message
 
         Args:
-            type_ (str, optional): _description_. Defaults to 'data'.
-            meta (typing.Dict, optional): _description_. Defaults to None.
-            delta (typing.Dict, optional): _description_. Defaults to None.
+            type_ (str, optional): The type of the message. Defaults to 'data'.
+            delta (typing.Dict, optional): The change in the message. Defaults to None.
+            meta (typing.Dict, optional): Any other details. Defaults to None.
 
         Returns:
-            Msg: _description_
+            Msg: The message
         """
         return Msg(
-            type_=type_, meta=meta, delta=delta, **kwargs
+            role='user',
+            meta=meta, 
+            delta=delta, type_=type_, **kwargs
+        )
+
+    def assistant(
+        self, type_: str='data', 
+        delta: typing.Dict=None, 
+        meta: typing.Dict=None, **kwargs
+    ) -> Msg:
+        """Create an assistant message
+
+        Args:
+            type_ (str, optional): The type of the message. Defaults to 'data'.
+            delta (typing.Dict, optional): The change in the message. Defaults to None.
+            meta (typing.Dict, optional): Any other details. Defaults to None.
+
+        Returns:
+            Msg: The message
+        """
+        return Msg(
+            role='assistant',
+            meta=meta, 
+            delta=delta, type_=type_, **kwargs
+        )
+
+    def system(
+        self, type_:str ='data', 
+        delta: typing.Dict=None, 
+        meta: typing.Dict=None, **kwargs
+    ) -> Msg:
+        """Create a system message
+
+        Args:
+            type_ (str, optional): The type of the message. Defaults to 'data'.
+            delta (typing.Dict, optional): The change in the message. Defaults to None.
+            meta (typing.Dict, optional): Any other details. Defaults to None.
+
+        Returns:
+            Msg: The message
+        """
+        return Msg(
+            role='system',
+            meta=meta, 
+            delta=delta, type_=type_, **kwargs
+        )
+
+    def tool(
+        self, type_:str ='tool', 
+        delta: typing.Dict=None, 
+        meta: typing.Dict=None, **kwargs
+    ) -> Msg:
+        """Create a tool message
+
+        Args:
+            type_ (str, optional): The type of the message. Defaults to 'tool'.
+            delta (typing.Dict, optional): The change in the message. Defaults to None.
+            meta (typing.Dict, optional): Any other details. Defaults to None.
+
+        Returns:
+            Msg: The message
+        """
+        return Msg(
+            role='tool',
+            meta=meta, 
+            delta=delta, type_=type_, **kwargs
+        )
+
+    def tool_option(
+        self, name: str, f: typing.Callable, **kwargs
+    ) -> ToolOption:
+        """Create an option to 
+
+        Args:
+            name (str): The name of the tool
+
+        Returns:
+            ToolOption: The name of the tool to use
+        """
+        return ToolOption(
+            name=name, f=f, kwargs=kwargs, 
+        )
+
+    def msg(
+        self, content: str='', 
+        type_: str='data', 
+        meta: typing.Dict=None, 
+        delta: typing.Dict=None, 
+        **kwargs
+    ) -> Msg:
+        """The message
+
+        Args:
+            type_ (str, optional): . Defaults to 'data'.
+            meta (typing.Dict, optional): . Defaults to None.
+            delta (typing.Dict, optional): . Defaults to None.
+
+        Returns:
+            Msg: 
+        """
+        return Msg(
+            content=content, type_=type_, meta=meta, delta=delta, **kwargs
         )
 
     @abstractmethod
@@ -169,7 +257,8 @@ class LLM(Module, ABC):
         yield self.forward(prompt, **kwarg_override)
     
     async def aforward(
-        self, prompt: LLM_PROMPT, **kwarg_override
+        self, prompt: LLM_PROMPT, 
+        **kwarg_override
     ) -> LLM_RESPONSE:
         """Run this query for asynchronous operations
         The default behavior is simply to call the query
@@ -251,10 +340,6 @@ class Get(Module):
         """
         msg, _ = self._llm.forward(prompt, **kwarg_override)
         return msg[self._x]
-        # if isinstance(self._x, str):
-        #     yield msg[self._x]
-        # else:
-        #     yield self._x(msg)
     
     async def aforward(
         self, prompt, **kwarg_override
@@ -286,10 +371,6 @@ class Get(Module):
         - If _x is a callable: applies the function to the entire response
         """
         msg, _ = self._llm.aforward(prompt, **kwarg_override)
-        # if isinstance(self._x, str):
-        #     yield msg[self._x]
-        # else:
-        #     yield self._x(msg)
         return msg[self._x]
     
     def stream(self, prompt, **kwarg_override) -> typing.Iterator:
@@ -325,20 +406,57 @@ class Get(Module):
                 yield self._dx(msg)
 
 
-class ToMsg(ABC):
+class ConvMsg(ABC):
     """Converts inputs to a message"""
 
     @abstractmethod
-    def __call__(self, *args, **kwds) -> Msg:
+    def from_msg(self, msg: Msg) -> typing.Any:
+        pass
+
+    @abstractmethod
+    def to_msg(self, *args, **kwds) -> Msg:
         pass
 
 
-class StdToMsg(ToMsg):
+class ConvStr(ConvMsg):
     """Converts the inputs to a standard message"""
 
-    def __call__(self, **kwargs) -> Msg:
+    def __init__(
+        self, role: str="system", 
+        text_name: str='content',
+    ):
+        super().__init__()
+        self.text_name = text_name
+        self.role = role
+
+    def from_msg(self, response: Msg) -> typing.Any:
+        """Convert the response from a messagew
+
+        Args:
+            msg (Msg): The message to convert
+
+        Returns:
+            typing.Any: The result
+        """
+        return response[self.text_name]
+
+    def to_msg(self, prompt: str) -> Msg:
         """Convert the inputs to a message"""
-        return Msg(**kwargs)
+        kwargs = {
+            self.text_name: prompt
+        }
+        return Msg(role=self.role, **kwargs)
+
+    def from_delta(self, response: Msg) -> typing.Any:
+        """Convert the response from a messagew
+
+        Args:
+            msg (Msg): The message to convert
+
+        Returns:z
+            typing.Any: The result
+        """
+        return response.delta[self.text_name]
 
 
 def to_dialog(prompt: typing.Union[Dialog, Msg]) -> Dialog:

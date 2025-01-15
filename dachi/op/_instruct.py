@@ -8,7 +8,10 @@ import roman
 # local
 from .._core import (
     render, render_multi,
-    Cue, render, Param, validate_out 
+    Cue, render, Param 
+)
+from ..ai import (
+    validate_out
 )
 from ..utils import (
     str_formatter

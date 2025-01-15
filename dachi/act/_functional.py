@@ -10,12 +10,9 @@ from ._core import (
     TaskStatus, Task
 )
 from ..data import Context, ContextSpawner, SharedBase
-
 from ._core import TOSTATUS
-
 from ..data import Buffer,Shared
-from .._core import AIModel, AIPrompt
-
+from ..ai import LLM, LLM_PROMPT
 
 TASK = typing.Union[Task, typing.Callable[[typing.Dict], TaskStatus]]
 CALL_TASK = typing.Callable[[],TaskStatus]
@@ -495,7 +492,7 @@ def threaded(task: TASK, ctx: Context, interval: float=1./60) -> CALL_TASK:
     return run
 
 
-def _stream_model(model: AIModel, prompt: AIPrompt, ctx: Context, *args, interval: float=1./60, **kwargs):
+def _stream_model(model: LLM, prompt: LLM_PROMPT, ctx: Context, *args, interval: float=1./60, **kwargs):
     """Run periodically to update the status
 
     Args:
@@ -512,7 +509,7 @@ def _stream_model(model: AIModel, prompt: AIPrompt, ctx: Context, *args, interva
 
 
 def stream_model(
-    buffer: Buffer, engine: AIModel, prompt: AIPrompt, ctx: Context, 
+    buffer: Buffer, engine: LLM, prompt: LLM_PROMPT, ctx: Context, 
     *args, interval: float=1./60,  **kwargs
 ) -> CALL_TASK:
     """Execute the AI model in a thread
@@ -549,7 +546,7 @@ def stream_model(
     return run
 
 
-def _run_model(model: AIModel, prompt: AIPrompt, ctx: Context, **kwargs):
+def _run_model(model: LLM, prompt: LLM_PROMPT, ctx: Context, **kwargs):
     """Run periodically to update the status
 
     Args:
@@ -562,7 +559,7 @@ def _run_model(model: AIModel, prompt: AIPrompt, ctx: Context, **kwargs):
 
 
 def exec_model(
-    shared: Shared, engine: AIModel, prompt: AIPrompt, ctx: Context, 
+    shared: Shared, engine: LLM, prompt: LLM_PROMPT, ctx: Context, 
     **kwargs
 ) -> CALL_TASK:
     """Execute the AI model in a thread
@@ -676,7 +673,9 @@ def unless(task: TASK, status: TaskStatus=TaskStatus.FAILURE) -> CALL_TASK:
     return _f
 
 
-def unlessf(f, *args, status: TaskStatus=TaskStatus.FAILURE, **kwargs) -> CALL_TASK:
+def unlessf(
+    f, *args, status: TaskStatus=TaskStatus.FAILURE, **kwargs
+) -> CALL_TASK:
     """Loop unless a condition is met
 
     Args:

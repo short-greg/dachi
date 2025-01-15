@@ -5,6 +5,7 @@ import inspect
 from itertools import chain
 from typing import Any, Iterator, AsyncIterator
 import inspect
+from ._ai import ConvStr
 
 # local
 from .._core._core import (
@@ -12,14 +13,12 @@ from .._core._core import (
     Instruct, Reader
 )
 from ._ai import LLM
-
+from .._core._messages import Msg
 from ..utils._utils import (
     str_formatter
 )
 from .._core._process import Module
 
-
-# TODO: SIMPLIFY THESE FUNCTIONS
 
 def is_async_function(func) -> bool:
     """Check if a function is asynchronous."""
@@ -129,12 +128,12 @@ class InstructCall(Module, Instruct):
             k: v() if isinstance(v, Instruct) else v
             for k, v in self.kwargs.items()
         }
-
         return self._instruct(*args, **kwargs)
 
 
 class IFunc(object):
-
+    """
+    """
     def __init__(self, f, is_method: bool, instance=None):
         """Create a function wrapper for an instruct
 
@@ -149,12 +148,24 @@ class IFunc(object):
         self._is_method = is_method
         self._is_generator = is_generator_function(f)
         self._is_async = is_async_function(f)
+        self._docstring = f.__doc__
         self._name = f.__name__
         self._signature = str(inspect.signature(f))
         self._instance = instance
         self._parameters = inspect.signature(f).parameters
         self._return_annotation = inspect.signature(f).return_annotation
     
+    def is_generator(self) -> bool:
+        return self._is_generator
+
+    def is_async(self) -> bool:
+        return self._is_async
+    
+    @property
+    def name(self) -> str:
+
+        return self._name
+
     def fparams(self, instance, *args, **kwargs):
         """Get the parameters for the function
 
@@ -168,8 +179,7 @@ class IFunc(object):
         """
         param_values = list(self._parameters.values())
         values = {}
-
-        instance, args = self._get_instance(args)
+        instance, args = self.get_instance(instance, args)
 
         if instance is not None:
             param_values = param_values[1:]
@@ -183,7 +193,7 @@ class IFunc(object):
 
         return values
             
-    def get_instance(self, args):
+    def get_instance(self, instance, args):
         """Get the instance for the function
 
         Args:
@@ -192,14 +202,17 @@ class IFunc(object):
         Returns:
             tuple: The instance and the arguments
         """
-        if not self._is_method:
-            return None, args
-        
+        if instance is not None:
+            return instance, args
         if self._instance is not None:
             return self._instance, args
-        return args[0], args[1:]
+        
+        if self._is_method:
+            return args[0], args[1:]
+        
+        return None, args
     
-    def get_member(self, member: str, args):
+    def get_member(self, instance, member: str, args):
         """Get the member for the function
 
         Args:
@@ -209,10 +222,12 @@ class IFunc(object):
         Returns:
             The member
         """
-        instance, _ = self.get_instance(args)
+        instance, _ = self.get_instance(instance, args)
 
         if instance is None:
-            raise RuntimeError('Cannot get member of ')
+            raise RuntimeError(
+                'Cannot get member of instance'
+            )
 
         return object.__getattribute__(instance, member)
 
@@ -236,9 +251,13 @@ class IFunc(object):
         Returns:
             The result of the function
         """
-        if instance is None:
-            return self.f(*args, **kwargs)
-        return self.f(instance, *args, **kwargs)
+        instance, args = self.get_instance(instance, args)
+        print(instance, args)
+        if instance is None or hasattr(self._f, "__self__"):
+
+            return self._f(*args, **kwargs)
+        # instance = self.get_instance(instance, args)
+        return self._f(instance, *args, **kwargs)
 
 
 class ModuleIFunc(IFunc):
@@ -266,7 +285,7 @@ class ModuleIFunc(IFunc):
         Returns:
             The result of the function
         """
-        for d in self._f.stream(*args, **kwargs):
+        for _, d in self._f.stream(*args, **kwargs):
             yield d
     
     async def astream(self, *args, **kwargs):
@@ -292,7 +311,7 @@ class ModuleIFunc(IFunc):
         Returns:
             The result of the function
         """
-        return self._f.forward(*args, **kwargs)
+        return self._forward(*args, **kwargs)
     
 
 class FIFunc(IFunc):
@@ -337,13 +356,13 @@ class SignatureFunc(Module, Instruct):
     the function signature
     """
     def __init__(
-        self, ifunc: IFunc, engine: typing.Callable[[typing.Any], typing.Any]=None, 
+        self, ifunc: IFunc, engine: LLM=None, 
         reader: typing.Optional[Reader]=None,
         doc: typing.Union[str, typing.Callable[[], str]]=None,
         is_method: bool=False,
         train: bool=False, 
-        ai_kwargs: typing.Dict=None,
         instance=None,
+        to_msg: ConvStr=None
     ):
         """Wrap the signature method with a particular engine and
         dialog factory
@@ -354,22 +373,23 @@ class SignatureFunc(Module, Instruct):
             train (bool, optional): Whether to train the cues or not. Defaults to False.
             instance (optional): The instance. Defaults to None.
         """
-        super().__init__(
-            ifunc, engine, reader, ai_kwargs, instance
-        )
+        super().__init__()
+        self._engine = engine
+        self._reader = reader
+        self._instance = instance
         self._ifunc = ifunc
         self._train = train
         if doc is not None and not isinstance(doc, str):
             doc = doc()
         self._doc = doc if doc is not None else ifunc.docstring
         self._is_method = is_method
-        docstring = Cue(text=docstring)
+        docstring = Cue(text=self._doc)
         self._docstring = Param(
-            name=self.name,
+            name=self._ifunc.name,
             cue=docstring,
             training=train
         )
-        self._ai_kwargs = ai_kwargs
+        self._conv_msg = to_msg or ConvStr()
         if self._ifunc.is_generator() and self._ifunc.is_async():
             self.__call__ = self.astream
         elif self._ifunc.is_async():
@@ -390,7 +410,6 @@ class SignatureFunc(Module, Instruct):
         """
         if not self._is_method:
             return None, args
-        
         if self._instance is None:
             return args[0], args[1:]
         return self._instance, args
@@ -404,9 +423,10 @@ class SignatureFunc(Module, Instruct):
         Returns:
             The engine
         """
-        if isinstance(self.engine, str):
-            return object.__getattribute__(instance, self.engine)
-        return self._instance
+        
+        if isinstance(self._engine, str):
+            return object.__getattribute__(instance, self._engine)
+        return self._engine
 
     def __get__(self, instance, owner):
         """Set the instance on the SignatureMethod
@@ -418,20 +438,19 @@ class SignatureFunc(Module, Instruct):
         Returns:
             SignatureMethod
         """
-        if self.f.__name__ not in instance.__dict__:
-            instance.__dict__[self.f.__name__] = SignatureFunc(
+        if self._ifunc.name not in instance.__dict__:
+            instance.__dict__[self._ifunc.name] = SignatureFunc(
                 self._ifunc,
                 engine=self._engine,
                 reader=self._reader,
                 is_method=self._is_method, 
                 train=self._train,
-                ai_kwargs=self._ai_kwargs,
-                instance=self._instance
+                instance=instance
             )
     
-        return instance.__dict__[self.f.__name__]
+        return instance.__dict__[self._ifunc.name]
 
-    def _prepare(self, *args, **kwargs):
+    def _prepare(self, instance, *args, **kwargs):
         """Prepare the function
 
         Args:
@@ -441,18 +460,31 @@ class SignatureFunc(Module, Instruct):
         Returns:
             The cue
         """
-        instance, args = self.get_instance(args)
-
-        cur_kwargs = self._ifunc(instance, *args, **kwargs)
+        print('Before: ', args)
+        # instance, args = self.get_instance(args)
+        print('After: ',instance, args)
+        # if instance is not None:
+        cur_kwargs = self._ifunc(
+            *args, instance=instance, **kwargs
+        )
+        # else:
+        #     cur_kwargs = self._ifunc(*args, **kwargs)
+        cur_kwargs = cur_kwargs if cur_kwargs is not None else {}
         kwargs = {**kwargs, **cur_kwargs}
-        params = self._ifunc.fparams(instance, *args, **kwargs)
-        if "TEMPLATE" in doc:
+        params = self._ifunc.fparams(
+            instance, *args, **kwargs)
+        if "TEMPLATE" in self._docstring:
             params['TEMPLATE'] = self._reader.template()
         doc = self._docstring.render()
         cue = str_formatter(
             doc, required=False, **params
         )
         return cue
+    
+    def _prepare_msg(self, instance, *args, **kwargs) -> typing.Any:
+        """
+        """
+        return self._conv_msg.to_msg(self._prepare(instance, *args, **kwargs))
 
     def forward(self, *args, **kwargs) -> typing.Any:
         """Execute the function
@@ -466,8 +498,8 @@ class SignatureFunc(Module, Instruct):
         """
         instance, args = self.get_instance(args)
         engine = self.get_engine(instance)
-        cue = self._prepare(*args, **kwargs)
-        res = engine(cue, **self._ai_kwargs)
+        cue = self._prepare_msg(instance, *args, **kwargs)
+        _, res = engine(cue)
         if self._reader is not None:
             return self._reader.read(res)
         return res
@@ -484,11 +516,11 @@ class SignatureFunc(Module, Instruct):
         """
         instance, args = self.get_instance(args)
         engine = self.get_engine(instance)
-        cue = self._prepare(*args, **kwargs)
+        cue = self._prepare_msg(instance, *args, **kwargs)
         if isinstance(engine, Module):
-            res = await engine.aforward(cue, **self._ai_kwargs)
+            _, res = await engine.aforward(cue)
         else:
-            res = await engine(cue, **self._ai_kwargs)
+            _, res = await engine(cue)
         if self._reader is not None:
             return self._reader.read(res)
         return res
@@ -505,17 +537,16 @@ class SignatureFunc(Module, Instruct):
         """
         instance, args = self.get_instance(args)
         engine = self.get_engine(instance)
-        cue = self._prepare(*args, **kwargs)
+        cue = self._prepare_msg(instance, *args, **kwargs)
 
         if isinstance(engine, Module):
             f = engine.stream
         else:
             f = engine
-        for v in f(cue, **self._ai_kwargs):
+        for _, v in f(cue):
             if self._reader is not None:
                 v = self._reader.read(v)
             yield v
-        # return v
 
     async def astream(self, *args, **kwargs) -> typing.Any:
         """Stream the function asynchronously
@@ -529,17 +560,16 @@ class SignatureFunc(Module, Instruct):
         """
         instance, args = self.get_instance(args)
         engine = self.get_engine(instance)
-        cue = self._prepare(*args, **kwargs)
+        cue = self._prepare_msg(instance, *args, **kwargs)
 
         if isinstance(engine, Module):
             f = engine.stream
         else:
             f = engine
-        async for v in f.astream(cue, **self._ai_kwargs):
+        async for _, v in f.astream(cue):
             if self._reader is not None:
                 v = self._reader.read(v)
             yield v
-        # return v
 
     def i(self, *args, **kwargs) -> Cue:
         """Get the cue for the function
@@ -551,10 +581,11 @@ class SignatureFunc(Module, Instruct):
         Returns:
             The cue
         """ 
-        cue = self._prepare(*args, **kwargs)
-
+        instance, args = self.get_instance(args)
+        cue = self._prepare(instance, *args, **kwargs)
         return Cue(
-            cue, self._name, out=self._reader
+            cue, self._ifunc.name, 
+            out=self._reader
         )
     
     def spawn(
@@ -577,22 +608,22 @@ class SignatureFunc(Module, Instruct):
             reader=self._reader,
             is_method=self._is_method, 
             train=train if train is not None else self._train,
-            ai_kwargs=self._ai_kwargs,
             instance=self._instance
         )
 
 
-class InstructFunc(Module, Instruct):
+class InstructFunc(Instruct, Module):
     """SignatureFunc is a method where you define the cue in
     the function signature
     """
     def __init__(
-        self, ifunc: IFunc, engine: typing.Callable[[typing.Any], typing.Any]=None, 
+        self, ifunc: IFunc, 
+        engine: LLM=None, 
         reader: typing.Optional[Reader]=None,
         is_method: bool=False,
         train: bool=False, 
-        ai_kwargs: typing.Dict=None,
         instance=None,
+        to_msg: ConvStr=None
     ):
         """Wrap the signature method with a particular engine and
         dialog factory
@@ -603,15 +634,14 @@ class InstructFunc(Module, Instruct):
             train (bool, optional): Whether to train the cues or not. Defaults to False.
             instance (optional): The instance. Defaults to None.
         """
-        super().__init__(
-            ifunc, engine, reader, ai_kwargs, instance
-        )
+        super().__init__()
         self._ifunc = ifunc
         self._train = train
         self._engine = engine
         self._instance = instance
-        self._ai_kwargs = ai_kwargs
+        self._reader = reader
         self._is_method = is_method
+        self._conv_msg = to_msg or ConvStr()
         if self._ifunc.is_generator() and self._ifunc.is_async():
             self.__call__ = self.astream
         elif self._ifunc.is_async():
@@ -630,12 +660,12 @@ class InstructFunc(Module, Instruct):
         Returns:
             tuple: The instance and the arguments
         """
-        if not self._is_method:
-            return None, args
+        if self._instance is not None:
+            return self._instance, args
         
-        if self._instance is None:
+        if self._is_method is True:
             return args[0], args[1:]
-        return self._instance, args
+        return None, args
 
     def get_engine(self, instance):
         """Get the engine for the function
@@ -646,9 +676,9 @@ class InstructFunc(Module, Instruct):
         Returns:
             The engine
         """
-        if isinstance(self.engine, str):
-            return object.__getattribute__(instance, self.engine)
-        return self._instance
+        if isinstance(self._engine, str):
+            return object.__getattribute__(instance, self._engine)
+        return self._engine
 
     def __get__(self, instance, owner):
         """Set the instance on the SignatureMethod
@@ -660,28 +690,35 @@ class InstructFunc(Module, Instruct):
         Returns:
             SignatureMethod
         """
-        if self.f.__name__ not in instance.__dict__:
-            instance.__dict__[self.f.__name__] = InstructFunc(
-                self._ifunc, self.engine, 
-                self._reader, self._train, self._ai_kwargs,
-                self._is_method, self._instance
+        if self._ifunc.name not in instance.__dict__:
+            instance.__dict__[self._ifunc.name] = InstructFunc(
+                self._ifunc, self._engine, 
+                self._reader, self._train, 
+                self._is_method, instance,
+                self._conv_msg
             )
-        return instance.__dict__[self.f.__name__]
+        return instance.__dict__[self._ifunc.name]
     
-    def _prepare(self, *args, **kwargs):
-        instance, args = self.get_instance(args)
+    def _prepare(self, instance, *args, **kwargs) -> Msg:
+        # instance, args = self.get_instance(args)
 
-        cur_kwargs = self._ifunc(instance, *args, **kwargs)
-        kwargs = {**kwargs, **cur_kwargs}
+        # cur_kwargs = self._ifunc(instance, *args, **kwargs)
+        # kwargs = {**kwargs, **cur_kwargs}
+        res = self._ifunc(*args, instance=instance, **kwargs)
+        return res
 
-        return self._ifunc(*args, **kwargs)
+    def _prepare_msg(self, instance, *args, **kwargs) -> typing.Any:
+        """
+        """
+        return self._conv_msg.to_msg(self._prepare(instance, *args, **kwargs))
 
     def forward(self, *args, **kwargs) -> typing.Any:
 
         instance, args = self.get_instance(args)
+        print(self._engine)
         engine = self.get_engine(instance)
-        cue = self._prepare(*args, **kwargs)
-        res = engine(cue, **self._ai_kwargs)
+        cue = self._prepare_msg(instance, *args, **kwargs)
+        _, res = engine(cue)
         if self._reader is not None:
             return self._reader.read(res)
         return res
@@ -698,11 +735,11 @@ class InstructFunc(Module, Instruct):
         """
         instance, args = self.get_instance(args)
         engine = self.get_engine(instance)
-        cue = self._prepare(*args, **kwargs)
+        cue = self._prepare_msg(instance, *args, **kwargs)
         if isinstance(engine, Module):
-            res = await engine.aforward(cue, **self._ai_kwargs)
+            _, res = await engine.aforward(cue)
         else:
-            res = await engine(cue, **self._ai_kwargs)
+            _, res = await engine(cue)
         if self._reader is not None:
             return self._reader.read(res)
         return res
@@ -711,38 +748,37 @@ class InstructFunc(Module, Instruct):
         """Stream the instruction function"""
         instance, args = self.get_instance(args)
         engine = self.get_engine(instance)
-        cue = self._prepare(*args, **kwargs)
+        cue = self._prepare_msg(instance, *args, **kwargs)
 
         if isinstance(engine, Module):
             f = engine.stream
         else:
             f = engine
-        for v in f(cue, **self._ai_kwargs):
+        for _, v in f(cue):
             if self._reader is not None:
                 v = self._reader.read(v)
             yield v
-        # return v
 
     async def astream(self, *args, **kwargs) -> typing.Any:
         """Stream the instruction function asynchronously"""
 
         instance, args = self.get_instance(args)
         engine = self.get_engine(instance)
-        cue = self._prepare(*args, **kwargs)
+        cue = self._prepare_msg(instance, *args, **kwargs)
 
         if isinstance(engine, Module):
             f = engine.stream
         else:
             f = engine
-        async for v in f.astream(cue, **self._ai_kwargs):
+        async for _, v in f.astream(cue):
             if self._reader is not None:
                 v = self._reader.read(v)
             yield v
-        # return v
 
     def i(self, *args, **kwargs) -> Cue:
         """Get the cue for the function"""
-        return self._prepare(*args, **kwargs)
+        instance, args = self.get_instance(args)
+        return self._prepare(instance, *args, **kwargs)
 
     def spawn(
         self, 
@@ -764,7 +800,6 @@ class InstructFunc(Module, Instruct):
             reader=self._reader,
             is_method=self._is_method, 
             train=train if train is not None else self._train,
-            ai_kwargs=self._ai_kwargs,
             instance=self._instance
         )
 
@@ -773,7 +808,7 @@ def instructfunc(
     engine: LLM=None,
     reader: Reader=None,
     is_method: bool=False,
-    **ai_kwargs
+    to_msg: ConvStr=None
 ):
     """Decorate a method with instructfunc
 
@@ -797,15 +832,15 @@ def instructfunc(
             ifunc = FIFunc(f, is_method)
 
         return InstructFunc(
-            ifunc, engine, reader, is_method=is_method,
-            ai_kwargs=ai_kwargs
+            ifunc, engine, reader, is_method=is_method, to_msg=to_msg
         )
     return _
 
 
 def instructmethod(
     engine: LLM=None,
-    **ai_kwargs
+    reader: Reader=None,
+    to_msg: ConvStr=None
 ):
     """Decorate a method with instructfunc
 
@@ -816,16 +851,16 @@ def instructmethod(
         typing.Callable[[function], SignatureFunc]
     """
     return instructfunc(
-        engine, True, **ai_kwargs
+        engine, reader=reader, is_method=True, to_msg=to_msg
     )
 
 
 def signaturefunc(
-    engine: LLM=None, 
+    engine: LLM=None,
     reader: Reader=None,
     doc: typing.Union[str, typing.Callable[[], str]]=None,
     is_method=False,
-    **ai_kwargs
+    to_msg: ConvStr=None
 ):
     """Decorate a method with SignatureFunc
 
@@ -851,8 +886,7 @@ def signaturefunc(
         
         return SignatureFunc(
             ifunc, engine, reader, is_method=is_method,
-            ai_kwargs=ai_kwargs, 
-            doc=doc, 
+            doc=doc, to_msg=to_msg
         )
 
     return _
@@ -862,7 +896,7 @@ def signaturemethod(
     engine: LLM=None, 
     reader: Reader=None,
     doc: typing.Union[str, typing.Callable[[], str]]=None,
-    **ai_kwargs
+    to_msg: ConvStr=None
 ):
     """Decorate a method with SignatureFunc
 
@@ -875,5 +909,6 @@ def signaturemethod(
         typing.Callable[[function], SignatureFunc]
     """
     return signaturefunc(
-        engine, reader, doc, True, **ai_kwargs
+        engine, reader=reader, doc=doc, is_method=True,
+        to_msg=to_msg
     )

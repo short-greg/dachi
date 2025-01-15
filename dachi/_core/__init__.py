@@ -11,7 +11,7 @@ from ._read import (
 
 from ._messages import (
     Dialog, ListDialog,
-    Msg
+    Msg, to_input
 )
 from ._process import (
     Partial, 

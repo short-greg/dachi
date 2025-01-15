@@ -1,15 +1,21 @@
 from dachi._core import _messages as M
-from dachi._core._core import Cue, NullRead
 import numpy as np
+
+
+class TextMessage(M.Msg):
+
+    def __init__(self, role: str, content: str):
+
+        return super().__init__(role=role, content=content)
 
 
 class TestDialog(object):
 
     def test_dialog_creates_message_list(self):
 
-        message = M.TextMessage('assistant', 'help')
-        message2 = M.TextMessage('system', 'help the user')
-        dialog = M.Dialog(
+        message = TextMessage('assistant', 'help')
+        message2 = TextMessage('system', 'help the user')
+        dialog = M.ListDialog(
             messages=[message, message2]
         )
         assert dialog[0] is message
@@ -17,35 +23,41 @@ class TestDialog(object):
 
     def test_dialog_replaces_the_message(self):
 
-        message = M.TextMessage('assistant', 'help')
-        message2 = M.TextMessage('system', 'help the user')
-        dialog = M.Dialog(
+        message = TextMessage('assistant', 'help')
+        message2 = TextMessage('system', 'help the user')
+        dialog = M.ListDialog(
             messages=[message, message2]
         )
-        dialog.system('Stop!', _ind=0, _replace=True)
+        dialog = dialog.add(role='System', content='Stop!', _ind=0, _replace=True)
         assert dialog[1] is message2
-        assert dialog[0].text == 'Stop!'
+        assert dialog[0].content == 'Stop!'
 
     def test_dialog_inserts_into_correct_position(self):
 
-        message = M.TextMessage('assistant', 'help')
-        message2 = M.TextMessage('system', 'help the user')
-        dialog = M.Dialog(
+        message = TextMessage('assistant', 'help')
+        message2 = TextMessage('system', 'help the user')
+        dialog = M.ListDialog(
             messages=[message, message2]
         )
-        dialog.system('Stop!', _ind=0, _replace=False)
+        dialog = dialog.add(
+            role='system', content='Stop!', 
+            _ind=0, _replace=False
+        )
         assert len(dialog) == 3
         assert dialog[2] is message2
-        assert dialog[0].text == 'Stop!'
+        assert dialog[0].content == 'Stop!'
 
     def test_aslist_converts_to_a_list(self):
 
-        message = M.TextMessage('assistant', 'help')
-        message2 = M.TextMessage('system', 'help the user')
-        dialog = M.Dialog(
+        message = TextMessage('assistant', 'help')
+        message2 = TextMessage('system', 'help the user')
+        dialog = M.ListDialog(
             messages=[message, message2]
         )
-        dialog.system('Stop!', _ind=0, _replace=False)
+        dialog = dialog.add(
+            role='system', content='Stop!', 
+            _ind=0, _replace=False
+        )
         assert isinstance(dialog.aslist(), list)
 
 
@@ -61,7 +73,7 @@ class TestMessage(object):
 
         message = M.Msg(role='assistant', content='hi, how are you')
         assert message.role == 'assistant'
-        assert message.text == 'hi, how are you'
+        assert message.content == 'hi, how are you'
 
     def test_render_renders_the_message_with_colon(self):
 

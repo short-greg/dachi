@@ -9,7 +9,6 @@ from ..utils._utils import (
     generic_class
 )
 from ..utils._utils import generic_class
-from ..ai._ai import Message
 
 S = typing.TypeVar('S', bound=pydantic.BaseModel)
 

@@ -38,7 +38,7 @@ class ChatAgent(Chat):
             )
             if isinstance(res, ToolCall):
                 result = self.tool_set(res)
-                self.dialog = self.dialog.append(res.msg(result))
+                self.dialog = self.dialog.insert(res.msg(result))
             else:
                 done = True
 
@@ -58,7 +58,7 @@ class ChatAgent(Chat):
             )
             if msg.type_ != 'tool':
                 result = self.tool_set(res)
-                self.dialog = self.dialog.append(res.msg(result))
+                self.dialog = self.dialog.insert(res.msg(result))
             else:
                 done = True
 
@@ -81,7 +81,7 @@ class ChatAgent(Chat):
 
             if isinstance(res, ToolCall):
                 result = self.tool_set(res)
-                self.dialog = self.dialog.append(res.msg(result))
+                self.dialog = self.dialog.insert(res.msg(result))
             else:
                 done = True
 
@@ -99,7 +99,7 @@ class ChatAgent(Chat):
                     yield res
             if isinstance(res, ToolCall):
                 result = self.tool_set(res)
-                self.dialog = self.dialog.append(res.msg(result))
+                self.dialog = self.dialog.insert(res.msg(result))
             else:
                 done = True
 
