@@ -18,11 +18,6 @@ class ToolParam(pydantic.BaseModel):
     descr: str = ''
     enum: typing.Optional[typing.List[typing.Any]] = None
     default: typing.Optional[typing.Any] = None
-    # format: typing.Optional[str] = None
-    # minimum: typing.Optional[float] = None
-    # maximum: typing.Optional[float] = None
-    # minLength: typing.Optional[int] = None
-    # maxLength: typing.Optional[int] = None
 
 
 class ToolObjParam(ToolParam):
