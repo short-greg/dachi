@@ -501,9 +501,9 @@ def _stream_model(model: LLM, prompt: LLM_PROMPT, ctx: Context, *args, interval:
         interval (float, optional): The interval to run at. Defaults to 1./60.
     """
     print('Executing thread')
-    for x, dx in model.stream(prompt, *args, **kwargs):
-        ctx['x'] = x
-        ctx['dx'].append(dx)
+    for msg, c in model.stream(prompt, *args, **kwargs):
+        ctx['msg'] = msg
+        ctx['cur'].append(c)
         time.sleep(interval)
     ctx['thread_status'] = TaskStatus.SUCCESS
 
@@ -524,11 +524,10 @@ def stream_model(
     """
     def run() -> TaskStatus:
         if '_thread' not in ctx:
-            ctx['x'] = None
-            ctx['dx'] = []
+            ctx['msg'] = None
+            ctx['cur'] = []
             ctx['i'] = 0
             ctx['thread_status'] = TaskStatus.RUNNING
-            print('create thread')
             t = threading.Thread(
                 target=_stream_model, args=(
                     engine, prompt, ctx, *args
@@ -537,9 +536,9 @@ def stream_model(
             t.start()
             ctx['_thread'] = t
         
-        if ctx['i'] < len(ctx['dx']):
-            buffer.add(*ctx['dx'][ctx['i']:])
-            ctx['i'] = len(ctx['dx'])
+        if ctx['i'] < len(ctx['cur']):
+            buffer.add(*ctx['cur'][ctx['i']:])
+            ctx['i'] = len(ctx['cur'])
 
         return ctx['thread_status']
 
@@ -554,7 +553,7 @@ def _run_model(model: LLM, prompt: LLM_PROMPT, ctx: Context, **kwargs):
         ctx (Context): The context
         interval (float, optional): The interval to run at. Defaults to 1./60.
     """
-    ctx['x'] = model(prompt, **kwargs)
+    ctx['msg'], ctx['x'] = model(prompt, **kwargs)
     ctx['thread_status'] = TaskStatus.SUCCESS
 
 
@@ -574,6 +573,7 @@ def exec_model(
     """
     def run() -> TaskStatus:
         if '_thread' not in ctx:
+            ctx['msg'] = None
             ctx['x'] = None
             ctx['thread_status'] = TaskStatus.RUNNING
             t = threading.Thread(

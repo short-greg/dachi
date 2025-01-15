@@ -283,7 +283,7 @@ class TestBuffer:
         buffer = utils.Buffer()
         model = DummyAIModel()
         message = core.Msg(
-            source='user', data={'text': 'text'}
+            role='user', text='text'
         )
         ctx = utils.Context()
         stream = F.stream_model(
@@ -300,7 +300,7 @@ class TestBuffer:
         buffer = utils.Buffer()
         model = DummyAIModel()
         message = core.Msg(
-            source='user', data={'text': 'text'}
+            role='user', text='text'
         )
         ctx = utils.Context()
         stream = F.stream_model(
@@ -309,7 +309,7 @@ class TestBuffer:
         stream()
         time.sleep(0.1)
         stream()
-        res = ''.join((r.val for r in buffer.get()))
+        res = ''.join((r for r in buffer.get()))
 
         assert res == 'Great!'
 
@@ -321,7 +321,7 @@ class TestSharedTask:
         shared = utils.Shared()
         model = DummyAIModel()
         message = core.Msg(
-            source='user', data={'text': 'text'}
+            role='user', text='text'
         )
         ctx = utils.Context()
         stream = F.exec_model(
@@ -338,7 +338,7 @@ class TestSharedTask:
         shared = utils.Shared()
         model = DummyAIModel()
         message = core.Msg(
-            source='user', data={'text': 'text'}
+            role='user', text='text'
         )
         ctx = utils.Context()
         stream = F.exec_model(
@@ -347,5 +347,7 @@ class TestSharedTask:
         res = stream()
         time.sleep(0.1)
         res = stream()
+        print(type(shared.data[0]))
 
-        assert shared.data.val == 'Great!'
+
+        assert shared.data == 'Great!'
