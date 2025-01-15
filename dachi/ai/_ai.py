@@ -12,12 +12,48 @@ LLM_PROMPT = typing.Union[typing.Iterable[Msg], Msg]
 LLM_RESPONSE = typing.Tuple[Msg, typing.Any]
 
 
+class ToolParam(pydantic.BaseModel):
+    name: str
+    type_: str
+    descr: str = ''
+    enum: typing.Optional[typing.List[typing.Any]] = None
+    default: typing.Optional[typing.Any] = None
+    # format: typing.Optional[str] = None
+    # minimum: typing.Optional[float] = None
+    # maximum: typing.Optional[float] = None
+    # minLength: typing.Optional[int] = None
+    # maxLength: typing.Optional[int] = None
+
+
+class ToolObjParam(ToolParam):
+    params: typing.List[ToolParam] = pydantic.Field(
+        default_factory=list
+    )
+
+
+class ToolArrayParam(ToolParam):
+    items: typing.List[ToolParam]
+
+    def __init__(self, name: str, items: typing.List[ToolParam], descr: str='', 
+            **kwargs):
+        """Create an array of tools
+
+        Args:
+            name (str): The name of the array
+            items (typing.List[ToolParam]): The items in the array
+            descr (str, optional): The description. Defaults to ''.
+        """
+        super().__init__(
+            name=name, type_="array", items=items, descr=descr, **kwargs
+        )
+
+
 class ToolOption(pydantic.BaseModel):
     """Create an option for a tool to pass to the model
     """
-
     name: str
     f: typing.Callable[[typing.Any], typing.Any]
+    required: typing.List[str] = pydantic.Field(default_factory=list)
     kwargs: typing.Dict
 
 
@@ -54,10 +90,11 @@ class ToolSet(object):
 
 
 class ToolCall(pydantic.BaseModel):
-    """A response from the LLM that a tool was caleld
+    """A response from the LLM that a tool was called
     """
-
-    name: str = pydantic.Field(description="The name of the tool.")
+    name: str = pydantic.Field(
+        description="The name of the tool."
+    )
     args: typing.Dict[str, typing.Any] = pydantic.Field(
         description="The arguments to the tool."
     )
@@ -103,9 +140,10 @@ class LLM(Module, ABC):
     """
 
     def user(
-        self, type_: str='data', 
+        self, 
         delta: typing.Dict=None, 
-        meta: typing.Dict=None, **kwargs
+        meta: typing.Dict=None, 
+        type_:str ='data', **kwargs
     ) -> Msg:
         """Create a user message
 
@@ -124,9 +162,10 @@ class LLM(Module, ABC):
         )
 
     def assistant(
-        self, type_: str='data', 
+        self, 
         delta: typing.Dict=None, 
-        meta: typing.Dict=None, **kwargs
+        meta: typing.Dict=None, type_:str ='data', 
+        **kwargs
     ) -> Msg:
         """Create an assistant message
 
@@ -145,9 +184,9 @@ class LLM(Module, ABC):
         )
 
     def system(
-        self, type_:str ='data', 
+        self, 
         delta: typing.Dict=None, 
-        meta: typing.Dict=None, **kwargs
+        meta: typing.Dict=None, type_:str ='data', **kwargs
     ) -> Msg:
         """Create a system message
 
@@ -165,7 +204,7 @@ class LLM(Module, ABC):
             delta=delta, type_=type_, **kwargs
         )
 
-    def tool(
+    def tool_resp(
         self, type_:str ='tool', 
         delta: typing.Dict=None, 
         meta: typing.Dict=None, **kwargs
@@ -186,23 +225,27 @@ class LLM(Module, ABC):
             delta=delta, type_=type_, **kwargs
         )
 
-    def tool_option(
-        self, name: str, f: typing.Callable, **kwargs
-    ) -> ToolOption:
-        """Create an option to 
+    # def tool_option(
+    #     self, 
+    #     name: str, 
+    #     f: typing.Callable, 
+    #     *args: ToolArrayParam, 
+    #     **kwargs
+    # ) -> ToolOption:
+    #     """Create an option to 
 
-        Args:
-            name (str): The name of the tool
+    #     Args:
+    #         name (str): The name of the tool
 
-        Returns:
-            ToolOption: The name of the tool to use
-        """
-        return ToolOption(
-            name=name, f=f, kwargs=kwargs, 
-        )
+    #     Returns:
+    #         ToolOption: The name of the tool to use
+    #     """
+    #     return ToolOption(
+    #         name=name, f=f, *args, kwargs=kwargs, 
+    #     )
 
     def msg(
-        self, content: str='', 
+        self, role: str, *args,
         type_: str='data', 
         meta: typing.Dict=None, 
         delta: typing.Dict=None, 
@@ -218,8 +261,16 @@ class LLM(Module, ABC):
         Returns:
             Msg: 
         """
-        return Msg(
-            content=content, type_=type_, meta=meta, delta=delta, **kwargs
+        try:
+            f = object.__getattribute__(self, role)
+        except AttributeError:
+            raise AttributeError(
+                f'There is no role named {role}.'
+            )
+        return f(
+            *args, role=role,
+            type_=type_, meta=meta,
+            delta=delta, **kwargs
         )
 
     @abstractmethod
@@ -422,7 +473,8 @@ class ConvStr(ConvMsg):
     """Converts the inputs to a standard message"""
 
     def __init__(
-        self, role: str="system", 
+        self, 
+        role: str="system", 
         text_name: str='content',
     ):
         super().__init__()

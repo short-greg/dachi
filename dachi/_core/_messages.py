@@ -50,6 +50,10 @@ class Msg(dict):
             del d['role']
         return d
 
+    def to_list_input(self) -> typing.List[typing.Dict]:
+
+        return [self.to_input()]
+
 
 class Dialog(pydantic.BaseModel, Renderable):
     """A Dialog stores the interactions between the system/user and the assistant
@@ -196,7 +200,12 @@ class Dialog(pydantic.BaseModel, Renderable):
         Returns:
             typing.List[typing.Dict]: A list of inputs
         """
-        return {msg.to_input() for msg in self}
+        return [msg.to_input() for msg in self]
+
+    def to_list_input(self) -> typing.List[typing.Dict]:
+
+        return self.to_input()
+
 
     def aslist(self) -> typing.List['Msg']:
         """Retrieve the message list

@@ -5,44 +5,46 @@ import pydantic
 from .. import _core as core
 import pydantic
 
-# class ToolParam(pydantic.BaseModel, core.Renderable):
-#     name: str
-#     type_: str
-#     descr: str = ''
-#     required: typing.List[str] = Field(default_factory=list)
-#     enum: typing.Optional[typing.List[typing.Any]] = None
-#     minimum: typing.Optional[float] = None
-#     maximum: typing.Optional[float] = None
-#     minLength: typing.Optional[int] = None
-#     maxLength: typing.Optional[int] = None
-#     default: typing.Optional[typing.Any] = None
-#     format: typing.Optional[str] = None
 
-#     def render(self) -> str:
-#         return core.render(self)
-    
-#     # def clone(self) -> 'ToolParam':
-#     #     pass
+class ToolParam(pydantic.BaseModel, core.Renderable):
+    name: str
+    type_: str
+    descr: str = ''
+    required: typing.List[str] = pydantic.Field(default_factory=list)
+    enum: typing.Optional[typing.List[typing.Any]] = None
+    default: typing.Optional[typing.Any] = None
+    format: typing.Optional[str] = None
+    # minimum: typing.Optional[float] = None
+    # maximum: typing.Optional[float] = None
+    # minLength: typing.Optional[int] = None
+    # maxLength: typing.Optional[int] = None
 
-# class ToolObjParam(ToolParam):
-#     params: typing.List[ToolParam] = Field(default_factory=list)
+    def render(self) -> str:
+        return core.render(self)
 
 
-# class ToolArrayParam(ToolParam):
-#     items: typing.List[ToolParam]
+class ToolObjParam(ToolParam):
+    params: typing.List[ToolParam] = pydantic.Field(
+        default_factory=list
+    )
 
-#     def __init__(self, name: str, items: typing.List[ToolParam], descr: str='', 
-#             **kwargs):
-#         """Create an array of tools
 
-#         Args:
-#             name (str): The name of the array
-#             items (typing.List[ToolParam]): The items in the array
-#             descr (str, optional): The description. Defaults to ''.
-#         """
-#         super().__init__(
-#             name=name, type_="array", items=items, descr=descr, **kwargs
-#         )
+class ToolArrayParam(ToolParam):
+    items: typing.List[ToolParam]
+
+    def __init__(self, name: str, items: typing.List[ToolParam], descr: str='', 
+            **kwargs):
+        """Create an array of tools
+
+        Args:
+            name (str): The name of the array
+            items (typing.List[ToolParam]): The items in the array
+            descr (str, optional): The description. Defaults to ''.
+        """
+        super().__init__(
+            name=name, type_="array", items=items, descr=descr, **kwargs
+        )
+
 # 'name': name,
 # 'type_': type_,
 # 'param': param,
@@ -52,7 +54,8 @@ import pydantic
 
 
 # class Tool(core.Module, pydantic.BaseModel):
-#     """Tool for the agent to excute. It stores a function and
+#     """Tool for the agent to excute. 
+#     It stores a function and
 #     allows the 
 #     """
 #     name: str

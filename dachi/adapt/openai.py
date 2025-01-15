@@ -3,11 +3,9 @@ import openai
 import typing
 
 from functools import singledispatch
-from .._core import (
-    Module, Dialog,  Msg
-)
+from .._core import Msg
 from ..utils import UNDEFINED
-from ..ai import LLM, LLM_PROMPT, Get
+from ..ai import LLM, LLM_PROMPT, Get, ToolOption
 
 from typing import Dict, List
 
@@ -23,190 +21,316 @@ if len(missing) > 0:
 
 
 class OpenAILLM(LLM):
-    """APIAdapter allows one to adapt various WebAPI or otehr
-    API for a consistent interface
-    """
 
-    def __init__(self, model: str, client_kwargs: typing.Dict=None, **kwargs) -> None:
-        """Create an OpenAIChat model
-
-        Args:
-            model (str): The name of the model
-        """
+    def __init__(
+        self, client_kwargs: typing.Dict, kwargs: typing.Dict
+    ):
         super().__init__()
-        self.client_kwargs = client_kwargs or {}
-        self.model = model
         self.kwargs = kwargs
+        self.client_kwargs = client_kwargs
 
-    def process_response(self, response) -> Msg:
-        """
-        Processes the response from the OpenAI API and returns a Msg object.
-        Args:
-            response: The response object from the OpenAI API.
-        Returns:
-            Msg: A message object containing the role, type, tool, and meta information
-                 based on the response. If the response includes a function call, the
-                 message type is set to 'function' and includes the function name and
-                 arguments. Otherwise, the message content is set to the response content.
-        """
-        if response.choices[0].message.function_call:
-            return Msg(
-                role='assistant',
-                type_='function',
-                tool={
-                    'name': response.choices[0].message.function_call.name,
-                    'arguments': response.choices[0].message.function_call.arguments
-                },
-                meta={'response': response}
-            )
-        else:
-            return Msg(
-                role='assistant', 
-                content=response.choices[0].message.content,
-                meta={'response': response}
-            )
+    def user(self, content: str, delta = None, meta = None):
 
-    def process_delta_response(self, delta_response, response: Msg=None) -> Msg:
-        """
-        Processes a delta response and updates or creates a Msg object accordingly. It aggregates the message sent from the AI and sets the delta in the Delta dictionary of Msg
-        Args:
-            delta_response (object): The delta response object containing choices with delta information.
-            response (Msg, optional): An existing Msg object to update. Defaults to None.
-        Returns:
-            Msg: The updated or newly created Msg object.
-        """ 
-        if delta_response.choices[0].delta.function_call:
-            if response is None:
-                response = Msg(
-                    role='assistant',
-                    type_='function',
-                    tool={
-                    'name': delta_response.choices[0].delta.function_call.name,
-                    'arguments': delta_response.choices[0].delta.function_call.arguments
-                    },
-                    meta={'delta': delta_response}
-                )
-            else:
-                if response.tool is None:
-                    response.tool = {
-                        'name': delta_response.choices[0].delta.function_call.name,
-                        'arguments': delta_response.choices[0].delta.function_call.arguments
-                    }
-                else:
-                    response.tool['arguments'] += delta_response.choices[0].delta.function_call.arguments
-            response.meta['delta'] = delta_response
-
-        elif delta_response.choices[0].delta.content:
-            if response is None:
-                response = Msg(
-                    role='assistant',
-                    content=delta_response.choices[0].delta.content,
-                    meta={'delta': delta_response}
-                )
-            else:
-                response.content = (response.content or '') + delta_response.choices[0].delta.content
-                response.meta['delta'] = delta_response
-
-        return response
-
-    def forward(self, prompt: LLM_PROMPT, **kwarg_override) -> Msg:
-        """Execute the model
-
-        Args:
-            prompt (AIPrompt): The message to send the model
-
-        Returns:
-            AIResponse: the response from the model
-        """
-        kwargs = {**self.kwargs, **kwarg_override}
-        dialog = self.prepare_dialog(
-            prompt
+        return Msg(
+            role='user', 
+            content=content, 
+            type_='data', 
+            delta=delta, 
+            meta=meta
         )
-        messages = list(dialog.messages())
-        client = openai.OpenAI(**self.client_kwargs)
+    
+    def system(self, content: str, delta = None, meta = None):
+        return Msg(
+            role='system', 
+            content=content, 
+            type_='data', 
+            delta=delta, 
+            meta=meta
+        )
+    
+    def assistant(
+        self, content: str, 
+        delta = None, meta = None, 
+        **kwargs
+    ):
+        return Msg(
+            role='system', 
+            content=content, 
+            type_='data', 
+            delta=delta, 
+            meta=meta
+        )
+    
+    def tool_resp(self, name: str, response: str, delta = None, meta = None):    
+        return Msg(
+            role='function', 
+            name=name, 
+            response=response,
+            delta=delta, 
+            meta=meta
+        )
+    
+    def tool_option(self, name, f, **kwargs):
+        raise NotImplementedError
+    
+    def forward(
+        self, prompt: LLM_PROMPT, 
+        tools: typing.List=None, 
+        **kwarg_override
+    ):
+        
+        kwargs = {**self.kwargs, **kwarg_override}
+        client = openai.Client(**self.client_kwargs)
         response = client.chat.completions.create(
             model=self.model,
-            messages=messages,
+            messages=prompt.to_list_input(),
             **kwargs
         )
-        return self.process_response(response)
+        return self.assistant(response), response
+    
+    async def aforward(
+        self, prompt: LLM_PROMPT, 
+        tools: typing.List[ToolOption]=None, 
+        **kwarg_override
+    ):
 
-    async def aforward(self, prompt: LLM_PROMPT, **kwarg_override) -> Msg:
-        """Execute the model
-
-        Args:
-            prompt (AIPrompt): The message to send the model
-
-        Returns:
-            AIResponse: the response from the model
-        """
         kwargs = {**self.kwargs, **kwarg_override}
-        dialog = self.prepare_dialog(
-            prompt
-        )
-        messages = list(dialog.messages())
-        client = openai.AsyncOpenAI(**self.client_kwargs)
-        response = client.chat.completions.create(
+        client = openai.AsyncClient(**self.client_kwargs)
+        response = await client.chat.completions.create(
             model=self.model,
-            messages=messages,
+            messages=prompt.to_list_input(),
             **kwargs
         )
-        return self.process_response(response)
-
-    def stream(self, prompt: LLM_PROMPT, **kwarg_override) -> typing.Iterator[Msg]:
-        """Execute the model
-
-        Args:
-            prompt (AIPrompt): The message to send the model
-
-        Returns:
-            AIResponse: the response from the model
-        """
+        return self.assistant(response), response
+    
+    def stream(
+        self, prompt: LLM_PROMPT, 
+        tools: typing.List[ToolOption]=None, 
+        **kwarg_override
+    ):
         kwargs = {**self.kwargs, **kwarg_override}
-        dialog = self.prepare_dialog(
-            prompt
-        )
-        messages = list(dialog.messages())
-        client = openai.OpenAI(**self.client_kwargs)
+        client = openai.Client(**self.client_kwargs)
         stream = client.chat.completions.create(
             model=self.model,
-            messages=messages,
+            messages=prompt.to_list_input(),
             stream=True,
             **kwargs
         )
-        response = None
+        full = ''
         for chunk in stream:
-            yield self.process_delta_response(chunk, response)
-
-    async def astream(self, prompt: LLM_PROMPT, **kwarg_override) -> typing.AsyncIterator[Msg]:
-        """Execute the model
-
-        Args:
-            prompt (AIPrompt): The message to send the model
-
-        Returns:
-            AIResponse: the response from the model
-        """
+            cur = chunk.choices[0].delta.content
+            full += cur
+            yield self.assistant(
+                full, delta={'content': cur}
+            ), cur
+    
+    async def astream(
+        self, prompt, 
+        tools: typing.List[ToolOption]=None, 
+        **kwarg_override
+    ):
         kwargs = {**self.kwargs, **kwarg_override}
-        dialog = self.prepare_dialog(
-            prompt
-        )
-        messages = list(dialog.messages())
-        client = openai.AsyncOpenAI(**self.client_kwargs)
-        stream = client.chat.completions.create(
+        client = openai.AsyncClient(**self.client_kwargs)
+        full = ''
+        async for chunk in await client.chat.completions.create(
             model=self.model,
-            messages=messages,
+            messages=prompt.to_list_input(),
             stream=True,
             **kwargs
-        )
-        response = None
-        async for chunk in stream:
-            yield self.process_delta_response(chunk, response)
+        ):
+            cur = chunk.choices[0].delta.content
+            full += cur
+            yield self.assistant(
+                full, delta={'content': cur}
+            ), cur
+    
 
-    def get_text(self, x: str='content', dx: str=lambda msg: msg['dx']['content']):
-        return Get(
-            self, x, dx
-        )
+
+# class OpenAILLM(LLM):
+#     """APIAdapter allows one to adapt various WebAPI or otehr
+#     API for a consistent interface
+#     """
+
+#     def __init__(self, model: str, client_kwargs: typing.Dict=None, **kwargs) -> None:
+#         """Create an OpenAIChat model
+
+#         Args:
+#             model (str): The name of the model
+#         """
+#         super().__init__()
+#         self.client_kwargs = client_kwargs or {}
+#         self.model = model
+#         self.kwargs = kwargs
+
+#     def process_response(self, response) -> Msg:
+#         """
+#         Processes the response from the OpenAI API and returns a Msg object.
+#         Args:
+#             response: The response object from the OpenAI API.
+#         Returns:
+#             Msg: A message object containing the role, type, tool, and meta information
+#                  based on the response. If the response includes a function call, the
+#                  message type is set to 'function' and includes the function name and
+#                  arguments. Otherwise, the message content is set to the response content.
+#         """
+#         if response.choices[0].message.function_call:
+#             return Msg(
+#                 role='assistant',
+#                 type_='function',
+#                 tool={
+#                     'name': response.choices[0].message.function_call.name,
+#                     'arguments': response.choices[0].message.function_call.arguments
+#                 },
+#                 meta={'response': response}
+#             )
+#         else:
+#             return Msg(
+#                 role='assistant', 
+#                 content=response.choices[0].message.content,
+#                 meta={'response': response}
+#             )
+
+#     def process_delta_response(self, delta_response, response: Msg=None) -> Msg:
+#         """
+#         Processes a delta response and updates or creates a Msg object accordingly. It aggregates the message sent from the AI and sets the delta in the Delta dictionary of Msg
+#         Args:
+#             delta_response (object): The delta response object containing choices with delta information.
+#             response (Msg, optional): An existing Msg object to update. Defaults to None.
+#         Returns:
+#             Msg: The updated or newly created Msg object.
+#         """ 
+#         if delta_response.choices[0].delta.function_call:
+#             if response is None:
+#                 response = Msg(
+#                     role='assistant',
+#                     type_='function',
+#                     tool={
+#                     'name': delta_response.choices[0].delta.function_call.name,
+#                     'arguments': delta_response.choices[0].delta.function_call.arguments
+#                     },
+#                     meta={'delta': delta_response}
+#                 )
+#             else:
+#                 if response.tool is None:
+#                     response.tool = {
+#                         'name': delta_response.choices[0].delta.function_call.name,
+#                         'arguments': delta_response.choices[0].delta.function_call.arguments
+#                     }
+#                 else:
+#                     response.tool['arguments'] += delta_response.choices[0].delta.function_call.arguments
+#             response.meta['delta'] = delta_response
+
+#         elif delta_response.choices[0].delta.content:
+#             if response is None:
+#                 response = Msg(
+#                     role='assistant',
+#                     content=delta_response.choices[0].delta.content,
+#                     meta={'delta': delta_response}
+#                 )
+#             else:
+#                 response.content = (response.content or '') + delta_response.choices[0].delta.content
+#                 response.meta['delta'] = delta_response
+
+#         return response
+
+#     def forward(self, prompt: LLM_PROMPT, **kwarg_override) -> Msg:
+#         """Execute the model
+
+#         Args:
+#             prompt (AIPrompt): The message to send the model
+
+#         Returns:
+#             AIResponse: the response from the model
+#         """
+#         kwargs = {**self.kwargs, **kwarg_override}
+#         dialog = self.prepare_dialog(
+#             prompt
+#         )
+#         messages = list(dialog.messages())
+#         client = openai.OpenAI(**self.client_kwargs)
+#         response = client.chat.completions.create(
+#             model=self.model,
+#             messages=messages,
+#             **kwargs
+#         )
+#         return self.process_response(response)
+
+#     async def aforward(self, prompt: LLM_PROMPT, **kwarg_override) -> Msg:
+#         """Execute the model
+
+#         Args:
+#             prompt (AIPrompt): The message to send the model
+
+#         Returns:
+#             AIResponse: the response from the model
+#         """
+#         kwargs = {**self.kwargs, **kwarg_override}
+#         dialog = self.prepare_dialog(
+#             prompt
+#         )
+#         messages = list(dialog.messages())
+#         client = openai.AsyncOpenAI(**self.client_kwargs)
+#         response = client.chat.completions.create(
+#             model=self.model,
+#             messages=messages,
+#             **kwargs
+#         )
+#         return self.process_response(response)
+
+#     def stream(self, prompt: LLM_PROMPT, **kwarg_override) -> typing.Iterator[Msg]:
+#         """Execute the model
+
+#         Args:
+#             prompt (AIPrompt): The message to send the model
+
+#         Returns:
+#             AIResponse: the response from the model
+#         """
+#         kwargs = {**self.kwargs, **kwarg_override}
+#         dialog = self.prepare_dialog(
+#             prompt
+#         )
+#         messages = list(dialog.messages())
+#         client = openai.OpenAI(**self.client_kwargs)
+#         stream = client.chat.completions.create(
+#             model=self.model,
+#             messages=messages,
+#             stream=True,
+#             **kwargs
+#         )
+#         response = None
+#         for chunk in stream:
+#             yield self.process_delta_response(chunk, response)
+
+#     async def astream(self, prompt: LLM_PROMPT, **kwarg_override) -> typing.AsyncIterator[Msg]:
+#         """Execute the model
+
+#         Args:
+#             prompt (AIPrompt): The message to send the model
+
+#         Returns:
+#             AIResponse: the response from the model
+#         """
+#         kwargs = {**self.kwargs, **kwarg_override}
+#         dialog = self.prepare_dialog(
+#             prompt
+#         )
+#         messages = list(dialog.messages())
+#         client = openai.AsyncOpenAI(**self.client_kwargs)
+#         stream = client.chat.completions.create(
+#             model=self.model,
+#             messages=messages,
+#             stream=True,
+#             **kwargs
+#         )
+#         response = None
+#         async for chunk in stream:
+#             yield self.process_delta_response(chunk, response)
+
+#     def get_text(self, x: str='content', dx: str=lambda msg: msg['dx']['content']):
+#         return Get(
+#             self, x, dx
+#         )
 
         # client = openai.OpenAI(**self.client_kwargs)
         # response = client.chat.completions.create(
