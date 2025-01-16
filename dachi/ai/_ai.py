@@ -12,35 +12,15 @@ LLM_PROMPT = typing.Union[typing.Iterable[Msg], Msg]
 LLM_RESPONSE = typing.Tuple[Msg, typing.Any]
 
 
-class ToolParam(pydantic.BaseModel):
-    name: str
-    type_: str
-    descr: str = ''
-    enum: typing.Optional[typing.List[typing.Any]] = None
-    default: typing.Optional[typing.Any] = None
+class ToolParam(dict):
 
-
-class ToolObjParam(ToolParam):
-    params: typing.List[ToolParam] = pydantic.Field(
-        default_factory=list
-    )
-
-
-class ToolArrayParam(ToolParam):
-    items: typing.List[ToolParam]
-
-    def __init__(self, name: str, items: typing.List[ToolParam], descr: str='', 
-            **kwargs):
-        """Create an array of tools
+    def __init__(self, name: str, **kwargs):
+        """_summary_
 
         Args:
-            name (str): The name of the array
-            items (typing.List[ToolParam]): The items in the array
-            descr (str, optional): The description. Defaults to ''.
+            name (str): 
         """
-        super().__init__(
-            name=name, type_="array", items=items, descr=descr, **kwargs
-        )
+        super().__init__(name=name, **kwargs)
 
 
 class ToolOption(pydantic.BaseModel):
@@ -49,6 +29,7 @@ class ToolOption(pydantic.BaseModel):
     name: str
     f: typing.Callable[[typing.Any], typing.Any]
     required: typing.List[str] = pydantic.Field(default_factory=list)
+    params: typing.List[ToolParam]
     kwargs: typing.Dict
 
 
@@ -87,8 +68,8 @@ class ToolSet(object):
 class ToolCall(pydantic.BaseModel):
     """A response from the LLM that a tool was called
     """
-    name: str = pydantic.Field(
-        description="The name of the tool."
+    option: ToolOption = pydantic(
+        description="The tool that was chosen."
     )
     args: typing.Dict[str, typing.Any] = pydantic.Field(
         description="The arguments to the tool."
@@ -220,24 +201,6 @@ class LLM(Module, ABC):
             delta=delta, type_=type_, **kwargs
         )
 
-    # def tool_option(
-    #     self, 
-    #     name: str, 
-    #     f: typing.Callable, 
-    #     *args: ToolArrayParam, 
-    #     **kwargs
-    # ) -> ToolOption:
-    #     """Create an option to 
-
-    #     Args:
-    #         name (str): The name of the tool
-
-    #     Returns:
-    #         ToolOption: The name of the tool to use
-    #     """
-    #     return ToolOption(
-    #         name=name, f=f, *args, kwargs=kwargs, 
-    #     )
 
     def msg(
         self, role: str, *args,
