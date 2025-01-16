@@ -7,18 +7,27 @@ from .._core._core import (
 )
 import pydantic
 from .._core import Msg, ListDialog, Dialog
+from ._utils import (
+    is_async_function, is_async_function, 
+    is_generator_function
+)
 
 LLM_PROMPT = typing.Union[typing.Iterable[Msg], Msg]
 LLM_RESPONSE = typing.Tuple[Msg, typing.Any]
 
 
 class ToolParam(dict):
+    """
+
+    Args:
+        dict: 
+    """
 
     def __init__(self, name: str, **kwargs):
-        """_summary_
+        """The param for the tool
 
         Args:
-            name (str): 
+            name (str): The name of the tool
         """
         super().__init__(name=name, **kwargs)
 
@@ -74,6 +83,72 @@ class ToolCall(pydantic.BaseModel):
     args: typing.Dict[str, typing.Any] = pydantic.Field(
         description="The arguments to the tool."
     )
+
+    def forward(self) -> typing.Any:
+        """Call the tool
+
+        Raises:
+            NotImplementedError: If the function is async
+            NotImplementedError: If the function is a generator function
+
+        Returns:
+            typing.Any: The result of the call
+        """
+        # Check if valid to use with forward
+        if is_async_function(self.option.f):
+            raise NotImplementedError
+        if is_generator_function(self.option.f):
+            raise NotImplementedError
+        return self.option.f(**self.args)
+
+    async def aforward(self) -> typing.Any:
+        """Call the tool 
+
+        Raises:
+            NotImplementedError: If the function is a generator
+
+        Returns:
+            typing.Any: The result of the call
+        """
+        if is_async_function(self.option.f):
+            return await self.option.f(**self.args)
+        if is_generator_function(self.option.f):
+            raise NotImplementedError
+        return self.option.f(**self.args)
+
+    def stream(self) -> typing.Iterator:
+        """Stream the tool
+
+        Raises:
+            NotImplementedError: The result
+
+        Yields:
+            Iterator[typing.Iterator]: The result of the call
+        """
+        if is_async_function(self.option.f):
+            raise NotImplementedError
+        elif is_generator_function(self.option.f):
+            for k in self.option.f(**self.args):
+                yield k
+        else:
+            yield self.option.f(**self.args)
+        
+    async def astream(self):
+        """Stream the tool
+
+        Yields:
+            Iterator[typing.Iterator]: The result of the call
+        """
+        if is_generator_function(self.option.f) and is_async_function(self.option.f):
+            async for k in await self.option.f(**self.args):
+                yield k
+        elif is_generator_function(self.option.f):
+            for k in await self.option.f(**self.args):
+                yield k
+        elif is_async_function(self.option.f):
+            yield await self.option.f(**self.args)
+        else:
+            yield self.option.f(**self.args)
 
 
 def exclude_role(messages: typing.Iterable[Msg], *role: str) -> typing.List[Msg]:
@@ -200,7 +275,6 @@ class LLM(Module, ABC):
             meta=meta, 
             delta=delta, type_=type_, **kwargs
         )
-
 
     def msg(
         self, role: str, *args,
@@ -347,7 +421,9 @@ class Get(Module):
             typing.Any: The processed response, either extracted or transformed based on self._x configuration
   
         """
-        msg, _ = self._llm.forward(prompt, **kwarg_override)
+        msg, _ = self._llm.forward(
+            prompt, **kwarg_override
+        )
         return msg[self._x]
     
     async def aforward(
@@ -382,7 +458,9 @@ class Get(Module):
         msg, _ = self._llm.aforward(prompt, **kwarg_override)
         return msg[self._x]
     
-    def stream(self, prompt, **kwarg_override) -> typing.Iterator:
+    def stream(
+        self, prompt, **kwarg_override
+    ) -> typing.Iterator:
         """ Stream the results from the LLM and extract/process the response.
         Args:
             prompt: Input prompt to be processed by the LLM
@@ -392,7 +470,9 @@ class Get(Module):
         Yields: 
             typing.Any: The processed response, either extracted or transformed based on self._x configuration
         """ 
-        for msg, _ in self._llm.stream(prompt, **kwarg_override):
+        for msg, _ in self._llm.stream(
+            prompt, **kwarg_override
+        ):
             if isinstance(self._dx, str):
                 yield msg[self._dx]
             else:
