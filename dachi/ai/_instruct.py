@@ -18,7 +18,7 @@ from ..utils._utils import (
     str_formatter
 )
 from .._core._process import Module
-from ._utils import (
+from ..utils._f_utils import (
     is_async_function, get_return_type,
     is_generator_function, get_iterator_type
 )

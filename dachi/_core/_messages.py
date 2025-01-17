@@ -22,7 +22,7 @@ class Msg(dict):
             delta (typing.Dict, optional): The change in the message. Defaults to None.
         """
         super().__init__(
-            role=role, _include_role=_include_role, type_=type_, meta=meta, delta=delta, **kwargs
+            role=role, _include_role=_include_role, type_=type_, meta=meta or {}, delta=delta or {}, **kwargs
         )
 
     @property

@@ -3,11 +3,17 @@ from .. import _core as core
 from ._ai import LLM
 
 
+CHAT_RES = typing.Union[
+    typing.Any, typing.Tuple[typing.Any, core.Msg]
+]
+
+
 class Chat(core.Module):
     """A component that facilitates chatting
     """
     def __init__(
-        self, llm: LLM, dialog: core.Dialog=None
+        self, llm: LLM, 
+        dialog: core.Dialog=None
     ):
         """Create a Chat component
 
@@ -56,7 +62,7 @@ class Chat(core.Module):
 
     def forward(
         self, *args, get_msg: bool=False, **kwargs
-    ) -> typing.Tuple[core.Msg, 'Chat']:
+    ) -> CHAT_RES:
         """Execute a turn of the chat"""
         msg = self.llm.user(*args, **kwargs)
         dialog = self.dialog.insert(msg)

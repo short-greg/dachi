@@ -1,5 +1,6 @@
 # 1st party
 import typing
+import json
 from abc import ABC, abstractmethod
 import typing
 from .._core._core import (
@@ -7,7 +8,7 @@ from .._core._core import (
 )
 import pydantic
 from .._core import Msg, ListDialog, Dialog
-from ._utils import (
+from ..utils._f_utils import (
     is_async_function, is_async_function, 
     is_generator_function
 )
@@ -18,11 +19,7 @@ LLM_RESPONSE = typing.Tuple[Msg, typing.Any]
 
 class ToolParam(dict):
     """
-
-    Args:
-        dict: 
     """
-
     def __init__(self, name: str, **kwargs):
         """The param for the tool
 
@@ -40,6 +37,15 @@ class ToolOption(pydantic.BaseModel):
     required: typing.List[str] = pydantic.Field(default_factory=list)
     params: typing.List[ToolParam]
     kwargs: typing.Dict
+
+    def to_input(self) -> typing.Dict:
+
+        return {
+            'name': self.name,
+            'required': self.required,
+            'parameters': [{**param} for param in self.params]
+            **self.kwargs
+        }
 
 
 class ToolSet(object):
@@ -72,6 +78,14 @@ class ToolSet(object):
             option (ToolOption): The option to add
         """
         del self.tools[option.name]
+
+    def to_input(self):
+        return list(
+            tool.to_input() for _, tool in self.tools.items()
+        )
+
+    def __getitem__(self, name):
+        return self.tools[name]
 
 
 class ToolCall(pydantic.BaseModel):
@@ -149,6 +163,74 @@ class ToolCall(pydantic.BaseModel):
             yield await self.option.f(**self.args)
         else:
             yield self.option.f(**self.args)
+
+
+class ToolGen(object):
+    """Object to keep track of adding tools
+    """
+
+    def __init__(self, tools: ToolSet, add_to: typing.List):
+        """
+
+        Args:
+            tools (ToolSet): 
+            add_to (typing.List): 
+        """
+
+        self.tools = tools
+        self.add_to = add_to
+        self.cur_tool = None
+
+    def add(self, name: str, args: str) -> ToolCall:
+        """Add a new tool to the tool generator
+
+        Args:
+            name (str): 
+            args (str): 
+
+        Returns:
+            ToolCall: 
+        """
+        tool_call = {
+            'name': name,
+            'args': args,
+            'complete': False
+        }
+        if self.cur_tool is not None:
+            self.cur_tool['completed'] = True
+        tool = ToolCall(
+            option=self.tools[self.cur_tool['name']], 
+            args=json.loads(self.cur_tool['args'])
+        )
+        self.cur_tool = tool_call
+        return tool
+
+    def append(self, args: str):
+        """Add args 
+
+        Args:
+            args (str): Add the args
+
+        Raises:
+            RuntimeError: If there is no current tool
+        """
+        if self.cur_tool is None:
+            raise RuntimeError('Cur tool is not specified but appending')
+        self.cur_tool['args'] += args
+
+    def end(self) -> ToolCall:
+        """
+
+        Returns:
+            ToolCall: 
+        """
+        
+        tool = ToolCall(
+            option=self.tools[self.cur_tool['name']], 
+            args=self.cur_tool['args']
+        )
+        self.cur_tool = None
+        return tool
 
 
 def exclude_role(messages: typing.Iterable[Msg], *role: str) -> typing.List[Msg]:
