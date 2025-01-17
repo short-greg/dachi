@@ -3,7 +3,11 @@ from ._core import (
     Storable, render,
     render_multi, 
     Module, Cue,
-    Param, is_renderable
+    Param, is_renderable,
+    forward,
+    aforward,
+    stream,
+    astream
 )
 from ._read import (
     MultiRead, PrimRead, PydanticRead,
