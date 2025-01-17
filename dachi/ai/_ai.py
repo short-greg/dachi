@@ -17,16 +17,19 @@ LLM_PROMPT = typing.Union[typing.Iterable[Msg], Msg]
 LLM_RESPONSE = typing.Tuple[Msg, typing.Any]
 
 
-class ToolParam(dict):
-    """
-    """
-    def __init__(self, name: str, **kwargs):
-        """The param for the tool
+# class ToolParam(dict):
+#     """
+#     """
+#     name: str
+#     kwargs: 
 
-        Args:
-            name (str): The name of the tool
-        """
-        super().__init__(name=name, **kwargs)
+#     def __init__(self, name: str, **kwargs):
+#         """The param for the tool
+
+#         Args:
+#             name (str): The name of the tool
+#         """
+#         super().__init__(name=name, **kwargs)
 
 
 class ToolOption(pydantic.BaseModel):
@@ -35,7 +38,7 @@ class ToolOption(pydantic.BaseModel):
     name: str
     f: typing.Callable[[typing.Any], typing.Any]
     required: typing.List[str] = pydantic.Field(default_factory=list)
-    params: typing.List[ToolParam]
+    params: typing.List[typing.Dict]
     kwargs: typing.Dict
 
     def to_input(self) -> typing.Dict:
@@ -91,7 +94,7 @@ class ToolSet(object):
 class ToolCall(pydantic.BaseModel):
     """A response from the LLM that a tool was called
     """
-    option: ToolOption = pydantic(
+    option: ToolOption = pydantic.Field(
         description="The tool that was chosen."
     )
     args: typing.Dict[str, typing.Any] = pydantic.Field(
