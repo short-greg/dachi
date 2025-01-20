@@ -5,7 +5,8 @@ import typing
 from functools import singledispatch
 from .._core import Msg
 from ..utils import UNDEFINED
-from ..ai import LLM, LLM_PROMPT, Get, ToolOption, ToolSet, ToolCall, ToolGen
+from ..ai import LLM, LLM_PROMPT, ToolSet, ToolCall, ToolGen, ToolOption
+from ..ai._ai import Response
 import json
 
 from typing import Dict, List
@@ -16,235 +17,384 @@ installed = {pkg.key for pkg in pkg_resources.working_set}
 missing = required - installed
 
 
+class OpenAIContent(Response):
+
+    def __call__(self, response, msg):
+        content = response.choices[0].message.content
+        msg['content'] = content if content is not None else ''
+        return msg, content
+    
+    def delta(self, response, msg):
+        delta = response.choices[0].delta.content
+        
+        if 'content' not in msg:
+            msg['content'] = ''
+        
+        if delta is None:
+            return msg, None
+        
+        msg['content'] += delta
+        return msg, delta
+
+    def prep(self):
+        return {}
+
+
+class OpenAIToolSet(Response):
+
+    def __init__(self, tools: typing.Dict[str, ToolOption]):
+        """
+
+        Args:
+            tools (typing.Dict[str, ToolOption]): 
+        """
+        super().__init__()
+        self.tools = tools
+
+    def __call__(self, response, msg: Msg):
+        """_summary_
+
+        Args:
+            response (_type_): _description_
+            msg (_type_): _description_
+
+        Returns:
+            _type_: _description_
+        """
+        
+        result = None
+        if response.choices[0].finish_reason == 'tool_calls':
+            result = []
+            for tool_call in response.choices[0].message.tool_calls:
+                name = tool_call.function.name
+                argstr = tool_call.function.arguments
+                args = json.loads(argstr)
+                if 'tools' not in msg['meta']:
+                    msg['meta']['tools'] = {'calls': []}
+                
+                msg['meta']['tools']['calls'].append({
+                    'name': name,
+                    'argstr': argstr,
+                    'args': args
+                })
+                result.append(ToolCall(
+                    option=self.tools[name], 
+                    args=args
+                ))
+            
+        return result
+
+    
+    def delta(self, response, msg):
+
+        if 'tools' not in msg['meta']:
+            msg['meta']['tools'] = {
+                'idx': None,
+                'calls': []
+            }
+        
+        if response.choices[0].delta.tool_calls:
+            tool_call = response.choices[0].delta.tool_calls[0]
+            idx = msg['meta']['tools']['idx']
+            if tool_call.index != idx:
+                if idx is not None:
+                    result = msg['meta']['tools']['calls'][idx]
+                cur_tool = {
+                    'name': tool_call.function.name,
+                    'argstr': tool_call.function.arguments,
+                    'args': None
+                }
+                msg['meta']['tools']['calls'].append(cur_tool)
+            else:
+                cur_tool = msg['meta']['tools']['calls'][idx]
+                cur_tool['arguments'] += tool_call.function.arguments
+                result = None
+        else:
+            if msg['meta']['tools']['idx'] is not None:
+                result = msg['meta']['tools']['calls']
+
+        if result is not None:
+            result['args'] = json.loads(result['argstr'])
+
+        return result
+
+    def prep(self):
+        
+        return {
+            'tools': [tool.to_input() for _, tool in self.tools.items()]
+        }
+
+
+
+
+# class OpenAITool(Responder):
+
+#     def __call__(self, response, msg: Msg, result):
+
+#         if response.choices[0].finish_reason == 'tool_calls':
+#             for tool_call in response.choices[0].message.tool_calls:
+#                 name = tool_call.function.name
+#                 args = json.loads(tool_call.function.arguments)
+#                 if 'tools' not in response:
+#                     msg['meta']['tools'] = []
+#                 # option = tools[name]
+#                 # assert isinstance(option, ToolOption)
+#                 msg['meta']['tools'].append(ToolCall(
+#                     name=name, 
+#                     args=args
+#                 ))
+#         return msg, result
+        
+
+
 if len(missing) > 0:
 
     raise RuntimeError(f'To use this module openai must be installed.')
 
 
-class OpenAILLM(LLM):
+# class OpenAILLM(LLM):
 
-    def __init__(
-        self, client_kwargs: typing.Dict, kwargs: typing.Dict
-    ):
-        """
+#     def __init__(
+#         self, client_kwargs: typing.Dict=None, kwargs: typing.Dict=None,
+#         model: str='gpt-4o'
+#     ):
+#         """
 
-        Args:
-            client_kwargs (typing.Dict): 
-            kwargs (typing.Dict): 
-        """
-        super().__init__()
-        self.kwargs = kwargs
-        self.client_kwargs = client_kwargs
+#         Args:
+#             client_kwargs (typing.Dict): 
+#             kwargs (typing.Dict): 
+#         """
+#         super().__init__()
+#         self.model = model
+#         self.kwargs = kwargs or {}
+#         self.client_kwargs = client_kwargs or {}
 
-    def user(self, content: str, delta = None, meta = None) -> Msg:
-        """
+#     def user(self, content: str, delta = None, meta = None) -> Msg:
+#         """
 
-        Args:
-            content (str): 
-            delta (_type_, optional): . Defaults to None.
-            meta (_type_, optional): . Defaults to None.
+#         Args:
+#             content (str): 
+#             delta (_type_, optional): . Defaults to None.
+#             meta (_type_, optional): . Defaults to None.
 
-        Returns:
-            Msg: 
-        """
+#         Returns:
+#             Msg: 
+#         """
 
-        return Msg(
-            role='user', 
-            content=content, 
-            type_='data', 
-            delta=delta, 
-            meta=meta
-        )
+#         return Msg(
+#             role='user', 
+#             content=content, 
+#             type_='data', 
+#             delta=delta, 
+#             meta=meta
+#         )
     
-    def system(self, content: str, delta = None, meta = None) -> Msg:
-        """Create a system message
+#     def system(self, content: str, delta = None, meta = None) -> Msg:
+#         """Create a system message
 
-        Args:
-            content (str): The content of the message
-            delta (optional): The change in the . Defaults to None.
-            meta (optional): The . Defaults to None.
+#         Args:
+#             content (str): The content of the message
+#             delta (optional): The change in the . Defaults to None.
+#             meta (optional): The . Defaults to None.
 
-        Returns:
-            Msg: _description_
-        """
-        return Msg(
-            role='system', 
-            content=content, 
-            type_='data', 
-            delta=delta, 
-            meta=meta
-        )
+#         Returns:
+#             Msg: _description_
+#         """
+#         return Msg(
+#             role='system', 
+#             content=content, 
+#             type_='data', 
+#             delta=delta, 
+#             meta=meta
+#         )
     
-    def assistant(
-        self, content: str, 
-        delta = None, meta = None, 
-        **kwargs
-    ):
-        return Msg(
-            role='system', 
-            content=content, 
-            type_='data', 
-            delta=delta, 
-            meta=meta
-        )
+#     def assistant(
+#         self, content: str, 
+#         delta = None, meta = None, 
+#         **kwargs
+#     ):
+#         return Msg(
+#             role='system', 
+#             content=content, 
+#             type_='data', 
+#             delta=delta, 
+#             meta=meta
+#         )
     
-    def tool_resp(self, name: str, response: str, delta = None, meta = None):    
-        return Msg(
-            role='function', 
-            name=name, 
-            response=response,
-            delta=delta, 
-            meta=meta
-        )
+#     def tool_resp(self, name: str, response: str, delta = None, meta = None):    
+#         return Msg(
+#             role='function', 
+#             name=name, 
+#             response=response,
+#             delta=delta, 
+#             meta=meta
+#         )
     
-    def tool_option(self, name, f, **kwargs):
-        raise NotImplementedError
+#     def tool_option(self, name, f, **kwargs):
+#         raise NotImplementedError
     
-    def process_response(
-        self, response, tools: ToolSet=None
-    ) -> typing.Union[Msg, typing.Any]:
-        """
-        Processes a delta response and updates or creates a Msg object accordingly. It aggregates the message sent from the AI and sets the delta in the Delta dictionary of Msg
-        Args:
-            delta_response (object): The delta response object containing choices with delta information.
-            response (Msg, optional): An existing Msg object to update. Defaults to None.
-        Returns:
-            Msg: The updated or newly created Msg object.
-        """
-        msg = Msg()
-        for tool_call in response.choices[0].tool_calls:
-            name = tool_call.function.name
-            args = json.loads(tool_call.function.arguments)
-            if 'tools' not in response:
-                response['tools'] = []
-            msg['meta']['tools'].append(ToolCall(
-                option=tools[name], args=args)
-            )
+#     def process_response(
+#         self, response, tools: ToolSet=None
+#     ) -> typing.Union[Msg, typing.Any]:
+#         """
+#         Processes a delta response and updates or creates a Msg object accordingly. It aggregates the message sent from the AI and sets the delta in the Delta dictionary of Msg
+#         Args:
+#             delta_response (object): The delta response object containing choices with delta information.
+#             response (Msg, optional): An existing Msg object to update. Defaults to None.
+#         Returns:
+#             Msg: The updated or newly created Msg object.
+#         """
+#         msg = Msg(role='assistant')
+#         print(response.choices[0])
+#         if response.choices[0].finish_reason == 'tool_calls':
+#             for tool_call in response.choices[0].message.tool_calls:
+#                 name = tool_call.function.name
+#                 args = json.loads(tool_call.function.arguments)
+#                 if 'tools' not in response:
+#                     msg['meta']['tools'] = []
+#                 option = tools[name]
+#                 assert isinstance(option, ToolOption)
+#                 msg['meta']['tools'].append(ToolCall(
+#                     option=option, 
+#                     args=args
+#                 ))
 
-        content = response.choices[0].content
-        msg['content'] = content
-        return msg, content
+#         content = response.choices[0].message.content
+#         msg['content'] = content
 
-    def process_delta_response(
-        self, delta_response, msg: Msg, tools: ToolSet=None
-    ) -> typing.Union[Msg, typing.Any]:
-        """
-        Processes a delta response and updates or creates a Msg object accordingly. It aggregates the message sent from the AI and sets the delta in the Delta dictionary of Msg
-        Args:
-            delta_response (object): The delta response object containing choices with delta information.
-            response (Msg, optional): An existing Msg object to update. Defaults to None.
-        Returns:
-            Msg: The updated or newly created Msg object.
-        """
-        if 'content' not in msg:
-            msg['content'] = ''
-            msg['meta']['tools'] = []
-        msg['meta']['response'] = delta_response
-        idx = None
-        cur_tool = None
-        if delta_response.choices[0].delta.tool_calls:
-            tool_call = delta_response.choices[0].delta.tool_calls[0]
-            if 'tool_gen' not in msg:
-                msg['tools'] = []
-                msg['meta']['tool_gen'] = ToolGen(tools, msg['tools'])
-            if idx == tool_call.index:
-                msg['meta']['tool_gen'].append(
-                    tool_call.function.arguments
-                )
-            else:
-                cur_tool = msg['meta']['tool_gen'].add(
-                    tool_call.function.name,
-                    tool_call.function.arguments
-                )
-            idx = tool_call.index
-            delta = ''
-        elif 'tool_gen' in msg['meta'] and msg['meta']['tool_gen'].continuing:
-            cur_tool = msg['meta']['tool_gen'].end()
-        if delta_response.choices[0].delta is not None:
-            delta = delta_response.choices[0].delta
-            msg['content'] += delta
+#         return msg, content
 
-        if cur_tool is not None:
-            msg['meta']['tools'].append(cur_tool)
-            msg['meta']['tool_delta'] = cur_tool
-        else:
-            msg['meta']['tool_delta'] = None
+#     def process_delta_response(
+#         self, delta_response, msg: Msg, tools: ToolSet=None
+#     ) -> typing.Union[Msg, typing.Any]:
+#         """
+#         Processes a delta response and updates or creates a Msg object accordingly. It aggregates the message sent from the AI and sets the delta in the Delta dictionary of Msg
+#         Args:
+#             delta_response (object): The delta response object containing choices with delta information.
+#             response (Msg, optional): An existing Msg object to update. Defaults to None.
+#         Returns:
+#             Msg: The updated or newly created Msg object.
+#         """
+#         if 'content' not in msg:
+#             msg['content'] = ''
+#             msg['meta']['tools'] = []
 
-        return msg, delta
+#         msg['meta']['response'] = delta_response
+#         idx = None
+#         cur_tool = None
+#         delta = ''
+#         if delta_response.choices[0].delta.tool_calls:
+#             idx = msg['meta'].get('tool_idx')
+#             tool_call = delta_response.choices[0].delta.tool_calls[0]
+#             if 'tool_gen' not in msg['meta']:
+#                 msg['tools'] = []
+#                 msg['meta']['tool_gen'] = ToolGen(tools, msg['tools'])
+#             if idx == tool_call.index:
+#                 print('Appending')
+#                 msg['meta']['tool_gen'].append(
+#                     tool_call.function.arguments
+#                 )
+#             else:
+#                 print('Adding ', idx, tool_call.index)
+#                 cur_tool = msg['meta']['tool_gen'].add(
+#                     tool_call.function.name,
+#                     tool_call.function.arguments
+#                 )
+#             msg['meta']['tool_idx'] = tool_call.index
+#             # idx = tool_call.index
+#             delta = ''
+#         elif 'tool_gen' in msg['meta'] and msg['meta']['tool_gen'].continuing:
+#             cur_tool = msg['meta']['tool_gen'].end()
+#         if delta_response.choices[0].delta.content:
+#             delta = delta_response.choices[0].delta.content
+#             msg['content'] += delta
+#             msg['delta']['content'] = delta
 
-    def forward(
-        self, prompt: LLM_PROMPT, 
-        tools: ToolSet=None, 
-        **kwarg_override
-    ):
-        
-        kwargs = {**self.kwargs, **kwarg_override}
-        client = openai.Client(**self.client_kwargs)
-        tools = tools.to_input() if tools is not None else None
-        response = client.chat.completions.create(
-            model=self.model,
-            messages=prompt.to_list_input(),
-            tools=tools,
-            **kwargs
-        )
-        return self.process_response(
-            response
-        )
+#         if cur_tool is not None:
+#             msg['meta']['tools'].append(cur_tool)
+#             msg['meta']['tool_delta'] = cur_tool
+#         else:
+#             msg['meta']['tool_delta'] = None
+
+#         return msg, delta
+
+#     def forward(
+#         self, prompt: LLM_PROMPT, 
+#         tools: ToolSet=None, 
+#         **kwarg_override
+#     ):
+#         kwargs = {**self.kwargs, **kwarg_override}
+#         client = openai.Client(**self.client_kwargs)
+#         tool_input = tools.to_input() if tools is not None else None
+#         response = client.chat.completions.create(
+#             model=self.model,
+#             messages=prompt.to_list_input(),
+#             tools=tool_input,
+#             **kwargs
+#         )
+#         return self.process_response(
+#             response, tools
+#         )
     
-    async def aforward(
-        self, prompt: LLM_PROMPT, 
-        tools: ToolSet=None, 
-        **kwarg_override
-    ):
+#     async def aforward(
+#         self, prompt: LLM_PROMPT, 
+#         tools: ToolSet=None, 
+#         **kwarg_override
+#     ):
 
-        kwargs = {**self.kwargs, **kwarg_override}
-        client = openai.AsyncClient(**self.client_kwargs)
-        tools = tools.to_input() if tools is not None else None
-        response = await client.chat.completions.create(
-            model=self.model,
-            messages=prompt.to_list_input(),
-            tools=tools,
-            **kwargs
-        )
-        return self.assistant(response), response
+#         kwargs = {**self.kwargs, **kwarg_override}
+#         client = openai.AsyncClient(**self.client_kwargs)
+#         tool_input = tools.to_input() if tools is not None else None
+#         response = await client.chat.completions.create(
+#             model=self.model,
+#             messages=prompt.to_list_input(),
+#             tools=tool_input,
+#             **kwargs
+#         )
+#         return self.process_response(
+#             response, tools
+#         )
+#         # return self.assistant(response), response
     
-    def stream(
-        self, prompt: LLM_PROMPT, 
-        tools: ToolSet=None, 
-        **kwarg_override
-    ):
-        kwargs = {**self.kwargs, **kwarg_override}
-        client = openai.Client(**self.client_kwargs)
-        tools = tools.to_input() if tools is not None else None
-        stream = client.chat.completions.create(
-            model=self.model,
-            messages=prompt.to_list_input(),
-            stream=True,
-            tools=tools,
-            **kwargs
-        )
-        full = {}
-        for chunk in stream:
-            yield self.process_delta_response(chunk, full)
+#     def stream(
+#         self, prompt: LLM_PROMPT, 
+#         tools: ToolSet=None, 
+#         **kwarg_override
+#     ):
+#         kwargs = {**self.kwargs, **kwarg_override}
+#         client = openai.Client(**self.client_kwargs)
+#         tool_input = tools.to_input() if tools is not None else None
+#         stream = client.chat.completions.create(
+#             model=self.model,
+#             messages=prompt.to_list_input(),
+#             stream=True,
+#             tools=tool_input,
+#             **kwargs
+#         )
+#         full = Msg('assistant')
+#         for chunk in stream:
+#             yield self.process_delta_response(chunk, full, tools)
     
-    async def astream(
-        self, prompt, 
-        tools: ToolSet=None, 
-        **kwarg_override
-    ):
-        kwargs = {**self.kwargs, **kwarg_override}
-        client = openai.AsyncClient(**self.client_kwargs)
-        full = {}
-        tools = tools.to_input() if tools is not None else None
-        async for chunk in await client.chat.completions.create(
-            model=self.model,
-            messages=prompt.to_list_input(),
-            stream=True,
-            tools=tools,
-            **kwargs
-        ):
-            yield self.process_delta_response(chunk, full)
+#     async def astream(
+#         self, prompt, 
+#         tools: ToolSet=None, 
+#         **kwarg_override
+#     ):
+#         kwargs = {**self.kwargs, **kwarg_override}
+#         client = openai.AsyncClient(**self.client_kwargs)
+#         full = Msg('assistant')
+#         tool_input = tools.to_input() if tools is not None else None
+#         async for chunk in await client.chat.completions.create(
+#             model=self.model,
+#             messages=prompt.to_list_input(),
+#             stream=True,
+#             tools=tool_input,
+#             **kwargs
+#         ):
+#             yield self.process_delta_response(chunk, full, tools)
     
+
+# %%
 
 
 # class OpenAILLM(LLM):
@@ -1281,3 +1431,4 @@ class OpenAILLM(LLM):
     #     return LLMAssistantMessage(
             
     #     )
+# %%
