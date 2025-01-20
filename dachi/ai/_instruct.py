@@ -3,9 +3,8 @@ import typing
 from functools import wraps
 import inspect
 from itertools import chain
-from typing import Any, Iterator, AsyncIterator
 import inspect
-from ._ai import ConvStr
+from ._ai import ToMsg, ToText
 
 # local
 from .._core._core import (
@@ -334,7 +333,7 @@ class SignatureFunc(Module, Instruct):
         is_method: bool=False,
         train: bool=False, 
         instance=None,
-        to_msg: ConvStr=None
+        to_msg: ToMsg=None
     ):
         """Wrap the signature method with a particular engine and
         dialog factory
@@ -361,7 +360,7 @@ class SignatureFunc(Module, Instruct):
             cue=docstring,
             training=train
         )
-        self._conv_msg = to_msg or ConvStr()
+        self._conv_msg = to_msg or ToText()
         if self._ifunc.is_generator() and self._ifunc.is_async():
             self.__call__ = self.astream
         elif self._ifunc.is_async():
@@ -456,7 +455,7 @@ class SignatureFunc(Module, Instruct):
     def _prepare_msg(self, instance, *args, **kwargs) -> typing.Any:
         """
         """
-        return self._conv_msg.to_msg(self._prepare(instance, *args, **kwargs))
+        return self._conv_msg(self._prepare(instance, *args, **kwargs))
 
     def forward(self, *args, **kwargs) -> typing.Any:
         """Execute the function
@@ -595,7 +594,7 @@ class InstructFunc(Instruct, Module):
         is_method: bool=False,
         train: bool=False, 
         instance=None,
-        to_msg: ConvStr=None
+        to_msg: ToMsg=None
     ):
         """Wrap the signature method with a particular engine and
         dialog factory
@@ -613,7 +612,7 @@ class InstructFunc(Instruct, Module):
         self._instance = instance
         self._reader = reader
         self._is_method = is_method
-        self._conv_msg = to_msg or ConvStr()
+        self._conv_msg = to_msg or ToText()
         if self._ifunc.is_generator() and self._ifunc.is_async():
             self.__call__ = self.astream
         elif self._ifunc.is_async():
@@ -682,7 +681,7 @@ class InstructFunc(Instruct, Module):
     def _prepare_msg(self, instance, *args, **kwargs) -> typing.Any:
         """
         """
-        return self._conv_msg.to_msg(self._prepare(instance, *args, **kwargs))
+        return self._conv_msg(self._prepare(instance, *args, **kwargs))
 
     def forward(self, *args, **kwargs) -> typing.Any:
 
@@ -780,7 +779,7 @@ def instructfunc(
     engine: LLM=None,
     reader: Reader=None,
     is_method: bool=False,
-    to_msg: ConvStr=None
+    to_msg: ToMsg=None
 ):
     """Decorate a method with instructfunc
 
@@ -812,7 +811,7 @@ def instructfunc(
 def instructmethod(
     engine: LLM=None,
     reader: Reader=None,
-    to_msg: ConvStr=None
+    to_msg: ToMsg=None
 ):
     """Decorate a method with instructfunc
 
@@ -832,7 +831,7 @@ def signaturefunc(
     reader: Reader=None,
     doc: typing.Union[str, typing.Callable[[], str]]=None,
     is_method=False,
-    to_msg: ConvStr=None
+    to_msg: ToMsg=None
 ):
     """Decorate a method with SignatureFunc
 
@@ -868,7 +867,7 @@ def signaturemethod(
     engine: LLM=None, 
     reader: Reader=None,
     doc: typing.Union[str, typing.Callable[[], str]]=None,
-    to_msg: ConvStr=None
+    to_msg: ToMsg=None
 ):
     """Decorate a method with SignatureFunc
 

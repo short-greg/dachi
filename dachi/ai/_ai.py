@@ -285,8 +285,8 @@ def to_dialog(prompt: typing.Union[Dialog, Msg]) -> Dialog:
     return prompt
 
 
-class Response(ABC):
-    """
+class ResponseProc(ABC):
+    """Use to process the resoponse from an LLM
     """
 
     @abstractmethod
@@ -302,10 +302,120 @@ class Response(ABC):
         pass
 
 
+class LLM(Module):
+
+    def __init__(
+        self, 
+        forward=None,
+        aforward=None,
+        stream=None,
+        astream=None,
+        response_processors: typing.List[ResponseProc]=None,
+        kwargs: typing.Dict=None,
+        message_arg: str='messages',
+        role_name: str='assistant'
+    ):
+        """Wrap the processes in an LLM. Can also inherif from LLM
+
+        Args:
+            forward (optional): . Defaults to None.
+            aforward (optional): . Defaults to None.
+            stream (optional): . Defaults to None.
+            astream (optional): . Defaults to None.
+            response_processors (typing.List[Response], optional): . Defaults to None.
+            kwargs (typing.Dict, optional): . Defaults to None.
+            message_arg (str, optional): . Defaults to 'messages'.
+            role_name (str, optional): . Defaults to 'assistant'.
+        """
+        super().__init__()
+        self._forward = forward
+        self._aforward = aforward
+        self._stream = stream
+        self._astream = astream
+        self._kwargs = kwargs or {}
+        self._response_processors = response_processors or []
+        self._message_arg = message_arg
+        self._role_name = role_name
+
+    def forward(self, dialog: Dialog, **kwarg_overrides) -> typing.Tuple[Msg, typing.Any]:
+        """
+
+        Args:
+            dialog (Dialog): The dialog to 
+
+        Raises:
+            NotImplementedError: 
+
+        Returns:
+            : 
+        """
+        
+        kwargs = {
+            **self._kwargs, 
+            **kwarg_overrides, 
+            self._message_arg: dialog.to_input()
+        }
+        if self._forward is not None:
+            return llm_forward(
+                self._forward, **kwargs, 
+                _respond=self._response_processors,
+                _role=self._role_name
+            )
+        raise NotImplementedError
+    
+    async def aforward(self, dialog: Dialog, **kwarg_overrides) -> typing.Tuple[Msg, typing.Any]:
+
+        kwargs = {
+            **self._kwargs, 
+            **kwarg_overrides, 
+            self._message_arg: dialog.to_input()
+        }
+        if self._aforward is not None:
+            return llm_aforward(
+                self._aforward, **kwargs, 
+                _respond=self._response_processors,
+                _role=self._role_name
+            )
+        raise NotImplementedError
+
+    def stream(self, dialog: Dialog, **kwarg_overrides) -> typing.Iterator[typing.Tuple[Msg, typing.Any]]:
+        kwargs = {
+            **self._kwargs, 
+            **kwarg_overrides, 
+            self._message_arg: dialog.to_input()
+        }
+        if self._stream is not None:
+            for v in llm_stream(
+                self._stream, **kwargs, 
+                _respond=self._response_processors,
+                _role=self._role_name
+            ):
+                yield v
+        else:
+            raise NotImplementedError
+    
+    def astream(self, dialog: Dialog, **kwarg_overrides) -> typing.Iterator[typing.Tuple[Msg, typing.Any]]:
+        kwargs = {
+            **self._kwargs, 
+            **kwarg_overrides, 
+            self._message_arg: dialog.to_input()
+        }
+        if self._astream is not None:
+            for v in llm_astream(
+                self._stream, **kwargs, 
+                _respond=self._response_processors,
+                _role=self._role_name
+            ):
+                yield v
+        else: 
+            raise NotImplementedError
+    
+
+
 def llm_forward(
     f: typing.Callable, 
     *args, 
-    _respond: typing.List[Response]=None, 
+    _respond: typing.List[ResponseProc]=None, 
     _role: str='assistant',
     **kwargs
 ):
@@ -342,7 +452,7 @@ def llm_forward(
 async def llm_aforward(
     f, 
     *args, 
-    _respond: typing.List[Response]=None, 
+    _respond: typing.List[ResponseProc]=None, 
     _role: str='assistant',
     **kwargs
 ):
@@ -379,7 +489,7 @@ async def llm_aforward(
 def llm_stream(
     f: typing.Callable, 
     *args, 
-    _respond: typing.List[Response]=None, 
+    _respond: typing.List[ResponseProc]=None, 
     _role: str='assistant',
     **kwargs
 ):
@@ -416,7 +526,7 @@ def llm_stream(
 async def llm_astream(
     f: typing.Callable, 
     *args, 
-    _respond: typing.List[Response]=None, 
+    _respond: typing.List[ResponseProc]=None, 
     _role: str='assistant',
     **kwargs
 ) -> typing.AsyncIterator:
@@ -465,7 +575,7 @@ class ToText(ToMsg):
     """Converts the input to a text message
     """
 
-    def __init__(self, role: str, field: str='content'):
+    def __init__(self, role: str='system', field: str='content'):
         """_summary_
 
         Args:

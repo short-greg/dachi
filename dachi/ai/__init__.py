@@ -2,9 +2,9 @@ from ._ai import (
     LLM_PROMPT, 
     exclude_role, include_role, to_dialog,
     ToolOption, ToolCall, ToolSet,
-    ConvStr, ConvMsg, ToolGen, 
+    ToolGen, 
     llm_aforward, llm_astream, llm_forward,
-    llm_stream, ToMsg, ToText
+    llm_stream, ToMsg, ToText, LLM
 )
 from ._chat import Chat
 from ._agent import ChatAgent

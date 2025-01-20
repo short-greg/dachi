@@ -6,7 +6,7 @@ from functools import singledispatch
 from .._core import Msg
 from ..utils import UNDEFINED
 from ..ai import LLM, LLM_PROMPT, ToolSet, ToolCall, ToolGen, ToolOption
-from ..ai._ai import Response
+from ..ai._ai import ResponseProc
 import json
 
 from typing import Dict, List
@@ -17,7 +17,7 @@ installed = {pkg.key for pkg in pkg_resources.working_set}
 missing = required - installed
 
 
-class OpenAIContent(Response):
+class OpenAIContent(ResponseProc):
 
     def __call__(self, response, msg):
         content = response.choices[0].message.content
@@ -40,7 +40,7 @@ class OpenAIContent(Response):
         return {}
 
 
-class OpenAIToolSet(Response):
+class OpenAIToolSet(ResponseProc):
 
     def __init__(self, tools: typing.Dict[str, ToolOption]):
         """
