@@ -38,16 +38,6 @@ class Chat(core.Module):
             self.dialog.clone(), self.llm
         )
     
-    def register(self, *args, **kwargs):
-
-        self.tool_set.add(
-            self.llm.add_tool(*args, **kwargs)
-        )
-
-    def unregister(self, name: str):
-
-        self.tool_set.remove(name)
-    
     def __setitem__(
         self, idx: int, message: core.Msg
     ) -> core.Msg:
