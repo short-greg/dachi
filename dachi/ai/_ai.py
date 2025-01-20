@@ -72,11 +72,25 @@ class ToolSet(object):
         )
     
     def __iter__(self) -> typing.Iterator:
+        """
+        Returns an iterator over the tools in the collection.
+        Yields:
+            tool: Each tool in the collection.
+        """
 
         for _, tool in self.tools.items():
             yield tool
 
     def __getitem__(self, name):
+        """
+        Retrieve a tool by its name.
+        Args:
+            name (str): The name of the tool to retrieve.
+        Returns:
+            object: The tool associated with the given name.
+        Raises:
+            KeyError: If the tool with the specified name does not exist.
+        """
         return self.tools[name]
 
 
@@ -157,87 +171,6 @@ class ToolCall(pydantic.BaseModel):
             yield self.option.f(**self.args)
 
 
-class ToolGen(object):
-    """Object to keep track of adding tools
-    """
-
-    def __init__(self, tools: ToolSet, add_to: typing.List):
-        """
-
-        Args:
-            tools (ToolSet): 
-            add_to (typing.List): 
-        """
-
-        self.tools = tools
-        self.add_to = add_to
-        self.cur_tool = None
-        self.continuing = False
-
-    def add(self, name: str, args: str) -> ToolCall:
-        """Add a new tool to the tool generator
-
-        Args:
-            name (str): 
-            args (str): 
-
-        Returns:
-            ToolCall: 
-        """
-        tool_call = {
-            'name': name,
-            'args': args,
-            'complete': False
-        }
-        if self.cur_tool is not None:
-            self.cur_tool['completed'] = True
-
-            tool = ToolCall(
-                option=self.tools[self.cur_tool['name']], 
-                args=json.loads(self.cur_tool['args'])
-            )
-        else:
-            tool = None
-        
-        print('Add Tool: ', self.cur_tool)
-        self.cur_tool = tool_call
-        self.continuing = True
-        return tool
-
-    def append(self, args: str):
-        """Add args 
-
-        Args:
-            args (str): Add the args
-
-        Raises:
-            RuntimeError: If there is no current tool
-        """
-        print('Append Tool: ', self.cur_tool)
-        if self.cur_tool is None:
-            raise RuntimeError('Cur tool is not specified but appending')
-        self.cur_tool['args'] += args
-
-    def end(self) -> ToolCall:
-        """
-
-        Returns:
-            ToolCall: 
-        """
-        if self.cur_tool is None:
-            self.continuing = False
-            return None
-        
-        print(self.tools.tools, self.cur_tool['name'])
-        tool = ToolCall(
-            option=self.tools[self.cur_tool['name']], 
-            args=json.loads(self.cur_tool['args'])
-        )
-        self.cur_tool = None
-        self.continuing = False
-        return tool
-
-
 def exclude_role(messages: typing.Iterable[Msg], *role: str) -> typing.List[Msg]:
     """
     Filter messages by excluding specified roles.
@@ -303,9 +236,9 @@ class ResponseProc(ABC):
 
 
 class LLM(Module):
-    """An adapter for LLM functions to execute the LLM
     """
-
+    LLM is a class that serves as an adapter for Language Model (LLM) functions, enabling the execution of various LLM operations such as forwarding, asynchronous forwarding, streaming, and asynchronous streaming. It provides a flexible interface to handle different types of LLM interactions.
+    """
     def __init__(
         self, 
         forward=None,
@@ -643,3 +576,86 @@ class ToText(ToMsg):
             role=self.role, 
             **{self.field: text}
         )
+
+
+
+# class ToolGen(object):
+#     """Object to keep track of adding tools
+#     """
+
+#     def __init__(self, tools: ToolSet, add_to: typing.List):
+#         """
+
+#         Args:
+#             tools (ToolSet): 
+#             add_to (typing.List): 
+#         """
+
+#         self.tools = tools
+#         self.add_to = add_to
+#         self.cur_tool = None
+#         self.continuing = False
+
+#     def add(self, name: str, args: str) -> ToolCall:
+#         """Add a new tool to the tool generator
+
+#         Args:
+#             name (str): 
+#             args (str): 
+
+#         Returns:
+#             ToolCall: 
+#         """
+#         tool_call = {
+#             'name': name,
+#             'args': args,
+#             'complete': False
+#         }
+#         if self.cur_tool is not None:
+#             self.cur_tool['completed'] = True
+
+#             tool = ToolCall(
+#                 option=self.tools[self.cur_tool['name']], 
+#                 args=json.loads(self.cur_tool['args'])
+#             )
+#         else:
+#             tool = None
+        
+#         print('Add Tool: ', self.cur_tool)
+#         self.cur_tool = tool_call
+#         self.continuing = True
+#         return tool
+
+#     def append(self, args: str):
+#         """Add args 
+
+#         Args:
+#             args (str): Add the args
+
+#         Raises:
+#             RuntimeError: If there is no current tool
+#         """
+#         print('Append Tool: ', self.cur_tool)
+#         if self.cur_tool is None:
+#             raise RuntimeError('Cur tool is not specified but appending')
+#         self.cur_tool['args'] += args
+
+#     def end(self) -> ToolCall:
+#         """
+
+#         Returns:
+#             ToolCall: 
+#         """
+#         if self.cur_tool is None:
+#             self.continuing = False
+#             return None
+        
+#         print(self.tools.tools, self.cur_tool['name'])
+#         tool = ToolCall(
+#             option=self.tools[self.cur_tool['name']], 
+#             args=json.loads(self.cur_tool['args'])
+#         )
+#         self.cur_tool = None
+#         self.continuing = False
+#         return tool
+
