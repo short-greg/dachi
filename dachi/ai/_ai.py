@@ -1,6 +1,5 @@
 # 1st party
 import typing
-import json
 from abc import ABC, abstractmethod
 import typing
 from .._core._core import (
@@ -18,19 +17,26 @@ LLM_RESPONSE = typing.Tuple[Msg, typing.Any]
 
 
 class ToolOption(pydantic.BaseModel):
-    """Create an option for a tool to pass to the model
     """
+    Represents an option for a tool, encapsulating the tool's name, 
+    the function to be executed, and any additional keyword arguments.
+    Attributes:
+        name (str): The name of the tool.
+        f (typing.Callable[[typing.Any], typing.Any]): The function to be executed by the tool.
+        kwargs (typing.Dict): A dictionary of additional keyword arguments to be passed to the function.
+    """
+
     name: str
     f: typing.Callable[[typing.Any], typing.Any]
-    # required: typing.List[str] = pydantic.Field(default_factory=list)
-    # params: typing.List[typing.Dict]
     kwargs: typing.Dict
 
     def to_input(self) -> typing.Dict:
-
+        """
+        Converts the instance's keyword arguments into a dictionary of arguments.
+        Returns:
+            dict: A dictionary containing the keyword arguments of the instance.
+        """
         return {
-            # 'name': self.name,
-            # 'required': self.required,
             **self.kwargs
         }
 
@@ -222,17 +228,29 @@ class ResponseProc(ABC):
     """Use to process the resoponse from an LLM
     """
 
+    def __init__(self, resp: bool=False):
+        super().__init__()
+        self._resp = resp
+
+    @property
+    def resp(self) -> bool:
+        """Choose whether to include a response
+
+        Returns:
+            bool: Whether to respond with a value
+        """
+        return self._resp
+
     @abstractmethod
-    def __call__(self, response, msg: Msg) -> typing.Tuple[Msg, typing.Any]:
+    def __call__(self, response, msg: Msg) -> typing.Any:
         pass
 
     @abstractmethod
-    def delta(self, response, msg: Msg) -> typing.Tuple[Msg, typing.Any]: 
+    def delta(self, response, msg: Msg, delta: typing.Dict) -> typing.Any: 
         pass
 
-    @abstractmethod
     def prep(self) -> typing.Dict:
-        pass
+        return {}
 
 
 class LLM(Module):
@@ -292,7 +310,7 @@ class LLM(Module):
         if self._forward is not None:
             return llm_forward(
                 self._forward, **kwargs, 
-                _respond=self.response_processors,
+                _resp_proc=self.response_processors,
                 _role=self._role_name
             )
         raise RuntimeError(
@@ -320,7 +338,7 @@ class LLM(Module):
             }
             return await llm_aforward(
                 self._aforward, **kwargs, 
-                _respond=self.response_processors,
+                _resp_proc=self.response_processors,
                 _role=self._role_name
             )
         else:
@@ -350,7 +368,7 @@ class LLM(Module):
             }
             for v in llm_stream(
                 self._stream, **kwargs, 
-                _respond=self.response_processors,
+                _resp_proc=self.response_processors,
                 _role=self._role_name
             ):
                 yield v
@@ -379,7 +397,7 @@ class LLM(Module):
             }
             async for v in await llm_astream(
                 self._stream, **kwargs, 
-                _respond=self.response_processors,
+                _resp_proc=self.response_processors,
                 _role=self._role_name
             ):
                 yield v
@@ -393,7 +411,7 @@ class LLM(Module):
 def llm_forward(
     f: typing.Callable, 
     *args, 
-    _respond: typing.List[ResponseProc]=None, 
+    _resp_proc: typing.List[ResponseProc]=None, 
     _role: str='assistant',
     **kwargs
 ):
@@ -402,35 +420,41 @@ def llm_forward(
     Args:
         f (typing.Callable): The function to be executed.
         *args: Variable length argument list to be passed to the function.
-        _respond (typing.List[Response], optional): A list of Response objects to process the function's response. Defaults to None.
+        _resp_proc (typing.List[Response], optional): A list of Response objects to process the function's response. Defaults to None.
         _role (str, optional): The role to be assigned to the message. Defaults to 'assistant'.
         **kwargs: Additional keyword arguments to be passed to the function.
     Returns:
         tuple: A tuple containing the final message (Msg) and the last value processed by the Response objects.
     """
-    _respond = _respond or []
+    _resp_proc = _resp_proc or []
     msg = Msg(
         role=_role
     )
 
-    for r in _respond:
+    for r in _resp_proc:
         kwargs.update(r.prep())
 
     response = f(
         *args, **kwargs
     )
+    msg['meta']['response'] = response
     vals = []
 
-    for r in _respond:
-        msg, val = r(response, msg)
-        vals.append(val)
-    return msg, val
+    for r in _resp_proc:
+        val = r(response, msg)
+        if r.resp:
+            vals.append(val)
+    if len(vals) == 0:
+        return msg
+    elif len(vals) == 1:
+        return msg, vals[0]
+    return msg, tuple(vals)
 
 
 async def llm_aforward(
     f, 
     *args, 
-    _respond: typing.List[ResponseProc]=None, 
+    _resp_proc: typing.List[ResponseProc]=None, 
     _role: str='assistant',
     **kwargs
 ):
@@ -439,35 +463,41 @@ async def llm_aforward(
     Args:
         f (Callable): The function to be called.
         *args: Positional arguments to pass to the function.
-        _respond (List[Response], optional): A list of Response objects to process the function's response. Defaults to None.
+        _resp_proc (List[Response], optional): A list of Response objects to process the function's response. Defaults to None.
         _role (str, optional): The role to be assigned to the message. Defaults to 'assistant'.
         **kwargs: Additional keyword arguments to pass to the function.
     Returns:
         Tuple[Msg, Any]: A tuple containing the processed message and the final value from the response processing.
     """
-    _respond = _respond or []
+    _resp_proc = _resp_proc or []
     msg = Msg(
         role=_role
     )
 
-    for r in _respond:
+    for r in _resp_proc:
         kwargs.update(r.prep())
 
     response = await f(
         *args, **kwargs
     )
+    msg['meta']['response'] = response
     vals = []
 
-    for r in _respond:
-        msg, val = r(response, msg)
-        vals.append(val)
-    return msg, val
+    for r in _resp_proc:
+        val = r(response, msg)
+        if r.resp:
+            vals.append(val)
+    if len(vals) == 0:
+        return msg
+    elif len(vals) == 1:
+        return msg, vals[0]
+    return msg, tuple(vals)
 
 
 def llm_stream(
     f: typing.Callable, 
     *args, 
-    _respond: typing.List[ResponseProc]=None, 
+    _resp_proc: typing.List[ResponseProc]=None, 
     _role: str='assistant',
     **kwargs
 ):
@@ -476,44 +506,50 @@ def llm_stream(
     Args:
         f (typing.Callable): The language model function to call.
         *args: Positional arguments to pass to the language model function.
-        _respond (typing.List[Response], optional): A list of Response objects for processing the model's output. Defaults to None.
+        _resp_proc (typing.List[Response], optional): A list of Response objects for processing the model's output. Defaults to None.
         _role (str, optional): The role to assign to the message. Defaults to 'assistant'.
         **kwargs: Additional keyword arguments to pass to the language model function.
     Yields:
         Tuple[Msg, Any]: A tuple containing the message object and the processed value from the response.
     """
-    _respond = _respond or []
-    msg = Msg(
-        role=_role
-    )
+    _resp_proc = _resp_proc or []
 
-    for r in _respond:
+    for r in _resp_proc:
         kwargs.update(r.prep())
 
+    delta = [{} for _ in range(len(_resp_proc))]
     for response in f(
         *args, **kwargs
     ):
         vals = []
 
-        for r in _respond:
-            msg, val = r(response, msg)
-            vals.append(val)
-        yield msg, val
+        print(response)
+        msg = Msg(role=_role)
+        for r, delta_i in zip(_resp_proc, delta):
+            val = r.delta(response, msg, delta_i)
+            msg['meta']['response'] = response
+            if r.resp:
+                vals.append(val)
+        if len(vals) == 0:
+            yield msg
+        elif len(vals) == 1:
+            yield msg, vals[0]
+        else: yield msg, tuple(vals)
 
 
 async def llm_astream(
     f: typing.Callable, 
     *args, 
-    _respond: typing.List[ResponseProc]=None, 
+    _resp_proc: typing.List[ResponseProc]=None, 
     _role: str='assistant',
     **kwargs
 ) -> typing.AsyncIterator:
-    """_summary_
+    """
 
     Args:
         f (typing.Callable): The function to run
-        _respond (typing.List[Response], optional): The processes to use for responding
-        _role (str, optional): The role for . Defaults to 'assistant'.
+        _resp_proc (typing.List[Response], optional): The processes to use for responding
+        _role (str, optional): The role for message. Defaults to 'assistant'.
 
     Returns:
         typing.AsyncIterator: 
@@ -521,23 +557,28 @@ async def llm_astream(
     Yields:
         typing.AsyncIterator: The Message and the results
     """
-    _respond = _respond or []
-    msg = Msg(
-        role=_role
-    )
+    _resp_proc = _resp_proc or []
 
-    for r in _respond:
+    for r in _resp_proc:
         kwargs.update(r.prep())
 
+    delta = [{} for _ in range(len(_resp_proc))]
     async for response in await f(
         *args, **kwargs
     ):
         vals = []
-
-        for r in _respond:
-            msg, val = r(response, msg)
-            vals.append(val)
-        yield msg, val
+        msg = Msg(role=_role)
+        for r, delta_i in zip(_resp_proc, delta):
+            msg = Msg(role=_role)
+            val = r.delta(response, msg, delta_i)
+            msg['meta']['response'] = response
+            if r.resp:
+                vals.append(val)
+        if len(vals) == 0:
+            yield msg
+        elif len(vals) == 1:
+            yield msg, vals[0]
+        else: yield msg, tuple(vals)
 
 
 class ToMsg(ABC):
@@ -554,7 +595,7 @@ class ToText(ToMsg):
     """
 
     def __init__(self, role: str='system', field: str='content'):
-        """_summary_
+        """Converts an input to a text message
 
         Args:
             role (str): The role for the message
@@ -576,7 +617,6 @@ class ToText(ToMsg):
             role=self.role, 
             **{self.field: text}
         )
-
 
 
 # class ToolGen(object):
