@@ -6,7 +6,7 @@ from functools import singledispatch
 from .._core import Msg
 from ..utils import UNDEFINED
 from ..ai import LLM, LLM_PROMPT, ToolSet, ToolCall, ToolOption
-from ..ai._ai import ResponseProc
+from ..ai._ai import RespProc
 import json
 
 from typing import Dict, List
@@ -17,30 +17,41 @@ installed = {pkg.key for pkg in pkg_resources.working_set}
 missing = required - installed
 
 
-class OpenAITextProc(ResponseProc):
+class OpenAITextProc(RespProc):
+
+    def __init__(self):
+        super().__init__(True)
 
     def __call__(self, response, msg):
         content = response.choices[0].message.content
         msg['content'] = content if content is not None else ''
         return msg, content
     
-    def delta(self, response, msg):
+    def delta(self, response, msg, delta: typing.Dict):
+        print(response)
         delta = response.choices[0].delta.content
         
-        if 'content' not in msg:
-            msg['content'] = ''
+        if 'content' not in delta:
+            delta['content'] = ''
         
         if delta is None:
+            msg['content'] = None
             return msg, None
         
-        msg['content'] += delta
+        delta['content'] += delta
+        msg['content'] = delta
         return msg, delta
 
-    def prep(self):
+    def prep(self) -> typing.Dict:
+        """
+
+        Returns:
+            typing.Dict: 
+        """
         return {}
 
 
-class OpenAIToolProc(ResponseProc):
+class OpenAIToolProc(RespProc):
 
     def __init__(self, tools: ToolSet):
         """
@@ -48,7 +59,7 @@ class OpenAIToolProc(ResponseProc):
         Args:
             tools (typing.Dict[str, ToolOption]): 
         """
-        super().__init__()
+        super().__init__(True)
         self.tools = tools
 
     def __call__(self, response, msg: Msg):
@@ -121,7 +132,7 @@ class OpenAIToolProc(ResponseProc):
     def prep(self):
         
         return {
-            'tools': [tool.to_input() for _, tool in self.tools.items()]
+            'tools': [tool.to_input() for tool in self.tools] if len(self.tools) is not 0 else None
         }
 
 

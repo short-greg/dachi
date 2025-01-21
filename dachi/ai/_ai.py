@@ -77,6 +77,9 @@ class ToolSet(object):
             tool.to_input() for _, tool in self.tools.items()
         )
     
+    def __len__(self) -> int:
+        return len(self.tools)
+
     def __iter__(self) -> typing.Iterator:
         """
         Returns an iterator over the tools in the collection.
@@ -224,11 +227,16 @@ def to_dialog(prompt: typing.Union[Dialog, Msg]) -> Dialog:
     return prompt
 
 
-class ResponseProc(ABC):
+class RespProc(ABC):
     """Use to process the resoponse from an LLM
     """
 
-    def __init__(self, resp: bool=False):
+    def __init__(self, resp: bool):
+        """
+        Initialize the instance.
+        Args:
+            resp (bool): Indicates if the response processor responds with data.
+        """
         super().__init__()
         self._resp = resp
 
@@ -263,7 +271,7 @@ class LLM(Module):
         aforward=None,
         stream=None,
         astream=None,
-        response_processors: typing.List[ResponseProc]=None,
+        response_processors: typing.List[RespProc]=None,
         kwargs: typing.Dict=None,
         message_arg: str='messages',
         role_name: str='assistant'
@@ -411,7 +419,7 @@ class LLM(Module):
 def llm_forward(
     f: typing.Callable, 
     *args, 
-    _resp_proc: typing.List[ResponseProc]=None, 
+    _resp_proc: typing.List[RespProc]=None, 
     _role: str='assistant',
     **kwargs
 ):
@@ -454,7 +462,7 @@ def llm_forward(
 async def llm_aforward(
     f, 
     *args, 
-    _resp_proc: typing.List[ResponseProc]=None, 
+    _resp_proc: typing.List[RespProc]=None, 
     _role: str='assistant',
     **kwargs
 ):
@@ -497,7 +505,7 @@ async def llm_aforward(
 def llm_stream(
     f: typing.Callable, 
     *args, 
-    _resp_proc: typing.List[ResponseProc]=None, 
+    _resp_proc: typing.List[RespProc]=None, 
     _role: str='assistant',
     **kwargs
 ):
@@ -540,7 +548,7 @@ def llm_stream(
 async def llm_astream(
     f: typing.Callable, 
     *args, 
-    _resp_proc: typing.List[ResponseProc]=None, 
+    _resp_proc: typing.List[RespProc]=None, 
     _role: str='assistant',
     **kwargs
 ) -> typing.AsyncIterator:
