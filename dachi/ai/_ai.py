@@ -254,7 +254,7 @@ class RespProc(ABC):
         pass
 
     @abstractmethod
-    def delta(self, response, msg: Msg, delta: typing.Dict) -> typing.Any: 
+    def delta(self, response, msg: Msg, delta_store: typing.Dict) -> typing.Any: 
         pass
 
     def prep(self) -> typing.Dict:
@@ -531,7 +531,6 @@ def llm_stream(
     ):
         vals = []
 
-        print(response)
         msg = Msg(role=_role)
         for r, delta_i in zip(_resp_proc, delta):
             val = r.delta(response, msg, delta_i)
