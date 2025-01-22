@@ -27,7 +27,7 @@ class DummyAIModel(_ai.LLM):
         Returns:
             typing.Dict: The result of the API call
         """
-        return _core.Msg(
+        return Msg(
             role='assistant', content=self.target
         ), self.target
     
@@ -36,9 +36,12 @@ class DummyAIModel(_ai.LLM):
         cur_out = ''
         for c in self.target:
             cur_out += c
-            yield _core.Msg(
-                'assistant', cur_out, delta={'content': c}
-            ), c
+            
+            msg = Msg(
+                role='assistant', content=cur_out, delta={'content': c}
+            )
+            print('Yielding ', c)
+            yield msg, c
 
 
 def forward(msg: str) -> typing.Dict:

@@ -502,6 +502,7 @@ def _stream_model(model: LLM, prompt: LLM_PROMPT, ctx: Context, *args, interval:
     """
     print('Executing thread')
     for msg, c in model.stream(prompt, *args, **kwargs):
+        print('Cur: ', msg, c)
         ctx['msg'] = msg
         ctx['cur'].append(c)
         time.sleep(interval)
@@ -545,6 +546,7 @@ def stream_model(
     return run
 
 
+# TODO: Improve Error Handling
 def _run_model(model: LLM, prompt: LLM_PROMPT, ctx: Context, **kwargs):
     """Run periodically to update the status
 

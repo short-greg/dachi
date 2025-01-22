@@ -1,15 +1,10 @@
 import pkg_resources
-import openai
 import typing
 
-from functools import singledispatch
 from .._core import Msg
-from ..utils import UNDEFINED
-from ..ai import LLM, LLM_PROMPT, ToolSet, ToolCall, ToolOption
+from ..ai import ToolSet, ToolCall
 from ..ai._ai import RespProc
 import json
-
-from typing import Dict, List
 
 # TODO: add utility for this
 required = {'openai'}

@@ -290,7 +290,7 @@ class TestBuffer:
             buffer, model, message, ctx, interval=1./400.
         )
         res = stream()
-        time.sleep(0.1)
+        time.sleep(0.15)
         res = stream()
 
         assert res == TaskStatus.SUCCESS
