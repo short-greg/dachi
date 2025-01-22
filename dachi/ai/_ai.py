@@ -434,29 +434,30 @@ def llm_forward(
     Returns:
         tuple: A tuple containing the final message (Msg) and the last value processed by the Response objects.
     """
-    _resp_proc = _resp_proc or []
     msg = Msg(
         role=_role
     )
 
-    for r in _resp_proc:
-        kwargs.update(r.prep())
+    if isinstance(_resp_proc, RespProc):
+        kwargs.update(_resp_proc.prep())
+    elif _resp_proc is not None:
+        for r in _resp_proc:
+            kwargs.update(r.prep())
 
     response = f(
         *args, **kwargs
     )
     msg['meta']['response'] = response
-    vals = []
 
-    for r in _resp_proc:
-        val = r(response, msg)
-        if r.resp:
-            vals.append(val)
-    if len(vals) == 0:
+    if _resp_proc is None:
         return msg
-    elif len(vals) == 1:
-        return msg, vals[0]
-    return msg, tuple(vals)
+    
+    if isinstance(_resp_proc, RespProc):
+        return msg, _resp_proc(response, msg)
+
+    return msg, tuple(
+        r(response, msg) for r in _resp_proc
+    )
 
 
 async def llm_aforward(
@@ -477,29 +478,29 @@ async def llm_aforward(
     Returns:
         Tuple[Msg, Any]: A tuple containing the processed message and the final value from the response processing.
     """
-    _resp_proc = _resp_proc or []
     msg = Msg(
         role=_role
     )
-
-    for r in _resp_proc:
-        kwargs.update(r.prep())
+    if isinstance(_resp_proc, RespProc):
+        kwargs.update(_resp_proc.prep())
+    elif _resp_proc is not None:
+        for r in _resp_proc:
+            kwargs.update(r.prep())
 
     response = await f(
         *args, **kwargs
     )
     msg['meta']['response'] = response
-    vals = []
 
-    for r in _resp_proc:
-        val = r(response, msg)
-        if r.resp:
-            vals.append(val)
-    if len(vals) == 0:
+    if _resp_proc is None:
         return msg
-    elif len(vals) == 1:
-        return msg, vals[0]
-    return msg, tuple(vals)
+    
+    if isinstance(_resp_proc, RespProc):
+        return msg, _resp_proc(response, msg)
+
+    return msg, tuple(
+        r(response, msg) for r in _resp_proc
+    )
 
 
 def llm_stream(
@@ -522,27 +523,33 @@ def llm_stream(
     """
     _resp_proc = _resp_proc or []
 
-    for r in _resp_proc:
-        kwargs.update(r.prep())
-
-    delta = [{} for _ in range(len(_resp_proc))]
+    if isinstance(_resp_proc, RespProc):
+        delta = {}
+        kwargs.update(_resp_proc.prep())
+    elif _resp_proc is None:
+        delta = None
+    else:
+        delta = [{} for _ in range(len(_resp_proc))]
+        for r in _resp_proc:
+            kwargs.update(r.prep())
     for response in f(
         *args, **kwargs
     ):
-        vals = []
-
         msg = Msg(role=_role)
-        for r, delta_i in zip(_resp_proc, delta):
-            val = r.delta(response, msg, delta_i)
-            msg['meta']['response'] = response
-            if r.resp:
-                vals.append(val)
-        if len(vals) == 0:
-            yield msg
-        elif len(vals) == 1:
-            yield msg, vals[0]
-        else: yield msg, tuple(vals)
+        msg['meta']['response'] = response
 
+        print(_resp_proc)
+        if _resp_proc is None:
+            yield msg
+        
+        elif isinstance(_resp_proc, RespProc):
+            yield msg, _resp_proc.delta(response, msg, delta)
+
+        else: 
+            
+            yield msg, tuple(
+                r.delta(response, msg, delta_i) for r, delta_i in zip(_resp_proc, delta)
+            )
 
 async def llm_astream(
     f: typing.Callable, 
@@ -566,26 +573,32 @@ async def llm_astream(
     """
     _resp_proc = _resp_proc or []
 
-    for r in _resp_proc:
-        kwargs.update(r.prep())
+    if isinstance(_resp_proc, RespProc):
+        delta = {}
+        kwargs.update(_resp_proc.prep())
+    elif _resp_proc is None:
+        delta = None
+    else:
+        delta = [{} for _ in range(len(_resp_proc))]
+        for r in _resp_proc:
+            kwargs.update(r.prep())
 
-    delta = [{} for _ in range(len(_resp_proc))]
     async for response in await f(
         *args, **kwargs
     ):
-        vals = []
+        
         msg = Msg(role=_role)
-        for r, delta_i in zip(_resp_proc, delta):
-            msg = Msg(role=_role)
-            val = r.delta(response, msg, delta_i)
-            msg['meta']['response'] = response
-            if r.resp:
-                vals.append(val)
-        if len(vals) == 0:
+        msg['meta']['response'] = response
+        if _resp_proc is None:
             yield msg
-        elif len(vals) == 1:
-            yield msg, vals[0]
-        else: yield msg, tuple(vals)
+        
+        elif isinstance(_resp_proc, RespProc):
+            yield msg, _resp_proc.delta(response, msg, delta)
+
+        else: 
+            yield msg, tuple(
+                r.delta(response, msg, delta_i) for r, delta_i in zip(_resp_proc, delta)
+            )
 
 
 class ToMsg(ABC):

@@ -1,4 +1,3 @@
-from dachi._core import _core
 from dachi._core import Msg
 
 from typing import Iterator
@@ -15,10 +14,10 @@ class DummyAIModel(_ai.LLM):
         super().__init__()
         self.target = target
 
-    def system(self, *args, type_ = 'data', delta = None, meta = None, **kwargs):
-        return 
-
-    def forward(self, prompt: _ai.LLM_PROMPT, **kwarg_override) -> _ai.LLM_RESPONSE:
+    def forward(
+        self, prompt: _ai.LLM_PROMPT, 
+        **kwarg_override
+    ) -> _ai.LLM_RESPONSE:
         """Run a standard query to the API
 
         Args:
@@ -31,7 +30,10 @@ class DummyAIModel(_ai.LLM):
             role='assistant', content=self.target
         ), self.target
     
-    def stream(self, prompt: _ai.LLM_PROMPT, **kwarg_override) -> Iterator[_ai.LLM_RESPONSE]:
+    def stream(
+        self, prompt: _ai.LLM_PROMPT, 
+        **kwarg_override
+    ) -> Iterator[_ai.LLM_RESPONSE]:
 
         cur_out = ''
         for c in self.target:
@@ -116,14 +118,14 @@ class TestLLM:
         assert res['meta']['response']['content'] == 'Hi! Jack'
 
     def test_llm_executes_forward_with_processor(self):
-        res, content = _ai.llm_forward(forward, 'Jack', _resp_proc=[TextResp()])
+        res, content = _ai.llm_forward(forward, 'Jack', _resp_proc=TextResp())
         assert content == 'Hi! Jack'
         assert res['meta']['response']['content'] == 'Hi! Jack'
 
     def test_llm_executes_stream_with_processor(self):
         responses = []
         contents = []
-        for r, content in _ai.llm_stream(stream, 'Jack', _resp_proc=[TextResp()]):
+        for r, content in _ai.llm_stream(stream, 'Jack', _resp_proc=TextResp()):
             responses.append(r)
             contents.append(content)
         assert contents[0] == 'H'
