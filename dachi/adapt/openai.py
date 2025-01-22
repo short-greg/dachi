@@ -55,7 +55,7 @@ class OpenAITextProc(RespProc):
 
         content = response.choices[0].message.content
         msg['content'] = content if content is not None else None
-        return msg, content
+        return content
     
     def delta(self, response, msg, delta_store: typing.Dict):
         """
@@ -79,7 +79,7 @@ class OpenAITextProc(RespProc):
         if delta is not None:
             delta_store['content'] += delta
         msg['content'] = delta
-        return msg, delta
+        return delta
 
     def prep(self) -> typing.Dict:
         """

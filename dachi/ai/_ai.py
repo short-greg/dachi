@@ -271,7 +271,7 @@ class LLM(Module):
         aforward=None,
         stream=None,
         astream=None,
-        response_processors: typing.List[RespProc]=None,
+        resp_procs: typing.List[RespProc]=None,
         kwargs: typing.Dict=None,
         message_arg: str='messages',
         role_name: str='assistant'
@@ -283,7 +283,7 @@ class LLM(Module):
             aforward (optional): Define the astream function. Will call forward if not defined. Defaults to None.
             stream (optional): Define the stream function. Will call forward if not defined. Defaults to None.
             astream (optional): Define the astream function. LLM astream will call stream as a backup if not defined. Defaults to None.
-            response_processors (typing.List[Response], optional): . Defaults to None.
+            responsresp_procse_processors (typing.List[Response], optional): . Defaults to None.
             kwargs (typing.Dict, optional): . Defaults to None.
             message_arg (str, optional): . Defaults to 'messages'.
             role_name (str, optional): . Defaults to 'assistant'.
@@ -294,7 +294,7 @@ class LLM(Module):
         self._stream = stream
         self._astream = astream
         self._kwargs = kwargs or {}
-        self.response_processors = response_processors or []
+        self.resp_procs = resp_procs or []
         self._message_arg = message_arg
         self._role_name = role_name
 
@@ -318,7 +318,7 @@ class LLM(Module):
         if self._forward is not None:
             return llm_forward(
                 self._forward, **kwargs, 
-                _resp_proc=self.response_processors,
+                _resp_proc=self.resp_procs,
                 _role=self._role_name
             )
         raise RuntimeError(
@@ -346,7 +346,7 @@ class LLM(Module):
             }
             return await llm_aforward(
                 self._aforward, **kwargs, 
-                _resp_proc=self.response_processors,
+                _resp_proc=self.resp_procs,
                 _role=self._role_name
             )
         else:
@@ -376,7 +376,7 @@ class LLM(Module):
             }
             for v in llm_stream(
                 self._stream, **kwargs, 
-                _resp_proc=self.response_processors,
+                _resp_proc=self.resp_procs,
                 _role=self._role_name
             ):
                 yield v
@@ -405,7 +405,7 @@ class LLM(Module):
             }
             async for v in await llm_astream(
                 self._stream, **kwargs, 
-                _resp_proc=self.response_processors,
+                _resp_proc=self.resp_procs,
                 _role=self._role_name
             ):
                 yield v
@@ -434,9 +434,7 @@ def llm_forward(
     Returns:
         tuple: A tuple containing the final message (Msg) and the last value processed by the Response objects.
     """
-    msg = Msg(
-        role=_role
-    )
+    msg = Msg(role=_role)
 
     if isinstance(_resp_proc, RespProc):
         kwargs.update(_resp_proc.prep())
