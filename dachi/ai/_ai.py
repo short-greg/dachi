@@ -313,7 +313,7 @@ class LLM(Module):
         kwargs = {
             **self._kwargs, 
             **kwarg_overrides, 
-            self._message_arg: dialog.to_input()
+            self._message_arg: dialog.to_list_input()
         }
         if self._forward is not None:
             return llm_forward(
@@ -342,7 +342,7 @@ class LLM(Module):
             kwargs = {
                 **self._kwargs, 
                 **kwarg_overrides, 
-                self._message_arg: dialog.to_input()
+                self._message_arg: dialog.to_list_input()
             }
             return await llm_aforward(
                 self._aforward, **kwargs, 
@@ -372,7 +372,7 @@ class LLM(Module):
             kwargs = {
                 **self._kwargs, 
                 **kwarg_overrides, 
-                self._message_arg: dialog.to_input()
+                self._message_arg: dialog.to_list_input()
             }
             for v in llm_stream(
                 self._stream, **kwargs, 
@@ -401,7 +401,7 @@ class LLM(Module):
             kwargs = {
                 **self._kwargs, 
                 **kwarg_overrides, 
-                self._message_arg: dialog.to_input()
+                self._message_arg: dialog.to_list_input()
             }
             async for v in await llm_astream(
                 self._stream, **kwargs, 
@@ -536,7 +536,6 @@ def llm_stream(
         msg = Msg(role=_role)
         msg['meta']['response'] = response
 
-        print(_resp_proc)
         if _resp_proc is None:
             yield msg
         

@@ -223,7 +223,6 @@ class IFunc(object):
             The result of the function
         """
         instance, args = self.get_instance(instance, args)
-        print(instance, args)
         if instance is None or hasattr(self._f, "__self__"):
 
             return self._f(*args, **kwargs)
@@ -431,31 +430,30 @@ class SignatureFunc(Module, Instruct):
         Returns:
             The cue
         """
-        print('Before: ', args)
-        # instance, args = self.get_instance(args)
-        print('After: ',instance, args)
-        # if instance is not None:
+        params = self._ifunc.fparams(
+            instance, *args, **kwargs
+        )
         cur_kwargs = self._ifunc(
             *args, instance=instance, **kwargs
         )
-        # else:
-        #     cur_kwargs = self._ifunc(*args, **kwargs)
+    
         cur_kwargs = cur_kwargs if cur_kwargs is not None else {}
-        kwargs = {**kwargs, **cur_kwargs}
-        params = self._ifunc.fparams(
-            instance, *args, **kwargs)
+        # kwargs = {**kwargs, **cur_kwargs}
+        cur_kwargs.update(params)
+        
         if "TEMPLATE" in self._docstring:
-            params['TEMPLATE'] = self._reader.template()
+            cur_kwargs['TEMPLATE'] = self._reader.template()
         doc = self._docstring.render()
         cue = str_formatter(
-            doc, required=False, **params
+            doc, required=False, **cur_kwargs
         )
         return cue
     
     def _prepare_msg(self, instance, *args, **kwargs) -> typing.Any:
         """
         """
-        return self._conv_msg(self._prepare(instance, *args, **kwargs))
+        i = self._prepare(instance, *args, **kwargs)
+        return self._conv_msg(i)
 
     def forward(self, *args, **kwargs) -> typing.Any:
         """Execute the function
@@ -686,7 +684,6 @@ class InstructFunc(Instruct, Module):
     def forward(self, *args, **kwargs) -> typing.Any:
 
         instance, args = self.get_instance(args)
-        print(self._engine)
         engine = self.get_engine(instance)
         cue = self._prepare_msg(instance, *args, **kwargs)
         _, res = engine(cue)

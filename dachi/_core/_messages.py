@@ -40,14 +40,11 @@ class Msg(dict):
     
     def to_input(self) -> typing.Dict:
         """Convert the message to a dictionary"""
-        d = {**self}
-        del d['type_']
-        if 'meta' in d:
-            del d['meta']
-        if 'delta' in d:
-            del d['delta']
+        exclude = {'meta', 'delta', '_include_role', 'type_'}
+        d = {k: v for k, v in self.items() if k not in exclude}
         if self['_include_role'] is False:
             del d['role']
+
         return d
 
     def to_list_input(self) -> typing.List[typing.Dict]:
