@@ -114,7 +114,7 @@ class Dialog(pydantic.BaseModel, Renderable):
         """
         pass
 
-    def add(self, type_: str='data', delta: typing.Dict=None, meta: typing.Dict=None, _ind: typing.Optional[int]=None, _replace: bool=False, _inplace: bool=False, **kwargs) -> 'Dialog':
+    def add(self, role: str='user', type_: str='data', delta: typing.Dict=None, meta: typing.Dict=None, _ind: typing.Optional[int]=None, _replace: bool=False, _inplace: bool=False, **kwargs) -> 'Dialog':
         """Add a message to the dialog
 
         Args:
@@ -128,7 +128,7 @@ class Dialog(pydantic.BaseModel, Renderable):
             Dialog: The dialog with the message appended
         """
         msg = Msg(
-            type_=type_, meta=meta, 
+            role=role, type_=type_, meta=meta, 
             delta=delta, **kwargs
         )
         return self.insert(message=msg, ind=_ind, replace=_replace, inplace=_inplace)
@@ -203,7 +203,6 @@ class Dialog(pydantic.BaseModel, Renderable):
 
         return self.to_input()
 
-
     def aslist(self) -> typing.List['Msg']:
         """Retrieve the message list
 
@@ -249,7 +248,6 @@ def to_input(inp: typing.Union[typing.Iterable[Msg], Msg]) -> typing.Union[typin
 class ListDialog(Dialog):
     """A Dialog that uses a list data structure.
     """
-
     _messages: typing.List[Msg] = pydantic.PrivateAttr(default_factory=list)
 
     def messages(self):
@@ -262,7 +260,7 @@ class ListDialog(Dialog):
             messages: The messages
         """
         super().__init__()
-        self._messages = messages
+        self._messages = messages or []
 
     def __iter__(self) -> typing.Iterator[Msg]:
         """Iterate over each message in the dialog
@@ -270,7 +268,7 @@ class ListDialog(Dialog):
         Yields:
             Iterator[typing.Iterator[Msg]]: Each message in the dialog
         """
-        for message in self.messages():
+        for message in self._messages:
             yield message
 
     def __add__(self, other: 'Dialog') -> 'Dialog':
@@ -342,10 +340,11 @@ class ListDialog(Dialog):
 
         messages = [*self._messages]
         if ind is None or ind == len(self):
-            if not replace or ind == len(self):
-                messages.append(message)
-            else:
-                messages[-1] = message
+            messages.append(message)
+            # if not replace or ind == len(self) or len(self) == 0:
+            #     messages.append(message)
+            # else:
+            #     messages[-1] = message
         elif ind > len(self._messages):
             raise ValueError(
                 f'The index {ind} is out of bounds '
