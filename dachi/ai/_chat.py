@@ -13,7 +13,7 @@ class Chat(core.Module):
     """
     def __init__(
         self, llm: LLM, 
-        dialog: core.Dialog=None
+        dialog: core.BaseDialog=None
     ):
         """Create a Chat component
 

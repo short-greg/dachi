@@ -6,7 +6,7 @@ from .._core._core import (
     Module
 )
 import pydantic
-from .._core import Msg, ListDialog, Dialog
+from .._core import Msg, ListDialog, BaseDialog
 from ..utils._f_utils import (
     is_async_function, is_async_function, 
     is_generator_function
@@ -215,7 +215,7 @@ def include_role(messages: typing.Iterable[Msg], *role: str) -> typing.List[Msg]
 
 
 
-def to_dialog(prompt: typing.Union[Dialog, Msg]) -> Dialog:
+def to_dialog(prompt: typing.Union[BaseDialog, Msg]) -> BaseDialog:
     """Convert a prompt to a dialog
 
     Args:
@@ -298,7 +298,7 @@ class LLM(Module):
         self._message_arg = message_arg
         self._role_name = role_name
 
-    def forward(self, dialog: Dialog, **kwarg_overrides) -> typing.Tuple[Msg, typing.Any]:
+    def forward(self, dialog: BaseDialog, **kwarg_overrides) -> typing.Tuple[Msg, typing.Any]:
         """
         Processes the given dialog and returns a response message and additional data.
         Args:
@@ -325,7 +325,7 @@ class LLM(Module):
             'The forward has not been defined for the LLM'
         )
     
-    async def aforward(self, dialog: Dialog, **kwarg_overrides) -> typing.Tuple[Msg, typing.Any]:
+    async def aforward(self, dialog: BaseDialog, **kwarg_overrides) -> typing.Tuple[Msg, typing.Any]:
         """
         Asynchronously forwards a dialog to the specified handler.
         This method checks if an asynchronous forward handler (`self._aforward`) is defined.
@@ -354,7 +354,7 @@ class LLM(Module):
                 dialog, **kwarg_overrides
             )
 
-    def stream(self, dialog: Dialog, **kwarg_overrides) -> typing.Iterator[typing.Tuple[Msg, typing.Any]]:
+    def stream(self, dialog: BaseDialog, **kwarg_overrides) -> typing.Iterator[typing.Tuple[Msg, typing.Any]]:
         """
         Streams responses from the language model based on the provided dialog.
         This method streams responses from the language model if the `_stream` attribute is set.
@@ -369,6 +369,9 @@ class LLM(Module):
             typing.Tuple[Msg, typing.Any]: A tuple containing the message and any additional data.
         """
         if self._stream is not None:
+            print(
+                dialog.to_list_input()
+            )
             kwargs = {
                 **self._kwargs, 
                 **kwarg_overrides, 
@@ -385,7 +388,7 @@ class LLM(Module):
                 dialog, **kwarg_overrides
             )
     
-    async def astream(self, dialog: Dialog, **kwarg_overrides) -> typing.AsyncIterator[typing.Tuple[Msg, typing.Any]]:
+    async def astream(self, dialog: BaseDialog, **kwarg_overrides) -> typing.AsyncIterator[typing.Tuple[Msg, typing.Any]]:
         """
         Asynchronously streams messages based on the provided dialog.
         This method checks if an asynchronous stream (`_astream`) is available. If it is, it uses the `llm_astream` function

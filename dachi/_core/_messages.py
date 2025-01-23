@@ -48,14 +48,34 @@ class Msg(dict):
         return d
 
     def to_list_input(self) -> typing.List[typing.Dict]:
+        """Convert to an input appropriate for a list
 
+        Returns:
+            typing.List[typing.Dict]: The message converted to a list
+        """
         return [self.to_input()]
+    
+    def render(self) -> str:
+        """
 
+        Returns:
+            str: A string of the message
+        """
+        vals = {
+            key: val for key, val in self.items() if key not in (
+                'role', 'meta', '_include_role',
+                'delta', 'type_'
+            )
+        }
+        return f'{self.role} {vals}'
+    
 
-class Dialog(pydantic.BaseModel, Renderable):
+class BaseDialog(pydantic.BaseModel, Renderable):
     """A Dialog stores the interactions between the system/user and the assistant
     (i.e. the prompts and the responses)
     """
+
+    msg_renderer: typing.Optional[typing.Callable[[Msg], str]] = None
 
     @abstractmethod
     def messages(self) -> typing.Iterator[Msg]:
@@ -114,7 +134,7 @@ class Dialog(pydantic.BaseModel, Renderable):
         """
         pass
 
-    def add(self, role: str='user', type_: str='data', delta: typing.Dict=None, meta: typing.Dict=None, _ind: typing.Optional[int]=None, _replace: bool=False, _inplace: bool=False, **kwargs) -> 'Dialog':
+    def add(self, role: str='user', type_: str='data', delta: typing.Dict=None, meta: typing.Dict=None, _ind: typing.Optional[int]=None, _replace: bool=False, _inplace: bool=False, **kwargs) -> 'BaseDialog':
         """Add a message to the dialog
 
         Args:
@@ -135,7 +155,7 @@ class Dialog(pydantic.BaseModel, Renderable):
     
     def append(
         self, message: Msg, _replace: bool=False, 
-        _inplace: bool=False) -> 'Dialog':
+        _inplace: bool=False) -> 'BaseDialog':
         """Add a message to the end of the dialog
 
         Args:
@@ -148,7 +168,7 @@ class Dialog(pydantic.BaseModel, Renderable):
         return self.insert(message=message, ind=None, replace=_replace, inplace=_inplace)
 
     @abstractmethod
-    def insert(self, message: Msg, ind: typing.Optional[int]=None, replace: bool=False, inplace: bool=False) -> 'Dialog':
+    def insert(self, message: Msg, ind: typing.Optional[int]=None, replace: bool=False, inplace: bool=False) -> 'BaseDialog':
         """Add a message to the dialog
 
         Args:
@@ -162,7 +182,7 @@ class Dialog(pydantic.BaseModel, Renderable):
         pass
 
     @abstractmethod
-    def extend(self, dialog: typing.Union['Dialog', typing.Iterable[Msg]], _inplace: bool=False) -> 'Dialog':
+    def extend(self, dialog: typing.Union['BaseDialog', typing.Iterable[Msg]], _inplace: bool=False) -> 'BaseDialog':
         """Extend the dialog with another dialog or a list of messages
 
         Args:
@@ -188,7 +208,8 @@ class Dialog(pydantic.BaseModel, Renderable):
             str: The dialog
         """
         return '\n'.join(
-            message.render() for message in self.messages()
+            message.render() if self.msg_renderer is None else self.msg_renderer(message)
+            for message in self.messages()
         )
     
     def to_input(self) -> typing.List[typing.Dict]:
@@ -221,13 +242,14 @@ class Dialog(pydantic.BaseModel, Renderable):
         pass
         # return len(self.messages)
         
-    def clone(self) -> 'Dialog':
+    def clone(self) -> 'BaseDialog':
         """Clones the dialog
 
         Returns:
             Dialog: A dialog cloned with shallow copying of the messages
         """
         pass
+
 
 
 def to_input(inp: typing.Union[typing.Iterable[Msg], Msg]) -> typing.Union[typing.List[Msg], Msg]:
@@ -245,7 +267,7 @@ def to_input(inp: typing.Union[typing.Iterable[Msg], Msg]) -> typing.Union[typin
     return {msg.to_input() for msg in inp}
 
 
-class ListDialog(Dialog):
+class ListDialog(BaseDialog):
     """A Dialog that uses a list data structure.
     """
     _messages: typing.List[Msg] = pydantic.PrivateAttr(default_factory=list)
@@ -253,13 +275,16 @@ class ListDialog(Dialog):
     def messages(self):
         return self._messages
 
-    def __init__(self, messages: typing.Iterable[Msg]=None):
+    def __init__(
+        self, messages: typing.Iterable[Msg]=None,
+        msg_renderer: typing.Callable[[Msg], str]=None
+    ):
         """Create a dialog
 
         Args:
             messages: The messages
         """
-        super().__init__()
+        super().__init__(msg_renderer=msg_renderer)
         self._messages = messages or []
 
     def __iter__(self) -> typing.Iterator[Msg]:
@@ -271,7 +296,7 @@ class ListDialog(Dialog):
         for message in self._messages:
             yield message
 
-    def __add__(self, other: 'Dialog') -> 'Dialog':
+    def __add__(self, other: 'BaseDialog') -> 'BaseDialog':
         """Concatenate two dialogs together
 
         Args:
@@ -280,7 +305,7 @@ class ListDialog(Dialog):
         Returns:
             Dialog: The concatenated dialog
         """
-        return Dialog(
+        return BaseDialog(
             self._messages + other.aslist()
         )
 
@@ -360,13 +385,13 @@ class ListDialog(Dialog):
             messages
         )
 
-    def extend(self, dialog: typing.Union['Dialog', typing.List[Msg]], inplace: bool=False):
+    def extend(self, dialog: typing.Union['BaseDialog', typing.List[Msg]], inplace: bool=False):
         """Extend the dialog with another dialog or a list of messages
 
         Args:
             dialog (typing.Union[&#39;Dialog&#39;, typing.List[Msg]]): _description_
         """
-        if isinstance(dialog, Dialog):
+        if isinstance(dialog, BaseDialog):
             dialog = dialog.aslist()
         
         messages = [
@@ -394,3 +419,47 @@ class ListDialog(Dialog):
         return ListDialog(
             messages=[message for message in self._messages]
         )
+
+
+class RenderField:
+
+    def __init__(self, field: str='content'):
+        """Renderer to render a specific field in the message
+
+        Args:
+            field (str, optional): The field name. Defaults to 'content'.
+        """
+        self.field = field
+
+    def __call__(self, msg: Msg) -> str:
+        """Render a message
+
+        Args:
+            msg (Msg): The message to render
+
+        Returns:
+            str: The result
+        """
+        return f'{msg['role']}: {msg[self.field]}'
+
+
+def exclude_messages(dialog: BaseDialog, val: typing.Union[typing.Any, typing.Set], field='role') -> ListDialog:
+
+    if not isinstance(val, typing.Set):
+        val = {val}
+
+    return ListDialog(
+        [msg for msg in dialog.messages() if msg[field] not in val], msg_renderer=dialog.msg_renderer
+    )
+
+            
+def include_messages(dialog: BaseDialog, val: typing.Union[typing.Any, typing.Set], field='role') -> ListDialog:
+
+    if not isinstance(val, typing.Set):
+        val = {val}
+
+    return ListDialog(
+        [msg for msg in dialog.messages() if msg[field] in val],
+        msg_renderer=dialog.msg_renderer
+    )
+
