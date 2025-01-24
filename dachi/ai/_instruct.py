@@ -674,22 +674,26 @@ class InstructFunc(Instruct, Module):
         # cur_kwargs = self._ifunc(instance, *args, **kwargs)
         # kwargs = {**kwargs, **cur_kwargs}
         res = self._ifunc(*args, instance=instance, **kwargs)
+        print('Instruction: ', res)
         return res
 
-    def _prepare_msg(self, instance, *args, **kwargs) -> typing.Any:
+    def _prepare_msg(self, instance, *args, **kwargs) -> typing.Tuple[Cue, Msg]:
         """
         """
-        return self._conv_msg(self._prepare(instance, *args, **kwargs))
+        cue = self._prepare(instance, *args, **kwargs)
+        return cue, self._conv_msg(
+            cue.text
+        )
 
     def forward(self, *args, **kwargs) -> typing.Any:
 
         instance, args = self.get_instance(args)
         engine = self.get_engine(instance)
-        cue = self._prepare_msg(instance, *args, **kwargs)
-        _, res = engine(cue)
+        cue, msg = self._prepare_msg(instance, *args, **kwargs)
+        _, res = engine(msg)
         if self._reader is not None:
             return self._reader.read(res)
-        return res
+        return cue.read(res)
 
     async def aforward(self, *args, **kwargs) -> typing.Any:
         """Execute the function asynchronously
@@ -703,28 +707,31 @@ class InstructFunc(Instruct, Module):
         """
         instance, args = self.get_instance(args)
         engine = self.get_engine(instance)
-        cue = self._prepare_msg(instance, *args, **kwargs)
+        cue, msg = self._prepare_msg(instance, *args, **kwargs)
         if isinstance(engine, Module):
             _, res = await engine.aforward(cue)
         else:
             _, res = await engine(cue)
         if self._reader is not None:
             return self._reader.read(res)
-        return res
+        return cue.read(res)
 
     def stream(self, *args, **kwargs) -> typing.Any:
         """Stream the instruction function"""
         instance, args = self.get_instance(args)
         engine = self.get_engine(instance)
-        cue = self._prepare_msg(instance, *args, **kwargs)
+        cue, msg = self._prepare_msg(instance, *args, **kwargs)
 
         if isinstance(engine, Module):
             f = engine.stream
         else:
             f = engine
-        for _, v in f(cue):
+        # print('Cue: ', cue)
+        for _, v in f(msg):
             if self._reader is not None:
                 v = self._reader.read(v)
+            else:
+                v = cue.read(v)
             yield v
 
     async def astream(self, *args, **kwargs) -> typing.Any:
@@ -732,15 +739,18 @@ class InstructFunc(Instruct, Module):
 
         instance, args = self.get_instance(args)
         engine = self.get_engine(instance)
-        cue = self._prepare_msg(instance, *args, **kwargs)
+        cue, msg = self._prepare_msg(instance, *args, **kwargs)
 
         if isinstance(engine, Module):
             f = engine.stream
         else:
             f = engine
-        async for _, v in f.astream(cue):
+        async for _, v in f.astream(msg):
+            # if  is not None:
             if self._reader is not None:
                 v = self._reader.read(v)
+            else:
+                v = cue.read(v)
             yield v
 
     def i(self, *args, **kwargs) -> Cue:

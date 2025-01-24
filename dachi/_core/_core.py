@@ -357,9 +357,10 @@ class Cue(pydantic.BaseModel, Instruct, typing.Generic[S], Renderable):
             S: The result of the read process
         """
         if self.out is None:
-            raise RuntimeError(
-                "Out has not been specified so can't read it"
-            )
+            return data
+            # raise RuntimeError(
+            #     "Out has not been specified so can't read it"
+            # )
         
         return self.out.read(data)
 
