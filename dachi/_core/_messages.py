@@ -190,16 +190,6 @@ class BaseDialog(pydantic.BaseModel, Renderable):
         """
         pass
 
-    # @abstractmethod
-    # def reader(self) -> 'Reader':
-    #     """Get the "Reader" for the dialog. By default will use the last one
-    #     that is available.
-
-    #     Returns:
-    #         Reader: The reader to retrieve
-    #     """
-    #     pass
-
     def render(self) -> str:
         """Render the dialog as a series of turns 
         <role>: <text>

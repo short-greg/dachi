@@ -270,11 +270,11 @@ class TaskFunc:
     def __get__(self, instance, owner):
         """Add the task to the instance if not already there
         """
-        if self.f.__name__ in instance.__dict__:
-            return instance.__dict__[self.f.__name__]
+        if id(self.f) in instance.__dict__:
+            return instance.__dict__[id(self.f)]
         
         task = TaskFunc(self.f, True, instance, self._out, self._to_status)
-        instance.__dict__[self.f.__name__] = task
+        instance.__dict__[id(self.f)] = task
         return task
 
 

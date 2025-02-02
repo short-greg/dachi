@@ -133,8 +133,10 @@ class MultiRead(Reader):
         for i, out in enumerate(self.outs):
             print(out.name)
             name = out.name or str(i)
-            cur = struct_template(out)
-            print(out, type(out))
+            if isinstance(out, Reader):
+                cur = out.template()
+            else:
+                cur = struct_template(out)
             cur_conn = self.conn.format(name=name)
             texts.append(f"{self.signal}{cur_conn}\n{cur}")
         text = '\n'.join(texts)

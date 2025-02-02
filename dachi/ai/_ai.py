@@ -488,6 +488,7 @@ async def llm_aforward(
         for r in _resp_proc:
             kwargs.update(r.prep())
 
+    print('f: ', f)
     response = await f(
         *args, **kwargs
     )
@@ -496,6 +497,7 @@ async def llm_aforward(
     if _resp_proc is None:
         return msg
     
+    print(response)
     if isinstance(_resp_proc, RespProc):
         return msg, _resp_proc(response, msg)
 

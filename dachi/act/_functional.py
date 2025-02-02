@@ -500,10 +500,11 @@ def _stream_model(model: LLM, prompt: LLM_PROMPT, ctx: Context, *args, interval:
         ctx (Context): The context
         interval (float, optional): The interval to run at. Defaults to 1./60.
     """
-    print('Executing thread')
+    # print('Executing thread')
     for msg, c in model.stream(prompt, *args, **kwargs):
-        print('Cur: ', msg, c)
+        # print('Cur: ', msg, c)
         ctx['msg'] = msg
+        # print(c)
         ctx['cur'].append(c)
         time.sleep(interval)
     ctx['thread_status'] = TaskStatus.SUCCESS
