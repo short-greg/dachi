@@ -211,7 +211,15 @@ class CondFunc:
 
 
 def _get_str(obj, key):
+    """_summary_
 
+    Args:
+        obj : 
+        key: 
+
+    Returns:
+        str: 
+    """
     return get_member(obj, key) if isinstance(key, str) else key
             
 
@@ -245,7 +253,6 @@ class TaskFunc:
         Returns:
             The task
         """
-
         instance, args = get_instance(self.instance, self.is_method, args)
 
         if instance is None:

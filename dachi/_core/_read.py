@@ -203,6 +203,8 @@ class PrimRead(Reader):
         Returns:
             typing.Any: The string converted to the primitive
         """
+        if message is None:
+            return ''
         if self._out_cls is bool:
             return message.lower() in ('true', 'y', 'yes', '1', 't')
         return self._out_cls(message)

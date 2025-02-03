@@ -366,6 +366,7 @@ class SignatureFunc(Module, Instruct):
             else:
                 reader = NullRead(name=ifunc.name)
 
+        print('Reader: ', type(reader))
         self._reader = reader
         self._instance = instance
         self._ifunc = ifunc
@@ -419,7 +420,6 @@ class SignatureFunc(Module, Instruct):
         Returns:
             The engine
         """
-        
         if isinstance(self._engine, str):
             return object.__getattribute__(instance, self._engine)
         return self._engine
@@ -497,8 +497,7 @@ class SignatureFunc(Module, Instruct):
         cue = self._prepare_msg(instance, *args, **kwargs)
         _, res = engine(cue, **self._kwargs)
         if self._reader is not None:
-            print(res)
-            return self._reader.read(res)
+            res = self._reader.read(res)
         return res
 
     async def aforward(self, *args, **kwargs) -> typing.Any:
@@ -638,6 +637,18 @@ class InstructFunc(Instruct, Module):
         self._train = train
         self._engine = engine
         self._instance = instance
+
+        if reader is None:
+            if ifunc.out_cls in primitives:
+                reader = PrimRead(
+                    name=ifunc.name, 
+                    out_cls=ifunc.out_cls
+                )
+            elif issubclass(ifunc.out_cls, pydantic.BaseModel):
+                reader = PydanticRead(name=ifunc.name, out_cls=ifunc.out_cls)
+            else:
+                reader = NullRead(name=ifunc.name)
+            
         self._reader = reader
         self._is_method = is_method
         self._conv_msg = to_msg or ToText()
