@@ -7,7 +7,7 @@ import inspect
 from ._ai import ToMsg, ToText
 import pydantic
 # local
-from .._core._core import (
+from ._core import (
     Cue, Param,
     Instruct, TextProc,
     NullTextProc
@@ -16,14 +16,14 @@ from ..read import (
     PydanticProc, PrimProc,
 )
 from ._ai import LLM
-from .._core._messages import Msg
+from ._messages import Msg
 from ..utils._utils import (
-    str_formatter, is_primitive, primitives
+    str_formatter, primitives
 )
-from .._core._process import Module
+from ._process import Module
 from ..utils._f_utils import (
-    is_async_function, get_return_type,
-    is_generator_function, get_iterator_type
+    is_async_function,
+    is_generator_function,
 )
 
 X = typing.Union[str, Cue]

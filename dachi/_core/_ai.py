@@ -2,11 +2,11 @@
 import typing
 from abc import ABC, abstractmethod
 import typing
-from .._core._core import (
+from ._core import (
     Module
 )
 import pydantic
-from .._core import Msg, RespProc, ListDialog, BaseDialog
+from . import Msg, RespProc, ListDialog, BaseDialog
 from ..utils._f_utils import (
     is_async_function, is_async_function, 
     is_generator_function

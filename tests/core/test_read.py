@@ -47,7 +47,7 @@ class TestMultiRead(object):
 
         text = out.example(struct_list)
         print('Text: ', text)
-        structs = out.read(text)
+        structs = out.__call__(text)
         assert structs['data'][0].x == struct_list['data'][0].x
 
     def test_out_stream_read_in_the_class(self):
@@ -69,7 +69,7 @@ class TestMultiRead(object):
         )
 
         text = out.example(struct_list)
-        structs = out.read(text)
+        structs = out.__call__(text)
         assert structs['data'][0].x == struct_list['data'][0].x
         # assert failed_on is None
 
@@ -85,7 +85,7 @@ class TestStructRead:
         )
         simple = SimpleStruct(x='hi')
         d = model_to_text(simple)
-        simple2 = out.read(d)
+        simple2 = out.__call__(d)
         assert simple.x == simple2.x
 
     def test_out_creates_out_class_with_string(self):
@@ -96,7 +96,7 @@ class TestStructRead:
         )
         simple = SimpleStruct(x='hi')
         d = model_to_text(simple)
-        simple2 = out.read(d)
+        simple2 = out.__call__(d)
         assert simple.x == simple2.x
     
     def test_out_template(self):
@@ -115,7 +115,7 @@ class TestStructRead:
             out_cls=SimpleStruct
         )
         s = model_to_text(SimpleStruct(x='2'))
-        simple2 = out.read(s)
+        simple2 = out.__call__(s)
         assert simple2.x == '2'
 
     def test_out_reads_in_the_class_with_str(self):
@@ -127,7 +127,7 @@ class TestStructRead:
 
         simple = SimpleStruct(x='2')
 
-        assert out.read(model_to_text(simple)).x == '2'
+        assert out.__call__(model_to_text(simple)).x == '2'
 
 
 class TestPrimRead(object):
@@ -139,7 +139,7 @@ class TestPrimRead(object):
             out_cls=int,
         )
 
-        result = out.read('1')
+        result = out.__call__('1')
         assert result == 1
 
     def test_template_contains_key(self):
@@ -157,7 +157,7 @@ class TestPrimRead(object):
             name='F1',
             out_cls=bool,
         )
-        result = out.read('TRUE')
+        result = out.__call__('TRUE')
         assert result is True
 
     def test_prim_read_reads_bool_correctly(self):
@@ -166,5 +166,5 @@ class TestPrimRead(object):
             name='F1',
             out_cls=bool,
         )
-        result = out.read('false')
+        result = out.__call__('false')
         assert result is False

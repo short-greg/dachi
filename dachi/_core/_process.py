@@ -11,13 +11,20 @@ from dataclasses import dataclass
 
 # 3rd party
 import numpy as np
+import pydantic
 
 # local
-from ._core import Module
-from ._core import Param
+from ._process import Module, Param, render
 from ..utils import UNDEFINED, Renderable
-from ._core import render
+from ._read import TextProc
+from ._core import Storable
+from ..utils import (
+    is_primitive, is_async_function,
+    is_generator_function
+)
 
+
+S = typing.TypeVar('S', bound=pydantic.BaseModel)
 
 @dataclass
 class Partial(object):
@@ -27,6 +34,368 @@ class Partial(object):
     prev: typing.Any = None
     dx: typing.Any = None
     complete: bool = False
+
+
+
+class Instruct(ABC):
+    """
+    """
+    @abstractmethod
+    def i(self) -> 'Cue':
+        """Create an Instruct class used for instructions
+
+        Returns:
+            Cue: Get the cue
+        """
+        pass
+
+
+class Cue(pydantic.BaseModel, Instruct, typing.Generic[S], Renderable):
+    """Specific cue for the model to use
+    """
+    
+    text: str
+    out: typing.Optional[TextProc] = None
+
+    def __init__(self, text: str, name: str='', out: typing.Optional[TextProc] = None):
+
+        super().__init__(text=text, name=name, out=out)
+
+    def i(self) -> Self:
+        return self
+
+    @pydantic.field_validator('text', mode='before')
+    def convert_renderable_to_string(cls, v):
+        if isinstance(v, Renderable):
+            return v.render()
+        if is_primitive(v):
+            return str(v)
+        return v
+
+    def render(self) -> str:
+        """Render the cue
+
+        Returns:
+            str: The text for the cue 
+        """
+        return self.text
+
+    def read(self, data: str) -> S:
+        """Read the data
+
+        Args:
+            data (str): The data to read
+
+        Raises:
+            RuntimeError: If the cue does not have a reader
+
+        Returns:
+            S: The result of the read process
+        """
+        if self.out is None:
+            return data
+            # raise RuntimeError(
+            #     "Out has not been specified so can't read it"
+            # )
+        
+        return self.out.__call__(data)
+
+    def state_dict(self) -> typing.Dict:
+        
+        return {
+            'text': self.text,
+        }
+
+    def load_state_dict(self, params: typing.Dict):
+        
+        self.text = params['text']
+
+
+class Param(pydantic.BaseModel, Renderable, Storable):
+    """Use Param to wrap instructions so the instructions
+    can update
+    """
+    
+    name: str
+    cue: Cue
+    training: bool=False
+    text: str = None
+
+    @pydantic.field_validator('cue', mode='before')
+    def convert_renderable_to_string(cls, v):
+        if isinstance(v, Cue):
+            return v
+        if isinstance(v, Renderable):
+            return Cue(text=v.render())
+        if is_primitive(v):
+            return Cue(text=render(v))
+        return v
+
+    def update(self, text: str) -> bool:
+        """Update the text for the parameter
+        If not in "training" mode will not update
+
+        Args:
+            text (str): The text to update with
+        
+        Returns:
+            True if updated and Fals if not (not in training mode)
+        """
+        if self.training:
+            self.text = text
+            return True
+        return False
+
+    def render(self) -> str:
+        """Convert the Parameter to a string
+        IF the text for the paramter has not been 
+        updated 
+
+        Returns:
+            str: 
+        """
+        if self.text is None:
+            return self.cue.render()
+        return self.text
+
+    def read(self, data: typing.Dict) -> S:
+        """Read in the data
+
+        Args:
+            data (typing.Dict): The data to read in
+
+        Returns:
+            S: The result of the reading
+        """
+        return self.cue.read(data)
+
+    def reads(self, data: str) -> S:
+        return self.cue.read_out(data)
+    
+    def state_dict(self) -> typing.Dict:
+        """Get the state dict for the Param
+
+        Returns:
+            typing.Dict: the state dict
+        """
+        
+        return {
+            'name': self.name,
+            'cue': self.cue.state_dict(),
+            'training': self.training,
+            'text': self.text
+        }
+
+    def load_state_dict(self, params: typing.Dict):
+        """Load the state dict for the Param
+        
+        Args:
+            params (typing.Dict): the state dict
+        """
+        self.name = params['name']
+        self.cue = self.cue.load_state_dict(params['cue'])
+        self.training = params['training']
+        self.text = params['text']
+
+
+class Module(Storable, ABC):
+    """Base class for Modules
+    """
+
+    @abstractmethod
+    def forward(self, *args, **kwargs) -> typing.Any:
+        """Execute the module
+
+        Returns:
+            typing.Any: The output of the module
+        """
+        pass
+
+    def __call__(self, *args, **kwargs) -> typing.Any:
+        """Execute the module
+
+        Returns:
+            typing.Any: The output of the module
+        """
+        return self.forward(*args, **kwargs)
+
+    def _parameters(self, recurse: bool=True) -> typing.Iterator['Param']:
+        """Loop over the parameters for the module
+
+        Yields:
+            Param: The parameters for the module
+        """
+        yielded = set()
+        for k, v in self.__dict__.items():
+            if isinstance(v, Param):
+                if id(v) in yielded:
+                    continue
+                yielded.add(id(v))
+                
+                yield v
+            if recurse and isinstance(v, Module):
+                for v in v._parameters(True):
+                    if id(v) in yielded:
+                        continue
+                    yielded.add(id(v))
+                    yield v
+
+    def children(self, recurse: bool=True) -> typing.Iterator['Module']:
+        """Loop over all of the child modules
+
+        Yields:
+            Module: The child module
+        """
+        yielded = set()
+        print(self.__dict__)
+        for k, v in self.__dict__.items():
+            if isinstance(v, Module):
+                if id(v) in yielded:
+                    continue
+                yield v
+                yielded.add(id(v))
+                if recurse:
+                    for v in v.children(True):
+                        if id(v) in yielded:
+                            continue
+                        yielded.add(id(v))
+                        yield v
+    
+    async def aforward(self, *args, **kwargs) -> typing.Any:
+        """Execute the forward method asynchronously
+
+        Returns:
+            typing.Any: 
+        """
+        res = self.forward(*args, **kwargs)
+        return res
+
+    def stream(self, *args, **kwargs) -> typing.Iterator[
+        typing.Tuple[typing.Any, typing.Any]
+    ]:
+        """Stream the output
+
+        Yields:
+            Iterator[typing.Iterator[ typing.Tuple[typing.Any, typing.Any] ]]: The current value and the change in the value
+        """
+        # default behavior doesn't actually stream
+        res = self.forward(*args, **kwargs) 
+        yield res, res
+
+    async def astream(self, *args, **kwargs) -> typing.AsyncIterator:
+        """
+        Returns:
+            Streamer: The Streamer to loop over
+        """
+
+        for d, dx in self.stream(*args, **kwargs):
+            yield d, dx
+
+    def state_dict(self):
+        """Get the state dict for the module"""
+        state_dict = {}
+        for i, child in enumerate(self.children(False)):
+            state_dict[i] = child.state_dict()
+        
+        params = {}
+        for i, param in enumerate(self._parameters(False)):
+            params[i] = param.state_dict()
+        state_dict['__params__'] = params
+
+        return state_dict
+    
+    def load_state_dict(self, state_dict):
+        """Load the state dict for the module"""
+        for i, child in enumerate(self.children(False)):
+            cur_dict = state_dict[i]
+            child.load_state_dict(cur_dict)
+
+        params = state_dict['__params__']
+        for i, cur in enumerate(self._parameters(False)):
+            cur.load_state_dict(params[i])
+
+import asyncio
+
+def forward(
+    f: typing.Union[Module, typing.Callable], *args, **kwargs
+) -> typing.Any:
+    
+    if isinstance(f, Module):
+        return f.forward(*args, **kwargs)
+    if not is_async_function(f) and not is_generator_function(f):
+        return f(*args, **kwargs)
+    if not is_async_function(f) and is_generator_function(f):
+        return [v for v in f(*args, **kwargs)]
+    if is_async_function(f) and not is_generator_function(f):
+        raise NotImplementedError('Cannot forward with async function')
+    raise RuntimeError()
+
+
+async def aforward(
+    f: typing.Union[Module, typing.Callable], *args, **kwargs
+) -> typing.Any:
+    
+    if isinstance(f, Module):
+        return await f.aforward(*args, **kwargs)
+    if not is_async_function(f) and not is_generator_function(f):
+        return f(*args, **kwargs)
+    if is_async_function(f) and not is_generator_function(f):
+        return await f(*args, **kwargs)
+    if not is_async_function(f) and is_generator_function(f):
+        return [v for v in f(*args, **kwargs)]
+    if is_async_function(f) and is_generator_function(f):
+        return [v async for v in await f(*args, **kwargs)]
+
+
+def stream(f: typing.Union[Module, typing.Callable], *args, **kwargs) -> typing.Any:
+    
+    if isinstance(f, Module):
+        for v in f.stream(*args, **kwargs):
+            yield v
+    elif not is_async_function(f) and is_generator_function(f):
+        for v in f(*args, **kwargs):
+            yield v
+    elif is_async_function(f) and is_generator_function(f):
+        raise NotImplementedError('Cannot execute an async streaming function from a streaming function')
+    elif is_async_function(f) and not is_generator_function(f):
+        raise NotImplementedError('Cannot stream with async function')
+    elif not is_async_function(f) and not is_generator_function(f):
+        yield f(*args, **kwargs)
+    raise RuntimeError()
+
+
+async def astream(f: typing.Union[Module, typing.Callable], *args, **kwargs) -> typing.Any:
+    """
+
+    Args:
+        f (typing.Union[Module, typing.Callable]): _description_
+
+    Raises:
+        RuntimeError: _description_
+
+    Returns:
+        typing.Any: _description_
+
+    Yields:
+        Iterator[typing.Any]: _description_
+    """
+    
+    if isinstance(f, Module):
+        async for v in await f.astream(*args, **kwargs):
+            yield v
+    elif is_async_function(f) and is_generator_function(f):
+        async for v in await f(*args, **kwargs):
+            yield v
+    elif not is_async_function(f) and is_generator_function(f):
+        for v in f(*args, **kwargs):
+            yield v
+    elif is_async_function(f) and not is_generator_function(f):
+        yield await f(*args, **kwargs)
+    elif not is_async_function(f) and not is_generator_function(f):
+        yield f(*args, **kwargs)
+    raise RuntimeError()
+
+
 
 
 class I(object):
@@ -740,5 +1109,3 @@ def stream_thread(module, *args, **kwargs) -> StreamRunner:
     return StreamRunner(
         module, *args, **kwargs
     )
-
-# %%

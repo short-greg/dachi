@@ -1,7 +1,7 @@
 from .. import _core as core
 from ._chat import Chat
 import typing
-from ._ai import ToolCall
+from .._core._ai import ToolCall
 
 
 class ChatAgent(Chat):

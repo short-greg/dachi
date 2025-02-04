@@ -4,11 +4,11 @@ from abc import ABC, abstractmethod
 from typing import Self
 import typing
 
-from ._core import Renderable
-
 # 3rd party
 import pydantic
 
+# local
+from ._core import Renderable
 
 class Msg(dict):
     """A Msg used for a dialog

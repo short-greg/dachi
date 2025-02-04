@@ -1,6 +1,6 @@
-from dachi.ai import _instruct as core
+from dachi._core import _instruct as core
 from .test_core import SimpleStruct
-from ..ai.test_ai import DummyAIModel
+from .test_ai import DummyAIModel
 
 
 def dummy_dec(f):

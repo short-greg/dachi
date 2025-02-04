@@ -2,7 +2,7 @@ from dachi.act import _core, _functional as F
 from dachi.act import TaskStatus
 from dachi.data import _data as utils
 import typing
-from ..ai.test_ai import DummyAIModel
+from ..core.test_ai import DummyAIModel
 from dachi import _core as core
 import time
 

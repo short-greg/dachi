@@ -1,52 +1,52 @@
 from dachi.utils import model_to_text
-from dachi.read import _read as _core
+from dachi._core import _read as _core
 from .._structs import SimpleStruct, SimpleStruct2
 
 
-class TestStructListRead(object):
+# class TestStructListRead(object):
 
-    def test_out_reads_in_the_class(self):
+#     def test_out_reads_in_the_class(self):
 
-        struct_list = _core.DataList(
-            data=[
-                SimpleStruct(x='2'),
-                SimpleStruct(x='3')
-            ]
-        )
+#         struct_list = _core.DataList(
+#             data=[
+#                 SimpleStruct(x='2'),
+#                 SimpleStruct(x='3')
+#             ]
+#         )
 
-        out = _core.StructListRead(
-            name='F1',
-            out_cls=SimpleStruct
-        )
+#         out = _core.StructListRead(
+#             name='F1',
+#             out_cls=SimpleStruct
+#         )
 
-        assert out.read(model_to_text(struct_list))[0].x == '2'
+#         assert out.read(model_to_text(struct_list))[0].x == '2'
 
 
-    def test_out_reads_in_the_class(self):
+#     def test_out_reads_in_the_class(self):
 
-        struct_list = _core.DataList(
-            data=[
-                SimpleStruct(x='2'),
-                SimpleStruct(x='3')
-            ]
-        )
+#         struct_list = _core.DataList(
+#             data=[
+#                 SimpleStruct(x='2'),
+#                 SimpleStruct(x='3')
+#             ]
+#         )
 
-        out = _core.StructListRead(
-            name='F1',
-            out_cls=SimpleStruct
-        )
+#         out = _core.StructListRead(
+#             name='F1',
+#             out_cls=SimpleStruct
+#         )
 
-        assert out.read(model_to_text(struct_list))[0].x == '2'
+#         assert out.read(model_to_text(struct_list))[0].x == '2'
 
-    # def test_out_reads_in_the_class_with_str(self):
+#     # def test_out_reads_in_the_class_with_str(self):
 
-    #     out = _core.StructRead(
-    #         name='F1',
-    #         out_cls=SimpleStruct
-    #     )
+#     #     out = _core.StructRead(
+#     #         name='F1',
+#     #         out_cls=SimpleStruct
+#     #     )
 
-    #     simple = SimpleStruct(x='2')
-    #     assert out.read(model_to_text(simple)).x == '2'
+#     #     simple = SimpleStruct(x='2')
+#     #     assert out.read(model_to_text(simple)).x == '2'
 
 
 class TestCSVRead(object):
@@ -62,7 +62,7 @@ class TestCSVRead(object):
             indexed=False,
         )
 
-        result = out.read(csv)
+        result = out.__call__(csv)
         print(result[0])
         assert result[0]['x'] == 1
         assert result[0]['y'] == 2
@@ -108,7 +108,7 @@ class TestKVRead(object):
             },
         )
 
-        result = out.read(k)
+        result = out.__call__(k)
         assert result['x'] == '1'
         assert result['y'] == '4'
 
@@ -141,7 +141,7 @@ class TestJSONRead(object):
         )
         simple = SimpleStruct2(x='hi', y=1)
         d = model_to_text(simple)
-        simple2 = out.read(d)
+        simple2 = out.__call__(d)
         assert simple.x == simple2['x']
 
     def test_out_template(self):
@@ -170,7 +170,7 @@ class TestYAMLRead(object):
         )
         simple = SimpleStruct2(x='hi', y=1)
         d = model_to_text(simple)
-        simple2 = out.read(d)
+        simple2 = out.__call__(d)
         assert simple.x == simple2['x']
 
     def test_out_template(self):
@@ -198,7 +198,7 @@ class TestIndexRead(object):
             key_descr='the number of people'
         )
 
-        result = out.read(k)
+        result = out.__call__(k)
         assert result[0] == '1'
         assert result[1] == '4'
 

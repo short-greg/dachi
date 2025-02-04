@@ -1,5 +1,4 @@
 from ._core import (
-    TextProc, NullTextProc, 
     Storable, render,
     render_multi, 
     Module, Cue,
@@ -8,7 +7,6 @@ from ._core import (
     aforward,
     stream,
     astream,
-    ReadError
 )
 from ._messages import (
     BaseDialog, ListDialog,
@@ -35,4 +33,26 @@ from ._process import (
     Runner,
     RunStatus,
     StreamRunner
+)
+from ._ai import (
+    LLM_PROMPT, 
+    exclude_role, include_role, to_dialog,
+    ToolOption, ToolCall, ToolSet,
+    llm_aforward, llm_astream, llm_forward,
+    llm_stream, ToMsg, ToText, LLM
+)
+from ._instruct import (
+    validate_out,
+    InstructCall,
+    SignatureFunc,
+    InstructFunc,
+    instructfunc,
+    signaturefunc,
+    signaturemethod,
+    instructmethod
+)
+from ._read import (
+    CSVProc, KVProc, JSONProc, IndexProc,
+    MultiTextProc, PrimProc, PydanticProc, 
+    ReadError, NullTextProc, TextProc
 )
