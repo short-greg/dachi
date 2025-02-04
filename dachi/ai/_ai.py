@@ -6,7 +6,7 @@ from .._core._core import (
     Module
 )
 import pydantic
-from .._core import Msg, ListDialog, BaseDialog
+from .._core import Msg, RespProc, ListDialog, BaseDialog
 from ..utils._f_utils import (
     is_async_function, is_async_function, 
     is_generator_function
@@ -225,40 +225,6 @@ def to_dialog(prompt: typing.Union[BaseDialog, Msg]) -> BaseDialog:
         prompt = ListDialog([prompt])
 
     return prompt
-
-
-class RespProc(ABC):
-    """Use to process the resoponse from an LLM
-    """
-
-    def __init__(self, resp: bool):
-        """
-        Initialize the instance.
-        Args:
-            resp (bool): Indicates if the response processor responds with data.
-        """
-        super().__init__()
-        self._resp = resp
-
-    @property
-    def resp(self) -> bool:
-        """Choose whether to include a response
-
-        Returns:
-            bool: Whether to respond with a value
-        """
-        return self._resp
-
-    @abstractmethod
-    def __call__(self, response, msg: Msg) -> typing.Any:
-        pass
-
-    @abstractmethod
-    def delta(self, response, msg: Msg, delta_store: typing.Dict) -> typing.Any: 
-        pass
-
-    def prep(self) -> typing.Dict:
-        return {}
 
 
 class LLM(Module):

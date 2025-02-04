@@ -9,11 +9,11 @@ import pydantic
 # local
 from .._core._core import (
     Cue, Param,
-    Instruct, Reader,
-    NullRead
+    Instruct, TextProc,
+    NullTextProc
 )
-from .._core._read import (
-    PydanticRead, PrimRead,
+from ..read import (
+    PydanticProc, PrimProc,
 )
 from ._ai import LLM
 from .._core._messages import Msg
@@ -29,7 +29,7 @@ from ..utils._f_utils import (
 X = typing.Union[str, Cue]
 
 
-def validate_out(cues: typing.List[X]) -> typing.Optional[Reader]:
+def validate_out(cues: typing.List[X]) -> typing.Optional[TextProc]:
     """Validate an Out based on several instructions
 
     Args:
@@ -335,7 +335,7 @@ class SignatureFunc(Module, Instruct):
     """
     def __init__(
         self, ifunc: IFunc, engine: LLM=None, 
-        reader: typing.Optional[Reader]=None,
+        reader: typing.Optional[TextProc]=None,
         doc: typing.Union[str, typing.Callable[[], str]]=None,
         is_method: bool=False,
         train: bool=False, 
@@ -357,14 +357,14 @@ class SignatureFunc(Module, Instruct):
         
         if reader is None:
             if ifunc.out_cls in primitives:
-                reader = PrimRead(
+                reader = PrimProc(
                     name=ifunc.name, 
                     out_cls=ifunc.out_cls
                 )
             elif issubclass(ifunc.out_cls, pydantic.BaseModel):
-                reader = PydanticRead(name=ifunc.name, out_cls=ifunc.out_cls)
+                reader = PydanticProc(name=ifunc.name, out_cls=ifunc.out_cls)
             else:
-                reader = NullRead(name=ifunc.name)
+                reader = NullTextProc(name=ifunc.name)
 
         print('Reader: ', type(reader))
         self._reader = reader
@@ -616,7 +616,7 @@ class InstructFunc(Instruct, Module):
     def __init__(
         self, ifunc: IFunc, 
         engine: LLM=None, 
-        reader: typing.Optional[Reader]=None,
+        reader: typing.Optional[TextProc]=None,
         is_method: bool=False,
         train: bool=False, 
         instance=None,
@@ -640,14 +640,14 @@ class InstructFunc(Instruct, Module):
 
         if reader is None:
             if ifunc.out_cls in primitives:
-                reader = PrimRead(
+                reader = PrimProc(
                     name=ifunc.name, 
                     out_cls=ifunc.out_cls
                 )
             elif issubclass(ifunc.out_cls, pydantic.BaseModel):
-                reader = PydanticRead(name=ifunc.name, out_cls=ifunc.out_cls)
+                reader = PydanticProc(name=ifunc.name, out_cls=ifunc.out_cls)
             else:
-                reader = NullRead(name=ifunc.name)
+                reader = NullTextProc(name=ifunc.name)
             
         self._reader = reader
         self._is_method = is_method
@@ -829,7 +829,7 @@ class InstructFunc(Instruct, Module):
 
 def instructfunc(
     engine: LLM=None,
-    reader: Reader=None,
+    reader: TextProc=None,
     is_method: bool=False,
     to_msg: ToMsg=None,
     **kwargs
@@ -863,7 +863,7 @@ def instructfunc(
 
 def instructmethod(
     engine: LLM=None,
-    reader: Reader=None,
+    reader: TextProc=None,
     to_msg: ToMsg=None,
     **kwargs
 ):
@@ -882,7 +882,7 @@ def instructmethod(
 
 def signaturefunc(
     engine: LLM=None,
-    reader: Reader=None,
+    reader: TextProc=None,
     doc: typing.Union[str, typing.Callable[[], str]]=None,
     is_method=False,
     to_msg: ToMsg=None,
@@ -920,7 +920,7 @@ def signaturefunc(
 
 def signaturemethod(
     engine: LLM=None, 
-    reader: Reader=None,
+    reader: TextProc=None,
     doc: typing.Union[str, typing.Callable[[], str]]=None,
     to_msg: ToMsg=None,
     **kwargs

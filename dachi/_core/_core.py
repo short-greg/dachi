@@ -160,7 +160,7 @@ def render_multi(xs: typing.Iterable[typing.Any]) -> typing.List[str]:
     ]
 
 
-class Reader(pydantic.BaseModel, Templatable, ABC):
+class TextProc(pydantic.BaseModel, Templatable, ABC):
     """Use a reader to read in data convert data retrieved from
     an LLM to a better format
     """
@@ -248,7 +248,27 @@ class Reader(pydantic.BaseModel, Templatable, ABC):
         pass
 
 
-class NullRead(Reader):
+class ReadError(Exception):
+    """
+    Exception used when a text processor (TextProc) fails to read data.
+    This class supports rethrowing errors while preserving the original exception details.
+    """
+    def __init__(self, message="Read operation failed", original_exception=None):
+        super().__init__(message)
+        self.original_exception = original_exception
+    
+    def __str__(self):
+        if self.original_exception:
+            return f"{super().__str__()} (Caused by: {repr(self.original_exception)})"
+        return super().__str__()
+    
+    @staticmethod
+    def rethrow(original_exception, message="Read operation failed"):
+        """Utility method to raise a ReadError while preserving the original exception."""
+        raise ReadError(message, original_exception) from original_exception
+
+
+class NullTextProc(TextProc):
     """A Reader that does not change the data. 
     So in most cases will simply output a string
     """
@@ -319,9 +339,9 @@ class Cue(pydantic.BaseModel, Instruct, typing.Generic[S], Renderable):
     """
     
     text: str
-    out: typing.Optional[Reader] = None
+    out: typing.Optional[TextProc] = None
 
-    def __init__(self, text: str, name: str='', out: typing.Optional[Reader] = None):
+    def __init__(self, text: str, name: str='', out: typing.Optional[TextProc] = None):
 
         super().__init__(text=text, name=name, out=out)
 

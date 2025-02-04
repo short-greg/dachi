@@ -14,8 +14,8 @@ from .._core import Storable, render
 
 # TODO: Add in Action (For GOAP)
 
-from .._core import Reader
-from ..read import JSONRead
+from .._core import TextProc
+from ..read import JSONProc
 from ..utils import UNDEFINED, Renderable, Templatable
 
 class TaskStatus(Enum):
@@ -290,7 +290,7 @@ ROUTE = Router | typing.Callable[[typing.Any], TaskStatus | State]
 class IOField(object):
 
     def __init__(
-        self, name: str, type_: typing.Optional[typing.Type]=None, default: typing.Any=UNDEFINED, read: Reader=None
+        self, name: str, type_: typing.Optional[typing.Type]=None, default: typing.Any=UNDEFINED, read: TextProc=None
     ):
         self.name = name
         self.type_ = type_
