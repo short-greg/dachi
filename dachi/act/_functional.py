@@ -12,7 +12,7 @@ from ._core import (
 from ..data import Context, ContextSpawner, SharedBase
 from ._core import TOSTATUS
 from ..data import Buffer,Shared
-from ..ai import LLM, LLM_PROMPT
+from ..conv import LLM, LLM_PROMPT
 
 TASK = typing.Union[Task, typing.Callable[[typing.Dict], TaskStatus]]
 CALL_TASK = typing.Callable[[],TaskStatus]
