@@ -312,18 +312,6 @@ class JSONProc(TextProc):
         except json.JSONDecodeError:
             return {}
 
-    # # TODO: Plan how to stream this        
-    # def delta(self, message: str) -> typing.Any:
-    #     """Read in the output
-
-    #     Args:
-    #         message (str): The message to read
-
-    #     Returns:
-    #         typing.Any: The output of the reader
-    #     """
-    #     pass
-
     def template(self) -> str:
         """Output the template for the class
 
