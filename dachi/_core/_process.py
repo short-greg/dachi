@@ -122,7 +122,15 @@ class Param(pydantic.BaseModel, Renderable, Storable):
     text: str = None
 
     @pydantic.field_validator('cue', mode='before')
-    def convert_renderable_to_string(cls, v):
+    def convert_renderable_to_string(cls, v) -> typing.Union[Cue, typing.Any]:
+        """
+        Converts a renderable value to a string representation.
+        Args:
+            v: The value to be converted. It can be an instance of Cue, Renderable, or a primitive type.
+        Returns:
+            Cue if it is a Cue, Renderable or primitive, otherwise the value
+        """
+
         if isinstance(v, Cue):
             return v
         if isinstance(v, Renderable):
@@ -396,8 +404,6 @@ async def astream(f: typing.Union[Module, typing.Callable], *args, **kwargs) -> 
     raise RuntimeError()
 
 
-
-
 class I(object):
     """Use to mark data that should not be batched
     """
@@ -422,7 +428,7 @@ class I(object):
             yield self.data
 
 
-class P(object):
+class B(object):
     """Use to mark data for batching
     """
     
@@ -446,7 +452,7 @@ class P(object):
             yield d_i
 
     @classmethod
-    def m(cls, *data: typing.Iterable, n: int=None) -> typing.Tuple['P']:
+    def m(cls, *data: typing.Iterable, n: int=None) -> typing.Tuple['B']:
         """Wrap multiple data through Ps
 
         data: The data to wrap in P
@@ -456,7 +462,7 @@ class P(object):
             typing.Tuple[P]: The resulting ps
         """
         return tuple(
-            P(d, n) for d in data
+            B(d, n) for d in data
         )
     
     @property
@@ -490,7 +496,7 @@ def parallel_loop(modules: typing.Union['ModuleList', Module, None], *args, **kw
     if isinstance(modules, ModuleList):
         sz = len(modules)
     for arg in itertools.chain(args, kwargs.values()):
-        if isinstance(arg, P):
+        if isinstance(arg, B):
             if sz is None:
                 sz = arg.n
             elif arg.n != sz:
@@ -503,8 +509,8 @@ def parallel_loop(modules: typing.Union['ModuleList', Module, None], *args, **kw
         modules = I(modules, sz)
 
     kwarg_names = list(kwargs.keys())
-    kwarg_vals = [I(v, sz) if not isinstance(v, P) else v for v in kwargs.values()]
-    args = [I(v, sz) if not isinstance(v, P) else v for v in args]
+    kwarg_vals = [I(v, sz) if not isinstance(v, B) else v for v in kwargs.values()]
+    args = [I(v, sz) if not isinstance(v, B) else v for v in args]
     
     for vs in zip(modules, *args, *kwarg_vals):
         m = vs[0]

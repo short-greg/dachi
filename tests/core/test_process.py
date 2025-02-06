@@ -202,7 +202,7 @@ class TestReduce:
         r = Append('x')
         b = RefinerAppender('y')
         res = _process.reduce(
-            b, _process.P('xy'), init_mod=r
+            b, _process.B('xy'), init_mod=r
         )
         assert res == 'xxyy'
 
@@ -211,7 +211,7 @@ class TestReduce:
         r = Append('x')
         b = RefinerAppender('y')
         res = _process.reduce(
-            b, _process.P('xyz'), init_mod=r
+            b, _process.B('xyz'), init_mod=r
         )
         assert res == 'xxyyzy'
 
@@ -219,7 +219,7 @@ class TestReduce:
 
         b = RefinerAppender('y')
         res = _process.reduce(
-            b, _process.P('xy')
+            b, _process.B('xy')
         )
         assert res == 'xyyy'
 
@@ -246,7 +246,7 @@ class TestMulti:
 
     def test_that_multi_loops_over_the_modules_with_a_batch(self):
 
-        x = _process.P(['hi', 'bye'])
+        x = _process.B(['hi', 'bye'])
         module = _process.MultiModule(
             Append('x')
         )
@@ -268,7 +268,7 @@ class TestAsync:
 
     def test_that_async_loops_over_the_modules_with_a_batch(self):
 
-        x = _process.P(['hi', 'bye'])
+        x = _process.B(['hi', 'bye'])
         module = _process.AsyncModule(
             Append('x')
         )
@@ -278,7 +278,7 @@ class TestAsync:
 
     def test_that_async_loops_over_the_modules_with_a_batch_with_two(self):
 
-        x = _process.P(['hi', 'bye'])
+        x = _process.B(['hi', 'bye'])
         module = _process.AsyncModule(
             Append2('x')
         )

@@ -26,7 +26,7 @@ from ._process import (
     async_multi,
     reduce,
     I,
-    P,
+    B,
     async_map,
     run_thread,
     stream_thread,
