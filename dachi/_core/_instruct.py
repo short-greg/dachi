@@ -1,10 +1,9 @@
 # 1st party
 import typing
 from functools import wraps
-import inspect
 from itertools import chain
 import inspect
-from ._ai import ToMsg, ToText
+import inspect
 import pydantic
 # local
 from ._core import (
@@ -12,6 +11,7 @@ from ._core import (
     Instruct, TextProc,
     NullTextProc
 )
+from ._ai import ToMsg, ToText
 from ..read import (
     PydanticProc, PrimProc,
 )

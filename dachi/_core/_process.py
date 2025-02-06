@@ -815,7 +815,6 @@ async def _async_map(f: Module, *args, **kwargs) -> typing.Tuple[typing.Any]:
     async with asyncio.TaskGroup() as tg:
         
         for cur_f, a, kv in parallel_loop(f, *args, **kwargs):
-
             tasks.append(tg.create_task(cur_f.aforward(*a, **kv)))
 
     return tuple(

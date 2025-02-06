@@ -2,32 +2,21 @@
 import typing
 import json
 import inspect
-from abc import ABC, abstractmethod
 
 # 3rd party
 from io import StringIO
 import pandas as pd
-import pydantic
 import pydantic
 import yaml
 import typing
 import json
 
 # local
-from ..utils import (
-    struct_template, model_to_text, 
-    unescape_curly_braces, TemplateField, 
-    StructLoadException
-)
-from .._core import TextProc, render, Templatable
+from .._core import TextProc, render, END_TOK
 from ..utils import (
     struct_template,
-    model_to_text,
     escape_curly_braces
 )
-from pydantic_core import PydanticUndefined
-
-
 from .._core import TextProc
 
 
@@ -72,7 +61,7 @@ class CSVProc(TextProc):
         df = pd.read_csv(io, sep=self.delim)
         return df.to_dict(orient='records', index=True)
     
-    def delta(self, message: str) -> typing.Any:
+    def delta(self, message: str, delta_store: typing.Dict) -> typing.Any:
         """Read in the output
 
         Args:
@@ -81,7 +70,24 @@ class CSVProc(TextProc):
         Returns:
             typing.Any: The output of the reader
         """
-        pass
+        if message is None:
+            yield None
+        if 'message' not in delta_store:
+            delta_store['message'] = ''
+            delta_store['row'] = 0
+            delta_store['fields'] = None
+        delta_store['message'] += message
+        io = StringIO(delta_store['message'])
+        df = pd.read_csv(io, sep=self.delim)
+        if (
+            len(df.index) > 0 
+            and delta_store['row'] == 0
+        ):
+            delta_store['fields'] = list(df.columns.values)
+        if len(df.index) <= delta_store['row'] or message is not END_TOK:
+            return None
+        df = df.iloc[delta_store['row']:]
+        return df.to_dict(orient='records', index=True)
 
     def template(self) -> str:
         """Output a template for the CSV
@@ -168,17 +174,6 @@ class KVProc(TextProc):
                 pass
         return result
     
-    def delta(self, message: str) -> typing.Any:
-        """Read in the output
-
-        Args:
-            message (str): The message to read
-
-        Returns:
-            typing.Any: The output of the reader
-        """
-        pass
-
     def template(self) -> str:
         """Get the template for the Keys and Values
 
@@ -245,17 +240,6 @@ class IndexProc(TextProc):
             except ValueError:
                 pass
         return result
-    
-    def delta(self, message: str) -> typing.Any:
-        """Read in the output
-
-        Args:
-            message (str): The message to read
-
-        Returns:
-            typing.Any: The output of the reader
-        """
-        pass
 
     def template(self, count: int=None) -> str:
         """Get the template for the Keys and Values
@@ -327,17 +311,18 @@ class JSONProc(TextProc):
             return result
         except json.JSONDecodeError:
             return {}
-        
-    def delta(self, message: str) -> typing.Any:
-        """Read in the output
 
-        Args:
-            message (str): The message to read
+    # # TODO: Plan how to stream this        
+    # def delta(self, message: str) -> typing.Any:
+    #     """Read in the output
 
-        Returns:
-            typing.Any: The output of the reader
-        """
-        pass
+    #     Args:
+    #         message (str): The message to read
+
+    #     Returns:
+    #         typing.Any: The output of the reader
+    #     """
+    #     pass
 
     def template(self) -> str:
         """Output the template for the class
@@ -379,17 +364,6 @@ class YAMLRead(TextProc):
             return result
         except yaml.YAMLError:
             return {}
-        
-    def delta(self, message: str) -> typing.Any:
-        """Read in the output
-
-        Args:
-            message (str): The message to read
-
-        Returns:
-            typing.Any: The output of the reader
-        """
-        pass
 
     def template(self) -> str:
         """Output the template for the class
@@ -398,3 +372,4 @@ class YAMLRead(TextProc):
             str: The template for the output
         """
         return yaml.safe_dump(self.key_descr)
+

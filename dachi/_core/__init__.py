@@ -53,5 +53,6 @@ from ._instruct import (
 )
 from ._read import (
     MultiTextProc, PrimProc, PydanticProc, 
-    ReadError, NullTextProc, TextProc
+    ReadError, NullTextProc, TextProc,
+    END_TOK
 )

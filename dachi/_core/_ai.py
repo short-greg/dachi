@@ -16,6 +16,14 @@ LLM_PROMPT = typing.Union[typing.Iterable[Msg], Msg]
 LLM_RESPONSE = typing.Tuple[Msg, typing.Any]
 
 
+class _Final:
+    """A unique object to mark the end of a streaming response."""
+    def __repr__(self):
+        return "<Final Token>"
+
+END_TOK = _Final()
+
+
 class ToolOption(pydantic.BaseModel):
     """
     Represents an option for a tool, encapsulating the tool's name, 
@@ -214,7 +222,6 @@ def include_role(messages: typing.Iterable[Msg], *role: str) -> typing.List[Msg]
         if message.role in include]
 
 
-
 def to_dialog(prompt: typing.Union[BaseDialog, Msg]) -> BaseDialog:
     """Convert a prompt to a dialog
 
@@ -275,7 +282,6 @@ class LLM(Module):
         Raises:
             RuntimeError: If the forward function is not defined for the LLM.
         """
-        
         kwargs = {
             **self._kwargs, 
             **kwarg_overrides, 
@@ -335,9 +341,6 @@ class LLM(Module):
             typing.Tuple[Msg, typing.Any]: A tuple containing the message and any additional data.
         """
         if self._stream is not None:
-            print(
-                dialog.to_list_input()
-            )
             kwargs = {
                 **self._kwargs, 
                 **kwarg_overrides, 
@@ -472,6 +475,17 @@ async def llm_aforward(
     )
 
 
+def process_response(response, msg, resp_proc, delta: typing.Dict):
+
+    if resp_proc is None:
+        return msg
+    if isinstance(resp_proc, RespProc):
+        return msg, resp_proc.delta(response, msg, delta)
+    return msg, tuple(
+        r.delta(response, msg, delta_i) for r, delta_i in zip(resp_proc, delta)
+    )
+
+
 def llm_stream(
     f: typing.Callable, 
     *args, 
@@ -507,17 +521,17 @@ def llm_stream(
         msg = Msg(role=_role)
         msg['meta']['response'] = response
 
-        if _resp_proc is None:
-            yield msg
-        
-        elif isinstance(_resp_proc, RespProc):
-            yield msg, _resp_proc.delta(response, msg, delta)
+        yield process_response(
+            response, msg, _resp_proc, delta
+        ) 
+    
+    msg = Msg(role=_role)
+    msg['meta']['response'] = END_TOK
 
-        else: 
-            
-            yield msg, tuple(
-                r.delta(response, msg, delta_i) for r, delta_i in zip(_resp_proc, delta)
-            )
+    yield process_response(
+        END_TOK, msg, _resp_proc, delta
+    ) 
+
 
 async def llm_astream(
     f: typing.Callable, 
@@ -554,19 +568,18 @@ async def llm_astream(
     async for response in await f(
         *args, **kwargs
     ):
-        
         msg = Msg(role=_role)
         msg['meta']['response'] = response
-        if _resp_proc is None:
-            yield msg
-        
-        elif isinstance(_resp_proc, RespProc):
-            yield msg, _resp_proc.delta(response, msg, delta)
+        yield process_response(
+            response, msg, _resp_proc, delta
+        ) 
 
-        else: 
-            yield msg, tuple(
-                r.delta(response, msg, delta_i) for r, delta_i in zip(_resp_proc, delta)
-            )
+    msg = Msg(role=_role)
+    msg['meta']['response'] = END_TOK
+
+    yield process_response(
+        END_TOK, msg, _resp_proc, delta
+    )
 
 
 class ToMsg(ABC):

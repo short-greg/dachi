@@ -3,7 +3,7 @@ import typing
 
 from .._core import Msg
 from ..ai import ToolSet, ToolCall
-from .._core._ai import RespProc
+from .._core._ai import RespProc, END_TOK
 import json
 
 # TODO: add utility for this
@@ -71,14 +71,21 @@ class OpenAITextProc(RespProc):
 
         if 'content' not in delta_store:
             delta_store['content'] = ''
-        
+
+        if response is END_TOK:
+            msg['content'] = delta_store['content']
+            return None
+
         if delta_store is None:
             msg['content'] = None
-            return msg, None
+            msg['delta']['content'] = None
+            return None
         
         if delta is not None:
             delta_store['content'] += delta
-        msg['content'] = delta
+        
+        msg['delta']['content'] = delta
+        msg['content'] = delta_store['content']
         return delta
 
     def prep(self) -> typing.Dict:
@@ -151,6 +158,11 @@ class OpenAIToolProc(RespProc):
                 'prep': [],
                 'tools': []
             })
+
+        if response is END_TOK:
+            msg['meta']['tools'] = [*delta_store['tools']]
+            msg['delta']['tools'] = None
+            return None
         
         result = None
         if response.choices[0].delta.tool_calls is not None:
@@ -167,16 +179,18 @@ class OpenAIToolProc(RespProc):
                     )
                     delta_store['tools'].append(result)
                 delta_store['idx'] = tool_call.index
-                print(delta_store['idx'])
                 cur_tool = {
                     'name': tool_call.function.name,
                     'argstr': tool_call.function.arguments,
                 }
                 delta_store['prep'].append(cur_tool)
+                msg['delta']['tool'] = cur_tool
             else:
                 cur_tool = delta_store['prep'][idx]
                 cur_tool['argstr'] += tool_call.function.arguments
                 result = None
+                msg['delta']['tool'] = None
+
         elif delta_store['idx'] is not None:
             cur = delta_store['prep'][-1]
 
@@ -186,7 +200,7 @@ class OpenAIToolProc(RespProc):
             )
             delta_store['tools'].append(result)
             delta_store['idx'] = None
-            # msg['meta']['tools']['calls'].append(cur_tool)
+            msg['delta']['tool'] = cur_tool
 
         msg['meta']['tools'] = [*delta_store['tools']]
 

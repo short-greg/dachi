@@ -1,10 +1,7 @@
 from dachi._core import _core
 import asyncio
-import pytest
 from pydantic import BaseModel
-
 from typing import Any, Iterator, Tuple
-
 from dachi._core._core import Module
 import typing
 
@@ -45,10 +42,6 @@ class Evaluation(BaseModel):
     score: float
 
 
-
-# Test Storable
-
-
 class TestCue(object):
 
     def test_instruction_renders_with_text(self):
@@ -57,17 +50,6 @@ class TestCue(object):
             text='x'
         )
         assert cue.render() == 'x'
-
-    # def test_read_(self):
-
-    #     instruction = _core.Cue(
-    #         text='x', out=_core.StructRead(
-    #             name='F1',
-    #             out_cls=SimpleStruct
-    #         )
-    #     )
-    #     simple = SimpleStruct(x='2')
-    #     assert instruction.read(simple.to_text()).x == '2'
 
     def test_instruction_text_is_correct(self):
 

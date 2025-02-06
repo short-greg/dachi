@@ -10,6 +10,7 @@ import pydantic
 # local
 from ._core import Renderable
 
+
 class Msg(dict):
     """A Msg used for a dialog
     """
