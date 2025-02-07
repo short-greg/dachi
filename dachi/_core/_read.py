@@ -248,7 +248,7 @@ class MultiTextProc(TextProc):
             data_str = d[data_loc:data_end_loc]
             try: 
                 structs.append(out(data_str))
-            except StructLoadException as e:
+            except ReadError as e:
                 return {'data': structs, 'i': i}
             d = d[data_end_loc:]
 
@@ -271,23 +271,23 @@ class MultiTextProc(TextProc):
             typing.Any: The output of the reader
         """
         if 'message' not in delta_store:
-            delta_store['message'] = ''
             delta_store['i'] = 0
             delta_store['structs'] = []
+            delta_store['message'] = ''
 
         if message is not None and message is not END_TOK:
             delta_store['message'] += message
 
         i = delta_store['i']
         if i >= len(self.outs):
-            yield None
+            return None
         
         d = delta_store['message']
         out = self.outs[i]
         name = out.name or str(i)
         from_loc = d.find('\u241E')
         to_loc = d[from_loc + 1:].find('\u241E')
-        if to_loc is None and message is not END_TOK:
+        if to_loc is -1 and message is not END_TOK:
             return None
 
         cur = self.conn.format(name=name)
@@ -301,11 +301,15 @@ class MultiTextProc(TextProc):
         data_str = d[data_loc:data_end_loc]
         try:
             delta_store['structs'].append(out(data_str))
-            d = d[data_end_loc:]
-            delta_store['message'] = d
+            print('RES ')
+            print(d)
+            print('After')
+            print(d[data_end_loc:])
+            delta_store['message'] = d[data_end_loc:]
             delta_store['i'] += 1
         except ReadError as e:
-            raise ReadError('Reading of MultiTextProc has failed.', e)
+            return None
+            # raise ReadError('Reading of MultiTextProc has failed.', e)
         
         return delta_store['structs'][i]
 
@@ -443,11 +447,15 @@ class PydanticProc(TextProc, typing.Generic[S]):
         Returns:
             typing.Any: The output of the reader
         """
-        print(message)
         message = unescape_curly_braces(message)
-        print(message)
-        data = json.loads(message)
+        try:
+            data = json.loads(message)
+        except json.JSONDecodeError as e:
+            raise ReadError(
+                f'Could not read in {message} as a JSON', e
+            )
         return self._out_cls(**data)
+
         # try:
         #     message = unescape_curly_braces(delta['message'])
         #     data = json.loads(message)

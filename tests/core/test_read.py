@@ -46,11 +46,41 @@ class TestMultiRead(object):
         )
 
         text = out.example(struct_list)
-        print('Before')
-        print(text)
-        print('After')
         structs = out(text)
         assert structs['data'][0].x == struct_list['data'][0].x
+
+    def test_stream_reads_in_the_data(self):
+
+        struct_list = {'data': [
+            SimpleStruct(x='2'),
+            SimpleStruct(x='3')
+        ], 'i': 2}
+
+        out = _core.MultiTextProc(
+            name='Multi',
+            outs=[_core.PydanticProc(
+                name='F1',
+                out_cls=SimpleStruct
+            ), _core.PydanticProc(
+                name='F2',
+                out_cls=SimpleStruct
+            )]
+        )
+
+        text = out.example(struct_list)
+        delta_store = {}
+        ress = []
+        for t in text:
+            ress.append(
+                out.delta(t, delta_store)
+            )
+
+        ress.append(
+            out.delta(_core.END_TOK, delta_store)
+        )
+        structs = [res for res in ress if res is not None]
+        assert structs[0].x == struct_list['data'][0].x
+
 
     def test_out_stream_read_in_the_class(self):
 

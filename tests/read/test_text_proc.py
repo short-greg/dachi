@@ -1,52 +1,6 @@
 from dachi.utils import model_to_text
 from dachi.read import _text_proc as text_proc
-from .._structs import SimpleStruct, SimpleStruct2
-
-
-# class TestStructListRead(object):
-
-#     def test_out_reads_in_the_class(self):
-
-#         struct_list = _core.DataList(
-#             data=[
-#                 SimpleStruct(x='2'),
-#                 SimpleStruct(x='3')
-#             ]
-#         )
-
-#         out = _core.StructListRead(
-#             name='F1',
-#             out_cls=SimpleStruct
-#         )
-
-#         assert out.read(model_to_text(struct_list))[0].x == '2'
-
-
-#     def test_out_reads_in_the_class(self):
-
-#         struct_list = _core.DataList(
-#             data=[
-#                 SimpleStruct(x='2'),
-#                 SimpleStruct(x='3')
-#             ]
-#         )
-
-#         out = _core.StructListRead(
-#             name='F1',
-#             out_cls=SimpleStruct
-#         )
-
-#         assert out.read(model_to_text(struct_list))[0].x == '2'
-
-#     # def test_out_reads_in_the_class_with_str(self):
-
-#     #     out = _core.StructRead(
-#     #         name='F1',
-#     #         out_cls=SimpleStruct
-#     #     )
-
-#     #     simple = SimpleStruct(x='2')
-#     #     assert out.read(model_to_text(simple)).x == '2'
+from .._structs import SimpleStruct2
 
 
 class TestCSVRead(object):
@@ -63,7 +17,6 @@ class TestCSVRead(object):
         )
 
         result = out.__call__(csv)
-        print(result[0])
         assert result[0]['x'] == 1
         assert result[0]['y'] == 2
         assert len(result) == 2
@@ -211,4 +164,3 @@ class TestIndexRead(object):
         temp = out.template()
         assert '1::' in temp
         assert 'N::' in temp
-
