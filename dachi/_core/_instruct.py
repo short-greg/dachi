@@ -6,16 +6,16 @@ import inspect
 import inspect
 import pydantic
 # local
-from ._core import (
+from ._process import (
     Cue, Param,
-    Instruct, TextProc,
-    NullTextProc
+    Instruct
 )
-from ._ai import ToMsg, ToText
-from ..read import (
+
+from ._read import (
     PydanticProc, PrimProc,
+    TextProc, NullTextProc
 )
-from ._ai import LLM
+from ._ai import LLM, ToMsg, ToText
 from ._messages import Msg
 from ..utils._utils import (
     str_formatter, primitives
@@ -497,7 +497,7 @@ class SignatureFunc(Module, Instruct):
         cue = self._prepare_msg(instance, *args, **kwargs)
         _, res = engine(cue, **self._kwargs)
         if self._reader is not None:
-            res = self._reader.read(res)
+            res = self._reader(res)
         return res
 
     async def aforward(self, *args, **kwargs) -> typing.Any:
@@ -518,7 +518,7 @@ class SignatureFunc(Module, Instruct):
         else:
             _, res = await engine(cue, **self._kwargs)
         if self._reader is not None:
-            return self._reader.read(res)
+            return self._reader(res)
         return res
 
     def stream(self, *args, **kwargs) -> typing.Any:
@@ -541,7 +541,7 @@ class SignatureFunc(Module, Instruct):
             f = engine
         for _, v in f(cue, **self._kwargs):
             if self._reader is not None:
-                v = self._reader.read(v)
+                v = self._reader(v)
             yield v
 
     async def astream(self, *args, **kwargs) -> typing.Any:
@@ -564,7 +564,7 @@ class SignatureFunc(Module, Instruct):
             f = engine
         async for _, v in f.astream(cue, **self._kwargs):
             if self._reader is not None:
-                v = self._reader.read(v)
+                v = self._reader(v)
             yield v
 
     def i(self, *args, **kwargs) -> Cue:
@@ -737,7 +737,7 @@ class InstructFunc(Instruct, Module):
         cue, msg = self._prepare_msg(instance, *args, **kwargs)
         _, res = engine(msg, **self._kwargs)
         if self._reader is not None:
-            return self._reader.read(res)
+            return self._reader(res)
         return cue.read(res)
 
     async def aforward(self, *args, **kwargs) -> typing.Any:
@@ -758,7 +758,7 @@ class InstructFunc(Instruct, Module):
         else:
             _, res = await engine(cue, **self._kwargs)
         if self._reader is not None:
-            return self._reader.read(res)
+            return self._reader(res)
         return cue.read(res)
 
     def stream(self, *args, **kwargs) -> typing.Any:
@@ -773,7 +773,7 @@ class InstructFunc(Instruct, Module):
             f = engine
         for _, v in f(msg, **self._kwargs):
             if self._reader is not None:
-                v = self._reader.read(v)
+                v = self._reader(v)
             else:
                 v = cue.read(v)
             yield v
@@ -792,7 +792,7 @@ class InstructFunc(Instruct, Module):
         async for _, v in f.astream(msg, **self._kwargs):
             # if  is not None:
             if self._reader is not None:
-                v = self._reader.read(v)
+                v = self._reader(v)
             else:
                 v = cue.read(v)
             yield v

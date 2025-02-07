@@ -14,7 +14,11 @@ from ._core import Renderable
 class Msg(dict):
     """A Msg used for a dialog
     """
-    def __init__(self, role: str, type_: str='data', meta: typing.Dict=None, delta: typing.Dict=None, _include_role: bool=True, **kwargs):
+    def __init__(
+        self, role: str, type_: str='data', 
+        meta: typing.Dict=None, delta: typing.Dict=None, 
+        _include_role: bool=True, **kwargs
+    ):
         """Create a Msg
 
         Args:

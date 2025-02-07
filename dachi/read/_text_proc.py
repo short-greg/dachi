@@ -12,12 +12,12 @@ import typing
 import json
 
 # local
-from .._core import TextProc, render, END_TOK
+from .._core._read import TextProc
+from .._core._core import render, END_TOK
 from ..utils import (
     struct_template,
     escape_curly_braces
 )
-from .._core import TextProc
 
 
 class CSVProc(TextProc):

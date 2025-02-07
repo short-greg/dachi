@@ -62,7 +62,7 @@ class TestSignatureF:
         class X(object):
             
             @core.signaturemethod(engine=DummyAIModel())
-            def signaturep(self, x: str) -> SimpleStruct:
+            def signaturep(self, x: str) -> str:
                 """Output the value of x
                 
                 x: {x}
@@ -86,7 +86,7 @@ class TestSignatureF:
             
             @dummy_dec
             @core.signaturemethod(engine=DummyAIModel())
-            def signaturep(self, x: str) -> SimpleStruct:
+            def signaturep(self, x: str) -> str:
                 """Output the value of x
                 
                 x: {x}
@@ -95,7 +95,7 @@ class TestSignatureF:
                     x (str): The input
 
                 Returns:
-                    SimpleStruct: The value of x
+                    str: The value of x
                 """
                 pass
 
@@ -109,7 +109,7 @@ class TestSignatureF:
         class X(object):
 
             @core.signaturemethod(engine=DummyAIModel())
-            def signaturep(self, x: str) -> SimpleStruct:
+            def signaturep(self, x: str) -> str:
                 """Output the value of x
                 
                 x: {x}
@@ -118,7 +118,7 @@ class TestSignatureF:
                     x (str): The input
 
                 Returns:
-                    SimpleStruct: The value of x
+                    str: The value of x
                 """
                 pass
 
@@ -138,7 +138,7 @@ class TestSignatureF:
                 self.model = model
             
             @core.signaturemethod(engine='model')
-            def signaturep(self, x: str) -> SimpleStruct:
+            def signaturep(self, x: str) -> str:
                 """Output the value of x
                 
                 x: {x}
@@ -234,7 +234,7 @@ class TestInstructF:
             
             @dummy_dec
             @core.instructmethod(engine=DummyAIModel('Awesome'))
-            def instructrep(self, x: str) -> SimpleStruct:
+            def instructrep(self, x: str) -> str:
                 """
                 """
                 return core.Cue(f'Do {x}')

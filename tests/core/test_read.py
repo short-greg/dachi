@@ -46,8 +46,10 @@ class TestMultiRead(object):
         )
 
         text = out.example(struct_list)
-        print('Text: ', text)
-        structs = out.__call__(text)
+        print('Before')
+        print(text)
+        print('After')
+        structs = out(text)
         assert structs['data'][0].x == struct_list['data'][0].x
 
     def test_out_stream_read_in_the_class(self):
@@ -115,7 +117,7 @@ class TestStructRead:
             out_cls=SimpleStruct
         )
         s = model_to_text(SimpleStruct(x='2'))
-        simple2 = out.__call__(s)
+        simple2 = out(s)
         assert simple2.x == '2'
 
     def test_out_reads_in_the_class_with_str(self):
@@ -127,7 +129,7 @@ class TestStructRead:
 
         simple = SimpleStruct(x='2')
 
-        assert out.__call__(model_to_text(simple)).x == '2'
+        assert out(model_to_text(simple)).x == '2'
 
 
 class TestPrimRead(object):

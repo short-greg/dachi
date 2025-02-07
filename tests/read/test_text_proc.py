@@ -1,5 +1,5 @@
 from dachi.utils import model_to_text
-from dachi._core import _read as _core
+from dachi.read import _text_proc as text_proc
 from .._structs import SimpleStruct, SimpleStruct2
 
 
@@ -57,7 +57,7 @@ class TestCSVRead(object):
         csv += '1,2\n'
         csv += '3,4\n'
 
-        out = _core.CSVProc(
+        out = text_proc.CSVProc(
             name='F1',
             indexed=False,
         )
@@ -70,7 +70,7 @@ class TestCSVRead(object):
 
     def test_template_outputs_a_valid_template(self):
 
-        out = _core.CSVProc(
+        out = text_proc.CSVProc(
             name='F1',
             indexed=True,
             cols=[('x', 'X value', 'int'), ('y', 'Y value', 'str')]
@@ -82,7 +82,7 @@ class TestCSVRead(object):
 
     def test_template_outputs_a_valid_template_for_not_indexed(self):
 
-        out = _core.CSVProc(
+        out = text_proc.CSVProc(
             name='F1',
             indexed=False,
             cols=[('x', 'X value', 'int'), ('y', 'Y value', 'str')]
@@ -100,7 +100,7 @@ class TestKVRead(object):
         k = 'x::1\n'
         k += 'y::4\n'
 
-        out = _core.KVProc(
+        out = text_proc.KVProc(
             name='F1',
             key_descr={
                 'x': 'the value of x', 
@@ -115,7 +115,7 @@ class TestKVRead(object):
     def test_template_contains_key(self):
 
 
-        out = _core.KVProc(
+        out = text_proc.KVProc(
             name='F1',
             key_descr={
                 'x': 'the value of x', 
@@ -132,7 +132,7 @@ class TestJSONRead(object):
 
     def test_out_creates_out_class(self):
 
-        out = _core.JSONProc(
+        out = text_proc.JSONProc(
             name='F1',
             key_descr={
                 'x': 'The value of x',
@@ -146,7 +146,7 @@ class TestJSONRead(object):
 
     def test_out_template(self):
 
-        out = _core.JSONProc(
+        out = text_proc.JSONProc(
             name='F1',
             key_descr={
                 'x': 'The value of x',
@@ -161,7 +161,7 @@ class TestYAMLRead(object):
 
     def test_out_creates_out_class(self):
 
-        out = _core.YAMLRead(
+        out = text_proc.YAMLRead(
             name='F1',
             key_descr={
                 'x': 'The value of x',
@@ -175,7 +175,7 @@ class TestYAMLRead(object):
 
     def test_out_template(self):
 
-        out = _core.YAMLRead(
+        out = text_proc.YAMLRead(
             name='F1',
             key_descr={
                 'x': 'The value of x',
@@ -193,7 +193,7 @@ class TestIndexRead(object):
         k = '1::1\n'
         k += '2::4\n'
 
-        out = _core.IndexProc(
+        out = text_proc.IndexProc(
             name='F1',
             key_descr='the number of people'
         )
@@ -204,7 +204,7 @@ class TestIndexRead(object):
 
     def test_template_contains_key(self):
 
-        out = _core.IndexProc(
+        out = text_proc.IndexProc(
             name='F1',
             key_descr='the number of people'
         )

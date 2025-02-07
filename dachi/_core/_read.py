@@ -10,16 +10,13 @@ import pydantic
 from ..utils import (
     struct_template,
     unescape_curly_braces, TemplateField, 
-    StructLoadException
-)
-from ._core import (
-    TextProc, render, Templatable,
-)
-from ..utils import (
+    StructLoadException,
     struct_template
 )
+from ._core import (
+    render, Templatable, END_TOK
+)
 from pydantic_core import PydanticUndefined
-from ._ai import END_TOK
 
 S = typing.TypeVar('S', bound=pydantic.BaseModel)
 
@@ -43,6 +40,17 @@ class TextProc(pydantic.BaseModel, Templatable, ABC):
         """
         pass
         # return self.write_text(self.dump_data(data))
+
+    def dump_data(self, data: typing.Any) -> str:
+        """Output an example of the data
+
+        Args:
+            data (typing.Any): 
+
+        Returns:
+            str: 
+        """
+        pass
 
     @abstractmethod
     def __call__(self, message: str) -> typing.Any:
@@ -122,6 +130,17 @@ class NullTextProc(TextProc):
         Returns:
             str: 
         """
+        return str(data)
+
+    def dump_data(self, data: typing.Any) -> str:
+        """Output an example of the data
+
+        Args:
+            data (typing.Any): 
+
+        Returns:
+            str: 
+        """
         return data
 
     def __call__(self, message: str) -> typing.Any:
@@ -171,7 +190,7 @@ class MultiTextProc(TextProc):
         """
         results = []
         for data_i, out in zip(data['data'], self.outs):
-            results.append(out.dump_data(data_i))
+            results.append(out.example(data_i))
         data = {'data': results, 'i': data['i']}
         result = ''
         for i, (d, out) in enumerate(zip(data['data'], self.outs)):
@@ -180,6 +199,27 @@ class MultiTextProc(TextProc):
             result = f'{result}\n{render(d)}'
 
         return result
+
+    # def dump_data(self, data: typing.Any) -> str:
+    #     """Output an example of the data
+
+    #     Args:
+    #         data (typing.Any): 
+
+    #     Returns:
+    #         str: 
+    #     """
+    #     results = []
+    #     for data_i, out in zip(data['data'], self.outs):
+    #         results.append(out.dump_data(data_i))
+    #     data = {'data': results, 'i': data['i']}
+    #     result = ''
+    #     for i, (d, out) in enumerate(zip(data['data'], self.outs)):
+    #         name = out.name or str(i) 
+    #         result = result + '\n' + self.signal + self.conn.format(name=name)
+    #         result = f'{result}\n{render(d)}'
+
+    #     return result
 
     def __call__(self, message: str) -> typing.Any:
         """Read in the output
@@ -213,12 +253,13 @@ class MultiTextProc(TextProc):
             d = d[data_end_loc:]
 
         data = {'data': structs, 'i': i, 'n': len(self.outs)}
-        structs = []
+        return data
+        # structs = []
 
-        for o, d_i in zip(self.outs, data['data']):
-            structs.append(o.load_data(d_i))
+        # for o, d_i in zip(self.outs, data['data']):
+        #     structs.append(d_i)
 
-        return {'data': structs, 'i': data['i'], 'n': data['n']}
+        # return {'data': structs, 'i': data['i'], 'n': data['n']}
     
     def delta(self, message: str, delta_store: typing.Dict) -> typing.Any:
         """Read in the output
@@ -319,7 +360,18 @@ class PrimProc(TextProc):
         Returns:
             str: 
         """
-        return str(data)
+        return str(self.dump_data())
+
+    def dump_data(self, data: typing.Any) -> str:
+        """Output an example of the data
+
+        Args:
+            data (typing.Any): 
+
+        Returns:
+            str: 
+        """
+        return data
 
     def __call__(self, message: str) -> typing.Any:
         """Read in the output
@@ -369,7 +421,18 @@ class PydanticProc(TextProc, typing.Generic[S]):
         Returns:
             str: 
         """
-        return str(data.model_dump())
+        return data.model_dump_json()
+
+    def dump_data(self, data: typing.Any) -> str:
+        """Output an example of the data
+
+        Args:
+            data (typing.Any): 
+
+        Returns:
+            str: 
+        """
+        return data.model_dump_json()
 
     def __call__(self, message: str) -> typing.Any:
         """Read in the output
@@ -380,7 +443,9 @@ class PydanticProc(TextProc, typing.Generic[S]):
         Returns:
             typing.Any: The output of the reader
         """
+        print(message)
         message = unescape_curly_braces(message)
+        print(message)
         data = json.loads(message)
         return self._out_cls(**data)
         # try:

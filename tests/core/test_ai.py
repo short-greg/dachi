@@ -15,7 +15,8 @@ class DummyAIModel(_ai.LLM):
         self.target = target
 
     def forward(
-        self, prompt: _ai.LLM_PROMPT, 
+        self, 
+        prompt: _ai.LLM_PROMPT, 
         **kwarg_override
     ) -> _ai.LLM_RESPONSE:
         """Run a standard query to the API
@@ -86,12 +87,13 @@ class TextResp(_ai.RespProc):
         msg['content'] = response['content']
         return msg['content']
 
-    def delta(self, response, msg: Msg, delta: typing.Dict) -> typing.Any: 
+    def delta(self, response, msg: Msg, delta_store: typing.Dict) -> typing.Any: 
         
-        if 'content' not in delta:
-            delta['content'] = '' 
-        delta['content'] += response['content']
-        msg['content'] = delta['content']
+        if 'content' not in delta_store:
+            delta_store['content'] = '' 
+        if response is not None and response is not _ai.END_TOK:
+            delta_store['content'] += response['content']
+        msg['content'] = delta_store['content']
         return msg['content']
 
 
@@ -104,7 +106,10 @@ class DeltaResp(_ai.RespProc):
         msg['delta_content'] = ''
         return ''
 
-    def delta(self, response, msg: Msg, delta: typing.Dict) -> typing.Any: 
+    def delta(self, response, msg: Msg, delta_store: typing.Dict) -> typing.Any: 
+        if response is _ai.END_TOK:
+            msg['delta_content'] = None
+            return None
         
         msg['delta_content'] = response['content']
         return response['content']
@@ -125,7 +130,9 @@ class TestLLM:
     def test_llm_executes_stream_with_processor(self):
         responses = []
         contents = []
-        for r, content in _ai.llm_stream(stream, 'Jack', _resp_proc=TextResp()):
+        for r, content in _ai.llm_stream(
+            stream, 'Jack', _resp_proc=TextResp()
+        ):
             responses.append(r)
             contents.append(content)
         assert contents[0] == 'H'
@@ -142,5 +149,5 @@ class TestLLM:
             deltas.append(delta)
         assert contents[0] == 'H'
         assert contents[-1] == 'Hi! Jack'
-        assert delta[-1] == 'k'
+        assert delta is None
         assert responses[-1]['content'] == 'Hi! Jack'

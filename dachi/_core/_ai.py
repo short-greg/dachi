@@ -2,26 +2,18 @@
 import typing
 from abc import ABC, abstractmethod
 import typing
-from ._core import (
-    Module
-)
+from ._process import Module
 import pydantic
-from . import Msg, RespProc, ListDialog, BaseDialog
+from ._messages import Msg, RespProc, ListDialog, BaseDialog
 from ..utils._f_utils import (
     is_async_function, is_async_function, 
     is_generator_function
 )
+from ._core import END_TOK
+
 
 LLM_PROMPT = typing.Union[typing.Iterable[Msg], Msg]
 LLM_RESPONSE = typing.Tuple[Msg, typing.Any]
-
-
-class _Final:
-    """A unique object to mark the end of a streaming response."""
-    def __repr__(self):
-        return "<Final Token>"
-
-END_TOK = _Final()
 
 
 class ToolOption(pydantic.BaseModel):

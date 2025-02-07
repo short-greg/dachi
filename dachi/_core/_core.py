@@ -2,10 +2,6 @@
 from abc import ABC, abstractmethod
 from typing import Self
 import typing
-from ..utils import (
-    Renderable, TemplateField, 
-    Templatable, model_to_text
-)
 from uuid import uuid4
 
 # 3rd party
@@ -13,10 +9,10 @@ import pydantic
 
 # local
 from ..utils import (
+    Renderable, TemplateField, 
+    Templatable, model_to_text,
     is_primitive, 
-    escape_curly_braces,
-    is_async_function,
-    is_generator_function
+    escape_curly_braces
 )
 
 S = typing.TypeVar('S', bound=pydantic.BaseModel)
@@ -158,3 +154,12 @@ def render_multi(xs: typing.Iterable[typing.Any]) -> typing.List[str]:
     return [
         render(x) for x in xs
     ]
+
+
+class _Final:
+    """A unique object to mark the end of a streaming response."""
+    def __repr__(self):
+        return "<Final Token>"
+
+END_TOK = _Final()
+

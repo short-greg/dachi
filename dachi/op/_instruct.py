@@ -10,7 +10,7 @@ from .._core import (
     render, render_multi,
     Cue, render, Param 
 )
-from ..conv import (
+from .._core import (
     validate_out
 )
 from ..utils import (

@@ -14,15 +14,14 @@ import numpy as np
 import pydantic
 
 # local
-from ._process import Module, Param, render
 from ..utils import UNDEFINED, Renderable
 from ._read import TextProc
-from ._core import Storable
+from ._core import Storable, render
 from ..utils import (
-    is_primitive, is_async_function,
+    is_primitive, 
+    is_async_function,
     is_generator_function
 )
-
 
 S = typing.TypeVar('S', bound=pydantic.BaseModel)
 
@@ -34,7 +33,6 @@ class Partial(object):
     prev: typing.Any = None
     dx: typing.Any = None
     complete: bool = False
-
 
 
 class Instruct(ABC):
@@ -98,7 +96,7 @@ class Cue(pydantic.BaseModel, Instruct, typing.Generic[S], Renderable):
             #     "Out has not been specified so can't read it"
             # )
         
-        return self.out.__call__(data)
+        return self.out(data)
 
     def state_dict(self) -> typing.Dict:
         
@@ -432,7 +430,9 @@ class B(object):
     """Use to mark data for batching
     """
     
-    def __init__(self, data: typing.Iterable, n: int=None):
+    def __init__(
+        self, data: typing.Iterable, n: int=None
+    ):
         """Create a P object that will loop over the data
 
         Args:
@@ -452,7 +452,9 @@ class B(object):
             yield d_i
 
     @classmethod
-    def m(cls, *data: typing.Iterable, n: int=None) -> typing.Tuple['B']:
+    def m(
+        cls, *data: typing.Iterable, n: int=None
+    ) -> typing.Tuple['B']:
         """Wrap multiple data through Ps
 
         data: The data to wrap in P
@@ -475,7 +477,9 @@ class B(object):
         return self._n
 
 
-def parallel_loop(modules: typing.Union['ModuleList', Module, None], *args, **kwargs) -> typing.Iterator[
+def parallel_loop(
+    modules: typing.Union['ModuleList', Module, None], *args, **kwargs
+) -> typing.Iterator[
     typing.Tuple[Module, typing.List, typing.Dict]
 ]:
     """Use to loop over the module list
@@ -781,7 +785,9 @@ class Batched(Renderable):
         )
 
 
-def reduce(mod: Module, *args, init_mod: Module=None, init_val=None, **kwargs):
+def reduce(
+    mod: Module, *args, init_mod: Module=None, init_val=None, **kwargs
+):
     """Reduce the args passed in with a module
 
     Args:
@@ -1058,7 +1064,9 @@ class StreamRunner(object):
         for x in self._result_dx:
             yield x
 
-    def exec_loop(self, sleep_time: float=1./60) -> typing.Iterator[typing.Tuple]:
+    def exec_loop(
+        self, sleep_time: float=1./60
+    ) -> typing.Iterator[typing.Tuple]:
         """Execute the loop
 
         Args:
@@ -1088,7 +1096,9 @@ class StreamRunner(object):
             yield r, rx
 
 
-def run_thread(module: Module, *args, **kwargs) -> Runner:
+def run_thread(
+    module: Module, *args, **kwargs
+) -> Runner:
     """Convenience function to create a "Runner"
 
     Args:
@@ -1102,7 +1112,9 @@ def run_thread(module: Module, *args, **kwargs) -> Runner:
     )
 
 
-def stream_thread(module, *args, **kwargs) -> StreamRunner:
+def stream_thread(
+    module, *args, **kwargs
+) -> StreamRunner:
     """Convenience function to stream a thread. Will create a StreamRunner
 
     Args:
