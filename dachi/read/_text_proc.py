@@ -71,22 +71,32 @@ class CSVProc(TextProc):
             typing.Any: The output of the reader
         """
         if message is None:
-            yield None
+            return None
         if 'message' not in delta_store:
             delta_store['message'] = ''
             delta_store['row'] = 0
             delta_store['fields'] = None
-        delta_store['message'] += message
+        if message is not END_TOK:
+            delta_store['message'] += message
         io = StringIO(delta_store['message'])
         df = pd.read_csv(io, sep=self.delim)
+        # print(df)
         if (
             len(df.index) > 0 
             and delta_store['row'] == 0
         ):
             delta_store['fields'] = list(df.columns.values)
-        if len(df.index) <= delta_store['row'] or message is not END_TOK:
+        if len(df.index) <= delta_store['row'] and message is not END_TOK:
             return None
-        df = df.iloc[delta_store['row']:]
+        
+        delta_store['row'] = len(df.index)
+        if len(df.index) == 1:
+            # it is the header row
+            return None
+        if message is END_TOK:
+            df = df.iloc[delta_store['row'] - 1:]
+        else:
+            df = df.iloc[delta_store['row'] - 2:delta_store['row'] - 1]
         return df.to_dict(orient='records', index=True)
 
     def template(self) -> str:

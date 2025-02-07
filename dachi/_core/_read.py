@@ -78,13 +78,14 @@ class TextProc(pydantic.BaseModel, Templatable, ABC):
             return None
         if 'message' not in delta_store:
             delta_store['message'] = ''
-        delta_store['message'] += (
-            message if message is not END_TOK else ''
-        )
+        
         if message is not END_TOK:
+            delta_store['message'] += (
+                message if message is not END_TOK else ''
+            )
             return None
 
-        return self(message)
+        return self(delta_store['message'])
 
     @abstractmethod
     def template(self) -> str:

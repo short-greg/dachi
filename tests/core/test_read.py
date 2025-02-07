@@ -81,7 +81,6 @@ class TestMultiRead(object):
         structs = [res for res in ress if res is not None]
         assert structs[0].x == struct_list['data'][0].x
 
-
     def test_out_stream_read_in_the_class(self):
 
         struct_list = {'data': [

@@ -1,6 +1,7 @@
 from dachi.utils import model_to_text
 from dachi.read import _text_proc as text_proc
 from .._structs import SimpleStruct2
+from dachi._core import END_TOK
 
 
 class TestCSVRead(object):
@@ -16,9 +17,30 @@ class TestCSVRead(object):
             indexed=False,
         )
 
-        result = out.__call__(csv)
+        result = out(csv)
         assert result[0]['x'] == 1
         assert result[0]['y'] == 2
+        assert len(result) == 2
+
+    def test_out_reads_in_with_delta(self):
+
+        csv = 'x,y\n'
+        csv += '1,2\n'
+        csv += '3,4\n'
+
+        out = text_proc.CSVProc(
+            name='F1',
+            indexed=False,
+        )
+        delta_store = {}
+        ress = []
+        for t in csv:
+            ress.append(out.delta(t, delta_store))
+        ress.append(out.delta(END_TOK, delta_store))
+        result = [res for res in ress if res is not None]
+        print(result)
+        assert result[0][0]['x'] == 1
+        assert result[0][0]['y'] == 2
         assert len(result) == 2
 
     def test_template_outputs_a_valid_template(self):
@@ -28,7 +50,6 @@ class TestCSVRead(object):
             indexed=True,
             cols=[('x', 'X value', 'int'), ('y', 'Y value', 'str')]
         )
-
         temp = out.template()
         assert 'N,' in temp
         assert 'X value <int>' in temp
@@ -61,7 +82,7 @@ class TestKVRead(object):
             },
         )
 
-        result = out.__call__(k)
+        result = out(k)
         assert result['x'] == '1'
         assert result['y'] == '4'
 
@@ -79,6 +100,27 @@ class TestKVRead(object):
         assert 'x::' in temp
         assert 'y::' in temp
 
+    def test_out_reads_in_with_delta(self):
+
+        k = 'x::1\n'
+        k += 'y::4\n'
+
+        out = text_proc.KVProc(
+            name='F1',
+            key_descr={
+                'x': 'the value of x', 
+                'y': 'the value of y'
+            },
+        )
+        delta_store = {}
+        ress = []
+        for t in k:
+            ress.append(out.delta(t, delta_store))
+        ress.append(out.delta(END_TOK, delta_store))
+        result = [res for res in ress if res is not None]
+        
+        assert result[0]['x'] == '1'
+        assert result[0]['y'] == '4'
 
 
 class TestJSONRead(object):
@@ -94,7 +136,7 @@ class TestJSONRead(object):
         )
         simple = SimpleStruct2(x='hi', y=1)
         d = model_to_text(simple)
-        simple2 = out.__call__(d)
+        simple2 = out(d)
         assert simple.x == simple2['x']
 
     def test_out_template(self):
@@ -108,6 +150,30 @@ class TestJSONRead(object):
         )
         simple2 = out.template()
         assert 'x' in simple2
+
+
+    def test_out_reads_in_with_delta(self):
+
+        k = 'x::1\n'
+        k += 'y::4\n'
+
+        simple = SimpleStruct2(x='hi', y=1)
+        out = text_proc.JSONProc(
+            name='F1',
+            key_descr={
+                'x': 'The value of x',
+                'y': 'The value of y'
+            }
+        )
+        delta_store = {}
+        ress = []
+        for t in model_to_text(simple):
+            ress.append(out.delta(t, delta_store))
+        ress.append(out.delta(END_TOK, delta_store))
+        result = [res for res in ress if res is not None]
+        
+        assert result[0]['x'] == 'hi'
+        assert result[0]['y'] == 1
 
 
 class TestYAMLRead(object):
