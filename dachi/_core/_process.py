@@ -9,6 +9,7 @@ import threading
 from enum import Enum
 from dataclasses import dataclass
 
+import asyncio
 # 3rd party
 import numpy as np
 import pydantic
@@ -128,7 +129,6 @@ class Param(pydantic.BaseModel, Renderable, Storable):
         Returns:
             Cue if it is a Cue, Renderable or primitive, otherwise the value
         """
-
         if isinstance(v, Cue):
             return v
         if isinstance(v, Renderable):
@@ -225,7 +225,7 @@ class Module(Storable, ABC):
         """
         return self.forward(*args, **kwargs)
 
-    def _parameters(self, recurse: bool=True) -> typing.Iterator['Param']:
+    def parameters(self, recurse: bool=True) -> typing.Iterator['Param']:
         """Loop over the parameters for the module
 
         Yields:
@@ -240,7 +240,7 @@ class Module(Storable, ABC):
                 
                 yield v
             if recurse and isinstance(v, Module):
-                for v in v._parameters(True):
+                for v in v.parameters(True):
                     if id(v) in yielded:
                         continue
                     yielded.add(id(v))
@@ -304,7 +304,7 @@ class Module(Storable, ABC):
             state_dict[i] = child.state_dict()
         
         params = {}
-        for i, param in enumerate(self._parameters(False)):
+        for i, param in enumerate(self.parameters(False)):
             params[i] = param.state_dict()
         state_dict['__params__'] = params
 
@@ -317,10 +317,9 @@ class Module(Storable, ABC):
             child.load_state_dict(cur_dict)
 
         params = state_dict['__params__']
-        for i, cur in enumerate(self._parameters(False)):
+        for i, cur in enumerate(self.parameters(False)):
             cur.load_state_dict(params[i])
 
-import asyncio
 
 def forward(
     f: typing.Union[Module, typing.Callable], *args, **kwargs
@@ -545,7 +544,7 @@ class ParallelModule(Module, ABC):
         pass
 
 
-class MultiModule(ParallelModule):
+class MultiParallel(ParallelModule):
     """A module that executes each of the modules it wraps in a loop
     """
     
@@ -561,7 +560,7 @@ class MultiModule(ParallelModule):
         return res
 
 
-class AsyncModule(ParallelModule):
+class AsyncParallel(ParallelModule):
     """A type of Parallel module that makes use of 
     Python's Async
     """
@@ -620,7 +619,7 @@ class ModuleList(Module):
                 for child in module.children(recurse):
                     yield child
 
-    def _parameters(self, recurse: bool = True) -> typing.Iterator[Param]:
+    def parameters(self, recurse: bool = True) -> typing.Iterator[Param]:
         """Get the parameters in the ModuleList
 
         Args:
@@ -630,7 +629,7 @@ class ModuleList(Module):
             Param: The params in the ModuleList
         """
         for module in self._modules:
-            for p in module._parameters(recurse):
+            for p in module.parameters(recurse):
                 yield p
         
     def forward(self) -> Any:

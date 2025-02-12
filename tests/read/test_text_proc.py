@@ -151,7 +151,6 @@ class TestJSONRead(object):
         simple2 = out.template()
         assert 'x' in simple2
 
-
     def test_out_reads_in_with_delta(self):
 
         k = 'x::1\n'

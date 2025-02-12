@@ -239,7 +239,7 @@ class TestMulti:
     
     def test_that_multi_loops_over_the_modules(self):
 
-        module = _process.MultiModule(
+        module = _process.MultiParallel(
             [Append('x'), Append('y')]
         )
         res = module('hi')
@@ -249,7 +249,7 @@ class TestMulti:
     def test_that_multi_loops_over_the_modules_with_a_batch(self):
 
         x = _process.B(['hi', 'bye'])
-        module = _process.MultiModule(
+        module = _process.MultiParallel(
             Append('x')
         )
         res = module(x)
@@ -261,7 +261,7 @@ class TestAsync:
     
     def test_that_async_loops_over_the_modules(self):
 
-        module = _process.AsyncModule(
+        module = _process.AsyncParallel(
             [Append('x'), Append('y')]
         )
         res = module('hi')
@@ -271,7 +271,7 @@ class TestAsync:
     def test_that_async_loops_over_the_modules_with_a_batch(self):
 
         x = _process.B(['hi', 'bye'])
-        module = _process.AsyncModule(
+        module = _process.AsyncParallel(
             Append('x')
         )
         res = module(x)
@@ -281,7 +281,7 @@ class TestAsync:
     def test_that_async_loops_over_the_modules_with_a_batch_with_two(self):
 
         x = _process.B(['hi', 'bye'])
-        module = _process.AsyncModule(
+        module = _process.AsyncParallel(
             Append2('x')
         )
         res = module(x, 'z')
@@ -459,7 +459,7 @@ class TestModule:
         
         module = NestedModule(NestedModule(Append('a')))
 
-        children = list(module._parameters())
+        children = list(module.parameters())
         assert len(children) == 2
 
     def test_streamable_streams_characters(self):

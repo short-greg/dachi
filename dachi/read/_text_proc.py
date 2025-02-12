@@ -91,7 +91,6 @@ class CSVProc(TextProc):
         
         delta_store['row'] = len(df.index)
         if len(df.index) == 1:
-            # it is the header row
             return None
         if message is END_TOK:
             df = df.iloc[delta_store['row'] - 1:]

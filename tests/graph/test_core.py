@@ -63,7 +63,7 @@ class TestT:
         assert t.src is None
     
     def test_async_module_works_with_async(self):
-        module = p.AsyncModule(
+        module = p.AsyncParallel(
             Append('x')
         )
         src = g.ModSrc.create(module, p.B(['hi']))
@@ -71,7 +71,7 @@ class TestT:
         assert res == ['hix']
     
     def test_async_module_works_with_multiple_async(self):
-        module = p.AsyncModule([
+        module = p.AsyncParallel([
             Append('x'),
             Append('y')
         ])

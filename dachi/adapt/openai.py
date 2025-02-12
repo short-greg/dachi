@@ -2,7 +2,7 @@ import pkg_resources
 import typing
 
 from .._core import Msg
-from ..conv import ToolSet, ToolCall
+from .._core import ToolSet, ToolCall
 from .._core._ai import RespProc, END_TOK
 import json
 
@@ -67,7 +67,6 @@ class OpenAITextProc(RespProc):
         Returns:
             tuple: A tuple containing the updated msg dictionary and the extracted delta content.
         """
-        delta = response.choices[0].delta.content
 
         if 'content' not in delta_store:
             delta_store['content'] = ''
@@ -76,6 +75,8 @@ class OpenAITextProc(RespProc):
             msg['content'] = delta_store['content']
             return None
 
+        delta = response.choices[0].delta.content
+        
         if delta_store is None:
             msg['content'] = None
             msg['delta']['content'] = None
