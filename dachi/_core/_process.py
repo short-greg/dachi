@@ -110,6 +110,8 @@ class Cue(pydantic.BaseModel, Instruct, typing.Generic[S], Renderable):
         self.text = params['text']
 
 
+# TODO: Make this store just a Pydantic BaseModel
+# rather than a cue.
 class Param(pydantic.BaseModel, Renderable, Storable):
     """Use Param to wrap instructions so the instructions
     can update
@@ -203,6 +205,13 @@ class Param(pydantic.BaseModel, Renderable, Storable):
         self.training = params['training']
         self.text = params['text']
 
+
+# Add in BaseModule
+# I want to get away from the current approach
+# Module forward
+# AsyncModule aforward
+# StreamModule stream
+# AsyncStreamModule astream
 
 class Module(Storable, ABC):
     """Base class for Modules
