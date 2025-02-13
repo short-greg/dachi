@@ -24,6 +24,9 @@ from ..utils import (
     is_generator_function
 )
 
+from typing import TypeVar
+
+
 S = typing.TypeVar('S', bound=pydantic.BaseModel)
 
 @dataclass
@@ -49,10 +52,44 @@ class Instruct(ABC):
         pass
 
 
-class Cue(pydantic.BaseModel, Instruct, typing.Generic[S], Renderable):
+# TODO:
+# Figure out how to make training more generalizable
+# I think somehow Traina
+# Do I use update_state_dict for instance?
+
+
+class Trainable(pydantic.BaseModel):
+
+    @property
+    def fixed_keys(self) -> typing.Set:
+        return set()
+    
+    def fixed_data(self) -> typing.Dict:
+        fixed = set(self.fixed_keys)
+        return {
+            key: val
+            for key, val in self.model_dump().items()
+            if key not in fixed
+        }
+
+    def unfixed_data(self) -> typing.Dict:
+        fixed = set(self.fixed_keys)
+        return {
+            key: val
+            for key, val in self.model_dump().items()
+            if key in fixed
+        }
+
+
+T = TypeVar("T", bound=Trainable)
+
+
+class Cue(
+    Trainable, 
+    Instruct, typing.Generic[S], Renderable
+):
     """Specific cue for the model to use
     """
-    
     text: str
     out: typing.Optional[TextProc] = None
 
@@ -109,37 +146,26 @@ class Cue(pydantic.BaseModel, Instruct, typing.Generic[S], Renderable):
         
         self.text = params['text']
 
+    @property
+    def fixed_data(self):
+        return {"out"}
+
 
 # TODO: Make this store just a Pydantic BaseModel
 # rather than a cue.
-class Param(pydantic.BaseModel, Renderable, Storable):
+class Param(
+    pydantic.BaseModel, 
+    Renderable, 
+    Storable
+):
     """Use Param to wrap instructions so the instructions
     can update
     """
-    
     name: str
-    cue: Cue
+    data: T
     training: bool=False
-    text: str = None
 
-    @pydantic.field_validator('cue', mode='before')
-    def convert_renderable_to_string(cls, v) -> typing.Union[Cue, typing.Any]:
-        """
-        Converts a renderable value to a string representation.
-        Args:
-            v: The value to be converted. It can be an instance of Cue, Renderable, or a primitive type.
-        Returns:
-            Cue if it is a Cue, Renderable or primitive, otherwise the value
-        """
-        if isinstance(v, Cue):
-            return v
-        if isinstance(v, Renderable):
-            return Cue(text=v.render())
-        if is_primitive(v):
-            return Cue(text=render(v))
-        return v
-
-    def update(self, text: str) -> bool:
+    def update_param(self, data: typing.Dict) -> bool:
         """Update the text for the parameter
         If not in "training" mode will not update
 
@@ -150,9 +176,32 @@ class Param(pydantic.BaseModel, Renderable, Storable):
             True if updated and Fals if not (not in training mode)
         """
         if self.training:
-            self.text = text
+            excluded = self.data.dict_excluded()
+            data.update(
+                excluded
+            )
+
+            self.data = self.data.__class__(
+                **data
+            )
             return True
         return False
+
+    def dump_param(self):
+        """Update the text for the parameter
+        If not in "training" mode will not update
+
+        Args:
+            text (str): The text to update with
+        
+        Returns:
+            True if updated and Fals if not (not in training mode)
+        """
+        if self.training:
+            return {
+                self.name: self.data.dict_excluded()
+            }
+        return {}
 
     def render(self) -> str:
         """Convert the Parameter to a string
@@ -162,23 +211,25 @@ class Param(pydantic.BaseModel, Renderable, Storable):
         Returns:
             str: 
         """
-        if self.text is None:
-            return self.cue.render()
+        if self.data is not None:
+            return render(self.data)
         return self.text
-
-    def read(self, data: typing.Dict) -> S:
-        """Read in the data
-
-        Args:
-            data (typing.Dict): The data to read in
+    
+    def data_schema(self, exclude_fixed: bool=True) -> typing.Dict:
+        """Get thethe schema for the data used by the model
 
         Returns:
-            S: The result of the reading
+            typing.Dict: The schema for the data
         """
-        return self.cue.read(data)
+        schema = self.data.__class__.model_json_schema()
 
-    def reads(self, data: str) -> S:
-        return self.cue.read_out(data)
+        if exclude_fixed:
+            excluded = self.data.fixed_keys()
+            properties = {
+                k: v for k, v in schema["properties"].items() if k not in excluded
+            }
+            schema['properties'] = properties
+        return schema
     
     def state_dict(self) -> typing.Dict:
         """Get the state dict for the Param
@@ -205,28 +256,56 @@ class Param(pydantic.BaseModel, Renderable, Storable):
         self.training = params['training']
         self.text = params['text']
 
+    # def read(self, data: typing.Dict) -> S:
+    #     """Read in the data
 
-class Module(Storable, ABC):
+    #     Args:
+    #         data (typing.Dict): The data to read in
+
+    #     Returns:
+    #         S: The result of the reading
+    #     """
+    #     return self.cue.read(data)
+
+    # def reads(self, data: str) -> S:
+    #     return self.cue.read_out(data)
+
+
+class ParamSet(object):
+
+    def __init__(self, params: typing.List[Param]):
+        super().__init__()
+        self.params = params
+
+    def schema(self) -> typing.Dict:
+        """
+        Generates a JSON schema dictionary for the parameters.
+        The schema defines the structure of a JSON object with the title "ParamSet".
+        It includes the properties and required fields based on the parameters.
+        Returns:
+            typing.Dict: A dictionary representing the JSON schema.
+        """
+
+        schema = {
+            "title": "ParamSet",
+            "type": "object",
+            "properties": {},
+            "required": []
+        }
+        for param in self.params:
+            schema["properties"][param.name] = param.data_schema()
+            schema["required"].append(param.name)
+        return schema
+    
+    def load(self, data: typing.List[typing.Dict]):
+
+        for datum, param in zip(data, self.params):
+            param.update(datum)
+
+
+class BaseModule(Storable, ABC):
     """Base class for Modules
     """
-
-    @abstractmethod
-    def forward(self, *args, **kwargs) -> typing.Any:
-        """Execute the module
-
-        Returns:
-            typing.Any: The output of the module
-        """
-        pass
-
-    def __call__(self, *args, **kwargs) -> typing.Any:
-        """Execute the module
-
-        Returns:
-            typing.Any: The output of the module
-        """
-        return self.forward(*args, **kwargs)
-
     def parameters(self, recurse: bool=True) -> typing.Iterator['Param']:
         """Loop over the parameters for the module
 
@@ -241,7 +320,7 @@ class Module(Storable, ABC):
                 yielded.add(id(v))
                 
                 yield v
-            if recurse and isinstance(v, Module):
+            if recurse and isinstance(v, BaseModule):
                 for v in v.parameters(True):
                     if id(v) in yielded:
                         continue
@@ -255,9 +334,8 @@ class Module(Storable, ABC):
             Module: The child module
         """
         yielded = set()
-        print(self.__dict__)
         for k, v in self.__dict__.items():
-            if isinstance(v, Module):
+            if isinstance(v, BaseModule):
                 if id(v) in yielded:
                     continue
                 yield v
@@ -268,36 +346,6 @@ class Module(Storable, ABC):
                             continue
                         yielded.add(id(v))
                         yield v
-    
-    async def aforward(self, *args, **kwargs) -> typing.Any:
-        """Execute the forward method asynchronously
-
-        Returns:
-            typing.Any: 
-        """
-        res = self.forward(*args, **kwargs)
-        return res
-
-    def stream(self, *args, **kwargs) -> typing.Iterator[
-        typing.Tuple[typing.Any, typing.Any]
-    ]:
-        """Stream the output
-
-        Yields:
-            Iterator[typing.Iterator[ typing.Tuple[typing.Any, typing.Any] ]]: The current value and the change in the value
-        """
-        # default behavior doesn't actually stream
-        res = self.forward(*args, **kwargs) 
-        yield res, res
-
-    async def astream(self, *args, **kwargs) -> typing.AsyncIterator:
-        """
-        Returns:
-            Streamer: The Streamer to loop over
-        """
-
-        for d, dx in self.stream(*args, **kwargs):
-            yield d, dx
 
     def state_dict(self):
         """Get the state dict for the module"""
@@ -323,6 +371,67 @@ class Module(Storable, ABC):
             cur.load_state_dict(params[i])
 
 
+class Module(BaseModule):
+    """Base class for Modules
+    """
+    @abstractmethod
+    def forward(self, *args, **kwargs) -> typing.Any:
+        """Execute the module
+
+        Returns:
+            typing.Any: The output of the module
+        """
+        pass
+
+    def __call__(self, *args, **kwargs) -> typing.Any:
+        """Execute the module
+
+        Returns:
+            typing.Any: The output of the module
+        """
+        return self.forward(*args, **kwargs)
+
+
+class AsyncModule(BaseModule):
+    """Base class for Modules
+    """
+    @abstractmethod
+    async def aforward(self, *args, **kwargs) -> typing.Any:
+        """Execute the module
+
+        Returns:
+            typing.Any: The output of the module
+        """
+        pass
+
+
+class StreamModule(BaseModule):
+    """Base class for Modules
+    """   
+    
+    @abstractmethod
+    def stream(self, *args, **kwargs) -> typing.Iterator[typing.Any]:
+        """Stream the output
+
+        Yields:
+            Iterator[typing.Any]: The value streamed
+        """
+        pass
+
+
+class AsyncStreamModule(BaseModule):
+    """Base class for Modules
+    """   
+    
+    @abstractmethod
+    async def astream(self, *args, **kwargs) -> typing.AsyncIterator:
+        """
+        Returns:
+            Streamer: The Streamer to loop over
+        """
+        pass
+
+
 def forward(
     f: typing.Union[Module, typing.Callable], *args, **kwargs
 ) -> typing.Any:
@@ -342,8 +451,10 @@ async def aforward(
     f: typing.Union[Module, typing.Callable], *args, **kwargs
 ) -> typing.Any:
     
-    if isinstance(f, Module):
+    if isinstance(f, AsyncModule):
         return await f.aforward(*args, **kwargs)
+    if isinstance(f, Module):
+        return f.forward(*args, **kwargs)
     if not is_async_function(f) and not is_generator_function(f):
         return f(*args, **kwargs)
     if is_async_function(f) and not is_generator_function(f):
@@ -356,7 +467,7 @@ async def aforward(
 
 def stream(f: typing.Union[Module, typing.Callable], *args, **kwargs) -> typing.Any:
     
-    if isinstance(f, Module):
+    if isinstance(f, StreamModule):
         for v in f.stream(*args, **kwargs):
             yield v
     elif not is_async_function(f) and is_generator_function(f):
@@ -387,8 +498,12 @@ async def astream(f: typing.Union[Module, typing.Callable], *args, **kwargs) -> 
         Iterator[typing.Any]: _description_
     """
     
-    if isinstance(f, Module):
+    if isinstance(f, AsyncStreamModule):
         async for v in await f.astream(*args, **kwargs):
+            yield v
+
+    elif isinstance(f, StreamModule):
+        for v in f.stream(*args, **kwargs):
             yield v
     elif is_async_function(f) and is_generator_function(f):
         async for v in await f(*args, **kwargs):
@@ -657,7 +772,15 @@ class ModuleList(Module):
 
 
 class Sequential(ModuleList):
-    """Use to 
+    """
+    Sequential class wraps multiple modules into a sequential list of modules that will be executed one after the other.
+    Methods:
+        __init__(*module) -> None:
+            Initialize the Sequential with a list of modules.
+        add(module):
+            Add a module to the Sequential.
+        forward(*x) -> Any:
+            Pass the input through each of the modules in sequence and return the result of the final module.
     """
     
     def __init__(self, *module) -> None:
@@ -679,7 +802,6 @@ class Sequential(ModuleList):
         Returns:
             Any: The result of the final model
         """
-        
         multi = len(x) > 1
         if len(x) == 1:
             x = x[0]
@@ -788,7 +910,7 @@ class Batched(Renderable):
 
 def reduce(
     mod: Module, *args, init_mod: Module=None, init_val=None, **kwargs
-):
+) -> typing.Any:
     """Reduce the args passed in with a module
 
     Args:
@@ -815,7 +937,7 @@ def reduce(
     return results[-1]
 
 
-async def _async_map(f: Module, *args, **kwargs) -> typing.Tuple[typing.Any]:
+async def _async_map(f: AsyncModule, *args, **kwargs) -> typing.Tuple[typing.Any]:
     """Helper function to run async_map
 
     Args:
@@ -835,7 +957,7 @@ async def _async_map(f: Module, *args, **kwargs) -> typing.Tuple[typing.Any]:
     )
 
 
-def async_map(f: Module, *args, **kwargs) -> typing.Tuple[typing.Any]:
+def async_map(f: AsyncModule, *args, **kwargs) -> typing.Tuple[typing.Any]:
     """Map *args and **kwargs through the module
 
     Args:
@@ -853,7 +975,6 @@ async def _async_multi(*f) -> typing.Tuple[typing.Any]:
     Returns:
         typing.Tuple[typing.Any]: 
     """
-
     tasks = []
     async with asyncio.TaskGroup() as tg:
 
@@ -882,8 +1003,6 @@ def async_multi(*f) -> typing.Tuple[typing.Any]:
 class Partial(object):
     """Class for storing a partial output from a streaming process
     """
-    cur: typing.Any
-    prev: typing.Any = None
     dx: typing.Any = None
     complete: bool = False
 
@@ -899,9 +1018,7 @@ class Streamer(object):
             stream: The stream to loop over in generating the stream
         """
         self._stream = iter(stream)
-        self._cur = None
         self._output = UNDEFINED
-        self._prev = None
         self._dx = None
 
     @property
@@ -922,12 +1039,10 @@ class Streamer(object):
         if self._output is not UNDEFINED:
             return self._output
         try:
-            self._prev = self._cur
-            self._cur, self._dx = next(self._stream)
-            print('Cur = ', self._cur)
-            return Partial(self._cur, self._prev, self._dx, False)    
+            self._dx = next(self._stream)
+            return Partial(self._dx, False)    
         except StopIteration:
-            self._output = Partial(self._cur, self._prev, self._dx, True) 
+            self._output = Partial(self._dx, True) 
             return self._output
     
     @property
@@ -947,10 +1062,10 @@ class Streamer(object):
         """
         while True:
 
-            cur = self()
-            if cur.complete:
+            output = self()
+            if output.complete:
                 break
-            yield cur
+            yield output
 
 
 class RunStatus(Enum):
@@ -966,18 +1081,19 @@ class Runner(object):
     """Create an object to loop over the stream
     """
 
-    def __init__(self, module, *args, **kwargs):
+    def __init__(self, module: Module, *args, **kwargs):
         """Create a runner which will loop over the stream
 
         Args:
             module: The module to stream
         """
-        
         self.module = module
         self.status = RunStatus.READY
         args = [module, *args]
         self._result = None
-        self.t = threading.Thread(target=self._exec, args=args, kwargs=kwargs)
+        self.t = threading.Thread(
+            target=self._exec, args=args, kwargs=kwargs
+        )
         self.t.run()
 
     @property
@@ -989,7 +1105,7 @@ class Runner(object):
         """
         return self._result
 
-    def _exec(self, module: ModuleA, *args, **kwargs):
+    def _exec(self, module: Module, *args, **kwargs):
         """The method that gets executed by the thread
 
         Args:
@@ -1005,7 +1121,7 @@ class StreamRunner(object):
     """Use to run a stream
     """
 
-    def __init__(self, module,  *args, **kwargs):
+    def __init__(self, module: StreamModule,  *args, **kwargs):
         """Create a StreamRunner which will run the module in 
         a stream
 
@@ -1017,7 +1133,10 @@ class StreamRunner(object):
         args = [module, *args]
         self._results = []
         self._result_dx = []
-        self.t = threading.Thread(target=self._stream_exec, args=args, kwargs=kwargs)
+        self.t = threading.Thread(
+            target=self._stream_exec, 
+            args=args, kwargs=kwargs
+        )
         self.t.run()
 
     def _stream_exec(self, module: StreamModule, *args, **kwargs):
@@ -1028,9 +1147,8 @@ class StreamRunner(object):
         """
 
         self.status = RunStatus.RUNNING
-        for d, dx in module.stream(*args, **kwargs):
+        for dx in module.stream(*args, **kwargs):
             self._result_dx.append(dx)
-            self._results.append(d)
 
         self.status = RunStatus.FINISHED
 
@@ -1093,8 +1211,8 @@ class StreamRunner(object):
         Yields:
             typing.Tuple: The result and each change in the result
         """
-        for r, rx in zip(self._results, self._result_dx):
-            yield r, rx
+        for rx in self._result_dx:
+            yield rx
 
 
 def run_thread(
