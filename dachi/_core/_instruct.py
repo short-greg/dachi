@@ -3,13 +3,16 @@ import typing
 from functools import wraps
 from itertools import chain
 import inspect
-import inspect
 import pydantic
+from typing import Self
+from abc import abstractmethod, ABC
 # local
 from ._process import (
-    Cue, Param,
-    Instruct
+    Param,
+    Module
 )
+from ._core import Renderable
+from ..utils import is_primitive
 
 from ._read import (
     PydanticProc, PrimProc,
@@ -20,14 +23,97 @@ from ._messages import Msg
 from ..utils._utils import (
     str_formatter, primitives
 )
-from ._process import Module
 from ..utils._f_utils import (
     is_async_function,
     is_generator_function,
 )
+from ._process2 import Trainable
+
+
+S = typing.TypeVar('S', bound=pydantic.BaseModel)
+
+
+class Instruct(ABC):
+    """
+    """
+    @abstractmethod
+    def i(self) -> 'Cue':
+        """Create an Instruct class used for instructions
+
+        Returns:
+            Cue: Get the cue
+        """
+        pass
+
+
+class Cue(
+    Trainable, 
+    Instruct, typing.Generic[S], Renderable
+):
+    """Specific cue for the model to use
+    """
+    text: str
+    out: typing.Optional[TextProc] = None
+
+    def __init__(self, text: str, name: str='', out: typing.Optional[TextProc] = None):
+
+        super().__init__(text=text, name=name, out=out)
+
+    def i(self) -> Self:
+        return self
+
+    @pydantic.field_validator('text', mode='before')
+    def convert_renderable_to_string(cls, v):
+        if isinstance(v, Renderable):
+            return v.render()
+        if is_primitive(v):
+            return str(v)
+        return v
+
+    def render(self) -> str:
+        """Render the cue
+
+        Returns:
+            str: The text for the cue 
+        """
+        return self.text
+
+    def read(self, data: str) -> S:
+        """Read the data
+
+        Args:
+            data (str): The data to read
+
+        Raises:
+            RuntimeError: If the cue does not have a reader
+
+        Returns:
+            S: The result of the read process
+        """
+        if self.out is None:
+            return data
+            # raise RuntimeError(
+            #     "Out has not been specified so can't read it"
+            # )
+        
+        return self.out(data)
+
+    def state_dict(self) -> typing.Dict:
+        
+        return {
+            'text': self.text,
+        }
+
+    def load_state_dict(self, params: typing.Dict):
+        
+        self.text = params['text']
+
+    @property
+    def fixed_data(self):
+        return {"out"}
+
 
 X = typing.Union[str, Cue]
-
 
 def validate_out(cues: typing.List[X]) -> typing.Optional[TextProc]:
     """Validate an Out based on several instructions
