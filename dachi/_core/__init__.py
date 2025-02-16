@@ -29,7 +29,6 @@ from ._process import (
     reduce,
     I,
     B,
-    Cue,
     async_map,
     run_thread,
     stream_thread,
@@ -42,17 +41,28 @@ from ._ai import (
     exclude_role, include_role, to_dialog,
     ToolOption, ToolCall, ToolSet,
     llm_aforward, llm_astream, llm_forward,
-    llm_stream, ToMsg, ToText, LLM
+    llm_stream, ToMsg, ToText, LLMBase, LLM,
+    AsyncLLM, AsyncModule, AsyncStreamLLM, StreamLLM
 )
 from ._instruct import (
     validate_out,
-    InstructCall,
-    SignatureFunc,
-    InstructFunc,
+    Cue,
+    Instruct,
+    IFunc,
+    ModuleIFunc,
+    FIFunc,
+    IBase,
+    Inst,
+    Sig,
+    FuncDecBase,
+    FuncDec,
+    AFuncDec,
+    StreamDec,
+    AStreamDec,
     instructfunc,
+    instructmethod,
     signaturefunc,
-    signaturemethod,
-    instructmethod
+    signaturemethod
 )
 from ._read import (
     MultiTextProc, PrimProc, PydanticProc, 

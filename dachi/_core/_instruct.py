@@ -1,36 +1,36 @@
 # 1st party
 import typing
-from functools import wraps
-from itertools import chain
-import inspect
-import pydantic
-from typing import Self
 from abc import abstractmethod, ABC
+from typing import Self
+import inspect
+from functools import wraps
+
+# 3rd party
+import pydantic
+
 # local
 from ._process import (
-    Param,
-    Module
+    Module, Trainable, 
+    AsyncModule, StreamModule, AsyncStreamModule
+)
+from ._ai import (
+    AsyncLLM, LLM, LLMBase,
+    StreamLLM, AsyncStreamLLM, ToMsg
 )
 from ._core import Renderable
 from ..utils import is_primitive
 
-from ._read import (
-    PydanticProc, PrimProc,
-    TextProc, NullTextProc
-)
-from ._ai import LLM, ToMsg, ToText
-from ._messages import Msg
-from ..utils._utils import (
-    str_formatter, primitives
-)
-from ..utils._f_utils import (
-    is_async_function,
+from ._read import TextProc
+from ..utils import (
+    is_async_function, 
     is_generator_function,
 )
-from ._process2 import Trainable
+from ..utils._utils import str_formatter
 
 
 S = typing.TypeVar('S', bound=pydantic.BaseModel)
+
+# TODO: MOVE OUT OF HERE
 
 
 class Instruct(ABC):
@@ -136,60 +136,6 @@ def validate_out(cues: typing.List[X]) -> typing.Optional[TextProc]:
         elif cue.out is not None:
             raise RuntimeError(f'Out cannot be duplicated')
     return out
-
-
-class InstructCall(Module, Instruct):
-    """InstructCall is used within an instructf or
-    signaturef to allow one to loop over "incoming"
-    instructions
-    """
-    def __init__(self, i: Instruct, *args, **kwargs):
-        """Create the "Call" passing in the cue
-        and its inputs
-
-        Args:
-            i (Instruct): The cue to wrap
-        """
-        self._instruct = i
-        self.args = args
-        self.kwargs = kwargs
-
-    def __iter__(self) -> typing.Iterator['InstructCall']:
-        """Loop over the "sub" InstructCalls
-
-        Yields:
-            typing.Iterator['InstructCall']: The InstructCalls used
-        """
-        for arg in chain(self.args, self.kwargs.values()):
-            if isinstance(arg, InstructCall):
-                for arg_i in arg:
-                    yield arg_i
-                yield arg
-        yield self
-
-    def i(self) -> Cue:
-        """Get the cue 
-
-        Returns:
-            Cue: The cue
-        """
-        return self._instruct.i()
-        
-    def forward(self) -> typing.Any:
-        """Execute the cue
-
-        Returns:
-            typing.Any: Execute the Instruct
-        """
-        args = [
-            arg() if isinstance(arg, InstructCall) 
-            else arg for arg in self.args
-        ]
-        kwargs = {
-            k: v() if isinstance(v, Instruct) else v
-            for k, v in self.kwargs.items()
-        }
-        return self._instruct(*args, **kwargs)
 
 
 class IFunc(object):
@@ -376,7 +322,7 @@ class ModuleIFunc(IFunc):
             The result of the function
         """
         return self._forward(*args, **kwargs)
-    
+
 
 class FIFunc(IFunc):
     """FIFunc is a function wrapper for an instruct that is not a module
@@ -415,142 +361,84 @@ class FIFunc(IFunc):
         return self._f(*args, **kwargs)
 
 
-class SignatureFunc(Module, Instruct):
-    """SignatureFunc is a method where you define the cue in
-    the function signature
-    """
-    def __init__(
-        self, ifunc: IFunc, engine: LLM=None, 
-        reader: typing.Optional[TextProc]=None,
-        doc: typing.Union[str, typing.Callable[[], str]]=None,
-        is_method: bool=False,
-        train: bool=False, 
-        instance=None,
-        to_msg: ToMsg=None,
-        kwargs: typing.Dict=None
-    ):
-        """Wrap the signature method with a particular engine and
-        dialog factory
+class IBase(ABC):
 
-        Args:
-            f (typing.Callable): The function to wrap
-            engine (AIModel): The engine to use for getting the response 
-            train (bool, optional): Whether to train the cues or not. Defaults to False.
-            instance (optional): The instance. Defaults to None.
-        """
-        super().__init__()
-        self._engine = engine
+    def __init__(self, f, is_method: bool=False):
         
-        if reader is None:
-            if ifunc.out_cls in primitives:
-                reader = PrimProc(
-                    name=ifunc.name, 
-                    out_cls=ifunc.out_cls
-                )
-            elif issubclass(ifunc.out_cls, pydantic.BaseModel):
-                reader = PydanticProc(name=ifunc.name, out_cls=ifunc.out_cls)
-            else:
-                reader = NullTextProc(name=ifunc.name)
-
-        print('Reader: ', type(reader))
-        self._reader = reader
-        self._instance = instance
-        self._ifunc = ifunc
-        self._train = train
-        if doc is not None and not isinstance(doc, str):
-            doc = doc()
-        self._doc = doc if doc is not None else ifunc.docstring
+        self._f = f
         self._is_method = is_method
-        docstring = Cue(text=self._doc)
-        self._docstring = Param(
-            name=self._ifunc.name,
-            cue=docstring,
-            training=train
-        )
-        self._kwargs = kwargs or {}
-        self._conv_msg = to_msg or ToText()
-        if self._ifunc.is_generator() and self._ifunc.is_async():
-            self.__call__ = self.astream
-        elif self._ifunc.is_async():
-            self.__call__ = self.aforward
-        elif self._ifunc.is_generator():
-            self.__call__ = self.stream
-        else:
-            self.__call__ = self.forward
+        self._docstring = f.__doc__
+        self._name = f.__name__
+        self._signature = str(inspect.signature(f))
+        self._parameters = inspect.signature(f).parameters
+        self._return_annotation = inspect.signature(f).return_annotation
+
+    def _align_params(self, *args, **kwargs) -> typing.Dict:
+
+        if self._is_method:
+            instance = args[0]
+            args = args[1:]
+        param_values = list(self._parameters.values())
+        values = {}
+        for value, param in zip(args, param_values):
+            values[param.name] = value
+        
+        for k, value in kwargs.items():
+            param = self._parameters[k]
+            values[param.name] = value
+            
+        return instance, values
 
     @property
-    def kwargs(self) -> typing.Dict:
-        return {**self._kwargs}
+    def f(self) -> typing.Callable:
+        return self._f
 
-    def get_instance(self, args):
-        """Get the instance for the function
+    @property
+    def is_method(self) -> typing.Callable:
+        return self._is_method
+    
+    @abstractmethod
+    def __call__(self, *args, **kwds) -> Cue:
+        pass
 
-        Args:
-            args: The arguments to use
+    
+class Inst(IBase):
 
-        Returns:
-            tuple: The instance and the arguments
-        """
-        if not self._is_method:
-            return None, args
-        if self._instance is None:
-            return args[0], args[1:]
-        return self._instance, args
+    def __call__(self, *args, **kwargs) -> Cue:
+        
+        instance, params = self._align_params(
+            *args, **kwargs
+        )
 
-    def get_engine(self, instance):
-        """Get the engine for the function
+        if instance is not None:
+            return self._f(
+                instance, **params
+            )
+        return self._f(
+            **params
+        )
 
-        Args:
-            instance: The instance to use
 
-        Returns:
-            The engine
-        """
-        if isinstance(self._engine, str):
-            return object.__getattribute__(instance, self._engine)
-        return self._engine
+class Sig(IBase):
 
-    def __get__(self, instance, owner):
-        """Set the instance on the SignatureMethod
+    def __call__(self, *args, **kwargs) -> Cue:
+        
+        instance, params = self._align_params(
+            *args, **kwargs
+        )
 
-        Args:
-            instance (): The instance to use
-            owner (): 
-
-        Returns:
-            SignatureMethod
-        """
-        if self._ifunc.name not in instance.__dict__:
-            instance.__dict__[self._ifunc.name] = SignatureFunc(
-                self._ifunc,
-                engine=self._engine,
-                reader=self._reader,
-                is_method=self._is_method, 
-                train=self._train,
-                instance=instance,
-                kwargs=self._kwargs
+        if instance is not None:
+            return self._f(
+                instance, **params
+            )
+        else:
+            self._f(
+                **params
             )
     
-        return instance.__dict__[self._ifunc.name]
-
-    def _prepare(self, instance, *args, **kwargs):
-        """Prepare the function
-
-        Args:
-            args: The arguments to use
-            kwargs: The keyword arguments to use
-
-        Returns:
-            The cue
-        """
-        params = self._ifunc.fparams(
-            instance, *args, **kwargs
+        cur_kwargs = (
+            cur_kwargs if cur_kwargs is not None else {}
         )
-        cur_kwargs = self._ifunc(
-            *args, instance=instance, **kwargs
-        )
-    
-        cur_kwargs = cur_kwargs if cur_kwargs is not None else {}
         # kwargs = {**kwargs, **cur_kwargs}
         cur_kwargs.update(params)
         
@@ -561,208 +449,32 @@ class SignatureFunc(Module, Instruct):
             doc, required=False, **cur_kwargs
         )
         return cue
-    
-    def _prepare_msg(self, instance, *args, **kwargs) -> typing.Any:
-        """
-        """
-        i = self._prepare(instance, *args, **kwargs)
-        return self._conv_msg(i)
 
-    def forward(self, *args, **kwargs) -> typing.Any:
-        """Execute the function
+
+class FuncDecBase:
+
+    def __init__(self, inst: IBase, instance=None):
+        """_summary_
 
         Args:
-            args: The arguments to use
-            kwargs: The keyword arguments to use
-
-        Returns:
-            The result of the function
+            inst (IBase): _description_
+            instance (_type_, optional): _description_. Defaults to None.
         """
-        instance, args = self.get_instance(args)
-        engine = self.get_engine(instance)
-        cue = self._prepare_msg(instance, *args, **kwargs)
-        _, res = engine(cue, **self._kwargs)
-        if self._reader is not None:
-            res = self._reader(res)
-        return res
-
-    async def aforward(self, *args, **kwargs) -> typing.Any:
-        """Execute the function asynchronously
-
-        Args:
-            args: The arguments to use
-            kwargs: The keyword arguments to use
-
-        Returns:
-            The result of the function
-        """
-        instance, args = self.get_instance(args)
-        engine = self.get_engine(instance)
-        cue = self._prepare_msg(instance, *args, **kwargs)
-        if isinstance(engine, Module):
-            _, res = await engine.aforward(cue, **self._kwargs)
-        else:
-            _, res = await engine(cue, **self._kwargs)
-        if self._reader is not None:
-            return self._reader(res)
-        return res
-
-    def stream(self, *args, **kwargs) -> typing.Any:
-        """Stream the function
-
-        Args:
-            args: The arguments to use
-            kwargs: The keyword arguments to use
-
-        Returns:
-            The result of the function
-        """
-        instance, args = self.get_instance(args)
-        engine = self.get_engine(instance)
-        cue = self._prepare_msg(instance, *args, **kwargs)
-
-        if isinstance(engine, Module):
-            f = engine.stream
-        else:
-            f = engine
-        for _, v in f(cue, **self._kwargs):
-            if self._reader is not None:
-                v = self._reader(v)
-            yield v
-
-    async def astream(self, *args, **kwargs) -> typing.Any:
-        """Stream the function asynchronously
-
-        Args:
-            args: The arguments to use
-            kwargs: The keyword arguments to use
-
-        Returns:
-            The result of the function
-        """
-        instance, args = self.get_instance(args)
-        engine = self.get_engine(instance)
-        cue = self._prepare_msg(instance, *args, **kwargs)
-
-        if isinstance(engine, Module):
-            f = engine.stream
-        else:
-            f = engine
-        async for _, v in f.astream(cue, **self._kwargs):
-            if self._reader is not None:
-                v = self._reader(v)
-            yield v
-
-    def i(self, *args, **kwargs) -> Cue:
-        """Get the cue for the function
-
-        Args:
-            args: The arguments to use
-            kwargs: The keyword arguments to use
-
-        Returns:
-            The cue
-        """ 
-        instance, args = self.get_instance(args)
-        cue = self._prepare(instance, *args, **kwargs)
-        return Cue(
-            cue, self._ifunc.name, 
-            out=self._reader
-        )
-    
-    def spawn(
-        self, 
-        engine: LLM=None, 
-        train: bool=False
-    ) -> 'SignatureFunc':
-        """Spawn a new SignatureMethod. Especially use to create a trainable one
-
-        Args:
-            engine (AIModel, optional): Spawn a new . Defaults to None.
-            train (bool, optional): _description_. Defaults to False.
-
-        Returns:
-            SignatureMethod: 
-        """
-        return SignatureFunc(
-            self._ifunc,
-            engine=engine or self._engine,
-            reader=self._reader,
-            is_method=self._is_method, 
-            train=train if train is not None else self._train,
-            instance=self._instance,
-            kwargs=self._kwargs
-        )
-
-
-class InstructFunc(Instruct, Module):
-    """SignatureFunc is a method where you define the cue in
-    the function signature
-    """
-    def __init__(
-        self, ifunc: IFunc, 
-        engine: LLM=None, 
-        reader: typing.Optional[TextProc]=None,
-        is_method: bool=False,
-        train: bool=False, 
-        instance=None,
-        to_msg: ToMsg=None,
-        kwargs: typing.Dict=None
-    ):
-        """Wrap the signature method with a particular engine and
-        dialog factory
-
-        Args:
-            f (typing.Callable): The function to wrap
-            engine (AIModel): The engine to use for getting the response 
-            train (bool, optional): Whether to train the cues or not. Defaults to False.
-            instance (optional): The instance. Defaults to None.
-        """
-        super().__init__()
-        self._ifunc = ifunc
-        self._train = train
-        self._engine = engine
+        self._inst = inst
         self._instance = instance
 
-        if reader is None:
-            if ifunc.out_cls in primitives:
-                reader = PrimProc(
-                    name=ifunc.name, 
-                    out_cls=ifunc.out_cls
-                )
-            elif issubclass(ifunc.out_cls, pydantic.BaseModel):
-                reader = PydanticProc(name=ifunc.name, out_cls=ifunc.out_cls)
-            else:
-                reader = NullTextProc(name=ifunc.name)
-            
-        self._reader = reader
-        self._is_method = is_method
-        self._conv_msg = to_msg or ToText()
-        self._kwargs = kwargs or {}
-        if self._ifunc.is_generator() and self._ifunc.is_async():
-            self.__call__ = self.astream
-        elif self._ifunc.is_async():
-            self.__call__ = self.aforward
-        elif self._ifunc.is_generator():
-            self.__call__ = self.stream
-        else:
-            self.__call__ = self.forward
+    @abstractmethod
+    def __call__(self, *args, **kwargs):
+        pass
 
     def get_instance(self, args):
-        """Get the instance for the function
 
-        Args:
-            args: The arguments to use
-
-        Returns:
-            tuple: The instance and the arguments
-        """
-        if self._instance is not None:
-            return self._instance, args
-        
-        if self._is_method is True:
+        if self._inst.is_method:
+            if self._instance is not None:
+                return self._instance, args
+            
             return args[0], args[1:]
-        return None, args
+        return None
 
     def get_engine(self, instance):
         """Get the engine for the function
@@ -777,10 +489,6 @@ class InstructFunc(Instruct, Module):
             return object.__getattribute__(instance, self._engine)
         return self._engine
 
-    @property
-    def kwargs(self) -> typing.Dict:
-        return {**self._kwargs}
-
     def __get__(self, instance, owner):
         """Set the instance on the SignatureMethod
 
@@ -792,131 +500,179 @@ class InstructFunc(Instruct, Module):
             SignatureMethod
         """
         if self._ifunc.name not in instance.__dict__:
-            instance.__dict__[self._ifunc.name] = InstructFunc(
-                self._ifunc, self._engine, 
-                self._reader, self._train, 
-                self._is_method, instance,
-                self._conv_msg, self._kwargs
-            )
+            instance.__dict__[self._ifunc.name] = self.spawn(instance=instance)
+    
         return instance.__dict__[self._ifunc.name]
     
-    def _prepare(self, instance, *args, **kwargs) -> Msg:
-        # instance, args = self.get_instance(args)
-
-        # cur_kwargs = self._ifunc(instance, *args, **kwargs)
-        # kwargs = {**kwargs, **cur_kwargs}
-        res = self._ifunc(*args, instance=instance, **kwargs)
-        return res
-
-    def _prepare_msg(self, instance, *args, **kwargs) -> typing.Tuple[Cue, Msg]:
-        """
-        """
-        cue = self._prepare(instance, *args, **kwargs)
-        return cue, self._conv_msg(
-            cue.text
+    def spawn(self, instance=None) -> Self:
+        
+        return self.__class__(
+            inst=self._inst, instance=instance
         )
 
-    def forward(self, *args, **kwargs) -> typing.Any:
 
+class FuncDec(FuncDecBase, Module):
+
+    def __init__(
+        self, inst, engine: LLM, 
+        reader: TextProc=None, 
+        to_msg: ToMsg=None,
+        kwargs: typing.Dict=None,
+        instance=None
+    ):
+        super().__init__(inst, instance)
+        self._engine = engine
+        self._reader = reader
+        self._to_msg = to_msg
+        self._kwargs = kwargs or {}
+
+    def forward(self, *args, **kwargs):
+        
         instance, args = self.get_instance(args)
-        engine = self.get_engine(instance)
-        cue, msg = self._prepare_msg(instance, *args, **kwargs)
-        _, res = engine(msg, **self._kwargs)
-        if self._reader is not None:
-            return self._reader(res)
-        return cue.read(res)
-
-    async def aforward(self, *args, **kwargs) -> typing.Any:
-        """Execute the function asynchronously
-
-        Args:
-            args: The arguments to use
-            kwargs: The keyword arguments to use
-
-        Returns:
-            The result of the function
-        """
-        instance, args = self.get_instance(args)
-        engine = self.get_engine(instance)
-        cue, msg = self._prepare_msg(instance, *args, **kwargs)
-        if isinstance(engine, Module):
-            _, res = await engine.aforward(cue, **self._kwargs)
-        else:
-            _, res = await engine(cue, **self._kwargs)
-        if self._reader is not None:
-            return self._reader(res)
-        return cue.read(res)
-
-    def stream(self, *args, **kwargs) -> typing.Any:
-        """Stream the instruction function"""
-        instance, args = self.get_instance(args)
-        engine = self.get_engine(instance)
-        cue, msg = self._prepare_msg(instance, *args, **kwargs)
-
-        if isinstance(engine, Module):
-            f = engine.stream
-        else:
-            f = engine
-        for _, v in f(msg, **self._kwargs):
-            if self._reader is not None:
-                v = self._reader(v)
-            else:
-                v = cue.read(v)
-            yield v
-
-    async def astream(self, *args, **kwargs) -> typing.Any:
-        """Stream the instruction function asynchronously"""
-
-        instance, args = self.get_instance(args)
-        engine = self.get_engine(instance)
-        cue, msg = self._prepare_msg(instance, *args, **kwargs)
-
-        if isinstance(engine, Module):
-            f = engine.stream
-        else:
-            f = engine
-        async for _, v in f.astream(msg, **self._kwargs):
-            # if  is not None:
-            if self._reader is not None:
-                v = self._reader(v)
-            else:
-                v = cue.read(v)
-            yield v
-
-    def i(self, *args, **kwargs) -> Cue:
-        """Get the cue for the function"""
-        instance, args = self.get_instance(args)
-        return self._prepare(instance, *args, **kwargs)
-
-    def spawn(
-        self, 
-        engine: LLM=None, 
-        train: bool=None
-    ) -> 'InstructFunc':
-        """Spawn a new SignatureMethod. Especially use to create a trainable one
-
-        Args:
-            engine (AIModel, optional): Spawn a new . Defaults to None.
-            train (bool, optional): _description_. Defaults to False.
-
-        Returns:
-            SignatureMethod: 
-        """
-        return InstructFunc(
-            self._ifunc, 
-            engine=engine or self._engine,
-            reader=self._reader,
-            is_method=self._is_method, 
-            train=train if train is not None else self._train,
-            instance=self._instance,
-            kwargs=self._kwargs
+        cue = self._inst(
+            instance, *args, **kwargs
         )
+        msg = self._to_msg(cue)
+        engine = self.get_engine(instance)
+        _, res = engine(
+            [msg], **self._kwargs
+        )
+        return self._reader(res)
+
+    def spawn(self, instance=None) -> Self:
+        
+        return self.__class__(
+            inst=self._inst, reader=self._reader,
+            engine=self._engine, instance=instance
+        )
+
+FuncDec.__call__ = FuncDec.forward
+
+class AFuncDec(FuncDecBase, AsyncModule):
+
+    def __init__(
+        self, inst, engine: AsyncLLM, 
+        reader: TextProc=None, 
+        to_msg: ToMsg=None,
+        kwargs: typing.Dict=None,
+        instance=None
+    ):
+        super().__init__(inst, instance)
+        self._engine = engine
+        self._reader = reader
+        self._to_msg = to_msg
+        self._kwargs = kwargs or {}
+
+    async def aforward(self, *args, **kwargs):
+        instance, args = self.get_instance(args)
+        cue = self._inst(
+            instance, *args, **kwargs
+        )
+        msg = self._to_msg(cue)
+        engine = self.get_engine(instance)
+        _, res = await engine.aforward(
+            [msg], **self._kwargs
+        )
+        return self._reader(res)
+    
+    async def __call__(self, *args, **kwargs):
+        return await self.aforward(*args, **kwargs)
+
+    def spawn(self, instance=None) -> Self:
+        
+        return self.__class__(
+            inst=self._inst, reader=self._reader,
+            engine=self._engine, instance=instance
+        )
+
+AFuncDec.__call__ = FuncDec.aforward
+
+
+class StreamDec(FuncDecBase, StreamModule):
+    
+    def __init__(
+        self, inst, engine: StreamLLM, 
+        reader: TextProc=None, 
+        to_msg: ToMsg=None,
+        kwargs: typing.Dict=None,
+        instance=None
+    ):
+        super().__init__(inst, instance)
+        self._engine = engine
+        self._reader = reader
+        self._to_msg = to_msg
+        self._kwargs = kwargs or {}
+
+    async def astream(self, *args, **kwargs):
+        instance, args = self.get_instance(args)
+        cue = self._inst(
+            instance, *args, **kwargs
+        )
+        msg = self._to_msg(cue)
+        engine = self.get_engine(
+            instance
+        )
+        async for _, res in engine.stream(
+            [msg], **self._kwargs
+        ):
+            yield self._reader.delta(res)
+
+    def spawn(self, instance=None) -> Self:
+        
+        return self.__class__(
+            inst=self._inst, reader=self._reader,
+            engine=self._engine, instance=instance
+        )
+
+StreamDec.__call__ = StreamDec.stream
+
+
+class AStreamDec(FuncDecBase, AsyncStreamModule):
+
+    def __init__(
+        self, inst, engine: AsyncStreamLLM, 
+        reader: TextProc=None, 
+        to_msg: ToMsg=None,
+        kwargs: typing.Dict=None,
+        instance=None
+    ):
+        super().__init__(inst, instance)
+        self._engine = engine
+        self._reader = reader
+        self._to_msg = to_msg
+        self._kwargs = kwargs or {}
+
+    async def astream(self, *args, **kwargs):
+        instance, args = self.get_instance(args)
+        cue = self._inst(
+            instance, *args, **kwargs
+        )
+        msg = self._to_msg(cue)
+
+        engine = self.get_engine(
+            instance
+        )
+        async for _, res in await engine.astream(
+            [msg], **self._kwargs
+        ):
+            yield self._reader.delta(res)
+
+    def spawn(self, instance=None) -> Self:
+        
+        return self.__class__(
+            inst=self._inst, reader=self._reader,
+            engine=self._engine, instance=instance
+        )
+
+AStreamDec.__call__ = AStreamDec.astream
 
 
 def instructfunc(
-    engine: LLM=None,
+    engine: LLMBase=None,
     reader: TextProc=None,
     is_method: bool=False,
+    is_async: bool=False,
+    is_stream: bool=False,
     to_msg: ToMsg=None,
     **kwargs
 ):
@@ -935,21 +691,36 @@ def instructfunc(
         def wrapper(*args, **kwargs):
             return f(*args, **kwargs)
         
-        # TODO: Use wrapper
-        if isinstance(f, Module):
-            ifunc = ModuleIFunc(f, is_method)
-        else:
-            ifunc = FIFunc(f, is_method)
+        inst = Inst(f, is_method)
 
-        return InstructFunc(
-            ifunc, engine, reader, is_method=is_method, to_msg=to_msg, kwargs=kwargs
+        if not is_async and not is_stream:
+            return FuncDec(
+                inst, engine, reader, to_msg,
+                kwargs=kwargs
+            )
+        if not is_stream:
+            return AFuncDec(
+                inst, engine, reader, to_msg,
+                kwargs=kwargs
+            )
+        if not is_async:
+            return StreamDec(
+                inst, engine, reader, to_msg,
+                kwargs=kwargs
+            )
+        return AStreamDec(
+            inst, engine, reader, to_msg,
+                kwargs=kwargs
         )
+
     return _
 
 
 def instructmethod(
-    engine: LLM=None,
+    engine: LLMBase=None,
     reader: TextProc=None,
+    is_async: bool=False,
+    is_stream: bool=False,
     to_msg: ToMsg=None,
     **kwargs
 ):
@@ -962,25 +733,26 @@ def instructmethod(
         typing.Callable[[function], SignatureFunc]
     """
     return instructfunc(
-        engine, reader=reader, is_method=True, to_msg=to_msg, **kwargs
+        engine, reader=reader, is_method=True, to_msg=to_msg, is_async=is_async, 
+        is_stream=is_stream, 
+        **kwargs
     )
 
 
 def signaturefunc(
-    engine: LLM=None,
+    engine: LLMBase=None,
     reader: TextProc=None,
-    doc: typing.Union[str, typing.Callable[[], str]]=None,
-    is_method=False,
+    is_method: bool=False,
+    is_async: bool=False,
+    is_stream: bool=False,
     to_msg: ToMsg=None,
     **kwargs
 ):
-    """Decorate a method with SignatureFunc
+    """Decorate a method with instructfunc
 
     Args:
-        engine (PromptModel, optional): The engine for the AI . Defaults to None.
-        reader (Reader, optional): The reader to use for the method. Defaults to None.
-        doc (typing.Union[str, typing.Callable[[], str]], optional): A docstring to override with. Defaults to None.
-        is_method (bool): Whether the function is a method. 
+        engine (AIModel, optional): The engine for the AI . Defaults to None.
+        is_method (bool): Whether it is a method
 
     Returns:
         typing.Callable[[function], SignatureFunc]
@@ -991,21 +763,33 @@ def signaturefunc(
         def wrapper(*args, **kwargs):
             return f(*args, **kwargs)
         
-        if isinstance(f, Module):
-            ifunc = ModuleIFunc(f, is_method, doc)
-        else:
-            ifunc = FIFunc(f, is_method, doc)
-        
-        return SignatureFunc(
-            ifunc, engine, reader, is_method=is_method,
-            doc=doc, to_msg=to_msg, kwargs=kwargs
+        inst = Sig(f, is_method)
+
+        if not is_async and not is_stream:
+            return FuncDec(
+                inst, engine, reader, to_msg,
+                kwargs=kwargs
+            )
+        if not is_stream:
+            return AFuncDec(
+                inst, engine, reader, to_msg,
+                kwargs=kwargs
+            )
+        if not is_async:
+            return StreamDec(
+                inst, engine, reader, to_msg,
+                kwargs=kwargs
+            )
+        return AStreamDec(
+            inst, engine, reader, to_msg,
+                kwargs=kwargs
         )
 
     return _
 
 
 def signaturemethod(
-    engine: LLM=None, 
+    engine: LLMBase=None, 
     reader: TextProc=None,
     doc: typing.Union[str, typing.Callable[[], str]]=None,
     to_msg: ToMsg=None,
