@@ -5,7 +5,10 @@ from dachi._core import _ai
 import typing
 
 
-class DummyAIModel(_ai.LLM):
+class DummyAIModel(
+    _ai.LLM, _ai.StreamLLM,
+    _ai.AsyncLLM, _ai.AsyncStreamLLM
+):
     """APIAdapter allows one to adapt various WebAPI or other
     API for a consistent interface
     """
@@ -44,6 +47,14 @@ class DummyAIModel(_ai.LLM):
                 role='assistant', content=cur_out, delta={'content': c}
             )
             print('Yielding ', c)
+            yield msg, c
+        
+    async def aforward(self, dialog, **kwarg_overrides):
+        return self.forward(dialog, **kwarg_overrides)
+
+    async def astream(self, dialog, **kwarg_overrides):
+        
+        for msg, c in self.stream(dialog, **kwarg_overrides):
             yield msg, c
 
 

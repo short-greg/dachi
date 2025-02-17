@@ -6,13 +6,6 @@ from ._utils import (
     UNDEFINED, WAITING,
     primitives, get_member
 )
-from ._model import (
-    Renderable, model_template,
-    struct_template,
-    model_to_text, model_from_text,
-    StructLoadException, Templatable,
-    TemplateField, doc
-)
 from ._f_utils import (
     is_async_function, is_generator_function,
     get_return_type, get_iterator_type

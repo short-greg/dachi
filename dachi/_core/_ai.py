@@ -1,9 +1,12 @@
 # 1st party
 import typing
 from abc import ABC, abstractmethod
-import typing
-from ._process import Module
+
+# 3rd party
 import pydantic
+
+# local
+from ._process import Module
 from ._messages import Msg, RespProc, ListDialog, BaseDialog
 from ..utils._f_utils import (
     is_async_function, is_async_function, 
@@ -238,23 +241,23 @@ import pydantic
 
 # local
 from ._process import (
-    Module, Trainable, 
+    Module, 
     AsyncModule, StreamModule, AsyncStreamModule
 )
 from ._messages import Msg, BaseDialog
-from ._ai import (
-    llm_aforward, llm_astream, 
-    llm_forward, llm_stream, RespProc, ToMsg
-)
-from ._core import Renderable
-from ..utils import is_primitive
+# from ._ai import (
+#     llm_aforward, llm_astream, 
+#     llm_forward, llm_stream, RespProc, ToMsg
+# )
+# from ._core import Renderable
+# from ..utils import is_primitive
 
-from ._read import TextProc
+# from ._read import TextProc
 from ..utils import (
     is_async_function, 
     is_generator_function,
 )
-from ..utils._utils import str_formatter
+# from ..utils._utils import str_formatter
 
 
 S = typing.TypeVar('S', bound=pydantic.BaseModel)

@@ -15,11 +15,9 @@ import numpy as np
 import pydantic
 
 # local
-from ..utils import UNDEFINED, Renderable
-from ._read import TextProc
-from ._core import Storable, render
+from ..utils import UNDEFINED
+from ._core import Storable, render, Renderable
 from ..utils import (
-    is_primitive, 
     is_async_function,
     is_generator_function
 )

@@ -7,14 +7,13 @@ from abc import ABC, abstractmethod
 import pydantic
 
 # local
-from ..utils import (
+from ._core import (
     struct_template,
-    unescape_curly_braces, TemplateField, 
-    StructLoadException,
-    struct_template
+    unescape_curly_braces, 
 )
 from ._core import (
-    render, Templatable, END_TOK
+    render, Templatable, END_TOK, TemplateField, 
+    struct_template
 )
 from pydantic_core import PydanticUndefined
 

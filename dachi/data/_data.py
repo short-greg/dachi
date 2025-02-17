@@ -1,8 +1,7 @@
 import typing
 from functools import reduce
 from abc import ABC, abstractmethod
-from .._core import Msg, render
-from ..utils import Renderable
+from .._core import Msg, render, Renderable
 
 
 def get_or_spawn(state: typing.Dict, child: str) -> typing.Dict:

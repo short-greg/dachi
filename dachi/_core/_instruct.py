@@ -21,10 +21,6 @@ from ._core import Renderable
 from ..utils import is_primitive
 
 from ._read import TextProc
-from ..utils import (
-    is_async_function, 
-    is_generator_function,
-)
 from ..utils._utils import str_formatter
 
 
@@ -136,229 +132,6 @@ def validate_out(cues: typing.List[X]) -> typing.Optional[TextProc]:
         elif cue.out is not None:
             raise RuntimeError(f'Out cannot be duplicated')
     return out
-
-
-class IFunc(object):
-    """
-    """
-    def __init__(self, f, is_method: bool, instance=None):
-        """Create a function wrapper for an instruct
-
-        Args:
-            f: The function to wrap
-            is_method (bool): Whether the function is a method
-            instance (optional): The instance if this is a method. Defaults to None.
-        """
-        self._f = f
-        self._is_async = is_async_function(f)
-        self._is_generator = is_generator_function(f)
-        self._is_method = is_method
-        self._is_generator = is_generator_function(f)
-        self._is_async = is_async_function(f)
-        self._docstring = f.__doc__
-        self._name = f.__name__
-        self._signature = str(inspect.signature(f))
-        self._instance = instance
-        self._parameters = inspect.signature(f).parameters
-        self._return_annotation = inspect.signature(f).return_annotation
-        
-    def is_generator(self) -> bool:
-        return self._is_generator
-
-    def is_async(self) -> bool:
-        return self._is_async
-    
-    @property
-    def out_cls(self) -> typing.Type:
-
-        return self._return_annotation
-    
-    @property
-    def name(self) -> str:
-
-        return self._name
-
-    def fparams(self, instance, *args, **kwargs):
-        """Get the parameters for the function
-
-        Args:
-            instance: The instance if this is a method
-            args: The arguments to use
-            kwargs: The keyword arguments to use
-
-        Returns:
-            dict: The parameters
-        """
-        param_values = list(self._parameters.values())
-        values = {}
-        instance, args = self.get_instance(instance, args)
-
-        if instance is not None:
-            param_values = param_values[1:]
-
-        for value, param in zip(args, param_values):
-            values[param.name] = value
-        
-        for k, value in kwargs.items():
-            param = self._parameters[k]
-            values[param.name] = value
-
-        return values
-            
-    def get_instance(self, instance, args):
-        """Get the instance for the function
-
-        Args:
-            args: The arguments to use
-
-        Returns:
-            tuple: The instance and the arguments
-        """
-        if instance is not None:
-            return instance, args
-        if self._instance is not None:
-            return self._instance, args
-        
-        if self._is_method:
-            return args[0], args[1:]
-        
-        return None, args
-    
-    def get_member(self, instance, member: str, args):
-        """Get the member for the function
-
-        Args:
-            member: The member to get
-            args: The arguments to use
-
-        Returns:
-            The member
-        """
-        instance, _ = self.get_instance(instance, args)
-
-        if instance is None:
-            raise RuntimeError(
-                'Cannot get member of instance'
-            )
-
-        return object.__getattribute__(instance, member)
-
-    @property
-    def docstring(self):
-        """Get the docstring for the function
-
-        Returns:
-            str: The docstring
-        """
-        return self._docstring
-    
-    def __call__(self, *args, instance=None, **kwargs):
-        """Call the function
-
-        Args:
-            args: The arguments to use
-            instance: The instance if this is a method
-            kwargs: The keyword arguments to use
-
-        Returns:
-            The result of the function
-        """
-        instance, args = self.get_instance(instance, args)
-        if instance is None or hasattr(self._f, "__self__"):
-
-            return self._f(*args, **kwargs)
-        return self._f(instance, *args, **kwargs)
-
-
-class ModuleIFunc(IFunc):
-    """ModuleIFunc is a function wrapper for an instruct that is a module
-    """
-    async def aforward(self, *args, **kwargs):
-        """Execute the function asynchronously
-
-        Args:
-            args: The arguments to use
-            kwargs: The keyword arguments to use
-
-        Returns:
-            The result of the function
-        """
-        return await self._f.aforward(*args, **kwargs)
-    
-    def stream(self, *args, **kwargs):
-        """Stream the function
-
-        Args:
-            args: The arguments to use
-            kwargs: The keyword arguments to use
-
-        Returns:
-            The result of the function
-        """
-        for _, d in self._f.stream(*args, **kwargs):
-            yield d
-    
-    async def astream(self, *args, **kwargs):
-        """Stream the function asynchronously
-
-        Args:
-            args: The arguments to use
-            kwargs: The keyword arguments to use
-
-        Returns:
-            The result of the function
-        """
-        async for d in await self._f.astream(*args, **kwargs):
-            yield d
-
-    def forward(self, *args, **kwargs):
-        """Execute the function
-
-        Args:
-            args: The arguments to use
-            kwargs: The keyword arguments to use
-
-        Returns:
-            The result of the function
-        """
-        return self._forward(*args, **kwargs)
-
-
-class FIFunc(IFunc):
-    """FIFunc is a function wrapper for an instruct that is not a module
-    """
-    async def aforward(self, *args, **kwargs):
-        """Execute the function asynchronously
-
-        Args:
-            args: The arguments to use
-            kwargs: The keyword arguments to use
-
-        Returns:
-            The result of the function
-        """
-        return await self._f(*args, **kwargs)
-    
-    def stream(self, *args, **kwargs):
-        """Stream the function
-
-        Args:
-            args: The arguments to use
-            kwargs: The keyword arguments to use
-
-        Returns:
-            The result of the function
-        """
-        for d in self._f(*args, **kwargs):
-            yield d
-    
-    async def astream(self, *args, **kwargs):
-        
-        async for d in await self._f(*args, **kwargs):
-            yield d
-
-    def forward(self, *args, **kwargs):
-        return self._f(*args, **kwargs)
 
 
 class IBase(ABC):
@@ -585,7 +358,7 @@ class AFuncDec(FuncDecBase, AsyncModule):
             engine=self._engine, instance=instance
         )
 
-AFuncDec.__call__ = FuncDec.aforward
+AFuncDec.__call__ = AFuncDec.aforward
 
 
 class StreamDec(FuncDecBase, StreamModule):
@@ -809,3 +582,227 @@ def signaturemethod(
         engine, reader=reader, doc=doc, is_method=True,
         to_msg=to_msg, **kwargs
     )
+
+
+# class IFunc(object):
+#     """
+#     """
+#     def __init__(self, f, is_method: bool, instance=None):
+#         """Create a function wrapper for an instruct
+
+#         Args:
+#             f: The function to wrap
+#             is_method (bool): Whether the function is a method
+#             instance (optional): The instance if this is a method. Defaults to None.
+#         """
+#         self._f = f
+#         self._is_async = is_async_function(f)
+#         self._is_generator = is_generator_function(f)
+#         self._is_method = is_method
+#         self._is_generator = is_generator_function(f)
+#         self._is_async = is_async_function(f)
+#         self._docstring = f.__doc__
+#         self._name = f.__name__
+#         self._signature = str(inspect.signature(f))
+#         self._instance = instance
+#         self._parameters = inspect.signature(f).parameters
+#         self._return_annotation = inspect.signature(f).return_annotation
+        
+#     def is_generator(self) -> bool:
+#         return self._is_generator
+
+#     def is_async(self) -> bool:
+#         return self._is_async
+    
+#     @property
+#     def out_cls(self) -> typing.Type:
+
+#         return self._return_annotation
+    
+#     @property
+#     def name(self) -> str:
+
+#         return self._name
+
+#     def fparams(self, instance, *args, **kwargs):
+#         """Get the parameters for the function
+
+#         Args:
+#             instance: The instance if this is a method
+#             args: The arguments to use
+#             kwargs: The keyword arguments to use
+
+#         Returns:
+#             dict: The parameters
+#         """
+#         param_values = list(self._parameters.values())
+#         values = {}
+#         instance, args = self.get_instance(instance, args)
+
+#         if instance is not None:
+#             param_values = param_values[1:]
+
+#         for value, param in zip(args, param_values):
+#             values[param.name] = value
+        
+#         for k, value in kwargs.items():
+#             param = self._parameters[k]
+#             values[param.name] = value
+
+#         return values
+            
+#     def get_instance(self, instance, args):
+#         """Get the instance for the function
+
+#         Args:
+#             args: The arguments to use
+
+#         Returns:
+#             tuple: The instance and the arguments
+#         """
+#         if instance is not None:
+#             return instance, args
+#         if self._instance is not None:
+#             return self._instance, args
+        
+#         if self._is_method:
+#             return args[0], args[1:]
+        
+#         return None, args
+    
+#     def get_member(self, instance, member: str, args):
+#         """Get the member for the function
+
+#         Args:
+#             member: The member to get
+#             args: The arguments to use
+
+#         Returns:
+#             The member
+#         """
+#         instance, _ = self.get_instance(instance, args)
+
+#         if instance is None:
+#             raise RuntimeError(
+#                 'Cannot get member of instance'
+#             )
+
+#         return object.__getattribute__(instance, member)
+
+#     @property
+#     def docstring(self):
+#         """Get the docstring for the function
+
+#         Returns:
+#             str: The docstring
+#         """
+#         return self._docstring
+    
+#     def __call__(self, *args, instance=None, **kwargs):
+#         """Call the function
+
+#         Args:
+#             args: The arguments to use
+#             instance: The instance if this is a method
+#             kwargs: The keyword arguments to use
+
+#         Returns:
+#             The result of the function
+#         """
+#         instance, args = self.get_instance(instance, args)
+#         if instance is None or hasattr(self._f, "__self__"):
+
+#             return self._f(*args, **kwargs)
+#         return self._f(instance, *args, **kwargs)
+
+
+# class ModuleIFunc(IFunc):
+#     """ModuleIFunc is a function wrapper for an instruct that is a module
+#     """
+#     async def aforward(self, *args, **kwargs):
+#         """Execute the function asynchronously
+
+#         Args:
+#             args: The arguments to use
+#             kwargs: The keyword arguments to use
+
+#         Returns:
+#             The result of the function
+#         """
+#         return await self._f.aforward(*args, **kwargs)
+    
+#     def stream(self, *args, **kwargs):
+#         """Stream the function
+
+#         Args:
+#             args: The arguments to use
+#             kwargs: The keyword arguments to use
+
+#         Returns:
+#             The result of the function
+#         """
+#         for _, d in self._f.stream(*args, **kwargs):
+#             yield d
+    
+#     async def astream(self, *args, **kwargs):
+#         """Stream the function asynchronously
+
+#         Args:
+#             args: The arguments to use
+#             kwargs: The keyword arguments to use
+
+#         Returns:
+#             The result of the function
+#         """
+#         async for d in await self._f.astream(*args, **kwargs):
+#             yield d
+
+#     def forward(self, *args, **kwargs):
+#         """Execute the function
+
+#         Args:
+#             args: The arguments to use
+#             kwargs: The keyword arguments to use
+
+#         Returns:
+#             The result of the function
+#         """
+#         return self._forward(*args, **kwargs)
+
+
+# class FIFunc(IFunc):
+#     """FIFunc is a function wrapper for an instruct that is not a module
+#     """
+#     async def aforward(self, *args, **kwargs):
+#         """Execute the function asynchronously
+
+#         Args:
+#             args: The arguments to use
+#             kwargs: The keyword arguments to use
+
+#         Returns:
+#             The result of the function
+#         """
+#         return await self._f(*args, **kwargs)
+    
+#     def stream(self, *args, **kwargs):
+#         """Stream the function
+
+#         Args:
+#             args: The arguments to use
+#             kwargs: The keyword arguments to use
+
+#         Returns:
+#             The result of the function
+#         """
+#         for d in self._f(*args, **kwargs):
+#             yield d
+    
+#     async def astream(self, *args, **kwargs):
+        
+#         async for d in await self._f(*args, **kwargs):
+#             yield d
+
+#     def forward(self, *args, **kwargs):
+#         return self._f(*args, **kwargs)
+
