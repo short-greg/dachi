@@ -12,7 +12,7 @@ import typing
 import json
 
 # local
-from .._core._read import TextProc, struct_template
+from ._read import TextProc, struct_template
 from .._core._core import render, END_TOK
 from ..utils import (
     escape_curly_braces

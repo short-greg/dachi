@@ -7,11 +7,11 @@ from abc import ABC, abstractmethod
 import pydantic
 
 # local
-from ._core import (
+from .._core._core import (
     struct_template,
     unescape_curly_braces, 
 )
-from ._core import (
+from .._core._core import (
     render, Templatable, END_TOK, TemplateField, 
     struct_template
 )

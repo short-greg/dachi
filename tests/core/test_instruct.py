@@ -1,4 +1,4 @@
-from dachi._core import _instruct as core
+from dachi.op import _instruct_core as core
 from dachi._core import Cue
 from .test_core import SimpleStruct
 from .test_ai import DummyAIModel

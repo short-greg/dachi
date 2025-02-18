@@ -3,7 +3,7 @@ import typing
 
 from .._core import Msg
 from .._core import ToolSet, ToolCall
-from .._core._ai import RespProc, END_TOK
+from ._ai import RespProc, END_TOK
 import json
 
 # TODO: add utility for this

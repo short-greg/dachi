@@ -9,21 +9,21 @@ from functools import wraps
 import pydantic
 
 # local
-from ._process import (
+from .._core._process import (
     Module, 
     AsyncModule, StreamModule, AsyncStreamModule
 )
-from ._param import Param
-from ._ai import (
+from .._core._param import Param
+from ..adapt._ai import (
     AsyncLLM, LLM, LLMBase,
     StreamLLM, AsyncStreamLLM, ToMsg,
     ToText
 )
-from ._param import Trainable
-from ._core import Renderable
+from .._core._param import Trainable
+from .._core._core import Renderable
 from ..utils import is_primitive
 
-from ._read import TextProc, NullTextProc
+from ..adapt._read import TextProc, NullTextProc
 from ..utils._utils import str_formatter
 
 

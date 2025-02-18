@@ -1,6 +1,6 @@
 import typing
 from .. import _core as core
-from .._core._ai import LLM
+from ..adapt._ai import LLM
 
 
 CHAT_RES = typing.Union[

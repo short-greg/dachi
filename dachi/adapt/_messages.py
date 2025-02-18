@@ -8,7 +8,7 @@ import typing
 import pydantic
 
 # local
-from ._core import Renderable
+from .._core._core import Renderable
 
 
 class Msg(dict):

@@ -6,13 +6,13 @@ from abc import ABC, abstractmethod
 import pydantic
 
 # local
-from ._process import Module
+from .._core._process import Module
 from ._messages import Msg, RespProc, ListDialog, BaseDialog
 from ..utils._f_utils import (
     is_async_function, is_async_function, 
     is_generator_function
 )
-from ._core import END_TOK
+from .._core._core import END_TOK
 
 
 LLM_PROMPT = typing.Union[typing.Iterable[Msg], Msg]
@@ -240,7 +240,7 @@ from functools import wraps
 import pydantic
 
 # local
-from ._process import (
+from .._core._process import (
     Module, 
     AsyncModule, StreamModule, AsyncStreamModule
 )

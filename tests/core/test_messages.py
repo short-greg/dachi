@@ -1,4 +1,4 @@
-from dachi._core import _messages as M
+from dachi.adapt import _messages as M
 import numpy as np
 
 

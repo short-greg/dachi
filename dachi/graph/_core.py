@@ -480,7 +480,6 @@ class WaitSrc(Src):
         return val
 
 
-
 class Var(Src):
     """A Variable Src that stores a default value.
     """

@@ -3,8 +3,7 @@ from abc import ABC, abstractmethod
 
 import pydantic
 
-from ._core import Module
-from ._process import Param
+from .._core import Module, Param
 
 
 class ParamSet(object):
@@ -45,7 +44,6 @@ class Critique(pydantic.Module):
     val: typing.Union[typing.List[typing.Dict], typing.Dict] = pydantic.Field(
         "The e . A dictionary if only one Element is evaluated. Use a list if multiple Elemenents are evaluated."
     )
-
 
 
 class Optim(ABC):
