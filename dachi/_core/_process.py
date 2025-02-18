@@ -21,28 +21,17 @@ from ..utils import (
     is_async_function,
     is_generator_function
 )
-from ._param import Param, ParamSet, Trainable
-
-from typing import TypeVar
+import dataclasses
+from ._param import Param
 
 
 S = typing.TypeVar('S', bound=pydantic.BaseModel)
-
-@dataclass
-class Partial(object):
-    """Class for storing a partial output from a streaming process
-    """
-    cur: typing.Any
-    prev: typing.Any = None
-    dx: typing.Any = None
-    complete: bool = False
-
 
 
 class BaseModule(Storable, ABC):
     """Base class for Modules
     """
-    def parameters(self, recurse: bool=True) -> typing.Iterator['Param']:
+    def parameters(self, recurse: bool=True) -> typing.Iterator[Param]:
         """Loop over the parameters for the module
 
         Yields:
@@ -741,6 +730,18 @@ class Partial(object):
     """
     dx: typing.Any = None
     complete: bool = False
+    prev: typing.Any = None
+    full: typing.List = dataclasses.field(default_factory=list)
+
+# @dataclass
+# class Partial(object):
+#     """Class for storing a partial output from a streaming process
+#     """
+#     cur: typing.Any
+#     prev: typing.Any = None
+#     dx: typing.Any = None
+#     complete: bool = False
+#     full: typing.List = dataclasses.field(default_factory=list)
 
 
 class Streamer(object):
@@ -756,6 +757,7 @@ class Streamer(object):
         self._stream = iter(stream)
         self._output = UNDEFINED
         self._dx = None
+        self._full = []
 
     @property
     def complete(self) -> bool:
@@ -765,6 +767,7 @@ class Streamer(object):
             bool: True if the stream is complete
         """
         return self._output is not UNDEFINED
+
 
     def __call__(self) -> Partial:
         """Query the streamer and returned updated value if updated
@@ -776,9 +779,10 @@ class Streamer(object):
             return self._output
         try:
             self._dx = next(self._stream)
-            return Partial(self._dx, False)    
+            self._full.append(self._dx)
+            return Partial(self._dx, False, full=self._full)    
         except StopIteration:
-            self._output = Partial(self._dx, True) 
+            self._output = Partial(self._dx, True, full=self._full) 
             return self._output
     
     @property

@@ -7,7 +7,10 @@ from dachi._core import _process
 import numpy as np
 
 
-class Append(core.Module):
+class Append(
+    core.Module, core.AsyncModule, 
+    core.StreamModule, core.AsyncStreamModule
+):
 
     def __init__(self, append: str):
         super().__init__()
@@ -15,9 +18,22 @@ class Append(core.Module):
 
     def forward(self, name: str='') -> Any:
         return name + self._append
+    
+    async def aforward(self, *args, **kwargs):
+        return self.forward(*args, **kwargs)
+
+    def stream(self, *args, **kwargs):
+        yield self.forward(*args, **kwargs)
+    
+    async def astream(self, *args, **kwargs):
+        for v in self.stream(*args, **kwargs):
+            yield v
 
 
-class Append2(core.Module):
+class Append2(
+    core.Module, core.AsyncModule, 
+    core.StreamModule, core.AsyncStreamModule
+):
 
     def __init__(self, append: str):
         super().__init__()
@@ -26,8 +42,21 @@ class Append2(core.Module):
     def forward(self, val1: str, val2: str) -> Any:
         return val1 + val2 + self._append
 
+    async def aforward(self, *args, **kwargs):
+        return self.forward(*args, **kwargs)
 
-class RefinerAppender(core.Module):
+    def stream(self, *args, **kwargs):
+        yield self.forward(*args, **kwargs)
+    
+    async def astream(self, *args, **kwargs):
+        for v in self.stream(*args, **kwargs):
+            yield v
+
+
+class RefinerAppender(
+    core.Module, core.AsyncModule, 
+    core.StreamModule, core.AsyncStreamModule
+):
 
     def __init__(self, append: str):
         super().__init__()
@@ -37,6 +66,16 @@ class RefinerAppender(core.Module):
         if cur is None:
             return val + self._append
         return cur + val + self._append
+
+    async def aforward(self, *args, **kwargs):
+        return self.forward(*args, **kwargs)
+
+    def stream(self, *args, **kwargs):
+        yield self.forward(*args, **kwargs)
+    
+    async def astream(self, *args, **kwargs):
+        for v in self.stream(*args, **kwargs):
+            yield v
 
 
 class WriteOut(core.Module):
@@ -49,13 +88,17 @@ class WriteOut(core.Module):
         return val + self._append
 
     def stream(self, val: str) -> Any:
-        cur = ''
         for v in val:
-            cur += v
-            yield cur, v
+            yield v
         for v in self._append:
-            cur += v
-            yield cur, v
+            yield v
+
+    async def aforward(self, *args, **kwargs):
+        return self.forward(*args, **kwargs)
+    
+    async def astream(self, *args, **kwargs):
+        for v in self.stream(*args, **kwargs):
+            yield v
 
 
 class WaitAppend(core.Module):
@@ -67,12 +110,20 @@ class WaitAppend(core.Module):
     def forward(self, name: str='') -> Any:
         return name + self._append
 
+    def stream(self, *args, **kwargs):
+        yield self.forward(*args, **kwargs)
+
+    async def aforward(self, *args, **kwargs):
+        return self.forward(*args, **kwargs)
+    
+    async def astream(self, *args, **kwargs):
+        for v in self.stream(*args, **kwargs):
+            yield v
 
 def _s(x):
     cur = ''
     for x_i in x:
-        cur += x_i
-        yield cur, x_i
+        yield x_i
 
 
 class TestStreamer:
@@ -81,7 +132,6 @@ class TestStreamer:
 
         streamer = _process.Streamer(_s('xyz'))
         partial = streamer()
-        assert partial.cur == 'x'
         assert partial.dx == 'x'
 
     def test_streamable_streams_characters_to_end(self):
@@ -90,7 +140,6 @@ class TestStreamer:
         partial = streamer()
         partial = streamer()
         partial = streamer()
-        assert partial.cur == 'xyz'
         assert partial.dx == 'z'
 
     def test_streamer_gets_next_item(self):
@@ -99,7 +148,7 @@ class TestStreamer:
             iter([(1, 0), (2, 2), (3, 2)])
         )
         partial = streamer()
-        assert partial.cur == 1
+        assert partial.dx == (1, 0)
         assert partial.complete is False
 
     def test_streamer_gets_final_item(self):
@@ -111,7 +160,7 @@ class TestStreamer:
         partial = streamer()
         partial = streamer()
         partial = streamer()
-        assert partial.cur == 3
+        assert partial.dx == (3, 2)
         assert partial.complete is True
 
 
@@ -183,7 +232,6 @@ class TestBatched:
         
         batched = _process.Batched([1,2,3,4,5,6], [0, 1,2,3,4,5], size=3)
         batch_list = list(batched)
-        print(batch_list)
         assert batch_list[0][0] == [1, 2, 3]
         assert batch_list[0][1] == [0, 1, 2]
 
@@ -289,107 +337,6 @@ class TestAsync:
         assert res[1] == 'byezx'
 
 
-class TestCue(object):
-
-    def test_instruction_renders_with_text(self):
-
-        cue = Cue(
-            text='x'
-        )
-        assert cue.render() == 'x'
-
-    def test_instruction_text_is_correct(self):
-
-        text = 'Evaluate the quality of the CSV'
-        cue = Cue(
-            name='Evaluate',
-            text=text
-        )
-        assert cue.text == text
-
-    def test_render_returns_the_instruction_text(self):
-
-        text = 'Evaluate the quality of the CSV'
-        cue = Cue(
-            name='Evaluate',
-            text=text
-        )
-        assert cue.render() == text
-
-    def test_i_returns_the_instruction(self):
-
-        text = 'Evaluate the quality of the CSV'
-        cue = Cue(
-            name='Evaluate',
-            text=text
-        )
-        assert cue.i() is cue
-
-
-class TestParam(object):
-
-    def test_get_x_from_param(self):
-
-        cue = Param(
-            name='X', cue='x'
-        )
-        assert cue.render() == 'x'
-
-    # def test_param_with_instruction_passed_in(self):
-
-    #     instruction = _core.Cue(
-    #         text='x', out=_core.StructRead(
-    #             name='F1',
-    #             out_cls=SimpleStruct
-    #         )
-    #     )
-
-    #     param = _core.Param(
-    #         name='X', instruction=instruction
-    #     )
-    #     assert param.render() == 'x'
-
-#     def test_read_reads_the_object(self):
-
-#         instruction = _core.Cue(
-#             text='x', out=_core.StructRead(
-#                 name='F1',
-#                 out_cls=SimpleStruct
-#             )
-#         )
-#         param = _core.Param(
-#             name='X', instruction=instruction
-#         )
-#         simple = SimpleStruct(x='2')
-#         assert param.reads(simple.to_text()).x == '2'
-
-class TestParam:
-
-    def test_param_renders_the_instruction(self):
-
-        param = Param(
-            name='p',
-            cue=Cue(
-                text='simple instruction'
-            )
-        )
-        target = param.cue.render()
-        assert param.render() == target
-
-    def test_param_updates_the_instruction(self):
-
-        param = Param(
-            name='p',
-            cue=Cue(
-                text='simple instruction'
-            ),
-            training=True
-        )
-        target = 'basic instruction'
-        param.update(target)
-        assert param.render() == target
-
-
 class NestedModule(Module):
 
     def __init__(self, child: Module):
@@ -397,7 +344,7 @@ class NestedModule(Module):
         self.child = child
         self.p = Param(
             name='p',
-            cue=Cue(text='Do this')
+            data=Cue(text='Do this')
         )
 
     def forward(self) -> Any:
@@ -437,7 +384,7 @@ class TestModule:
         module = Append('t')
 
         res = ''
-        for x, dx in module.stream('xyz'):
+        for dx in module.stream('xyz'):
             res += dx
         assert res == 'xyzt'
 
@@ -466,7 +413,7 @@ class TestModule:
 
         writer = WriteOut('')
         results = []
-        for x, dx in writer.stream('xyz'):
+        for dx in writer.stream('xyz'):
             results.append(dx)
         assert results == list('xyz')
 

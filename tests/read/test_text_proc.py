@@ -1,4 +1,4 @@
-from dachi.utils import model_to_text
+from dachi._core import model_to_text
 from dachi.read import _text_proc as text_proc
 from .._structs import SimpleStruct2
 from dachi._core import END_TOK

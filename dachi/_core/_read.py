@@ -164,7 +164,7 @@ class NullTextProc(TextProc):
             typing.Any: The output of the reader
         """
         if message is END_TOK:
-            yield None
+            return None
 
         return message
 

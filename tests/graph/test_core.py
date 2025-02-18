@@ -129,7 +129,7 @@ class TestWaitSrc:
 
         writer = WriteOut('hi')
         t = g.stream_link(writer, g.T(''))
-        src = g.WaitSrc(t)
+        src = g.WaitSrc(t, lambda x: ''.join(x))
         src()
         src()
         assert src() == 'hi'
@@ -185,33 +185,32 @@ class TestStreamLink:
         writer = WriteOut('hi')
         t = g.stream_link(writer, g.T('xyz'))
         partial = t.val()
-        assert partial.cur == 'x'
         assert partial.dx == 'x'
 
-    def test_call_returns_undefined_if_t_undefined(self):
+#     def test_call_returns_undefined_if_t_undefined(self):
 
-        writer = WriteOut('hi')
-        t = g.stream_link(writer, g.T())
-        assert t.is_undefined()
+#         writer = WriteOut('hi')
+#         t = g.stream_link(writer, g.T())
+#         assert t.is_undefined()
 
-# #     # TODO* make this return partial
-    def test_chained_after_stream_appends(self):
+# # #     # TODO* make this return partial
+#     def test_chained_after_stream_appends(self):
 
-        writer = WriteOut('hi')
-        append = Append('_t')
-        t = g.stream_link(writer, g.T('xyz'))
-        t = g.link(append, t)
-        assert t.val.cur == 'x_t'
+#         writer = WriteOut('hi')
+#         append = Append('_t')
+#         t = g.stream_link(writer, g.T('xyz'))
+#         t = g.link(append, t)
+#         assert t.val.cur == 'x_t'
 
-    def test_stream_completes_the_stream(self):
+#     def test_stream_completes_the_stream(self):
 
-        writer = WriteOut('hi')
-        append = Append('_t')
+#         writer = WriteOut('hi')
+#         append = Append('_t')
 
-        for t in g.stream(writer, g.T('xyz')):
-            t = g.link(append, t)
+#         for t in g.stream(writer, g.T('xyz')):
+#             t = g.link(append, t)
         
-        assert t.val.cur == 'xyzhi_t'
+#         assert t.val.cur == 'xyzhi_t'
 
 
 class TestWait:

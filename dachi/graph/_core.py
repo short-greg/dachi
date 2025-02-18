@@ -405,9 +405,12 @@ class ModSrc(Src):
         return cls(
             mod, TArgs(*args, **kwargs)
         )
-    
 
-def wait(t: T) -> T:
+
+def wait(
+    t: T, 
+    agg: typing.Callable[[typing.Any], typing.Any]=None
+) -> T:
     """Specify to wait for a streamed Transmission to complete before executing
 
     Args:
@@ -421,14 +424,16 @@ def wait(t: T) -> T:
     else:
         val = t.val
     
-    return T(val, WaitSrc(t))
+    return T(val, WaitSrc(t, agg))
 
 
 class WaitSrc(Src):
     """Indicates to wait until completed
     """
-
-    def __init__(self, incoming: T):
+    def __init__(
+        self, incoming: T, 
+        agg: typing.Callable[[typing.Any], typing.Any]=None
+    ):
         """Create a Src to wait for the incoming transmission
 
         Args:
@@ -436,6 +441,7 @@ class WaitSrc(Src):
         """
         super().__init__()
         self._incoming = incoming
+        self._agg = agg or (lambda x: x)
 
     def incoming(self) -> typing.Iterator['T']:
         """
@@ -458,37 +464,21 @@ class WaitSrc(Src):
 
         if isinstance(val, Partial) and not val.complete:
             return WAITING
-        elif isinstance(val, Partial):
-            return val.cur
+        if isinstance(val, Partial):
+            return self._agg(val.full)
 
         if isinstance(val, Streamer):
         
             if not val.complete:
                 res = val()
                 if res.complete:
-                    return res.cur
+                    return self._agg(res.full)
                 return WAITING
-            return val.output.cur
+
+            return self._agg(val.output.full)
             
         return val
 
-
-def wait(t: T) -> T:
-    """Specify to wait for a streamed Transmission to complete before executing
-
-    Args:
-        t (T): The transmission
-
-    Returns:
-        T: The T to wait for the output
-    """
-
-    if isinstance(t.val, Partial) or isinstance(t.val, Streamer):
-        val = WAITING
-    else:
-        val = t.val
-    
-    return T(val, WaitSrc(t))
 
 
 class Var(Src):
@@ -607,6 +597,8 @@ def stream_link(module: 'Module', *args, **kwargs) -> T:
     if not args.is_undefined():
         args = args.eval()
 
+        print('HI')
+        # cur = module.stream(*args.args, **args.kwargs)
         return T(
             Streamer(module.stream(*args.args, **args.kwargs)),
             StreamSrc(module, args)

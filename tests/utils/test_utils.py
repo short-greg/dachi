@@ -1,4 +1,5 @@
 from dachi import utils
+from dachi._core import model_to_text, struct_template
 from pydantic import BaseModel
 import pytest
 
@@ -49,7 +50,7 @@ class TestStruct(object):
     def test_template_gives_correct_template(self):
 
         struct = SimpleStruct(x="2")
-        template = utils.struct_template(struct)
+        template = struct_template(struct)
         print(template)
         assert template['x'].is_required is True
         assert template['x'].type_ == type('text')
@@ -57,24 +58,24 @@ class TestStruct(object):
     def test_template_gives_correct_template_with_nested(self):
 
         struct = NestedStruct(simple=SimpleStruct(x="2"))
-        template = utils.struct_template(struct)
+        template = struct_template(struct)
         assert template['simple']['x'].is_required is True
         assert template['simple']['x'].type_ == type('text')
 
     def test_to_text_converts_to_text(self):
         struct = SimpleStruct(x="2")
-        text = utils.model_to_text(struct)
+        text = model_to_text(struct)
         assert "2" in text
 
     def test_to_text_doubles_the_braces(self):
         struct = SimpleStruct(x="2")
-        text = utils.model_to_text(struct, True)
+        text = model_to_text(struct, True)
         assert "{{" in text
         assert "}}" in text
 
     def test_to_text_works_for_nested(self):
         struct = NestedStruct(simple=SimpleStruct(x="2"))
-        text = utils.model_to_text(struct, True)
+        text = model_to_text(struct, True)
         assert text.count('{{') == 2
         assert text.count("}}") == 2
 

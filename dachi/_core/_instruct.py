@@ -10,17 +10,20 @@ import pydantic
 
 # local
 from ._process import (
-    Module, Trainable, 
+    Module, 
     AsyncModule, StreamModule, AsyncStreamModule
 )
+from ._param import Param
 from ._ai import (
     AsyncLLM, LLM, LLMBase,
-    StreamLLM, AsyncStreamLLM, ToMsg
+    StreamLLM, AsyncStreamLLM, ToMsg,
+    ToText
 )
+from ._param import Trainable
 from ._core import Renderable
 from ..utils import is_primitive
 
-from ._read import TextProc
+from ._read import TextProc, NullTextProc
 from ..utils._utils import str_formatter
 
 
@@ -148,10 +151,9 @@ class IBase(ABC):
 
     def _align_params(self, *args, **kwargs) -> typing.Dict:
 
-        if self._is_method:
-            instance = args[0]
-            args = args[1:]
         param_values = list(self._parameters.values())
+        if self._is_method:
+            param_values = param_values[1:]
         values = {}
         for value, param in zip(args, param_values):
             values[param.name] = value
@@ -160,7 +162,11 @@ class IBase(ABC):
             param = self._parameters[k]
             values[param.name] = value
             
-        return instance, values
+        return values
+    
+    @property
+    def name(self) -> str:
+        return self._name
 
     @property
     def f(self) -> typing.Callable:
@@ -177,9 +183,9 @@ class IBase(ABC):
     
 class Inst(IBase):
 
-    def __call__(self, *args, **kwargs) -> Cue:
+    def __call__(self, instance, *args, **kwargs) -> Cue:
         
-        instance, params = self._align_params(
+        params = self._align_params(
             *args, **kwargs
         )
 
@@ -194,40 +200,49 @@ class Inst(IBase):
 
 class Sig(IBase):
 
-    def __call__(self, *args, **kwargs) -> Cue:
+    def __init__(
+        self, f, is_method = False, 
+        train: bool=False
+    ):
+        super().__init__(f, is_method)
+        cue = Cue(
+            text=self._docstring
+        )
+        self._doc_param = Param(
+            name=self._name,
+            data=cue,
+            training=train
+        )
+
+    def __call__(self, instance, *args, **kwargs) -> str:
         
-        instance, params = self._align_params(
+        params = self._align_params(
             *args, **kwargs
         )
 
-        if instance is not None:
-            return self._f(
-                instance, **params
-            )
+        if instance is None:
+            cur_kwargs = self._f(**params) or {}
         else:
-            self._f(
-                **params
-            )
+            cur_kwargs = self._f(
+                instance, **params
+            ) or {}
     
-        cur_kwargs = (
-            cur_kwargs if cur_kwargs is not None else {}
-        )
-        # kwargs = {**kwargs, **cur_kwargs}
-        cur_kwargs.update(params)
-        
-        doc = self._docstring.render()
+        kwargs = {**kwargs, **cur_kwargs}
+        kwargs.update(params)
+        doc = self._doc_param.render()
         if "{TEMPLATE}" in doc:
-            cur_kwargs['TEMPLATE'] = self._reader.template()
-        cue = str_formatter(
-            doc, required=False, **cur_kwargs
-        )
+            kwargs['TEMPLATE'] = self._reader.template()
+
+        cue = Cue(text=str_formatter(
+            doc, required=False, **kwargs
+        ), name=self._name)
         return cue
 
 
 class FuncDecBase:
 
     def __init__(self, inst: IBase, instance=None):
-        """_summary_
+        """
 
         Args:
             inst (IBase): _description_
@@ -247,7 +262,7 @@ class FuncDecBase:
                 return self._instance, args
             
             return args[0], args[1:]
-        return None
+        return None, args
 
     def get_engine(self, instance):
         """Get the engine for the function
@@ -272,15 +287,22 @@ class FuncDecBase:
         Returns:
             SignatureMethod
         """
-        if self._ifunc.name not in instance.__dict__:
-            instance.__dict__[self._ifunc.name] = self.spawn(instance=instance)
+        if self._inst.name not in instance.__dict__:
+            instance.__dict__[self._inst.name] = self.spawn(instance=instance)
     
-        return instance.__dict__[self._ifunc.name]
+        return instance.__dict__[self._inst.name]
     
     def spawn(self, instance=None) -> Self:
         
         return self.__class__(
-            inst=self._inst, instance=instance
+            inst=self._inst, 
+            instance=instance
+        )
+
+    def i(self, *args, **kwargs) -> Cue:
+        instance, args = self.get_instance(args)
+        return self._inst(
+            instance, *args, **kwargs
         )
 
 
@@ -295,16 +317,18 @@ class FuncDec(FuncDecBase, Module):
     ):
         super().__init__(inst, instance)
         self._engine = engine
-        self._reader = reader
-        self._to_msg = to_msg
+        self._reader = reader or NullTextProc()
+        self._to_msg = to_msg or ToText()
         self._kwargs = kwargs or {}
 
     def forward(self, *args, **kwargs):
         
         instance, args = self.get_instance(args)
+        print(self._inst, type(self._inst))
         cue = self._inst(
             instance, *args, **kwargs
         )
+        print(cue)
         msg = self._to_msg(cue)
         engine = self.get_engine(instance)
         _, res = engine(
@@ -316,10 +340,14 @@ class FuncDec(FuncDecBase, Module):
         
         return self.__class__(
             inst=self._inst, reader=self._reader,
-            engine=self._engine, instance=instance
+            engine=self._engine, instance=instance,
+            to_msg=self._to_msg
         )
+    
+    def __call__(self, *args, **kwargs):
+        return self.forward(*args, **kwargs)
 
-FuncDec.__call__ = FuncDec.forward
+
 
 class AFuncDec(FuncDecBase, AsyncModule):
 
@@ -332,8 +360,8 @@ class AFuncDec(FuncDecBase, AsyncModule):
     ):
         super().__init__(inst, instance)
         self._engine = engine
-        self._reader = reader
-        self._to_msg = to_msg
+        self._reader = reader or NullTextProc()
+        self._to_msg = to_msg or ToText()
         self._kwargs = kwargs or {}
 
     async def aforward(self, *args, **kwargs):
@@ -355,7 +383,8 @@ class AFuncDec(FuncDecBase, AsyncModule):
         
         return self.__class__(
             inst=self._inst, reader=self._reader,
-            engine=self._engine, instance=instance
+            engine=self._engine, instance=instance,
+            to_msg=self._to_msg
         )
 
 AFuncDec.__call__ = AFuncDec.aforward
@@ -372,11 +401,11 @@ class StreamDec(FuncDecBase, StreamModule):
     ):
         super().__init__(inst, instance)
         self._engine = engine
-        self._reader = reader
-        self._to_msg = to_msg
+        self._reader = reader or NullTextProc()
+        self._to_msg = to_msg or ToText()
         self._kwargs = kwargs or {}
 
-    async def astream(self, *args, **kwargs):
+    def stream(self, *args, **kwargs):
         instance, args = self.get_instance(args)
         cue = self._inst(
             instance, *args, **kwargs
@@ -385,10 +414,11 @@ class StreamDec(FuncDecBase, StreamModule):
         engine = self.get_engine(
             instance
         )
-        async for _, res in engine.stream(
+        delta_store = {}
+        for _, res in engine.stream(
             [msg], **self._kwargs
         ):
-            yield self._reader.delta(res)
+            yield self._reader.delta(res, delta_store)
 
     def spawn(self, instance=None) -> Self:
         
@@ -396,6 +426,7 @@ class StreamDec(FuncDecBase, StreamModule):
             inst=self._inst, reader=self._reader,
             engine=self._engine, instance=instance
         )
+
 
 StreamDec.__call__ = StreamDec.stream
 
@@ -411,8 +442,8 @@ class AStreamDec(FuncDecBase, AsyncStreamModule):
     ):
         super().__init__(inst, instance)
         self._engine = engine
-        self._reader = reader
-        self._to_msg = to_msg
+        self._reader = reader or NullTextProc()
+        self._to_msg = to_msg or ToText()
         self._kwargs = kwargs or {}
 
     async def astream(self, *args, **kwargs):
@@ -434,7 +465,8 @@ class AStreamDec(FuncDecBase, AsyncStreamModule):
         
         return self.__class__(
             inst=self._inst, reader=self._reader,
-            engine=self._engine, instance=instance
+            engine=self._engine, instance=instance,
+            to_msg=self._to_msg
         )
 
 AStreamDec.__call__ = AStreamDec.astream
@@ -515,10 +547,10 @@ def instructmethod(
 def signaturefunc(
     engine: LLMBase=None,
     reader: TextProc=None,
+    to_msg: ToMsg=None,
     is_method: bool=False,
     is_async: bool=False,
     is_stream: bool=False,
-    to_msg: ToMsg=None,
     **kwargs
 ):
     """Decorate a method with instructfunc
@@ -564,8 +596,10 @@ def signaturefunc(
 def signaturemethod(
     engine: LLMBase=None, 
     reader: TextProc=None,
-    doc: typing.Union[str, typing.Callable[[], str]]=None,
     to_msg: ToMsg=None,
+    doc: typing.Union[str, typing.Callable[[], str]]=None,
+    is_async: bool=False,
+    is_stream: bool=False,
     **kwargs
 ):
     """Decorate a method with SignatureFunc
@@ -580,6 +614,7 @@ def signaturemethod(
     """
     return signaturefunc(
         engine, reader=reader, doc=doc, is_method=True,
-        to_msg=to_msg, **kwargs
+        to_msg=to_msg, is_async=is_async, is_stream=is_stream,
+        **kwargs
     )
 

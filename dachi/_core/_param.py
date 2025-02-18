@@ -50,7 +50,7 @@ class Param(
     can update
     """
     name: str
-    data: T
+    data: Trainable
     training: bool=False
 
     def update_param(self, data: typing.Dict) -> bool:

@@ -283,7 +283,7 @@ class Op(Module):
         if not isinstance(cue, Cue):
             cue = Param(
                 name=self.name, training=tunable, 
-                cue=Cue(
+                data=Cue(
                     text=render(cue)
             ))
         
