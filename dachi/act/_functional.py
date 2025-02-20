@@ -12,9 +12,10 @@ from ._core import (
 from ..data import Context, ContextSpawner, SharedBase
 from ._core import TOSTATUS
 from ..data import Buffer,Shared
-from .._core import LLM, LLM_PROMPT
+from ..adapt import LLM, LLM_PROMPT
 
-TASK = typing.Union[Task, typing.Callable[[typing.Dict], TaskStatus]]
+TASK = typing.Union[
+    Task, typing.Callable[[typing.Dict], TaskStatus]]
 CALL_TASK = typing.Callable[[],TaskStatus]
 
 
@@ -345,7 +346,11 @@ def action(task: TASK, *args, **kwargs) -> CALL_TASK:
     return _f
 
 
-def threadedf(task: TASK, ctx: Context, *args, out: SharedBase=None, to_status: TOSTATUS=None, **kwargs) -> CALL_TASK:
+def threadedf(
+    task: TASK, ctx: Context, 
+    *args, out: SharedBase=None, 
+    to_status: TOSTATUS=None, **kwargs
+) -> CALL_TASK:
     """Use to wrap the task in a thread"""
 
     if 'task_id' in ctx and id(task) != ctx['task_id']:

@@ -7,17 +7,53 @@ from abc import ABC, abstractmethod
 import pydantic
 
 # local
-from .._core._core import (
+from .._core import (
     struct_template,
-    unescape_curly_braces, 
 )
-from .._core._core import (
+from ..utils import unescape_curly_braces
+from .._core import (
     render, Templatable, END_TOK, TemplateField, 
     struct_template
 )
+from ..data import Msg
 from pydantic_core import PydanticUndefined
 
 S = typing.TypeVar('S', bound=pydantic.BaseModel)
+
+
+
+class RespProc(ABC):
+    """Use to process the resoponse from an LLM
+    """
+
+    def __init__(self, resp: bool):
+        """
+        Initialize the instance.
+        Args:
+            resp (bool): Indicates if the response processor responds with data.
+        """
+        super().__init__()
+        self._resp = resp
+
+    @property
+    def resp(self) -> bool:
+        """Choose whether to include a response
+
+        Returns:
+            bool: Whether to respond with a value
+        """
+        return self._resp
+
+    @abstractmethod
+    def __call__(self, response, msg: Msg) -> typing.Any:
+        pass
+
+    @abstractmethod
+    def delta(self, response, msg: Msg, delta_store: typing.Dict) -> typing.Any: 
+        pass
+
+    def prep(self) -> typing.Dict:
+        return {}
 
 
 class TextProc(pydantic.BaseModel, Templatable, ABC):

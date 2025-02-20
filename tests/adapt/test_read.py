@@ -1,5 +1,5 @@
-from .test_core import SimpleStruct, SimpleStruct2
-from dachi import _core
+from ..core.test_core import SimpleStruct, SimpleStruct2
+from dachi.adapt import _read as _read
 from dachi._core import model_to_text
 
 
@@ -12,12 +12,12 @@ class TestMultiRead(object):
             SimpleStruct(x='3')
         ], 'i': 2}
 
-        out = _core.MultiTextProc(
+        out = _read.MultiTextProc(
             name='Multi',
-            outs=[_core.PydanticProc(
+            outs=[_read.PydanticProc(
                 name='F1',
                 out_cls=SimpleStruct
-            ), _core.PydanticProc(
+            ), _read.PydanticProc(
                 name='F2',
                 out_cls=SimpleStruct
             )]
@@ -34,12 +34,12 @@ class TestMultiRead(object):
             SimpleStruct(x='3')
         ], 'i': 2}
 
-        out = _core.MultiTextProc(
+        out = _read.MultiTextProc(
             name='Multi',
-            outs=[_core.PydanticProc(
+            outs=[_read.PydanticProc(
                 name='F1',
                 out_cls=SimpleStruct
-            ), _core.PydanticProc(
+            ), _read.PydanticProc(
                 name='F2',
                 out_cls=SimpleStruct
             )]
@@ -56,12 +56,12 @@ class TestMultiRead(object):
             SimpleStruct(x='3')
         ], 'i': 2}
 
-        out = _core.MultiTextProc(
+        out = _read.MultiTextProc(
             name='Multi',
-            outs=[_core.PydanticProc(
+            outs=[_read.PydanticProc(
                 name='F1',
                 out_cls=SimpleStruct
-            ), _core.PydanticProc(
+            ), _read.PydanticProc(
                 name='F2',
                 out_cls=SimpleStruct
             )]
@@ -76,7 +76,7 @@ class TestMultiRead(object):
             )
 
         ress.append(
-            out.delta(_core.END_TOK, delta_store)
+            out.delta(_read.END_TOK, delta_store)
         )
         structs = [res for res in ress if res is not None]
         assert structs[0].x == struct_list['data'][0].x
@@ -88,12 +88,12 @@ class TestMultiRead(object):
             SimpleStruct(x='3')
         ], 'i': 2}
 
-        out = _core.MultiTextProc(
+        out = _read.MultiTextProc(
             name='Multi',
-            outs=[_core.PydanticProc(
+            outs=[_read.PydanticProc(
                 name='F1',
                 out_cls=SimpleStruct
-            ), _core.PydanticProc(
+            ), _read.PydanticProc(
                 name='F2',
                 out_cls=SimpleStruct
             )]
@@ -109,7 +109,7 @@ class TestStructRead:
 
     def test_out_creates_out_class(self):
 
-        out = _core.PydanticProc(
+        out = _read.PydanticProc(
             name='F1',
             out_cls=SimpleStruct
             # name='Simple', signature='...',
@@ -121,7 +121,7 @@ class TestStructRead:
 
     def test_out_creates_out_class_with_string(self):
 
-        out = _core.PydanticProc(
+        out = _read.PydanticProc(
             name='F1',
             out_cls=SimpleStruct
         )
@@ -132,7 +132,7 @@ class TestStructRead:
     
     def test_out_template(self):
 
-        out = _core.PydanticProc(
+        out = _read.PydanticProc(
             name='F1',
             out_cls=SimpleStruct
         )
@@ -141,7 +141,7 @@ class TestStructRead:
 
     def test_read_reads_in_the_class(self):
 
-        out = _core.PydanticProc(
+        out = _read.PydanticProc(
             name='F1',
             out_cls=SimpleStruct
         )
@@ -151,7 +151,7 @@ class TestStructRead:
 
     def test_out_reads_in_the_class_with_str(self):
 
-        out = _core.PydanticProc(
+        out = _read.PydanticProc(
             name='F1',
             out_cls=SimpleStruct
         )
@@ -165,7 +165,7 @@ class TestPrimRead(object):
 
     def test_read_reads_in_data(self):
 
-        out = _core.PrimProc(
+        out = _read.PrimProc(
             name='F1',
             out_cls=int,
         )
@@ -175,7 +175,7 @@ class TestPrimRead(object):
 
     def test_template_contains_key(self):
 
-        out = _core.PrimProc(
+        out = _read.PrimProc(
             name='F1',
             out_cls=int,
         )
@@ -184,7 +184,7 @@ class TestPrimRead(object):
 
     def test_prim_read_reads_bool(self):
 
-        out = _core.PrimProc(
+        out = _read.PrimProc(
             name='F1',
             out_cls=bool,
         )
@@ -193,7 +193,7 @@ class TestPrimRead(object):
 
     def test_prim_read_reads_bool_correctly(self):
 
-        out = _core.PrimProc(
+        out = _read.PrimProc(
             name='F1',
             out_cls=bool,
         )

@@ -1,19 +1,21 @@
 import typing
-from .. import _core as core
+from .. import adapt as adapt
+from .._core import Module
 from ..adapt._ai import LLM
+from ..data._messages import Msg, BaseDialog
 
 
 CHAT_RES = typing.Union[
-    typing.Any, typing.Tuple[typing.Any, core.Msg]
+    typing.Any, typing.Tuple[typing.Any, Msg]
 ]
 
 
-class Chat(core.Module):
+class Chat(Module):
     """A component that facilitates chatting
     """
     def __init__(
         self, llm: LLM, 
-        dialog: core.BaseDialog=None
+        dialog: BaseDialog=None
     ):
         """Create a Chat component
 
@@ -25,10 +27,10 @@ class Chat(core.Module):
             post (core.Module, optional): The post-processing module. Defaults to None.
         """
         super().__init__()
-        self.dialog = dialog or core.ListDialog()
+        self.dialog = dialog or adapt.ListDialog()
         self.llm = llm
 
-    def __getitem__(self, idx: int) -> core.Msg:
+    def __getitem__(self, idx: int) -> Msg:
         """Get a message from the dialog"""
         return self.dialog[idx]
     
@@ -39,13 +41,13 @@ class Chat(core.Module):
         )
     
     def __setitem__(
-        self, idx: int, message: core.Msg
-    ) -> core.Msg:
+        self, idx: int, message: Msg
+    ) -> Msg:
         """Set a message in the dialog"""
         self.dialog[idx] = message
         return message
 
-    def __iter__(self) -> typing.Iterator[core.Msg]:
+    def __iter__(self) -> typing.Iterator[Msg]:
         """Iterate over the dialog"""
         for m in self.dialog:
             yield m
@@ -62,7 +64,7 @@ class Chat(core.Module):
     
     async def aforward(
         self, *args, get_msg: bool=False, **kwargs
-    ) -> core.Msg:
+    ) -> Msg:
         """Execute a turn of the chat asynchronously"""
         in_msg = self.llm.user(*args, **kwargs)
         dialog = self.dialog.insert(in_msg)
@@ -72,7 +74,7 @@ class Chat(core.Module):
 
     def stream(
         self, *args, get_msg: bool=False, **kwargs
-    ) -> typing.Iterator[core.Msg]:
+    ) -> typing.Iterator[Msg]:
         """Stream a turn of the chat"""
         in_msg = self.llm.user(*args, **kwargs)
         self.dialog = self.dialog.insert(in_msg)
@@ -82,7 +84,7 @@ class Chat(core.Module):
 
     async def astream(
         self, *args, get_msg: bool=False, **kwargs
-    ) -> typing.AsyncIterator[typing.Tuple[core.Msg, 'Chat']]:
+    ) -> typing.AsyncIterator[typing.Tuple[Msg, 'Chat']]:
         """Stream a turn of the chat asynchronously"""
         in_msg = self.user(*args, **kwargs)
         self.dialog = self.dialog.insert(in_msg)
@@ -90,7 +92,7 @@ class Chat(core.Module):
             yield d if not get_msg else d, msg
         self.dialog = self.dialog.insert(msg)
     
-    def append(self, msg: core.Msg):
+    def append(self, msg: Msg):
         """
 
         Args:

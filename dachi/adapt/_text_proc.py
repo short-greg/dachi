@@ -19,6 +19,7 @@ from ..utils import (
 )
 
 
+
 class CSVProc(TextProc):
     """Convert text to a StructList
     """

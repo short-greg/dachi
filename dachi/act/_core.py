@@ -11,7 +11,7 @@ from typing import Any
 from .._core import Storable
 
 # TODO: Add in Action (For GOAP)
-from .._core import TextProc
+from ..adapt import TextProc
 from ..utils import UNDEFINED
 
 class TaskStatus(Enum):

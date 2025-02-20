@@ -8,11 +8,9 @@ import roman
 # local
 from .._core import (
     render, render_multi,
-    Cue, render, Param 
+    Param 
 )
-from .._core import (
-    validate_out
-)
+from ._instruct_core import Cue, validate_out
 from ..utils import (
     str_formatter
 )

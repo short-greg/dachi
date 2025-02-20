@@ -2,8 +2,9 @@ from dachi.act import _core, _functional as F
 from dachi.act import TaskStatus
 from dachi.data import _data as utils
 import typing
-from ..core.test_ai import DummyAIModel
+from ..adapt.test_ai import DummyAIModel
 from dachi import _core as core
+from dachi.data._messages import Msg
 import time
 
 
@@ -282,7 +283,7 @@ class TestBuffer:
 
         buffer = utils.Buffer()
         model = DummyAIModel()
-        message = core.Msg(
+        message = Msg(
             role='user', text='text'
         )
         ctx = utils.Context()
@@ -299,7 +300,7 @@ class TestBuffer:
 
         buffer = utils.Buffer()
         model = DummyAIModel()
-        message = core.Msg(
+        message = Msg(
             role='user', text='text'
         )
         ctx = utils.Context()
@@ -320,7 +321,7 @@ class TestSharedTask:
 
         shared = utils.Shared()
         model = DummyAIModel()
-        message = core.Msg(
+        message = Msg(
             role='user', text='text'
         )
         ctx = utils.Context()
@@ -337,7 +338,7 @@ class TestSharedTask:
 
         shared = utils.Shared()
         model = DummyAIModel()
-        message = core.Msg(
+        message = Msg(
             role='user', text='text'
         )
         ctx = utils.Context()

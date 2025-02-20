@@ -2,9 +2,11 @@ import asyncio
 import typing
 from typing import Any
 from dachi._core import _process as core
-from dachi._core import Cue, Param, Module
+from dachi._core import Param, Module
 from dachi._core import _process
 import numpy as np
+# TODO: remove
+from dachi.op import Cue
 
 
 class Append(

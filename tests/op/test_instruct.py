@@ -1,7 +1,7 @@
 from dachi.op import _instruct_core as core
-from dachi._core import Cue
-from .test_core import SimpleStruct
-from .test_ai import DummyAIModel
+from dachi.op import Cue
+from ..core.test_core import SimpleStruct
+from ..adapt.test_ai import DummyAIModel
 
 
 def dummy_dec(f):

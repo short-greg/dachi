@@ -7,7 +7,8 @@ import pydantic
 
 # local
 from .._core._process import Module
-from ._messages import Msg, RespProc, ListDialog, BaseDialog
+from ..data import Msg, ListDialog, BaseDialog
+from ._read import RespProc
 from ..utils._f_utils import (
     is_async_function, is_async_function, 
     is_generator_function
@@ -244,7 +245,7 @@ from .._core._process import (
     Module, 
     AsyncModule, StreamModule, AsyncStreamModule
 )
-from ._messages import Msg, BaseDialog
+from ..data._messages import Msg, BaseDialog
 # from ._ai import (
 #     llm_aforward, llm_astream, 
 #     llm_forward, llm_stream, RespProc, ToMsg
