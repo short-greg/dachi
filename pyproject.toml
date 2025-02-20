@@ -14,14 +14,15 @@ license = "LICENSE"
 readme = "README.md"
 packages = [
     {include="dachi"},
-    {include="dachi/op"},
-    {include="dachi/learn"},
-    {include="dachi/data"},
-    {include="dachi/conv"},
-    {include="dachi/utils"},
     {include="dachi/act"},
     {include="dachi/adapt"},
+    {include="dachi/conv"},
+    {include="dachi/data"},
     {include="dachi/graph"},
+    {include="dachi/learn"},
+    {include="dachi/op"},
+    {include="dachi/read"},
+    {include="dachi/utils"},
 ]
 
 [tool.poetry.dependencies]
