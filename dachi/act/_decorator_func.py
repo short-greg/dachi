@@ -1,5 +1,5 @@
 from . import _functional as F
-from ..data import Context, SharedBase
+from ._data import Context, SharedBase
 from ..utils import get_member
 import typing
 import functools

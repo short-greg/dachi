@@ -1,5 +1,5 @@
 from dachi import utils
-from dachi.proc import model_to_text, struct_template
+from dachi.utils import model_to_text, struct_template
 from pydantic import BaseModel
 import pytest
 

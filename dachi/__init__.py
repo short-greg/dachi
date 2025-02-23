@@ -2,11 +2,10 @@
 
 __version__ = "0.0.1"
 
-from .proc import *
+from . import proc
 from . import act
 from . import conv
 from . import adapt
-# from . import read
 from . import conv
 from . import op
 from . import utils

@@ -6,7 +6,7 @@ import pydantic
 import roman
 
 # local
-from ..proc import (
+from ..utils import (
     render, render_multi
 )
 from ..proc import Param

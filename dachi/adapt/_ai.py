@@ -7,7 +7,7 @@ import pydantic
 
 # local
 from ..proc._process import Module
-from ..data import Msg, ListDialog, BaseDialog
+from ..conv import Msg, ListDialog, BaseDialog
 from ._read import RespConv
 from ..utils._f_utils import (
     is_async_function, is_async_function, 

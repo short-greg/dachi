@@ -6,9 +6,8 @@ from dataclasses import dataclass
 import inspect
 from typing import Any
 
-
 # local
-from ..data import Storable
+from ..utils import Storable
 
 # TODO: Add in Action (For GOAP)
 from ..adapt import TextConv

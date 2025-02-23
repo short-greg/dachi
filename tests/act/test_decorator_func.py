@@ -4,7 +4,7 @@ from dachi.act import _data as utils
 import typing
 from ..adapt.test_ai import DummyAIModel
 from dachi import proc as core
-from dachi.data import Shared, Context
+from dachi.act import Shared, Context
 import time
 from dachi.act import _decorator_func as DF, _functional as F, _core as core
 
