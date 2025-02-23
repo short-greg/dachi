@@ -1,5 +1,5 @@
-from dachi.op import _instruct_core as core
-from dachi.op import Cue
+from dachi.inst import _instruct_core as core
+from dachi.inst import Cue
 from ..utils.test_core import SimpleStruct
 from ..adapt.test_ai import DummyAIModel
 

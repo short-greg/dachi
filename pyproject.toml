@@ -13,14 +13,12 @@ authors = ["Greg Short <g.short@kurenai.waseda.jp>"]
 license = "LICENSE"
 readme = "README.md"
 packages = [
-    {include="dachi"},
+    {include="dachi/proc"},
     {include="dachi/act"},
     {include="dachi/adapt"},
     {include="dachi/conv"},
-    {include="dachi/data"},
-    {include="dachi/graph"},
     {include="dachi/learn"},
-    {include="dachi/op"},
+    {include="dachi/inst"},
     {include="dachi/utils"},
 ]
 

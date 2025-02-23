@@ -298,7 +298,6 @@ class LLM(LLMBase, Module):
         kwargs = None, message_arg = 'messages', 
         role_name = 'assistant'
     ):
-        print('LLM Kwargs', kwargs)
         super().__init__(
             resp_procs=resp_procs,
             kwargs=kwargs, 
@@ -318,7 +317,6 @@ class LLM(LLMBase, Module):
         Raises:
             RuntimeError: If the forward function is not defined for the LLM.
         """
-        print('Kwargs: ', self._kwargs)
         kwargs = {
             **self._kwargs, 
             **kwarg_overrides, 

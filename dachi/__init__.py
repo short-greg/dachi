@@ -7,6 +7,6 @@ from . import act
 from . import conv
 from . import adapt
 from . import conv
-from . import op
+from . import inst
 from . import utils
 from . import data
