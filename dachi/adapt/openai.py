@@ -1,7 +1,7 @@
 import pkg_resources
 import typing
 
-from .._core import Msg
+from ..data import Msg
 from .._core import ToolSet, ToolCall
 from ._ai import RespConv, END_TOK
 import json
