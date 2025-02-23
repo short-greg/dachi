@@ -12,7 +12,7 @@ import typing
 import json
 
 # local
-from ._read import TextProc, struct_template
+from ._read import TextConv, struct_template
 from .._core._core import render, END_TOK
 from ..utils import (
     escape_curly_braces
@@ -20,7 +20,7 @@ from ..utils import (
 
 
 
-class CSVProc(TextProc):
+class CSVConv(TextConv):
     """Convert text to a StructList
     """
     indexed: bool = True
@@ -144,7 +144,7 @@ class CSVProc(TextProc):
         return result
 
 
-class KVProc(TextProc):
+class KVConv(TextConv):
     """Create a Reader of a list of key values
     """
 
@@ -210,7 +210,7 @@ class KVProc(TextProc):
         )
 
 
-class IndexProc(TextProc):
+class IndexConv(TextConv):
     """Create a Reader of a list of key values
     """
 
@@ -280,7 +280,7 @@ class IndexProc(TextProc):
         return '\n'.join(lines)
 
 
-class JSONProc(TextProc):
+class JSONConv(TextConv):
     """Use to read from a JSON
     """
 
@@ -330,7 +330,7 @@ class JSONProc(TextProc):
         return escape_curly_braces(self.key_descr)
 
 
-class YAMLRead(TextProc):
+class YAMLConv(TextConv):
     """Use to read from a Yaml
     """
 

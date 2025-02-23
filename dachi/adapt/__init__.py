@@ -1,6 +1,6 @@
 
 from ._text_proc import (
-    CSVProc, KVProc, JSONProc, IndexProc
+    CSVConv, KVConv, JSONConv, IndexConv
 )
 
 from ._ai import (
@@ -12,8 +12,8 @@ from ._ai import (
     AsyncLLM, AsyncModule, AsyncStreamLLM, StreamLLM
 )
 from ._read import (
-    MultiTextProc, PrimProc, PydanticProc, 
-    ReadError, NullTextProc, TextProc,
-    RespProc
+    MultiTextConv, PrimConv, PydanticConv, 
+    ReadError, NullTextConv, TextConv,
+    RespConv
 )
 

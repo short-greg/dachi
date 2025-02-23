@@ -21,7 +21,6 @@ packages = [
     {include="dachi/graph"},
     {include="dachi/learn"},
     {include="dachi/op"},
-    {include="dachi/read"},
     {include="dachi/utils"},
 ]
 

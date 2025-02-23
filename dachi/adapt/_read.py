@@ -21,8 +21,7 @@ from pydantic_core import PydanticUndefined
 S = typing.TypeVar('S', bound=pydantic.BaseModel)
 
 
-
-class RespProc(ABC):
+class RespConv(ABC):
     """Use to process the resoponse from an LLM
     """
 
@@ -56,7 +55,7 @@ class RespProc(ABC):
         return {}
 
 
-class TextProc(pydantic.BaseModel, Templatable, ABC):
+class TextConv(pydantic.BaseModel, Templatable, ABC):
     """Use a reader to read in data convert data retrieved from
     an LLM to a better format
     """
@@ -152,7 +151,7 @@ class ReadError(Exception):
         raise ReadError(message, original_exception) from original_exception
 
 
-class NullTextProc(TextProc):
+class NullTextConv(TextConv):
     """A Reader that does not change the data. 
     So in most cases will simply output a string
     """
@@ -208,10 +207,10 @@ class NullTextProc(TextProc):
         return None
 
 
-class MultiTextProc(TextProc):
+class MultiTextConv(TextConv):
     """Concatenates multiple outputs Out into one output
     """
-    outs: typing.List[TextProc]
+    outs: typing.List[TextConv]
     conn: str = '::OUT::{name}::\n'
     signal: str = '\u241E'
 
@@ -363,7 +362,7 @@ class MultiTextProc(TextProc):
         for i, out in enumerate(self.outs):
             print(out.name)
             name = out.name or str(i)
-            if isinstance(out, TextProc):
+            if isinstance(out, TextConv):
                 cur = out.template()
             else:
                 cur = struct_template(out)
@@ -373,7 +372,7 @@ class MultiTextProc(TextProc):
         return text
 
 
-class PrimProc(TextProc):
+class PrimConv(TextConv):
     """Use for converting an AI response into a primitive value
     """
 
@@ -438,7 +437,7 @@ class PrimProc(TextProc):
         return f'<{self._out_cls}>'
 
 
-class PydanticProc(TextProc, typing.Generic[S]):
+class PydanticConv(TextConv, typing.Generic[S]):
     """Use for converting an AI response into a Pydantic BaseModel
     """
     _out_cls: typing.Type[S] = pydantic.PrivateAttr()

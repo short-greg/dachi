@@ -23,7 +23,7 @@ from .._core._param import Trainable
 from .._core._core import Renderable
 from ..utils import is_primitive
 
-from ..adapt._read import TextProc, NullTextProc
+from ..adapt._read import TextConv, NullTextConv
 from ..utils._utils import str_formatter
 
 
@@ -52,9 +52,9 @@ class Cue(
     """Specific cue for the model to use
     """
     text: str
-    out: typing.Optional[TextProc] = None
+    out: typing.Optional[TextConv] = None
 
-    def __init__(self, text: str, name: str='', out: typing.Optional[TextProc] = None):
+    def __init__(self, text: str, name: str='', out: typing.Optional[TextConv] = None):
 
         super().__init__(text=text, name=name, out=out)
 
@@ -114,7 +114,7 @@ class Cue(
 
 X = typing.Union[str, Cue]
 
-def validate_out(cues: typing.List[X]) -> typing.Optional[TextProc]:
+def validate_out(cues: typing.List[X]) -> typing.Optional[TextConv]:
     """Validate an Out based on several instructions
 
     Args:
@@ -310,14 +310,14 @@ class FuncDec(FuncDecBase, Module):
 
     def __init__(
         self, inst, engine: LLM, 
-        reader: TextProc=None, 
+        reader: TextConv=None, 
         to_msg: ToMsg=None,
         kwargs: typing.Dict=None,
         instance=None
     ):
         super().__init__(inst, instance)
         self._engine = engine
-        self._reader = reader or NullTextProc()
+        self._reader = reader or NullTextConv()
         self._to_msg = to_msg or ToText()
         self._kwargs = kwargs or {}
 
@@ -353,14 +353,14 @@ class AFuncDec(FuncDecBase, AsyncModule):
 
     def __init__(
         self, inst, engine: AsyncLLM, 
-        reader: TextProc=None, 
+        reader: TextConv=None, 
         to_msg: ToMsg=None,
         kwargs: typing.Dict=None,
         instance=None
     ):
         super().__init__(inst, instance)
         self._engine = engine
-        self._reader = reader or NullTextProc()
+        self._reader = reader or NullTextConv()
         self._to_msg = to_msg or ToText()
         self._kwargs = kwargs or {}
 
@@ -394,14 +394,14 @@ class StreamDec(FuncDecBase, StreamModule):
     
     def __init__(
         self, inst, engine: StreamLLM, 
-        reader: TextProc=None, 
+        reader: TextConv=None, 
         to_msg: ToMsg=None,
         kwargs: typing.Dict=None,
         instance=None
     ):
         super().__init__(inst, instance)
         self._engine = engine
-        self._reader = reader or NullTextProc()
+        self._reader = reader or NullTextConv()
         self._to_msg = to_msg or ToText()
         self._kwargs = kwargs or {}
 
@@ -435,14 +435,14 @@ class AStreamDec(FuncDecBase, AsyncStreamModule):
 
     def __init__(
         self, inst, engine: AsyncStreamLLM, 
-        reader: TextProc=None, 
+        reader: TextConv=None, 
         to_msg: ToMsg=None,
         kwargs: typing.Dict=None,
         instance=None
     ):
         super().__init__(inst, instance)
         self._engine = engine
-        self._reader = reader or NullTextProc()
+        self._reader = reader or NullTextConv()
         self._to_msg = to_msg or ToText()
         self._kwargs = kwargs or {}
 
@@ -474,7 +474,7 @@ AStreamDec.__call__ = AStreamDec.astream
 
 def instructfunc(
     engine: LLMBase=None,
-    reader: TextProc=None,
+    reader: TextConv=None,
     is_method: bool=False,
     is_async: bool=False,
     is_stream: bool=False,
@@ -523,7 +523,7 @@ def instructfunc(
 
 def instructmethod(
     engine: LLMBase=None,
-    reader: TextProc=None,
+    reader: TextConv=None,
     is_async: bool=False,
     is_stream: bool=False,
     to_msg: ToMsg=None,
@@ -546,7 +546,7 @@ def instructmethod(
 
 def signaturefunc(
     engine: LLMBase=None,
-    reader: TextProc=None,
+    reader: TextConv=None,
     to_msg: ToMsg=None,
     is_method: bool=False,
     is_async: bool=False,
@@ -595,7 +595,7 @@ def signaturefunc(
 
 def signaturemethod(
     engine: LLMBase=None, 
-    reader: TextProc=None,
+    reader: TextConv=None,
     to_msg: ToMsg=None,
     doc: typing.Union[str, typing.Callable[[], str]]=None,
     is_async: bool=False,

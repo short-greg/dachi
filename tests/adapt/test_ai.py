@@ -89,7 +89,7 @@ async def astream(msg: str) -> typing.AsyncIterator[typing.Dict]:
         yield {'content': c}
 
 
-class TextResp(_ai.RespProc):
+class TextResp(_ai.RespConv):
 
     def __init__(self):
         super().__init__(True)
@@ -108,7 +108,7 @@ class TextResp(_ai.RespProc):
         return msg['content']
 
 
-class DeltaResp(_ai.RespProc):
+class DeltaResp(_ai.RespConv):
 
     def __init__(self):
         super().__init__(True)

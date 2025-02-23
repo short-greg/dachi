@@ -3,7 +3,7 @@ import typing
 
 from .._core import Msg
 from .._core import ToolSet, ToolCall
-from ._ai import RespProc, END_TOK
+from ._ai import RespConv, END_TOK
 import json
 
 # TODO: add utility for this
@@ -16,7 +16,7 @@ if len(missing) > 0:
     raise RuntimeError(f'To use this module openai must be installed.')
 
 
-class OpenAITextProc(RespProc):
+class OpenAITextConv(RespConv):
     """
     OpenAITextProc is a class that processes an OpenAI response and extracts text outputs from it.
     Methods:
@@ -98,7 +98,7 @@ class OpenAITextProc(RespProc):
         return {}
 
 
-class OpenAIToolProc(RespProc):
+class OpenAIToolConv(RespConv):
     """
     Process OpenAI LLM responses to extract tool calls.
     This class extends the RespProc class and is designed to handle responses from OpenAI's language model,

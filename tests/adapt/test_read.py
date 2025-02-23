@@ -12,12 +12,12 @@ class TestMultiRead(object):
             SimpleStruct(x='3')
         ], 'i': 2}
 
-        out = _read.MultiTextProc(
+        out = _read.MultiTextConv(
             name='Multi',
-            outs=[_read.PydanticProc(
+            outs=[_read.PydanticConv(
                 name='F1',
                 out_cls=SimpleStruct
-            ), _read.PydanticProc(
+            ), _read.PydanticConv(
                 name='F2',
                 out_cls=SimpleStruct
             )]
@@ -34,12 +34,12 @@ class TestMultiRead(object):
             SimpleStruct(x='3')
         ], 'i': 2}
 
-        out = _read.MultiTextProc(
+        out = _read.MultiTextConv(
             name='Multi',
-            outs=[_read.PydanticProc(
+            outs=[_read.PydanticConv(
                 name='F1',
                 out_cls=SimpleStruct
-            ), _read.PydanticProc(
+            ), _read.PydanticConv(
                 name='F2',
                 out_cls=SimpleStruct
             )]
@@ -56,12 +56,12 @@ class TestMultiRead(object):
             SimpleStruct(x='3')
         ], 'i': 2}
 
-        out = _read.MultiTextProc(
+        out = _read.MultiTextConv(
             name='Multi',
-            outs=[_read.PydanticProc(
+            outs=[_read.PydanticConv(
                 name='F1',
                 out_cls=SimpleStruct
-            ), _read.PydanticProc(
+            ), _read.PydanticConv(
                 name='F2',
                 out_cls=SimpleStruct
             )]
@@ -88,12 +88,12 @@ class TestMultiRead(object):
             SimpleStruct(x='3')
         ], 'i': 2}
 
-        out = _read.MultiTextProc(
+        out = _read.MultiTextConv(
             name='Multi',
-            outs=[_read.PydanticProc(
+            outs=[_read.PydanticConv(
                 name='F1',
                 out_cls=SimpleStruct
-            ), _read.PydanticProc(
+            ), _read.PydanticConv(
                 name='F2',
                 out_cls=SimpleStruct
             )]
@@ -109,7 +109,7 @@ class TestStructRead:
 
     def test_out_creates_out_class(self):
 
-        out = _read.PydanticProc(
+        out = _read.PydanticConv(
             name='F1',
             out_cls=SimpleStruct
             # name='Simple', signature='...',
@@ -121,7 +121,7 @@ class TestStructRead:
 
     def test_out_creates_out_class_with_string(self):
 
-        out = _read.PydanticProc(
+        out = _read.PydanticConv(
             name='F1',
             out_cls=SimpleStruct
         )
@@ -132,7 +132,7 @@ class TestStructRead:
     
     def test_out_template(self):
 
-        out = _read.PydanticProc(
+        out = _read.PydanticConv(
             name='F1',
             out_cls=SimpleStruct
         )
@@ -141,7 +141,7 @@ class TestStructRead:
 
     def test_read_reads_in_the_class(self):
 
-        out = _read.PydanticProc(
+        out = _read.PydanticConv(
             name='F1',
             out_cls=SimpleStruct
         )
@@ -151,7 +151,7 @@ class TestStructRead:
 
     def test_out_reads_in_the_class_with_str(self):
 
-        out = _read.PydanticProc(
+        out = _read.PydanticConv(
             name='F1',
             out_cls=SimpleStruct
         )
@@ -165,7 +165,7 @@ class TestPrimRead(object):
 
     def test_read_reads_in_data(self):
 
-        out = _read.PrimProc(
+        out = _read.PrimConv(
             name='F1',
             out_cls=int,
         )
@@ -175,7 +175,7 @@ class TestPrimRead(object):
 
     def test_template_contains_key(self):
 
-        out = _read.PrimProc(
+        out = _read.PrimConv(
             name='F1',
             out_cls=int,
         )
@@ -184,7 +184,7 @@ class TestPrimRead(object):
 
     def test_prim_read_reads_bool(self):
 
-        out = _read.PrimProc(
+        out = _read.PrimConv(
             name='F1',
             out_cls=bool,
         )
@@ -193,7 +193,7 @@ class TestPrimRead(object):
 
     def test_prim_read_reads_bool_correctly(self):
 
-        out = _read.PrimProc(
+        out = _read.PrimConv(
             name='F1',
             out_cls=bool,
         )

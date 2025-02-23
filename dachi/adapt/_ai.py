@@ -8,7 +8,7 @@ import pydantic
 # local
 from .._core._process import Module
 from ..data import Msg, ListDialog, BaseDialog
-from ._read import RespProc
+from ._read import RespConv
 from ..utils._f_utils import (
     is_async_function, is_async_function, 
     is_generator_function
@@ -246,14 +246,7 @@ from .._core._process import (
     AsyncModule, StreamModule, AsyncStreamModule
 )
 from ..data._messages import Msg, BaseDialog
-# from ._ai import (
-#     llm_aforward, llm_astream, 
-#     llm_forward, llm_stream, RespProc, ToMsg
-# )
-# from ._core import Renderable
-# from ..utils import is_primitive
 
-# from ._read import TextProc
 from ..utils import (
     is_async_function, 
     is_generator_function,
@@ -272,7 +265,7 @@ class LLMBase(ABC):
     """
     def __init__(
         self, 
-        resp_procs: typing.List[RespProc]=None,
+        resp_procs: typing.List[RespConv]=None,
         kwargs: typing.Dict=None,
         message_arg: str='messages',
         role_name: str='assistant'
@@ -597,7 +590,7 @@ class AsyncStreamLLM(LLMBase, AsyncStreamModule):
 def llm_forward(
     f: typing.Callable, 
     *args, 
-    _resp_proc: typing.List[RespProc]=None, 
+    _resp_proc: typing.List[RespConv]=None, 
     _role: str='assistant',
     **kwargs
 ):
@@ -614,7 +607,7 @@ def llm_forward(
     """
     msg = Msg(role=_role)
 
-    if isinstance(_resp_proc, RespProc):
+    if isinstance(_resp_proc, RespConv):
         kwargs.update(_resp_proc.prep())
     elif _resp_proc is not None:
         for r in _resp_proc:
@@ -628,7 +621,7 @@ def llm_forward(
     if _resp_proc is None:
         return msg
     
-    if isinstance(_resp_proc, RespProc):
+    if isinstance(_resp_proc, RespConv):
         return msg, _resp_proc(response, msg)
 
     return msg, tuple(
@@ -639,7 +632,7 @@ def llm_forward(
 async def llm_aforward(
     f, 
     *args, 
-    _resp_proc: typing.List[RespProc]=None, 
+    _resp_proc: typing.List[RespConv]=None, 
     _role: str='assistant',
     **kwargs
 ):
@@ -657,7 +650,7 @@ async def llm_aforward(
     msg = Msg(
         role=_role
     )
-    if isinstance(_resp_proc, RespProc):
+    if isinstance(_resp_proc, RespConv):
         kwargs.update(_resp_proc.prep())
     elif _resp_proc is not None:
         for r in _resp_proc:
@@ -673,7 +666,7 @@ async def llm_aforward(
         return msg
     
     print(response)
-    if isinstance(_resp_proc, RespProc):
+    if isinstance(_resp_proc, RespConv):
         return msg, _resp_proc(response, msg)
 
     return msg, tuple(
@@ -685,7 +678,7 @@ def process_response(response, msg, resp_proc, delta: typing.Dict):
 
     if resp_proc is None:
         return msg
-    if isinstance(resp_proc, RespProc):
+    if isinstance(resp_proc, RespConv):
         return msg, resp_proc.delta(response, msg, delta)
     return msg, tuple(
         r.delta(response, msg, delta_i) for r, delta_i in zip(resp_proc, delta)
@@ -695,7 +688,7 @@ def process_response(response, msg, resp_proc, delta: typing.Dict):
 def llm_stream(
     f: typing.Callable, 
     *args, 
-    _resp_proc: typing.List[RespProc]=None, 
+    _resp_proc: typing.List[RespConv]=None, 
     _role: str='assistant',
     **kwargs
 ):
@@ -712,7 +705,7 @@ def llm_stream(
     """
     _resp_proc = _resp_proc or []
 
-    if isinstance(_resp_proc, RespProc):
+    if isinstance(_resp_proc, RespConv):
         delta = {}
         kwargs.update(_resp_proc.prep())
     elif _resp_proc is None:
@@ -742,7 +735,7 @@ def llm_stream(
 async def llm_astream(
     f: typing.Callable, 
     *args, 
-    _resp_proc: typing.List[RespProc]=None, 
+    _resp_proc: typing.List[RespConv]=None, 
     _role: str='assistant',
     **kwargs
 ) -> typing.AsyncIterator:
@@ -761,7 +754,7 @@ async def llm_astream(
     """
     _resp_proc = _resp_proc or []
 
-    if isinstance(_resp_proc, RespProc):
+    if isinstance(_resp_proc, RespConv):
         delta = {}
         kwargs.update(_resp_proc.prep())
     elif _resp_proc is None:

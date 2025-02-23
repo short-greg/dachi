@@ -11,7 +11,7 @@ from typing import Any
 from .._core import Storable
 
 # TODO: Add in Action (For GOAP)
-from ..adapt import TextProc
+from ..adapt import TextConv
 from ..utils import UNDEFINED
 
 class TaskStatus(Enum):
@@ -286,7 +286,7 @@ ROUTE = Router | typing.Callable[[typing.Any], TaskStatus | State]
 class IOField(object):
 
     def __init__(
-        self, name: str, type_: typing.Optional[typing.Type]=None, default: typing.Any=UNDEFINED, read: TextProc=None
+        self, name: str, type_: typing.Optional[typing.Type]=None, default: typing.Any=UNDEFINED, read: TextConv=None
     ):
         self.name = name
         self.type_ = type_
