@@ -2,7 +2,7 @@ import pkg_resources
 import typing
 
 from ..data import Msg
-from .._core import ToolSet, ToolCall
+from ._ai import ToolSet, ToolCall
 from ._ai import RespConv, END_TOK
 import json
 
