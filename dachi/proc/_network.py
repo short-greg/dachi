@@ -3,7 +3,7 @@ import typing
 
 # 3rd party
 import networkx as nx
-from ..proc._process import Module
+from ._process import Module
 from ._core import T
 
 
