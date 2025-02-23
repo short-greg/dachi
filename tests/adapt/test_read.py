@@ -1,4 +1,4 @@
-from ..data.test_core import SimpleStruct, SimpleStruct2
+from ..utils.test_core import SimpleStruct, SimpleStruct2
 from dachi.adapt import _read as _read
 from dachi.proc import model_to_text
 
