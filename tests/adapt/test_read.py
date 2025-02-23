@@ -1,6 +1,6 @@
-from ..core.test_core import SimpleStruct, SimpleStruct2
+from ..data.test_core import SimpleStruct, SimpleStruct2
 from dachi.adapt import _read as _read
-from dachi._core import model_to_text
+from dachi.proc import model_to_text
 
 
 class TestMultiRead(object):

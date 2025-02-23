@@ -1,6 +1,6 @@
 import typing
 
-from .. import _core as core
+from .. import proc as core
 
 # TODO: COMPLETE
 

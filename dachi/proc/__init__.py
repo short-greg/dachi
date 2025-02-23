@@ -1,14 +1,4 @@
-from ._core import (
-    Storable, render,
-    render_multi, 
-    is_renderable,
-    END_TOK,
-    Renderable, model_template,
-    struct_template,
-    model_to_text, model_from_text,
-    StructLoadException, Templatable,
-    TemplateField, doc
-)
+
 
 from ._process import (
     forward,
@@ -36,5 +26,10 @@ from ._process import (
     Runner,
     RunStatus,
     StreamRunner
+)
+from ._param import (
+    Trainable,
+    Param,
+    ParamSet
 )
 

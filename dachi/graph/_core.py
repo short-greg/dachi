@@ -6,7 +6,7 @@ import time
 from typing import Self
 
 # local
-from .._core import (
+from ..proc import (
     Partial, Streamer,
     Module
 )

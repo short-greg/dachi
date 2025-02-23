@@ -13,7 +13,7 @@ import json
 
 # local
 from ._read import TextConv, struct_template
-from .._core._core import render, END_TOK
+from ..utils._core import render, END_TOK
 from ..utils import (
     escape_curly_braces
 )

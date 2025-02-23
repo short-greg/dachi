@@ -6,8 +6,8 @@ import numpy as np
 import pydantic
 
 # local
-from ._core import Renderable
-from ._core import Storable, render
+from ..utils._core import Renderable
+from ..utils._core import Storable, render
 
 from typing import TypeVar
 

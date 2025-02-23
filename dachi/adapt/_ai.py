@@ -6,14 +6,14 @@ from abc import ABC, abstractmethod
 import pydantic
 
 # local
-from .._core._process import Module
+from ..proc._process import Module
 from ..data import Msg, ListDialog, BaseDialog
 from ._read import RespConv
 from ..utils._f_utils import (
     is_async_function, is_async_function, 
     is_generator_function
 )
-from .._core._core import END_TOK
+from ..utils._core import END_TOK
 
 
 LLM_PROMPT = typing.Union[typing.Iterable[Msg], Msg]
@@ -241,11 +241,11 @@ from functools import wraps
 import pydantic
 
 # local
-from .._core._process import (
+from ..proc._process import (
     Module, 
     AsyncModule, StreamModule, AsyncStreamModule
 )
-from ..data._messages import Msg, BaseDialog
+from ..conv._messages import Msg, BaseDialog
 
 from ..utils import (
     is_async_function, 
@@ -282,17 +282,29 @@ class LLMBase(ABC):
             message_arg (str, optional): . Defaults to 'messages'.
             role_name (str, optional): . Defaults to 'assistant'.
         """
+        print('Kwargs: ', kwargs)
         super().__init__()
         self._kwargs = kwargs or {}
         self.resp_procs = resp_procs or []
         self._message_arg = message_arg
         self._role_name = role_name
+        print('LLM Base kwargs: ', self._kwargs)
 
 
 class LLM(LLMBase, Module):
     
-    def __init__(self, forward=None, resp_procs = None, kwargs = None, message_arg = 'messages', role_name = 'assistant'):
-        super().__init__(resp_procs, kwargs, message_arg, role_name)
+    def __init__(
+        self, forward=None, resp_procs = None, 
+        kwargs = None, message_arg = 'messages', 
+        role_name = 'assistant'
+    ):
+        print('LLM Kwargs', kwargs)
+        super().__init__(
+            resp_procs=resp_procs,
+            kwargs=kwargs, 
+            message_arg=message_arg, 
+            role_name=role_name
+        )
         self._forward = forward
 
     def forward(self, dialog: BaseDialog, **kwarg_overrides) -> typing.Tuple[Msg, typing.Any]:
@@ -306,6 +318,7 @@ class LLM(LLMBase, Module):
         Raises:
             RuntimeError: If the forward function is not defined for the LLM.
         """
+        print('Kwargs: ', self._kwargs)
         kwargs = {
             **self._kwargs, 
             **kwarg_overrides, 
@@ -325,7 +338,9 @@ class LLM(LLMBase, Module):
 class AsyncLLM(LLMBase, AsyncModule):
 
     def __init__(self, aforward=None, resp_procs = None, kwargs = None, message_arg = 'messages', role_name = 'assistant'):
-        super().__init__(resp_procs, kwargs, message_arg, role_name)
+        super().__init__(
+            resp_procs=resp_procs, kwargs=kwargs, message_arg=message_arg, role_name=role_name
+        )
         self._aforward = aforward
 
     async def aforward(self, dialog: BaseDialog, **kwarg_overrides) -> typing.Tuple[Msg, typing.Any]:
@@ -361,7 +376,11 @@ class AsyncLLM(LLMBase, AsyncModule):
 class StreamLLM(LLMBase, StreamModule):
 
     def __init__(self, stream=None, resp_procs = None, kwargs = None, message_arg = 'messages', role_name = 'assistant'):
-        super().__init__(resp_procs, kwargs, message_arg, role_name)
+        super().__init__(
+            resp_procs=resp_procs, 
+            kwargs=kwargs, 
+            message_arg=message_arg, 
+            role_name=role_name)
         self._stream = stream
 
     def stream(self, dialog: BaseDialog, **kwarg_overrides) -> typing.Iterator[typing.Tuple[Msg, typing.Any]]:
@@ -399,7 +418,11 @@ class StreamLLM(LLMBase, StreamModule):
 class AsyncStreamLLM(LLMBase, AsyncStreamModule):
 
     def __init__(self, astream=None, resp_procs = None, kwargs = None, message_arg = 'messages', role_name = 'assistant'):
-        super().__init__(resp_procs, kwargs, message_arg, role_name)
+        super().__init__(
+            resp_procs=resp_procs, 
+            kwargs=kwargs, 
+            message_arg=message_arg, 
+            role_name=role_name)
         self._astream = astream
 
     async def astream(self, dialog: BaseDialog, **kwarg_overrides) -> typing.AsyncIterator[typing.Tuple[Msg, typing.Any]]:

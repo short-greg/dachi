@@ -7,11 +7,11 @@ from abc import ABC, abstractmethod
 import pydantic
 
 # local
-from .._core import (
+from ..data import (
     struct_template,
 )
 from ..utils import unescape_curly_braces
-from .._core import (
+from ..data import (
     render, Templatable, END_TOK, TemplateField, 
     struct_template
 )
@@ -322,7 +322,7 @@ class MultiTextConv(TextConv):
         name = out.name or str(i)
         from_loc = d.find('\u241E')
         to_loc = d[from_loc + 1:].find('\u241E')
-        if to_loc is -1 and message is not END_TOK:
+        if to_loc == -1 and message is not END_TOK:
             return None
 
         cur = self.conn.format(name=name)

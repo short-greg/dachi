@@ -1,10 +1,10 @@
 from dachi.act import _core, _functional as F
 from dachi.act import TaskStatus
-from dachi.data import _data as utils
+from dachi.act import _data as utils
 import typing
 from ..adapt.test_ai import DummyAIModel
-from dachi import _core as core
-from dachi.data._messages import Msg
+from dachi import proc as core
+from dachi.conv._messages import Msg
 import time
 
 

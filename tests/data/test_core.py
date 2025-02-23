@@ -1,7 +1,7 @@
-from dachi._core import _core
+from dachi.utils import _core
 from pydantic import BaseModel
 from typing import Any, Iterator, Tuple
-from dachi._core._process import Module
+from dachi.proc._process import Module
 
 
 class SimpleStruct(BaseModel):

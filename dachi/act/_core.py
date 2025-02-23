@@ -8,7 +8,7 @@ from typing import Any
 
 
 # local
-from .._core import Storable
+from ..data import Storable
 
 # TODO: Add in Action (For GOAP)
 from ..adapt import TextConv

@@ -14,7 +14,7 @@ from typing import Self, get_type_hints
 import pydantic
 
 # local
-from ..utils import (
+from . import (
     is_primitive, 
     escape_curly_braces
 )
@@ -23,7 +23,7 @@ S = typing.TypeVar('S', bound=pydantic.BaseModel)
 
 
 import pydantic
-from ..utils import unescape_curly_braces, escape_curly_braces
+from . import unescape_curly_braces, escape_curly_braces
 
 
 class StructLoadException(Exception):

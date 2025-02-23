@@ -6,15 +6,15 @@ import pydantic
 import roman
 
 # local
-from .._core import (
-    render, render_multi,
-    Param 
+from ..proc import (
+    render, render_multi
 )
+from ..proc import Param
 from ._instruct_core import Cue, validate_out
 from ..utils import (
     str_formatter
 )
-from .._core import Module
+from ..proc import Module
 from ._data import Description
 
 

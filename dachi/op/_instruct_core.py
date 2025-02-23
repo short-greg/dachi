@@ -9,18 +9,18 @@ from functools import wraps
 import pydantic
 
 # local
-from .._core._process import (
+from ..proc._process import (
     Module, 
     AsyncModule, StreamModule, AsyncStreamModule
 )
-from .._core._param import Param
+from ..proc._param import Param
 from ..adapt._ai import (
     AsyncLLM, LLM, LLMBase,
     StreamLLM, AsyncStreamLLM, ToMsg,
     ToText
 )
-from .._core._param import Trainable
-from .._core._core import Renderable
+from ..proc._param import Trainable
+from ..utils._core import Renderable
 from ..utils import is_primitive
 
 from ..adapt._read import TextConv, NullTextConv
@@ -324,11 +324,11 @@ class FuncDec(FuncDecBase, Module):
     def forward(self, *args, **kwargs):
         
         instance, args = self.get_instance(args)
-        print(self._inst, type(self._inst))
+        # print(self._inst, type(self._inst))
         cue = self._inst(
             instance, *args, **kwargs
         )
-        print(cue)
+        # print(cue)
         msg = self._to_msg(cue)
         engine = self.get_engine(instance)
         _, res = engine(

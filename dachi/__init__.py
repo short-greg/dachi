@@ -2,7 +2,7 @@
 
 __version__ = "0.0.1"
 
-from ._core import *
+from .proc import *
 from . import act
 from . import conv
 from . import adapt

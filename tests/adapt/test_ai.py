@@ -1,4 +1,4 @@
-from dachi.data._messages import Msg
+from dachi.conv._messages import Msg
 
 from typing import Iterator
 from dachi.adapt import _ai
