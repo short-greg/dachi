@@ -6,6 +6,8 @@ from dataclasses import dataclass
 import inspect
 from typing import Any
 
+import pydantic
+
 # local
 from ..utils import Storable
 
@@ -169,22 +171,15 @@ class TaskMessage:
     data: typing.Any
 
 
-class Task(Storable):
+class Task(pydantic.BaseModel, Storable):
     """The base class for a task in the behavior tree
     """
 
-    SUCCESS = TaskStatus.SUCCESS
-    FAILURE = TaskStatus.FAILURE
-    RUNNING = TaskStatus.RUNNING
+    status: TaskStatus = pydantic.PrivateAttr(default=TaskStatus.READY)
 
-    def __init__(self) -> None:
-        """Create the task
-
-        Args:
-            name (str): The name of the task
-        """
-        super().__init__()
-        self._status = TaskStatus.READY
+    SUCCESS = typing.ClassVar[TaskStatus.SUCCESS]
+    FAILURE = typing.ClassVar[TaskStatus.FAILURE]
+    RUNNING = typing.ClassVar[TaskStatus.RUNNING]
 
     @abstractmethod    
     def tick(self) -> TaskStatus:
@@ -255,7 +250,7 @@ def from_bool(status: bool) -> TaskStatus:
     return TaskStatus.from_bool(status)
 
 
-class State(object):
+class State(pydantic.BaseModel):
     """Use State creating a state machine
     """
 
@@ -279,7 +274,6 @@ class Router(object):
 
 
 ROUTE = Router | typing.Callable[[typing.Any], TaskStatus | State]
-
 
 
 class IOField(object):
@@ -324,9 +318,6 @@ def get_function_info(func: Any):
         "parameters": parameters,
         "return_type": return_type
     }
-
-
-
 
 
 

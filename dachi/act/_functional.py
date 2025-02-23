@@ -103,6 +103,12 @@ def parallel(
     Returns:
         CALL_TASK: The task to call
     """
+    fails_on = (
+        fails_on if fails_on is not None else len(self._tasks)
+    )
+    succeeds_on = (
+        succeeds_on if succeeds_on is not None else (len(self._tasks) + 1 - self._fails_on)
+    )
     def _f():
         if parallelizer:
             return parallelizer(tasks, succeeds_on, fails_on, success_priority)
