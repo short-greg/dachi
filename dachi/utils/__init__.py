@@ -15,7 +15,6 @@ from ._core import (
     Storable, render,
     render_multi, 
     is_renderable,
-    END_TOK,
     Renderable, model_template,
     struct_template,
     model_to_text, model_from_text,

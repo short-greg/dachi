@@ -12,9 +12,10 @@ from ..utils import (
 )
 from ..utils import unescape_curly_braces
 from ..utils import (
-    render, Templatable, END_TOK, TemplateField, 
+    render, Templatable, TemplateField, 
     struct_template
 )
+from ..conv import END_TOK
 from ..conv import Msg
 from pydantic_core import PydanticUndefined
 

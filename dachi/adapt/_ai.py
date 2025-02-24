@@ -7,13 +7,28 @@ import pydantic
 
 # local
 from ..proc._process import Module
-from ..conv import Msg, ListDialog, BaseDialog
+from ..conv import (
+    Msg, ListDialog, BaseDialog,
+    AsyncAssistantBase, AssistantBase,
+    StreamAssistantBase, AsyncStreamAssistantBase
+)
 from ._read import RespConv
 from ..utils._f_utils import (
     is_async_function, is_async_function, 
     is_generator_function
 )
-from ..utils._core import END_TOK
+from ..conv import END_TOK
+
+# local
+from ..conv._messages import Msg, BaseDialog
+from ..utils import (
+    is_async_function, 
+    is_generator_function,
+)
+
+S = typing.TypeVar('S', bound=pydantic.BaseModel)
+
+# TODO: MOVE OUT OF HERE
 
 
 LLM_PROMPT = typing.Union[typing.Iterable[Msg], Msg]
@@ -229,34 +244,6 @@ def to_dialog(prompt: typing.Union[BaseDialog, Msg]) -> BaseDialog:
 
     return prompt
 
-# 1st party
-import typing
-from abc import abstractmethod, ABC
-from typing import Self
-from itertools import chain
-import inspect
-from functools import wraps
-
-# 3rd party
-import pydantic
-
-# local
-from ..proc._process import (
-    Module, 
-    AsyncModule, StreamModule, AsyncStreamModule
-)
-from ..conv._messages import Msg, BaseDialog
-
-from ..utils import (
-    is_async_function, 
-    is_generator_function,
-)
-# from ..utils._utils import str_formatter
-
-
-S = typing.TypeVar('S', bound=pydantic.BaseModel)
-
-# TODO: MOVE OUT OF HERE
 
 class LLMBase(ABC):
 
@@ -291,7 +278,7 @@ class LLMBase(ABC):
         print('LLM Base kwargs: ', self._kwargs)
 
 
-class LLM(LLMBase, Module):
+class LLM(LLMBase, AssistantBase):
     
     def __init__(
         self, forward=None, resp_procs = None, 
@@ -333,7 +320,7 @@ class LLM(LLMBase, Module):
         )
 
 
-class AsyncLLM(LLMBase, AsyncModule):
+class AsyncLLM(LLMBase, AsyncAssistantBase):
 
     def __init__(self, aforward=None, resp_procs = None, kwargs = None, message_arg = 'messages', role_name = 'assistant'):
         super().__init__(
@@ -371,7 +358,7 @@ class AsyncLLM(LLMBase, AsyncModule):
             )
 
 
-class StreamLLM(LLMBase, StreamModule):
+class StreamLLM(LLMBase, StreamAssistantBase):
 
     def __init__(self, stream=None, resp_procs = None, kwargs = None, message_arg = 'messages', role_name = 'assistant'):
         super().__init__(
@@ -413,7 +400,7 @@ class StreamLLM(LLMBase, StreamModule):
             )
 
 
-class AsyncStreamLLM(LLMBase, AsyncStreamModule):
+class AsyncStreamLLM(LLMBase, AsyncStreamAssistantBase):
 
     def __init__(self, astream=None, resp_procs = None, kwargs = None, message_arg = 'messages', role_name = 'assistant'):
         super().__init__(

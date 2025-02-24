@@ -54,8 +54,17 @@ class Cue(
     text: str
     out: typing.Optional[TextConv] = None
 
-    def __init__(self, text: str, name: str='', out: typing.Optional[TextConv] = None):
-
+    def __init__(
+        self, text: str, name: str='', 
+        out: typing.Optional[TextConv] = None
+    ):
+        """
+        Initializes the instance with the provided text, name, and optional output converter.
+        Args:
+            text (str): The text to be processed.
+            name (str, optional): The name associated with the text. Defaults to an empty string.
+            out (Optional[TextConv], optional): The converter to use for processing the output. Defaults to None.
+        """
         super().__init__(text=text, name=name, out=out)
 
     def i(self) -> Self:

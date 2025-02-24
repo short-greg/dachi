@@ -1,7 +1,7 @@
 from dachi.utils import model_to_text
 from dachi.adapt import _text_proc as text_proc
 from .._structs import SimpleStruct2
-from dachi.utils import END_TOK
+from dachi.conv import END_TOK
 
 
 class TestCSVRead(object):

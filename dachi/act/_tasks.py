@@ -62,7 +62,7 @@ class Serial(Task):
     """
 
     tasks: typing.Iterable[Task]
-    context: Context = pydantic.PrivateAttr(default=Context)
+    _context: Context = pydantic.PrivateAttr(default=Context)
 
     @property
     def tasks(self) -> typing.Iterable[Task]:
@@ -77,7 +77,7 @@ class Serial(Task):
         """Reset the state
         """
         super().reset()
-        self.context = Context()
+        self._context = Context()
         for task in self.tasks:
             task.reset()
 
@@ -86,7 +86,7 @@ class Sequence(Serial):
     """Create a sequence of tasks to execute
     """
 
-    f: typing.Callable = pydantic.PrivateAttr()
+    _f: typing.Callable = pydantic.PrivateAttr()
     # context: Context = pydantic.PrivateAttr(default=Context)
 
     def __init__(self, **data):
@@ -96,8 +96,8 @@ class Sequence(Serial):
             tasks (typing.Iterable[Task]): The tasks making up the sequence
         """
         super().__init__(**data)
-        self.f = _functional.sequence(
-            self.tasks, self.context
+        self._f = _functional.sequence(
+            self.tasks, self._context
         )
 
     def tick(self) -> TaskStatus:
@@ -106,20 +106,20 @@ class Sequence(Serial):
         Returns:
             TaskStatus: The status
         """
-        self.status = self.f()
+        self.status = self._f()
         return self.status
 
     def reset(self):
         super().reset()
-        self.f = _functional.sequence(
-            self.tasks, self.context
+        self._f = _functional.sequence(
+            self.tasks, self._context
         )
 
 
 class Selector(Serial):
     """Create a set of tasks to select from
     """
-    f: typing.Callable = pydantic.PrivateAttr()
+    _f: typing.Callable = pydantic.PrivateAttr()
 
     def __init__(self, **data):
         """Create a selector of tasks
@@ -128,8 +128,8 @@ class Selector(Serial):
             tasks (typing.Iterable[Task]): The tasks to select from
         """
         super().__init__(**data)
-        self.f = _functional.selector(
-            self.tasks, self.context
+        self._f = _functional.selector(
+            self.tasks, self._context
         )
 
     def tick(self) -> TaskStatus:
@@ -138,13 +138,13 @@ class Selector(Serial):
         Returns:
             TaskStatus: The resulting task status
         """
-        self.status = self.f()
+        self.status = self._f()
         return self.status
 
     def reset(self):
         super().reset()
-        self.f = _functional.selector(
-            self.tasks, self.context
+        self._f = _functional.selector(
+            self.tasks, self._context
         )
 
 

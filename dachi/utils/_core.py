@@ -332,12 +332,3 @@ def render_multi(xs: typing.Iterable[typing.Any]) -> typing.List[str]:
     return [
         render(x) for x in xs
     ]
-
-
-class _Final:
-    """A unique object to mark the end of a streaming response."""
-    def __repr__(self):
-        return "<Final Token>"
-
-END_TOK = _Final()
-

@@ -1,6 +1,6 @@
 # 1st party
 import typing
-from abc import ABC, abstractmethod
+from abc import abstractmethod
 from typing import Self
 import typing
 
@@ -9,6 +9,14 @@ import pydantic
 
 # local
 from ..utils._core import Renderable
+
+
+class _Final:
+    """A unique object to mark the end of a streaming response."""
+    def __repr__(self):
+        return "<Final Token>"
+
+END_TOK = _Final()
 
 
 class Msg(dict):

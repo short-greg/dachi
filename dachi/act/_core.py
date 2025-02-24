@@ -15,6 +15,7 @@ from ..utils import Storable
 from ..adapt import TextConv
 from ..utils import UNDEFINED
 
+
 class TaskStatus(Enum):
     """Status of a Behavior Tree task
     """
@@ -177,9 +178,9 @@ class Task(pydantic.BaseModel, Storable):
 
     status: TaskStatus = pydantic.PrivateAttr(default=TaskStatus.READY)
 
-    SUCCESS = typing.ClassVar[TaskStatus.SUCCESS]
-    FAILURE = typing.ClassVar[TaskStatus.FAILURE]
-    RUNNING = typing.ClassVar[TaskStatus.RUNNING]
+    SUCCESS: typing.ClassVar[TaskStatus] = TaskStatus.SUCCESS
+    FAILURE: typing.ClassVar[TaskStatus] = TaskStatus.FAILURE
+    RUNNING: typing.ClassVar[TaskStatus] = TaskStatus.RUNNING
 
     @abstractmethod    
     def tick(self) -> TaskStatus:

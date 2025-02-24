@@ -25,7 +25,10 @@ from ._process import (
     stream_thread,
     Runner,
     RunStatus,
-    StreamRunner
+    StreamRunner,
+    AsyncModule,
+    AsyncStreamModule,
+    StreamModule
 )
 from ._param import (
     Trainable,
