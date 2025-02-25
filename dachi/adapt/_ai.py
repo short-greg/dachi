@@ -6,11 +6,10 @@ from abc import ABC, abstractmethod
 import pydantic
 
 # local
-from ..proc._process import Module
 from ..conv import (
     Msg, ListDialog, BaseDialog,
-    AsyncAssistantBase, AssistantBase,
-    StreamAssistantBase, AsyncStreamAssistantBase
+    AsyncAssistBase, AssistBase,
+    StreamAssistBase, AsyncStreamAssistBase
 )
 from ._read import RespConv
 from ..utils._f_utils import (
@@ -269,372 +268,11 @@ class LLMBase(ABC):
             message_arg (str, optional): . Defaults to 'messages'.
             role_name (str, optional): . Defaults to 'assistant'.
         """
-        print('Kwargs: ', kwargs)
         super().__init__()
         self._kwargs = kwargs or {}
         self.resp_procs = resp_procs or []
         self._message_arg = message_arg
         self._role_name = role_name
-        print('LLM Base kwargs: ', self._kwargs)
-
-
-class LLM(LLMBase, AssistantBase):
-    
-    def __init__(
-        self, forward=None, resp_procs = None, 
-        kwargs = None, message_arg = 'messages', 
-        role_name = 'assistant'
-    ):
-        super().__init__(
-            resp_procs=resp_procs,
-            kwargs=kwargs, 
-            message_arg=message_arg, 
-            role_name=role_name
-        )
-        self._forward = forward
-
-    def forward(self, dialog: BaseDialog, **kwarg_overrides) -> typing.Tuple[Msg, typing.Any]:
-        """
-        Processes the given dialog and returns a response message and additional data.
-        Args:
-            dialog (Dialog): The dialog object containing the input data.
-            **kwarg_overrides: Additional keyword arguments to override default settings.
-        Returns:
-            typing.Tuple[Msg, typing.Any]: A tuple containing the response message and any additional data.
-        Raises:
-            RuntimeError: If the forward function is not defined for the LLM.
-        """
-        kwargs = {
-            **self._kwargs, 
-            **kwarg_overrides, 
-            self._message_arg: dialog.to_list_input()
-        }
-        if self._forward is not None:
-            return llm_forward(
-                self._forward, **kwargs, 
-                _resp_proc=self.resp_procs,
-                _role=self._role_name
-            )
-        raise RuntimeError(
-            'The forward has not been defined for the LLM'
-        )
-
-
-class AsyncLLM(LLMBase, AsyncAssistantBase):
-
-    def __init__(self, aforward=None, resp_procs = None, kwargs = None, message_arg = 'messages', role_name = 'assistant'):
-        super().__init__(
-            resp_procs=resp_procs, kwargs=kwargs, message_arg=message_arg, role_name=role_name
-        )
-        self._aforward = aforward
-
-    async def aforward(self, dialog: BaseDialog, **kwarg_overrides) -> typing.Tuple[Msg, typing.Any]:
-        """
-        Asynchronously forwards a dialog to the specified handler.
-        This method checks if an asynchronous forward handler (`self._aforward`) is defined.
-        If it is, it merges the provided keyword arguments with the instance's keyword arguments
-        and the dialog input, then calls the asynchronous forward handler.
-        If no asynchronous forward handler is defined, it falls back to the synchronous `forward` method.
-        Args:
-            dialog (Dialog): The dialog object containing the input to be forwarded.
-            **kwarg_overrides: Additional keyword arguments to override the instance's keyword arguments.
-        Returns:
-            typing.Tuple[Msg, typing.Any]: A tuple containing the message and any additional data returned by the handler.
-        """
-        if self._aforward is not None:
-            kwargs = {
-                **self._kwargs, 
-                **kwarg_overrides, 
-                self._message_arg: dialog.to_list_input()
-            }
-            return await llm_aforward(
-                self._aforward, **kwargs, 
-                _resp_proc=self.resp_procs,
-                _role=self._role_name
-            )
-        else:
-            return self.forward(
-                dialog, **kwarg_overrides
-            )
-
-
-class StreamLLM(LLMBase, StreamAssistantBase):
-
-    def __init__(self, stream=None, resp_procs = None, kwargs = None, message_arg = 'messages', role_name = 'assistant'):
-        super().__init__(
-            resp_procs=resp_procs, 
-            kwargs=kwargs, 
-            message_arg=message_arg, 
-            role_name=role_name)
-        self._stream = stream
-
-    def stream(self, dialog: BaseDialog, **kwarg_overrides) -> typing.Iterator[typing.Tuple[Msg, typing.Any]]:
-        """
-        Streams responses from the language model based on the provided dialog.
-        This method streams responses from the language model if the `_stream` attribute is set.
-        It merges the default keyword arguments (`_kwargs`) with any overrides provided in `kwarg_overrides`,
-        and uses the `dialog.to_input()` as the value for the `_message_arg` key. The responses are yielded
-        one by one from the `llm_stream` function.
-        If `_stream` is not set, it forwards the dialog to another method and yields the result.
-        Args:
-            dialog (Dialog): The dialog object containing the input message.
-            **kwarg_overrides: Additional keyword arguments to override the default ones.
-        Yields:
-            typing.Tuple[Msg, typing.Any]: A tuple containing the message and any additional data.
-        """
-        if self._stream is not None:
-            kwargs = {
-                **self._kwargs, 
-                **kwarg_overrides, 
-                self._message_arg: dialog.to_list_input()
-            }
-            for v in llm_stream(
-                self._stream, **kwargs, 
-                _resp_proc=self.resp_procs,
-                _role=self._role_name
-            ):
-                yield v
-        else:
-            yield self.forward(
-                dialog, **kwarg_overrides
-            )
-
-
-class AsyncStreamLLM(LLMBase, AsyncStreamAssistantBase):
-
-    def __init__(self, astream=None, resp_procs = None, kwargs = None, message_arg = 'messages', role_name = 'assistant'):
-        super().__init__(
-            resp_procs=resp_procs, 
-            kwargs=kwargs, 
-            message_arg=message_arg, 
-            role_name=role_name)
-        self._astream = astream
-
-    async def astream(self, dialog: BaseDialog, **kwarg_overrides) -> typing.AsyncIterator[typing.Tuple[Msg, typing.Any]]:
-        """
-        Asynchronously streams messages based on the provided dialog.
-        This method checks if an asynchronous stream (`_astream`) is available. If it is, it uses the `llm_astream` function
-        to asynchronously yield messages. If not, it falls back to a synchronous stream method.
-        Args:
-            dialog (Dialog): The dialog object containing the input message.
-            **kwarg_overrides: Additional keyword arguments to override the default ones.
-        Yields:
-            typing.Tuple[Msg, typing.Any]: A tuple containing the message and any additional data.
-        """
-        if self._astream is not None:
-            
-            kwargs = {
-                **self._kwargs, 
-                **kwarg_overrides, 
-                self._message_arg: dialog.to_list_input()
-            }
-            async for v in await llm_astream(
-                self._stream, **kwargs, 
-                _resp_proc=self.resp_procs,
-                _role=self._role_name
-            ):
-                yield v
-        else:
-            for v in self.stream(
-                dialog, **kwarg_overrides
-            ):
-                yield v
-
-
-# class LLM(Module):
-#     """
-#     LLM is a class that serves as an adapter for Language Model (LLM) functions, enabling the execution of various LLM operations such as forwarding, asynchronous forwarding, streaming, and asynchronous streaming. It provides a flexible interface to handle different types of LLM interactions.
-#     """
-#     def __init__(
-#         self, 
-#         forward=None,
-#         aforward=None,
-#         stream=None,
-#         astream=None,
-#         resp_procs: typing.List[RespProc]=None,
-#         kwargs: typing.Dict=None,
-#         message_arg: str='messages',
-#         role_name: str='assistant'
-#     ):
-#         """Wrap the processes in an LLM. Can also inherit from LLM
-
-#         Args:
-#             forward (optional): Define the forward function Raises a Runtime error if not defined and called. Defaults to None.
-#             aforward (optional): Define the astream function. Will call forward if not defined. Defaults to None.
-#             stream (optional): Define the stream function. Will call forward if not defined. Defaults to None.
-#             astream (optional): Define the astream function. LLM astream will call stream as a backup if not defined. Defaults to None.
-#             responsresp_procse_processors (typing.List[Response], optional): . Defaults to None.
-#             kwargs (typing.Dict, optional): . Defaults to None.
-#             message_arg (str, optional): . Defaults to 'messages'.
-#             role_name (str, optional): . Defaults to 'assistant'.
-#         """
-#         super().__init__()
-#         self._forward = forward
-#         self._aforward = aforward
-#         self._stream = stream
-#         self._astream = astream
-#         self._kwargs = kwargs or {}
-#         self.resp_procs = resp_procs or []
-#         self._message_arg = message_arg
-#         self._role_name = role_name
-
-#     def forward(self, dialog: BaseDialog, **kwarg_overrides) -> typing.Tuple[Msg, typing.Any]:
-#         """
-#         Processes the given dialog and returns a response message and additional data.
-#         Args:
-#             dialog (Dialog): The dialog object containing the input data.
-#             **kwarg_overrides: Additional keyword arguments to override default settings.
-#         Returns:
-#             typing.Tuple[Msg, typing.Any]: A tuple containing the response message and any additional data.
-#         Raises:
-#             RuntimeError: If the forward function is not defined for the LLM.
-#         """
-#         kwargs = {
-#             **self._kwargs, 
-#             **kwarg_overrides, 
-#             self._message_arg: dialog.to_list_input()
-#         }
-#         if self._forward is not None:
-#             return llm_forward(
-#                 self._forward, **kwargs, 
-#                 _resp_proc=self.resp_procs,
-#                 _role=self._role_name
-#             )
-#         raise RuntimeError(
-#             'The forward has not been defined for the LLM'
-#         )
-    
-#     async def aforward(self, dialog: BaseDialog, **kwarg_overrides) -> typing.Tuple[Msg, typing.Any]:
-#         """
-#         Asynchronously forwards a dialog to the specified handler.
-#         This method checks if an asynchronous forward handler (`self._aforward`) is defined.
-#         If it is, it merges the provided keyword arguments with the instance's keyword arguments
-#         and the dialog input, then calls the asynchronous forward handler.
-#         If no asynchronous forward handler is defined, it falls back to the synchronous `forward` method.
-#         Args:
-#             dialog (Dialog): The dialog object containing the input to be forwarded.
-#             **kwarg_overrides: Additional keyword arguments to override the instance's keyword arguments.
-#         Returns:
-#             typing.Tuple[Msg, typing.Any]: A tuple containing the message and any additional data returned by the handler.
-#         """
-#         if self._aforward is not None:
-#             kwargs = {
-#                 **self._kwargs, 
-#                 **kwarg_overrides, 
-#                 self._message_arg: dialog.to_list_input()
-#             }
-#             return await llm_aforward(
-#                 self._aforward, **kwargs, 
-#                 _resp_proc=self.resp_procs,
-#                 _role=self._role_name
-#             )
-#         else:
-#             return self.forward(
-#                 dialog, **kwarg_overrides
-#             )
-
-#     def stream(self, dialog: BaseDialog, **kwarg_overrides) -> typing.Iterator[typing.Tuple[Msg, typing.Any]]:
-#         """
-#         Streams responses from the language model based on the provided dialog.
-#         This method streams responses from the language model if the `_stream` attribute is set.
-#         It merges the default keyword arguments (`_kwargs`) with any overrides provided in `kwarg_overrides`,
-#         and uses the `dialog.to_input()` as the value for the `_message_arg` key. The responses are yielded
-#         one by one from the `llm_stream` function.
-#         If `_stream` is not set, it forwards the dialog to another method and yields the result.
-#         Args:
-#             dialog (Dialog): The dialog object containing the input message.
-#             **kwarg_overrides: Additional keyword arguments to override the default ones.
-#         Yields:
-#             typing.Tuple[Msg, typing.Any]: A tuple containing the message and any additional data.
-#         """
-#         if self._stream is not None:
-#             kwargs = {
-#                 **self._kwargs, 
-#                 **kwarg_overrides, 
-#                 self._message_arg: dialog.to_list_input()
-#             }
-#             for v in llm_stream(
-#                 self._stream, **kwargs, 
-#                 _resp_proc=self.resp_procs,
-#                 _role=self._role_name
-#             ):
-#                 yield v
-#         else:
-#             yield self.forward(
-#                 dialog, **kwarg_overrides
-#             )
-    
-#     async def astream(self, dialog: BaseDialog, **kwarg_overrides) -> typing.AsyncIterator[typing.Tuple[Msg, typing.Any]]:
-#         """
-#         Asynchronously streams messages based on the provided dialog.
-#         This method checks if an asynchronous stream (`_astream`) is available. If it is, it uses the `llm_astream` function
-#         to asynchronously yield messages. If not, it falls back to a synchronous stream method.
-#         Args:
-#             dialog (Dialog): The dialog object containing the input message.
-#             **kwarg_overrides: Additional keyword arguments to override the default ones.
-#         Yields:
-#             typing.Tuple[Msg, typing.Any]: A tuple containing the message and any additional data.
-#         """
-#         if self._astream is not None:
-            
-#             kwargs = {
-#                 **self._kwargs, 
-#                 **kwarg_overrides, 
-#                 self._message_arg: dialog.to_list_input()
-#             }
-#             async for v in await llm_astream(
-#                 self._stream, **kwargs, 
-#                 _resp_proc=self.resp_procs,
-#                 _role=self._role_name
-#             ):
-#                 yield v
-#         else:
-#             for v in self.stream(
-#                 dialog, **kwarg_overrides
-#             ):
-#                 yield v
-
-
-def llm_forward(
-    f: typing.Callable, 
-    *args, 
-    _resp_proc: typing.List[RespConv]=None, 
-    _role: str='assistant',
-    **kwargs
-):
-    """
-    Executes a given function with specified arguments and processes the response.
-    Args:
-        f (typing.Callable): The function to be executed.
-        *args: Variable length argument list to be passed to the function.
-        _resp_proc (typing.List[Response], optional): A list of Response objects to process the function's response. Defaults to None.
-        _role (str, optional): The role to be assigned to the message. Defaults to 'assistant'.
-        **kwargs: Additional keyword arguments to be passed to the function.
-    Returns:
-        tuple: A tuple containing the final message (Msg) and the last value processed by the Response objects.
-    """
-    msg = Msg(role=_role)
-
-    if isinstance(_resp_proc, RespConv):
-        kwargs.update(_resp_proc.prep())
-    elif _resp_proc is not None:
-        for r in _resp_proc:
-            kwargs.update(r.prep())
-
-    response = f(
-        *args, **kwargs
-    )
-    msg['meta']['response'] = response
-
-    if _resp_proc is None:
-        return msg
-    
-    if isinstance(_resp_proc, RespConv):
-        return msg, _resp_proc(response, msg)
-
-    return msg, tuple(
-        r(response, msg) for r in _resp_proc
-    )
 
 
 async def llm_aforward(
@@ -825,3 +463,378 @@ class ToText(ToMsg):
             role=self.role, 
             **{self.field: text}
         )
+
+
+# class LLM(LLMBase, AssistantBase):
+    
+#     def __init__(
+#         self, forward=None, resp_procs = None, 
+#         kwargs = None, message_arg = 'messages', 
+#         role_name = 'assistant'
+#     ):
+#         super().__init__(
+#             resp_procs=resp_procs,
+#             kwargs=kwargs, 
+#             message_arg=message_arg, 
+#             role_name=role_name
+#         )
+#         if forward is not None or not hasattr(self, '_forward'):
+#             self._forward = forward
+
+#     def forward(self, dialog: BaseDialog, **kwarg_overrides) -> typing.Tuple[Msg, typing.Any]:
+#         """
+#         Processes the given dialog and returns a response message and additional data.
+#         Args:
+#             dialog (Dialog): The dialog object containing the input data.
+#             **kwarg_overrides: Additional keyword arguments to override default settings.
+#         Returns:
+#             typing.Tuple[Msg, typing.Any]: A tuple containing the response message and any additional data.
+#         Raises:
+#             RuntimeError: If the forward function is not defined for the LLM.
+#         """
+#         kwargs = {
+#             **self._kwargs, 
+#             **kwarg_overrides, 
+#             self._message_arg: dialog.to_list_input()
+#         }
+#         if self._forward is not None:
+#             return llm_forward(
+#                 self._forward, **kwargs, 
+#                 _resp_proc=self.resp_procs,
+#                 _role=self._role_name
+#             )
+#         raise RuntimeError(
+#             'The forward has not been defined for the LLM'
+#         )
+
+
+# class AsyncLLM(LLMBase, AsyncAssistantBase):
+
+#     def __init__(
+#         self, aforward=None, 
+#         resp_procs = None, 
+#         kwargs = None,
+#         message_arg = 'messages', role_name = 'assistant'):
+#         super().__init__(
+#             resp_procs=resp_procs, kwargs=kwargs, message_arg=message_arg, role_name=role_name
+#         )
+#         self._aforward = aforward
+
+#     async def aforward(
+#         self, dialog: BaseDialog, **kwarg_overrides
+#     ) -> typing.Tuple[Msg, typing.Any]:
+#         """
+#         Asynchronously forwards a dialog to the specified handler.
+#         This method checks if an asynchronous forward handler (`self._aforward`) is defined.
+#         If it is, it merges the provided keyword arguments with the instance's keyword arguments
+#         and the dialog input, then calls the asynchronous forward handler.
+#         If no asynchronous forward handler is defined, it falls back to the synchronous `forward` method.
+#         Args:
+#             dialog (Dialog): The dialog object containing the input to be forwarded.
+#             **kwarg_overrides: Additional keyword arguments to override the instance's keyword arguments.
+#         Returns:
+#             typing.Tuple[Msg, typing.Any]: A tuple containing the message and any additional data returned by the handler.
+#         """
+#         if self._aforward is not None:
+#             kwargs = {
+#                 **self._kwargs, 
+#                 **kwarg_overrides, 
+#                 self._message_arg: dialog.to_list_input()
+#             }
+#             return await llm_aforward(
+#                 self._aforward, **kwargs, 
+#                 _resp_proc=self.resp_procs,
+#                 _role=self._role_name
+#             )
+#         else:
+#             return self.forward(
+#                 dialog, **kwarg_overrides
+#             )
+
+
+# class StreamLLM(LLMBase, StreamAssistantBase):
+
+#     def __init__(
+#         self, stream=None, 
+#         resp_procs = None, 
+#         kwargs = None, 
+#         message_arg = 'messages', 
+#         role_name = 'assistant'
+#     ):
+#         super().__init__(
+#             resp_procs=resp_procs, 
+#             kwargs=kwargs, 
+#             message_arg=message_arg, 
+#             role_name=role_name)
+#         self._stream = stream
+
+#     def stream(
+#         self, dialog: BaseDialog, **kwarg_overrides
+#     ) -> typing.Iterator[typing.Tuple[Msg, typing.Any]]:
+#         """
+#         Streams responses from the language model based on the provided dialog.
+#         This method streams responses from the language model if the `_stream` attribute is set.
+#         It merges the default keyword arguments (`_kwargs`) with any overrides provided in `kwarg_overrides`,
+#         and uses the `dialog.to_input()` as the value for the `_message_arg` key. The responses are yielded
+#         one by one from the `llm_stream` function.
+#         If `_stream` is not set, it forwards the dialog to another method and yields the result.
+#         Args:
+#             dialog (Dialog): The dialog object containing the input message.
+#             **kwarg_overrides: Additional keyword arguments to override the default ones.
+#         Yields:
+#             typing.Tuple[Msg, typing.Any]: A tuple containing the message and any additional data.
+#         """
+#         if self._stream is not None:
+#             kwargs = {
+#                 **self._kwargs, 
+#                 **kwarg_overrides, 
+#                 self._message_arg: dialog.to_list_input()
+#             }
+#             for v in llm_stream(
+#                 self._stream, **kwargs, 
+#                 _resp_proc=self.resp_procs,
+#                 _role=self._role_name
+#             ):
+#                 yield v
+#         else:
+#             yield self.forward(
+#                 dialog, **kwarg_overrides
+#             )
+
+
+# class AsyncStreamLLM(LLMBase, AsyncStreamAssistantBase):
+
+#     def __init__(self, astream=None, resp_procs = None, kwargs = None, message_arg = 'messages', role_name = 'assistant'):
+#         super().__init__(
+#             resp_procs=resp_procs, 
+#             kwargs=kwargs, 
+#             message_arg=message_arg, 
+#             role_name=role_name)
+#         self._astream = astream
+
+#     async def astream(self, dialog: BaseDialog, **kwarg_overrides) -> typing.AsyncIterator[typing.Tuple[Msg, typing.Any]]:
+#         """
+#         Asynchronously streams messages based on the provided dialog.
+#         This method checks if an asynchronous stream (`_astream`) is available. If it is, it uses the `llm_astream` function
+#         to asynchronously yield messages. If not, it falls back to a synchronous stream method.
+#         Args:
+#             dialog (Dialog): The dialog object containing the input message.
+#             **kwarg_overrides: Additional keyword arguments to override the default ones.
+#         Yields:
+#             typing.Tuple[Msg, typing.Any]: A tuple containing the message and any additional data.
+#         """
+#         if self._astream is not None:
+            
+#             kwargs = {
+#                 **self._kwargs, 
+#                 **kwarg_overrides, 
+#                 self._message_arg: dialog.to_list_input()
+#             }
+#             async for v in await llm_astream(
+#                 self._stream, **kwargs, 
+#                 _resp_proc=self.resp_procs,
+#                 _role=self._role_name
+#             ):
+#                 yield v
+#         else:
+#             for v in self.stream(
+#                 dialog, **kwarg_overrides
+#             ):
+#                 yield v
+
+
+# def llm_forward(
+#     f: typing.Callable, 
+#     *args, 
+#     _resp_proc: typing.List[RespConv]=None, 
+#     _role: str='assistant',
+#     **kwargs
+# ):
+#     """
+#     Executes a given function with specified arguments and processes the response.
+#     Args:
+#         f (typing.Callable): The function to be executed.
+#         *args: Variable length argument list to be passed to the function.
+#         _resp_proc (typing.List[Response], optional): A list of Response objects to process the function's response. Defaults to None.
+#         _role (str, optional): The role to be assigned to the message. Defaults to 'assistant'.
+#         **kwargs: Additional keyword arguments to be passed to the function.
+#     Returns:
+#         tuple: A tuple containing the final message (Msg) and the last value processed by the Response objects.
+#     """
+#     msg = Msg(role=_role)
+
+#     if isinstance(_resp_proc, RespConv):
+#         kwargs.update(_resp_proc.prep())
+#     elif _resp_proc is not None:
+#         for r in _resp_proc:
+#             kwargs.update(r.prep())
+
+#     response = f(
+#         *args, **kwargs
+#     )
+#     msg['meta']['response'] = response
+
+#     if _resp_proc is None:
+#         return msg
+    
+#     if isinstance(_resp_proc, RespConv):
+#         return msg, _resp_proc(response, msg)
+
+#     return msg, tuple(
+#         r(response, msg) for r in _resp_proc
+#     )
+
+
+
+# class LLM(Module):
+#     """
+#     LLM is a class that serves as an adapter for Language Model (LLM) functions, enabling the execution of various LLM operations such as forwarding, asynchronous forwarding, streaming, and asynchronous streaming. It provides a flexible interface to handle different types of LLM interactions.
+#     """
+#     def __init__(
+#         self, 
+#         forward=None,
+#         aforward=None,
+#         stream=None,
+#         astream=None,
+#         resp_procs: typing.List[RespProc]=None,
+#         kwargs: typing.Dict=None,
+#         message_arg: str='messages',
+#         role_name: str='assistant'
+#     ):
+#         """Wrap the processes in an LLM. Can also inherit from LLM
+
+#         Args:
+#             forward (optional): Define the forward function Raises a Runtime error if not defined and called. Defaults to None.
+#             aforward (optional): Define the astream function. Will call forward if not defined. Defaults to None.
+#             stream (optional): Define the stream function. Will call forward if not defined. Defaults to None.
+#             astream (optional): Define the astream function. LLM astream will call stream as a backup if not defined. Defaults to None.
+#             responsresp_procse_processors (typing.List[Response], optional): . Defaults to None.
+#             kwargs (typing.Dict, optional): . Defaults to None.
+#             message_arg (str, optional): . Defaults to 'messages'.
+#             role_name (str, optional): . Defaults to 'assistant'.
+#         """
+#         super().__init__()
+#         self._forward = forward
+#         self._aforward = aforward
+#         self._stream = stream
+#         self._astream = astream
+#         self._kwargs = kwargs or {}
+#         self.resp_procs = resp_procs or []
+#         self._message_arg = message_arg
+#         self._role_name = role_name
+
+#     def forward(self, dialog: BaseDialog, **kwarg_overrides) -> typing.Tuple[Msg, typing.Any]:
+#         """
+#         Processes the given dialog and returns a response message and additional data.
+#         Args:
+#             dialog (Dialog): The dialog object containing the input data.
+#             **kwarg_overrides: Additional keyword arguments to override default settings.
+#         Returns:
+#             typing.Tuple[Msg, typing.Any]: A tuple containing the response message and any additional data.
+#         Raises:
+#             RuntimeError: If the forward function is not defined for the LLM.
+#         """
+#         kwargs = {
+#             **self._kwargs, 
+#             **kwarg_overrides, 
+#             self._message_arg: dialog.to_list_input()
+#         }
+#         if self._forward is not None:
+#             return llm_forward(
+#                 self._forward, **kwargs, 
+#                 _resp_proc=self.resp_procs,
+#                 _role=self._role_name
+#             )
+#         raise RuntimeError(
+#             'The forward has not been defined for the LLM'
+#         )
+    
+#     async def aforward(self, dialog: BaseDialog, **kwarg_overrides) -> typing.Tuple[Msg, typing.Any]:
+#         """
+#         Asynchronously forwards a dialog to the specified handler.
+#         This method checks if an asynchronous forward handler (`self._aforward`) is defined.
+#         If it is, it merges the provided keyword arguments with the instance's keyword arguments
+#         and the dialog input, then calls the asynchronous forward handler.
+#         If no asynchronous forward handler is defined, it falls back to the synchronous `forward` method.
+#         Args:
+#             dialog (Dialog): The dialog object containing the input to be forwarded.
+#             **kwarg_overrides: Additional keyword arguments to override the instance's keyword arguments.
+#         Returns:
+#             typing.Tuple[Msg, typing.Any]: A tuple containing the message and any additional data returned by the handler.
+#         """
+#         if self._aforward is not None:
+#             kwargs = {
+#                 **self._kwargs, 
+#                 **kwarg_overrides, 
+#                 self._message_arg: dialog.to_list_input()
+#             }
+#             return await llm_aforward(
+#                 self._aforward, **kwargs, 
+#                 _resp_proc=self.resp_procs,
+#                 _role=self._role_name
+#             )
+#         else:
+#             return self.forward(
+#                 dialog, **kwarg_overrides
+#             )
+
+#     def stream(self, dialog: BaseDialog, **kwarg_overrides) -> typing.Iterator[typing.Tuple[Msg, typing.Any]]:
+#         """
+#         Streams responses from the language model based on the provided dialog.
+#         This method streams responses from the language model if the `_stream` attribute is set.
+#         It merges the default keyword arguments (`_kwargs`) with any overrides provided in `kwarg_overrides`,
+#         and uses the `dialog.to_input()` as the value for the `_message_arg` key. The responses are yielded
+#         one by one from the `llm_stream` function.
+#         If `_stream` is not set, it forwards the dialog to another method and yields the result.
+#         Args:
+#             dialog (Dialog): The dialog object containing the input message.
+#             **kwarg_overrides: Additional keyword arguments to override the default ones.
+#         Yields:
+#             typing.Tuple[Msg, typing.Any]: A tuple containing the message and any additional data.
+#         """
+#         if self._stream is not None:
+#             kwargs = {
+#                 **self._kwargs, 
+#                 **kwarg_overrides, 
+#                 self._message_arg: dialog.to_list_input()
+#             }
+#             for v in llm_stream(
+#                 self._stream, **kwargs, 
+#                 _resp_proc=self.resp_procs,
+#                 _role=self._role_name
+#             ):
+#                 yield v
+#         else:
+#             yield self.forward(
+#                 dialog, **kwarg_overrides
+#             )
+    
+#     async def astream(self, dialog: BaseDialog, **kwarg_overrides) -> typing.AsyncIterator[typing.Tuple[Msg, typing.Any]]:
+#         """
+#         Asynchronously streams messages based on the provided dialog.
+#         This method checks if an asynchronous stream (`_astream`) is available. If it is, it uses the `llm_astream` function
+#         to asynchronously yield messages. If not, it falls back to a synchronous stream method.
+#         Args:
+#             dialog (Dialog): The dialog object containing the input message.
+#             **kwarg_overrides: Additional keyword arguments to override the default ones.
+#         Yields:
+#             typing.Tuple[Msg, typing.Any]: A tuple containing the message and any additional data.
+#         """
+#         if self._astream is not None:
+            
+#             kwargs = {
+#                 **self._kwargs, 
+#                 **kwarg_overrides, 
+#                 self._message_arg: dialog.to_list_input()
+#             }
+#             async for v in await llm_astream(
+#                 self._stream, **kwargs, 
+#                 _resp_proc=self.resp_procs,
+#                 _role=self._role_name
+#             ):
+#                 yield v
+#         else:
+#             for v in self.stream(
+#                 dialog, **kwarg_overrides
+#             ):
+#                 yield v

@@ -12,6 +12,7 @@ required = {'openai'}
 installed = {pkg.key for pkg in pkg_resources.working_set}
 missing = required - installed
 
+
 if len(missing) > 0:
 
     raise RuntimeError(f'To use this module openai must be installed.')

@@ -12,6 +12,6 @@ from ._lang import (
     Term, Glossary
 )
 from ._asst import (
-    AssistantBase, AsyncAssistantBase,
-    StreamAssistantBase, AsyncStreamAssistantBase
+    AssistBase, AsyncAssistBase,
+    StreamAssistBase, AsyncStreamAssistBase
 )

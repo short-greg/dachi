@@ -1,29 +1,23 @@
 # 1st party
-from abc import ABC
-import typing
-from uuid import uuid4
-
 from abc import ABC, abstractmethod
-import json
-from dataclasses import dataclass
-import inspect
 import typing
+import json
+import inspect
+from uuid import uuid4
 from typing import Self, get_type_hints
+from dataclasses import dataclass
 
 # 3rd party
 import pydantic
 
 # local
+from . import unescape_curly_braces, escape_curly_braces
 from . import (
     is_primitive, 
     escape_curly_braces
 )
 
 S = typing.TypeVar('S', bound=pydantic.BaseModel)
-
-
-import pydantic
-from . import unescape_curly_braces, escape_curly_braces
 
 
 class StructLoadException(Exception):

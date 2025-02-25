@@ -8,8 +8,9 @@ from ._ai import (
     exclude_role, include_role, to_dialog,
     ToolOption, ToolCall, ToolSet,
     llm_aforward, llm_astream, llm_forward,
-    llm_stream, ToMsg, ToText, LLMBase, LLM,
-    AsyncLLM, AsyncModule, AsyncStreamLLM, StreamLLM
+    llm_stream, ToMsg, ToText, LLMBase, 
+    # LLM,
+    A# syncLLM, AsyncModule, AsyncStreamLLM, StreamLLM
 )
 from ._read import (
     MultiTextConv, PrimConv, PydanticConv, 
