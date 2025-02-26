@@ -12,14 +12,18 @@ from ._messages import (
 class AssistBase(Module, ABC):
 
     @abstractmethod
-    def forward(self, msg: Msg | BaseDialog, *args, **kwargs) -> typing.Tuple[Msg, typing.Any]:
+    def forward(
+        self, msg: Msg | BaseDialog, *args, **kwargs
+    ) -> typing.Tuple[Msg, typing.Any]:
         pass
 
 
 class AsyncAssistBase(AsyncModule, ABC):
 
     @abstractmethod
-    async def aforward(self, msg: Msg | BaseDialog, *args, **kwargs) -> typing.Tuple[Msg, typing.Any]:
+    async def aforward(
+        self, msg: Msg | BaseDialog, *args, **kwargs
+    ) -> typing.Tuple[Msg, typing.Any]:
         pass
 
 
@@ -115,7 +119,6 @@ class Assistant(
         Yields:
             The output from the forward method.
         """
-        
         yield self.forward(msg, *args, **kwargs)
     
     async def astream(self, msg, *args, **kwargs):
