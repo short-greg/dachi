@@ -13,5 +13,6 @@ from ._lang import (
 )
 from ._asst import (
     AssistBase, AsyncAssistBase,
-    StreamAssistBase, AsyncStreamAssistBase
+    StreamAssistBase, AsyncStreamAssistBase,
+    Assistant
 )

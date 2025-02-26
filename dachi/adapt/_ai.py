@@ -9,7 +9,8 @@ import pydantic
 from ..conv import (
     Msg, ListDialog, BaseDialog,
     AsyncAssistBase, AssistBase,
-    StreamAssistBase, AsyncStreamAssistBase
+    StreamAssistBase, AsyncStreamAssistBase,
+    Assistant
 )
 from ._read import RespConv
 from ..utils._f_utils import (
@@ -244,13 +245,17 @@ def to_dialog(prompt: typing.Union[BaseDialog, Msg]) -> BaseDialog:
     return prompt
 
 
-class LLMBase(ABC):
+class LLM(Assistant):
 
     """
     LLM is a class that serves as an adapter for Language Model (LLM) functions, enabling the execution of various LLM operations such as forwarding, asynchronous forwarding, streaming, and asynchronous streaming. It provides a flexible interface to handle different types of LLM interactions.
     """
     def __init__(
         self, 
+        forward: typing.Callable=None,
+        aforward: typing.Callable=None,
+        stream: typing.Callable=None,
+        astream: typing.Callable=None,
         resp_procs: typing.List[RespConv]=None,
         kwargs: typing.Dict=None,
         message_arg: str='messages',
@@ -268,7 +273,9 @@ class LLMBase(ABC):
             message_arg (str, optional): . Defaults to 'messages'.
             role_name (str, optional): . Defaults to 'assistant'.
         """
-        super().__init__()
+        super().__init__(
+            forward, aforward, stream, astream
+        )
         self._kwargs = kwargs or {}
         self.resp_procs = resp_procs or []
         self._message_arg = message_arg

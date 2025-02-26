@@ -15,7 +15,7 @@ from ..proc._process import (
 )
 from ..proc._param import Param
 from ..adapt._ai import (
-    AsyncLLM, LLM, LLMBase,
+    AsyncLLM, LLM, LLM,
     StreamLLM, AsyncStreamLLM, ToMsg,
     ToText
 )
@@ -482,7 +482,7 @@ AStreamDec.__call__ = AStreamDec.astream
 
 
 def instructfunc(
-    engine: LLMBase=None,
+    engine: LLM=None,
     reader: TextConv=None,
     is_method: bool=False,
     is_async: bool=False,
@@ -531,7 +531,7 @@ def instructfunc(
 
 
 def instructmethod(
-    engine: LLMBase=None,
+    engine: LLM=None,
     reader: TextConv=None,
     is_async: bool=False,
     is_stream: bool=False,
@@ -554,7 +554,7 @@ def instructmethod(
 
 
 def signaturefunc(
-    engine: LLMBase=None,
+    engine: LLM=None,
     reader: TextConv=None,
     to_msg: ToMsg=None,
     is_method: bool=False,
@@ -603,7 +603,7 @@ def signaturefunc(
 
 
 def signaturemethod(
-    engine: LLMBase=None, 
+    engine: LLM=None, 
     reader: TextConv=None,
     to_msg: ToMsg=None,
     doc: typing.Union[str, typing.Callable[[], str]]=None,
