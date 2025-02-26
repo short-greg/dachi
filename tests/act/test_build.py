@@ -26,10 +26,11 @@ class TestParallel:
 
 class TestSelector:
 
-    def test_selector_creates_a_parallel_node(self):
+    def test_selector_creates_a_selector_node(self):
 
         with build.build_select() as selector:
-
+            
+            print(selector)
             selector.tasks.append(ATask())
             selector.tasks.append(ATask())
         assert isinstance(selector, tasks.Selector)

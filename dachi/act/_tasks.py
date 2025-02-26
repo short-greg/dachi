@@ -18,7 +18,7 @@ class Root(Task):
     """The root task for a behavior tree
     """
 
-    root: Task
+    root: typing.Optional[Task] = None
 
     def tick(self) -> TaskStatus:
         """Update the task
@@ -61,17 +61,17 @@ class Serial(Task):
     after the other
     """
 
-    tasks: typing.Iterable[Task]
-    _context: Context = pydantic.PrivateAttr(default=Context)
+    tasks: typing.List[Task] = pydantic.Field(default_factory=list)
+    _context: Context = pydantic.PrivateAttr(default_factory=Context)
 
-    @property
-    def tasks(self) -> typing.Iterable[Task]:
-        """Get the tasks in the serial task
+    # @property
+    # def tasks(self) -> typing.Iterable[Task]:
+    #     """Get the tasks in the serial task
 
-        Returns:
-            typing.Iterable[Task]: The tasks comprising the serial task
-        """
-        return self.tasks
+    #     Returns:
+    #         typing.Iterable[Task]: The tasks comprising the serial task
+    #     """
+    #     return self.tasks
 
     def reset(self):
         """Reset the state
@@ -87,7 +87,6 @@ class Sequence(Serial):
     """
 
     _f: typing.Callable = pydantic.PrivateAttr()
-    # context: Context = pydantic.PrivateAttr(default=Context)
 
     def __init__(self, **data):
         """Create a sequence of tasks
@@ -106,8 +105,8 @@ class Sequence(Serial):
         Returns:
             TaskStatus: The status
         """
-        self.status = self._f()
-        return self.status
+        self._status = self._f()
+        return self._status
 
     def reset(self):
         super().reset()
@@ -138,8 +137,8 @@ class Selector(Serial):
         Returns:
             TaskStatus: The resulting task status
         """
-        self.status = self._f()
-        return self.status
+        self._status = self._f()
+        return self._status
 
     def reset(self):
         super().reset()
@@ -154,12 +153,12 @@ Fallback = Selector
 class Parallel(Task):
     """A composite task for running multiple tasks in parallel
     """
-
+    tasks: typing.List[Task] = pydantic.Field(default_factory=list)
     fails_on: int = 1
     succeeds_on: int = -1
     success_priority: bool = True
-    f: typing.Callable = pydantic.PrivateAttr()
-    ticked: typing.Set = pydantic.PrivateAttr(default_factory=set)
+    _f: typing.Callable = pydantic.PrivateAttr()
+    _ticked: typing.Set = pydantic.PrivateAttr(default_factory=set)
 
     def __init__(self, **data):
         """The parallel
@@ -177,20 +176,20 @@ class Parallel(Task):
         # self._succeeds_on = succeeds_on if succeeds_on is not None else (len(self._tasks) + 1 - self._fails_on)
 
         # self._success_priority = success_priority
-        self.f = _functional.parallel(
+        self._f = _functional.parallel(
             self.tasks, self.succeeds_on, self.fails_on,
             self.success_priority
         )
 
     def _update_f(self):
-        self.f = _functional.parallel(
+        self._f = _functional.parallel(
             self.tasks, self.succeeds_on, self.fails_on,
             self.success_priority
         )
 
-    @property
-    def tasks(self) -> typing.Iterable[Task]:
-        return self.tasks
+    # @property
+    # def tasks(self) -> typing.Iterable[Task]:
+    #     return self.tasks
 
     def set_condition(self, fails_on: int, succeeds_on: int):
         """Set the number of falures or successes it takes to end
@@ -253,15 +252,15 @@ class Parallel(Task):
         Returns:
             TaskStatus: The status
         """
-        self.status = self.f()
-        return self.status
+        self._status = self._f()
+        return self._status
 
     def reset(self):
         """Reset the task and subtasks
         """
 
         super().reset()
-        for task in self.ticked:
+        for task in self._ticked:
             task.reset()
 
 
@@ -287,10 +286,10 @@ class Action(Task):
         Returns:
             TaskStatus: The resulting status
         """
-        if self.status.is_done:
-            return self.status
-        self.status = self.act()
-        return self.status
+        if self._status.is_done:
+            return self._status
+        self._status = self.act()
+        return self._status
 
 
 class Condition(Task):
@@ -312,8 +311,8 @@ class Condition(Task):
         Returns:
             SangoStatus: Whether the condition failed or succeeded
         """
-        self.status = TaskStatus.SUCCESS if self.condition() else TaskStatus.FAILURE
-        return self.status
+        self._status = TaskStatus.SUCCESS if self.condition() else TaskStatus.FAILURE
+        return self._status
 
 
 class Decorator(Task):
@@ -343,13 +342,13 @@ class Decorator(Task):
             SangoStatus: The decorated status
         """
 
-        if self.status.is_done:
-            return self.status
+        if self._status.is_done:
+            return self._status
 
-        self.status = self.decorate(
+        self._status = self.decorate(
             self.task.tick()
         )
-        return self.status
+        return self._status
 
     def reset(self):
         """Reset the task and subtask
@@ -442,7 +441,7 @@ class StateMachine(Task):
     """
 
     init_state: State
-    cur_state: State = pydantic.PrivateAttr()
+    _cur_state: State = pydantic.PrivateAttr()
 
     def __init__(self, **data):
         """Create the status
@@ -451,33 +450,33 @@ class StateMachine(Task):
             init_state (State): The starting state for the machine
         """
         super().__init__()
-        self.cur_state = self.init_state
+        self._cur_state = self.init_state
 
     def tick(self) -> TaskStatus:
         """Update the state machine
         """
-        if self.status.is_done:
-            return self.status
+        if self._status.is_done:
+            return self._status
         
-        self.cur_state = self.cur_state.update()
-        if self.cur_state == TaskStatus.FAILURE or self._cur_state == TaskStatus.SUCCESS:
-            self.status = self.cur_state
+        self._cur_state = self._cur_state.update()
+        if self._cur_state == TaskStatus.FAILURE or self._cur_state == TaskStatus.SUCCESS:
+            self._status = self._cur_state
         else:
-            self.status = TaskStatus.RUNNING
-        return self.status
+            self._status = TaskStatus.RUNNING
+        return self._status
 
     def reset(self):
         """Reset the state machine
         """
         super().reset()
-        self.cur_state = self.init_state
+        self._cur_state = self.init_state
 
 
 class FixedTimer(Action):
     """A timer that will "succeed" at a fixed interval
     """
     seconds: float
-    start: typing.Optional[float] = pydantic.PrivateAttr(default=None)
+    _start: typing.Optional[float] = pydantic.PrivateAttr(default=None)
 
     def act(self) -> TaskStatus:
         """Execute the timer
@@ -486,9 +485,9 @@ class FixedTimer(Action):
             TaskStatus: The TaskStatus after running
         """
         cur = time.time()
-        if self.start is None:
-            self.start = cur
-        elapsed = cur - self.start
+        if self._start is None:
+            self._start = cur
+        elapsed = cur - self._start
         if elapsed >= self.seconds:
             return TaskStatus.SUCCESS
         return TaskStatus.RUNNING
@@ -497,7 +496,7 @@ class FixedTimer(Action):
         """Reset the timer
         """
         super().reset()
-        self.start = None
+        self._start = None
 
 
 class RandomTimer(Action):
@@ -506,8 +505,8 @@ class RandomTimer(Action):
 
     seconds_lower: float
     seconds_upper: float
-    start: typing.Optional[float] = pydantic.PrivateAttr(default=None)
-    target: typing.Optional[float] = pydantic.PrivateAttr(default=None)
+    _start: typing.Optional[float] = pydantic.PrivateAttr(default=None)
+    _target: typing.Optional[float] = pydantic.PrivateAttr(default=None)
     
     def act(self) -> TaskStatus:
         """Execute the Timer
@@ -516,12 +515,12 @@ class RandomTimer(Action):
             TaskStatus: The status of the task
         """
         cur = time.time()
-        if self.start is None:
-            self.start = cur
+        if self._start is None:
+            self._start = cur
             r = random.random() 
-            self.target = r * self.seconds_lower + r * self.seconds_upper
-        elapsed = cur - self.start
-        if elapsed >= self.target:
+            self._target = r * self.seconds_lower + r * self.seconds_upper
+        elapsed = cur - self._start
+        if elapsed >= self._target:
             return TaskStatus.SUCCESS
         return TaskStatus.RUNNING
 
@@ -529,5 +528,5 @@ class RandomTimer(Action):
         """Reset the task
         """
         super().reset()
-        self.start = None
-        self.target = None
+        self._start = None
+        self._target = None

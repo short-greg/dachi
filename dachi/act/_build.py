@@ -26,7 +26,10 @@ class build_composite(object):
     """Base context method to build a task decorator
     """
 
-    def __init__(self, child: behavior.Task, parent: behavior.Task=None) -> None:
+    def __init__(
+        self, child: behavior.Task, 
+        parent: behavior.Task=None
+    ) -> None:
         """Create a composite node that uses a list to store all of the subtasks
 
         Args:
@@ -83,7 +86,7 @@ class build_decorate(object):
         """
         super().__init__()
         assert decorated.parent is None
-        self._decorated = decorate(decorated.task, **kwargs)
+        self._decorated = decorate(task=decorated.task, **kwargs)
 
         self._parent = parent
         
@@ -131,7 +134,7 @@ class build_sequence(build_composite):
         Args:
             parent (behavior.Task, optional): The parent of the sequence. Defaults to None.
         """
-        super().__init__(behavior.Sequence([]), parent)
+        super().__init__(behavior.Sequence(tasks=[]), parent)
 
 
 class build_select(build_composite):
@@ -144,7 +147,7 @@ class build_select(build_composite):
         Args:
             parent (behavior.Task, optional): The parent of the selector. Defaults to None.
         """
-        super().__init__(behavior.Selector([]), parent)
+        super().__init__(behavior.Selector(tasks=[]), parent)
 
 
 build_fallback = build_select
@@ -166,8 +169,11 @@ class build_parallel(build_composite):
             succeeds_on (int, optional): The number of tasks to succeed for the parallel task to succeed. Defaults to None.
             success_priority (bool, optional): Whether it will return as soon as it succeeds. Defaults to False.
         """
+        fails_on = fails_on or 1
+        succeeds_on = succeeds_on or -1
+
         parallel = behavior.Parallel(
-            [], fails_on=fails_on, succeeds_on=succeeds_on, 
+            tasks=[], fails_on=fails_on, succeeds_on=succeeds_on, 
             success_priority=success_priority)
         super().__init__(
             parallel, parent

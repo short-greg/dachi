@@ -6,8 +6,7 @@ import typing
 
 
 class DummyAIModel(
-    _ai.LLM, _ai.StreamLLM,
-    _ai.AsyncLLM, _ai.AsyncStreamLLM
+    _ai.LLM
 ):
     """APIAdapter allows one to adapt various WebAPI or other
     API for a consistent interface

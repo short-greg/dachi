@@ -9,7 +9,7 @@ from ._messages import (
 )
 
 
-class AssistBase(Module, ABC):
+class Assist(Module, ABC):
 
     @abstractmethod
     def forward(
@@ -18,7 +18,7 @@ class AssistBase(Module, ABC):
         pass
 
 
-class AsyncAssistBase(AsyncModule, ABC):
+class AsyncAssist(AsyncModule, ABC):
 
     @abstractmethod
     async def aforward(
@@ -27,7 +27,7 @@ class AsyncAssistBase(AsyncModule, ABC):
         pass
 
 
-class StreamAssistBase(StreamModule, ABC):
+class StreamAssist(StreamModule, ABC):
 
     @abstractmethod
     def stream(
@@ -36,7 +36,7 @@ class StreamAssistBase(StreamModule, ABC):
         pass
 
 
-class AsyncStreamAssistBase(AsyncStreamModule, ABC):
+class AsyncStreamAssist(AsyncStreamModule, ABC):
 
     @abstractmethod
     async def astream(
@@ -46,8 +46,8 @@ class AsyncStreamAssistBase(AsyncStreamModule, ABC):
 
 
 class Assistant(
-    AssistBase, AsyncAssistBase, StreamAssistBase, 
-    AsyncStreamAssistBase
+    Assist, AsyncAssist, StreamAssist, 
+    AsyncStreamAssist
 ):
     """
     Assistant class for wrapping AI or chat functionality.
@@ -109,7 +109,7 @@ class Assistant(
         """
         return self.forward(msg, *args, **kwargs)
     
-    def stream(self, msg, *args, **kwargs) -> typing.Iterator:
+    def stream(self, msg, *args, **kwargs) -> typing.Iterator[typing.Tuple[Msg, typing.Any]]:
         """
         Streams the assistant output for a given message.
         Args:
@@ -121,7 +121,7 @@ class Assistant(
         """
         yield self.forward(msg, *args, **kwargs)
     
-    async def astream(self, msg, *args, **kwargs):
+    async def astream(self, msg, *args, **kwargs) -> typing.AsyncIterator[typing.Tuple[Msg, typing.Any]]:
         """
         Asynchronous streaming function to get the Assistant's output.
         This function yields the output of the `stream` function with the given 

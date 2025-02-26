@@ -8,8 +8,6 @@ import pydantic
 # local
 from ..conv import (
     Msg, ListDialog, BaseDialog,
-    AsyncAssistBase, AssistBase,
-    StreamAssistBase, AsyncStreamAssistBase,
     Assistant
 )
 from ._read import RespConv
@@ -252,10 +250,10 @@ class LLM(Assistant):
     """
     def __init__(
         self, 
-        forward: typing.Callable=None,
-        aforward: typing.Callable=None,
-        stream: typing.Callable=None,
-        astream: typing.Callable=None,
+        forwardf: typing.Callable=None,
+        aforwardf: typing.Callable=None,
+        streamf: typing.Callable=None,
+        astreamf: typing.Callable=None,
         resp_procs: typing.List[RespConv]=None,
         kwargs: typing.Dict=None,
         message_arg: str='messages',
@@ -273,13 +271,172 @@ class LLM(Assistant):
             message_arg (str, optional): . Defaults to 'messages'.
             role_name (str, optional): . Defaults to 'assistant'.
         """
-        super().__init__(
-            forward, aforward, stream, astream
-        )
+        super().__init__()
         self._kwargs = kwargs or {}
         self.resp_procs = resp_procs or []
         self._message_arg = message_arg
         self._role_name = role_name
+        self._set_val(forwardf, '_forwardf')
+        self._set_val(aforwardf, '_aforwardf')
+        self._set_val(streamf, '_streamff')
+        self._set_val(astreamf, '_astreamf')
+
+    def forward(self, msg: Msg | BaseDialog, *args, **kwargs) -> typing.Tuple[Msg, typing.Any]:
+        """
+        Processes the given message and additional arguments.
+        This method should be implemented by subclasses to define the specific
+        behavior for handling the message.
+        Args:
+            msg: The message to be processed.
+            *args: Additional positional arguments.
+            **kwargs: Additional keyword arguments.
+        Raises:
+            NotImplementedError: If the method is not implemented by a subclass.
+        """
+        kwargs = {
+            **self._kwargs, 
+            **kwargs, 
+            self._message_arg: msg.to_list_input()
+        }
+        if self._forward is not None:
+            return llm_forward(
+                self._forward, **kwargs, 
+                _resp_proc=self.resp_procs,
+                _role=self._role_name
+            )
+        raise RuntimeError(
+            'The forward has not been defined for the LLM'
+        )
+    
+    async def aforward(self, msg: Msg | BaseDialog, *args, **kwargs) -> typing.Tuple[Msg, typing.Any]:
+        """
+        Asynchronous version of the forward method.
+        This method calls the synchronous forward method with the provided
+        message and any additional arguments or keyword arguments.
+        Args:
+            msg: The message to be forwarded.
+            *args: Additional positional arguments to be passed to the forward method.
+            **kwargs: Additional keyword arguments to be passed to the forward method.
+        Returns:
+            The result of the forward method.
+        """
+        if self._aforward is not None:
+            kwargs = {
+                **self._kwargs, 
+                **kwargs, 
+                self._message_arg: msg.to_list_input()
+            }
+            return await llm_aforward(
+                self._aforward, **kwargs, 
+                _resp_proc=self.resp_procs,
+                _role=self._role_name
+            )
+        else:
+            return self.forward(
+                msg, **kwargs
+            )
+    
+    def stream(self, msg, *args, **kwargs) -> typing.Iterator[typing.Tuple[Msg, typing.Any]]:
+        """
+        Streams the assistant output for a given message.
+        Args:
+            msg: The message to be processed by the assistant.
+            *args: Additional positional arguments to be passed to the forward method.
+            **kwargs: Additional keyword arguments to be passed to the forward method.
+        Yields:
+            The output from the forward method.
+        """
+        if self._stream is not None:
+            kwargs = {
+                **self._kwargs, 
+                **kwargs, 
+                self._message_arg: msg.to_list_input()
+            }
+            for v in llm_stream(
+                self._stream, **kwargs, 
+                _resp_proc=self.resp_procs,
+                _role=self._role_name
+            ):
+                yield v
+        else:
+            yield self.forward(
+                msg, **kwargs
+            )
+
+    async def astream(self, msg, *args, **kwargs) -> typing.AsyncIterator[typing.Tuple[Msg, typing.Any]]:
+        """
+        Asynchronous streaming function to get the Assistant's output.
+        This function yields the output of the `stream` function with the given 
+        message and additional arguments.
+        Args:
+            msg (str): The message to be processed by the stream function.
+            *args: Variable length argument list to be passed to the stream function.
+            **kwargs: Arbitrary keyword arguments to be passed to the stream function.
+        Yields:
+            The output of the `stream` function.
+        """
+        if self._astream is not None:
+            
+            kwargs = {
+                **self._kwargs, 
+                **kwargs, 
+                self._message_arg: msg.to_list_input()
+            }
+            async for v in await llm_astream(
+                self._stream, **kwargs, 
+                _resp_proc=self.resp_procs,
+                _role=self._role_name
+            ):
+                yield v
+        else:
+            for v in self.stream(
+                msg, **kwargs
+            ):
+                yield v
+
+
+
+
+def llm_forward(
+    f: typing.Callable, 
+    *args, 
+    _resp_proc: typing.List[RespConv]=None, 
+    _role: str='assistant',
+    **kwargs
+):
+    """
+    Executes a given function with specified arguments and processes the response.
+    Args:
+        f (typing.Callable): The function to be executed.
+        *args: Variable length argument list to be passed to the function.
+        _resp_proc (typing.List[Response], optional): A list of Response objects to process the function's response. Defaults to None.
+        _role (str, optional): The role to be assigned to the message. Defaults to 'assistant'.
+        **kwargs: Additional keyword arguments to be passed to the function.
+    Returns:
+        tuple: A tuple containing the final message (Msg) and the last value processed by the Response objects.
+    """
+    msg = Msg(role=_role)
+
+    if isinstance(_resp_proc, RespConv):
+        kwargs.update(_resp_proc.prep())
+    elif _resp_proc is not None:
+        for r in _resp_proc:
+            kwargs.update(r.prep())
+
+    response = f(
+        *args, **kwargs
+    )
+    msg['meta']['response'] = response
+
+    if _resp_proc is None:
+        return msg
+    
+    if isinstance(_resp_proc, RespConv):
+        return msg, _resp_proc(response, msg)
+
+    return msg, tuple(
+        r(response, msg) for r in _resp_proc
+    )
 
 
 async def llm_aforward(
@@ -324,17 +481,6 @@ async def llm_aforward(
 
     return msg, tuple(
         r(response, msg) for r in _resp_proc
-    )
-
-
-def process_response(response, msg, resp_proc, delta: typing.Dict):
-
-    if resp_proc is None:
-        return msg
-    if isinstance(resp_proc, RespConv):
-        return msg, resp_proc.delta(response, msg, delta)
-    return msg, tuple(
-        r.delta(response, msg, delta_i) for r, delta_i in zip(resp_proc, delta)
     )
 
 
@@ -434,6 +580,17 @@ async def llm_astream(
     )
 
 
+def process_response(response, msg, resp_proc, delta: typing.Dict):
+
+    if resp_proc is None:
+        return msg
+    if isinstance(resp_proc, RespConv):
+        return msg, resp_proc.delta(response, msg, delta)
+    return msg, tuple(
+        r.delta(response, msg, delta_i) for r, delta_i in zip(resp_proc, delta)
+    )
+
+
 class ToMsg(ABC):
     """Converts the input to a message
     """
@@ -470,6 +627,7 @@ class ToText(ToMsg):
             role=self.role, 
             **{self.field: text}
         )
+
 
 
 # class LLM(LLMBase, AssistantBase):
@@ -648,49 +806,6 @@ class ToText(ToMsg):
 #                 dialog, **kwarg_overrides
 #             ):
 #                 yield v
-
-
-# def llm_forward(
-#     f: typing.Callable, 
-#     *args, 
-#     _resp_proc: typing.List[RespConv]=None, 
-#     _role: str='assistant',
-#     **kwargs
-# ):
-#     """
-#     Executes a given function with specified arguments and processes the response.
-#     Args:
-#         f (typing.Callable): The function to be executed.
-#         *args: Variable length argument list to be passed to the function.
-#         _resp_proc (typing.List[Response], optional): A list of Response objects to process the function's response. Defaults to None.
-#         _role (str, optional): The role to be assigned to the message. Defaults to 'assistant'.
-#         **kwargs: Additional keyword arguments to be passed to the function.
-#     Returns:
-#         tuple: A tuple containing the final message (Msg) and the last value processed by the Response objects.
-#     """
-#     msg = Msg(role=_role)
-
-#     if isinstance(_resp_proc, RespConv):
-#         kwargs.update(_resp_proc.prep())
-#     elif _resp_proc is not None:
-#         for r in _resp_proc:
-#             kwargs.update(r.prep())
-
-#     response = f(
-#         *args, **kwargs
-#     )
-#     msg['meta']['response'] = response
-
-#     if _resp_proc is None:
-#         return msg
-    
-#     if isinstance(_resp_proc, RespConv):
-#         return msg, _resp_proc(response, msg)
-
-#     return msg, tuple(
-#         r(response, msg) for r in _resp_proc
-#     )
-
 
 
 # class LLM(Module):

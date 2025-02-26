@@ -15,9 +15,12 @@ from ..proc._process import (
 )
 from ..proc._param import Param
 from ..adapt._ai import (
-    AsyncLLM, LLM, LLM,
-    StreamLLM, AsyncStreamLLM, ToMsg,
+    LLM, ToMsg,
     ToText
+)
+from ..conv import (
+    AsyncAssist, AsyncStreamAssist, 
+    Assist, StreamAssist
 )
 from ..proc._param import Trainable
 from ..utils._core import Renderable
@@ -26,6 +29,7 @@ from ..utils import is_primitive
 from ..adapt._read import TextConv, NullTextConv
 from ..utils._utils import str_formatter
 
+Engine = Assist | AsyncAssist | StreamAssist | AsyncStreamAssist
 
 S = typing.TypeVar('S', bound=pydantic.BaseModel)
 
@@ -318,7 +322,7 @@ class FuncDecBase:
 class FuncDec(FuncDecBase, Module):
 
     def __init__(
-        self, inst, engine: LLM, 
+        self, inst, engine: Assist, 
         reader: TextConv=None, 
         to_msg: ToMsg=None,
         kwargs: typing.Dict=None,
@@ -361,7 +365,7 @@ class FuncDec(FuncDecBase, Module):
 class AFuncDec(FuncDecBase, AsyncModule):
 
     def __init__(
-        self, inst, engine: AsyncLLM, 
+        self, inst, engine: AsyncAssist, 
         reader: TextConv=None, 
         to_msg: ToMsg=None,
         kwargs: typing.Dict=None,
@@ -402,7 +406,7 @@ AFuncDec.__call__ = AFuncDec.aforward
 class StreamDec(FuncDecBase, StreamModule):
     
     def __init__(
-        self, inst, engine: StreamLLM, 
+        self, inst, engine: StreamAssist, 
         reader: TextConv=None, 
         to_msg: ToMsg=None,
         kwargs: typing.Dict=None,
@@ -443,7 +447,7 @@ StreamDec.__call__ = StreamDec.stream
 class AStreamDec(FuncDecBase, AsyncStreamModule):
 
     def __init__(
-        self, inst, engine: AsyncStreamLLM, 
+        self, inst, engine: AsyncStreamAssist, 
         reader: TextConv=None, 
         to_msg: ToMsg=None,
         kwargs: typing.Dict=None,
@@ -482,7 +486,7 @@ AStreamDec.__call__ = AStreamDec.astream
 
 
 def instructfunc(
-    engine: LLM=None,
+    engine: Engine=None,
     reader: TextConv=None,
     is_method: bool=False,
     is_async: bool=False,
@@ -531,7 +535,7 @@ def instructfunc(
 
 
 def instructmethod(
-    engine: LLM=None,
+    engine: Engine=None,
     reader: TextConv=None,
     is_async: bool=False,
     is_stream: bool=False,
@@ -554,7 +558,7 @@ def instructmethod(
 
 
 def signaturefunc(
-    engine: LLM=None,
+    engine: Engine=None,
     reader: TextConv=None,
     to_msg: ToMsg=None,
     is_method: bool=False,
@@ -603,7 +607,7 @@ def signaturefunc(
 
 
 def signaturemethod(
-    engine: LLM=None, 
+    engine: Engine=None, 
     reader: TextConv=None,
     to_msg: ToMsg=None,
     doc: typing.Union[str, typing.Callable[[], str]]=None,

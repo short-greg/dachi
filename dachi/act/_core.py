@@ -176,7 +176,7 @@ class Task(pydantic.BaseModel, Storable):
     """The base class for a task in the behavior tree
     """
 
-    status: TaskStatus = pydantic.PrivateAttr(default=TaskStatus.READY)
+    _status: TaskStatus = pydantic.PrivateAttr(default=TaskStatus.READY)
 
     SUCCESS: typing.ClassVar[TaskStatus] = TaskStatus.SUCCESS
     FAILURE: typing.ClassVar[TaskStatus] = TaskStatus.FAILURE
@@ -217,6 +217,35 @@ class Task(pydantic.BaseModel, Storable):
             The id of the task 
         """
         return self._id
+    
+    def load_state_dict(self, state_dict: typing.Dict):
+        """Load the state dict for the object
+
+        Args:
+            state_dict (typing.Dict): The state dict
+        """
+        all_items = {**self.__dict__, **self.__pydantic_private__}
+        for k, v in all_items.items():
+            if isinstance(v, Storable):
+                self.__dict__[k] = v.load_state_dict(state_dict[k])
+            else:
+                self.__dict__[k] = state_dict[k]
+        
+    def state_dict(self) -> typing.Dict:
+        """Retrieve the state dict for the object
+
+        Returns:
+            typing.Dict: The state dict
+        """
+        cur = {}
+
+        all_items = {**self.__dict__, **self.__pydantic_private__}
+        for k, v in all_items.items():
+            if isinstance(v, Storable):
+                cur[k] = v.state_dict()
+            else:
+                cur[k] = v
+        return cur
 
 
 class ToStatus(object):

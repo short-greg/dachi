@@ -12,7 +12,7 @@ from ._lang import (
     Term, Glossary
 )
 from ._asst import (
-    AssistBase, AsyncAssistBase,
-    StreamAssistBase, AsyncStreamAssistBase,
+    Assist, AsyncAssist,
+    StreamAssist, AsyncStreamAssist,
     Assistant
 )

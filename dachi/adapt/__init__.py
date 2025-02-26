@@ -9,8 +9,8 @@ from ._ai import (
     ToolOption, ToolCall, ToolSet,
     llm_aforward, llm_astream, llm_forward,
     llm_stream, ToMsg, ToText, LLM, 
-    # LLM,
-    A# syncLLM, AsyncModule, AsyncStreamLLM, StreamLLM
+    LLM,
+    # syncLLM, AsyncModule, AsyncStreamLLM, StreamLLM
 )
 from ._read import (
     MultiTextConv, PrimConv, PydanticConv, 
