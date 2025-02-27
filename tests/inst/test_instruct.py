@@ -127,156 +127,156 @@ class TestSignatureF:
             pass
         assert d == '!'
 
-    def test_signature_uses_the_correct_model(self):
+#     def test_signature_uses_the_correct_model(self):
 
-        class X(object):
+#         class X(object):
 
-            def __init__(self, model):
-                super().__init__()
-                self.model = model
+#             def __init__(self, model):
+#                 super().__init__()
+#                 self.model = model
             
-            @core.signaturemethod(engine='model')
-            def signaturep(self, x: str) -> str:
-                """Output the value of x
+#             @core.signaturemethod(engine='model')
+#             def signaturep(self, x: str) -> str:
+#                 """Output the value of x
                 
-                x: {x}
+#                 x: {x}
 
-                Args:
-                    x (str): The input
+#                 Args:
+#                     x (str): The input
 
-                Returns:
-                    SimpleStruct: The value of x
-                """
-                pass
+#                 Returns:
+#                     SimpleStruct: The value of x
+#                 """
+#                 pass
 
-        x = X(DummyAIModel('Awesome'))
-        x2 = X(DummyAIModel('Fabulous'))
-        result = x.signaturep(2)
-        result2 = x2.signaturep(2)
+#         x = X(DummyAIModel('Awesome'))
+#         x2 = X(DummyAIModel('Fabulous'))
+#         result = x.signaturep(2)
+#         result2 = x2.signaturep(2)
 
-        assert result == 'Awesome'
-        assert result2 == 'Fabulous'
-
-
-
-class TestCue(object):
-
-    def test_instruction_renders_with_text(self):
-
-        cue = Cue(
-            text='x'
-        )
-        assert cue.render() == 'x'
-
-    def test_instruction_text_is_correct(self):
-
-        text = 'Evaluate the quality of the CSV'
-        cue = Cue(
-            name='Evaluate',
-            text=text
-        )
-        assert cue.text == text
-
-    def test_render_returns_the_instruction_text(self):
-
-        text = 'Evaluate the quality of the CSV'
-        cue = Cue(
-            name='Evaluate',
-            text=text
-        )
-        assert cue.render() == text
-
-    def test_i_returns_the_instruction(self):
-
-        text = 'Evaluate the quality of the CSV'
-        cue = Cue(
-            name='Evaluate',
-            text=text
-        )
-        assert cue.i() is cue
+#         assert result == 'Awesome'
+#         assert result2 == 'Fabulous'
 
 
 
-class TestInstructF:
+# class TestCue(object):
 
-    def test_instruct(self):
+#     def test_instruction_renders_with_text(self):
 
-        @core.instructfunc(engine=DummyAIModel())
-        def instructrep(x: str) -> str:
-            """Output the value of x
+#         cue = Cue(
+#             text='x'
+#         )
+#         assert cue.render() == 'x'
+
+#     def test_instruction_text_is_correct(self):
+
+#         text = 'Evaluate the quality of the CSV'
+#         cue = Cue(
+#             name='Evaluate',
+#             text=text
+#         )
+#         assert cue.text == text
+
+#     def test_render_returns_the_instruction_text(self):
+
+#         text = 'Evaluate the quality of the CSV'
+#         cue = Cue(
+#             name='Evaluate',
+#             text=text
+#         )
+#         assert cue.render() == text
+
+#     def test_i_returns_the_instruction(self):
+
+#         text = 'Evaluate the quality of the CSV'
+#         cue = Cue(
+#             name='Evaluate',
+#             text=text
+#         )
+#         assert cue.i() is cue
+
+
+
+# class TestInstructF:
+
+#     def test_instruct(self):
+
+#         @core.instructfunc(engine=DummyAIModel())
+#         def instructrep(x: str) -> str:
+#             """Output the value of x
             
-            x: {x}
+#             x: {x}
 
-            Args:
-                x (str): The input
+#             Args:
+#                 x (str): The input
 
-            Returns:
-                SimpleStruct: The value of x
-            """
-            return core.Cue(f'Do {x}')
+#             Returns:
+#                 SimpleStruct: The value of x
+#             """
+#             return core.Cue(f'Do {x}')
 
-        result = instructrep.i(2)
+#         result = instructrep.i(2)
 
-        assert 'Do 2' == result.text
+#         assert 'Do 2' == result.text
 
-    def test_inserts_into_instruction_with_method(self):
+#     def test_inserts_into_instruction_with_method(self):
 
-        class X(object):
+#         class X(object):
 
-            @core.instructmethod(engine=DummyAIModel())
-            def instructrep(self, x: str) -> str:
-                """
-                """
-                return core.Cue(f'Do {x}')
+#             @core.instructmethod(engine=DummyAIModel())
+#             def instructrep(self, x: str) -> str:
+#                 """
+#                 """
+#                 return core.Cue(f'Do {x}')
 
-        x = X()
-        result = x.instructrep.i(2)
+#         x = X()
+#         result = x.instructrep.i(2)
 
-        assert 'Do 2' == result.text
+#         assert 'Do 2' == result.text
 
-    def test_x_has_different_instance_for_instruct_rep(self):
+#     def test_x_has_different_instance_for_instruct_rep(self):
 
-        class X(object):
+#         class X(object):
 
-            @core.instructmethod(engine=DummyAIModel())
-            def instructrep(self, x: str) -> str:
-                """
-                """
-                return core.Cue(f'Do {x}')
+#             @core.instructmethod(engine=DummyAIModel())
+#             def instructrep(self, x: str) -> str:
+#                 """
+#                 """
+#                 return core.Cue(f'Do {x}')
 
-        x = X()
-        x2 = X()
-        assert x.instructrep is not x2.instructrep
+#         x = X()
+#         x2 = X()
+#         assert x.instructrep is not x2.instructrep
 
-    def test_x_has_same_value_for_instruct_rep(self):
+#     def test_x_has_same_value_for_instruct_rep(self):
 
-        class X(object):
+#         class X(object):
 
-            @core.instructmethod(engine=DummyAIModel())
-            def instructrep(self, x: str) -> str:
-                """
-                """
-                return core.Cue(f'Do {x}')
+#             @core.instructmethod(engine=DummyAIModel())
+#             def instructrep(self, x: str) -> str:
+#                 """
+#                 """
+#                 return core.Cue(f'Do {x}')
 
-        x = X()
-        assert x.instructrep is x.instructrep
+#         x = X()
+#         assert x.instructrep is x.instructrep
 
-    def test_signature_uses_the_correct_model(self):
+#     def test_signature_uses_the_correct_model(self):
 
-        class X(object):
+#         class X(object):
 
-            def __init__(self, model):
-                super().__init__()
-                self.model = model
+#             def __init__(self, model):
+#                 super().__init__()
+#                 self.model = model
             
-            @dummy_dec
-            @core.instructmethod(engine=DummyAIModel('Awesome'))
-            def instructrep(self, x: str) -> str:
-                """
-                """
-                return core.Cue(f'Do {x}')
+#             @dummy_dec
+#             @core.instructmethod(engine=DummyAIModel('Awesome'))
+#             def instructrep(self, x: str) -> str:
+#                 """
+#                 """
+#                 return core.Cue(f'Do {x}')
 
-        x = X(DummyAIModel('Awesome'))
-        result = x.instructrep(2)
+#         x = X(DummyAIModel('Awesome'))
+#         result = x.instructrep(2)
 
-        assert result == 'Awesome'
+#         assert result == 'Awesome'

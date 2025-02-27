@@ -655,7 +655,7 @@ def reduce(
         elif len(results) == 0 and init_mod is not None:
             results.append(init_mod(init_val, *cur_args, **cur_kwargs))
         elif len(results) == 0:
-            print(init_val, cur_args, cur_kwargs)
+            # print(init_val, cur_args, cur_kwargs)
             results.append(mod(init_val, *cur_args, **cur_kwargs))
         else:
             results.append(mod(results[-1], *cur_args, **cur_kwargs))

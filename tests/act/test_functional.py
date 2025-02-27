@@ -62,7 +62,7 @@ class TestSequence:
             F.action(sample_action, state.A, 4)
         ], state.S))
 
-        print(status)
+        # print(status)
         assert status.running
 
     def test_sequence_executes_and_returns_success(self):
@@ -348,7 +348,7 @@ class TestSharedTask:
         res = stream()
         time.sleep(0.1)
         res = stream()
-        print(type(shared.data[0]))
+        # print(type(shared.data[0]))
 
 
         assert shared.data == 'Great!'

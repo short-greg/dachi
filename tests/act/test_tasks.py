@@ -74,7 +74,7 @@ class TestAction:
         action = SetStorageActionCounter(value=3)
         action2 = SetStorageActionCounter(value=2)
         action.tick()
-        print(action.state_dict())
+        # print(action.state_dict())
         action2.load_state_dict(action.state_dict())
         assert action2.value == 3
         assert action2.status == TaskStatus.RUNNING

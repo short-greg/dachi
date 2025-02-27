@@ -3,6 +3,7 @@ from functools import reduce
 from abc import ABC, abstractmethod
 from ..utils._core import render, Renderable
 from ..conv._messages import Msg
+import pydantic
 
 
 def get_or_spawn(state: typing.Dict, child: str) -> typing.Dict:
@@ -36,7 +37,7 @@ def get_or_set(state: typing.Dict, key: str, val: typing.Any) -> typing.Any:
     return state[key]
 
 
-class SharedBase(Renderable, ABC):
+class SharedBase(pydantic.BaseModel, Renderable, ABC):
     """Allows for shared data between tasks
     """
 
@@ -102,6 +103,11 @@ class SharedBase(Renderable, ABC):
 class Shared(SharedBase):
     """Allows for shared data between tasks
     """
+
+    _data = pydantic.PrivateAttr()
+    _callbacks = pydantic.PrivateAttr()
+    _default = pydantic.PrivateAttr()
+
     def __init__(
         self, data: typing.Any=None, 
         default: typing.Any=None,
@@ -114,6 +120,7 @@ class Shared(SharedBase):
             default (typing.Any, optional): The default value of the shared. When resetting, will go back to this. Defaults to None.
             callbacks (typing.List[typing.Callable[[typing.Any], None]], optional): The callbacks to call on update. Defaults to None.
         """
+        super().__init__()
         self._default = default
         self._data = data if data is not None else default
         self._callbacks = callbacks or []
@@ -199,13 +206,17 @@ class Shared(SharedBase):
         self.data = self._default
 
 
-class Buffer(object):
+class Buffer(pydantic.BaseModel):
     """Create a buffer to add data to
     """
+
+    _buffer = pydantic.PrivateAttr()
+    _opened = pydantic.PrivateAttr(default=True)
 
     def __init__(self) -> None:
         """Create a buffer
         """
+        super().__init__()
         self._buffer = []
         self._opened = True
         
@@ -281,6 +292,7 @@ class BufferIter(object):
         Args:
             buffer (Buffer): The buffer to iterate over
         """
+        super().__init__()
         self._buffer = buffer
         self._i = 0
 
@@ -535,6 +547,9 @@ class Blackboard(object):
 class Retriever(SharedBase):
     """Use to retrieve data and set data in the blackboard
     """
+
+    _blackboard: Blackboard = pydantic.PrivateAttr()
+    _key: str = pydantic.PrivateAttr()
 
     def __init__(self, blackboard: Blackboard, key: str):
         """Create a retriever to retrieve data from the blackboard

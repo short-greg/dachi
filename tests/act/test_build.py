@@ -30,7 +30,6 @@ class TestSelector:
 
         with build.build_select() as selector:
             
-            print(selector)
             selector.tasks.append(ATask())
             selector.tasks.append(ATask())
         assert isinstance(selector, tasks.Selector)

@@ -596,7 +596,6 @@ def stream_link(module: 'Module', *args, **kwargs) -> T:
     if not args.is_undefined():
         args = args.eval()
 
-        print('HI')
         # cur = module.stream(*args.args, **args.kwargs)
         return T(
             Streamer(module.stream(*args.args, **args.kwargs)),

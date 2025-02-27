@@ -389,7 +389,9 @@ def threadedf(
     return _f
 
 
-def taskf(f, *args, out: SharedBase=None, to_status: TOSTATUS=None, **kwargs) -> CALL_TASK:
+def taskf(
+    f, *args, out: SharedBase=None, 
+    to_status: TOSTATUS=None, **kwargs) -> CALL_TASK:
     """A generic task based on a function
 
     Args:
@@ -511,11 +513,9 @@ def _stream_model(model: LLM, prompt: LLM_PROMPT, ctx: Context, *args, interval:
         ctx (Context): The context
         interval (float, optional): The interval to run at. Defaults to 1./60.
     """
-    # print('Executing thread')
+    # print('Prompt: ', prompt)
     for msg, c in model.stream(prompt, *args, **kwargs):
-        # print('Cur: ', msg, c)
         ctx['msg'] = msg
-        # print(c)
         ctx['cur'].append(c)
         time.sleep(interval)
     ctx['thread_status'] = TaskStatus.SUCCESS

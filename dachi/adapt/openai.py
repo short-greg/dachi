@@ -171,9 +171,9 @@ class OpenAIToolConv(RespConv):
         if response.choices[0].delta.tool_calls is not None:
             tool_call = response.choices[0].delta.tool_calls[0]
             idx = delta_store['idx']
-            print('Idx: ', delta_store['idx'], tool_call.index)
+            # print('Idx: ', delta_store['idx'], tool_call.index)
             if tool_call.index != idx:
-                print('Updating index')
+                # print('Updating index')
                 if idx is not None:
                     cur = delta_store['prep'][-1]
                     result = ToolCall(

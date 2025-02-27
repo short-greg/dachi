@@ -48,7 +48,9 @@ class RespConv(ABC):
         pass
 
     @abstractmethod
-    def delta(self, response, msg: Msg, delta_store: typing.Dict) -> typing.Any: 
+    def delta(
+        self, response, msg: Msg, delta_store: typing.Dict
+    ) -> typing.Any: 
         pass
 
     def prep(self) -> typing.Dict:
@@ -199,7 +201,7 @@ class NullTextConv(TextConv):
             typing.Any: The output of the reader
         """
         if message is END_TOK:
-            return None
+            return ''
 
         return message
 
@@ -336,10 +338,10 @@ class MultiTextConv(TextConv):
         data_str = d[data_loc:data_end_loc]
         try:
             delta_store['structs'].append(out(data_str))
-            print('RES ')
-            print(d)
-            print('After')
-            print(d[data_end_loc:])
+            # print('RES ')
+            # print(d)
+            # print('After')
+            # print(d[data_end_loc:])
             delta_store['message'] = d[data_end_loc:]
             delta_store['i'] += 1
         except ReadError as e:
@@ -422,11 +424,30 @@ class PrimConv(TextConv):
             typing.Any: The output of the reader
         """
         if message is None:
-            return None
+            message = ''
         
         if self._out_cls is bool:
             return message.lower() in ('true', 'y', 'yes', '1', 't')
         return self._out_cls(message)
+    
+    # TODO: Add
+    def delta(self, message: str, delta_store):
+        
+        if message is None:
+            message = ''
+
+        if self._out_cls is str:
+            # Handle strings cases
+            if message is END_TOK:
+                return ''
+            return message
+        else:
+            # Handle non-string cases
+            if message is END_TOK:
+                return self(delta_store['delta'])
+            else:
+                delta_store['delta'] += message
+                return ''
 
     def template(self) -> str:
         """Output the template for the string
@@ -497,6 +518,18 @@ class PydanticConv(TextConv, typing.Generic[S]):
         #     return self._out_cls(**data)
         # except json.JSONDecodeError as e:
         #     raise ReadError('Reading of Pydantic Base Model has failed.', e)
+
+    def delta(self, message: str, delta_store):
+        
+        if message is None:
+            message = ''
+
+        # Handle non-string cases
+        if message is END_TOK:
+            return self(delta_store['delta'])
+        else:
+            delta_store['delta'] += message
+            return ''
 
     def template_renderer(self, template: TemplateField) -> str:
         """Render the template for the BaseModel
