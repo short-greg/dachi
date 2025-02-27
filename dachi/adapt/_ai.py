@@ -7,7 +7,7 @@ import pydantic
 
 # local
 from ..conv import (
-    Msg, ListDialog, BaseDialog,
+    Msg, BaseDialog,
     Assistant
 )
 from ._read import RespConv
@@ -197,58 +197,6 @@ class ToolCall(pydantic.BaseModel):
             yield self.option.f(**self.args)
 
 
-def exclude_role(messages: typing.Iterable[Msg], *role: str) -> typing.List[Msg]:
-    """
-    Filter messages by excluding specified roles.
-    This function takes an iterable of messages and one or more role strings, returning
-    a new list containing only messages whose roles are not in the specified roles to exclude.
-    Args:
-        messages (typing.Iterable[Msg]): An iterable of message objects
-        *role (str): Variable number of role strings to exclude
-    Returns:
-        typing.List[Msg]: A list of messages excluding those with specified roles
-    Example:
-        >>> messages = [Msg(role="user", content="hi"), Msg(role="system", content="hello")]
-        >>> exclude_role(messages, "system")
-        [Msg(role="user", content="hi")]
-    """
-    exclude = set(role)
-    return [message for message in messages
-        if message.role not in exclude]
-
-
-def include_role(messages: typing.Iterable[Msg], *role: str) -> typing.List[Msg]:
-    """Filter the iterable of messages by a particular role
-
-    Args:
-        messages (typing.Iterable[Msg]): 
-
-    Returns:
-        typing.List[Msg]: 
-    """
-    include = set(role)
-    return [message for message in messages
-        if message.role in include]
-
-
-def to_dialog(prompt: typing.Union[BaseDialog, Msg]) -> BaseDialog:
-    """Convert a prompt to a dialog
-
-    Args:
-        prompt (typing.Union[Dialog, Msg]): The prompt to convert
-    """
-    if isinstance(prompt, Msg):
-        prompt = ListDialog([prompt])
-
-    return prompt
-
-def to_list_input(msg: typing.List | typing.Tuple | BaseDialog | Msg) -> typing.List:
-
-    if not isinstance(msg, typing.List) and not isinstance(msg, typing.Tuple):
-        return msg.to_list_input()
-    return msg
-
-
 class LLM(Assistant):
 
     """
@@ -302,7 +250,7 @@ class LLM(Assistant):
         kwargs = {
             **self._kwargs, 
             **kwargs, 
-            self._message_arg:to_list_input(msg)
+            self._message_arg:msg.to_list_input()
         }
         if self._forward is not None:
             return llm_forward(
@@ -330,7 +278,7 @@ class LLM(Assistant):
             kwargs = {
                 **self._kwargs, 
                 **kwargs, 
-                self._message_arg: to_list_input(msg)
+                self._message_arg: msg.to_list_input()
             }
             return await llm_aforward(
                 self._aforward, **kwargs, 
@@ -342,7 +290,7 @@ class LLM(Assistant):
                 msg, **kwargs
             )
     
-    def stream(self, msg, *args, **kwargs) -> typing.Iterator[typing.Tuple[Msg, typing.Any]]:
+    def stream(self, msg: Msg | BaseDialog, *args, **kwargs) -> typing.Iterator[typing.Tuple[Msg, typing.Any]]:
         """
         Streams the assistant output for a given message.
         Args:
@@ -356,7 +304,7 @@ class LLM(Assistant):
             kwargs = {
                 **self._kwargs, 
                 **kwargs, 
-                self._message_arg: to_list_input(msg)
+                self._message_arg: msg.to_list_input()
             }
             for v in llm_stream(
                 self._stream, **kwargs, 
@@ -369,7 +317,7 @@ class LLM(Assistant):
                 msg, **kwargs
             )
 
-    async def astream(self, msg, *args, **kwargs) -> typing.AsyncIterator[typing.Tuple[Msg, typing.Any]]:
+    async def astream(self, msg: Msg | BaseDialog, *args, **kwargs) -> typing.AsyncIterator[typing.Tuple[Msg, typing.Any]]:
         """
         Asynchronous streaming function to get the Assistant's output.
         This function yields the output of the `stream` function with the given 
@@ -386,7 +334,7 @@ class LLM(Assistant):
             kwargs = {
                 **self._kwargs, 
                 **kwargs, 
-                self._message_arg: to_list_input(msg)
+                self._message_arg: msg.to_list_input()
             }
             async for v in await llm_astream(
                 self._stream, **kwargs, 
@@ -399,8 +347,6 @@ class LLM(Assistant):
                 msg, **kwargs
             ):
                 yield v
-
-
 
 
 def llm_forward(

@@ -465,3 +465,55 @@ def include_messages(dialog: BaseDialog, val: typing.Union[typing.Any, typing.Se
         [msg for msg in dialog.messages() if msg[field] in val],
         msg_renderer=dialog.msg_renderer
     )
+
+
+def to_dialog(prompt: typing.Union[BaseDialog, Msg]) -> BaseDialog:
+    """Convert a prompt to a dialog
+
+    Args:
+        prompt (typing.Union[Dialog, Msg]): The prompt to convert
+    """
+    if isinstance(prompt, Msg):
+        prompt = ListDialog([prompt])
+
+    return prompt
+
+def to_list_input(msg: typing.List | typing.Tuple | BaseDialog | Msg) -> typing.List:
+
+    if not isinstance(msg, typing.List) and not isinstance(msg, typing.Tuple):
+        return msg.to_list_input()
+    return msg
+
+
+def exclude_role(messages: typing.Iterable[Msg], *role: str) -> typing.List[Msg]:
+    """
+    Filter messages by excluding specified roles.
+    This function takes an iterable of messages and one or more role strings, returning
+    a new list containing only messages whose roles are not in the specified roles to exclude.
+    Args:
+        messages (typing.Iterable[Msg]): An iterable of message objects
+        *role (str): Variable number of role strings to exclude
+    Returns:
+        typing.List[Msg]: A list of messages excluding those with specified roles
+    Example:
+        >>> messages = [Msg(role="user", content="hi"), Msg(role="system", content="hello")]
+        >>> exclude_role(messages, "system")
+        [Msg(role="user", content="hi")]
+    """
+    exclude = set(role)
+    return [message for message in messages
+        if message.role not in exclude]
+
+
+def include_role(messages: typing.Iterable[Msg], *role: str) -> typing.List[Msg]:
+    """Filter the iterable of messages by a particular role
+
+    Args:
+        messages (typing.Iterable[Msg]): 
+
+    Returns:
+        typing.List[Msg]: 
+    """
+    include = set(role)
+    return [message for message in messages
+        if message.role in include]

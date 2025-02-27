@@ -6,7 +6,8 @@ from ._messages import (
     exclude_messages, 
     include_messages,
     RenderMsgField, 
-    END_TOK
+    END_TOK,
+    to_dialog,
 )
 from ._lang import (
     Term, Glossary
