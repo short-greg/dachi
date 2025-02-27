@@ -424,7 +424,7 @@ class ListDialog(BaseDialog):
         )
 
 
-class RenderField:
+class RenderMsgField:
 
     def __init__(self, field: str='content'):
         """Renderer to render a specific field in the message

@@ -12,7 +12,7 @@ from ..conv import (
 )
 from ._read import RespConv
 from ..utils._f_utils import (
-    is_async_function, is_async_function, 
+    to_async_function, to_async_function, 
     is_generator_function
 )
 from ..conv import END_TOK
@@ -20,7 +20,7 @@ from ..conv import END_TOK
 # local
 from ..conv._messages import Msg, BaseDialog
 from ..utils import (
-    is_async_function, 
+    to_async_function, 
     is_generator_function,
 )
 
@@ -141,7 +141,7 @@ class ToolCall(pydantic.BaseModel):
             typing.Any: The result of the call
         """
         # Check if valid to use with forward
-        if is_async_function(self.option.f):
+        if to_async_function(self.option.f):
             raise NotImplementedError
         if is_generator_function(self.option.f):
             raise NotImplementedError
@@ -156,7 +156,7 @@ class ToolCall(pydantic.BaseModel):
         Returns:
             typing.Any: The result of the call
         """
-        if is_async_function(self.option.f):
+        if to_async_function(self.option.f):
             return await self.option.f(**self.args)
         if is_generator_function(self.option.f):
             raise NotImplementedError
@@ -171,7 +171,7 @@ class ToolCall(pydantic.BaseModel):
         Yields:
             Iterator[typing.Iterator]: The result of the call
         """
-        if is_async_function(self.option.f):
+        if to_async_function(self.option.f):
             raise NotImplementedError
         elif is_generator_function(self.option.f):
             for k in self.option.f(**self.args):
@@ -185,13 +185,13 @@ class ToolCall(pydantic.BaseModel):
         Yields:
             Iterator[typing.Iterator]: The result of the call
         """
-        if is_generator_function(self.option.f) and is_async_function(self.option.f):
+        if is_generator_function(self.option.f) and to_async_function(self.option.f):
             async for k in await self.option.f(**self.args):
                 yield k
         elif is_generator_function(self.option.f):
             for k in await self.option.f(**self.args):
                 yield k
-        elif is_async_function(self.option.f):
+        elif to_async_function(self.option.f):
             yield await self.option.f(**self.args)
         else:
             yield self.option.f(**self.args)
@@ -241,6 +241,12 @@ def to_dialog(prompt: typing.Union[BaseDialog, Msg]) -> BaseDialog:
         prompt = ListDialog([prompt])
 
     return prompt
+
+def to_list_input(msg: typing.List | typing.Tuple | BaseDialog | Msg) -> typing.List:
+
+    if not isinstance(msg, typing.List) and not isinstance(msg, typing.Tuple):
+        return msg.to_list_input()
+    return msg
 
 
 class LLM(Assistant):
@@ -296,7 +302,7 @@ class LLM(Assistant):
         kwargs = {
             **self._kwargs, 
             **kwargs, 
-            self._message_arg: msg.to_list_input()
+            self._message_arg:to_list_input(msg)
         }
         if self._forward is not None:
             return llm_forward(
@@ -324,7 +330,7 @@ class LLM(Assistant):
             kwargs = {
                 **self._kwargs, 
                 **kwargs, 
-                self._message_arg: msg.to_list_input()
+                self._message_arg: to_list_input(msg)
             }
             return await llm_aforward(
                 self._aforward, **kwargs, 
@@ -350,7 +356,7 @@ class LLM(Assistant):
             kwargs = {
                 **self._kwargs, 
                 **kwargs, 
-                self._message_arg: msg.to_list_input()
+                self._message_arg: to_list_input(msg)
             }
             for v in llm_stream(
                 self._stream, **kwargs, 
@@ -380,7 +386,7 @@ class LLM(Assistant):
             kwargs = {
                 **self._kwargs, 
                 **kwargs, 
-                self._message_arg: msg.to_list_input()
+                self._message_arg: to_list_input(msg)
             }
             async for v in await llm_astream(
                 self._stream, **kwargs, 
@@ -466,7 +472,6 @@ async def llm_aforward(
         for r in _resp_proc:
             kwargs.update(r.prep())
 
-    print('f: ', f)
     response = await f(
         *args, **kwargs
     )
@@ -475,7 +480,6 @@ async def llm_aforward(
     if _resp_proc is None:
         return msg
     
-    print(response)
     if isinstance(_resp_proc, RespConv):
         return msg, _resp_proc(response, msg)
 
@@ -581,7 +585,18 @@ async def llm_astream(
 
 
 def process_response(response, msg, resp_proc, delta: typing.Dict):
-
+    """
+    Processes a response from the LLM (Language Model).
+    Args:
+        response: The response from the LLM.
+        msg: The message to be processed.
+        resp_proc: A converter that processes the response. It can be an instance of RespConv or a list of such instances.
+        delta (typing.Dict): A dictionary containing additional data for processing.
+    Returns:
+        If resp_proc is None, returns the original message.
+        If resp_proc is an instance of RespConv, returns a tuple containing the message and the processed delta.
+        If resp_proc is a list of RespConv instances, returns a tuple containing the message and a tuple of processed deltas.
+    """
     if resp_proc is None:
         return msg
     if isinstance(resp_proc, RespConv):

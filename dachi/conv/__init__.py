@@ -5,7 +5,7 @@ from ._messages import (
     to_input, 
     exclude_messages, 
     include_messages,
-    RenderField, 
+    RenderMsgField, 
     END_TOK
 )
 from ._lang import (

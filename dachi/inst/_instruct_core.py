@@ -24,9 +24,12 @@ from ..conv import (
 )
 from ..proc._param import Trainable
 from ..utils._core import Renderable
-from ..utils import is_primitive
+from ..utils import is_primitive, primitives
 
-from ..adapt._read import TextConv, NullTextConv
+from ..adapt._read import (
+    TextConv, NullTextConv,
+    PrimConv, PydanticConv
+)
 from ..utils._utils import str_formatter
 
 Engine = Assist | AsyncAssist | StreamAssist | AsyncStreamAssist
@@ -150,6 +153,7 @@ def validate_out(cues: typing.List[X]) -> typing.Optional[TextConv]:
     return out
 
 
+
 class IBase(ABC):
 
     def __init__(self, f, is_method: bool=False):
@@ -193,6 +197,11 @@ class IBase(ABC):
     def __call__(self, *args, **kwds) -> Cue:
         pass
 
+    @property
+    @abstractmethod
+    def out_cls(self) -> typing.Type:
+        pass
+
     
 class Inst(IBase):
 
@@ -210,6 +219,10 @@ class Inst(IBase):
             **params
         )
 
+    @property
+    def out_cls(self) -> typing.Type:
+        return self._return_annotation
+
 
 class Sig(IBase):
 
@@ -226,7 +239,17 @@ class Sig(IBase):
             data=cue,
             training=train
         )
-
+        # self._is_async = is_async_function(f)
+        # self._is_generator = is_generator_function(f)
+        # self._is_method = is_method
+        # self._is_generator = is_generator_function(f)
+        # self._is_async = is_async_function(f)
+        # self._docstring = f.__doc__
+        # self._name = f.__name__
+        # self._signature = str(inspect.signature(f))
+        # self._parameters = inspect.signature(f).parameters
+        # self._return_annotation = inspect.signature(f).return_annotation
+        
     def __call__(self, instance, *args, **kwargs) -> str:
         
         params = self._align_params(
@@ -246,15 +269,20 @@ class Sig(IBase):
         if "{TEMPLATE}" in doc:
             kwargs['TEMPLATE'] = self._reader.template()
 
-        cue = Cue(text=str_formatter(
-            doc, required=False, **kwargs
+        cue = Cue(
+            text=str_formatter(
+                doc, required=False, **kwargs
         ), name=self._name)
         return cue
+
+    @property
+    def out_cls(self) -> typing.Type:
+        return self._return_annotation
 
 
 class FuncDecBase:
 
-    def __init__(self, inst: IBase, instance=None):
+    def __init__(self, inst: IBase, instance=None, reader=None):
         """
 
         Args:
@@ -263,6 +291,18 @@ class FuncDecBase:
         """
         self._inst = inst
         self._instance = instance
+
+        if reader is None:
+            if inst.out_cls in primitives:
+                reader = PrimConv(
+                    name=inst.name, 
+                    out_cls=inst.out_cls
+                )
+            elif issubclass(inst.out_cls, pydantic.BaseModel):
+                reader = PydanticConv(name=inst.name, out_cls=inst.out_cls)
+            else:
+                reader = NullTextConv(name=inst.name)
+        self._reader = reader
 
     @abstractmethod
     def __call__(self, *args, **kwargs):
@@ -328,21 +368,18 @@ class FuncDec(FuncDecBase, Module):
         kwargs: typing.Dict=None,
         instance=None
     ):
-        super().__init__(inst, instance)
+        super().__init__(inst, instance, reader)
         self._engine = engine
-        self._reader = reader or NullTextConv()
         self._to_msg = to_msg or ToText()
         self._kwargs = kwargs or {}
 
     def forward(self, *args, **kwargs):
         
         instance, args = self.get_instance(args)
-        # print(self._inst, type(self._inst))
         cue = self._inst(
             instance, *args, **kwargs
         )
-        # print(cue)
-        msg = self._to_msg(cue)
+        msg = self._to_msg(cue.text)
         engine = self.get_engine(instance)
         _, res = engine(
             [msg], **self._kwargs
@@ -371,9 +408,8 @@ class AFuncDec(FuncDecBase, AsyncModule):
         kwargs: typing.Dict=None,
         instance=None
     ):
-        super().__init__(inst, instance)
+        super().__init__(inst, instance, reader)
         self._engine = engine
-        self._reader = reader or NullTextConv()
         self._to_msg = to_msg or ToText()
         self._kwargs = kwargs or {}
 
@@ -382,7 +418,7 @@ class AFuncDec(FuncDecBase, AsyncModule):
         cue = self._inst(
             instance, *args, **kwargs
         )
-        msg = self._to_msg(cue)
+        msg = self._to_msg(cue.text)
         engine = self.get_engine(instance)
         _, res = await engine.aforward(
             [msg], **self._kwargs
@@ -412,9 +448,9 @@ class StreamDec(FuncDecBase, StreamModule):
         kwargs: typing.Dict=None,
         instance=None
     ):
-        super().__init__(inst, instance)
+        super().__init__(inst, instance, reader)
         self._engine = engine
-        self._reader = reader or NullTextConv()
+        # self._reader = reader or NullTextConv()
         self._to_msg = to_msg or ToText()
         self._kwargs = kwargs or {}
 
@@ -423,7 +459,7 @@ class StreamDec(FuncDecBase, StreamModule):
         cue = self._inst(
             instance, *args, **kwargs
         )
-        msg = self._to_msg(cue)
+        msg = self._to_msg(cue.text)
         engine = self.get_engine(
             instance
         )
@@ -453,9 +489,9 @@ class AStreamDec(FuncDecBase, AsyncStreamModule):
         kwargs: typing.Dict=None,
         instance=None
     ):
-        super().__init__(inst, instance)
+        super().__init__(inst, instance, reader)
         self._engine = engine
-        self._reader = reader or NullTextConv()
+        # self._reader = reader or NullTextConv()
         self._to_msg = to_msg or ToText()
         self._kwargs = kwargs or {}
 
@@ -464,7 +500,7 @@ class AStreamDec(FuncDecBase, AsyncStreamModule):
         cue = self._inst(
             instance, *args, **kwargs
         )
-        msg = self._to_msg(cue)
+        msg = self._to_msg(cue.text)
 
         engine = self.get_engine(
             instance
@@ -489,8 +525,8 @@ def instructfunc(
     engine: Engine=None,
     reader: TextConv=None,
     is_method: bool=False,
-    is_async: bool=False,
-    is_stream: bool=False,
+    to_async: bool=False,
+    to_stream: bool=False,
     to_msg: ToMsg=None,
     **kwargs
 ):
@@ -511,17 +547,17 @@ def instructfunc(
         
         inst = Inst(f, is_method)
 
-        if not is_async and not is_stream:
+        if not to_async and not to_stream:
             return FuncDec(
                 inst, engine, reader, to_msg,
                 kwargs=kwargs
             )
-        if not is_stream:
+        if not to_stream:
             return AFuncDec(
                 inst, engine, reader, to_msg,
                 kwargs=kwargs
             )
-        if not is_async:
+        if not to_async:
             return StreamDec(
                 inst, engine, reader, to_msg,
                 kwargs=kwargs
@@ -537,8 +573,8 @@ def instructfunc(
 def instructmethod(
     engine: Engine=None,
     reader: TextConv=None,
-    is_async: bool=False,
-    is_stream: bool=False,
+    to_async: bool=False,
+    to_stream: bool=False,
     to_msg: ToMsg=None,
     **kwargs
 ):
@@ -551,8 +587,8 @@ def instructmethod(
         typing.Callable[[function], SignatureFunc]
     """
     return instructfunc(
-        engine, reader=reader, is_method=True, to_msg=to_msg, is_async=is_async, 
-        is_stream=is_stream, 
+        engine, reader=reader, is_method=True, to_msg=to_msg, to_async=to_async, 
+        to_stream=to_stream, 
         **kwargs
     )
 
@@ -562,8 +598,8 @@ def signaturefunc(
     reader: TextConv=None,
     to_msg: ToMsg=None,
     is_method: bool=False,
-    is_async: bool=False,
-    is_stream: bool=False,
+    to_async: bool=False,
+    to_stream: bool=False,
     **kwargs
 ):
     """Decorate a method with instructfunc
@@ -583,17 +619,17 @@ def signaturefunc(
         
         inst = Sig(f, is_method)
 
-        if not is_async and not is_stream:
+        if not to_async and not to_stream:
             return FuncDec(
                 inst, engine, reader, to_msg,
                 kwargs=kwargs
             )
-        if not is_stream:
+        if not to_stream:
             return AFuncDec(
                 inst, engine, reader, to_msg,
                 kwargs=kwargs
             )
-        if not is_async:
+        if not to_async:
             return StreamDec(
                 inst, engine, reader, to_msg,
                 kwargs=kwargs
@@ -611,8 +647,8 @@ def signaturemethod(
     reader: TextConv=None,
     to_msg: ToMsg=None,
     doc: typing.Union[str, typing.Callable[[], str]]=None,
-    is_async: bool=False,
-    is_stream: bool=False,
+    to_async: bool=False,
+    to_stream: bool=False,
     **kwargs
 ):
     """Decorate a method with SignatureFunc
@@ -627,7 +663,7 @@ def signaturemethod(
     """
     return signaturefunc(
         engine, reader=reader, doc=doc, is_method=True,
-        to_msg=to_msg, is_async=is_async, is_stream=is_stream,
+        to_msg=to_msg, to_async=to_async, to_stream=to_stream,
         **kwargs
     )
 

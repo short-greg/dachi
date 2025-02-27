@@ -25,7 +25,6 @@ S = typing.TypeVar('S', bound=pydantic.BaseModel)
 class RespConv(ABC):
     """Use to process the resoponse from an LLM
     """
-
     def __init__(self, resp: bool):
         """
         Initialize the instance.

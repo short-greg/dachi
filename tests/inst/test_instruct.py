@@ -108,7 +108,7 @@ class TestSignatureF:
 
         class X(object):
 
-            @core.signaturemethod(engine=DummyAIModel(), is_stream=True)
+            @core.signaturemethod(engine=DummyAIModel(), to_stream=True)
             def signaturep(self, x: str) -> str:
                 """Output the value of x
                 
