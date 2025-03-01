@@ -9,24 +9,23 @@ from functools import wraps
 import pydantic
 
 # local
+from ..base import Trainable
 from ..proc._process import (
     Module, 
-    AsyncModule, StreamModule, AsyncStreamModule
+    AsyncModule, StreamModule, AsyncStreamModule,
+    Param
 )
-from ..proc._param import Param
 from ..adapt._ai import (
-    ToMsg,
-    ToText
+    ToMsg, ToText
 )
 from ..conv import (
     AsyncAssist, AsyncStreamAssist, 
     Assist, StreamAssist
 )
-from ..proc._param import Trainable
-from ..utils._core import Renderable
+from ..base import Renderable
 from ..utils import is_primitive, primitives
 
-from ..adapt._read import (
+from ..adapt import (
     TextConv, NullTextConv,
     PrimConv, PydanticConv
 )

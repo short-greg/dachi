@@ -4,6 +4,7 @@ import string
 import re
 import pydantic
 from enum import Enum
+from ..base import WAITING, UNDEFINED
 
 
 class _PartialFormatter(string.Formatter):
@@ -128,19 +129,6 @@ def generic_class(t: typing.TypeVar, idx: int=0) -> typing.Type:
         typing.Type: the type specified by the generic class
     """
     return t.__orig_class__.__args__[idx]
-
-
-class _Types(Enum):
-
-    UNDEFINED = 'UNDEFINED'
-    WAITING = 'WAITING'
-
-
-UNDEFINED = _Types.UNDEFINED
-"""Constant for UNDEFINED. usage: value is UNDEFINED"""
-WAITING = _Types.WAITING
-"""Constant for WAITING when streaming. usage: value is WAITING"""
-
 
 def is_nested_model(
     pydantic_model_cls: typing.Type[pydantic.BaseModel]

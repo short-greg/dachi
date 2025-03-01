@@ -7,16 +7,12 @@ from abc import ABC, abstractmethod
 import pydantic
 
 # local
+from ..base import Templatable
 from ..utils import (
-    struct_template,
+    render, TemplateField, 
+    struct_template, unescape_curly_braces
 )
-from ..utils import unescape_curly_braces
-from ..utils import (
-    render, Templatable, TemplateField, 
-    struct_template
-)
-from ..conv import END_TOK
-from ..conv import Msg
+from ..conv import END_TOK, Msg
 from pydantic_core import PydanticUndefined
 
 S = typing.TypeVar('S', bound=pydantic.BaseModel)

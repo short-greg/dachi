@@ -16,6 +16,7 @@ from . import (
     is_primitive, 
     escape_curly_braces
 )
+from ..base import Renderable
 
 S = typing.TypeVar('S', bound=pydantic.BaseModel)
 
@@ -24,7 +25,9 @@ class StructLoadException(Exception):
     """Exception StructLoad
     """
 
-    def __init__(self, message="Struct loading failed.", errors=None):
+    def __init__(
+        self, message="Struct loading failed.", errors=None
+    ):
         """Create a StructLoadException with a message
 
         Args:
@@ -33,40 +36,6 @@ class StructLoadException(Exception):
         """
         super().__init__(message)
         self.errors = errors
-
-
-
-class Renderable(ABC):
-    """Mixin for classes that implement the render()
-    method. Render is used to determine how to represent an
-    object as a string to send to thte LLM
-    """
-
-    @abstractmethod
-    def render(self) -> str:
-        """Convert an object to a string representation for 
-        an llm
-
-        Returns:
-            str: the string representation of the object
-        """
-        pass
-
-
-class Templatable(ABC):
-    """A mixin to indicate that the class 
-    has a template function defined. Templates are
-    used by the LLM to determine how to output.
-    """
-
-    @abstractmethod
-    def template(self) -> str:
-        """Get the template 
-
-        Returns:
-            str: 
-        """
-        pass
 
 
 @dataclass
@@ -188,51 +157,6 @@ def doc(obj) -> str:
     """
     d = obj.__doc__
     return d if d is not None else ''
-
-
-class Storable(ABC):
-    """Object to serialize objects to make them easy to recover
-    """
-    def __init__(self):
-        """Create the storable object
-        """
-        self._id = str(uuid4())
-
-    @property
-    def id(self) -> str:
-        """The object id of the storable
-
-        Returns:
-            str: The ID
-        """
-        return self._id
-
-    def load_state_dict(self, state_dict: typing.Dict):
-        """Load the state dict for the object
-
-        Args:
-            state_dict (typing.Dict): The state dict
-        """
-        for k, v in self.__dict__.items():
-            if isinstance(v, Storable):
-                self.__dict__[k] = v.load_state_dict(state_dict[k])
-            else:
-                self.__dict__[k] = state_dict[k]
-        
-    def state_dict(self) -> typing.Dict:
-        """Retrieve the state dict for the object
-
-        Returns:
-            typing.Dict: The state dict
-        """
-        cur = {}
-
-        for k, v in self.__dict__.items():
-            if isinstance(v, Storable):
-                cur[k] = v.state_dict()
-            else:
-                cur[k] = v
-        return cur
 
 
 def render(

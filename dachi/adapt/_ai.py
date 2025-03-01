@@ -7,21 +7,18 @@ import pydantic
 
 # local
 from ..conv import (
-    Msg, BaseDialog,
-    Assistant
+    Msg, BaseDialog, Assistant,
+    END_TOK
+)
+
+from ..utils import (
+    to_async_function, 
+    is_generator_function,
 )
 from ._read import RespConv
 from ..utils._f_utils import (
     to_async_function, to_async_function, 
     is_generator_function
-)
-from ..conv import END_TOK
-
-# local
-from ..conv._messages import Msg, BaseDialog
-from ..utils import (
-    to_async_function, 
-    is_generator_function,
 )
 
 S = typing.TypeVar('S', bound=pydantic.BaseModel)

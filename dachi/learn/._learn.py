@@ -3,7 +3,7 @@ from abc import ABC, abstractmethod
 
 import pydantic
 
-from .._core import Module, Param
+from ..proc import Module, Param
 
 
 class ParamSet(object):

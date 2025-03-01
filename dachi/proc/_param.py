@@ -6,33 +6,10 @@ import numpy as np
 import pydantic
 
 # local
-from ..utils._core import Renderable
-from ..utils._core import Storable, render
+from ..base import Renderable, Storable, Trainable
+from ..utils._core import render
 
 from typing import TypeVar
-
-
-class Trainable(pydantic.BaseModel):
-
-    @property
-    def fixed_keys(self) -> typing.Set:
-        return set()
-    
-    def fixed_data(self) -> typing.Dict:
-        fixed = set(self.fixed_keys)
-        return {
-            key: val
-            for key, val in self.model_dump().items()
-            if key not in fixed
-        }
-
-    def unfixed_data(self) -> typing.Dict:
-        fixed = set(self.fixed_keys)
-        return {
-            key: val
-            for key, val in self.model_dump().items()
-            if key in fixed
-        }
 
 
 T = TypeVar("T", bound=Trainable)

@@ -9,11 +9,11 @@ from typing import Any
 import pydantic
 
 # local
-from ..utils import Storable
+from ..base import Storable
 
 # TODO: Add in Action (For GOAP)
 from ..adapt import TextConv
-from ..utils import UNDEFINED
+from ..base import UNDEFINED
 
 
 class TaskStatus(Enum):

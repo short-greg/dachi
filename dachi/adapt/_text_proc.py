@@ -20,7 +20,6 @@ from ..utils import (
 )
 
 
-
 class CSVConv(TextConv):
     """Convert text to a StructList
     """

@@ -2,6 +2,7 @@ from dachi import utils
 from dachi.utils import model_to_text, struct_template
 from pydantic import BaseModel
 import pytest
+from dachi import base
 
 
 class SimpleStruct(BaseModel):
@@ -19,7 +20,7 @@ class TestIsUndefined(object):
     def test_is_undefined(self):
 
         assert utils.is_undefined(
-            utils.UNDEFINED
+            base.UNDEFINED
         )
 
     def test_not_is_undefined(self):
