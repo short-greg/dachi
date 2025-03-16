@@ -6,7 +6,7 @@ from dachi.proc import Param, Module
 from dachi.proc import _process
 import numpy as np
 # TODO: remove
-from dachi.inst import Cue
+from dachi.asst import Cue
 
 
 class Append(

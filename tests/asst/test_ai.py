@@ -1,7 +1,7 @@
-from dachi.conv._messages import Msg
+from dachi.asst._messages import Msg
 
 from typing import Iterator
-from dachi.adapt import _ai
+from dachi.asst import _ai
 import typing
 
 

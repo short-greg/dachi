@@ -14,7 +14,7 @@ import json
 # local
 from ._read import OutConv, struct_template
 from ..utils._core import render
-from ..conv import END_TOK
+from . import END_TOK
 from ..utils import (
     escape_curly_braces
 )

@@ -1,7 +1,7 @@
 import pytest
 from dachi.proc import _process as p
 from dachi.base import WAITING, UNDEFINED
-from dachi.proc import _core as g
+from dachi.proc import _graph as g
 from .test_process import (
     Append, WriteOut # process_test_func, # 
 )

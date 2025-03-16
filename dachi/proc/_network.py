@@ -4,7 +4,7 @@ import typing
 # 3rd party
 import networkx as nx
 from ._process import Module
-from ._core import T
+from ._graph import T
 
 
 class Network(object):

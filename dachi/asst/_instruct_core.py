@@ -15,17 +15,17 @@ from ..proc._process import (
     AsyncModule, StreamModule, AsyncStreamModule,
     Param
 )
-from ..adapt._ai import (
+from ._ai import (
     ToMsg, ToText
 )
-from ..conv import (
+from . import (
     AsyncAssist, AsyncStreamAssist, 
     Assist, StreamAssist
 )
 from ..base import Renderable
 from ..utils import is_primitive, primitives
 
-from ..adapt import (
+from ..asst import (
     OutConv, NullOutConv,
     PrimConv, PydanticConv
 )

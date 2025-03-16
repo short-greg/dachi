@@ -7,7 +7,7 @@ import pydantic
 
 # local
 from ..base import coalesce, UNDEFINED
-from ..conv import (
+from . import (
     Msg, BaseDialog, Assistant,
     END_TOK
 )

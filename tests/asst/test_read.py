@@ -1,5 +1,5 @@
 from ..utils.test_core import SimpleStruct, SimpleStruct2
-from dachi.adapt import _read as _read
+from dachi.asst import _read as _read
 from dachi.utils import model_to_text
 
 

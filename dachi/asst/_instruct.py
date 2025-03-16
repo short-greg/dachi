@@ -16,7 +16,7 @@ from ..utils import (
 )
 from ..base import UNDEFINED
 from ..proc import Module, AsyncModule, AsyncStreamModule, StreamModule
-from ..adapt import LLM, OutConv, ToMsg
+from ..asst import LLM, OutConv, ToMsg
 from ._data import Description
 
 
@@ -357,6 +357,7 @@ class Inst(Module, AsyncModule, StreamModule, AsyncStreamModule):
         return Inst(
             llm, to_msg, out, context
         )
+
 
 class Inst(Module):
     """An operation acts on an cue to produce a new cue

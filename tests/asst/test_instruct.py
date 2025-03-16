@@ -1,7 +1,7 @@
-from dachi.inst import _instruct_core as core
-from dachi.inst import Cue
+from dachi.asst import _instruct_core as core
+from dachi.asst import Cue
 from ..utils.test_core import SimpleStruct
-from ..adapt.test_ai import DummyAIModel
+from .test_ai import DummyAIModel
 
 
 def dummy_dec(f):

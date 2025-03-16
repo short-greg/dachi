@@ -12,7 +12,7 @@ import pydantic
 from ..base import Storable
 
 # TODO: Add in Action (For GOAP)
-from ..adapt import OutConv
+from ..asst import OutConv
 from ..base import UNDEFINED
 
 

@@ -12,7 +12,7 @@ from ..utils import (
     render, TemplateField, 
     struct_template, unescape_curly_braces
 )
-from ..conv import END_TOK, Msg
+from . import END_TOK, Msg
 from pydantic_core import PydanticUndefined
 
 S = typing.TypeVar('S', bound=pydantic.BaseModel)

@@ -1,11 +1,11 @@
 import pkg_resources
 import typing
 
-from ..conv import Msg
+from . import Msg
 from ._ai import ToolSet, ToolCall
 from ._ai import RespConv
 import json
-from ..conv import END_TOK
+from . import END_TOK
 
 # TODO: add utility for this
 required = {'openai'}

@@ -35,7 +35,7 @@ from ._param import (
     Param,
     ParamSet
 )
-from ._core import (
+from ._graph import (
     link, Src, StreamSrc, ModSrc, WaitSrc, Var, T, TArgs,
     stream_link, wait, stream, 
     IdxSrc,
