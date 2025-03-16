@@ -24,100 +24,6 @@ S = typing.TypeVar('S', bound=pydantic.BaseModel)
 X = typing.Union[str, Description, Cue]
 
 
-def bullet(xs: typing.Iterable[X], bullets: str='-', indent: int=0) -> 'Cue':
-    """Create a bullet list based on the instructions
-
-    Args:
-        xs (typing.Iterable[X]): The cues to bullet
-        bullets (str, optional): The string to use for the bullet. Defaults to '-'.
-
-    Returns:
-        Cue: The resulting cue
-    """
-    indent = ' ' * indent
-    text = f'\n{indent}{bullets}'
-    out = validate_out(xs)
-    text = text + f'\n{indent}{bullets}'.join(
-        render(x_i) for x_i in xs
-    )
-    return Cue(
-        text=text, out=out
-    )
-
-
-def formatted(x: X, format: str) -> 'Cue':
-    """Format the X with a format. The format string will encapsulate it
-
-    Example:
-
-    formatted('Name', '*') => '*Name*'
-
-    Args:
-        x (X): The data to format
-        format (str): The format to use
-
-    Returns:
-        Cue: The resulting cue
-    """
-
-    text = render(x)
-    if text[:len(format)] == format and text[-len(format):] == format:
-        return x
-    return Cue(
-        f'{format}{text}{format}',
-        out=x.out
-    )
-
-
-def bold(x: X) -> 'Cue':
-    """Format the X with a bold format. The format string will encapsulate it
-
-    Example:
-
-    bold('Name') => '**Name**'
-
-    Args:
-        x (X): The data to format
-
-    Returns:
-        Cue: The resulting cue
-    """
-
-    return formatted(x, '**')
-
-
-def italic(x: X) -> 'Cue':
-    """Format the X with a bold format. The format string will encapsulate it
-
-    Example:
-
-    italic('Name') => '*Name*'
-
-    Args:
-        x (X): The data to format
-
-    Returns:
-        Cue: The resulting cue
-    """
-    return formatted(x, '*')
-
-
-def strike(x: X) -> 'Cue':
-    """Format the X with a bold format. The format string will encapsulate it
-
-    Example:
-
-    italic('Name') => '*Name*'
-
-    Args:
-        x (X): The data to format
-
-    Returns:
-        Cue: The resulting cue
-    """
-    return formatted(x, '~~')
-
-
 def generate_numbered_list(n, numbering_type='arabic') -> typing.List:
     """Generate a numbered list in arabic or roman numerals
 
@@ -131,7 +37,7 @@ def generate_numbered_list(n, numbering_type='arabic') -> typing.List:
         ValueError: If the numbering system is incorrect
 
     Returns:
-        _type_: _description_
+        : 
     """
     if numbering_type == 'arabic':
         return [str(i) for i in range(1, n + 1)]
@@ -189,44 +95,6 @@ def fill(x_instr: X, *args: X, **kwargs: X) -> 'Cue':
     )
 
 
-def head(x: X, size: int=1) -> 'Cue':
-    """Add a header to the cue
-
-    Args:
-        x (X): The input to add to
-        size (int, optional): The size of the heading. Defaults to 1.
-
-    Returns:
-        Cue: The resulting cue
-    """
-    out = validate_out([x])
-    heading = '#' * size
-    return Cue(
-        text=f'{heading} {render(x)}', out=out
-    )
-
-
-def section(name: X, details: X, size: int=1, linebreak: int=1) -> 'Cue':
-    """Add a section to the cue
-
-    Args:
-        name (X): The name of the section
-        details (X): The details for the section
-        size (int, optional): The size of the heading. Defaults to 1.
-        linebreak (int, optional): How many linebreaks to put between the heading and the details. Defaults to 1.
-
-    Returns:
-        Cue: The inst
-    """
-    heading = '#' * size
-    out = validate_out([name, details])
-    linebreak = '\n' * linebreak
-    text = f'{heading} {render(name)}{linebreak}' + render(details)
-    return Cue(
-        text=text, out=out
-    )
-
-
 def cat(xs: typing.List[Cue], sep: str=' ') -> Cue:
     """Concatenate multiple cues together
 
@@ -268,7 +136,7 @@ def join(x1: X, x2: X, sep: str=' ') -> Cue:
 # TODO: need string args for the context
 # other args for things that get inserted into
 # the message
-class Inst(Module, AsyncModule, StreamModule, AsyncStreamModule):
+class Op(Module, AsyncModule, StreamModule, AsyncStreamModule):
     """
     The Op class allows interaction with a Language Learning Model (LLM) by sending instructions to it.
     """
@@ -421,3 +289,134 @@ def inst(x: typing.Union[typing.Iterable[X], X], cue: X) -> Cue:
     return Cue(
         text=text, out=out
     )
+
+
+def bullet(xs: typing.Iterable[X], bullets: str='-', indent: int=0) -> 'Cue':
+    """Create a bullet list based on the instructions
+
+    Args:
+        xs (typing.Iterable[X]): The cues to bullet
+        bullets (str, optional): The string to use for the bullet. Defaults to '-'.
+
+    Returns:
+        Cue: The resulting cue
+    """
+    indent = ' ' * indent
+    text = f'\n{indent}{bullets}'
+    out = validate_out(xs)
+    text = text + f'\n{indent}{bullets}'.join(
+        render(x_i) for x_i in xs
+    )
+    return Cue(
+        text=text, out=out
+    )
+
+
+# def formatted(x: X, format: str) -> 'Cue':
+#     """Format the X with a format. The format string will encapsulate it
+
+#     Example:
+
+#     formatted('Name', '*') => '*Name*'
+
+#     Args:
+#         x (X): The data to format
+#         format (str): The format to use
+
+#     Returns:
+#         Cue: The resulting cue
+#     """
+
+#     text = render(x)
+#     if text[:len(format)] == format and text[-len(format):] == format:
+#         return x
+#     return Cue(
+#         f'{format}{text}{format}',
+#         out=x.out
+#     )
+
+
+# def bold(x: X) -> 'Cue':
+#     """Format the X with a bold format. The format string will encapsulate it
+
+#     Example:
+
+#     bold('Name') => '**Name**'
+
+#     Args:
+#         x (X): The data to format
+
+#     Returns:
+#         Cue: The resulting cue
+#     """
+
+#     return formatted(x, '**')
+
+
+# def italic(x: X) -> 'Cue':
+#     """Format the X with a bold format. The format string will encapsulate it
+
+#     Example:
+
+#     italic('Name') => '*Name*'
+
+#     Args:
+#         x (X): The data to format
+
+#     Returns:
+#         Cue: The resulting cue
+#     """
+#     return formatted(x, '*')
+
+
+# def strike(x: X) -> 'Cue':
+#     """Format the X with a bold format. The format string will encapsulate it
+
+#     Example:
+
+#     italic('Name') => '*Name*'
+
+#     Args:
+#         x (X): The data to format
+
+#     Returns:
+#         Cue: The resulting cue
+#     """
+#     return formatted(x, '~~')
+
+
+# def section(name: X, details: X, size: int=1, linebreak: int=1) -> 'Cue':
+#     """Add a section to the cue
+
+#     Args:
+#         name (X): The name of the section
+#         details (X): The details for the section
+#         size (int, optional): The size of the heading. Defaults to 1.
+#         linebreak (int, optional): How many linebreaks to put between the heading and the details. Defaults to 1.
+
+#     Returns:
+#         Cue: The inst
+#     """
+#     heading = '#' * size
+#     out = validate_out([name, details])
+#     linebreak = '\n' * linebreak
+#     text = f'{heading} {render(name)}{linebreak}' + render(details)
+#     return Cue(
+#         text=text, out=out
+#     )
+
+# def head(x: X, size: int=1) -> 'Cue':
+#     """Add a header to the cue
+
+#     Args:
+#         x (X): The input to add to
+#         size (int, optional): The size of the heading. Defaults to 1.
+
+#     Returns:
+#         Cue: The resulting cue
+#     """
+#     out = validate_out([x])
+#     heading = '#' * size
+#     return Cue(
+#         text=f'{heading} {render(x)}', out=out
+#     )
