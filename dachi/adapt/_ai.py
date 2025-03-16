@@ -6,6 +6,7 @@ from abc import ABC, abstractmethod
 import pydantic
 
 # local
+from ..base import coalesce, UNDEFINED
 from ..conv import (
     Msg, BaseDialog, Assistant,
     END_TOK
@@ -208,7 +209,7 @@ class LLM(Assistant):
         resp_procs: typing.List[RespConv]=None,
         kwargs: typing.Dict=None,
         message_arg: str='messages',
-        role_name: str='assistant'
+        role_name: str='assistant',
     ):
         """Wrap the processes in an LLM. Can also inherit from LLM
 
@@ -227,6 +228,10 @@ class LLM(Assistant):
         self.resp_procs = resp_procs or []
         self._message_arg = message_arg
         self._role_name = role_name
+        self._base_aforwardf = aforwardf
+        self._base_streamf = streamf
+        self._base_astreamf = astreamf
+        self._base_forwardf = forwardf
         self._set_val(forwardf, '_forwardf')
         self._set_val(aforwardf, '_aforwardf')
         self._set_val(streamf, '_streamff')
@@ -306,7 +311,8 @@ class LLM(Assistant):
             for v in llm_stream(
                 self._stream, **kwargs, 
                 _resp_proc=self.resp_procs,
-                _role=self._role_name
+                _role=self._role_name, 
+                _delim=self._delim
             ):
                 yield v
         else:
@@ -336,7 +342,8 @@ class LLM(Assistant):
             async for v in await llm_astream(
                 self._stream, **kwargs, 
                 _resp_proc=self.resp_procs,
-                _role=self._role_name
+                _role=self._role_name, 
+                _delim=self._delim
             ):
                 yield v
         else:
@@ -344,6 +351,28 @@ class LLM(Assistant):
                 msg, **kwargs
             ):
                 yield v
+
+    from typing import Self
+    def spawn(self, 
+        forwardf: typing.Callable=UNDEFINED,
+        aforwardf: typing.Callable=UNDEFINED,
+        streamf: typing.Callable=UNDEFINED,
+        astreamf: typing.Callable=UNDEFINED,
+        resp_procs: typing.List[RespConv]=UNDEFINED,
+        kwargs: typing.Dict=UNDEFINED,
+        message_arg: str=UNDEFINED,
+        role_name: str=UNDEFINED,
+    ) -> Self:
+        return LLM(
+            coalesce(forwardf, self._base_forwardf),
+            coalesce(aforwardf, self._base_aforwardf),
+            coalesce(streamf, self._base_streamf),
+            coalesce(astreamf, self._base_astreamf),
+            coalesce(resp_procs, self._resp_procs),
+            coalesce(kwargs, self._kwargs),
+            coalesce(message_arg, self._message_arg),
+            coalesce(role_name, self._role_name)
+        )
 
 
 def llm_forward(
@@ -552,7 +581,6 @@ def process_response(response, msg, resp_proc, delta: typing.Dict):
 class ToMsg(ABC):
     """Converts the input to a message
     """
-
     @abstractmethod
     def __call__(self, *args, **kwargs) -> Msg:
         pass

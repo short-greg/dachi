@@ -4,7 +4,7 @@ from ._data import (
 from ._instruct import (
     bullet, formatted, generate_numbered_list,
     numbered, validate_out, fill, head,
-    section, cat, join, Op, op,
+    section, cat, join, Inst, inst,
     bold, strike, italic
 )
 from ._instruct_core import (
@@ -12,8 +12,8 @@ from ._instruct_core import (
     Cue,
     validate_out,
     IBase,
-    Inst,
-    Sig,
+    InstF,
+    SigF,
     FuncDec,
     FuncDecBase,
     AFuncDec,

@@ -11,7 +11,7 @@ from ._ai import (
     LLM,
 )
 from ._read import (
-    MultiTextConv, PrimConv, PydanticConv, 
-    ReadError, NullTextConv, TextConv,
+    MultiOutConv, PrimConv, PydanticConv, 
+    ReadError, NullOutConv, OutConv,
     RespConv
 )

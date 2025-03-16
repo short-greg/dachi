@@ -14,7 +14,9 @@ from ._instruct_core import Cue, validate_out
 from ..utils import (
     str_formatter
 )
-from ..proc import Module
+from ..base import UNDEFINED
+from ..proc import Module, AsyncModule, AsyncStreamModule, StreamModule
+from ..adapt import LLM, OutConv, ToMsg
 from ._data import Description
 
 
@@ -263,7 +265,100 @@ def join(x1: X, x2: X, sep: str=' ') -> Cue:
     )
 
 
-class Op(Module):
+# TODO: need string args for the context
+# other args for things that get inserted into
+# the message
+class Inst(Module, AsyncModule, StreamModule, AsyncStreamModule):
+    """
+    The Op class allows interaction with a Language Learning Model (LLM) by sending instructions to it.
+    """
+    def __init__(
+        self, llm: LLM, to_msg: ToMsg, out: typing.Optional[OutConv]=None, context: typing.Optional[str]=None
+    ): 
+        """
+        Initialize an Op instance.
+        This initializer sets up the necessary components to interact with the LLM and send instructions to it.
+        Args:
+            llm (LLM): The language model to interact with.
+            to_msg (ToMsg): The message converter to use.
+            out (typing.Optional[OutConv], optional): The output converter. Defaults to None.
+            context (typing.Optional[str], optional): The context for the operation. Defaults to None.
+        """
+        super().__init__()
+        self.to_msg = to_msg
+        self.out = out
+        self.llm = llm
+        self.context = context
+
+    def build_context(self, *args, **kwargs) -> str:
+        """
+        Builds the context to put the input into.
+        If the instance's context attribute is None, it joins the provided 
+        positional arguments with newline characters and returns the result 
+        as a string. If the context attribute is not None, it formats the 
+        context using the provided positional and keyword arguments.
+        Args:
+            *args: Variable length argument list.
+            **kwargs: Arbitrary keyword arguments.
+        Returns:
+            str: The formatted context or the joined positional arguments.
+        """
+        if self.context is None:
+            assert len(kwargs) == 0
+            return '\n'.join(args)
+        else:
+            return str_formatter(
+                self.context, *args, **kwargs
+            )
+
+    def forward(self, *args, _out: OutConv=None, **kwargs):
+        context = self.build_context(*args, **kwargs)
+        msg = self.to_msg(context)
+        _, resp = self.llm(msg)
+        _out = _out if _out is not None else self._out
+        return _out(resp)
+    
+    async def aforward(self, *args, _out: OutConv=UNDEFINED, **kwargs):
+
+        context = self.build_context(*args, **kwargs)
+        msg = self.to_msg(context)
+        _, resp = await self.llm.aforward(msg)
+        _out = _out if _out is not None else self._out
+        return _out(resp)
+    
+    def stream(self, *args, _out: OutConv=UNDEFINED, **kwargs) -> typing.Iterator:
+
+        context = self.build_context(*args, **kwargs)
+        msg = self.to_msg(context)
+        _out = _out if _out is not None else self._out
+        delta = {}
+        for _, resp in self.llm.stream(msg):
+            yield _out.delta(resp, delta)
+
+    async def astream(self, *args, _out: OutConv=UNDEFINED, **kwargs) -> typing.AsyncIterator:
+
+        context = self.build_context(*args, **kwargs)
+        msg = self.to_msg(context)
+        _out = _out if _out is not None else self._out
+        delta = {}
+        async for _, resp in await self.llm.astream(msg):
+            yield _out.delta(resp, delta)
+
+    def spawn(
+        self, to_msg: ToMsg=UNDEFINED,
+        out: OutConv=UNDEFINED,
+        context: str=UNDEFINED,
+        **kwargs
+    ):
+        llm = self.llm if len(kwargs) == 0 else self.llm.spawn(**kwargs)
+        to_msg = self.to_msg if self.to_msg is UNDEFINED else to_msg
+        out = self.out if out is UNDEFINED else out
+        context = self.context if context is UNDEFINED else context
+        return Inst(
+            llm, to_msg, out, context
+        )
+
+class Inst(Module):
     """An operation acts on an cue to produce a new cue
     """
 
@@ -305,7 +400,7 @@ class Op(Module):
         )
 
 
-def op(x: typing.Union[typing.Iterable[X], X], cue: X) -> Cue:
+def inst(x: typing.Union[typing.Iterable[X], X], cue: X) -> Cue:
     """Execute an operation on a cue
 
     Args:

@@ -12,7 +12,7 @@ class TestMultiRead(object):
             SimpleStruct(x='3')
         ], 'i': 2}
 
-        out = _read.MultiTextConv(
+        out = _read.MultiOutConv(
             name='Multi',
             outs=[_read.PydanticConv(
                 name='F1',
@@ -34,7 +34,7 @@ class TestMultiRead(object):
             SimpleStruct(x='3')
         ], 'i': 2}
 
-        out = _read.MultiTextConv(
+        out = _read.MultiOutConv(
             name='Multi',
             outs=[_read.PydanticConv(
                 name='F1',
@@ -56,7 +56,7 @@ class TestMultiRead(object):
             SimpleStruct(x='3')
         ], 'i': 2}
 
-        out = _read.MultiTextConv(
+        out = _read.MultiOutConv(
             name='Multi',
             outs=[_read.PydanticConv(
                 name='F1',
@@ -88,7 +88,7 @@ class TestMultiRead(object):
             SimpleStruct(x='3')
         ], 'i': 2}
 
-        out = _read.MultiTextConv(
+        out = _read.MultiOutConv(
             name='Multi',
             outs=[_read.PydanticConv(
                 name='F1',

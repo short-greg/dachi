@@ -53,7 +53,7 @@ class RespConv(ABC):
         return {}
 
 
-class TextConv(pydantic.BaseModel, Templatable, ABC):
+class OutConv(pydantic.BaseModel, Templatable, ABC):
     """Use a reader to read in data convert data retrieved from
     an LLM to a better format
     """
@@ -149,7 +149,7 @@ class ReadError(Exception):
         raise ReadError(message, original_exception) from original_exception
 
 
-class NullTextConv(TextConv):
+class NullOutConv(OutConv):
     """A Reader that does not change the data. 
     So in most cases will simply output a string
     """
@@ -205,10 +205,10 @@ class NullTextConv(TextConv):
         return None
 
 
-class MultiTextConv(TextConv):
+class MultiOutConv(OutConv):
     """Concatenates multiple outputs Out into one output
     """
-    outs: typing.List[TextConv]
+    outs: typing.List[OutConv]
     conn: str = '::OUT::{name}::\n'
     signal: str = '\u241E'
 
@@ -360,7 +360,7 @@ class MultiTextConv(TextConv):
         for i, out in enumerate(self.outs):
             print(out.name)
             name = out.name or str(i)
-            if isinstance(out, TextConv):
+            if isinstance(out, OutConv):
                 cur = out.template()
             else:
                 cur = struct_template(out)
@@ -370,7 +370,7 @@ class MultiTextConv(TextConv):
         return text
 
 
-class PrimConv(TextConv):
+class PrimConv(OutConv):
     """Use for converting an AI response into a primitive value
     """
 
@@ -454,7 +454,7 @@ class PrimConv(TextConv):
         return f'<{self._out_cls}>'
 
 
-class PydanticConv(TextConv, typing.Generic[S]):
+class PydanticConv(OutConv, typing.Generic[S]):
     """Use for converting an AI response into a Pydantic BaseModel
     """
     _out_cls: typing.Type[S] = pydantic.PrivateAttr()

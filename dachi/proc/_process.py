@@ -160,7 +160,18 @@ class AsyncStreamModule(BaseModule):
 def forward(
     f: typing.Union[Module, typing.Callable], *args, **kwargs
 ) -> typing.Any:
-    
+    """
+    Calls the forward method on the module or the function that has been passed in.
+    Parameters:
+    f (typing.Union[Module, typing.Callable]): The module or function to forward to.
+    *args: Variable length argument list.
+    **kwargs: Arbitrary keyword arguments.
+    Returns:
+    typing.Any: The result of the forward call.
+    Raises:
+    NotImplementedError: If the function is asynchronous.
+    RuntimeError: If the function type is not supported.
+    """ 
     if isinstance(f, Module):
         return f.forward(*args, **kwargs)
     if not to_async_function(f) and not is_generator_function(f):
@@ -175,7 +186,19 @@ def forward(
 async def aforward(
     f: typing.Union[Module, typing.Callable], *args, **kwargs
 ) -> typing.Any:
-    
+    """
+    Asynchronously calls the appropriate forward method or function.
+    This function determines the type of the input `f` and calls the corresponding
+    forward method or function, handling both synchronous and asynchronous cases,
+    as well as generator functions.
+    Parameters:
+    f (typing.Union[Module, typing.Callable]): The module or callable to be executed.
+    *args: Variable length argument list to be passed to the callable.
+    **kwargs: Arbitrary keyword arguments to be passed to the callable.
+    Returns:
+    typing.Any: The result of the forward method or function call, which can be
+    synchronous or asynchronous, and can handle generator functions.
+    """
     if isinstance(f, AsyncModule):
         return await f.aforward(*args, **kwargs)
     if isinstance(f, Module):
@@ -190,7 +213,22 @@ async def aforward(
         return [v async for v in await f(*args, **kwargs)]
 
 
-def stream(f: typing.Union[Module, typing.Callable], *args, **kwargs) -> typing.Any:
+def stream(f: typing.Union[StreamModule, typing.Callable], *args, **kwargs) -> typing.Any:
+    """
+    Stream values from a given function or StreamModule.
+    This function handles different types of input functions or modules and streams their output.
+    It supports synchronous generator functions and StreamModules. It raises exceptions for
+    unsupported async functions or async generator functions.
+    Args:
+        f (typing.Union[Module, typing.Callable]): The function or StreamModule to stream from.
+        *args: Positional arguments to pass to the function or StreamModule.
+        **kwargs: Keyword arguments to pass to the function or StreamModule.
+    Yields:
+        typing.Any: The values yielded by the function or StreamModule.
+    Raises:
+        NotImplementedError: If an async function or async generator function is passed.
+        RuntimeError: If the input does not match any supported type.
+    """
     
     if isinstance(f, StreamModule):
         for v in f.stream(*args, **kwargs):
@@ -207,20 +245,21 @@ def stream(f: typing.Union[Module, typing.Callable], *args, **kwargs) -> typing.
     raise RuntimeError()
 
 
-async def astream(f: typing.Union[Module, typing.Callable], *args, **kwargs) -> typing.Any:
+async def astream(f: typing.Union[AsyncStreamModule, typing.Callable], *args, **kwargs) -> typing.Any:
     """
-
+    Stream values from a given function or AsyncStreamModule.
+    This function handles different types of input functions or modules and streams their output.
+    It supports synchronous generator functions and StreamModules. It raises exceptions for
+    unsupported async functions or async generator functions.
     Args:
-        f (typing.Union[Module, typing.Callable]): _description_
-
-    Raises:
-        RuntimeError: _description_
-
-    Returns:
-        typing.Any: _description_
-
+        f (typing.Union[Module, typing.Callable]): The function or StreamModule to stream from.
+        *args: Positional arguments to pass to the function or StreamModule.
+        **kwargs: Keyword arguments to pass to the function or StreamModule.
     Yields:
-        Iterator[typing.Any]: _description_
+        typing.Any: The values yielded by the function or StreamModule.
+    Raises:
+        NotImplementedError: If an async function or async generator function is passed.
+        RuntimeError: If the input does not match any supported type.
     """
     
     if isinstance(f, AsyncStreamModule):
@@ -244,7 +283,7 @@ async def astream(f: typing.Union[Module, typing.Callable], *args, **kwargs) -> 
 
 
 class I(object):
-    """Use to mark data that should not be batched
+    """Use to mark data that should not be batched when calling the map functions
     """
     
     def __init__(self, data, n: int):
@@ -732,16 +771,6 @@ class Partial(object):
     complete: bool = False
     prev: typing.Any = None
     full: typing.List = dataclasses.field(default_factory=list)
-
-# @dataclass
-# class Partial(object):
-#     """Class for storing a partial output from a streaming process
-#     """
-#     cur: typing.Any
-#     prev: typing.Any = None
-#     dx: typing.Any = None
-#     complete: bool = False
-#     full: typing.List = dataclasses.field(default_factory=list)
 
 
 class Streamer(object):

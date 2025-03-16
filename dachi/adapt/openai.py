@@ -18,7 +18,7 @@ if len(missing) > 0:
     raise RuntimeError(f'To use this module openai must be installed.')
 
 
-class OpenAITextConv(RespConv):
+class OpenAIOutConv(RespConv):
     """
     OpenAITextProc is a class that processes an OpenAI response and extracts text outputs from it.
     Methods:

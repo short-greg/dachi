@@ -12,7 +12,7 @@ import pydantic
 from ..base import Storable
 
 # TODO: Add in Action (For GOAP)
-from ..adapt import TextConv
+from ..adapt import OutConv
 from ..base import UNDEFINED
 
 
@@ -309,7 +309,7 @@ ROUTE = Router | typing.Callable[[typing.Any], TaskStatus | State]
 class IOField(object):
 
     def __init__(
-        self, name: str, type_: typing.Optional[typing.Type]=None, default: typing.Any=UNDEFINED, read: TextConv=None
+        self, name: str, type_: typing.Optional[typing.Type]=None, default: typing.Any=UNDEFINED, read: OutConv=None
     ):
         self.name = name
         self.type_ = type_
