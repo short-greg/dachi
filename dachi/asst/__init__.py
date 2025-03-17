@@ -44,10 +44,6 @@ from ._instruct import (
     join, 
     Inst, inst,
     Op
-    # formatted, 
-    # head,
-    # section, cat, 
-    # bold, strike, italic, 
 )
 from ._instruct_core import (
     Instruct,

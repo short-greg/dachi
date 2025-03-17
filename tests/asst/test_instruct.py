@@ -1,5 +1,6 @@
 from dachi.asst import _instruct_core as core
 from dachi.asst import Cue
+from dachi.asst import _instruct
 from ..utils.test_core import SimpleStruct
 from .test_ai import DummyAIModel
 
@@ -12,6 +13,156 @@ def dummy_dec(f):
     def _(*args, **kwargs):
         return f(*args, **kwargs)
     return _
+
+
+class TestStyleFormat:
+
+    def test_extract_style_var(self):
+
+        result = _instruct.extract_styles(
+            """
+            {[x: bullet]}
+            """
+        )
+        print(result)
+        assert result[0][0] == 'x'
+        assert result[0][1] == 'bullet'
+        assert result[0][2] is None
+        assert result[0][3] is True
+
+    def test_extract_style_var_with_args(self):
+
+        result = _instruct.extract_styles(
+            """
+            {[x: bullet(1)]}
+            """
+        )
+        print(result)
+        assert result[0][0] == 'x'
+        assert result[0][1] == 'bullet'
+        assert result[0][2] == ['1']
+        assert result[0][3] is True
+
+    def test_extract_style_var_with_default(self):
+
+        result = _instruct.extract_styles(
+            """
+            {[y::]}
+            """
+        )
+        assert result[0][0] == 'y'
+        assert result[0][1] == 'DEFAULT'
+        assert result[0][2] is None
+        assert result[0][3] is True
+
+    def test_extract_style_with_bullet(self):
+
+        result = _instruct.extract_styles(
+            """
+            {[bullet]}
+            """
+        )
+        assert result[0][0] == 0
+        assert result[0][1] == 'bullet'
+        assert result[0][2] is None
+        assert result[0][3] is False
+
+    def test_extract_style_with_bullet_with_args(self):
+
+        result = _instruct.extract_styles(
+            """
+            {[bullet(1)]}
+            """
+        )
+        assert result[0][0] == 0
+        assert result[0][1] == 'bullet'
+        assert result[0][2] == ['1']
+        assert result[0][3] is False
+
+    def test_extract_style_with_bullet_with_two_args(self):
+
+        result = _instruct.extract_styles(
+            """
+            {[bullet(1, 2)]}
+            """
+        )
+        assert result[0][0] == 0
+        assert result[0][1] == 'bullet'
+        assert result[0][2] == ['1', '2']
+        assert result[0][3] is False
+
+    def test_that_the_pos_is_correct(self):
+
+        result = _instruct.extract_styles(
+            """
+            {} {[x]}
+            """
+        )
+        assert result[0][0] == 1
+        assert result[0][1] == 'x'
+        assert result[0][2] == None
+        assert result[0][3] is False
+
+
+    # def test_extract_retrieves_style(self):
+
+    #     result = _instruct.extract_styles(
+    #         """
+    #         {[bullet]}
+    #         """
+    #     )
+    #     print(result)
+    #     assert result[0][0] == 0
+    #     assert result[0][1] == 'bullet'
+    #     assert result[0][-1] is None
+
+    # def test_extract_retrieves_regular_var(self):
+
+    #     result = _instruct.extract_styles(
+    #         """
+    #         {x:2%}
+    #         """
+    #     )
+    #     print(result)
+    #     assert result[0][0] == "x:2%"
+    #     assert result[0][1] is None
+    #     assert result[0][-1] is None
+
+    # def test_extract_retrieves_style_with_default(self):
+
+    #     result = _instruct.extract_styles(
+    #         """
+    #         {[y::]}
+    #         """
+    #     )
+    #     print(result)
+    #     assert result[0][0] == 'y'
+    #     assert result[0][1] == 'DEFAULT'
+    #     assert result[0][-1] is None
+    
+    # def test_extract_style_var_with_args(self):
+
+    #     result = _instruct.extract_styles(
+    #         """
+    #         {[x: bullet(1)]}
+    #         """
+    #     )
+    #     print(result)
+    #     assert result[0][0] == 'x'
+    #     assert result[0][1] == 'bullet'
+    #     assert result[0][-1] == ['1']
+    
+    # def test_extract_style_var_with_two_args(self):
+
+    #     result = _instruct.extract_styles(
+    #         """
+    #         {[x: bullet(1, 2)]}
+    #         """
+    #     )
+    #     print(result)
+    #     assert result[0][0] == 'x'
+    #     assert result[0][1] == 'bullet'
+    #     assert result[0][-1] == ['1', '2']
 
 
 class TestSignatureF:

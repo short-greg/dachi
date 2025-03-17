@@ -4,6 +4,7 @@ import string
 
 import pydantic
 import roman
+import re
 
 # local
 from ..utils import (
@@ -19,6 +20,9 @@ from ..proc import Module, AsyncModule, AsyncStreamModule, StreamModule
 from ..asst import LLM, OutConv, ToMsg
 from ._data import Description
 
+from ..utils import render
+
+from ..utils._utils import str_formatter
 
 S = typing.TypeVar('S', bound=pydantic.BaseModel)
 X = typing.Union[str, Description, Cue]
@@ -310,6 +314,213 @@ def bullet(xs: typing.Iterable[X], bullets: str='-', indent: int=0) -> 'Cue':
     return Cue(
         text=text, out=out
     )
+
+
+
+DEFAULT_STYLES = {
+    'bullet': bullet,
+    'numbered': numbered
+}
+
+
+def extract_styles(text: str) -> typing.List[typing.Tuple[typing.Optional[str], str]]:
+
+    patterns = [
+        r'\{\[\s*(?P<var1>[a-zA-Z_][a-zA-Z0-9_-]*)\s*::?\s*\]\}',
+        r'\{\[\s*(?P<pos2>\d*)(?P<style2>[a-zA-Z_][a-zA-Z0-9_-]*)\s*(?:\(\s*(?P<args2>[^)]*)\s*\))?\s*?\s*\]\}',
+        r'\{\[\s*(?P<var3>[a-zA-Z_][a-zA-Z0-9_]*)\s*:\s*(?P<style3>[a-zA-Z_][a-zA-Z0-9_]*)\s*(?:\(\s*(?P<args3>[^)]*)?\s*\))?\s*\]\}',
+
+        r'(?P<pos4>\{\s*\})',
+        r'\{(?P<pos5>\d+)(?::(?P<style5>[^}]*))?\}',
+        # with style and named argument
+        # r'\{(?P<var4>[a-zA-Z_][a-zA-Z0-9_]*)(?::(?P<style>[^}]*))?\}'
+        # only with style
+        # r'\{¥s*(?P<var5>)(?:(?P<style>[^}]*))?¥s*\}'
+
+
+
+        # r'\{(?P<style4>[a-zA-Z_][a-zA-Z0-9_]*(?:::[^}]*)?)\}',
+        # r'\{\[\s*(?:(?P<var1>[^:\]]+)\s*:\s*)?(?P<style1>[^\]\(\)]+)\s*(?:\(\s*(?P<args1>[^)]*)\s*\))?\s*\]\}',
+        # r'\{\[\s*(?P<var2>[^:\]]+)\s*::\s*\]\}',
+        # # r'\{\s*(?P<var3>[^:\}]+)\s*:\s*(?P<style3>[^:\}]+)\s*\}',
+        # r'\{\[\s*(?P<var4>[^\]])\s*\]\}',
+        # r'\{\s*\}'
+    ]
+
+    combined_pattern = '|'.join(f'({pattern})' for pattern in patterns)
+    matches = re.finditer(combined_pattern, text)
+    results = []
+    cur_pos = 0
+
+    for match in matches:
+
+        # if match.group('style4'):
+        #     var = pos
+        #     style = "DEFAULT"
+        #     args = None
+        #     pos += 1
+        if match.group('var1'):
+            var = match.group('var1')
+            style = "DEFAULT"
+            specified = True
+            args = None
+        elif match.group('style2'):
+            print('Style 2')
+            pos = match.group('pos2')
+            if pos == '':
+                specified = False
+                var = cur_pos
+                cur_pos += 1
+            else:
+                specified = True
+                var = pos
+            style = match.group('style2')
+            args = match.group('args2')
+            if args is not None:
+                args = [x.strip() for x in args.split(',')]
+        elif match.group('style3'):
+            print('style 1')
+            var = match.group('var3')
+            if var is None:
+                var = cur_pos
+                cur_pos += 1
+            specified = True
+            style = match.group('style3')
+            args = match.group('args3')
+            if args is not None:
+                args = [x.strip() for x in args.split(',')]
+        elif match.group('pos4'):
+            cur_pos += 1
+            continue
+        else:
+            print('Here')
+            continue
+        
+        # elif match.group('var2'):
+        #     var = match.group('var2')
+        #     style = "DEFAULT"
+        #     args = None
+        # # elif match.group('style3'):
+        # #     var = match.group('var3')
+        # #     style = None
+        # #     args = None
+        # elif match.group('var4'):
+        #     var = match.group('var4')
+        #     style = None
+        #     args = None
+        # elif match.group('var5'):
+        #     var = match.group('var5')
+        #     style = None
+        #     args = None
+        # else:
+        #     var = pos
+        #     style = None
+        #     args = None
+        #     pos += 1
+        results.append((var, style, args, specified))
+        print(results[-1])
+    return results
+    # combined_pattern = '|'.join(f'({pattern})' for pattern in patterns)
+    # matches = re.finditer(combined_pattern, text)
+    # results = []
+    # pos = 0
+    # for match in matches:
+    #     if match.group('var1') or match.group('style1'):
+    #         var = match.group('var1')
+    #         style = match.group('style1')
+    #     elif match.group('style2'):
+    #         var = pos
+    #         style = match.group('style2')
+    #         pos += 1
+    #     elif match.group('var2'):
+    #         var = match.group('var2')
+    #         style = "DEFAULT"
+    #     elif match.group('var3') or match.group('style3'):
+    #         var = match.group('var3')
+    #         style = None
+    #     elif match.group('var4'):
+    #         var = match.group('var4')
+    #         style = None
+    #     elif match.group('var5'):
+    #         var = pos
+    #         style = "DEFAULT"
+    #         pos += 1
+    #     else:
+    #         var = pos
+    #         style = None
+    #         pos += 1
+    #     results.append((var, style))
+    # return results
+
+
+def replace_style_formatting(text: str) -> str:
+    """
+    Convert special formatting patterns in the text to normal Python formatting.
+
+    Args:
+        text (str): The text to be converted.
+
+    Returns:
+        str: The converted text.
+    """
+    # Replace {[<var str>:<style str>()]} with {<var str>}
+    text = re.sub(r'\{\[\s*([^:\]]+)\s*:\s*([^\]]+)(?:\(\s*(?P<args2>[^\)]*)\s*\))?\s*\]\}', r'{\1}', text)
+    
+    # Replace {[<var str>::]} with {<var str>}
+    text = re.sub(r'\{\[\s*([^:\]]+)\s*::\s*\]\}', r'{\1}', text)
+    
+    # Replace {[<style str>]} with {}
+    text = re.sub(
+        r'\{\[\s*([^\]:]+)(?:\(\s*(?P<args2>[^\)]*)\s*\))?\s*\]\}', 
+        r'{}', text
+    )
+    # Replace {[]} with {}
+    text = re.sub(r'\{\[\s*]\}', r'{}', text)
+    
+    return text
+
+
+def style_format(text: str, *args, styles: typing.Dict, **kwargs) -> str:
+    """
+    Formats the given text with advanced stylings based on the provided styles dictionary.
+    Args:
+        text (str): The text to be formatted.
+        *args: Positional arguments to be formatted within the text.
+        styles (typing.Dict): A dictionary where keys are style names and values are functions that apply the style.
+        **kwargs: Keyword arguments to be formatted within the text.
+    Returns:
+        str: The formatted text with applied styles.
+    Example:
+        styles = {
+            "bold": lambda x: f"**{x}**",
+            "italic": lambda x: f"*{x}*"
+        }
+        formatted_text = style_format("Hello {0} and {name}", "World", name="Alice", styles=styles)
+        # formatted_text will be "Hello **World** and *Alice*"
+    """
+
+    patterns = extract_styles(text)
+    for var, style in patterns:
+        if isinstance(var, int):
+            if len(args) >= var:
+                continue
+            if style == "DEFAULT":
+                args[var] = render(args[var])
+            elif style is None:
+                args[var] = args[var]
+            else:
+                args[var] = styles[style](args[var])
+        elif isinstance(var, str):
+            if var not in kwargs:
+                continue
+            if style == "DEFAULT":
+                kwargs[var] = render(kwargs[var])
+            elif style is None:
+                kwargs[var] = kwargs[var]
+            else:
+                kwargs[var] = styles[style](kwargs[var])
+    text = replace_style_formatting(text)
+    return str_formatter(text, *args, **kwargs)
 
 
 # def formatted(x: X, format: str) -> 'Cue':

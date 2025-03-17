@@ -15,6 +15,7 @@ from ..proc._process import (
     AsyncModule, StreamModule, AsyncStreamModule,
     Param
 )
+from ..utils import str_formatter
 from ._ai import (
     ToMsg, ToText
 )
@@ -23,20 +24,20 @@ from . import (
     Assist, StreamAssist
 )
 from ..base import Renderable
-from ..utils import is_primitive, primitives
+from ..utils import is_primitive, primitives, render
 
 from ..asst import (
     OutConv, NullOutConv,
     PrimConv, PydanticConv
 )
 from ..utils._utils import str_formatter
+import re
 
 Engine = Assist | AsyncAssist | StreamAssist | AsyncStreamAssist
 
 S = typing.TypeVar('S', bound=pydantic.BaseModel)
 
 # TODO: MOVE OUT OF HERE
-
 
 class Instruct(ABC):
     """
