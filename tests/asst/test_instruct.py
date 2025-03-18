@@ -3,7 +3,7 @@ from dachi.asst import Cue
 from dachi.asst import _instruct
 from ..utils.test_core import SimpleStruct
 from .test_ai import DummyAIModel
-
+import pytest
 
 def dummy_dec(f):
     """Use to ensure signaturemethod works 
@@ -21,7 +21,7 @@ class TestStyleFormat:
 
         result = _instruct.extract_styles(
             """
-            {[x: bullet]}
+            {<x: bullet>}
             """
         )
         print(result)
@@ -34,7 +34,7 @@ class TestStyleFormat:
 
         result = _instruct.extract_styles(
             """
-            {[x: bullet(1)]}
+            {<x: bullet(1)>}
             """
         )
         print(result)
@@ -47,7 +47,7 @@ class TestStyleFormat:
 
         result = _instruct.extract_styles(
             """
-            {[y::]}
+            {<y::>}
             """
         )
         assert result[0][0] == 'y'
@@ -59,7 +59,7 @@ class TestStyleFormat:
 
         result = _instruct.extract_styles(
             """
-            {[bullet]}
+            {<bullet>}
             """
         )
         assert result[0][0] == 0
@@ -71,7 +71,7 @@ class TestStyleFormat:
 
         result = _instruct.extract_styles(
             """
-            {[bullet(1)]}
+            {<bullet(1)>}
             """
         )
         assert result[0][0] == 0
@@ -83,7 +83,7 @@ class TestStyleFormat:
 
         result = _instruct.extract_styles(
             """
-            {[bullet(1, 2)]}
+            {<bullet(1, 2)>}
             """
         )
         assert result[0][0] == 0
@@ -95,7 +95,7 @@ class TestStyleFormat:
 
         result = _instruct.extract_styles(
             """
-            {} {[x]}
+            {} {<x>}
             """
         )
         assert result[0][0] == 1
@@ -103,17 +103,29 @@ class TestStyleFormat:
         assert result[0][2] == None
         assert result[0][3] is False
 
+    def test_that_the_pos_is_correct_with_pos(self):
+
+        result = _instruct.extract_styles(
+            """
+            {} {<2::>}
+            """
+        )
+        assert result[0][0] == 2
+        assert result[0][1] == 'DEFAULT'
+        assert result[0][2] == None
+        assert result[0][3] is True
+
     def test_replace_style_formatting_with_var(self):
 
         result = _instruct.replace_style_formatting(
-            """{} {[x::]}"""
+            """{} {<x::>}"""
         )
         assert result == """{} {x}"""
 
     def test_replace_style_formatting_with_only_style(self):
 
         result = _instruct.replace_style_formatting(
-            """{} {[x]}"""
+            """{} {<x>}"""
         )
         assert result == """{} {}"""
 
@@ -121,30 +133,60 @@ class TestStyleFormat:
     def test_replace_style_formatting_with_only_pos(self):
 
         result = _instruct.replace_style_formatting(
-            """{} {[1::]}"""
+            """{} {<1::>}"""
         )
         assert result == """{} {1}"""
 
     def test_replace_style_formatting_with_only_style_and_pos(self):
 
         result = _instruct.replace_style_formatting(
-            """{} {[2:bullet(2)]}"""
+            """{} {<2:bullet(2)>}"""
         )
         assert result == """{} {2}"""
 
     def test_replace_style_formatting_with_only_style_and_pos_and_no_args(self):
 
         result = _instruct.replace_style_formatting(
-            """{} {[2:bullet]}"""
+            """{} {<2:bullet>}"""
         )
         assert result == """{} {2}"""
 
+
+    def test_process_style_args_with_int(self):
+
+        result = _instruct.process_style_args(
+            ['1']
+        )
+        assert result == [1]
+
+    def test_process_style_args_with_float(self):
+
+        result = _instruct.process_style_args(
+            ['1.']
+        )
+        assert result == [1.0]
+
+    def test_process_style_args_with_str(self):
+
+        result = _instruct.process_style_args(
+            ['"1."']
+        )
+        assert result == ["1."]
+
+
+    def test_process_style_args_with_invalid_arg(self):
+
+        with pytest.raises(ValueError):
+            _instruct.process_style_args(
+                ['x']
+            )
+        
 
     # def test_extract_retrieves_style(self):
 
     #     result = _instruct.extract_styles(
     #         """
-    #         {[bullet]}
+    #         {<bullet>}
     #         """
     #     )
     #     print(result)
@@ -168,7 +210,7 @@ class TestStyleFormat:
 
     #     result = _instruct.extract_styles(
     #         """
-    #         {[y::]}
+    #         {<y::>}
     #         """
     #     )
     #     print(result)
@@ -180,7 +222,7 @@ class TestStyleFormat:
 
     #     result = _instruct.extract_styles(
     #         """
-    #         {[x: bullet(1)]}
+    #         {<x: bullet(1)>}
     #         """
     #     )
     #     print(result)
@@ -192,7 +234,7 @@ class TestStyleFormat:
 
     #     result = _instruct.extract_styles(
     #         """
-    #         {[x: bullet(1, 2)]}
+    #         {<x: bullet(1, 2)>}
     #         """
     #     )
     #     print(result)

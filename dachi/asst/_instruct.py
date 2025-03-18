@@ -326,14 +326,20 @@ DEFAULT_STYLES = {
 def extract_styles(text: str) -> typing.List[typing.Tuple[typing.Optional[str], str]]:
 
     patterns = [
-        r'\{\[\s*(?P<var1>[a-zA-Z_][a-zA-Z0-9_-]*)\s*::?\s*\]\}',
-        r'\{\[\s*(?P<pos2>\d*)(?P<style2>[a-zA-Z_][a-zA-Z0-9_-]*)\s*(?:\(\s*(?P<args2>[^)]*)\s*\))?\s*?\s*\]\}',
-        r'\{\[\s*(?P<var3>[a-zA-Z_][a-zA-Z0-9_]*)\s*:\s*(?P<style3>[a-zA-Z_][a-zA-Z0-9_]*)\s*(?:\(\s*(?P<args3>[^)]*)?\s*\))?\s*\]\}',
+        # detect {[<var name>::]}
+        r'\{<\s*(?P<var1>[a-zA-Z_][a-zA-Z0-9_-]*)\s*::?\s*>\}',
+        # detect {[<pos>:<style>(args)]} args is optional and pos is optional
+        r'\{<\s*(?P<pos2>\d*)(?P<style2>[a-zA-Z_][a-zA-Z0-9_-]*)\s*(?:\(\s*(?P<args2>[^)]*)\s*\))?\s*?\s*>\}',
+        # detect {[<var>:<style>(args)]} args is optional
+        r'\{<\s*(?P<var3>[a-zA-Z_][a-zA-Z0-9_]*)\s*:\s*(?P<style3>[a-zA-Z_][a-zA-Z0-9_]*)\s*(?:\(\s*(?P<args3>[^)]*)?\s*\))?\s*>\}',
 
+        # this is just detected to update the pos
         r'(?P<pos4>\{\s*\})',
-        r'\{\[\s*(?P<var5>[0-9]+)\s*::?\s*\]\}'
-        r'\{\[\s*(?P<var6>[0-9]+)\s*:\s*(?P<style6>[a-zA-Z_][a-zA-Z0-9_]*)\s*(?:\(\s*(?P<args6>[^)]*)?\s*\))?\s*\]\}',
-        # r'\{(?P<pos5>\d+)(?::(?P<style5>[^}]*))?\}',
+
+        # detect {[<pos>::]}
+        r'\{<\s*(?P<var5>[0-9]+)\s*::?\s*>\}',
+        # detect {[<pos>:<style>(args)]} args is optional
+        r'\{<\s*(?P<var6>[0-9]+)\s*:\s*(?P<style6>[a-zA-Z_][a-zA-Z0-9_]*)\s*(?:\(\s*(?P<args6>[^)]*)?\s*\))?\s*>\}'
     ]
 
     combined_pattern = '|'.join(f'({pattern})' for pattern in patterns)
@@ -343,11 +349,6 @@ def extract_styles(text: str) -> typing.List[typing.Tuple[typing.Optional[str], 
 
     for match in matches:
 
-        # if match.group('style4'):
-        #     var = pos
-        #     style = "DEFAULT"
-        #     args = None
-        #     pos += 1
         if match.group('var1'):
             var = match.group('var1')
             style = "DEFAULT"
@@ -379,7 +380,7 @@ def extract_styles(text: str) -> typing.List[typing.Tuple[typing.Optional[str], 
             if args is not None:
                 args = [x.strip() for x in args.split(',')]
         elif match.group('var5'):
-            var = int(match.group('var1'))
+            var = int(match.group('var5'))
             style = "DEFAULT"
             specified = True
             args = None
@@ -413,12 +414,12 @@ def replace_style_formatting(text: str) -> str:
     Returns:
         str: The converted text.
     """
-    r1 = r'\{\[\s*(?P<var1>[a-zA-Z_][a-zA-Z0-9_-]*)\s*::?\s*\]\}'
-    r2 = r'\{\[\s*(?P<pos2>\d*)(?P<style2>[a-zA-Z_][a-zA-Z0-9_-]*)\s*(?:\(\s*(?P<args2>[^)]*)\s*\))?\s*?\s*\]\}'
-    r3 = r'\{\[\s*(?P<var3>[a-zA-Z_][a-zA-Z0-9_]*)\s*:\s*(?P<style3>[a-zA-Z_][a-zA-Z0-9_]*)\s*(?:\(\s*(?P<args3>[^)]*)?\s*\))?\s*\]\}'
+    r1 = r'\{<\s*(?P<var1>[a-zA-Z_][a-zA-Z0-9_-]*)\s*::?\s*>\}'
+    r2 = r'\{<\s*(?P<pos2>\d*)(?P<style2>[a-zA-Z_][a-zA-Z0-9_-]*)\s*(?:\(\s*(?P<args2>[^)]*)\s*\))?\s*?\s*>\}'
+    r3 = r'\{<\s*(?P<var3>[a-zA-Z_][a-zA-Z0-9_]*)\s*:\s*(?P<style3>[a-zA-Z_][a-zA-Z0-9_]*)\s*(?:\(\s*(?P<args3>[^)]*)?\s*\))?\s*>\}'
 
-    r5 = r'\{\[\s*(?P<var4>[0-9]+)\s*::?\s*\]\}'
-    r6 = r'\{\[\s*(?P<var6>[0-9]+)\s*:\s*(?P<style6>[a-zA-Z_][a-zA-Z0-9_]*)\s*(?:\(\s*(?P<args6>[^)]*)?\s*\))?\s*\]\}'
+    r5 = r'\{<\s*(?P<var4>[0-9]+)\s*::?\s*>\}'
+    r6 = r'\{<\s*(?P<var6>[0-9]+)\s*:\s*(?P<style6>[a-zA-Z_][a-zA-Z0-9_]*)\s*(?:\(\s*(?P<args6>[^)]*)?\s*\))?\s*>\}'
 
     text = re.sub(r1, r'{\1}', text)
     
@@ -441,6 +442,26 @@ def replace_style_formatting(text: str) -> str:
     return text
 
 
+def process_style_args(args):
+
+    args = args or []
+    result = []
+    for arg in args:
+        if isinstance(arg, str):
+            arg = arg.strip()
+            if (arg.startswith(("'", '"')) and arg.endswith(("'", '"'))) or \
+               (arg.startswith(("'''", '"""')) and arg.endswith(("'''", '"""'))):
+                result.append(arg[1:-1])
+            else:
+                try:
+                    result.append(float(arg) if '.' in arg else int(arg))
+                except ValueError:
+                    raise ValueError(f"Could not convert arg {arg} to a valid argument.")
+        else:
+            result.append(arg)
+    return result
+
+
 def style_format(text: str, *args, styles: typing.Dict, **kwargs) -> str:
     """
     Formats the given text with advanced stylings based on the provided styles dictionary.
@@ -459,27 +480,23 @@ def style_format(text: str, *args, styles: typing.Dict, **kwargs) -> str:
         formatted_text = style_format("Hello {0} and {name}", "World", name="Alice", styles=styles)
         # formatted_text will be "Hello **World** and *Alice*"
     """
-
     patterns = extract_styles(text)
-    for var, style in patterns:
+    for var, style, style_args, specified in patterns:
+        style_args = process_style_args(style_args)
         if isinstance(var, int):
             if len(args) >= var:
                 continue
-            if style == "DEFAULT":
+            if style is None:
                 args[var] = render(args[var])
-            elif style is None:
-                args[var] = args[var]
             else:
-                args[var] = styles[style](args[var])
+                args[var] = styles[style](args[var], *style_args)
         elif isinstance(var, str):
             if var not in kwargs:
                 continue
-            if style == "DEFAULT":
+            if style is None:
                 kwargs[var] = render(kwargs[var])
-            elif style is None:
-                kwargs[var] = kwargs[var]
             else:
-                kwargs[var] = styles[style](kwargs[var])
+                kwargs[var] = styles[style](kwargs[var], *style_args)
     text = replace_style_formatting(text)
     return str_formatter(text, *args, **kwargs)
 
