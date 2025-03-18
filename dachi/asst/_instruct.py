@@ -137,6 +137,88 @@ def join(x1: X, x2: X, sep: str=' ') -> Cue:
     )
 
 
+
+def parse_function_spec(spec):
+    """
+    Parses a function-style format specifier like `bullet(1, "x", 1.)` and extracts 
+    the function name and arguments. Converts numerical values appropriately 
+    (int or float) and preserves strings. If the spec is not a function call, 
+    it is returned as a plain string with no arguments.
+
+    :param spec: The format specifier string (e.g., "bullet(1, 'x', 1.)" or "bold").
+    :return: Tuple (function_name, args) where args is a list of parsed arguments.
+    """
+    match = re.match(r'(?P<func>[a-zA-Z_][a-zA-Z0-9_]*)\((?P<args>.*)\)', spec)
+    if not match:
+        return spec, None  # If it's not a function call, return spec as function name with empty args
+
+    func_name = match.group("func")
+    raw_args = match.group("args").strip()
+
+    # Handle empty function calls (e.g., "bold()")
+    if raw_args is None:
+        return func_name, []
+
+    # Parse arguments: convert numbers and preserve strings
+    parsed_args = []
+    for arg in re.findall(r'\'[^\']*\'|"[^"]*"|[\d.]+|\S+', raw_args):
+        arg = arg.strip()
+        if arg.startswith(("'", '"')) and arg.endswith(("'", '"')):  # String arguments
+            parsed_args.append(arg[1:-1])  # Remove surrounding quotes
+        elif '.' in arg and arg.replace('.', '', 1).isdigit():  # Float argument
+            parsed_args.append(float(arg))
+        elif arg.isdigit():  # Integer argument
+            parsed_args.append(int(arg))
+        else:  # Fallback for unrecognized values
+            parsed_args.append(arg)
+
+    return func_name, parsed_args
+
+
+class StyleFactory:
+    """Base Style Factory for applying styles via custom format specifiers."""
+    def __init__(self, value=None):
+        self.value = value
+
+    def __format__(self, spec):
+        """Apply formatting based on specifiers."""
+        spec, args = parse_function_spec(spec)
+        if spec == "bullet":
+            return "\n".join(f"- {item}" for item in self.value) if isinstance(self.value, (list, tuple)) else str(self.value)
+        elif spec == "bold":
+            return f"**{self.value}**"
+        elif spec == "italic":
+            return f"*{self.value}*"
+        elif spec:  # If a standard Python format specifier is given, use it.
+            print(spec, self.value)
+            return format(self.value, spec)
+        return str(self.value)  # Default case
+
+
+def style_formatter(text, *args, _style_f=StyleFactory, **kwargs) -> str:
+    """
+    Formats text with styled arguments using a custom StyleFactory.
+
+    :param text: The format string with placeholders.
+    :param args: Positional arguments to be styled.
+    :param kwargs: Keyword arguments to be styled.
+    :param _style_f: Custom Style Factory (defaults to StyleFactory).
+    :return: Styled formatted string.
+    """
+    updated_args = [ _style_f(arg) for arg in args ]
+    updated_kwargs = { k: _style_f(v) for k, v in kwargs.items() }
+    return text.format(*updated_args, **updated_kwargs)
+
+# # Example Usage
+# formatted_text = style_formatter(
+#     "Shopping list:\n{x:bullet}\nTotal: {total:bold}",
+#     x=["Milk", "Eggs", "Bread"],
+#     total=20
+# )
+# print(formatted_text)
+
+
+
 # TODO: need string args for the context
 # other args for things that get inserted into
 # the message
@@ -317,190 +399,6 @@ def bullet(xs: typing.Iterable[X], bullets: str='-', indent: int=0) -> 'Cue':
 
 
 
-DEFAULT_STYLES = {
-    'bullet': bullet,
-    'numbered': numbered
-}
-
-
-def extract_styles(text: str) -> typing.List[typing.Tuple[typing.Optional[str], str]]:
-
-    patterns = [
-        # detect {[<var name>::]}
-        r'\{<\s*(?P<var1>[a-zA-Z_][a-zA-Z0-9_-]*)\s*::?\s*>\}',
-        # detect {[<pos>:<style>(args)]} args is optional and pos is optional
-        r'\{<\s*(?P<pos2>\d*)(?P<style2>[a-zA-Z_][a-zA-Z0-9_-]*)\s*(?:\(\s*(?P<args2>[^)]*)\s*\))?\s*?\s*>\}',
-        # detect {[<var>:<style>(args)]} args is optional
-        r'\{<\s*(?P<var3>[a-zA-Z_][a-zA-Z0-9_]*)\s*:\s*(?P<style3>[a-zA-Z_][a-zA-Z0-9_]*)\s*(?:\(\s*(?P<args3>[^)]*)?\s*\))?\s*>\}',
-
-        # this is just detected to update the pos
-        r'(?P<pos4>\{\s*\})',
-
-        # detect {[<pos>::]}
-        r'\{<\s*(?P<var5>[0-9]+)\s*::?\s*>\}',
-        # detect {[<pos>:<style>(args)]} args is optional
-        r'\{<\s*(?P<var6>[0-9]+)\s*:\s*(?P<style6>[a-zA-Z_][a-zA-Z0-9_]*)\s*(?:\(\s*(?P<args6>[^)]*)?\s*\))?\s*>\}'
-    ]
-
-    combined_pattern = '|'.join(f'({pattern})' for pattern in patterns)
-    matches = re.finditer(combined_pattern, text)
-    results = []
-    cur_pos = 0
-
-    for match in matches:
-
-        if match.group('var1'):
-            var = match.group('var1')
-            style = "DEFAULT"
-            specified = True
-            args = None
-        elif match.group('style2'):
-            print('Style 2')
-            pos = match.group('pos2')
-            if pos == '':
-                specified = False
-                var = cur_pos
-                cur_pos += 1
-            else:
-                specified = True
-                var = pos
-            style = match.group('style2')
-            args = match.group('args2')
-            if args is not None:
-                args = [x.strip() for x in args.split(',')]
-        elif match.group('style3'):
-            print('style 1')
-            var = match.group('var3')
-            if var is None:
-                var = cur_pos
-                cur_pos += 1
-            specified = True
-            style = match.group('style3')
-            args = match.group('args3')
-            if args is not None:
-                args = [x.strip() for x in args.split(',')]
-        elif match.group('var5'):
-            var = int(match.group('var5'))
-            style = "DEFAULT"
-            specified = True
-            args = None
-
-        elif match.group('style6'):
-            print('style 6')
-            var = int(match.group('var6'))
-            specified = True
-            style = match.group('style6')
-            args = match.group('args6')
-            if args is not None:
-                args = [x.strip() for x in args.split(',')]
-        elif match.group('pos4'):
-            cur_pos += 1
-            continue
-        else:
-            continue
-
-        results.append((var, style, args, specified))
-        print(results[-1])
-    return results
-
-
-def replace_style_formatting(text: str) -> str:
-    """
-    Convert special formatting patterns in the text to normal Python formatting.
-
-    Args:
-        text (str): The text to be converted.
-
-    Returns:
-        str: The converted text.
-    """
-    r1 = r'\{<\s*(?P<var1>[a-zA-Z_][a-zA-Z0-9_-]*)\s*::?\s*>\}'
-    r2 = r'\{<\s*(?P<pos2>\d*)(?P<style2>[a-zA-Z_][a-zA-Z0-9_-]*)\s*(?:\(\s*(?P<args2>[^)]*)\s*\))?\s*?\s*>\}'
-    r3 = r'\{<\s*(?P<var3>[a-zA-Z_][a-zA-Z0-9_]*)\s*:\s*(?P<style3>[a-zA-Z_][a-zA-Z0-9_]*)\s*(?:\(\s*(?P<args3>[^)]*)?\s*\))?\s*>\}'
-
-    r5 = r'\{<\s*(?P<var4>[0-9]+)\s*::?\s*>\}'
-    r6 = r'\{<\s*(?P<var6>[0-9]+)\s*:\s*(?P<style6>[a-zA-Z_][a-zA-Z0-9_]*)\s*(?:\(\s*(?P<args6>[^)]*)?\s*\))?\s*>\}'
-
-    text = re.sub(r1, r'{\1}', text)
-    
-    # Replace {[<var str>::]} with {<var str>}
-    text = re.sub(r2, r'{\1}', text)
-    
-    # Replace {[<style str>]} with {}
-    text = re.sub(
-        r3, r'{\1}', text
-    )
-    # Replace {[<style str>]} with {}
-    text = re.sub(
-        r5, r'{\1}', text
-    )
-    
-    text = re.sub(
-        r6, r'{\1}', text
-    )
-    
-    return text
-
-
-def process_style_args(args):
-
-    args = args or []
-    result = []
-    for arg in args:
-        if isinstance(arg, str):
-            arg = arg.strip()
-            if (arg.startswith(("'", '"')) and arg.endswith(("'", '"'))) or \
-               (arg.startswith(("'''", '"""')) and arg.endswith(("'''", '"""'))):
-                result.append(arg[1:-1])
-            else:
-                try:
-                    result.append(float(arg) if '.' in arg else int(arg))
-                except ValueError:
-                    raise ValueError(f"Could not convert arg {arg} to a valid argument.")
-        else:
-            result.append(arg)
-    return result
-
-
-def style_format(text: str, *args, styles: typing.Dict, **kwargs) -> str:
-    """
-    Formats the given text with advanced stylings based on the provided styles dictionary.
-    Args:
-        text (str): The text to be formatted.
-        *args: Positional arguments to be formatted within the text.
-        styles (typing.Dict): A dictionary where keys are style names and values are functions that apply the style.
-        **kwargs: Keyword arguments to be formatted within the text.
-    Returns:
-        str: The formatted text with applied styles.
-    Example:
-        styles = {
-            "bold": lambda x: f"**{x}**",
-            "italic": lambda x: f"*{x}*"
-        }
-        formatted_text = style_format("Hello {0} and {name}", "World", name="Alice", styles=styles)
-        # formatted_text will be "Hello **World** and *Alice*"
-    """
-    patterns = extract_styles(text)
-    for var, style, style_args, specified in patterns:
-        style_args = process_style_args(style_args)
-        if isinstance(var, int):
-            if len(args) >= var:
-                continue
-            if style is None:
-                args[var] = render(args[var])
-            else:
-                args[var] = styles[style](args[var], *style_args)
-        elif isinstance(var, str):
-            if var not in kwargs:
-                continue
-            if style is None:
-                kwargs[var] = render(kwargs[var])
-            else:
-                kwargs[var] = styles[style](kwargs[var], *style_args)
-    text = replace_style_formatting(text)
-    return str_formatter(text, *args, **kwargs)
-
-
 # def formatted(x: X, format: str) -> 'Cue':
 #     """Format the X with a format. The format string will encapsulate it
 
@@ -609,3 +507,187 @@ def style_format(text: str, *args, styles: typing.Dict, **kwargs) -> str:
 #     return Cue(
 #         text=f'{heading} {render(x)}', out=out
 #     )
+
+
+
+
+
+# DEFAULT_STYLES = {
+#     'bullet': bullet,
+#     'numbered': numbered
+# }
+
+
+# def extract_styles(text: str) -> typing.List[typing.Tuple[typing.Optional[str], str]]:
+
+#     patterns = [
+#         # detect {[<var name>::]}
+#         r'\{<\s*(?P<var1>[a-zA-Z_][a-zA-Z0-9_-]*)\s*::?\s*>\}',
+#         # detect {[<pos>:<style>(args)]} args is optional and pos is optional
+#         r'\{<\s*(?P<pos2>\d*)(?P<style2>[a-zA-Z_][a-zA-Z0-9_-]*)\s*(?:\(\s*(?P<args2>[^)]*)\s*\))?\s*?\s*>\}',
+#         # detect {[<var>:<style>(args)]} args is optional
+#         r'\{<\s*(?P<var3>[a-zA-Z_][a-zA-Z0-9_]*)\s*:\s*(?P<style3>[a-zA-Z_][a-zA-Z0-9_]*)\s*(?:\(\s*(?P<args3>[^)]*)?\s*\))?\s*>\}',
+
+#         # this is just detected to update the pos
+#         r'(?P<pos4>\{\s*\})',
+
+#         # detect {[<pos>::]}
+#         r'\{<\s*(?P<var5>[0-9]+)\s*::?\s*>\}',
+#         # detect {[<pos>:<style>(args)]} args is optional
+#         r'\{<\s*(?P<var6>[0-9]+)\s*:\s*(?P<style6>[a-zA-Z_][a-zA-Z0-9_]*)\s*(?:\(\s*(?P<args6>[^)]*)?\s*\))?\s*>\}'
+#     ]
+
+#     combined_pattern = '|'.join(f'({pattern})' for pattern in patterns)
+#     matches = re.finditer(combined_pattern, text)
+#     results = []
+#     cur_pos = 0
+
+#     for match in matches:
+
+#         if match.group('var1'):
+#             var = match.group('var1')
+#             style = "DEFAULT"
+#             specified = True
+#             args = None
+#         elif match.group('style2'):
+#             pos = match.group('pos2')
+#             if pos == '':
+#                 specified = False
+#                 var = cur_pos
+#                 cur_pos += 1
+#             else:
+#                 specified = True
+#                 var = pos
+#             style = match.group('style2')
+#             args = match.group('args2')
+#             if args is not None:
+#                 args = [x.strip() for x in args.split(',')]
+#         elif match.group('style3'):
+#             var = match.group('var3')
+#             if var is None:
+#                 var = cur_pos
+#                 cur_pos += 1
+#             specified = True
+#             style = match.group('style3')
+#             args = match.group('args3')
+#             if args is not None:
+#                 args = [x.strip() for x in args.split(',')]
+#         elif match.group('var5'):
+#             var = int(match.group('var5'))
+#             style = "DEFAULT"
+#             specified = True
+#             args = None
+
+#         elif match.group('style6'):
+#             var = int(match.group('var6'))
+#             specified = True
+#             style = match.group('style6')
+#             args = match.group('args6')
+#             if args is not None:
+#                 args = [x.strip() for x in args.split(',')]
+#         elif match.group('pos4'):
+#             cur_pos += 1
+#             continue
+#         else:
+#             continue
+
+#         results.append((var, style, args, specified))
+#     return results
+
+
+# def replace_style_formatting(text: str) -> str:
+#     """
+#     Convert special formatting patterns in the text to normal Python formatting.
+
+#     Args:
+#         text (str): The text to be converted.
+
+#     Returns:
+#         str: The converted text.
+#     """
+#     r1 = r'\{<\s*(?P<var1>[a-zA-Z_][a-zA-Z0-9_-]*)\s*::?\s*>\}'
+#     r2 = r'\{<\s*(?P<pos2>\d*)(?P<style2>[a-zA-Z_][a-zA-Z0-9_-]*)\s*(?:\(\s*(?P<args2>[^)]*)\s*\))?\s*?\s*>\}'
+#     r3 = r'\{<\s*(?P<var3>[a-zA-Z_][a-zA-Z0-9_]*)\s*:\s*(?P<style3>[a-zA-Z_][a-zA-Z0-9_]*)\s*(?:\(\s*(?P<args3>[^)]*)?\s*\))?\s*>\}'
+
+#     r5 = r'\{<\s*(?P<var4>[0-9]+)\s*::?\s*>\}'
+#     r6 = r'\{<\s*(?P<var6>[0-9]+)\s*:\s*(?P<style6>[a-zA-Z_][a-zA-Z0-9_]*)\s*(?:\(\s*(?P<args6>[^)]*)?\s*\))?\s*>\}'
+
+#     text = re.sub(r1, r'{\1}', text)
+    
+#     # Replace {[<var str>::]} with {<var str>}
+#     text = re.sub(r2, r'{\1}', text)
+    
+#     # Replace {[<style str>]} with {}
+#     text = re.sub(
+#         r3, r'{\1}', text
+#     )
+#     # Replace {[<style str>]} with {}
+#     text = re.sub(
+#         r5, r'{\1}', text
+#     )
+    
+#     text = re.sub(
+#         r6, r'{\1}', text
+#     )
+    
+#     return text
+
+
+# def process_style_args(args):
+
+#     args = args or []
+#     result = []
+#     for arg in args:
+#         if isinstance(arg, str):
+#             arg = arg.strip()
+#             if (arg.startswith(("'", '"')) and arg.endswith(("'", '"'))) or \
+#                (arg.startswith(("'''", '"""')) and arg.endswith(("'''", '"""'))):
+#                 result.append(arg[1:-1])
+#             else:
+#                 try:
+#                     result.append(float(arg) if '.' in arg else int(arg))
+#                 except ValueError:
+#                     raise ValueError(f"Could not convert arg {arg} to a valid argument.")
+#         else:
+#             result.append(arg)
+#     return result
+
+
+# def style_format(text: str, *args, _styles: typing.Dict=None, **kwargs) -> str:
+#     """
+#     Formats the given text with advanced stylings based on the provided styles dictionary.
+#     Args:
+#         text (str): The text to be formatted.
+#         *args: Positional arguments to be formatted within the text.
+#         styles (typing.Dict): A dictionary where keys are style names and values are functions that apply the style.
+#         **kwargs: Keyword arguments to be formatted within the text.
+#     Returns:
+#         str: The formatted text with applied styles.
+#     Example:
+#         styles = {
+#             "bold": lambda x: f"**{x}**",
+#             "italic": lambda x: f"*{x}*"
+#         }
+#         formatted_text = style_format("Hello {0} and {name}", "World", name="Alice", styles=styles)
+#         # formatted_text will be "Hello **World** and *Alice*"
+#     """
+#     _styles = _styles or DEFAULT_STYLES
+#     patterns = extract_styles(text)
+#     for var, style, style_args, specified in patterns:
+#         style_args = process_style_args(style_args)
+#         if isinstance(var, int):
+#             if len(args) >= var:
+#                 continue
+#             if style is None:
+#                 args[var] = render(args[var])
+#             else:
+#                 args[var] = _styles[style](args[var], *style_args)
+#         elif isinstance(var, str):
+#             if var not in kwargs:
+#                 continue
+#             if style is None:
+#                 kwargs[var] = render(kwargs[var])
+#             else:
+#                 kwargs[var] = _styles[style](kwargs[var], *style_args)
+#     text = replace_style_formatting(text)
+#     return str_formatter(text, *args, **kwargs)
