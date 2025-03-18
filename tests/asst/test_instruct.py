@@ -103,6 +103,42 @@ class TestStyleFormat:
         assert result[0][2] == None
         assert result[0][3] is False
 
+    def test_replace_style_formatting_with_var(self):
+
+        result = _instruct.replace_style_formatting(
+            """{} {[x::]}"""
+        )
+        assert result == """{} {x}"""
+
+    def test_replace_style_formatting_with_only_style(self):
+
+        result = _instruct.replace_style_formatting(
+            """{} {[x]}"""
+        )
+        assert result == """{} {}"""
+
+
+    def test_replace_style_formatting_with_only_pos(self):
+
+        result = _instruct.replace_style_formatting(
+            """{} {[1::]}"""
+        )
+        assert result == """{} {1}"""
+
+    def test_replace_style_formatting_with_only_style_and_pos(self):
+
+        result = _instruct.replace_style_formatting(
+            """{} {[2:bullet(2)]}"""
+        )
+        assert result == """{} {2}"""
+
+    def test_replace_style_formatting_with_only_style_and_pos_and_no_args(self):
+
+        result = _instruct.replace_style_formatting(
+            """{} {[2:bullet]}"""
+        )
+        assert result == """{} {2}"""
+
 
     # def test_extract_retrieves_style(self):
 
