@@ -1,26 +1,29 @@
 # 1st party
 import typing
+import json
+
+from typing import Self
 from abc import ABC, abstractmethod
 
 # 3rd party
 import pydantic
 
 # local
-from ..base import coalesce, UNDEFINED
-from . import (
-    Msg, BaseDialog, Assistant,
+from ._messages import (
+    Msg, BaseDialog, 
     END_TOK
 )
+from ._convert import OutConv
+from ..proc import Module, AsyncModule, StreamModule, AsyncStreamModule
 
 from ..utils import (
     to_async_function, 
-    is_generator_function,
-)
-from ._read import RespConv
-from ..utils._f_utils import (
     to_async_function, to_async_function, 
-    is_generator_function
+    is_generator_function,
+    coalesce, UNDEFINED
 )
+from ._convert import RespConv, Delim
+
 
 S = typing.TypeVar('S', bound=pydantic.BaseModel)
 
@@ -29,6 +32,195 @@ S = typing.TypeVar('S', bound=pydantic.BaseModel)
 
 LLM_PROMPT = typing.Union[typing.Iterable[Msg], Msg]
 LLM_RESPONSE = typing.Tuple[Msg, typing.Any]
+
+from abc import ABC, abstractmethod
+import typing
+
+from ..proc import (
+    Module, AsyncModule, StreamModule, AsyncStreamModule
+)
+from ._messages import (
+    Msg, BaseDialog
+)
+
+
+class Assist(Module, ABC):
+    """
+    An abstract base class that defines a framework for geting responses 
+    from an API designed to assist, such as a large language model (LLM).
+    and it enforces the implementation of the `forward` method in subclasses. 
+    The `forward` method is intended to handle retrieval of messages 
+    and responses, making it suitable for real-time or incremental data processing.
+    Subclasses must implement the `forward` method to define the specific logic 
+    for interacting with the API and retrieving responses.
+    """
+
+
+    @abstractmethod
+    def forward(
+        self, msg: Msg | BaseDialog, *args, **kwargs
+    ) -> typing.Tuple[Msg, typing.Any]:
+        pass
+
+
+class AsyncAssist(AsyncModule, ABC):
+
+    """
+    An abstract base class that defines a framework for geting responses 
+    from an API designed to assist, such as a large language model (LLM).
+    and it enforces the implementation of the `astream` method in subclasses. 
+    The `aforward` method is intended to handle asynchronous retrieval of messages 
+    and responses, making it suitable for real-time or incremental data processing.
+    Subclasses must implement the `aforward` method to define the specific logic 
+    for interacting with the API and retrieving responses.
+    """
+
+    @abstractmethod
+    async def aforward(
+        self, msg: Msg | BaseDialog, *args, **kwargs
+    ) -> typing.Tuple[Msg, typing.Any]:
+        pass
+
+
+class StreamAssist(StreamModule, ABC):
+    """
+    An abstract base class that defines a framework for streaming responses 
+    from an API designed to assist, such as a large language model (LLM).
+    and it enforces the implementation of the `stream` method in subclasses. 
+    The `stream` method is intended to handle streaming of messages 
+    and responses, making it suitable for real-time or incremental data processing.
+    Subclasses must implement the `stream` method to define the specific logic 
+    for interacting with the API and streaming responses.
+    """
+
+    @abstractmethod
+    def stream(
+        self, msg: Msg | BaseDialog, *args, **kwargs
+    ) -> typing.Iterator[typing.Tuple[Msg, typing.Any]]:
+        pass
+
+
+class AsyncStreamAssist(AsyncStreamModule, ABC):
+    """
+    An abstract base class that defines a framework for streaming responses 
+    from an API designed to assist, such as a large language model (LLM).
+    and it enforces the implementation of the `astream` method in subclasses. 
+    The `astream` method is intended to handle asynchronous streaming of messages 
+    and responses, making it suitable for real-time or incremental data processing.
+    Subclasses must implement the `astream` method to define the specific logic 
+    for interacting with the API and streaming responses.
+    """
+
+
+    @abstractmethod
+    async def astream(
+        self, msg: Msg | BaseDialog, *args, **kwargs
+    ) -> typing.AsyncIterator[typing.Tuple[Msg, typing.Any]]:
+        pass
+
+
+class Assistant(
+    Assist, AsyncAssist, StreamAssist, 
+    AsyncStreamAssist
+):
+    """
+    Assistant class for wrapping AI or chat functionality.
+    This class provides a flexible interface for handling messages and streaming outputs.
+    It allows for optional method overrides for synchronous and asynchronous processing.
+    """
+    def _set_val(self, val, label: str):
+        if val is not None:
+            object.__setattr__(self, label, val)
+
+    def __init__(
+        self, 
+        forward=None, 
+        aforward=None,
+        stream=None,
+        astream=None
+    ):
+        """
+        Initialize the instance with optional method overrides.
+        Args:
+            forward (callable, optional): A callable to override the default 'forward' method.
+            aforward (callable, optional): A callable to override the default 'aforward' method.
+            stream (callable, optional): A callable to override the default 'stream' method.
+            astream (callable, optional): A callable to override the default 'astream' method.
+        """
+        super().__init__()
+        self._forward = forward
+        self._aforward = aforward
+        self._stream = stream
+        self._astream = astream
+        self._set_val(forward, 'forward')
+        self._set_val(aforward, 'aforward')
+        self._set_val(stream, 'stream')
+        self._set_val(astream, 'astream')
+    
+    def forward(self, msg: Msg | BaseDialog, *args, **kwargs) -> typing.Tuple[Msg, typing.Any]:
+        """
+        Processes the given message and additional arguments.
+        This method should be implemented by subclasses to define the specific
+        behavior for handling the message.
+        Args:
+            msg: The message to be processed.
+            *args: Additional positional arguments.
+            **kwargs: Additional keyword arguments.
+        Raises:
+            NotImplementedError: If the method is not implemented by a subclass.
+        """
+        raise NotImplementedError(
+            ''
+        )
+    
+    async def aforward(self, msg: Msg | BaseDialog, *args, **kwargs) -> typing.Tuple[Msg, typing.Any]:
+        """
+        Asynchronous version of the forward method.
+        This method calls the synchronous forward method with the provided
+        message and any additional arguments or keyword arguments.
+        Args:
+            msg: The message to be forwarded.
+            *args: Additional positional arguments to be passed to the forward method.
+            **kwargs: Additional keyword arguments to be passed to the forward method.
+        Returns:
+            The result of the forward method.
+        """
+        return self.forward(msg, *args, **kwargs)
+    
+    def stream(self, msg, *args, **kwargs) -> typing.Iterator[typing.Tuple[Msg, typing.Any]]:
+        """
+        Streams the assistant output for a given message.
+        Args:
+            msg: The message to be processed by the assistant.
+            *args: Additional positional arguments to be passed to the forward method.
+            **kwargs: Additional keyword arguments to be passed to the forward method.
+        Yields:
+            The output from the forward method.
+        """
+        yield self.forward(msg, *args, **kwargs)
+    
+    async def astream(self, msg, *args, **kwargs) -> typing.AsyncIterator[typing.Tuple[Msg, typing.Any]]:
+        """
+        Asynchronous streaming function to get the Assistant's output.
+        This function yields the output of the `stream` function with the given 
+        message and additional arguments.
+        Args:
+            msg (str): The message to be processed by the stream function.
+            *args: Variable length argument list to be passed to the stream function.
+            **kwargs: Arbitrary keyword arguments to be passed to the stream function.
+        Yields:
+            The output of the `stream` function.
+        """
+        yield self.stream(msg, *args, **kwargs)
+
+    def spawn(self, *args, **kwargs) -> typing.Self:
+        
+        return Assistant(
+            self._forward,
+            self._aforward,
+            self._stream,
+            self._astream
+        )
 
 
 class ToolOption(pydantic.BaseModel):
@@ -195,6 +387,35 @@ class ToolCall(pydantic.BaseModel):
             yield self.option.f(**self.args)
 
 
+class ToolBuilder(object):
+
+    def __init__(self):
+        
+        self._index = None
+        self._name = ''
+        self._args = ''
+        self._tools = []
+
+    def update(self, index, name, args):        
+        
+        if index != self._index:
+            if self._index is not None:
+                result = ToolCall(
+                    option=self.tools[self._name],
+                    args=json.loads(self._args)
+                )
+                self._tools.append(result)
+            self._index = index
+            self._name = name
+            self._args = args
+            return {
+                'name': self._name,
+                'args': self._args
+            }
+        self._args += args
+        return None
+
+
 class LLM(Assistant):
 
     """
@@ -352,23 +573,16 @@ class LLM(Assistant):
             ):
                 yield v
 
-    from typing import Self
     def spawn(self, 
-        forwardf: typing.Callable=UNDEFINED,
-        aforwardf: typing.Callable=UNDEFINED,
-        streamf: typing.Callable=UNDEFINED,
-        astreamf: typing.Callable=UNDEFINED,
-        resp_procs: typing.List[RespConv]=UNDEFINED,
         kwargs: typing.Dict=UNDEFINED,
         message_arg: str=UNDEFINED,
         role_name: str=UNDEFINED,
     ) -> Self:
         return LLM(
-            coalesce(forwardf, self._base_forwardf),
-            coalesce(aforwardf, self._base_aforwardf),
-            coalesce(streamf, self._base_streamf),
-            coalesce(astreamf, self._base_astreamf),
-            coalesce(resp_procs, self._resp_procs),
+            self._base_forwardf,
+            self._base_aforwardf,
+            self._base_streamf,
+            self._base_astreamf,
             coalesce(kwargs, self._kwargs),
             coalesce(message_arg, self._message_arg),
             coalesce(role_name, self._role_name)
@@ -443,12 +657,10 @@ async def llm_aforward(
     elif _resp_proc is not None:
         for r in _resp_proc:
             kwargs.update(r.prep())
-
     response = await f(
         *args, **kwargs
     )
     msg['meta']['response'] = response
-
     if _resp_proc is None:
         return msg
     
@@ -612,4 +824,137 @@ class ToText(ToMsg):
         return Msg(
             role=self.role, 
             **{self.field: text}
+        )
+
+
+class Op(Module, AsyncModule, StreamModule, AsyncStreamModule):
+    """
+    A class that facilitates the process of converting input into a message, 
+    interacting with a language model (assistant), and transforming the 
+    assistant's response into a final output.
+    This class supports both synchronous and asynchronous operations, as well 
+    as streaming responses.
+    """
+
+    def __init__(self, assistant: Assistant, to_msg: ToMsg, delim: typing.Callable | Delim | typing.Any | None, out: typing.Optional[OutConv]=None):
+        """
+        Initializes the class to facilitate interaction with a language model assistant by
+        adapting inputs and outputs.
+        Args:
+            assistant (Assistant): The assistant instance responsible for processing messages.
+            to_msg (ToMsg): A callable that adapts inputs into the format expected by the assistant.
+            out (typing.Optional[OutConv]): An optional callable to process the assistant's output.
+                Defaults to a no-op lambda function that returns the output unchanged.
+        This constructor sets up the necessary components to streamline the use of language
+        models by defining how inputs are transformed for the assistant and how outputs are
+        handled after processing.
+        """
+        super().__init__()
+        self.assistant = assistant
+        self.to_msg = to_msg
+        self.out = out or (lambda x: x)
+        self.delim = delim
+
+    def forward(self, *args, _out=None, _asst=None, **kwargs) -> typing.Any:
+        """
+        Executes the assistant with the provided arguments and returns the processed output.
+        Args:
+            *args: Positional arguments to be passed to the `to_msg` method for message creation.
+            _out (callable, optional): A callable to process the assistant's response. Defaults to `self.out`.
+            _asst (typing.Dict or object, optional): A dictionary to spawn a new assistant instance or an existing assistant object. 
+            
+            If None, defaults to `self.assistant`.
+            **kwargs: Additional keyword arguments to be passed to the `to_msg` method.
+        Returns:
+            The processed output of the assistant's response, as handled by the `_out` callable.
+        Raises:
+            Any exceptions raised during the assistant's execution or message processing.
+        """
+        _out = _out or self.out
+        msg = self.to_msg(*args, **kwargs)
+        if isinstance(_asst, typing.Dict):
+            _asst = self.assistant.spawn(**_asst)
+        elif _asst is None:
+            _asst = self.assistant
+
+        _, resp = _asst(msg)
+        return _out(resp) 
+        
+    async def aforward(self, *args, _out=None, _asst=None, **kwargs) -> typing.Any:
+        """
+        Asynchronously executes the assistant with the provided arguments and returns the processed output.
+        Args:
+            *args: Positional arguments to be passed to the `to_msg` method for message creation.
+            _out (callable, optional): A callable to process the assistant's response. Defaults to `self.out`.
+            _asst (typing.Dict or object, optional): A dictionary to spawn a new assistant instance or an existing assistant object. 
+                If None, defaults to `self.assistant`.
+            **kwargs: Additional keyword arguments to be passed to the `to_msg` method.
+        Returns:
+            The processed output of the assistant's response, as handled by the `_out` callable.
+        Raises:
+            Any exceptions raised during the assistant's execution or message processing.
+        """
+        _out = _out or self.out
+        if isinstance(_asst, typing.Dict):
+            _asst = self.assistant.spawn(**_asst)
+        elif _asst is None:
+            _asst = self.assistant
+
+        msg = self.to_msg(*args, **kwargs)
+        _, resp = await _asst.aforward(msg)
+        return _out(resp) 
+    
+    def stream(self, *args, _out=None, _asst=None, **kwargs) -> typing.Iterator:
+        """
+        Streams the assistant with the provided arguments and returns the processed output.
+        Args:
+            *args: Positional arguments to be passed to the `to_msg` method for message creation.
+            _out (callable, optional): A callable to process the assistant's response. Defaults to `self.out`.
+            _asst (typing.Dict or object, optional): A dictionary to spawn a new assistant instance or an existing assistant object. 
+            
+            If None, defaults to `self.assistant`.
+            **kwargs: Additional keyword arguments to be passed to the `to_msg` method.
+        Returns:
+            The processed output of the assistant's response, as handled by the `_out` callable.
+        Raises:
+            Any exceptions raised during the assistant's execution or message processing.
+        """
+        _out = _out or self.out
+        delta_store = {}
+        delim_store = {}
+        if isinstance(_asst, typing.Dict):
+            _asst = self.assistant.spawn(**_asst)
+        elif _asst is None:
+            _asst = self.assistant
+        msg = self.to_msg(*args, **kwargs)
+        for msg, resp in _asst.stream(msg):
+            resp = self.delim(msg, resp, delim_store)
+            if resp is not UNDEFINED:
+                yield self.out(msg, resp, delta_store)
+    
+    async def astream(self, *args, _out=None, _asst=None, **kwargs) -> typing.AsyncIterator:
+        _out = _out or self.out
+        delta_store = {}
+        delim_store = {}
+        if isinstance(_asst, typing.Dict):
+            _asst = self.assistant.spawn(**_asst)
+        elif _asst is None:
+            _asst = self.assistant
+        msg = self.to_msg(*args, **kwargs)
+        async for msg, resp in await _asst.astream(msg):
+            resp = self.delim(msg, resp, delim_store)
+            if resp is not UNDEFINED:
+                yield self.out.delta(msg, resp, delta_store)
+
+    def spawn(
+        self, to_msg: ToMsg=UNDEFINED, assistant: Assistant=UNDEFINED, out: OutConv=UNDEFINED
+    ):
+        to_msg = coalesce(to_msg, self.to_msg)
+        if isinstance(assistant, typing.Dict):
+            assistant = self.assistant.spawn(**assistant)
+        else:
+            assistant = coalesce(assistant, self.assistant)
+        out = coalesce(out, self.out)
+        return Op(
+            assistant, to_msg, out
         )

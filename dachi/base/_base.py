@@ -106,27 +106,3 @@ class Templatable(ABC):
             str: 
         """
         pass
-
-
-class _Types(Enum):
-
-    UNDEFINED = 'UNDEFINED'
-    WAITING = 'WAITING'
-
-
-UNDEFINED = _Types.UNDEFINED
-"""Constant for UNDEFINED. usage: value is UNDEFINED"""
-WAITING = _Types.WAITING
-"""Constant for WAITING when streaming. usage: value is WAITING"""
-
-def coalesce(val1, default) -> typing.Any:
-    """
-    Returns the first value if it is not UNDEFINED, otherwise returns the default value.
-    This function is useful for spawning new versions of a class and defining which parameters in the class to update.
-    Args:
-        val1: The primary value to check.
-        default: The default value to return if val1 is UNDEFINED.
-    Returns:
-        The first value if it is not UNDEFINED, otherwise the default value.
-    """
-    return val1 if val1 is not UNDEFINED else default

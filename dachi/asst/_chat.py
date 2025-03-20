@@ -1,7 +1,7 @@
 import typing
 from .. import adapt as adapt
 from ..proc import Module
-from ._asst import Assistant
+from ._ai import Assistant
 from ._messages import Msg, BaseDialog
 
 

@@ -8,7 +8,7 @@ import typing
 import pydantic
 
 # local
-from ..utils._core import Renderable
+from ..base._core import Renderable
 
 
 class _Final:

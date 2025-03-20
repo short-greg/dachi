@@ -1,45 +1,37 @@
 import pkg_resources
 import typing
 
+import pydantic
+
 from . import Msg
-from ._ai import ToolSet, ToolCall
-from ._ai import RespConv
+from ._ai import ToolSet, ToolCall, ToolBuilder
+from ._convert import RespConv, DeltaStore
 import json
 from . import END_TOK
+from ._ai import LLM
+from ..utils import UNDEFINED, coalesce
+from .. import utils
 
 # TODO: add utility for this
 required = {'openai'}
 installed = {pkg.key for pkg in pkg_resources.working_set}
 missing = required - installed
 
+import openai
 
 if len(missing) > 0:
 
     raise RuntimeError(f'To use this module openai must be installed.')
 
 
-class OpenAIOutConv(RespConv):
+# stream
+# parsed
+# create
+
+
+class OpenAITextConv(RespConv):
     """
     OpenAITextProc is a class that processes an OpenAI response and extracts text outputs from it.
-    Methods:
-        __init__():
-            Initializes the OpenAITextProc instance.
-        __call__(response, msg):
-            Processes the OpenAI response and extracts the main content.
-            Args:
-                response: The response object from OpenAI.
-                msg: A dictionary to store the extracted content.
-                A tuple containing the updated msg dictionary and the extracted content.
-        delta(response, msg, delta_store):
-            Processes the OpenAI response to extract incremental content updates (deltas).
-            Args:
-                response: The response object from OpenAI.
-                msg: A dictionary to store the extracted content.
-                delta_store: A dictionary to store the accumulated deltas.
-                A tuple containing the updated msg dictionary and the extracted delta.
-        prep():
-            Prepares and returns an empty dictionary.
-                An empty dictionary.
     """
 
     def __init__(self):
@@ -69,26 +61,15 @@ class OpenAIOutConv(RespConv):
         Returns:
             tuple: A tuple containing the updated msg dictionary and the extracted delta content.
         """
-
-        if 'content' not in delta_store:
-            delta_store['content'] = ''
-
-        if response is END_TOK:
-            msg['content'] = delta_store['content']
-            return None
-
         delta = response.choices[0].delta.content
-        
-        if delta_store is None:
-            msg['content'] = None
-            msg['delta']['content'] = None
-            return None
-        
-        if delta is not None:
-            delta_store['content'] += delta
-        
-        msg['delta']['content'] = delta
-        msg['content'] = delta_store['content']
+
+        msg['delta']['delta'] = delta
+
+        utils.call_or_set(
+            msg['delta'], 'content', delta, 
+            lambda x, delta: x + delta
+        )
+        msg['content'] = msg['delta']['content']
         return delta
 
     def prep(self) -> typing.Dict:
@@ -100,20 +81,127 @@ class OpenAIOutConv(RespConv):
         return {}
 
 
+class OpenAIStructConv(RespConv):
+    """
+    OpenAITextProc is a class that processes an OpenAI response and extracts text outputs from it.
+    """
+
+    def __init__(self, struct: pydantic.BaseModel | typing.Dict=None):
+        super().__init__(False)
+        self._struct = struct
+
+    def __call__(self, response, msg):
+        """
+        Processes a response from OpenAI and extracts the text content.
+        Args:
+            response (object): The response object from OpenAI containing choices and messages.
+            msg (dict): A dictionary to be updated with the extracted content.
+        Returns:
+            tuple: A tuple containing the updated msg dictionary and the extracted content string.
+        """
+        json_data = response.choices[0].message.content
+        if response.type == 'error':
+            raise RuntimeError(response.error)
+        msg['content'] = json_data
+        msg['meta']['struct'] = json.loads(json_data)
+        return msg['meta']['struct']
+
+    def delta(self, response, msg, delta_store: DeltaStore):
+        """
+        Processes a delta response and extracts text.
+        Args:
+            response: The response object containing the delta.
+            msg: A dictionary to store the message content.
+            delta_store (typing.Dict): A dictionary to store the accumulated delta content.
+        Returns:
+            tuple: A tuple containing the updated msg dictionary and the extracted delta content.
+        """
+        delta = response.choices[0].delta.conten
+
+        if response == END_TOK:
+            struct = json.loads(delta_store['content'])
+            return struct
+
+        msg['delta']['content'] = delta
+        _, delta = delta_store.adv(
+            delta, 'content'
+        )
+        return delta
+        
+    def prep(self) -> typing.Dict:
+        """
+
+        Returns:
+            typing.Dict: 
+        """
+        if isinstance(self._struct, typing.Dict):
+            return {'response_format': {
+                "type": "json_schema",
+                "json_schema": self._struct
+            }}
+        elif isinstance(self._struct, pydantic.BaseModel):
+            return {'response_format': self._struct}
+        return {
+            'response_format': "json_object"
+        }
+
+
+class OpenAIStreamStructConv(OpenAIStructConv):
+    
+    def delta(self, response, msg, delta_store: typing.Dict):
+        """
+        Processes a delta response and extracts text.
+        Args:
+            response: The response object containing the delta.
+            msg: A dictionary to store the message content.
+            delta_store (typing.Dict): A dictionary to store the accumulated delta content.
+        Returns:
+            tuple: A tuple containing the updated msg dictionary and the extracted delta content.
+        """
+        if response.type == "content.delta":
+            if response.parsed is not None:
+                print("Chunk received:", response.parsed)
+        elif response.type == "content.done":
+            return None
+        elif response.type == "error":
+            raise RuntimeError(response.error)
+
+
+class OpenAIParsedStructConv(OpenAIStructConv):
+    """For use with the "parse" API
+    """
+    
+    def __call__(self, response, msg):
+        """
+        Processes a response from OpenAI and extracts the text content.
+        Args:
+            response (object): The response object from OpenAI containing choices and messages.
+            msg (dict): A dictionary to be updated with the extracted content.
+        Returns:
+            tuple: A tuple containing the updated msg dictionary and the extracted content string.
+        """
+        msg['content'] = str(response)
+        msg['meta']['struct'] = response
+        return response
+    
+    def delta(self, response, msg, delta_store: DeltaStore):
+        """
+        Processes a delta response and extracts text.
+        Args:
+            response: The response object containing the delta.
+            msg: A dictionary to store the message content.
+            delta_store (typing.Dict): A dictionary to store the accumulated delta content.
+        Returns:
+            tuple: A tuple containing the updated msg dictionary and the extracted delta content.
+        """
+        raise RuntimeError('Cannot use ParseConv with a stream')
+
+
 class OpenAIToolConv(RespConv):
     """
     Process OpenAI LLM responses to extract tool calls.
     This class extends the RespProc class and is designed to handle responses from OpenAI's language model,
     specifically to extract and manage tool calls embedded within the responses.
-    Attributes:
-        tools (ToolSet): A set of tools available for processing.
-    Methods:
-        __call__(response, msg):
-            Processes the response to extract tool calls and updates the message metadata.
-        delta(response, msg, delta_store):
-            Handles incremental updates to the tool calls from the response and updates the delta store.
-        prep():
-            Prepares the tools for input.
     """
     def __init__(self, tools: ToolSet):
         """
@@ -152,62 +240,92 @@ class OpenAIToolConv(RespConv):
             
         return result
 
-    def delta(self, response, msg, delta_store):
-
-        if 'idx' not in delta_store:
-            delta_store.update({
-                'idx': None,
-                'calls': [],
-                'prep': [],
-                'tools': []
-            })
+    def delta(self, response, msg, delta_store: typing.Dict):
 
         if response is END_TOK:
-            msg['meta']['tools'] = [*delta_store['tools']]
+            msg['meta']['tools'] = self.delta_store['delta']['builder'].tools
             msg['delta']['tools'] = None
             return None
-        
-        result = None
+
+        delta = response.choices[0].delta.content
+        msg['delta']['content'] = delta
         if response.choices[0].delta.tool_calls is not None:
+            if 'tools' not in msg['meta']:
+                msg['meta']['tools'] = []
+
             tool_call = response.choices[0].delta.tool_calls[0]
-            idx = delta_store['idx']
-            # print('Idx: ', delta_store['idx'], tool_call.index)
-            if tool_call.index != idx:
-                # print('Updating index')
-                if idx is not None:
-                    cur = delta_store['prep'][-1]
-                    result = ToolCall(
-                        option=self.tools[cur['name']],
-                        args=json.loads(cur['argstr'])
-                    )
-                    delta_store['tools'].append(result)
-                delta_store['idx'] = tool_call.index
-                cur_tool = {
-                    'name': tool_call.function.name,
-                    'argstr': tool_call.function.arguments,
-                }
-                delta_store['prep'].append(cur_tool)
-                msg['delta']['tool'] = cur_tool
-            else:
-                cur_tool = delta_store['prep'][idx]
-                cur_tool['argstr'] += tool_call.function.arguments
-                result = None
-                msg['delta']['tool'] = None
+            index = tool_call.index
+            name = tool_call.function.name
+            args = tool_call.function.arguments
 
-        elif delta_store['idx'] is not None:
-            cur = delta_store['prep'][-1]
-
-            result = ToolCall(
-                option=self.tools[cur['name']],
-                args=json.loads(cur['argstr'])
+            utils.get_or_setf(
+                delta_store, 'builder', ToolBuilder
             )
-            delta_store['tools'].append(result)
-            delta_store['idx'] = None
-            msg['delta']['tool'] = cur_tool
 
-        msg['meta']['tools'] = [*delta_store['tools']]
+            builder = utils.get_or_set(delta_store, 'builder', ToolBuilder)
+            tool = builder.update(index, name, args)
+            msg['delta']['tool'] = tool
+            if tool is not None:
+                msg['meta']['tools'].append(tool)
+            return delta
+    
+            # tools, delta = delta_store.adv(
+            #     'tools', 
+            #     {'index': index, 'name': name, 'args': args}, ToolBuilder()
+            # )
+        
+        # 1) 
+        # if 'idx' not in delta_store:
+        #     delta_store.update({
+        #         'idx': None,
+        #         'calls': [],
+        #         'prep': [],
+        #         'tools': []
+        #     })
+        # if response is END_TOK:
+        #     msg['meta']['tools'] = [*delta_store['tools']]
+        #     msg['delta']['tools'] = None
+        #     return None
+        
+        # result = None
+        # if response.choices[0].delta.tool_calls is not None:
+        #     tool_call = response.choices[0].delta.tool_calls[0]
+        #     idx = delta_store['idx']
+        #     if tool_call.index != idx:
+        #         if idx is not None:
+        #             cur = delta_store['prep'][-1]
+        #             result = ToolCall(
+        #                 option=self.tools[cur['name']],
+        #                 args=json.loads(cur['argstr'])
+        #             )
+        #             delta_store['tools'].append(result)
+        #         delta_store['idx'] = tool_call.index
+        #         cur_tool = {
+        #             'name': tool_call.function.name,
+        #             'argstr': tool_call.function.arguments,
+        #         }
+        #         delta_store['prep'].append(cur_tool)
+        #         msg['delta']['tool'] = cur_tool
+        #     else:
+        #         cur_tool = delta_store['prep'][idx]
+        #         cur_tool['argstr'] += tool_call.function.arguments
+        #         result = None
+        #         msg['delta']['tool'] = None
 
-        return result
+        # elif delta_store['idx'] is not None:
+        #     cur = delta_store['prep'][-1]
+
+        #     result = ToolCall(
+        #         option=self.tools[cur['name']],
+        #         args=json.loads(cur['argstr'])
+        #     )
+        #     delta_store['tools'].append(result)
+        #     delta_store['idx'] = None
+        #     msg['delta']['tool'] = cur_tool
+
+        # msg['meta']['tools'] = [*delta_store['tools']]
+
+        # return result
 
     def prep(self):
         
@@ -215,3 +333,62 @@ class OpenAIToolConv(RespConv):
             'tools': [tool.to_input() for tool in self.tools] if len(self.tools) != 0 else None
         }
 
+
+class OpenAILLM(LLM):
+
+    def __init__(
+        self, 
+        tools: ToolSet=None,
+        json_output: bool | pydantic.BaseMode | typing.Dict=False,
+        mode: str='create',
+        api_key: str=None,
+        client_kwargs: typing.Dict=None
+    ):
+        convs = []
+        if json_output is False:
+            convs.append(OpenAITextConv())
+        else:
+            convs.append(OpenAIStructConv(json_output))
+        if tools is not None:
+            convs.append(OpenAIToolConv(tools))
+        super().__init__(
+            resp_procs=convs, 
+        )
+        self._client_kwargs = client_kwargs
+        self._tools = tools
+        self._json_output = json_output
+        self._mode = mode
+        self._client = openai.Client(
+            api_key, **client_kwargs
+        )
+        self._aclient = openai.AsyncClient(api_key, **client_kwargs)
+        
+    def spawn(self, 
+        tools: ToolSet=UNDEFINED,
+        json_output: bool | pydantic.BaseMode | typing.Dict=UNDEFINED
+    ):
+        tools = coalesce(
+            tools, self._tools
+        )
+        json_output = coalesce(json_output, self._json_output)
+        return OpenAILLM(
+            tools, json
+        )
+    
+    def forward(self, msg, *args, **kwargs):
+        if self._mode == 'create':
+            pass
+        elif self._mode == 'parse':
+            pass
+        else:
+            pass
+
+    async def aforward(self, msg, *args, **kwargs):
+        return super().aforward(msg, *args, **kwargs)
+
+    def stream(self, msg, *args, **kwargs):
+        return super().stream(msg, *args, **kwargs)
+    
+    async def astream(self, msg, *args, **kwargs):
+        return super().astream(msg, *args, **kwargs)
+    

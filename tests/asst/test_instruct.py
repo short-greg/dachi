@@ -1,10 +1,8 @@
 from dachi.asst import _instruct_core as core
-from dachi.asst import Cue
-from dachi.asst import _instruct
 from dachi.asst._instruct import style_formatter
 from ..utils.test_core import SimpleStruct
 from .test_ai import DummyAIModel
-import pytest
+
 
 def dummy_dec(f):
     """Use to ensure signaturemethod works 
@@ -25,8 +23,9 @@ class TestStyleFormat:
 
     def test_bullet_list_formatting(self):
         """Tests whether lists are correctly formatted as bullet points."""
-        result = style_formatter("Shopping List:\n{x:bullet}", x=["Milk", "Eggs", "Bread"])
-        expected = "Shopping List:\n- Milk\n- Eggs\n- Bread"
+        result = style_formatter("Shopping List:\n\n{x:bullet}", x=["Milk", "Eggs", "Bread"])
+        expected = "Shopping List:\n\n- Milk\n- Eggs\n- Bread"
+        print(result, expected)
         assert result == expected
 
     def test_bold_formatting(self):
@@ -81,9 +80,14 @@ class TestStyleFormat:
 
     def test_function_call_style(self):
         """Tests positional arguments instead of named arguments."""
-        result = style_formatter("Values:\n{0:bullet(1)}", ["A", "B", "C"])
+        result = style_formatter("Values:\n{0:bullet('-', 1)}", ["A", "B", "C"])
         expected = "Values:\n- A\n- B\n- C"
         assert result == expected
+
+
+class TestOp(object):
+
+    pass
 
 
 # class TestStyleFormat:

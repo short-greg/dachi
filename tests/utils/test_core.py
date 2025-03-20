@@ -1,4 +1,4 @@
-from dachi.utils import _core
+from dachi.base import _core
 from pydantic import BaseModel
 from typing import Any, Iterator, Tuple
 from dachi.proc._process import Module

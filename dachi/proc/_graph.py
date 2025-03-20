@@ -11,7 +11,7 @@ from . import (
     Module
 )
 from ..utils import is_undefined
-from ..base import UNDEFINED, WAITING
+from ..utils import UNDEFINED, WAITING
 
 
 class T(object):

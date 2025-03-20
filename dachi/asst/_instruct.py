@@ -7,22 +7,17 @@ import roman
 import re
 
 # local
-from ..utils import (
+from ..base import (
     render, render_multi
 )
-from ..proc import Param
+from ..proc import Param, Module
 from ._instruct_core import Cue, validate_out
 from ..utils import (
     str_formatter
 )
-from ..base import UNDEFINED
-from ..proc import Module, AsyncModule, AsyncStreamModule, StreamModule
-from ..asst import LLM, OutConv, ToMsg
 from ._data import Description
-
-from ..utils import render
-
-from ..utils._utils import str_formatter
+from ..base import render
+from ..utils import str_formatter
 
 S = typing.TypeVar('S', bound=pydantic.BaseModel)
 X = typing.Union[str, Description, Cue]
@@ -53,32 +48,6 @@ def generate_numbered_list(n, numbering_type='arabic') -> typing.List:
         return [string.ascii_uppercase[i] for i in range(n)]
     else:
         raise ValueError("Unsupported numbering type")
-
-
-def numbered(xs: typing.Iterable[X], indent: int=0, numbering: str='arabic') -> 'Cue':
-    """Create a numbered list
-
-    Args:
-        xs (typing.Iterable[Cue]): A list of strings
-        indent (int, optional): The number to start with indenting. Defaults to 0.
-        numbering (str, optional): The type of numbering system to use. Defaults to 'arabic'.
-
-    Returns:
-        Cue: The resulting Cue
-    """
-    text = ''
-    indent = ' ' * indent
-    numbers = generate_numbered_list(len(xs), numbering)
-    out = validate_out(xs)
-    for i, (x_i, number) in enumerate(zip(xs, numbers)):
-        text = f'{indent}{number}. {render(x_i)}'
-        if i < (len(numbers) - 1):
-            text += "\n"
-
-    return Cue(
-        text=text, 
-        out=out
-    )
 
 
 def fill(x_instr: X, *args: X, **kwargs: X) -> 'Cue':
@@ -162,6 +131,8 @@ def parse_function_spec(spec):
     parsed_args = []
     for arg in re.findall(r'\'[^\']*\'|"[^"]*"|[\d.]+|\S+', raw_args):
         arg = arg.strip()
+        if arg == ',':
+            continue
         if arg.startswith(("'", '"')) and arg.endswith(("'", '"')):  # String arguments
             parsed_args.append(arg[1:-1])  # Remove surrounding quotes
         elif '.' in arg and arg.replace('.', '', 1).isdigit():  # Float argument
@@ -174,7 +145,7 @@ def parse_function_spec(spec):
     return func_name, parsed_args
 
 
-class Style:
+class Styling:
 
     def __init__(self, value, styles):
 
@@ -186,14 +157,13 @@ class Style:
         spec, args = parse_function_spec(spec)
         args = args or []
         if spec in self.styles:
-            return self.styles[spec](*args)
+            return self.styles[spec](self.value, *args)
         elif spec:  # If a standard Python format specifier is given, use it.
-            print(spec, self.value)
             return format(self.value, spec)
         return render(self.value, False)  # Default case
 
 
-def style_formatter(text, *args, _styles: typing.Dict, **kwargs) -> str:
+def style_formatter(text, *args, _styles: typing.Dict=None, **kwargs) -> str:
     """
     Formats text with styled arguments using a custom StyleFactory.
 
@@ -203,103 +173,10 @@ def style_formatter(text, *args, _styles: typing.Dict, **kwargs) -> str:
     :param _style_f: Custom Style Factory (defaults to StyleFactory).
     :return: Styled formatted string.
     """
-    updated_args = [ Style(arg, _styles) for arg in args ]
-    updated_kwargs = { k: Style(v, _styles) for k, v in kwargs.items() }
+    _styles = _styles or DEFAULT_STYLE
+    updated_args = [ Styling(arg, _styles) for arg in args ]
+    updated_kwargs = { k: Styling(v, _styles) for k, v in kwargs.items() }
     return text.format(*updated_args, **updated_kwargs)
-
-
-# TODO: need string args for the context
-# other args for things that get inserted into
-# the message
-class Op(Module, AsyncModule, StreamModule, AsyncStreamModule):
-    """
-    The Op class allows interaction with a Language Learning Model (LLM) by sending instructions to it.
-    """
-    def __init__(
-        self, llm: LLM, to_msg: ToMsg, out: typing.Optional[OutConv]=None, context: typing.Optional[str]=None
-    ): 
-        """
-        Initialize an Op instance.
-        This initializer sets up the necessary components to interact with the LLM and send instructions to it.
-        Args:
-            llm (LLM): The language model to interact with.
-            to_msg (ToMsg): The message converter to use.
-            out (typing.Optional[OutConv], optional): The output converter. Defaults to None.
-            context (typing.Optional[str], optional): The context for the operation. Defaults to None.
-        """
-        super().__init__()
-        self.to_msg = to_msg
-        self.out = out
-        self.llm = llm
-        self.context = context
-
-    def build_context(self, *args, **kwargs) -> str:
-        """
-        Builds the context to put the input into.
-        If the instance's context attribute is None, it joins the provided 
-        positional arguments with newline characters and returns the result 
-        as a string. If the context attribute is not None, it formats the 
-        context using the provided positional and keyword arguments.
-        Args:
-            *args: Variable length argument list.
-            **kwargs: Arbitrary keyword arguments.
-        Returns:
-            str: The formatted context or the joined positional arguments.
-        """
-        if self.context is None:
-            assert len(kwargs) == 0
-            return '\n'.join(args)
-        else:
-            return str_formatter(
-                self.context, *args, **kwargs
-            )
-
-    def forward(self, *args, _out: OutConv=None, **kwargs):
-        context = self.build_context(*args, **kwargs)
-        msg = self.to_msg(context)
-        _, resp = self.llm(msg)
-        _out = _out if _out is not None else self._out
-        return _out(resp)
-    
-    async def aforward(self, *args, _out: OutConv=UNDEFINED, **kwargs):
-
-        context = self.build_context(*args, **kwargs)
-        msg = self.to_msg(context)
-        _, resp = await self.llm.aforward(msg)
-        _out = _out if _out is not None else self._out
-        return _out(resp)
-    
-    def stream(self, *args, _out: OutConv=UNDEFINED, **kwargs) -> typing.Iterator:
-
-        context = self.build_context(*args, **kwargs)
-        msg = self.to_msg(context)
-        _out = _out if _out is not None else self._out
-        delta = {}
-        for _, resp in self.llm.stream(msg):
-            yield _out.delta(resp, delta)
-
-    async def astream(self, *args, _out: OutConv=UNDEFINED, **kwargs) -> typing.AsyncIterator:
-
-        context = self.build_context(*args, **kwargs)
-        msg = self.to_msg(context)
-        _out = _out if _out is not None else self._out
-        delta = {}
-        async for _, resp in await self.llm.astream(msg):
-            yield _out.delta(resp, delta)
-
-    def spawn(
-        self, to_msg: ToMsg=UNDEFINED,
-        out: OutConv=UNDEFINED,
-        context: str=UNDEFINED,
-        **kwargs
-    ):
-        llm = self.llm if len(kwargs) == 0 else self.llm.spawn(**kwargs)
-        to_msg = self.to_msg if self.to_msg is UNDEFINED else to_msg
-        out = self.out if out is UNDEFINED else out
-        context = self.context if context is UNDEFINED else context
-        return Inst(
-            llm, to_msg, out, context
-        )
 
 
 class Inst(Module):
@@ -366,7 +243,30 @@ def inst(x: typing.Union[typing.Iterable[X], X], cue: X) -> Cue:
     )
 
 
-def bullet(xs: typing.Iterable[X], bullets: str='-', indent: int=0) -> 'Cue':
+def numbered(xs: typing.Iterable[X], indent: int=0, numbering: str='arabic') -> 'Cue':
+    """Create a numbered list
+
+    Args:
+        xs (typing.Iterable[Cue]): A list of strings
+        indent (int, optional): The number to start with indenting. Defaults to 0.
+        numbering (str, optional): The type of numbering system to use. Defaults to 'arabic'.
+
+    Returns:
+        Cue: The resulting Cue
+    """
+    text = ''
+    indent = ' ' * indent
+    numbers = generate_numbered_list(len(xs), numbering)
+    # out = validate_out(xs)
+    for i, (x_i, number) in enumerate(zip(xs, numbers)):
+        text = f'{indent}{number}. {render(x_i)}'
+        if i < (len(numbers) - 1):
+            text += "\n"
+
+    return text
+
+
+def bullet(xs: typing.Iterable[X], bullets: str='-', indent: int=0) -> str:
     """Create a bullet list based on the instructions
 
     Args:
@@ -377,11 +277,64 @@ def bullet(xs: typing.Iterable[X], bullets: str='-', indent: int=0) -> 'Cue':
         Cue: The resulting cue
     """
     indent = ' ' * indent
-    text = f'\n{indent}{bullets}'
-    out = validate_out(xs)
-    text = text + f'\n{indent}{bullets}'.join(
-        render(x_i) for x_i in xs
+    text = ''
+    # out = validate_out(xs)
+    text = text + f'\n'.join(
+        f'{indent}{bullets} {render(x_i)}' for x_i in xs
     )
-    return Cue(
-        text=text, out=out
-    )
+    return text
+
+
+def bold(x: X) -> str:
+    """Create a bullet list based on the instructions
+
+    Args:
+        xs (typing.Iterable[X]): The cues to bullet
+        bullets (str, optional): The string to use for the bullet. Defaults to '-'.
+
+    Returns:
+        str: The resulting cue
+    """
+    return f'**{render(x)}**'
+
+
+def italic(x: X) -> str:
+    """Create a bullet list based on the instructions
+
+    Args:
+        xs (typing.Iterable[X]): The cues to bullet
+        bullets (str, optional): The string to use for the bullet. Defaults to '-'.
+
+    Returns:
+        str: The resulting cue
+    """
+    return f'*{render(x)}*'
+
+
+DEFAULT_STYLE = {
+    "bold": bold,
+    "italic": italic,
+    "bullet": bullet,
+    "numbered": numbered
+}
+
+
+# def bullet(xs: typing.Iterable[X], bullets: str='-', indent: int=0) -> 'Cue':
+#     """Create a bullet list based on the instructions
+
+#     Args:
+#         xs (typing.Iterable[X]): The cues to bullet
+#         bullets (str, optional): The string to use for the bullet. Defaults to '-'.
+
+#     Returns:
+#         Cue: The resulting cue
+#     """
+#     indent = ' ' * indent
+#     text = f'\n{indent}{bullets}'
+#     out = validate_out(xs)
+#     text = text + f'\n{indent}{bullets}'.join(
+#         render(x_i) for x_i in xs
+#     )
+#     return Cue(
+#         text=text, out=out
+#     )

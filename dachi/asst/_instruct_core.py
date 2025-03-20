@@ -15,25 +15,22 @@ from ..proc._process import (
     AsyncModule, StreamModule, AsyncStreamModule,
     Param
 )
-from ..utils import str_formatter
+from ..utils import str_formatter, is_primitive, primitives
 from ._ai import (
-    ToMsg, ToText
-)
-from . import (
+    ToMsg, ToText,
     AsyncAssist, AsyncStreamAssist, 
     Assist, StreamAssist
 )
 from ..base import Renderable
-from ..utils import is_primitive, primitives, render
 
-from ..asst import (
+from ._convert import (
     OutConv, NullOutConv,
     PrimConv, PydanticConv
 )
-from ..utils._utils import str_formatter
-import re
+from ..utils import str_formatter
 
-Engine = Assist | AsyncAssist | StreamAssist | AsyncStreamAssist
+
+Engine: typing.TypeAlias = Assist | AsyncAssist | StreamAssist | AsyncStreamAssist
 
 S = typing.TypeVar('S', bound=pydantic.BaseModel)
 
@@ -572,7 +569,6 @@ class StreamDec(FuncDecBase, StreamModule):
         yield from self.stream(*args, **kwargs)
 
 
-
 class AStreamDec(FuncDecBase, AsyncStreamModule):
     """
     A class that allows one to decorate a asynchronous streaming function with an "instruction" so that the function will be an LLM (Language Model) call.
@@ -584,7 +580,7 @@ class AStreamDec(FuncDecBase, AsyncStreamModule):
         kwargs: typing.Dict=None,
         instance=None
     ):
-        """_summary_
+        """
 
         Args:
             inst: The instruction to execute
@@ -742,7 +738,6 @@ def signaturefunc(
             doc=doc, reader=reader
         )
 
-        print('Creating a Dec ', kwargs)
         if not to_async and not to_stream:
             return FuncDec(
                 inst, engine, to_msg,

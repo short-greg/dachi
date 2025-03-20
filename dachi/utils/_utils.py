@@ -4,7 +4,6 @@ import string
 import re
 import pydantic
 from enum import Enum
-from ..base import WAITING, UNDEFINED
 
 
 class _PartialFormatter(string.Formatter):
@@ -148,17 +147,6 @@ def is_nested_model(
     return False
 
 
-def is_undefined(val) -> bool:
-    """Returns true if the vlaue is undefined
-
-    Args:
-        val : The value to check
-
-    Returns:
-        bool: Whether the value is undefined or not
-    """
-    return val == UNDEFINED or val == WAITING
-
 
 def get_member(obj, loc: str):
     """Get a member from an object recursively
@@ -174,3 +162,94 @@ def get_member(obj, loc: str):
     for loc in locs:
         obj = getattr(obj, loc)
     return obj
+
+
+def get_or_set(d: typing.Dict, key, value) -> typing.Any:
+    """Adds a value to the dictionary if not already
+    set.
+
+    Args:
+        d (typing.Dict): The dictionary
+        key: The key
+        value: The value to add
+
+    Returns:
+        typing.Any: The value specified by dictionary key
+    """
+    if key in d:
+        return d[key]
+    d[key] = value
+    return value
+
+
+def get_or_setf(d: typing.Dict, key, f: typing.Callable[[], typing.Any]) -> typing.Any:
+    """Adds a value to the dictionary if not already
+    set.
+
+    Args:
+        d (typing.Dict): The dictionary
+        key: The key
+        f: The function to call to get the value
+
+    Returns:
+        typing.Any: The value specified by dictionary key
+    """
+    if key in d:
+        return d[key]
+    d[key] = f()
+    return d[key]
+
+
+def call_or_set(d: typing.Dict, key, value, f: typing.Callable[[typing.Any, typing.Any], typing.Any]) -> typing.Any:
+    """Adds a value to the dictionary if not already
+    set.
+
+    Args:
+        d (typing.Dict): The dictionary
+        key: The key
+        f: The function to call to get the value
+
+    Returns:
+        typing.Any: The value specified by dictionary key
+    """
+    if key not in d:
+        d[key] = value
+        return value
+    d[key] = f(d[key], value)
+    return d[key]
+
+
+class _Types(Enum):
+
+    UNDEFINED = 'UNDEFINED'
+    WAITING = 'WAITING'
+
+
+UNDEFINED = _Types.UNDEFINED
+"""Constant for UNDEFINED. usage: value is UNDEFINED"""
+WAITING = _Types.WAITING
+"""Constant for WAITING when streaming. usage: value is WAITING"""
+
+def is_undefined(val) -> bool:
+    """Returns true if the vlaue is undefined
+
+    Args:
+        val : The value to check
+
+    Returns:
+        bool: Whether the value is undefined or not
+    """
+    return val == UNDEFINED or val == WAITING
+
+
+def coalesce(val1, default) -> typing.Any:
+    """
+    Returns the first value if it is not UNDEFINED, otherwise returns the default value.
+    This function is useful for spawning new versions of a class and defining which parameters in the class to update.
+    Args:
+        val1: The primary value to check.
+        default: The default value to return if val1 is UNDEFINED.
+    Returns:
+        The first value if it is not UNDEFINED, otherwise the default value.
+    """
+    return val1 if val1 is not UNDEFINED else default

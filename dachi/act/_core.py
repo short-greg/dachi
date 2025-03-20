@@ -13,7 +13,7 @@ from ..base import Storable
 
 # TODO: Add in Action (For GOAP)
 from ..asst import OutConv
-from ..base import UNDEFINED
+from ..utils import UNDEFINED
 
 
 class TaskStatus(Enum):

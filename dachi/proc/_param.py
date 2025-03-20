@@ -7,7 +7,7 @@ import pydantic
 
 # local
 from ..base import Renderable, Storable, Trainable
-from ..utils._core import render
+from ..base._core import render
 
 from typing import TypeVar
 

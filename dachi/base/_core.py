@@ -11,12 +11,12 @@ from dataclasses import dataclass
 import pydantic
 
 # local
-from . import unescape_curly_braces, escape_curly_braces
-from . import (
+from ..utils import unescape_curly_braces, escape_curly_braces
+from ..utils import (
     is_primitive, 
     escape_curly_braces
 )
-from ..base import Renderable
+from . import Renderable
 
 S = typing.TypeVar('S', bound=pydantic.BaseModel)
 
@@ -250,3 +250,4 @@ def render_multi(xs: typing.Iterable[typing.Any]) -> typing.List[str]:
     return [
         render(x) for x in xs
     ]
+

@@ -1,5 +1,5 @@
 from dachi import utils
-from dachi.utils import model_to_text, struct_template
+from dachi.base import model_to_text, struct_template
 from pydantic import BaseModel
 import pytest
 from dachi import base
@@ -20,7 +20,7 @@ class TestIsUndefined(object):
     def test_is_undefined(self):
 
         assert utils.is_undefined(
-            base.UNDEFINED
+            utils.UNDEFINED
         )
 
     def test_not_is_undefined(self):
@@ -84,12 +84,6 @@ class TestStruct(object):
         struct = SimpleStruct(x="2")
         d = struct.model_dump()
         assert d['x'] == "2"
-
-    # def test_render_works_for_nested(self):
-    #     struct = NestedStruct(simple=SimpleStruct(x="2"))
-    #     text = utils.render(struct)
-    #     assert text.count('{{') == 2
-    #     assert text.count("}}") == 2
 
 
 class TestStrFormatter(object):
