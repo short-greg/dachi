@@ -2,7 +2,7 @@
 import typing
 import json
 from abc import ABC, abstractmethod
-
+import yaml
 import typing
 import json
 import inspect
@@ -11,9 +11,6 @@ import inspect
 import pydantic
 from io import StringIO
 import pandas as pd
-import yaml
-import typing
-import json
 
 # local
 from ..base import Templatable, render, TemplateField, struct_template
@@ -166,28 +163,6 @@ class OutConv(pydantic.BaseModel, Templatable, ABC):
         pass
         # return self.load_data(self.read_text(message))
 
-    # def delta(self, message: str, delta_store: typing.Dict) -> typing.Any:
-    #     """Default processing for delta. Will simply wait until the end to return the result
-
-    #     Args:
-    #         message (str): The message to read
-
-    #     Returns:
-    #         typing.Any: The output of the reader
-    #     """
-    #     if message is None:
-    #         return None
-    #     if 'message' not in delta_store:
-    #         delta_store['message'] = ''
-        
-    #     if message is not END_TOK:
-    #         delta_store['message'] += (
-    #             message if message is not END_TOK else ''
-    #         )
-    #         return None
-
-    #     return self(delta_store['message'])
-
     @abstractmethod
     def template(self) -> str:
         """Get the template for the reader
@@ -234,20 +209,6 @@ class NullOutConv(OutConv):
             typing.Any: The output of the reader
         """
         return resp
-
-    # def delta(self, message: str, delta_store: typing.Dict) -> typing.Any:
-    #     """Read in the output
-
-    #     Args:
-    #         message (str): The message to read
-
-    #     Returns:
-    #         typing.Any: The output of the reader
-    #     """
-    #     if message is END_TOK:
-    #         return ''
-
-    #     return message
 
     def template(self) -> str:
         return None
@@ -308,25 +269,6 @@ class PrimConv(OutConv):
         if self._out_cls is bool:
             return message.lower() in ('true', 'y', 'yes', '1', 't')
         return self._out_cls(message)
-    
-    # # TODO: Add
-    # def delta(self, message: str, delta_store):
-        
-    #     if message is None:
-    #         message = ''
-
-    #     if self._out_cls is str:
-    #         # Handle strings cases
-    #         if message is END_TOK:
-    #             return ''
-    #         return message
-    #     else:
-    #         # Handle non-string cases
-    #         if message is END_TOK:
-    #             return self(delta_store['delta'])
-    #         else:
-    #             delta_store['delta'] += message
-    #             return ''
 
     def template(self) -> str:
         """Output the template for the string
@@ -391,25 +333,6 @@ class PydanticConv(OutConv, typing.Generic[S]):
                 f'Could not read in {message} as a JSON', e
             )
         return self._out_cls(**data)
-
-        # try:
-        #     message = unescape_curly_braces(delta['message'])
-        #     data = json.loads(message)
-        #     return self._out_cls(**data)
-        # except json.JSONDecodeError as e:
-        #     raise ReadError('Reading of Pydantic Base Model has failed.', e)
-
-    # def delta(self, message: str, delta_store):
-        
-    #     if message is None:
-    #         message = ''
-
-    #     # Handle non-string cases
-    #     if message is END_TOK:
-    #         return self(delta_store['delta'])
-    #     else:
-    #         delta_store['delta'] += message
-    #         return ''
 
     def template_renderer(self, template: TemplateField) -> str:
         """Render the template for the BaseModel
@@ -493,43 +416,6 @@ class CSVConv(OutConv):
             if self.user_header:
                 delta_store['columns'] = list(df.columns.values)
             return df.to_dict(orient='records', index=True)
-    
-    # def delta(self, message: str, delta_store: typing.Dict) -> typing.Any:
-    #     """Read in the output
-
-    #     Args:
-    #         message (str): The message to read
-
-    #     Returns:
-    #         typing.Any: The output of the reader
-    #     """
-    #     if message is None:
-    #         return None
-    #     if 'message' not in delta_store:
-    #         delta_store['message'] = ''
-    #         delta_store['row'] = 0
-    #         delta_store['fields'] = None
-    #     if message is not END_TOK:
-    #         delta_store['message'] += message
-    #     io = StringIO(delta_store['message'])
-    #     df = pd.read_csv(io, sep=self.delim)
-    #     # print(df)
-    #     if (
-    #         len(df.index) > 0 
-    #         and delta_store['row'] == 0
-    #     ):
-    #         delta_store['fields'] = list(df.columns.values)
-    #     if len(df.index) <= delta_store['row'] and message is not END_TOK:
-    #         return None
-        
-    #     delta_store['row'] = len(df.index)
-    #     if len(df.index) == 1:
-    #         return None
-    #     if message is END_TOK:
-    #         df = df.iloc[delta_store['row'] - 1:]
-    #     else:
-    #         df = df.iloc[delta_store['row'] - 2:delta_store['row'] - 1]
-    #     return df.to_dict(orient='records', index=True)
 
     def template(self) -> str:
         """Output a template for the CSV
@@ -802,147 +688,3 @@ class YAMLConv(OutConv):
             str: The template for the output
         """
         return yaml.safe_dump(self.key_descr)
-
-
-# class MultiOutConv(OutConv):
-#     """Concatenates multiple outputs Out into one output
-#     """
-#     outs: typing.List[OutConv]
-#     conn: str = '::OUT::{name}::\n'
-#     signal: str = '\u241E'
-
-#     def example(self, data: typing.Any) -> str:
-#         """Output an example of the data
-
-#         Args:
-#             data (typing.Any): 
-
-#         Returns:
-#             str: 
-#         """
-#         results = []
-#         for data_i, out in zip(data['data'], self.outs):
-#             results.append(out.example(data_i))
-#         data = {'data': results, 'i': data['i']}
-#         result = ''
-#         for i, (d, out) in enumerate(zip(data['data'], self.outs)):
-#             name = out.name or str(i) 
-#             result = result + '\n' + self.signal + self.conn.format(name=name)
-#             result = f'{result}\n{render(d)}'
-
-#         return result
-
-#     def __call__(self, message: str) -> typing.Any:
-#         """Read in the output
-
-#         Args:
-#             message (str): The message to read
-
-#         Returns:
-#             typing.Any: The output of the reader
-#         """     
-#         structs = []
-
-#         d = message
-#         for i, out in enumerate(self.outs):
-#             name = out.name or str(i)
-#             from_loc = d.find('\u241E')
-#             to_loc = d[from_loc + 1:].find('\u241E')
-#             cur = self.conn.format(name=name)
-#             data_loc = from_loc + len(cur) + 1
-
-#             if to_loc != -1:
-#                 data_end_loc = from_loc + 1 + to_loc
-#             else:
-#                 data_end_loc = None
-
-#             data_str = d[data_loc:data_end_loc]
-#             try: 
-#                 structs.append(out(data_str))
-#             except ReadError as e:
-#                 return {'data': structs, 'i': i}
-#             d = d[data_end_loc:]
-
-#         data = {'data': structs, 'i': i, 'n': len(self.outs)}
-#         return data
-#         # structs = []
-
-#         # for o, d_i in zip(self.outs, data['data']):
-#         #     structs.append(d_i)
-
-#         # return {'data': structs, 'i': data['i'], 'n': data['n']}
-    
-#     def delta(self, message: str, delta_store: typing.Dict) -> typing.Any:
-#         """Read in the output
-
-#         Args:
-#             message (str): The message to read
-
-#         Returns:
-#             typing.Any: The output of the reader
-#         """
-#         if 'message' not in delta_store:
-#             delta_store['i'] = 0
-#             delta_store['structs'] = []
-#             delta_store['message'] = ''
-
-#         if message is not None and message is not END_TOK:
-#             delta_store['message'] += message
-
-#         i = delta_store['i']
-#         if i >= len(self.outs):
-#             return None
-        
-#         d = delta_store['message']
-#         out = self.outs[i]
-#         name = out.name or str(i)
-#         from_loc = d.find('\u241E')
-#         to_loc = d[from_loc + 1:].find('\u241E')
-#         if to_loc == -1 and message is not END_TOK:
-#             return None
-
-#         cur = self.conn.format(name=name)
-#         data_loc = from_loc + len(cur) + 1
-
-#         if to_loc != -1:
-#             data_end_loc = from_loc + 1 + to_loc
-#         else:
-#             data_end_loc = None
-
-#         data_str = d[data_loc:data_end_loc]
-#         try:
-#             delta_store['structs'].append(out(data_str))
-#             # print('RES ')
-#             # print(d)
-#             # print('After')
-#             # print(d[data_end_loc:])
-#             delta_store['message'] = d[data_end_loc:]
-#             delta_store['i'] += 1
-#         except ReadError as e:
-#             return None
-#             # raise ReadError('Reading of MultiTextProc has failed.', e)
-        
-#         return delta_store['structs'][i]
-
-#     def template(self) -> str:
-#         """Output a template for the output
-
-#         Args:
-#             data (): The dictionary data to load
-
-#         Returns:
-#             typing.Dict: The data with each element of the output
-#              loaded
-#         """
-#         texts = []
-#         for i, out in enumerate(self.outs):
-#             print(out.name)
-#             name = out.name or str(i)
-#             if isinstance(out, OutConv):
-#                 cur = out.template()
-#             else:
-#                 cur = struct_template(out)
-#             cur_conn = self.conn.format(name=name)
-#             texts.append(f"{self.signal}{cur_conn}\n{cur}")
-#         text = '\n'.join(texts)
-#         return text
