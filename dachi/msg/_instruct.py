@@ -8,19 +8,19 @@ import re
 
 # local
 from ..base import (
-    render, render_multi
+    render #, render_multi
 )
-from ..proc import Param, Module
-from ._instruct_core import Cue, validate_out
+# from ..proc import Param, Module
+# from ._instruct_core import Cue, validate_out
 from ..utils import (
     str_formatter
 )
-from ._data import Description
+# from ._data import Description
 from ..base import render
 from ..utils import str_formatter
 
 S = typing.TypeVar('S', bound=pydantic.BaseModel)
-X = typing.Union[str, Description, Cue]
+X = typing.Union[str]
 
 
 def generate_numbered_list(n, numbering_type='arabic') -> typing.List:
@@ -48,62 +48,6 @@ def generate_numbered_list(n, numbering_type='arabic') -> typing.List:
         return [string.ascii_uppercase[i] for i in range(n)]
     else:
         raise ValueError("Unsupported numbering type")
-
-
-def fill(x_instr: X, *args: X, **kwargs: X) -> 'Cue':
-    """Format a string with variables
-
-    Args:
-        x_instr (X): The value to format
-
-    Returns:
-        Cue: The resulting cue
-    """
-    out = validate_out([x_instr])
-
-    kwargs = dict(zip(kwargs.keys(), render_multi(kwargs.values())))
-    args = render_multi(args)
-    return Cue(
-        text=str_formatter(render(x_instr), *args, **kwargs), out=out
-    )
-
-
-def cat(xs: typing.List[Cue], sep: str=' ') -> Cue:
-    """Concatenate multiple cues together
-
-    Args:
-        xs (typing.List[Cue]): THe cues 
-        sep (str): The delimiter to use for the sections
-
-    Raises:
-        RuntimeError: 
-
-    Returns:
-        Cue: The concatenated cues
-    """
-    out = validate_out(xs)
-
-    return Cue(text=f'{sep}'.join(
-        render(x_i) for x_i in xs
-    ), out=out)
-
-
-def join(x1: X, x2: X, sep: str=' ') -> Cue:
-    """Join two instructions together
-
-    Args:
-        x1 : Cue 1
-        x2 : Cue 2
-        sep (str): The separator between the two instructions
-
-    Returns:
-        Cue: The joined instructions
-    """
-    out = validate_out([x1, x2])
-    return Cue(
-        text=render(x1) + sep + render(x2),
-        out=out
-    )
 
 
 def parse_function_spec(spec):
@@ -179,71 +123,8 @@ def style_formatter(text, *args, _styles: typing.Dict=None, **kwargs) -> str:
     return text.format(*updated_args, **updated_kwargs)
 
 
-class Inst(Module):
-    """An operation acts on an cue to produce a new cue
-    """
 
-    def __init__(
-        self, name: str, cue: X, 
-        tunable: bool=False):
-        """Create an operation specifying the name
-
-        Args:
-            name (str): The name of the operation
-            cue (X): The cue for the operation
-            tunable: whether the cue is tunable
-        """
-        self.name = name
-        if not isinstance(cue, Cue):
-            cue = Param(
-                name=self.name, training=tunable, 
-                data=Cue(
-                    text=render(cue)
-            ))
-        
-        self.cue = cue
-        
-    def forward(
-        self, *args: X, **kwargs: X
-    ) -> Cue:
-        """Fill in the cue with the inputs
-
-        Returns:
-            Cue: 
-        """
-        cue = render(self.cue)
-        out = validate_out(
-            [*args, *kwargs.values(), self.cue]
-        )
-
-        return Cue(
-            text=fill(cue, *args, **kwargs), out=out
-        )
-
-
-def inst(x: typing.Union[typing.Iterable[X], X], cue: X) -> Cue:
-    """Execute an operation on a cue
-
-    Args:
-        x (typing.Union[typing.Iterable[X], X]): The input
-        cue (X): The cue for the operation
-
-    Returns:
-        Cue: The resulting cue
-    """
-    if not isinstance(x, typing.Iterable):
-        x = [x]
-
-    out = validate_out([*x, cue])
-    resources = ', '.join(render_multi(x))
-    # resources = ', '.join(x_i.name for x_i in x)
-    text = f'Do: {render(cue)} --- With Inputs: {resources}'
-    return Cue(
-        text=text, out=out
-    )
-
-
-def numbered(xs: typing.Iterable[X], indent: int=0, numbering: str='arabic') -> 'Cue':
+def numbered(xs: typing.Iterable[X], indent: int=0, numbering: str='arabic') -> str:
     """Create a numbered list
 
     Args:
@@ -317,6 +198,63 @@ DEFAULT_STYLE = {
     "bullet": bullet,
     "numbered": numbered
 }
+
+
+
+# def fill(x_instr: X, *args: X, **kwargs: X) -> 'Cue':
+#     """Format a string with variables
+
+#     Args:
+#         x_instr (X): The value to format
+
+#     Returns:
+#         Cue: The resulting cue
+#     """
+#     out = validate_out([x_instr])
+
+#     kwargs = dict(zip(kwargs.keys(), render_multi(kwargs.values())))
+#     args = render_multi(args)
+#     return Cue(
+#         text=str_formatter(render(x_instr), *args, **kwargs), out=out
+#     )
+
+
+# def cat(xs: typing.List[Cue], sep: str=' ') -> Cue:
+#     """Concatenate multiple cues together
+
+#     Args:
+#         xs (typing.List[Cue]): THe cues 
+#         sep (str): The delimiter to use for the sections
+
+#     Raises:
+#         RuntimeError: 
+
+#     Returns:
+#         Cue: The concatenated cues
+#     """
+#     out = validate_out(xs)
+
+#     return Cue(text=f'{sep}'.join(
+#         render(x_i) for x_i in xs
+#     ), out=out)
+
+
+# def join(x1: X, x2: X, sep: str=' ') -> Cue:
+#     """Join two instructions together
+
+#     Args:
+#         x1 : Cue 1
+#         x2 : Cue 2
+#         sep (str): The separator between the two instructions
+
+#     Returns:
+#         Cue: The joined instructions
+#     """
+#     out = validate_out([x1, x2])
+#     return Cue(
+#         text=render(x1) + sep + render(x2),
+#         out=out
+#     )
 
 
 # def bullet(xs: typing.Iterable[X], bullets: str='-', indent: int=0) -> 'Cue':

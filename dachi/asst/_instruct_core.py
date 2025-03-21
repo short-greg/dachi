@@ -28,6 +28,7 @@ from ._convert import (
     PrimConv, PydanticConv
 )
 from ..utils import str_formatter
+from ..base import render, render_multi
 
 
 Engine: typing.TypeAlias = Assist | AsyncAssist | StreamAssist | AsyncStreamAssist
@@ -786,4 +787,69 @@ def signaturemethod(
         to_msg=to_msg, to_async=to_async, to_stream=to_stream,
         train=train,
         **kwargs
+    )
+
+
+
+# class Inst(Module):
+#     """An operation acts on an cue to produce a new cue
+#     """
+
+#     def __init__(
+#         self, name: str, cue: X, 
+#         tunable: bool=False):
+#         """Create an operation specifying the name
+
+#         Args:
+#             name (str): The name of the operation
+#             cue (X): The cue for the operation
+#             tunable: whether the cue is tunable
+#         """
+#         self.name = name
+#         if not isinstance(cue, Cue):
+#             cue = Param(
+#                 name=self.name, training=tunable, 
+#                 data=Cue(
+#                     text=render(cue)
+#             ))
+        
+#         self.cue = cue
+        
+#     def forward(
+#         self, *args: X, **kwargs: X
+#     ) -> Cue:
+#         """Fill in the cue with the inputs
+
+#         Returns:
+#             Cue: 
+#         """
+#         cue = render(self.cue)
+#         out = validate_out(
+#             [*args, *kwargs.values(), self.cue]
+#         )
+
+#         return Cue(
+#             text=fill(cue, *args, **kwargs), out=out
+#         )
+
+
+def inst(x: typing.Union[typing.Iterable[X], X], cue: X) -> Cue:
+    """Execute an operation on a cue
+
+    Args:
+        x (typing.Union[typing.Iterable[X], X]): The input
+        cue (X): The cue for the operation
+
+    Returns:
+        Cue: The resulting cue
+    """
+    if not isinstance(x, typing.Iterable):
+        x = [x]
+
+    out = validate_out([*x, cue])
+    resources = ', '.join(render_multi(x))
+    # resources = ', '.join(x_i.name for x_i in x)
+    text = f'Do: {render(cue)} --- With Inputs: {resources}'
+    return Cue(
+        text=text, out=out
     )

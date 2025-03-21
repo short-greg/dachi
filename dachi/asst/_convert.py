@@ -6,6 +6,10 @@ import yaml
 import typing
 import json
 import inspect
+import io
+import csv
+
+from collections import deque
 
 # 3rd party
 import pydantic
@@ -17,7 +21,7 @@ from ..base import Templatable, render, TemplateField, struct_template
 from ..utils import (
     unescape_curly_braces
 )
-from ._messages import END_TOK, Msg
+from ..msg._messages import END_TOK, Msg
 from pydantic_core import PydanticUndefined
 from ..utils import (
     escape_curly_braces
@@ -63,41 +67,239 @@ class RespConv(ABC):
         return {}
 
 
-class Delim(ABC):
+class Parser(ABC):
+    """
+    Parser is an abstract base class designed to process and parse the output of a 
+    large language model (LLM) into discrete units. These units can then be 
+    converted into a structured output that is sent to the calling function.
+    The class provides a framework for implementing custom parsing logic through 
+    the `delta` and `template` methods, which must be defined in subclasses. It 
+    also includes a convenience method `__call__` to handle parsing of the entire 
+    response in one step.
+    """
 
     @abstractmethod
-    def __call__(self, msg, resp, delta_store: typing.Dict) -> typing.Any:
+    def delta(self, resp, delta_store: typing.Dict, last: bool=False) -> typing.List | None:
+        """Parse the response one by one
+
+        Args:
+            resp: The response
+            delta_store (typing.Dict): Dictionary to accumulate updates
+            last (bool, optional): Whether it is the last value or not. Defaults to False.
+
+        Returns:
+            typing.List: Will return a list if value defined else UNDEFINED
+        """
+        pass
+
+    def __call__(self, resp) -> typing.List[typing.Any] | None:
+        """Convenience function to parse based on the whole set of data
+
+        Args:
+            resp: 
+
+        Returns:
+            typing.List[typing.Any]: The parsed values. Will return undefined if
+            cannot parse
+        """
+        return self.delta(
+            resp, {}, True
+        )
+
+    @abstractmethod
+    def render(self, data) -> str:
         pass
 
 
-class CharDelim(Delim):
+class CSVRowParser:
+    """
+    Dynamically parse CSV data, returning new rows as accumulated. 
+    The header will be returned along with them if used.
+    """
+    
+    def __init__(self, delimiter: str = ',', use_header: bool = False):
+        """
+        Initializes the CSV parser with the specified delimiter and header usage.
+        This class is designed to dynamically parse CSV data, returning new rows 
+        as they are accumulated. It supports customization of the delimiter and 
+        whether the CSV file includes a header row.
+        Args:
+            delimiter (str): The character used to separate values in the CSV. 
+                             Defaults to ','.
+            use_header (bool): Indicates whether the CSV file includes a header row. 
+                               Defaults to False.
+        """
+
+        self._delimiter = delimiter
+        self._use_header = use_header
+
+    def delta(self, resp, delta_store: typing.Dict, last: bool=False) -> typing.List | None:
+        """
+        Parses CSV data incrementally using csv.reader.
+        """
+        delta_store = delta_store or {
+            'val': '',        # Accumulates entire CSV content
+            'row': 0,  # Tracks last returned row index
+            'header': None     # Stores header if enabled
+        }
+
+        # Process accumulated data using csv.reader
+        # csv_data = io.StringIO(delta_store['val'])
+        rows = list(csv.reader(delta_store['val'], delimiter=self._delimiter))
+
+        new_rows = []
+        for i, row in enumerate(rows[delta_store['row']:]):  # Only return new rows
+            new_rows.append(row)
+
+        if not last:
+            new_rows.pop()
+
+        if self._use_header is True and delta_store['header'] is None:
+            delta_store['header'] = new_rows.pop(0)
+        
+        header = delta_store['header']
+        utils.increment(delta_store, 'row', len(new_rows))
+        if len(new_rows) == 0:
+            return None
+        
+        if self._use_header:
+            return [(header, row) for row in new_rows]
+        return new_rows
+
+    def template(self, data) -> str:
+        pass
+
+
+class CSVCellParser:
+
+    def __init__(self, delimiter: str = ',', use_header: bool = False):
+        """
+        Initializes the converter for parsing CSV data.
+        Args:
+            delimiter (str): The character used to separate values in the CSV. Defaults to ','.
+            use_header (bool): Indicates whether the CSV includes a header row. If True, 
+                the header row will be used to label the cells. Defaults to False.
+        This class parses CSV data and returns all cells. If `use_header` is True, 
+        the cells will be labeled using the values from the header row.
+        """
+        self._delimiter = delimiter
+        self._use_header = use_header
+
+    def delta(self, resp, delta_store: typing.Dict, last: bool=False) -> typing.Any:
+        """
+        Parses a single-row CSV and returns one cell at a time.
+        """
+        if 'val' not in delta_store:
+            delta_store.update({
+                'val': '',       # Accumulates current cell value
+                'row': 0,       # Stores the single data row
+                'header': [],  # Stores header if provided
+                'data': [],
+                'col': 0     # Tracks current column index
+            })
+        
+        utils.call_or_set(
+            delta_store, 'val', resp, lambda x, dx: x + dx
+        )
+
+        rows = list(csv.reader(delta_store['val'], delimiter=self._delimiter))
+        cells = []
+
+        new_rows = []
+        for i, row in enumerate(rows[delta_store['row']:]):  # Only return new rows
+            new_rows.append(row)
+
+        if self._use_header and len(rows) > 1:
+            delta_store['header'] = new_rows.pop(0)
+
+        if not last and len(new_rows) > 1:
+            new_rows[-1].pop(-1)
+
+        cells = []
+
+        i = delta_store['row']
+        j = delta_store['col']
+        header = delta_store['header']
+        for i, row in enumerate(new_rows):
+            for j, cell in enumerate(row):
+                if (i == 0 and j > delta_store['col']) or i != 0:
+                    if self._use_header:
+                        cells.append[(header[j], cell)]
+        delta_store['row'] = i
+        delta_store['col'] = j
+        if len(cells) == 0:
+            return None
+        return cells
+    
+    def template(self, data) -> str:
+        pass
+
+
+class CharDelimParser(Parser):
     
     def __init__(self, c: str=','):
         super().__init__()
 
         self._c = c
 
-    def __call__(self, msg, resp, delta_store: typing.Dict) -> typing.Any:
+    def delta(self, resp, delta_store: typing.Dict, last: bool=False) -> typing.List | None:
         
-        delta_store = delta_store or {}
-        if resp == self._c:
-            return delta_store.get('val', '')
+        delta_store = delta_store or {'val': ''}
+        if resp is END_TOK:
+            res = delta_store['val'].split(self._c)
+            delta_store['val'] = ''
+            return res
         
         utils.get_or_set(delta_store, 'val', resp)
-        utils.call_or_set(delta_store, 'val', resp, lambda x, d: x + d)
-        # Decide on what to return here
-        return utils.UNDEFINED
-
-
-class NullDelim():
-
-    def __call__(self, msg, resp, delta_store: typing.Dict) -> typing.Any:
-
-        if resp is END_TOK:
-            return utils.UNDEFINED
+        val = utils.call_or_set(delta_store, 'val', resp, lambda x, d: x + d)
+        res = val.split(self._c)
         
-        return resp
+        if len(res) > 1:
+            return_val = res[:-1]
+            delta_store['val'] = res[-1]
 
+            return [return_val]
+
+        return None
+
+
+class NullParser(Parser):
+    """
+    A parser that does not perform any parsing or transformation on the input.
+    Instead, it simply returns the input response as-is.
+    """
+
+    def delta(self, resp, delta_store: typing.Dict, last: bool=False) -> typing.Any:
+        return [resp]
+    
+    def render(self, data):
+        pass
+
+
+class FullParser(Parser):
+    """
+    A parser that accumulates input data until the end of a stream is reached.
+    """
+    
+    def delta(self, resp, delta_store: typing.Dict, last: bool=False) -> typing.Any:
+        
+        utils.get_or_set(delta_store['val'], '')
+        delta_store['val'] += resp
+        if last:
+            val = delta_store['val']
+            delta_store.clear()
+            return [val]
+        return None
+        
+
+# use the deque for the buffer
+
+# parse => deque => pop => out conv.. Continue popping after finished
+# how to handle non-delta cases... Perhaps I will switch back to having a
+# non-delta version.. But I still need parsing even in that case
+
+# out_conv.template() => (outputs the template data) => parser.render(data)
+# out_conv.example() => (outputs the example data) => parser.render(data)
 
 class ReadError(Exception):
     """

@@ -1,6 +1,7 @@
 # 1st party
 import typing
 import json
+from collections import deque
 
 from typing import Self
 from abc import ABC, abstractmethod
@@ -9,7 +10,7 @@ from abc import ABC, abstractmethod
 import pydantic
 
 # local
-from ._messages import (
+from ..msg._messages import (
     Msg, BaseDialog, 
     END_TOK
 )
@@ -22,7 +23,7 @@ from ..utils import (
     is_generator_function,
     coalesce, UNDEFINED
 )
-from ._convert import RespConv, Delim
+from ._convert import RespConv, Parser, CharDelimParser, NullParser
 
 
 S = typing.TypeVar('S', bound=pydantic.BaseModel)
@@ -39,7 +40,7 @@ import typing
 from ..proc import (
     Module, AsyncModule, StreamModule, AsyncStreamModule
 )
-from ._messages import (
+from ..msg._messages import (
     Msg, BaseDialog
 )
 
@@ -836,7 +837,7 @@ class Op(Module, AsyncModule, StreamModule, AsyncStreamModule):
     as streaming responses.
     """
 
-    def __init__(self, assistant: Assistant, to_msg: ToMsg, delim: typing.Callable | Delim | typing.Any | None, out: typing.Optional[OutConv]=None):
+    def __init__(self, assistant: Assistant, to_msg: ToMsg, parser: typing.Callable | Parser | typing.Any | None, out: typing.Optional[OutConv]=None):
         """
         Initializes the class to facilitate interaction with a language model assistant by
         adapting inputs and outputs.
@@ -853,7 +854,12 @@ class Op(Module, AsyncModule, StreamModule, AsyncStreamModule):
         self.assistant = assistant
         self.to_msg = to_msg
         self.out = out or (lambda x: x)
-        self.delim = delim
+        if isinstance(parser, str):
+            self.parser = CharDelimParser(parser)
+        elif self.parser is None:
+            self.parser = NullParser()
+        else:
+            self.parser = parser
 
     def forward(self, *args, _out=None, _asst=None, **kwargs) -> typing.Any:
         """
@@ -878,6 +884,7 @@ class Op(Module, AsyncModule, StreamModule, AsyncStreamModule):
             _asst = self.assistant
 
         _, resp = _asst(msg)
+        resp = self.parser(resp)
         return _out(resp) 
         
     async def aforward(self, *args, _out=None, _asst=None, **kwargs) -> typing.Any:
@@ -902,6 +909,8 @@ class Op(Module, AsyncModule, StreamModule, AsyncStreamModule):
 
         msg = self.to_msg(*args, **kwargs)
         _, resp = await _asst.aforward(msg)
+
+        resp = self.parser(resp)
         return _out(resp) 
     
     def stream(self, *args, _out=None, _asst=None, **kwargs) -> typing.Iterator:
@@ -922,17 +931,38 @@ class Op(Module, AsyncModule, StreamModule, AsyncStreamModule):
         _out = _out or self.out
         delta_store = {}
         delim_store = {}
+        queue = deque()
         if isinstance(_asst, typing.Dict):
             _asst = self.assistant.spawn(**_asst)
         elif _asst is None:
             _asst = self.assistant
         msg = self.to_msg(*args, **kwargs)
         for msg, resp in _asst.stream(msg):
-            resp = self.delim(msg, resp, delim_store)
-            if resp is not UNDEFINED:
-                yield self.out(msg, resp, delta_store)
+            parsed = self.parser(msg, resp, delim_store)
+            if parsed is not None:
+                queue.extend(parsed)
+            if len(queue) > 0:
+                yield self.out(msg, queue.popleft(), delta_store)
+        
+        for q in queue:
+            yield self.out(msg, queue.popleft(), delta_store)
+        
     
     async def astream(self, *args, _out=None, _asst=None, **kwargs) -> typing.AsyncIterator:
+        """
+        Asynchronously streams the assistant with the provided arguments and returns the processed output.
+        Args:
+            *args: Positional arguments to be passed to the `to_msg` method for message creation.
+            _out (callable, optional): A callable to process the assistant's response. Defaults to `self.out`.
+            _asst (typing.Dict or object, optional): A dictionary to spawn a new assistant instance or an existing assistant object. 
+            
+            If None, defaults to `self.assistant`.
+            **kwargs: Additional keyword arguments to be passed to the `to_msg` method.
+        Returns:
+            The processed output of the assistant's response, as handled by the `_out` callable.
+        Raises:
+            Any exceptions raised during the assistant's execution or message processing.
+        """
         _out = _out or self.out
         delta_store = {}
         delim_store = {}
@@ -941,19 +971,45 @@ class Op(Module, AsyncModule, StreamModule, AsyncStreamModule):
         elif _asst is None:
             _asst = self.assistant
         msg = self.to_msg(*args, **kwargs)
+        queue = deque()
         async for msg, resp in await _asst.astream(msg):
-            resp = self.delim(msg, resp, delim_store)
-            if resp is not UNDEFINED:
-                yield self.out.delta(msg, resp, delta_store)
+            parsed = self.parser(msg, resp, delim_store)
+            if parsed is not None:
+                queue.extend(parsed)
+            if len(queue) > 0:
+                yield self.out(msg, queue.popleft(), delta_store)
+        for q in queue:
+            yield self.out(msg, queue.popleft(), delta_store)
 
     def spawn(
-        self, to_msg: ToMsg=UNDEFINED, assistant: Assistant=UNDEFINED, out: OutConv=UNDEFINED
+        self, to_msg: ToMsg=UNDEFINED, assistant: Assistant=UNDEFINED, 
+        parser: Parser=UNDEFINED, out: OutConv=UNDEFINED
     ):
+        """
+        Spawns a new `Op` instance based on the updated arguments.
+        This method creates a new operation by combining the provided arguments
+        with the existing attributes of the current instance. If any argument is
+        not provided, it defaults to the corresponding attribute of the instance.
+        Args:
+            to_msg (ToMsg, optional): The message transformation logic. Defaults to `UNDEFINED` 
+                and falls back to the instance's `to_msg` attribute if not provided.
+            assistant (Assistant or dict, optional): The assistant instance or a dictionary 
+                of parameters to spawn a new assistant. Defaults to `UNDEFINED` and falls 
+                back to the instance's `assistant` attribute if not provided.
+            parser (Parser, optional): The parser instance. Defaults to `UNDEFINED` and 
+                falls back to the instance's `parser` attribute if not provided.
+            out (OutConv, optional): The output conversion logic. Defaults to `UNDEFINED` 
+                and falls back to the instance's `out` attribute if not provided.
+        Returns:
+            Op: A new `Op` instance initialized with the resolved arguments.
+        """
+        
         to_msg = coalesce(to_msg, self.to_msg)
         if isinstance(assistant, typing.Dict):
             assistant = self.assistant.spawn(**assistant)
         else:
             assistant = coalesce(assistant, self.assistant)
+        parser = coalesce(parser, self.parser)
         out = coalesce(out, self.out)
         return Op(
             assistant, to_msg, out

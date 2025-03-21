@@ -4,7 +4,7 @@ from dachi.act import _data as utils
 import typing
 from ..asst.test_ai import DummyAIModel
 from dachi import proc as core
-from dachi.asst._messages import Msg
+from dachi.msg._messages import Msg
 import time
 
 

@@ -1,5 +1,5 @@
 from dachi.asst import _instruct_core as core
-from dachi.asst._instruct import style_formatter
+from dachi.msg._instruct import style_formatter
 from ..utils.test_core import SimpleStruct
 from .test_ai import DummyAIModel
 

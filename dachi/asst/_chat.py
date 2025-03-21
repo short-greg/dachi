@@ -2,7 +2,7 @@ import typing
 from .. import adapt as adapt
 from ..proc import Module
 from ._ai import Assistant
-from ._messages import Msg, BaseDialog
+from ..msg._messages import Msg, BaseDialog
 
 
 CHAT_RES = typing.Union[
