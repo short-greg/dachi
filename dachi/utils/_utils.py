@@ -4,7 +4,9 @@ import string
 import re
 import pydantic
 from enum import Enum
-
+import inspect
+from typing import Self, get_type_hints
+from dataclasses import dataclass
 
 class _PartialFormatter(string.Formatter):
     """A partial formatter that does not require all keys to be specified"""
@@ -253,3 +255,24 @@ def coalesce(val1, default) -> typing.Any:
         The first value if it is not UNDEFINED, otherwise the default value.
     """
     return val1 if val1 is not UNDEFINED else default
+
+
+def doc(obj) -> str:
+    """utility to get the docstring for the object
+
+    Args:
+        obj: the object to get the docstring for
+
+    Returns:
+        str: The docstring for the object
+    """
+    d = obj.__doc__
+    return d if d is not None else ''
+
+
+class Args:
+    """A class that wraps args"""
+    
+    def __init__(self, *args, **kwargs):
+        self.args = args
+        self.kwargs = kwargs

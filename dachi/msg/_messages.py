@@ -87,8 +87,7 @@ class BaseDialog(pydantic.BaseModel, Renderable):
     """A Dialog stores the interactions between the system/user and the assistant
     (i.e. the prompts and the responses)
     """
-
-    msg_renderer: typing.Optional[typing.Callable[[Msg], str]] = None
+    # msg_renderer: typing.Optional[typing.Callable[[Msg], str]] = None
 
     @abstractmethod
     def messages(self) -> typing.Iterator[Msg]:
@@ -147,28 +146,7 @@ class BaseDialog(pydantic.BaseModel, Renderable):
         """
         pass
 
-    def add(self, role: str='user', type_: str='data', delta: typing.Dict=None, meta: typing.Dict=None, _ind: typing.Optional[int]=None, _replace: bool=False, _inplace: bool=False, **kwargs) -> 'BaseDialog':
-        """Add a message to the dialog
-
-        Args:
-            type_ (str, optional): The type of message. Defaults to 'data'.
-            delta (typing.Dict, optional): The change in the message. Defaults to None.
-            meta (typing.Dict, optional): Any other information that is not a part of the message. Defaults to None.
-            ind (typing.Optional[int], optional): The index to add it to. Defaults to None.
-            replace (bool, optional): Whether to replace the value at the index or offset it. Defaults to False.
-
-        Returns:
-            Dialog: The dialog with the message appended
-        """
-        msg = Msg(
-            role=role, type_=type_, meta=meta, 
-            delta=delta, **kwargs
-        )
-        return self.insert(message=msg, ind=_ind, replace=_replace, inplace=_inplace)
-    
-    def append(
-        self, message: Msg, _replace: bool=False, 
-        _inplace: bool=False) -> 'BaseDialog':
+    def append(self, message: Msg) -> 'BaseDialog':
         """Add a message to the end of the dialog
 
         Args:
@@ -178,10 +156,24 @@ class BaseDialog(pydantic.BaseModel, Renderable):
         Raises:
             ValueError: If the index is not correct
         """
-        return self.insert(message=message, ind=None, replace=_replace, inplace=_inplace)
+        return self.insert(message=message, ind=None)
 
     @abstractmethod
-    def insert(self, message: Msg, ind: typing.Optional[int]=None, replace: bool=False, inplace: bool=False) -> 'BaseDialog':
+    def replace(self, message: Msg, ind: int) -> 'BaseDialog':
+        """Add a message to the dialog
+
+        Args:
+            message (Msg): The message to add
+            ind (typing.Optional[int], optional): The index to add. Defaults to None.
+            replace (bool, optional): Whether to replace at the index. Defaults to False.
+
+        Raises:
+            ValueError: If the index is not correct
+        """
+        pass
+
+    @abstractmethod
+    def insert(self, message: Msg, ind: int) -> 'BaseDialog':
         """Add a message to the dialog
 
         Args:
@@ -211,7 +203,7 @@ class BaseDialog(pydantic.BaseModel, Renderable):
             str: The dialog
         """
         return '\n'.join(
-            message.render() if self.msg_renderer is None else self.msg_renderer(message)
+            message.render()
             for message in self.messages()
         )
     
@@ -253,7 +245,30 @@ class BaseDialog(pydantic.BaseModel, Renderable):
         """
         pass
 
+    def __add__(self, other) -> Self:
+        pass
 
+    # def add(self, role: str='user', type_: str='data', delta: typing.Dict=None, meta: typing.Dict=None, _ind: typing.Optional[int]=None, _replace: bool=False, _inplace: bool=False, **kwargs) -> 'BaseDialog':
+    #     """Add a message to the dialog
+
+    #     Args:
+    #         type_ (str, optional): The type of message. Defaults to 'data'.
+    #         delta (typing.Dict, optional): The change in the message. Defaults to None.
+    #         meta (typing.Dict, optional): Any other information that is not a part of the message. Defaults to None.
+    #         ind (typing.Optional[int], optional): The index to add it to. Defaults to None.
+    #         replace (bool, optional): Whether to replace the value at the index or offset it. Defaults to False.
+
+    #     Returns:
+    #         Dialog: The dialog with the message appended
+    #     """
+    #     msg = Msg(
+    #         role=role, type_=type_, meta=meta, 
+    #         delta=delta, **kwargs
+    #     )
+    #     return self.insert(message=msg, ind=_ind, replace=_replace, inplace=_inplace)
+    
+# How to handle a tree
+# dialog tree
 
 def to_input(inp: typing.Union[typing.Iterable[Msg], Msg]) -> typing.Union[typing.List[Msg], Msg]:
     """Convert a list of messages or a single message to an input
@@ -279,15 +294,14 @@ class ListDialog(BaseDialog):
         return self._messages
 
     def __init__(
-        self, messages: typing.Iterable[Msg]=None,
-        msg_renderer: typing.Callable[[Msg], str]=None
+        self, messages: typing.Iterable[Msg]=None
     ):
         """Create a dialog
 
         Args:
             messages: The messages
         """
-        super().__init__(msg_renderer=msg_renderer)
+        super().__init__()
         self._messages = messages or []
 
     def __iter__(self) -> typing.Iterator[Msg]:
@@ -299,7 +313,7 @@ class ListDialog(BaseDialog):
         for message in self._messages:
             yield message
 
-    def __add__(self, other: 'BaseDialog') -> 'BaseDialog':
+    def __add__(self, other: 'BaseDialog') -> 'ListDialog':
         """Concatenate two dialogs together
 
         Args:
@@ -308,7 +322,7 @@ class ListDialog(BaseDialog):
         Returns:
             Dialog: The concatenated dialog
         """
-        return BaseDialog(
+        return ListDialog(
             self._messages + other.aslist()
         )
 
@@ -336,13 +350,27 @@ class ListDialog(BaseDialog):
         self._messages[idx] = message
         return self
 
-    def pop(self, index: int) -> Msg:
+    def clone(self) -> 'ListDialog':
+        """Clones the dialog
+
+        Returns:
+            Dialog: A dialog cloned with shallow copying of the messages
+        """
+        
+        return ListDialog(
+            [*self._messages]
+        )
+
+    def pop(self, index: int, get_msg: bool=False) -> 'ListDialog' | Msg:
         """Remove a value from the dialog
 
         Args:
             index (int): The index to pop
         """
-        return self._messages.pop(index)
+        msg = self._messages.pop(index)
+        if get_msg:
+            return self._messages, msg
+        return msg
 
     def remove(self, message: Msg):
         """Remove a message from the dialog
@@ -352,7 +380,42 @@ class ListDialog(BaseDialog):
         """
         self._messages.remove(message)
 
-    def insert(self, message: Msg, ind: typing.Optional[int]=None, replace: bool=False, inplace: bool=False):
+    def extend(self, dialog: typing.Union['BaseDialog', typing.List[Msg]]):
+        """Extend the dialog with another dialog or a list of messages
+
+        Args:
+            dialog (typing.Union[&#39;Dialog&#39;, typing.List[Msg]]): _description_
+        """
+        if isinstance(dialog, BaseDialog):
+            dialog = dialog.aslist()
+        
+        self._messages = [
+            self._messages + dialog
+        ]
+        return self
+
+    def __len__(self) -> int:
+        """Get the size of the dialog
+
+        Returns:
+            int: the number of turns in the dialog
+        """
+        return len(self._messages)
+        
+    def append(self, message: Msg) -> Self:
+        """Add a message to the end of the dialog
+
+        Args:
+            message (Msg): The message to add
+            replace (bool, optional): Whether to replace at the index. Defaults to False.
+
+        Raises:
+            ValueError: If the index is not correct
+        """
+        self._messages.append(message)
+        return self
+
+    def insert(self, ind: int, message: Msg) -> Self:
         """Add a message to the dialog
 
         Args:
@@ -363,47 +426,178 @@ class ListDialog(BaseDialog):
         Raises:
             ValueError: If the index is not correct
         """
-        if ind is not None and ind < 0:
-            ind = max(len(self) + ind, 0)
+        self._messages.insert(ind, message)
+        return self
+    
+    def replace(self, message: Msg, ind: int) -> 'BaseDialog':
+        """Add a message to the dialog
 
-        messages = [*self._messages]
-        if ind is None or ind == len(self):
-            messages.append(message)
-            # if not replace or ind == len(self) or len(self) == 0:
-            #     messages.append(message)
-            # else:
-            #     messages[-1] = message
-        elif ind > len(self._messages):
-            raise ValueError(
-                f'The index {ind} is out of bounds '
-                f'for size {len(self)}')
-        elif replace:
-            messages[ind] = message
-        else:
-            messages.insert(ind, message)
-        if inplace:
-            self._messages = messages
-            return self
-        return ListDialog(
-            messages
+        Args:
+            message (Msg): The message to add
+            ind (typing.Optional[int], optional): The index to add. Defaults to None.
+            replace (bool, optional): Whether to replace at the index. Defaults to False.
+
+        Raises:
+            ValueError: If the index is not correct
+        """
+        self._messages[ind] = message
+        return self
+
+
+class DialogTurn(BaseDialog):
+    """A Dialog that uses a list data structure.
+    """
+    _message: Msg = pydantic.PrivateAttr()
+    _parent: 'DialogTurn' = pydantic.PrivateAttr(default=None)
+    _children: typing.List['DialogTurn'] = pydantic.PrivateAttr(default_factory=list)
+
+    def __init__(
+        self, message: Msg, 
+        parent: Msg=None, 
+        children: typing.List[Msg]=None
+    ):
+        self._message = message
+        self._parent = parent
+        self._children = children or []
+        super().__init__()
+
+    def root(self) -> 'DialogTurn':
+
+        node = self
+        while node.parent is not None:
+            node = node._parent
+        return node
+    
+    def messages(self) -> typing.List:
+        
+        return list(
+            msg for msg in self
         )
 
-    def extend(self, dialog: typing.Union['BaseDialog', typing.List[Msg]], inplace: bool=False):
+    def __iter__(self) -> typing.Iterator[Msg]:
+        """Iterate over each message in the dialog
+        up to the current position
+
+        Yields:
+            Iterator[typing.Iterator[Msg]]: Each message in the dialog
+        """
+        node = self
+        nodes = []
+        while node.parent is not None:
+            nodes.append[node]
+            node = node.parent
+        for node in reversed(nodes):
+            yield node
+
+    def child(self, idx: int) -> Msg:
+
+        return self._children[idx]
+
+    def __add__(self, other: 'BaseDialog') -> 'DialogTurn':
+        """Concatenate two dialogs together
+
+        Args:
+            other (Dialog): The other dialog to concatenate
+
+        Returns:
+            Dialog: The concatenated dialog
+        """
+        cur = self
+        for node in other:
+            cur = cur.append(node)
+        return cur
+
+    def __getitem__(self, idx) -> Msg:
+        """Retrieve a value from the dialog
+
+        Args:
+            idx : The index to add at
+
+        Returns:
+            Msg: The message in the dialog
+        """
+        return self.messages()[idx]
+
+    def __setitem__(self, idx, message) -> Self:
+        """Set idx with a message
+
+        Args:
+            idx: The index to set
+            message: The message to set
+
+        Returns:
+            Dialog: The updated dialog
+        """
+        self._messages[idx] = message
+        return self
+    
+    def index(self, idx: int) -> 'DialogTurn':
+
+        if idx < 0:
+            node = self
+            while idx < 0:
+                node = node._parent
+                if node is None:
+                    raise IndexError(
+                        f'Index {idx} is out of bounds for the Dialog'
+                    )
+                idx += 1
+            return node
+
+        messages = self.messages()
+        return messages[idx]
+    
+    def find_in_children(self, message: Msg) -> 'DialogTurn':
+
+        if self._message == message:
+            return self
+
+        result = None
+        for child in self._children:
+            result = result or child.find_in_children(message)
+
+        return result
+    
+    def find(self, message: Msg) -> 'DialogTurn':
+
+        return self.root().find_in_children(message)
+
+    def pop(self, index: int, get_msg: bool=False) -> 'ListDialog' | Msg:
+        """Remove a value from the dialog
+
+        Args:
+            index (int): The index to pop
+        """
+        turn = self.index(index)
+        parent = turn._parent
+        for child in turn._children:
+            child._parent = parent
+        if get_msg:
+            return self, turn._message
+        return self
+
+    def remove(self, message: Msg):
+        """Remove a message from the dialog
+
+        Args:
+            message (Msg): The message to remove
+        """
+        turn = self.find(message)
+        if turn is None:
+            raise KeyError(
+                f'There is no message {message} in'
+            )
+
+    def extend(self, dialog: typing.Union['BaseDialog', typing.List[Msg]]):
         """Extend the dialog with another dialog or a list of messages
 
         Args:
             dialog (typing.Union[&#39;Dialog&#39;, typing.List[Msg]]): _description_
         """
-        if isinstance(dialog, BaseDialog):
-            dialog = dialog.aslist()
-        
-        messages = [
-            self._messages + dialog
-        ]
-        if inplace:
-            self._messages = messages
-            return self
-        return ListDialog(messages)
+        node = self
+        for turn in dialog:
+            node = node.append(turn)
+        return node
 
     def __len__(self) -> int:
         """Get the size of the dialog
@@ -422,6 +616,65 @@ class ListDialog(BaseDialog):
         return ListDialog(
             messages=[message for message in self._messages]
         )
+
+    def append(self, message: Msg) -> Self:
+        """Add a message to the end of the dialog
+
+        Args:
+            message (Msg): The message to add
+            replace (bool, optional): Whether to replace at the index. Defaults to False.
+
+        Raises:
+            ValueError: If the index is not correct
+        """
+        turn = DialogTurn(
+            message=message, 
+            parent=self
+        )
+        self._children.append(turn)
+        return turn
+
+    def insert(self, idx: int, message: Msg) -> Self:
+        """Add a message to the dialog
+
+        Args:
+            message (Msg): The message to add
+            ind (typing.Optional[int], optional): The index to add. Defaults to None.
+            replace (bool, optional): Whether to replace at the index. Defaults to False.
+
+        Raises:
+            ValueError: If the index is not correct
+        """
+        turn = self.index(idx)
+        inserted = DialogTurn(
+            message=message,
+            parent=turn._parent,
+            children=[turn]
+        )
+        turn._parent = inserted
+        return inserted
+
+    def replace(self, message: Msg, idx: int) -> 'BaseDialog':
+        """Add a message to the dialog
+
+        Args:
+            message (Msg): The message to add
+            idx (typing.Optional[int], optional): The index to add. Defaults to None.
+            replace (bool, optional): Whether to replace at the index. Defaults to False.
+
+        Raises:
+            ValueError: If the index is not correct
+        """
+        turn = self.index(idx)
+        inserted = DialogTurn(
+            message=message,
+            parent=turn._parent,
+            children=turn._children
+        )
+        for child in inserted._children:
+            child._parent = inserted
+        return inserted
+
 
 
 class RenderMsgField:
@@ -452,7 +705,7 @@ def exclude_messages(dialog: BaseDialog, val: typing.Union[typing.Any, typing.Se
         val = {val}
 
     return ListDialog(
-        [msg for msg in dialog.messages() if msg[field] not in val], msg_renderer=dialog.msg_renderer
+        [msg for msg in dialog.messages() if msg[field] not in val]
     )
 
             
@@ -462,8 +715,7 @@ def include_messages(dialog: BaseDialog, val: typing.Union[typing.Any, typing.Se
         val = {val}
 
     return ListDialog(
-        [msg for msg in dialog.messages() if msg[field] in val],
-        msg_renderer=dialog.msg_renderer
+        [msg for msg in dialog.messages() if msg[field] in val]
     )
 
 

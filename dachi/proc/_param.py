@@ -15,7 +15,6 @@ from typing import TypeVar
 T = TypeVar("T", bound=Trainable)
 
 
-
 # TODO: Make this store just a Pydantic BaseModel
 # rather than a cue.
 class Param(

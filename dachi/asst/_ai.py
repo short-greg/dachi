@@ -21,7 +21,8 @@ from ..utils import (
     to_async_function, 
     to_async_function, to_async_function, 
     is_generator_function,
-    coalesce, UNDEFINED
+    coalesce, UNDEFINED,
+    Args
 )
 from ._convert import RespConv, Parser, CharDelimParser, NullParser
 
@@ -861,7 +862,7 @@ class Op(Module, AsyncModule, StreamModule, AsyncStreamModule):
         else:
             self.parser = parser
 
-    def forward(self, *args, _out=None, _asst=None, **kwargs) -> typing.Any:
+    def forward(self, *args, _out=None, _messages: typing.List[Msg]=None, **kwargs) -> typing.Any:
         """
         Executes the assistant with the provided arguments and returns the processed output.
         Args:
@@ -878,16 +879,21 @@ class Op(Module, AsyncModule, StreamModule, AsyncStreamModule):
         """
         _out = _out or self.out
         msg = self.to_msg(*args, **kwargs)
-        if isinstance(_asst, typing.Dict):
-            _asst = self.assistant.spawn(**_asst)
-        elif _asst is None:
-            _asst = self.assistant
 
-        _, resp = _asst(msg)
+        if _messages is not None:
+            _messages.append(msg)
+            msg = _messages
+        resp_msg, resp = self.assistant(msg)
+
+        if _messages is not None:
+            _messages.append(resp_msg)
         resp = self.parser(resp)
         return _out(resp) 
         
-    async def aforward(self, *args, _out=None, _asst=None, **kwargs) -> typing.Any:
+    async def aforward(
+        self, *args, _out=None, 
+        _messages: typing.List[Msg]=None, **kwargs
+    ) -> typing.Any:
         """
         Asynchronously executes the assistant with the provided arguments and returns the processed output.
         Args:
@@ -902,18 +908,20 @@ class Op(Module, AsyncModule, StreamModule, AsyncStreamModule):
             Any exceptions raised during the assistant's execution or message processing.
         """
         _out = _out or self.out
-        if isinstance(_asst, typing.Dict):
-            _asst = self.assistant.spawn(**_asst)
-        elif _asst is None:
-            _asst = self.assistant
-
         msg = self.to_msg(*args, **kwargs)
-        _, resp = await _asst.aforward(msg)
 
+        _messages = _messages or []
+
+        resp_msg, resp = await self.assistant.aforward(msg + _messages)
+
+        if _messages is not None:
+            _messages.append(resp_msg)
         resp = self.parser(resp)
+
         return _out(resp) 
     
-    def stream(self, *args, _out=None, _asst=None, **kwargs) -> typing.Iterator:
+    def stream(self, *args, _out=None,
+        _messages: typing.List[Msg]=None, **kwargs) -> typing.Iterator:
         """
         Streams the assistant with the provided arguments and returns the processed output.
         Args:
@@ -932,23 +940,28 @@ class Op(Module, AsyncModule, StreamModule, AsyncStreamModule):
         delta_store = {}
         delim_store = {}
         queue = deque()
-        if isinstance(_asst, typing.Dict):
-            _asst = self.assistant.spawn(**_asst)
-        elif _asst is None:
-            _asst = self.assistant
         msg = self.to_msg(*args, **kwargs)
-        for msg, resp in _asst.stream(msg):
-            parsed = self.parser(msg, resp, delim_store)
+
+        _messages = _messages or []
+            
+        resp_msg = None
+        for resp_msg, resp in self.assistant.stream(msg + _messages):
+            parsed = self.parser(resp, delim_store)
             if parsed is not None:
                 queue.extend(parsed)
             if len(queue) > 0:
-                yield self.out(msg, queue.popleft(), delta_store)
+                yield self.out(queue.popleft(), delta_store)
         
         for q in queue:
             yield self.out(msg, queue.popleft(), delta_store)
-        
+        if _messages is not None and resp_msg is not None:
+            _messages.append(resp_msg)
+
     
-    async def astream(self, *args, _out=None, _asst=None, **kwargs) -> typing.AsyncIterator:
+    async def astream(
+        self, *args, _out=None, 
+        _messages: typing.List[Msg]=None, **kwargs
+    ) -> typing.AsyncIterator:
         """
         Asynchronously streams the assistant with the provided arguments and returns the processed output.
         Args:
@@ -964,26 +977,38 @@ class Op(Module, AsyncModule, StreamModule, AsyncStreamModule):
             Any exceptions raised during the assistant's execution or message processing.
         """
         _out = _out or self.out
+        _messages = _messages or []
         delta_store = {}
         delim_store = {}
-        if isinstance(_asst, typing.Dict):
-            _asst = self.assistant.spawn(**_asst)
-        elif _asst is None:
-            _asst = self.assistant
         msg = self.to_msg(*args, **kwargs)
         queue = deque()
-        async for msg, resp in await _asst.astream(msg):
-            parsed = self.parser(msg, resp, delim_store)
+            
+        async for resp_msg, resp in await self._asst.astream(msg + _messages):
+            parsed = self.parser(resp, delim_store)
             if parsed is not None:
                 queue.extend(parsed)
             if len(queue) > 0:
-                yield self.out(msg, queue.popleft(), delta_store)
+                yield self.out(queue.popleft(), delta_store)
         for q in queue:
-            yield self.out(msg, queue.popleft(), delta_store)
+            yield self.out(queue.popleft(), delta_store)
+        if _messages is not None and resp_msg is not None:
+            _messages.append(resp_msg)
+
+    def asst(self, *args, **kwargs) -> Self:
+        """Create a new operation with specified
+        args
+
+        Returns:
+            Self: 
+        """
+        asst = self.assistant.spawn(*args, **kwargs)
+        return self.spawn(
+            assistant=asst
+        )
 
     def spawn(
         self, to_msg: ToMsg=UNDEFINED, assistant: Assistant=UNDEFINED, 
-        parser: Parser=UNDEFINED, out: OutConv=UNDEFINED
+        parser: Parser=UNDEFINED, out: OutConv=UNDEFINED,
     ):
         """
         Spawns a new `Op` instance based on the updated arguments.
@@ -1003,14 +1028,70 @@ class Op(Module, AsyncModule, StreamModule, AsyncStreamModule):
         Returns:
             Op: A new `Op` instance initialized with the resolved arguments.
         """
-        
         to_msg = coalesce(to_msg, self.to_msg)
-        if isinstance(assistant, typing.Dict):
-            assistant = self.assistant.spawn(**assistant)
-        else:
-            assistant = coalesce(assistant, self.assistant)
+        assistant = coalesce(assistant, self.assistant)
         parser = coalesce(parser, self.parser)
         out = coalesce(out, self.out)
         return Op(
             assistant, to_msg, out
         )
+
+class Threaded(
+    Module, AsyncModule, StreamModule,
+    AsyncStreamModule
+):
+    
+    def __init__(
+        self, op: Op, op_args: Args,
+        router: typing.Dict[str, ToMsg],
+        dialog: BaseDialog=None
+    ):
+        super().__init__()
+        self.op = op
+        self.router = router
+        self.dialog = dialog
+        self.op_args = op_args
+
+    def forward(self, role: str, *args, **kwargs) -> typing.Any:
+        
+        msg = self.router[role](*args, **kwargs)
+        self.dialog.append(msg)
+
+        return self.op.forward(
+            *self.op_args.args, 
+            **self.op_args.kwargs,
+            _messages=self.dialog
+        )
+
+    async def aforward(self, role: str, *args, **kwargs) -> typing.Any:
+
+        msg = self.router[role](*args, **kwargs)
+        self.dialog.append(msg)
+
+        return await self.op.aforward(
+            *self.op_args.args, 
+            **self.op_args.kwargs,
+            _messages=self.dialog
+        )
+
+    def stream(self, role: str, *args, **kwargs):
+        msg = self.router[role](*args, **kwargs)
+        self.dialog.append(msg)
+
+        for r in self.op.stream(
+            *self.op_args.args, 
+            **self.op_args.kwargs,
+            _messages=self.dialog
+        ):
+            yield r
+    
+    async def astream(self, role: str, *args, **kwargs):
+        msg = self.router[role](*args, **kwargs)
+        self.dialog.append(msg)
+
+        async for r in self.op.astream(
+            *self.op_args.args, 
+            **self.op_args.kwargs,
+            _messages=self.dialog
+        ):
+            yield r
