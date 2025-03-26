@@ -322,7 +322,6 @@ class KVConv(OutConv):
         """
         if resp is None:
             return utils.UNDEFINED
-
         result = {}
         for line in resp:
             try:
@@ -332,6 +331,9 @@ class KVConv(OutConv):
                 raise RuntimeError(
                     f"Could not split the line {line} with separator {self.sep}."
                 ) from e
+        if len(result) == 0:
+            return utils.UNDEFINED
+    
         return result
     
     def template(self) -> str:
@@ -380,7 +382,6 @@ class IndexConv(OutConv):
     sep: str = '::'
     key_descr: typing.Optional[str] = None
     key_type: typing.Optional[typing.Type] = None
-    
 
     def delta(self, resp, delta_store: typing.Dict, is_last: bool=False) -> typing.Any:
         """Read in the output
@@ -474,13 +475,13 @@ class JSONConv(OutConv):
         Returns:
             typing.Dict: The result - if it fails, will return an empty dict
         """
-        utils.increment(
+        val = utils.add(
             delta_store, 'val', resp
         )
         if not is_last:
             return utils.UNDEFINED
         try: 
-            result = json.loads(resp)
+            result = json.loads(val)
             return result
         except json.JSONDecodeError:
             return {}
