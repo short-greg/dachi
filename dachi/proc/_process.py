@@ -1,15 +1,16 @@
 # 1st party
 from abc import ABC, abstractmethod
+import asyncio
 import typing
 from typing import Self, Any
 import itertools
 import time
 import asyncio
 import threading
+
 from enum import Enum
 from dataclasses import dataclass
 
-import asyncio
 # 3rd party
 import numpy as np
 import pydantic
@@ -17,7 +18,7 @@ import pydantic
 # local
 from ..base import Storable, Renderable 
 from ..utils import UNDEFINED
-from ..base._core import render
+from ..msg._render import render
 from ..utils import (
     to_async_function,
     is_generator_function

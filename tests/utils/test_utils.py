@@ -1,8 +1,7 @@
 from dachi import utils
-from dachi.base import model_to_text, struct_template
+from dachi.msg import model_to_text, struct_template
 from pydantic import BaseModel
 import pytest
-from dachi import base
 
 
 class SimpleStruct(BaseModel):

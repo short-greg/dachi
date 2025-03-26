@@ -22,13 +22,12 @@ from ._ai import (
     Assist, StreamAssist
 )
 from ..base import Renderable
-
-from ._convert import (
+from ._out import (
     OutConv, NullOutConv,
     PrimConv, PydanticConv
 )
 from ..utils import str_formatter
-from ..base import render, render_multi
+from ..msg import render, render_multi
 
 
 Engine: typing.TypeAlias = Assist | AsyncAssist | StreamAssist | AsyncStreamAssist
@@ -790,6 +789,27 @@ def signaturemethod(
     )
 
 
+def inst(x: typing.Union[typing.Iterable[X], X], cue: X) -> Cue:
+    """Execute an operation on a cue
+
+    Args:
+        x (typing.Union[typing.Iterable[X], X]): The input
+        cue (X): The cue for the operation
+
+    Returns:
+        Cue: The resulting cue
+    """
+    if not isinstance(x, typing.Iterable):
+        x = [x]
+
+    out = validate_out([*x, cue])
+    resources = ', '.join(render_multi(x))
+    # resources = ', '.join(x_i.name for x_i in x)
+    text = f'Do: {render(cue)} --- With Inputs: {resources}'
+    return Cue(
+        text=text, out=out
+    )
+
 
 # class Inst(Module):
 #     """An operation acts on an cue to produce a new cue
@@ -831,25 +851,3 @@ def signaturemethod(
 #         return Cue(
 #             text=fill(cue, *args, **kwargs), out=out
 #         )
-
-
-def inst(x: typing.Union[typing.Iterable[X], X], cue: X) -> Cue:
-    """Execute an operation on a cue
-
-    Args:
-        x (typing.Union[typing.Iterable[X], X]): The input
-        cue (X): The cue for the operation
-
-    Returns:
-        Cue: The resulting cue
-    """
-    if not isinstance(x, typing.Iterable):
-        x = [x]
-
-    out = validate_out([*x, cue])
-    resources = ', '.join(render_multi(x))
-    # resources = ', '.join(x_i.name for x_i in x)
-    text = f'Do: {render(cue)} --- With Inputs: {resources}'
-    return Cue(
-        text=text, out=out
-    )

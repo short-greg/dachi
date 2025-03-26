@@ -1,10 +1,10 @@
 # 1st party
 import typing
+from typing import Self
 import json
 from collections import deque
-
-from typing import Self
 from abc import ABC, abstractmethod
+import typing
 
 # 3rd party
 import pydantic
@@ -14,9 +14,11 @@ from ..msg._messages import (
     Msg, BaseDialog, 
     END_TOK
 )
-from ._convert import OutConv
-from ..proc import Module, AsyncModule, StreamModule, AsyncStreamModule
-
+from ._out import OutConv
+from ..proc import (
+    Module, AsyncModule, 
+    StreamModule, AsyncStreamModule
+)
 from ..utils import (
     to_async_function, 
     to_async_function, to_async_function, 
@@ -24,7 +26,13 @@ from ..utils import (
     coalesce, UNDEFINED,
     Args
 )
-from ._convert import RespConv, Parser, CharDelimParser, NullParser
+from._resp import RespConv
+from ._parse import (
+    Parser, CharDelimParser, NullParser
+)
+from ..proc import (
+    Module, AsyncModule, StreamModule, AsyncStreamModule
+)
 
 
 S = typing.TypeVar('S', bound=pydantic.BaseModel)
@@ -34,16 +42,6 @@ S = typing.TypeVar('S', bound=pydantic.BaseModel)
 
 LLM_PROMPT = typing.Union[typing.Iterable[Msg], Msg]
 LLM_RESPONSE = typing.Tuple[Msg, typing.Any]
-
-from abc import ABC, abstractmethod
-import typing
-
-from ..proc import (
-    Module, AsyncModule, StreamModule, AsyncStreamModule
-)
-from ..msg._messages import (
-    Msg, BaseDialog
-)
 
 
 class Assist(Module, ABC):

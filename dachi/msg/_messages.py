@@ -361,7 +361,7 @@ class ListDialog(BaseDialog):
             [*self._messages]
         )
 
-    def pop(self, index: int, get_msg: bool=False) -> 'ListDialog' | Msg:
+    def pop(self, index: int, get_msg: bool=False) -> typing.Union['ListDialog', Msg]:
         """Remove a value from the dialog
 
         Args:
@@ -429,18 +429,18 @@ class ListDialog(BaseDialog):
         self._messages.insert(ind, message)
         return self
     
-    def replace(self, message: Msg, ind: int) -> 'BaseDialog':
+    def replace(self, idx: int, message: Msg) -> 'BaseDialog':
         """Add a message to the dialog
 
         Args:
+            idx (typing.Optional[int], optional): The index to add. Defaults to None.
             message (Msg): The message to add
-            ind (typing.Optional[int], optional): The index to add. Defaults to None.
             replace (bool, optional): Whether to replace at the index. Defaults to False.
 
         Raises:
             ValueError: If the index is not correct
         """
-        self._messages[ind] = message
+        self._messages[idx] = message
         return self
 
 
@@ -562,7 +562,7 @@ class DialogTurn(BaseDialog):
 
         return self.root().find_in_children(message)
 
-    def pop(self, index: int, get_msg: bool=False) -> 'ListDialog' | Msg:
+    def pop(self, index: int, get_msg: bool=False) -> typing.Union['ListDialog', Msg]:
         """Remove a value from the dialog
 
         Args:

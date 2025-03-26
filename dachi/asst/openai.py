@@ -1,12 +1,12 @@
 import pkg_resources
 import typing
+import json
 
 import pydantic
 
 from . import Msg
 from ._ai import ToolSet, ToolCall, ToolBuilder
-from ._convert import RespConv, DeltaStore
-import json
+from ._resp import RespConv
 from . import END_TOK
 from ._ai import LLM
 from ..utils import UNDEFINED, coalesce
@@ -23,11 +23,9 @@ if len(missing) > 0:
 
     raise RuntimeError(f'To use this module openai must be installed.')
 
-
 # stream
 # parsed
 # create
-
 
 class OpenAITextConv(RespConv):
     """
@@ -106,7 +104,7 @@ class OpenAIStructConv(RespConv):
         msg['meta']['struct'] = json.loads(json_data)
         return msg['meta']['struct']
 
-    def delta(self, response, msg, delta_store: DeltaStore):
+    def delta(self, response, msg, delta_store: typing.Dict):
         """
         Processes a delta response and extracts text.
         Args:
@@ -184,7 +182,7 @@ class OpenAIParsedStructConv(OpenAIStructConv):
         msg['meta']['struct'] = response
         return response
     
-    def delta(self, response, msg, delta_store: DeltaStore):
+    def delta(self, response, msg, delta_store: typing.Dict):
         """
         Processes a delta response and extracts text.
         Args:
@@ -216,11 +214,11 @@ class OpenAIToolConv(RespConv):
         """
 
         Args:
-            response (_type_): _description_
-            msg (_type_): _description_
+            response (_type_): 
+            msg (_type_): 
 
         Returns:
-            : _description_
+            : 
         """
         
         result = None

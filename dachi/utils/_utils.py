@@ -221,6 +221,27 @@ def call_or_set(d: typing.Dict, key, value, f: typing.Callable[[typing.Any, typi
     return d[key]
 
 
+def add(
+    d: typing.Dict, key, value, init_val: str=''
+) -> typing.Any:
+    """Adds a value to the dictionary if not already
+    set.
+
+    Args:
+        d (typing.Dict): The dictionary
+        key: The key
+        f: The function to call to get the value
+
+    Returns:
+        typing.Any: The value specified by dictionary key
+    """
+    if key not in d:
+        d[key] = init_val
+    
+    d[key] = d[key] + value
+    return d[key]
+
+
 class _Types(Enum):
 
     UNDEFINED = 'UNDEFINED'

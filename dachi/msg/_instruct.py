@@ -7,17 +7,7 @@ import roman
 import re
 
 # local
-from ..base import (
-    render #, render_multi
-)
-# from ..proc import Param, Module
-# from ._instruct_core import Cue, validate_out
-from ..utils import (
-    str_formatter
-)
-# from ._data import Description
-from ..base import render
-from ..utils import str_formatter
+from ._render import render
 
 S = typing.TypeVar('S', bound=pydantic.BaseModel)
 X = typing.Union[str]

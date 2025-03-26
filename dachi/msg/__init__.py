@@ -6,11 +6,6 @@ from ._instruct import (
     bullet, numbered, bold,
     generate_numbered_list,
     numbered, 
-    # validate_out, 
-    # fill, 
-    # join, 
-    Inst, inst,
-
     Styling, DEFAULT_STYLE, style_formatter
 )
 from ._lang import (

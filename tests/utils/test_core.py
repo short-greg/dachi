@@ -1,4 +1,4 @@
-from dachi.base import _core
+from dachi.msg import render, render_multi
 from pydantic import BaseModel
 from typing import Any, Iterator, Tuple
 from dachi.proc._process import Module
@@ -45,25 +45,25 @@ class Evaluation(BaseModel):
 class TestRender:
 
     def test_render_renders_a_primitive(self):
-        assert _core.render(1) == '1'
+        assert render(1) == '1'
 
     def test_render_renders_a_primitive(self):
         struct = SimpleStruct(x="2")
 
-        assert '2' in _core.render(struct)
+        assert '2' in render(struct)
 
 
 class TestRenderMulti:
 
     def test_render_renders_a_primitive(self):
-        assert _core.render_multi([1, 2])[0] == '1'
-        assert _core.render_multi([1, 2])[1] == '2'
+        assert render_multi([1, 2])[0] == '1'
+        assert render_multi([1, 2])[1] == '2'
 
     def test_render_renders_a_primitive(self):
         struct = SimpleStruct(x="2")
         struct2 = SimpleStruct(x="4")
 
-        rendered = _core.render_multi([struct, struct2])
+        rendered = render_multi([struct, struct2])
         assert '2' in rendered[0]
         assert '4' in rendered[1]
 

@@ -1,8 +1,7 @@
 import typing
-from .. import adapt as adapt
 from ..proc import Module
 from ._ai import Assistant
-from ..msg._messages import Msg, BaseDialog
+from ..msg._messages import Msg, BaseDialog, ListDialog
 
 
 CHAT_RES = typing.Union[
@@ -27,7 +26,7 @@ class Chat(Module):
             post (core.Module, optional): The post-processing module. Defaults to None.
         """
         super().__init__()
-        self.dialog = dialog or adapt.ListDialog()
+        self.dialog = dialog or ListDialog()
         self.assistant = assistant
 
     def __getitem__(self, idx: int) -> Msg:
