@@ -3,6 +3,12 @@ from dachi.asst import _out as _out
 from dachi.msg import model_to_text
 
 
+from dachi.msg import model_to_text, END_TOK
+from dachi.asst import _out as text_proc
+from .._structs import SimpleStruct2
+from dachi import utils
+
+
 class TestStructRead:
 
     def test_out_creates_out_class(self):
@@ -99,104 +105,152 @@ class TestPrimRead(object):
         assert result is False
 
 
+class TestKVRead(object):
 
-# class TestMultiRead(object):
+    def test_out_reads_in_the_class(self):
 
-#     def test_out_writes_in_the_class(self):
+        k = ['x::1']
+        k += ['y::4']
 
-#         struct_list = {'data': [
-#             SimpleStruct(x='2'),
-#             SimpleStruct(x='3')
-#         ], 'i': 2}
+        out = text_proc.KVConv(
+            name='F1',
+            key_descr={
+                'x': 'the value of x', 
+                'y': 'the value of y'
+            },
+        )
 
-#         out = _convert.MultiOutConv(
-#             name='Multi',
-#             outs=[_convert.PydanticConv(
-#                 name='F1',
-#                 out_cls=SimpleStruct
-#             ), _convert.PydanticConv(
-#                 name='F2',
-#                 out_cls=SimpleStruct
-#             )]
-#         )
+        result = out(k)
+        assert result['x'] == '1'
+        assert result['y'] == '4'
 
-#         text = out.example(struct_list)
-#         assert 'x' in text
-#         assert 'F2' in text
+    def test_template_contains_key(self):
 
-#     def test_out_reads_in_the_class(self):
+        out = text_proc.KVConv(
+            name='F1',
+            key_descr={
+                'x': 'the value of x', 
+                'y': 'the value of y'
+            },
+        )
+        temp = out.template()
+        assert 'x::' in temp
+        assert 'y::' in temp
 
-#         struct_list = {'data': [
-#             SimpleStruct(x='2'),
-#             SimpleStruct(x='3')
-#         ], 'i': 2}
+    def test_out_reads_in_with_delta(self):
 
-#         out = _convert.MultiOutConv(
-#             name='Multi',
-#             outs=[_convert.PydanticConv(
-#                 name='F1',
-#                 out_cls=SimpleStruct
-#             ), _convert.PydanticConv(
-#                 name='F2',
-#                 out_cls=SimpleStruct
-#             )]
-#         )
+        k = ['x::1']
+        k += ['y::4']
 
-#         text = out.example(struct_list)
-#         structs = out(text)
-#         assert structs['data'][0].x == struct_list['data'][0].x
+        out = text_proc.KVConv(
+            name='F1',
+            key_descr={
+                'x': 'the value of x', 
+                'y': 'the value of y'
+            },
+        )
+        delta_store = {}
+        ress = {}
+        
+        for i, t in enumerate(k):
+            cur = out.delta([t], delta_store)
+            if cur is not utils.UNDEFINED:
+                ress.update(cur)
+        # ress.append(out.delta(END_TOK, delta_store))
+        # result = [res for res in ress if res is not None]
+        
+        assert ress['x'] == '1'
+        assert ress['y'] == '4'
 
-#     def test_stream_reads_in_the_data(self):
 
-#         struct_list = {'data': [
-#             SimpleStruct(x='2'),
-#             SimpleStruct(x='3')
-#         ], 'i': 2}
+class TestJSONRead(object):
 
-#         out = _convert.MultiOutConv(
-#             name='Multi',
-#             outs=[_convert.PydanticConv(
-#                 name='F1',
-#                 out_cls=SimpleStruct
-#             ), _convert.PydanticConv(
-#                 name='F2',
-#                 out_cls=SimpleStruct
-#             )]
-#         )
+    def test_out_creates_out_class(self):
 
-#         text = out.example(struct_list)
-#         delta_store = {}
-#         ress = []
-#         for t in text:
-#             ress.append(
-#                 out.delta(t, delta_store)
-#             )
+        out = text_proc.JSONConv(
+            name='F1',
+            key_descr={
+                'x': 'The value of x',
+                'y': 'The value of y'
+            }
+        )
+        simple = SimpleStruct2(x='hi', y=1)
+        d = model_to_text(simple)
+        simple2 = out(d)
+        assert simple.x == simple2['x']
 
-#         ress.append(
-#             out.delta(_convert.END_TOK, delta_store)
-#         )
-#         structs = [res for res in ress if res is not None]
-#         assert structs[0].x == struct_list['data'][0].x
+    def test_out_template(self):
 
-#     def test_out_stream_read_in_the_class(self):
+        out = text_proc.JSONConv(
+            name='F1',
+            key_descr={
+                'x': 'The value of x',
+                'y': 'The value of y'
+            }
+        )
+        simple2 = out.template()
+        assert 'x' in simple2
 
-#         struct_list = {'data': [
-#             SimpleStruct(x='2'),
-#             SimpleStruct(x='3')
-#         ], 'i': 2}
+    def test_out_reads_in_with_delta(self):
 
-#         out = _convert.MultiOutConv(
-#             name='Multi',
-#             outs=[_convert.PydanticConv(
-#                 name='F1',
-#                 out_cls=SimpleStruct
-#             ), _convert.PydanticConv(
-#                 name='F2',
-#                 out_cls=SimpleStruct
-#             )]
-#         )
+        simple = SimpleStruct2(x='hi', y=1)
+        out = text_proc.JSONConv(
+            name='F1',
+            key_descr={
+                'x': 'The value of x',
+                'y': 'The value of y'
+            }
+        )
+        delta_store = {}
+        ress = []
+        data = model_to_text(simple)
+        cur = out.delta(data, delta_store)
+        assert cur['x'] == 'hi'
+        assert cur['y'] == 1
 
-#         text = out.example(struct_list)
-#         structs = out.__call__(text)
-#         assert structs['data'][0].x == struct_list['data'][0].x
-#         # assert failed_on is None
+
+class TestIndexRead(object):
+
+    def test_out_reads_in_the_class(self):
+
+        k = ['1::1']
+        k += ['2::4']
+
+        out = text_proc.IndexConv(
+            name='F1',
+            key_descr='the number of people'
+        )
+
+        result = out.__call__(k)
+        assert result[0] == '1'
+        assert result[1] == '4'
+
+    def test_template_contains_key(self):
+
+        out = text_proc.IndexConv(
+            name='F1',
+            key_descr='the number of people'
+        )
+        temp = out.template()
+        assert '1::' in temp
+        assert 'N::' in temp
+    
+    def test_out_reads_in_the_class_with_delta(self):
+
+        k = ['1::1']
+        k += ['2::4']
+
+        out = text_proc.IndexConv(
+            name='F1',
+            key_descr='the number of people'
+        )
+
+        delta_store = {}
+        ress = []
+        for i, t in enumerate(k):
+            cur = out.delta([t], delta_store)
+            if cur is not utils.UNDEFINED:
+                ress.extend(cur)
+        
+        assert ress[0] == '1'
+        assert ress[1] == '4'

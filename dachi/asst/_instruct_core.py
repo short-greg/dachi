@@ -16,6 +16,7 @@ from ..proc._process import (
     Param
 )
 from ..utils import str_formatter, is_primitive, primitives
+from .. import utils
 from ._ai import (
     ToMsg, ToText,
     AsyncAssist, AsyncStreamAssist, 
@@ -539,7 +540,14 @@ class StreamDec(FuncDecBase, StreamModule):
         for _, res in engine.stream(
             [msg], **self._kwargs
         ):
-            yield self._inst.reader.delta(res, delta_store)
+            print(res)
+            yield ''
+            # print(self._inst.reader)
+            # self._inst.reader.delta(res, delta_store)
+            # for v in self._inst.reader.delta(res, delta_store):
+            #     if v is not utils.UNDEFINED:
+            #         yield v
+            # reader.stream(...)
 
     def spawn(self, instance=None) -> Self:
         """
@@ -616,7 +624,9 @@ class AStreamDec(FuncDecBase, AsyncStreamModule):
         async for _, res in await engine.astream(
             [msg], **self._kwargs
         ):
-            yield self._inst.reader.delta(res)
+            v = self._inst.reader.delta(res)
+            if v is not utils.UNDEFINED:
+                yield v
 
     def spawn(self, instance=None) -> Self:
         

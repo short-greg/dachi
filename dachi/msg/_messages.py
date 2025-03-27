@@ -18,6 +18,8 @@ class _Final:
 
 END_TOK = _Final()
 
+NULL_TOK = object()
+
 
 class Msg(dict):
     """A Msg used for a dialog

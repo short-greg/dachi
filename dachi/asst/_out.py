@@ -8,7 +8,7 @@ import inspect
 import pydantic
 
 # local
-from ..msg import render, struct_template
+from ..msg import render, struct_template, END_TOK
 from ..base import Templatable, TemplateField
 from ..utils import unescape_curly_braces
 from pydantic_core import PydanticUndefined
@@ -59,7 +59,7 @@ class OutConv(pydantic.BaseModel, Templatable, ABC):
         pass
 
     @abstractmethod
-    def delta(self, resp, delta_store: typing.Dict, is_last: bool=False) -> typing.Any:
+    def delta(self, resp, delta_store: typing.Dict) -> typing.Any:
         """Read in the output
 
         Args:
@@ -80,7 +80,7 @@ class OutConv(pydantic.BaseModel, Templatable, ABC):
             typing.Any: The output of the reader
         """
         return self.delta(
-            resp, {}, is_last=True
+            resp, {}
         )
 
     @abstractmethod
@@ -120,18 +120,7 @@ class NullOutConv(OutConv):
         """
         return str(data)
 
-    def dump_data(self, data: typing.Any) -> str:
-        """Output an example of the data
-
-        Args:
-            data (typing.Any): 
-
-        Returns:
-            str: 
-        """
-        return data
-
-    def delta(self, resp, delta_store: typing.Dict, is_last: bool=False) -> typing.Any:
+    def delta(self, resp, delta_store: typing.Dict) -> typing.Any:
         """Read in the output
 
         Args:
@@ -164,18 +153,7 @@ class PrimConv(OutConv):
         super().__init__(**data)
         self._out_cls = out_cls
 
-    def dump_data(self, data: typing.Any) -> str:
-        """Output an example of the data
-
-        Args:
-            data (typing.Any): 
-
-        Returns:
-            str: 
-        """
-        return data
-
-    def delta(self, resp, delta_store: typing.Dict, is_last: bool=False) -> typing.Any:
+    def delta(self, resp, delta_store: typing.Dict) -> typing.Any:
         """Read in the output
 
         Args:
@@ -184,10 +162,6 @@ class PrimConv(OutConv):
         Returns:
             typing.Any: The output of the reader
         """
-        utils.increment(delta_store, 'val', resp)
-
-        if not is_last:
-            return utils.UNDEFINED
         
         if self._out_cls is bool:
             return resp.lower() in ('true', 'y', 'yes', '1', 't')
@@ -202,7 +176,7 @@ class PrimConv(OutConv):
         Returns:
             str: 
         """
-        return str(self.dump_data())
+        return str(data)
 
     def template(self) -> str:
         """Output the template for the string
@@ -238,18 +212,7 @@ class PydanticConv(OutConv, typing.Generic[S]):
         """
         return data.model_dump_json()
 
-    def dump_data(self, data: typing.Any) -> str:
-        """Output an example of the data
-
-        Args:
-            data (typing.Any): 
-
-        Returns:
-            str: 
-        """
-        return data.model_dump_json()
-
-    def delta(self, resp, delta_store: typing.Dict, is_last: bool=False) -> typing.Any:
+    def delta(self, resp, delta_store: typing.Dict) -> typing.Any:
     # def __call__(self, message: str) -> typing.Any:
         """Read in the output
 
@@ -259,9 +222,10 @@ class PydanticConv(OutConv, typing.Generic[S]):
         Returns:
             typing.Any: The output of the reader
         """
-        utils.increment(delta_store, 'val', resp)
-        if not is_last:
-            return utils.UNDEFINED
+        
+        # if resp is not END_TOK:
+        #     utils.add(delta_store, 'val', resp)
+        #     return utils.UNDEFINED
         message = unescape_curly_braces(resp)
         try:
             data = json.loads(message)
@@ -309,8 +273,7 @@ class KVConv(OutConv):
     key_descr: typing.Optional[typing.Union[typing.Type[pydantic.BaseModel], typing.Dict]] = None
 
     def delta(
-        self, resp, delta_store: typing.Dict, 
-        is_last: bool=False
+        self, resp, delta_store: typing.Dict
     ) -> typing.Any:
         """Read in the output
 
@@ -320,19 +283,16 @@ class KVConv(OutConv):
         Returns:
             typing.Any: The output of the reader
         """
-        if resp is None:
-            return utils.UNDEFINED
         result = {}
         for line in resp:
             try:
+
                 key, value = line.split(self.sep)
                 result[key] = value
             except ValueError as e:
                 raise RuntimeError(
                     f"Could not split the line {line} with separator {self.sep}."
                 ) from e
-        if len(result) == 0:
-            return utils.UNDEFINED
     
         return result
     
@@ -383,7 +343,7 @@ class IndexConv(OutConv):
     key_descr: typing.Optional[str] = None
     key_type: typing.Optional[typing.Type] = None
 
-    def delta(self, resp, delta_store: typing.Dict, is_last: bool=False) -> typing.Any:
+    def delta(self, resp, delta_store: typing.Dict) -> typing.Any:
         """Read in the output
 
         Args:
@@ -392,8 +352,6 @@ class IndexConv(OutConv):
         Returns:
             typing.Any: The output of the reader
         """
-        if resp is None:
-            return utils.UNDEFINED
         
         result = []
         for line in resp:
@@ -404,9 +362,6 @@ class IndexConv(OutConv):
                 raise RuntimeError(
                     f"Could not split the line {line} by the separator provided {self.sep}."
                 ) from e
-            
-        if len(result) == 0:
-            return utils.UNDEFINED
         
         return result
 
@@ -458,7 +413,7 @@ class JSONConv(OutConv):
     """
     key_descr: typing.Optional[typing.Dict] = None
 
-    def delta(self, resp, delta_store: typing.Dict, is_last: False) -> typing.Any:
+    def delta(self, resp, delta_store: typing.Dict) -> typing.Any:
         """Read in the output
 
         Args:
@@ -478,8 +433,6 @@ class JSONConv(OutConv):
         val = utils.add(
             delta_store, 'val', resp
         )
-        if not is_last:
-            return utils.UNDEFINED
         try: 
             result = json.loads(val)
             return result

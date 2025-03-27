@@ -1,5 +1,7 @@
 from dachi.asst import _parse
 from dachi import utils
+from dachi.msg import END_TOK, Msg
+import typing
 
 data = (
 """x: y
@@ -11,6 +13,12 @@ data2 = (
 xy
 z: e"""
 )
+
+def asst_stream(data) -> typing.Iterator:
+    """Use to simulate an assitant stream"""
+    for d in data:
+        yield Msg('assistant'), d
+
 
 class TestLineParser(object):
 
@@ -49,17 +57,10 @@ xy"""
         )
         res = []
 
-        line_parser = _parse.LineParser()
+        parser = _parse.LineParser()
 
-        delta_store = {}
-        for i, d in enumerate(data):
-            # if d =='\n':
-            #    print('Newline')
-            cur = line_parser.delta(
-                d, delta_store, i == (len(data) - 1)
-            )
-            if cur is not utils.UNDEFINED:
-                res.extend(cur)
+        for cur in parser.stream(asst_stream(data)):
+            res.extend(cur)
 
         assert len(res) == 2
 
@@ -68,17 +69,10 @@ xy"""
         t2 = "z: e"
         res = []
 
-        line_parser = _parse.LineParser()
+        parser = _parse.LineParser()
 
-        delta_store = {}
-        for i, d in enumerate(data):
-            # if d =='\n':
-            #    print('Newline')
-            cur = line_parser.delta(
-                d, delta_store, i == (len(data) - 1)
-            )
-            if cur is not utils.UNDEFINED:
-                res.extend(cur)
+        for cur in parser.stream(asst_stream(data)):
+            res.extend(cur)
 
         assert res[0] == t1
         assert res[1] == t2
@@ -91,15 +85,10 @@ xy"""
         t2 = "z: e"
         res = []
 
-        line_parser = _parse.LineParser()
+        parser = _parse.LineParser()
 
-        delta_store = {}
-        for i, d in enumerate(data2):
-            cur = line_parser.delta(
-                d, delta_store, i == (len(data2) - 1)
-            )
-            if cur is not utils.UNDEFINED:
-                res.extend(cur)
+        for cur in parser.stream(asst_stream(data2)):
+            res.extend(cur)
 
         assert len(res) == 2
 
@@ -111,16 +100,12 @@ xy"""
         t2 = "z: e"
         res = []
 
-        line_parser = _parse.LineParser()
+        parser = _parse.LineParser()
 
-        delta_store = {}
-        for i, d in enumerate(data2):
-            cur = line_parser.delta(
-                d, delta_store, i == (len(data2) - 1)
-            )
-            if cur is not utils.UNDEFINED:
-                res.extend(cur)
+        for cur in parser.stream(asst_stream(data2)):
+            res.extend(cur)
 
+        print('Res: ', res)
         assert res[0] == t1
         assert res[1] == t2
 
@@ -134,48 +119,34 @@ class TestFullParser(object):
         res = full_parser(data)
         assert res == "2.0"
 
-    def test_full_parser_only_returns_last_element_when_continuing(self):
+    def test_full_parser_only_returns_last_element_with_stream(self):
         
         data = "2.0"
-        full_parser = _parse.FullParser()
+        parser = _parse.FullParser()
 
         res = []
-        delta_store = {}
-        for i, d in enumerate(data):
-            cur = full_parser.delta(
-                d, delta_store, i == (len(data) - 1)
-            )
-            if cur is not utils.UNDEFINED:
-                res.extend(cur)
-
-        res = full_parser(data)
-        assert res == "2.0"
-
-
-class TestFullParser(object):
-
-    def test_full_parser_only_returns_last_element(self):
-        
-        data = "2.0"
-        full_parser = _parse.FullParser()
-        res = full_parser(data)
-        assert res == "2.0"
-
-    def test_full_parser_only_returns_last_element_when_continuing(self):
-        
-        data = "2.0"
-        full_parser = _parse.FullParser()
-
-        res = []
-        delta_store = {}
-        for i, d in enumerate(data):
-            cur = full_parser.delta(
-                d, delta_store, i == (len(data) - 1)
-            )
-            if cur is not utils.UNDEFINED:
-                res.append(cur)
-
+        for cur in parser.stream(asst_stream(data)):
+            res.append(cur)
         assert res[0] == "2.0"
+
+    # def test_full_parser_only_returns_last_element(self):
+        
+    #     data = "2.0"
+    #     full_parser = _parse.FullParser()
+    #     res = full_parser(data)
+    #     assert res == "2.0"
+
+#     def test_full_parser_only_returns_last_element_when_continuing(self):
+        
+#         data = "2.0"
+#         parser = _parse.FullParser()
+
+#         res = []
+
+#         for cur in parser.stream(asst_stream(data)):
+#             res.extend(cur)
+
+#         assert res[0] == "2.0"
 
 
 class TestNullParser(object):
@@ -190,17 +161,12 @@ class TestNullParser(object):
     def test_null_parser_only_returns_last_element_when_continuing(self):
         
         data = "2.0"
-        null_parser = _parse.NullParser()
+        parser = _parse.NullParser()
 
         res = []
-        delta_store = {}
-        for i, d in enumerate(data):
-            cur = null_parser.delta(
-                d, delta_store, i == (len(data) - 1)
-            )
-            if cur is not utils.UNDEFINED:
-                res.append(cur)
-
+        for cur in parser.stream(asst_stream(data)):
+            res.extend(cur)
+            
         assert res == ["2", ".", "0"]
 
         
@@ -224,15 +190,11 @@ class TestCharDelimParser(object):
     def test_char_delim_parser_returns_correct_values_with_delta(self):
         
         data = "2.0"
-        delta_store = {}
         parser = _parse.CharDelimParser('.')
         res = []
-        for i, d in enumerate(data):
-            cur = parser.delta(
-                d, delta_store, i == (len(data) - 1)
-            )
-            if cur is not utils.UNDEFINED:
-                res.extend(cur)
+
+        for cur in parser.stream(asst_stream(data)):
+            res.extend(cur)
 
         assert res[0] == "2"
         assert res[1] == "0"
@@ -274,20 +236,16 @@ class TestCSVParser(object):
         res = parser(data)
         assert len(res) == 3
 
-    def test_csv_delim_parser_returns_correct_len_with_header(self):
+    def test_csv_delim_parser_returns_correct_len_with_header2(self):
         
         data = csv_data1
         parser = _parse.CSVRowParser(
             use_header=True
         )
-        delta_store = {}
         res = []
-        for i, d in enumerate(data):
-            cur = parser.delta(
-                d, delta_store, i == (len(data) - 1)
-            )
-            if cur is not utils.UNDEFINED:
-                res.extend(cur)
+
+        for cur in parser.stream(asst_stream(data)):
+            res.extend(cur)
 
         assert len(res) == 3
 
@@ -297,14 +255,10 @@ class TestCSVParser(object):
         parser = _parse.CSVRowParser(
             use_header=True
         )
-        delta_store = {}
         res = []
-        for i, d in enumerate(data):
-            cur = parser.delta(
-                d, delta_store, i == (len(data) - 1)
-            )
-            if cur is not utils.UNDEFINED:
-                res.extend(cur)
+
+        for cur in parser.stream(asst_stream(data)):
+            res.extend(cur)
 
         assert len(res) == 3
 
@@ -333,14 +287,9 @@ class TestCSVCellParser(object):
         parser = _parse.CSVCellParser(
             use_header=True
         )
-        delta_store = {}
         res = []
-        for i, d in enumerate(data):
-            cur = parser.delta(
-                d, delta_store, i == (len(data) - 1)
-            )
-            if cur is not utils.UNDEFINED:
-                res.extend(cur)
+        for cur in parser.stream(asst_stream(data)):
+            res.extend(cur)
 
         assert len(res) == 9
 
@@ -350,14 +299,9 @@ class TestCSVCellParser(object):
         parser = _parse.CSVCellParser(
             use_header=False
         )
-        delta_store = {}
         res = []
-        for i, d in enumerate(data):
-            cur = parser.delta(
-                d, delta_store, i == (len(data) - 1)
-            )
-            if cur is not utils.UNDEFINED:
-                res.extend(cur)
+        for cur in parser.stream(asst_stream(data)):
+            res.extend(cur)
 
         assert len(res) == 9
 

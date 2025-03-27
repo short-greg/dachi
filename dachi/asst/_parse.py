@@ -8,7 +8,7 @@ import io
 # 3rd party
 
 # local
-from ..msg._messages import END_TOK
+from ..msg._messages import END_TOK, NULL_TOK
 from .. import utils
 
 
@@ -35,6 +35,48 @@ class Parser(ABC):
             typing.List: Will return a list if value defined else UNDEFINED
         """
         pass
+
+    def handle_null(self, resp, default):
+        """
+        Handles the case where the response (`resp`) is the `END_TOK`.
+        Args:
+            resp: The response to evaluate. If it matches `END_TOK`, the function
+                  will return the default value and a flag indicating the end.
+            default: The default value to return if `resp` is `END_TOK`.
+        Returns:
+            A tuple containing:
+                - The response (`resp`) or the default value if `resp` is `END_TOK`.
+                - A boolean flag indicating whether `resp` was `END_TOK` (True) or not (False).
+        """
+
+        if resp is NULL_TOK:
+            return default
+        return resp
+    
+    def stream(self, resp_iter: typing.Iterable, delta_store: typing.Dict=None) -> typing.Iterator:
+        """
+        Parses a stream of responses from the LLM and yields processed results.
+        Args:
+            resp_iter (typing.Iterable): An iterable of response tuples, where each tuple
+                contains a key and a response object.
+            delta_store (typing.Dict, optional): A dictionary to store intermediate state
+                for delta processing. Defaults to an empty dictionary if not provided.
+        Yields:
+            typing.Iterator: Processed results from the responses, excluding undefined values.
+        Notes:
+            - The `delta` method is used to process each response and update the `delta_store`.
+            - If the processed result is not `utils.UNDEFINED`, it is yielded.
+            - After the iteration, a final call to `delta` is made with `END_TOK` to handle
+              any remaining processing.
+        """
+        delta_store = delta_store or {}
+        for _, resp in resp_iter:
+            cur = self.delta(resp, delta_store, False)
+            if cur is not utils.UNDEFINED:
+                yield cur
+        cur = self.delta(NULL_TOK, delta_store, True)
+        if cur is not utils.UNDEFINED:
+            yield cur
 
     def __call__(self, resp) -> typing.List[typing.Any] | None:
         """Convenience function to parse based on the whole set of data
@@ -80,6 +122,8 @@ class CSVRowParser(Parser):
         """
         Parses CSV data incrementally using csv.reader.
         """
+        resp = self.handle_null(resp, '')
+
         val = utils.add(delta_store, 'val', resp, '')
         row = utils.get_or_set(delta_store, 'row', 0)
         header = utils.get_or_set(
@@ -146,6 +190,8 @@ class CSVCellParser(Parser):
         """
         Parses a single-row CSV and returns one cell at a time.
         """
+        resp = self.handle_null(resp, '')
+        print('Resp: ', resp)
 
         val = utils.add(delta_store, 'val', resp)
         cur_row = utils.get_or_set(delta_store, 'row', 0)
@@ -212,10 +258,10 @@ class CharDelimParser(Parser):
         self.sep = sep
 
     def delta(
-        self, resp, delta_store: typing.Dict, 
-        is_last: bool=False
+        self, resp, delta_store: typing.Dict, is_last: bool=False
     ) -> typing.List | None:
         
+        resp = self.handle_null(resp, '')
         val = utils.add(delta_store, 'val', resp)
         res = val.split(self.sep)
         return_val = utils.UNDEFINED
@@ -245,6 +291,7 @@ class NullParser(Parser):
     """
 
     def delta(self, resp, delta_store: typing.Dict, is_last: bool=False) -> typing.Any:
+        resp = self.handle_null(resp, utils.UNDEFINED)
         return resp
     
     def render(self, data):
@@ -258,11 +305,12 @@ class FullParser(Parser):
     
     def delta(self, resp, delta_store: typing.Dict, is_last: bool=False) -> typing.Any:
         
-        utils.get_or_set(delta_store, 'val', '')
-        delta_store['val'] += resp
+        resp = self.handle_null(resp, '')
+        utils.add(delta_store, 'val', resp)
         if is_last:
             val = delta_store['val']
             delta_store.clear()
+            print('Returning ', {val})
             return val
         return utils.UNDEFINED
 
@@ -276,8 +324,7 @@ class LineParser(Parser):
     A parser that accumulates input data until the end of a stream is reached.
     """
     def delta(
-        self, resp, delta_store: typing.Dict, 
-        is_last: bool=False
+        self, resp, delta_store: typing.Dict, is_last: bool=False
     ) -> typing.Any:
         """
 
@@ -289,11 +336,13 @@ class LineParser(Parser):
         Returns:
             typing.Any: 
         """ 
+        resp = self.handle_null(resp, '')
         utils.add(delta_store, 'val', resp)
         lines = delta_store['val'].splitlines()
         result = []
         buffer = []
-
+        
+        print(lines)
         for i, line in enumerate(lines):
 
             if not line:
