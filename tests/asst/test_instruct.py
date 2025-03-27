@@ -1,4 +1,4 @@
-from dachi.asst import _instruct_core as core
+from dachi.asst import _instruct_func as core
 from ..utils.test_core import SimpleStruct
 from .test_ai import DummyAIModel
 

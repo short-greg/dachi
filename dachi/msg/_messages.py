@@ -1,6 +1,6 @@
 # 1st party
 import typing
-from abc import abstractmethod
+from abc import abstractmethod, ABC
 from typing import Self
 import typing
 
@@ -771,3 +771,41 @@ def include_role(messages: typing.Iterable[Msg], *role: str) -> typing.List[Msg]
     include = set(role)
     return [message for message in messages
         if message.role in include]
+
+
+class ToMsg(ABC):
+    """Converts the input to a message
+    """
+    @abstractmethod
+    def __call__(self, *args, **kwargs) -> Msg:
+        pass
+
+
+class ToText(ToMsg):
+    """Converts the input to a text message
+    """
+
+    def __init__(self, role: str='system', field: str='content'):
+        """Converts an input to a text message
+
+        Args:
+            role (str): The role for the message
+            field (str, optional): The name of the field for the text. Defaults to 'content'.
+        """
+        self.role = role
+        self.field = field
+
+    def __call__(self, text: str) -> Msg:
+        """Create a text message
+
+        Args:
+            text (str): The text for the message
+
+        Returns:
+            Msg: Converts to a text message
+        """
+        return Msg(
+            role=self.role, 
+            **{self.field: text}
+        )
+

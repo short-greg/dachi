@@ -8,7 +8,9 @@ import inspect
 import pydantic
 
 # local
-from ..msg import render, struct_template, END_TOK
+from ..msg import render, struct_template, Msg
+from ._asst import StreamAssist, AsyncAssist, Assist, AsyncStreamAssist
+from ._parse import Parser, NullParser
 from ..base import Templatable, TemplateField
 from ..utils import unescape_curly_braces
 from pydantic_core import PydanticUndefined
@@ -47,17 +49,6 @@ class OutConv(pydantic.BaseModel, Templatable, ABC):
 
     name: str = ''
 
-    def dump_data(self, data: typing.Any) -> str:
-        """Output an example of the data
-
-        Args:
-            data (typing.Any): 
-
-        Returns:
-            str: 
-        """
-        pass
-
     @abstractmethod
     def delta(self, resp, delta_store: typing.Dict) -> typing.Any:
         """Read in the output
@@ -69,6 +60,53 @@ class OutConv(pydantic.BaseModel, Templatable, ABC):
             typing.Any: The output of the reader
         """
         pass
+
+    def stream(
+        self, resp_iterator: typing.Iterator, 
+        parser: Parser=None,
+        delta_store: typing.Dict=None, 
+        pdelta_store: typing.Dict=None,
+        get_msg: bool=False
+    ) -> typing.Iterator:
+        
+        parser = parser or NullParser()
+        for msg, resp in parser.stream(
+            resp_iterator, pdelta_store, True
+        ):
+            resp = self.delta(resp, delta_store)
+            if resp is not utils.UNDEFINED:
+                if get_msg:
+                    yield msg, resp
+                else:
+                    yield resp
+
+    async def astream(
+        self, resp_iterator: typing.Iterator, 
+        parser: Parser=None,
+        delta_store: typing.Dict=None, 
+        pdelta_store: typing.Dict=None,
+        get_msg: bool=False
+    ) -> typing.AsyncIterator:
+        
+        parser = parser or NullParser()
+        async for msg, resp in await parser.astream(
+            resp_iterator, pdelta_store, True
+        ):
+            resp = self.delta(resp, delta_store)
+            if resp is not utils.UNDEFINED:
+                if get_msg:
+                    yield msg, resp
+                else:
+                    yield resp
+
+
+# def stream_out(asst: StreamAssist, *args, parser: Parser=None, **kwargs) -> typing.Tuple[Msg, typing.Any]:
+
+
+        delta_store = delta_store or {}
+        for resp in resp_iterator:
+            yield self.delta(resp, delta_store)
+
 
     def __call__(self, resp) -> typing.Any:
         """Read in the output
@@ -162,7 +200,7 @@ class PrimConv(OutConv):
         Returns:
             typing.Any: The output of the reader
         """
-        
+
         if self._out_cls is bool:
             return resp.lower() in ('true', 'y', 'yes', '1', 't')
         return self._out_cls(resp)
@@ -457,3 +495,4 @@ class JSONConv(OutConv):
             str: The template for the output
         """
         return escape_curly_braces(self.key_descr)
+

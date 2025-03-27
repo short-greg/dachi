@@ -20,6 +20,8 @@ from ._messages import (
     include_messages,
     RenderMsgField, 
     END_TOK,
+    ToMsg,
+    ToText,
     to_dialog,
 )
 from ._render import (

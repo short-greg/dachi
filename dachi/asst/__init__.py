@@ -1,17 +1,18 @@
-from ._ai import (
-    LLM_PROMPT, 
-    ToolOption, ToolCall, ToolSet,
-    llm_aforward, llm_astream, llm_forward,
-    llm_stream, ToMsg, ToText, LLM, 
-    LLM, 
+from ._asst import (
     Assist, AsyncAssist,
     StreamAssist, AsyncStreamAssist,
     Assistant
 )
+from ._ai import (
+    LLM_PROMPT, 
+    ToolOption, ToolCall, ToolSet,
+    llm_aforward, llm_astream, llm_forward,
+    llm_stream, LLM, 
+    LLM, 
+)
 from ._out import (
     PrimConv, PydanticConv, 
     ReadError, NullOutConv, OutConv,
-    # CSVConv, 
     KVConv, 
     JSONConv, IndexConv
 )
@@ -25,7 +26,7 @@ from ._parse import (
     CharDelimParser
 )
 from ._chat import Chat
-from ._instruct_core import (
+from ._instruct_func import (
     Instruct,
     Cue,
     validate_out,

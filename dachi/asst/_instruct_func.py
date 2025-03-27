@@ -16,9 +16,10 @@ from ..proc._process import (
     Param
 )
 from ..utils import str_formatter, is_primitive, primitives
-from .. import utils
-from ._ai import (
-    ToMsg, ToText,
+from ..msg import (
+    ToMsg, ToText
+)
+from ._asst import (
     AsyncAssist, AsyncStreamAssist, 
     Assist, StreamAssist
 )
@@ -184,7 +185,7 @@ class IBase(ABC):
                 reader = PydanticConv(name=self._name, out_cls=out_cls)
             else:
                 reader = NullOutConv(name=self._name)
-        self._reader = reader
+        self._reader: OutConv = reader
 
     def _align_params(
         self, *args, **kwargs
@@ -225,7 +226,7 @@ class IBase(ABC):
         pass
 
     @property
-    def reader(self) -> typing.Type:
+    def reader(self) -> OutConv:
         return self._reader
 
 
@@ -509,7 +510,7 @@ class StreamDec(FuncDecBase, StreamModule):
     """
 
     def __init__(
-        self, inst, engine: StreamAssist, 
+        self, inst: IBase, engine: StreamAssist, 
         to_msg: ToMsg=None,
         kwargs: typing.Dict=None,
         instance=None
@@ -536,18 +537,11 @@ class StreamDec(FuncDecBase, StreamModule):
         engine = self.get_engine(
             instance
         )
-        delta_store = {}
-        for _, res in engine.stream(
-            [msg], **self._kwargs
+
+        for resp in self._inst.reader.stream(
+            engine.stream([msg], **self._kwargs)
         ):
-            print(res)
-            yield ''
-            # print(self._inst.reader)
-            # self._inst.reader.delta(res, delta_store)
-            # for v in self._inst.reader.delta(res, delta_store):
-            #     if v is not utils.UNDEFINED:
-            #         yield v
-            # reader.stream(...)
+            yield resp
 
     def spawn(self, instance=None) -> Self:
         """
@@ -621,12 +615,11 @@ class AStreamDec(FuncDecBase, AsyncStreamModule):
         engine = self.get_engine(
             instance
         )
-        async for _, res in await engine.astream(
-            [msg], **self._kwargs
+
+        for resp in  self._inst.reader.astream(
+            await engine.astream([msg], **self._kwargs)
         ):
-            v = self._inst.reader.delta(res)
-            if v is not utils.UNDEFINED:
-                yield v
+            yield resp
 
     def spawn(self, instance=None) -> Self:
         

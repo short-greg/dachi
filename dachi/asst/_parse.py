@@ -53,7 +53,7 @@ class Parser(ABC):
             return default
         return resp
     
-    def stream(self, resp_iter: typing.Iterable, delta_store: typing.Dict=None) -> typing.Iterator:
+    def stream(self, resp_iter: typing.Iterable, delta_store: typing.Dict=None, get_msg: bool=False) -> typing.Iterator:
         """
         Parses a stream of responses from the LLM and yields processed results.
         Args:
@@ -70,13 +70,46 @@ class Parser(ABC):
               any remaining processing.
         """
         delta_store = delta_store or {}
-        for _, resp in resp_iter:
+        for msg, resp in resp_iter:
             cur = self.delta(resp, delta_store, False)
             if cur is not utils.UNDEFINED:
-                yield cur
+                if get_msg:
+                    yield msg, cur
+                else: yield cur
         cur = self.delta(NULL_TOK, delta_store, True)
         if cur is not utils.UNDEFINED:
-            yield cur
+            if get_msg:
+                yield msg, cur
+            else: yield cur
+
+    async def astream(self, resp_iter: typing.AsyncIterable, delta_store: typing.Dict=None, get_msg: bool=False) -> typing.AsyncIterator:
+        """
+        Parses a stream of responses from the LLM and yields processed results.
+        Args:
+            resp_iter (typing.Iterable): An iterable of response tuples, where each tuple
+                contains a key and a response object.
+            delta_store (typing.Dict, optional): A dictionary to store intermediate state
+                for delta processing. Defaults to an empty dictionary if not provided.
+        Yields:
+            typing.Iterator: Processed results from the responses, excluding undefined values.
+        Notes:
+            - The `delta` method is used to process each response and update the `delta_store`.
+            - If the processed result is not `utils.UNDEFINED`, it is yielded.
+            - After the iteration, a final call to `delta` is made with `END_TOK` to handle
+              any remaining processing.
+        """
+        delta_store = delta_store or {}
+        async for msg, resp in await resp_iter:
+            cur = self.delta(resp, delta_store, False)
+            if cur is not utils.UNDEFINED:
+                if get_msg:
+                    yield msg, cur
+                else: yield cur
+        cur = self.delta(NULL_TOK, delta_store, True)
+        if cur is not utils.UNDEFINED:
+            if get_msg:
+                yield msg, cur
+            else: yield cur
 
     def __call__(self, resp) -> typing.List[typing.Any] | None:
         """Convenience function to parse based on the whole set of data

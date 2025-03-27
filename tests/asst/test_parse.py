@@ -1,6 +1,5 @@
 from dachi.asst import _parse
-from dachi import utils
-from dachi.msg import END_TOK, Msg
+from dachi.msg import Msg
 import typing
 
 data = (
@@ -128,25 +127,6 @@ class TestFullParser(object):
         for cur in parser.stream(asst_stream(data)):
             res.append(cur)
         assert res[0] == "2.0"
-
-    # def test_full_parser_only_returns_last_element(self):
-        
-    #     data = "2.0"
-    #     full_parser = _parse.FullParser()
-    #     res = full_parser(data)
-    #     assert res == "2.0"
-
-#     def test_full_parser_only_returns_last_element_when_continuing(self):
-        
-#         data = "2.0"
-#         parser = _parse.FullParser()
-
-#         res = []
-
-#         for cur in parser.stream(asst_stream(data)):
-#             res.extend(cur)
-
-#         assert res[0] == "2.0"
 
 
 class TestNullParser(object):
