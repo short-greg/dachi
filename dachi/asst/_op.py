@@ -1,9 +1,6 @@
 # 1st party
 import typing
 from typing import Self
-import json
-from collections import deque
-from abc import ABC, abstractmethod
 import typing
 
 # 3rd party
@@ -12,7 +9,7 @@ import pydantic
 # local
 from ..msg._messages import (
     Msg, BaseDialog, 
-     ToMsg,
+    ToMsg,
 )
 from ._asst import Assistant
 from ._out import OutConv
@@ -147,23 +144,19 @@ class Op(Module, AsyncModule, StreamModule, AsyncStreamModule):
             Any exceptions raised during the assistant's execution or message processing.
         """
         _out = _out or self.out
-        delta_store = {}
-        delim_store = {}
-        queue = deque()
         msg = self.to_msg(*args, **kwargs)
 
         _messages = _messages or []
             
         resp_msg = None
-        for resp_msg, resp in self.assistant.stream(msg + _messages):
-            parsed = self.parser(resp, delim_store)
-            if parsed is not None:
-                queue.extend(parsed)
-            if len(queue) > 0:
-                yield self.out(queue.popleft(), delta_store)
+
+        for resp_msg, resp in self.out.stream(
+            self.assistant.stream(
+                msg + _messages
+            ), parser=self.parser, get_msg=True
+        ):
+            yield resp
         
-        for q in queue:
-            yield self.out(msg, queue.popleft(), delta_store)
         if _messages is not None and resp_msg is not None:
             _messages.append(resp_msg)
 
@@ -188,19 +181,15 @@ class Op(Module, AsyncModule, StreamModule, AsyncStreamModule):
         """
         _out = _out or self.out
         _messages = _messages or []
-        delta_store = {}
-        delim_store = {}
         msg = self.to_msg(*args, **kwargs)
-        queue = deque()
-            
-        async for resp_msg, resp in await self._asst.astream(msg + _messages):
-            parsed = self.parser(resp, delim_store)
-            if parsed is not None:
-                queue.extend(parsed)
-            if len(queue) > 0:
-                yield self.out(queue.popleft(), delta_store)
-        for q in queue:
-            yield self.out(queue.popleft(), delta_store)
+
+        async for resp_msg, resp in await self.out.astream(
+            self.assistant.stream(
+                msg + _messages
+            ), parser=self.parser, get_msg=True
+        ):
+            yield resp
+        
         if _messages is not None and resp_msg is not None:
             _messages.append(resp_msg)
 
