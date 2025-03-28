@@ -1,3 +1,4 @@
+from abc import ABC
 import pkg_resources
 import typing
 import json
@@ -8,7 +9,7 @@ from . import Msg
 from ._ai import ToolSet, ToolCall, ToolBuilder
 from ._resp import RespConv
 from . import END_TOK
-from ._ai import LLM
+from ._ai import LLM, llm_aforward, llm_astream, llm_forward, llm_stream
 from ..utils import UNDEFINED, coalesce
 from .. import utils
 
@@ -332,13 +333,12 @@ class OpenAIToolConv(RespConv):
         }
 
 
-class OpenAILLM(LLM):
+class OpenAILLM(LLM, ABC):
 
     def __init__(
         self, 
         tools: ToolSet=None,
         json_output: bool | pydantic.BaseMode | typing.Dict=False,
-        mode: str='create',
         api_key: str=None,
         client_kwargs: typing.Dict=None
     ):
@@ -355,7 +355,6 @@ class OpenAILLM(LLM):
         self._client_kwargs = client_kwargs
         self._tools = tools
         self._json_output = json_output
-        self._mode = mode
         self._client = openai.Client(
             api_key, **client_kwargs
         )
@@ -372,21 +371,61 @@ class OpenAILLM(LLM):
         return OpenAILLM(
             tools, json
         )
-    
-    def forward(self, msg, *args, **kwargs):
-        if self._mode == 'create':
-            pass
-        elif self._mode == 'parse':
-            pass
-        else:
-            pass
 
-    async def aforward(self, msg, *args, **kwargs):
-        return super().aforward(msg, *args, **kwargs)
+class OpenAICreateLLM(OpenAILLM, ABC):
 
-    def stream(self, msg, *args, **kwargs):
-        return super().stream(msg, *args, **kwargs)
+    def spawn(self, 
+        tools: ToolSet=UNDEFINED,
+        json_output: bool | pydantic.BaseMode | typing.Dict=UNDEFINED
+    ):
+        tools = coalesce(
+            tools, self._tools
+        )
+        json_output = coalesce(json_output, self._json_output)
+        return OpenAILLM(
+            tools, json
+        )
     
-    async def astream(self, msg, *args, **kwargs):
-        return super().astream(msg, *args, **kwargs)
+    def forward(self, msg, **kwargs)-> typing.Tuple[Msg, typing.Any]:
+        
+        kwargs = {**self._kwargs, **kwargs}
+
+        return llm_forward(
+            self._client.chat.completions.create, 
+            _resp_proc=self.resp_procs, 
+            msg=msg,
+            **kwargs
+        )
+
+    async def aforward(self, msg, **kwargs) -> typing.Tuple[Msg, typing.Any]:
+        kwargs = {**self._kwargs, **kwargs}
+
+        return await llm_aforward(
+            self._aclient.chat.completions.create, 
+            _resp_proc=self.resp_procs, 
+            msg=msg,
+            **kwargs
+        )
+
+    def stream(self, msg, **kwargs) -> typing.Iterator[typing.Tuple[Msg, typing.Any]]:
+        kwargs = {**self._kwargs, **kwargs}
+
+        for r, c in llm_stream(
+            self._client.chat.completions.create, 
+            _resp_proc=self.resp_procs, 
+            msg=msg,
+            stream=True,
+            **kwargs
+        ):
+            yield r, c
     
+    async def astream(self, msg, *args, **kwargs) -> typing.AsyncIterator[typing.Tuple[Msg, typing.Any]]:
+
+        async for r, c in await llm_astream(
+            self._aclient.chat.completions.create, 
+            _resp_proc=self.resp_procs, 
+            msg=msg,
+            stream=True,
+            **kwargs
+        ):
+            yield r, c
