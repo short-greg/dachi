@@ -15,6 +15,7 @@ from ..proc._process import (
     AsyncModule, StreamModule, AsyncStreamModule,
     Param
 )
+from ._parse import Parser, NullParser, FullParser
 from ..utils import str_formatter, is_primitive, primitives
 from ..msg import (
     ToMsg, ToText
@@ -99,7 +100,7 @@ class Cue(
             data (str): The data to read
 
         Raises:
-            RuntimeError: If the cue does not have a reader
+            RuntimeError: If the cue does not have a out
 
         Returns:
             S: The result of the read process
@@ -158,12 +159,12 @@ class IBase(ABC):
     This is the base class for wrapping an Instruction functor. It is used to create an instruction when called.
     """
 
-    def __init__(self, f, is_method: bool=False, reader: OutConv=None):
+    def __init__(self, f, is_method: bool=False, out: OutConv=None, parser: Parser=None):
         """ Initializes the IBase instance.
         Args:
             f (Callable): The function to be wrapped as an instruction.
             is_method (bool, optional): Indicates if the function is a method. Defaults to False.
-            reader (OutConv, optional): The output converter that converts the output of the LLM into a more useful format. Defaults to None.
+            out (OutConv, optional): The output converter that converts the output of the LLM into a more useful format. Defaults to None.
         """
         
         self._f = f
@@ -175,17 +176,28 @@ class IBase(ABC):
         self._return_annotation = inspect.signature(f).return_annotation
 
         out_cls = self._return_annotation
-        if reader is None:
+        if out is None:
             if self.out_cls in primitives:
-                reader = PrimConv(
+                out = PrimConv(
                     name=self._name, 
                     out_cls=self.out_cls
                 )
             elif issubclass(out_cls, pydantic.BaseModel):
-                reader = PydanticConv(name=self._name, out_cls=out_cls)
+                out = PydanticConv(name=self._name, out_cls=out_cls)
             else:
-                reader = NullOutConv(name=self._name)
-        self._reader: OutConv = reader
+                out = NullOutConv(name=self._name)
+        if parser is None:
+            if self.out_cls is str:
+                parser = NullParser()
+            elif self.out_cls in primitives:
+                parser = FullParser()
+            elif issubclass(out_cls, pydantic.BaseModel):
+                parser = FullParser()
+            else:
+                parser = NullParser()
+
+        self._parser = parser
+        self._out: OutConv = out
 
     def _align_params(
         self, *args, **kwargs
@@ -226,8 +238,12 @@ class IBase(ABC):
         pass
 
     @property
-    def reader(self) -> OutConv:
-        return self._reader
+    def parser(self) -> Parser:
+        return self._parser
+
+    @property
+    def out(self) -> OutConv:
+        return self._out
 
 
 class InstF(IBase):
@@ -264,7 +280,8 @@ class SigF(IBase):
     def __init__(
         self, f, is_method = False, 
         doc: typing.Optional[str]=None,
-        train: bool=False, reader: OutConv=None,
+        train: bool=False, out: OutConv=None,
+        parser: Parser=None
     ):
         """
         Args:
@@ -272,9 +289,9 @@ class SigF(IBase):
             is_method (bool, optional): Whether f is a method. Defaults to False.
             doc (typing.Optional[str], optional): The docstring for the function. Defaults to None.
             train (bool, optional): Whether to train the instruction. Defaults to False.
-            reader (OutConv, optional): The reader to process the output. Defaults to None.
+            out (OutConv, optional): The out to process the output. Defaults to None.
         """
-        super().__init__(f, is_method, reader)
+        super().__init__(f, is_method, out, parser)
 
         self._doc = doc or self._docstring
         cue = Cue(
@@ -310,7 +327,7 @@ class SigF(IBase):
         kwargs.update(params)
         doc = self._doc_param.render()
         if "{TEMPLATE}" in doc:
-            kwargs['TEMPLATE'] = self._reader.template()
+            kwargs['TEMPLATE'] = self._out.template()
 
         cue = Cue(
             text=str_formatter(
@@ -394,7 +411,6 @@ class FuncDec(FuncDecBase, Module):
     """
     A class that allows one to decorate a function with an "instruction" so that the function will be an LLM (Language Model) call.
     """
-
     def __init__(
         self, inst, engine: Assist, 
         to_msg: ToMsg=None,
@@ -418,7 +434,8 @@ class FuncDec(FuncDecBase, Module):
         _, res = engine(
             [msg], **self._kwargs
         )
-        return self._inst.reader(res)
+        res = self._inst.parser(res)
+        return self._inst.out(res)
 
     def spawn(self, instance=None) -> Self:
         
@@ -472,7 +489,8 @@ class AFuncDec(FuncDecBase, AsyncModule):
         _, res = await engine.aforward(
             [msg], **self._kwargs
         )
-        return self._inst.reader(res)
+        res = self._inst.parser(res)
+        return self._inst.out(res)
     
     async def __call__(self, *args, **kwargs):
         """
@@ -537,9 +555,10 @@ class StreamDec(FuncDecBase, StreamModule):
         engine = self.get_engine(
             instance
         )
-
-        for resp in self._inst.reader.stream(
-            engine.stream([msg], **self._kwargs)
+        
+        for resp in self._inst.out.stream(
+            engine.stream([msg], **self._kwargs),
+            self._inst.parser
         ):
             yield resp
 
@@ -605,7 +624,6 @@ class AStreamDec(FuncDecBase, AsyncStreamModule):
         Yields:
             The delta of the response from the LLM engine.
         """
-
         instance, args = self.get_instance(args)
         cue = self._inst(
             instance, *args, **kwargs
@@ -616,8 +634,9 @@ class AStreamDec(FuncDecBase, AsyncStreamModule):
             instance
         )
 
-        for resp in  self._inst.reader.astream(
-            await engine.astream([msg], **self._kwargs)
+        for resp in  self._inst.out.astream(
+            await engine.astream([msg], **self._kwargs),
+            self._inst.parser
         ):
             yield resp
 
@@ -640,7 +659,8 @@ class AStreamDec(FuncDecBase, AsyncStreamModule):
 
 def instructfunc(
     engine: Engine=None,
-    reader: OutConv=None,
+    out: OutConv=None,
+    parser: Parser=None,
     is_method: bool=False,
     to_async: bool=False,
     to_stream: bool=False,
@@ -662,7 +682,7 @@ def instructfunc(
         def wrapper(*args, **kwargs):
             return f(*args, **kwargs)
         
-        inst = InstF(f, is_method, reader)
+        inst = InstF(f, is_method, out, parser=parser)
 
         if not to_async and not to_stream:
             return FuncDec(
@@ -689,7 +709,8 @@ def instructfunc(
 
 def instructmethod(
     engine: Engine=None,
-    reader: OutConv=None,
+    out: OutConv=None,
+    parser: Parser=None,
     to_async: bool=False,
     to_stream: bool=False,
     to_msg: ToMsg=None,
@@ -704,15 +725,17 @@ def instructmethod(
         typing.Callable[[function], SignatureFunc]
     """
     return instructfunc(
-        engine, reader=reader, is_method=True, to_msg=to_msg, to_async=to_async, 
+        engine, out=out, is_method=True, to_msg=to_msg, to_async=to_async, 
         to_stream=to_stream, 
+        parser=parser,
         **kwargs
     )
 
 
 def signaturefunc(
     engine: Engine=None,
-    reader: OutConv=None,
+    out: OutConv=None,
+    parser: Parser=None,
     to_msg: ToMsg=None,
     doc: typing.Union[str, typing.Callable[[], str]]=None,
     is_method: bool=False,
@@ -738,7 +761,7 @@ def signaturefunc(
         
         inst = SigF(
             f, is_method, train=train, 
-            doc=doc, reader=reader
+            doc=doc, out=out, parser=parser
         )
 
         if not to_async and not to_stream:
@@ -766,7 +789,8 @@ def signaturefunc(
 
 def signaturemethod(
     engine: Engine=None, 
-    reader: OutConv=None,
+    out: OutConv=None,
+    parser: Parser=None,
     to_msg: ToMsg=None,
     doc: typing.Union[str, typing.Callable[[], str]]=None,
     to_async: bool=False,
@@ -778,16 +802,17 @@ def signaturemethod(
 
     Args:
         engine (PromptModel, optional): The engine for the AI . Defaults to None.
-        reader (Reader, optional): The reader to use for the method. Defaults to None.
+        out (out, optional): The out to use for the method. Defaults to None.
         doc (typing.Union[str, typing.Callable[[], str]], optional): A docstring to override with. Defaults to None.
 
     Returns:
         typing.Callable[[function], SignatureFunc]
     """
     return signaturefunc(
-        engine, reader=reader, doc=doc, is_method=True,
+        engine, out=out, doc=doc, is_method=True,
         to_msg=to_msg, to_async=to_async, to_stream=to_stream,
         train=train,
+        parser=parser,
         **kwargs
     )
 

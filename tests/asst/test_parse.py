@@ -13,6 +13,7 @@ xy
 z: e"""
 )
 
+
 def asst_stream(data) -> typing.Iterator:
     """Use to simulate an assitant stream"""
     for d in data:
@@ -116,7 +117,7 @@ class TestFullParser(object):
         data = "2.0"
         full_parser = _parse.FullParser()
         res = full_parser(data)
-        assert res == "2.0"
+        assert res == ["2.0"]
 
     def test_full_parser_only_returns_last_element_with_stream(self):
         
@@ -126,7 +127,7 @@ class TestFullParser(object):
         res = []
         for cur in parser.stream(asst_stream(data)):
             res.append(cur)
-        assert res[0] == "2.0"
+        assert res[0] == ["2.0"]
 
 
 class TestNullParser(object):
@@ -136,7 +137,7 @@ class TestNullParser(object):
         data = "2.0"
         null_parser = _parse.NullParser()
         res = null_parser(data)
-        assert res == "2.0"
+        assert res == ["2.0"]
 
     def test_null_parser_only_returns_last_element_when_continuing(self):
         

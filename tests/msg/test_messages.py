@@ -112,3 +112,5 @@ class TestMessage(object):
     #     rendered = message.render()
     #     assert rendered == 'assistant: hi, how are you'
 
+
+

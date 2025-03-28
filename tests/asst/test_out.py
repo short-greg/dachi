@@ -20,7 +20,7 @@ class TestStructRead:
         )
         simple = SimpleStruct(x='hi')
         d = model_to_text(simple)
-        simple2 = out.__call__(d)
+        simple2 = out.__call__([d])
         assert simple.x == simple2.x
 
     def test_out_creates_out_class_with_string(self):
@@ -31,7 +31,7 @@ class TestStructRead:
         )
         simple = SimpleStruct(x='hi')
         d = model_to_text(simple)
-        simple2 = out.__call__(d)
+        simple2 = out.__call__([d])
         assert simple.x == simple2.x
     
     def test_out_template(self):
@@ -50,7 +50,7 @@ class TestStructRead:
             out_cls=SimpleStruct
         )
         s = model_to_text(SimpleStruct(x='2'))
-        simple2 = out(s)
+        simple2 = out([s])
         assert simple2.x == '2'
 
     def test_out_reads_in_the_class_with_str(self):
@@ -62,7 +62,7 @@ class TestStructRead:
 
         simple = SimpleStruct(x='2')
 
-        assert out(model_to_text(simple)).x == '2'
+        assert out([model_to_text(simple)]).x == '2'
 
 
 class TestPrimRead(object):
@@ -92,7 +92,7 @@ class TestPrimRead(object):
             name='F1',
             out_cls=bool,
         )
-        result = out.__call__('TRUE')
+        result = out.__call__(['TRUE'])
         assert result is True
 
     def test_prim_read_reads_bool_correctly(self):
@@ -101,7 +101,7 @@ class TestPrimRead(object):
             name='F1',
             out_cls=bool,
         )
-        result = out.__call__('false')
+        result = out.__call__(['false'])
         assert result is False
 
 
@@ -176,7 +176,7 @@ class TestJSONRead(object):
         )
         simple = SimpleStruct2(x='hi', y=1)
         d = model_to_text(simple)
-        simple2 = out(d)
+        simple2 = out([d])
         assert simple.x == simple2['x']
 
     def test_out_template(self):
@@ -204,7 +204,7 @@ class TestJSONRead(object):
         delta_store = {}
         ress = []
         data = model_to_text(simple)
-        cur = out.delta(data, delta_store)
+        cur = out.delta([data], delta_store)
         assert cur['x'] == 'hi'
         assert cur['y'] == 1
 

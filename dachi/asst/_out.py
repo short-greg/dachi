@@ -70,15 +70,20 @@ class OutConv(pydantic.BaseModel, Templatable, ABC):
     ) -> typing.Iterator:
         
         parser = parser or NullParser()
+        print(resp_iterator)
         for msg, resp in parser.stream(
             resp_iterator, pdelta_store, True
         ):
-            resp = self.delta(resp, delta_store)
-            if resp is not utils.UNDEFINED:
+            if resp is utils.UNDEFINED:
+                continue
+            for respi in resp:
+                if respi is utils.UNDEFINED:
+                    continue
+                respi = self.delta(respi, delta_store)
                 if get_msg:
-                    yield msg, resp
+                    yield msg, respi
                 else:
-                    yield resp
+                    yield respi
 
     async def astream(
         self, resp_iterator: typing.Iterator, 
@@ -92,12 +97,17 @@ class OutConv(pydantic.BaseModel, Templatable, ABC):
         async for msg, resp in await parser.astream(
             resp_iterator, pdelta_store, True
         ):
-            resp = self.delta(resp, delta_store)
-            if resp is not utils.UNDEFINED:
+            if resp is utils.UNDEFINED:
+                continue
+            for respi in resp:
+                respi = self.delta(respi, delta_store)
+
+                if respi is utils.UNDEFINED:
+                    continue
                 if get_msg:
-                    yield msg, resp
+                    yield msg, respi
                 else:
-                    yield resp
+                    yield respi
 
 
 # def stream_out(asst: StreamAssist, *args, parser: Parser=None, **kwargs) -> typing.Tuple[Msg, typing.Any]:
@@ -200,6 +210,7 @@ class PrimConv(OutConv):
         Returns:
             typing.Any: The output of the reader
         """
+        resp = resp[0]
 
         if self._out_cls is bool:
             return resp.lower() in ('true', 'y', 'yes', '1', 't')
@@ -260,6 +271,7 @@ class PydanticConv(OutConv, typing.Generic[S]):
         Returns:
             typing.Any: The output of the reader
         """
+        resp = resp[0]
         
         # if resp is not END_TOK:
         #     utils.add(delta_store, 'val', resp)
@@ -468,11 +480,12 @@ class JSONConv(OutConv):
         Returns:
             typing.Dict: The result - if it fails, will return an empty dict
         """
-        val = utils.add(
-            delta_store, 'val', resp
-        )
+        resp = resp[0]
+        # val = utils.add(
+        #     delta_store, 'val', resp
+        # )
         try: 
-            result = json.loads(val)
+            result = json.loads(resp)
             return result
         except json.JSONDecodeError:
             return {}
@@ -495,4 +508,3 @@ class JSONConv(OutConv):
             str: The template for the output
         """
         return escape_curly_braces(self.key_descr)
-

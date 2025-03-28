@@ -16,6 +16,9 @@ from ._out import (
     KVConv, 
     JSONConv, IndexConv
 )
+from ._op import (
+    Op, Threaded
+)
 from ._resp import RespConv
 from ._parse import (
     Parser,

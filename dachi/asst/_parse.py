@@ -323,9 +323,12 @@ class NullParser(Parser):
     Instead, it simply returns the input response as-is.
     """
 
-    def delta(self, resp, delta_store: typing.Dict, is_last: bool=False) -> typing.Any:
-        resp = self.handle_null(resp, utils.UNDEFINED)
-        return resp
+    def delta(self, resp, delta_store: typing.Dict, is_last: bool=False) -> typing.List:
+        
+        if resp is NULL_TOK:
+            return utils.UNDEFINED
+        
+        return [resp]
     
     def render(self, data):
         pass
@@ -336,15 +339,14 @@ class FullParser(Parser):
     A parser that accumulates input data until the end of a stream is reached.
     """
     
-    def delta(self, resp, delta_store: typing.Dict, is_last: bool=False) -> typing.Any:
+    def delta(self, resp, delta_store: typing.Dict, is_last: bool=False) -> typing.List:
         
         resp = self.handle_null(resp, '')
         utils.add(delta_store, 'val', resp)
         if is_last:
             val = delta_store['val']
             delta_store.clear()
-            print('Returning ', {val})
-            return val
+            return [val]
         return utils.UNDEFINED
 
     def render(self, data):
@@ -358,7 +360,7 @@ class LineParser(Parser):
     """
     def delta(
         self, resp, delta_store: typing.Dict, is_last: bool=False
-    ) -> typing.Any:
+    ) -> typing.List:
         """
 
         Args:
@@ -375,7 +377,6 @@ class LineParser(Parser):
         result = []
         buffer = []
         
-        print(lines)
         for i, line in enumerate(lines):
 
             if not line:
