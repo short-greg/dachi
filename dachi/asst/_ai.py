@@ -2,9 +2,6 @@
 import typing
 from typing import Self
 import json
-from collections import deque
-from abc import ABC, abstractmethod
-import typing
 
 # 3rd party
 import pydantic
@@ -12,25 +9,16 @@ import pydantic
 # local
 from ..msg._messages import (
     Msg, BaseDialog, 
-    END_TOK, ToMsg, ToText
+    END_TOK
 )
 from ._asst import Assistant
-from ._out import OutConv
-from ..proc import (
-    Module, AsyncModule, 
-    StreamModule, AsyncStreamModule
-)
 from ..utils import (
     to_async_function, 
     to_async_function, to_async_function, 
     is_generator_function,
     coalesce, UNDEFINED,
-    Args
 )
 from._resp import RespConv
-from ._parse import (
-    Parser, CharDelimParser, NullParser
-)
 
 
 S = typing.TypeVar('S', bound=pydantic.BaseModel)

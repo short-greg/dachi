@@ -8,8 +8,7 @@ import inspect
 import pydantic
 
 # local
-from ..msg import render, struct_template, Msg
-from ._asst import StreamAssist, AsyncAssist, Assist, AsyncStreamAssist
+from ..msg import render, struct_template
 from ._parse import Parser, NullParser
 from ..base import Templatable, TemplateField
 from ..utils import unescape_curly_braces

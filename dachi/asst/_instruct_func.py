@@ -218,23 +218,45 @@ class IBase(ABC):
     
     @property
     def name(self) -> str:
+        """
+        Returns:
+            str: The name of the instruction
+        """
         return self._name
 
     @property
     def f(self) -> typing.Callable:
+        """
+        Returns:
+            typing.Callable: The function wrapped
+        """
         return self._f
 
     @property
     def is_method(self) -> typing.Callable:
+        """
+        Returns:
+            typing.Callable: Whether the function wrapped is a method or a regular function
+        """
         return self._is_method
     
     @abstractmethod
     def __call__(self, *args, **kwds) -> Cue:
+        """
+
+        Returns:
+            Cue: The cue produced by the 
+        """
         pass
 
     @property
     @abstractmethod
     def out_cls(self) -> typing.Type:
+        """
+
+        Returns:
+            typing.Type: 
+        """
         pass
 
     @property
@@ -252,7 +274,14 @@ class InstF(IBase):
     """
 
     def __call__(self, instance, *args, **kwargs) -> Cue:
-        
+        """
+
+        Args:
+            instance: The instance for the object wrapped by the instruction if it is a method
+
+        Returns:
+            Cue: The Cue returned by the function
+        """
         params = self._align_params(
             *args, **kwargs
         )
@@ -341,23 +370,37 @@ class SigF(IBase):
 
 
 class FuncDecBase:
+    """This is used to decorate an "instruct" function
+    that will be used 
+    """
 
     def __init__(self, inst: IBase, instance=None):
         """
 
         Args:
-            inst (IBase): _description_
-            instance (_type_, optional): _description_. Defaults to None.
+            inst (IBase): 
+            instance (_type_, optional): . Defaults to None.
         """
         self._inst = inst
         self._instance = instance
 
     @abstractmethod
     def __call__(self, *args, **kwargs):
+        """
+        """
         pass
 
     def get_instance(self, args):
+        """Get the instance and the args for the funciton.
+        If the instance has not been stored and it is a
+        method it will be the first argument.
 
+        Args:
+            args: The arguments sent to the function
+
+        Returns:
+            object: The instance if a method is decorated or None
+        """
         if self._inst.is_method:
             if self._instance is not None:
                 return self._instance, args
@@ -394,6 +437,13 @@ class FuncDecBase:
         return instance.__dict__[self._inst.name]
     
     def spawn(self, instance=None) -> Self:
+        """
+        Spawns a new instance of the current class (Func Decorator) with the specified arguments.
+        Args:
+            instance (optional): An optional argument to specify a new instance.
+        Returns:
+            Self: A new instance of the current class with the provided arguments.
+        """
         
         return self.__class__(
             inst=self._inst, 
@@ -401,6 +451,16 @@ class FuncDecBase:
         )
 
     def i(self, *args, **kwargs) -> Cue:
+        """
+        Creates a Cue for the function decorator.
+        This method retrieves an instance and processes the provided arguments
+        and keyword arguments to generate a Cue object.
+        Args:
+            *args: Positional arguments to be passed to the instance.
+            **kwargs: Keyword arguments to be passed to the instance.
+        Returns:
+            Cue: A Cue object created for the function decorator.
+        """
         instance, args = self.get_instance(args)
         return self._inst(
             instance, *args, **kwargs
@@ -417,12 +477,32 @@ class FuncDec(FuncDecBase, Module):
         kwargs: typing.Dict=None,
         instance=None
     ):
+        """_summary_
+
+        Args:
+            inst: The 
+            engine (Assist): The engine to use 
+            to_msg (ToMsg, optional): Converts the input into a message. Defaults to None.
+            kwargs (typing.Dict, optional): The kwargs to send to the engine. Defaults to None.
+            instance (optional): The instance if it is a method. Defaults to None.
+        """
         super().__init__(inst, instance)
         self._engine = engine
         self._to_msg = to_msg or ToText()
         self._kwargs = kwargs or {}
 
     def forward(self, *args, **kwargs):
+        """
+        Executes the assistant with the provided arguments and processes the result.
+        This method retrieves an instance and its arguments, constructs a message
+        from the instance, and passes it to the engine for execution. The result
+        from the engine is then parsed and processed to produce the final output.
+        Args:
+            *args: Positional arguments to be passed to the instance and engine.
+            **kwargs: Keyword arguments to be passed to the instance and engine.
+        Returns:
+            The processed output obtained after parsing and processing the engine's result.
+        """
         
         instance, args = self.get_instance(args)
         cue = self._inst(
@@ -438,6 +518,14 @@ class FuncDec(FuncDecBase, Module):
         return self._inst.out(res)
 
     def spawn(self, instance=None) -> Self:
+        """
+        Spawns a new instance of the current class, optionally updating the instance.
+        Args:
+            instance (optional): The new instance to be used. If not specified, 
+                the current instance is retained.
+        Returns:
+            Self: A new instance of the current class with updated attributes.
+        """
         
         return self.__class__(
             inst=self._inst, 

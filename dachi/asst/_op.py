@@ -235,16 +235,27 @@ class Op(Module, AsyncModule, StreamModule, AsyncStreamModule):
             assistant, to_msg, out
         )
 
+
 class Threaded(
     Module, AsyncModule, StreamModule,
     AsyncStreamModule
 ):
+    """A Threaded Op. Use to keep the Op 
+    """
     
     def __init__(
         self, op: Op, op_args: Args,
         router: typing.Dict[str, ToMsg],
         dialog: BaseDialog=None
     ):
+        """Create an Op that has a thread
+
+        Args:
+            op (Op): The Op
+            op_args (Args): The arguments
+            router (typing.Dict[str, ToMsg]): Routes the input to a type of message
+            dialog (BaseDialog, optional): The type of dialog to use. Defaults to None.
+        """
         super().__init__()
         self.op = op
         self.router = router
@@ -252,7 +263,14 @@ class Threaded(
         self.op_args = op_args
 
     def forward(self, role: str, *args, **kwargs) -> typing.Any:
-        
+        """Execute the op
+
+        Args:
+            role (str): The name of the role
+
+        Returns:
+            typing.Any: The result of the op
+        """
         msg = self.router[role](*args, **kwargs)
         self.dialog.append(msg)
 
@@ -263,6 +281,14 @@ class Threaded(
         )
 
     async def aforward(self, role: str, *args, **kwargs) -> typing.Any:
+        """Execute the op asynchronously
+
+        Args:
+            role (str): The name of the role
+
+        Returns:
+            typing.Any: The result of the op
+        """
 
         msg = self.router[role](*args, **kwargs)
         self.dialog.append(msg)
@@ -273,7 +299,15 @@ class Threaded(
             _messages=self.dialog
         )
 
-    def stream(self, role: str, *args, **kwargs):
+    def stream(self, role: str, *args, **kwargs) -> typing.Iterator:
+        """Stream the Operation
+
+        Args:
+            role (str): The name of the role
+
+        Yields:
+            typing.Any: The result of of the op
+        """
         msg = self.router[role](*args, **kwargs)
         self.dialog.append(msg)
 
@@ -284,7 +318,15 @@ class Threaded(
         ):
             yield r
     
-    async def astream(self, role: str, *args, **kwargs):
+    async def astream(self, role: str, *args, **kwargs) -> typing.AsyncIterator:
+        """Asynchronously stream
+
+        Args:
+            role (str): The name of the role
+
+        Yields:
+            typing.Any: The result of of the op
+        """
         msg = self.router[role](*args, **kwargs)
         self.dialog.append(msg)
 

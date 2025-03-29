@@ -8,7 +8,7 @@ import io
 # 3rd party
 
 # local
-from ..msg._messages import END_TOK, NULL_TOK
+from ..msg._messages import NULL_TOK
 from .. import utils
 
 
@@ -285,7 +285,9 @@ class CSVCellParser(Parser):
 
 
 class CharDelimParser(Parser):
-    
+    """Parses based on a defined character
+    """
+
     def __init__(self, sep: str=','):
         super().__init__()
         self.sep = sep
@@ -356,7 +358,7 @@ class FullParser(Parser):
 
 class LineParser(Parser):
     """
-    A parser that accumulates input data until the end of a stream is reached.
+    Parses line by line. Can have a line continue by putting a backslash at the end of the line.
     """
     def delta(
         self, resp, delta_store: typing.Dict, is_last: bool=False
@@ -405,8 +407,15 @@ class LineParser(Parser):
 
         return result
 
-    def render(self, data):
-        
+    def render(self, data) -> str:
+        """Render the data
+
+        Args:
+            data: The data to render
+
+        Returns:
+            str: The data rendered in lines
+        """
         res = []
         for d in data:
             res.append(d.replace('\n', '\\n'))

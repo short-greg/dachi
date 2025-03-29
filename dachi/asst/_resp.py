@@ -12,7 +12,6 @@ from ..msg._messages import Msg
 
 S = typing.TypeVar('S', bound=pydantic.BaseModel)
 
-
 class RespConv(ABC):
     """Use to process the resoponse from an LLM
     """

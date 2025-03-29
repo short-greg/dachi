@@ -1,22 +1,25 @@
+# 1st party 
 from abc import ABC
 import pkg_resources
 import typing
 import json
-
 import pydantic
 
-from . import Msg
-from ._ai import ToolSet, ToolCall, ToolBuilder
-from ._resp import RespConv
-from . import END_TOK
-from ._ai import LLM, llm_aforward, llm_astream, llm_forward, llm_stream
-from ..utils import UNDEFINED, coalesce
-from .. import utils
-
-# TODO: add utility for this
+# 3rd party
 required = {'openai'}
 installed = {pkg.key for pkg in pkg_resources.working_set}
 missing = required - installed
+
+# Local
+from ...msg import Msg, END_TOK
+from .._ai import (
+    LLM, llm_aforward, llm_astream, llm_forward, llm_stream, ToolSet, ToolCall, ToolBuilder
+)
+from .._resp import RespConv
+from ...utils import UNDEFINED, coalesce
+from ... import utils
+
+# TODO: add utility for this
 
 import openai
 
@@ -45,7 +48,6 @@ class OpenAITextConv(RespConv):
         Returns:
             tuple: A tuple containing the updated msg dictionary and the extracted content string.
         """
-
         content = response.choices[0].message.content
         msg['content'] = content if content is not None else None
         return content
@@ -60,6 +62,8 @@ class OpenAITextConv(RespConv):
         Returns:
             tuple: A tuple containing the updated msg dictionary and the extracted delta content.
         """
+        if response is END_TOK:
+            return ''
         delta = response.choices[0].delta.content
 
         msg['delta']['delta'] = delta
@@ -84,7 +88,6 @@ class OpenAIStructConv(RespConv):
     """
     OpenAITextProc is a class that processes an OpenAI response and extracts text outputs from it.
     """
-
     def __init__(self, struct: pydantic.BaseModel | typing.Dict=None):
         super().__init__(False)
         self._struct = struct
@@ -98,6 +101,7 @@ class OpenAIStructConv(RespConv):
         Returns:
             tuple: A tuple containing the updated msg dictionary and the extracted content string.
         """
+
         json_data = response.choices[0].message.content
         if response.type == 'error':
             raise RuntimeError(response.error)
@@ -115,12 +119,11 @@ class OpenAIStructConv(RespConv):
         Returns:
             tuple: A tuple containing the updated msg dictionary and the extracted delta content.
         """
-        delta = response.choices[0].delta.conten
-
-        if response == END_TOK:
+        if response is END_TOK:
             struct = json.loads(delta_store['content'])
             return struct
 
+        delta = response.choices[0].delta.content
         msg['delta']['content'] = delta
         _, delta = delta_store.adv(
             delta, 'content'
@@ -333,15 +336,27 @@ class OpenAIToolConv(RespConv):
         }
 
 
+
 class OpenAILLM(LLM, ABC):
+    """An adapter for the OpenAILLM
+    """
 
     def __init__(
         self, 
         tools: ToolSet=None,
-        json_output: bool | pydantic.BaseMode | typing.Dict=False,
+        json_output: bool | pydantic.BaseModel | typing.Dict=False,
         api_key: str=None,
-        client_kwargs: typing.Dict=None
+        **client_kwargs
     ):
+        """
+
+        Args:
+            tools (ToolSet, optional): . Defaults to None.
+            json_output (bool | pydantic.BaseMode | typing.Dict, optional): . Defaults to False.
+            api_key (str, optional): . Defaults to None.
+            client_kwargs (typing.Dict, optional): . Defaults to None.
+        """
+        super().__init__()
         convs = []
         if json_output is False:
             convs.append(OpenAITextConv())
@@ -356,13 +371,13 @@ class OpenAILLM(LLM, ABC):
         self._tools = tools
         self._json_output = json_output
         self._client = openai.Client(
-            api_key, **client_kwargs
+            api_key=api_key, **client_kwargs
         )
-        self._aclient = openai.AsyncClient(api_key, **client_kwargs)
+        self._aclient = openai.AsyncClient(api_key=api_key, **client_kwargs)
         
     def spawn(self, 
         tools: ToolSet=UNDEFINED,
-        json_output: bool | pydantic.BaseMode | typing.Dict=UNDEFINED
+        json_output: bool | pydantic.BaseModel | typing.Dict=UNDEFINED
     ):
         tools = coalesce(
             tools, self._tools
@@ -372,59 +387,140 @@ class OpenAILLM(LLM, ABC):
             tools, json
         )
 
-class OpenAICreateLLM(OpenAILLM, ABC):
+
+class OpenAIChatComp(OpenAILLM, ABC):
+    """
+    OpenAIChatComp is an adapter for the OpenAI Chat Completions API. It provides methods for 
+    interacting with the API, including synchronous and asynchronous message forwarding, 
+    streaming, and spawning new instances with modified configurations.
+    """
 
     def spawn(self, 
         tools: ToolSet=UNDEFINED,
-        json_output: bool | pydantic.BaseMode | typing.Dict=UNDEFINED
+        json_output: bool | pydantic.BaseModel | typing.Dict=UNDEFINED
     ):
+        """
+        Spawns a new OpenAIChatComp instance, updating all values that are defined.
+        Args:
+            tools (ToolSet, optional): The set of tools to be used. If not provided, 
+                defaults to the instance's `_tools` attribute.
+            json_output (bool | pydantic.BaseMode | typing.Dict, optional): Specifies 
+                the JSON output configuration. If not provided, defaults to the 
+                instance's `_json_output` attribute.
+        Returns:
+            OpenAIChatComp: A new instance of OpenAIChatComp with the updated values.
+        """
         tools = coalesce(
             tools, self._tools
         )
         json_output = coalesce(json_output, self._json_output)
-        return OpenAILLM(
+        return OpenAIChatComp(
             tools, json
         )
     
     def forward(self, msg, **kwargs)-> typing.Tuple[Msg, typing.Any]:
-        
-        kwargs = {**self._kwargs, **kwargs}
+        """
+        Processes a message by forwarding it to the language model (LLM) and returns the response.
+        Args:
+            msg (Msg): The message object to be processed by the LLM.
+            **kwargs: Additional keyword arguments to customize the LLM request. These arguments
+                      are merged with the default arguments stored in `self._kwargs`.
+        Returns:
+            typing.Tuple[Msg, typing.Any]: A tuple containing the processed message and the 
+            response from the LLM.
+        Notes:
+            - This method uses the `llm_forward` function to handle the interaction with the LLM.
+            - The `_resp_proc` parameter is used to process the response from the LLM.
+        """
+
+        kwargs = {
+            **self._kwargs, 
+            **kwargs, 
+            self._message_arg:msg.to_list_input()
+        }
 
         return llm_forward(
             self._client.chat.completions.create, 
             _resp_proc=self.resp_procs, 
-            msg=msg,
             **kwargs
         )
 
     async def aforward(self, msg, **kwargs) -> typing.Tuple[Msg, typing.Any]:
-        kwargs = {**self._kwargs, **kwargs}
+        """
+        Processes a message by asynchronously forwarding it to the language model (LLM) and returns the response.
+        Args:
+            msg (Msg): The message object to be processed by the LLM.
+            **kwargs: Additional keyword arguments to customize the LLM request. These arguments
+                      are merged with the default arguments stored in `self._kwargs`.
+        Returns:
+            typing.Tuple[Msg, typing.Any]: A tuple containing the processed message and the 
+            response from the LLM.
+        Notes:
+            - This method uses the `llm_forward` function to handle the interaction with the LLM.
+            - The `_resp_proc` parameter is used to process the response from the LLM.
+        """
 
+        kwargs = {
+            **self._kwargs, 
+            **kwargs, 
+            self._message_arg:msg.to_list_input()
+        }
         return await llm_aforward(
             self._aclient.chat.completions.create, 
             _resp_proc=self.resp_procs, 
-            msg=msg,
             **kwargs
         )
 
     def stream(self, msg, **kwargs) -> typing.Iterator[typing.Tuple[Msg, typing.Any]]:
-        kwargs = {**self._kwargs, **kwargs}
+        """
+        Processes a message by streaming it to the language model (LLM) and returns the response.
+        Args:
+            msg (Msg): The message object to be processed by the LLM.
+            **kwargs: Additional keyword arguments to customize the LLM request. These arguments
+                      are merged with the default arguments stored in `self._kwargs`.
+        Returns:
+            typing.Tuple[Msg, typing.Any]: A tuple containing the processed message and the 
+            response from the LLM.
+        Notes:
+            - This method uses the `llm_forward` function to handle the interaction with the LLM.
+            - The `_resp_proc` parameter is used to process the response from the LLM.
+        """
 
+        kwargs = {
+            **self._kwargs, 
+            **kwargs, 
+            self._message_arg:msg.to_list_input()
+        }
         for r, c in llm_stream(
             self._client.chat.completions.create, 
             _resp_proc=self.resp_procs, 
-            msg=msg,
             stream=True,
             **kwargs
         ):
             yield r, c
     
     async def astream(self, msg, *args, **kwargs) -> typing.AsyncIterator[typing.Tuple[Msg, typing.Any]]:
-
+        """
+        Processes a message by streaming it to the language model (LLM) and returns the response.
+        Args:
+            msg (Msg): The message object to be processed by the LLM.
+            **kwargs: Additional keyword arguments to customize the LLM request. These arguments
+                      are merged with the default arguments stored in `self._kwargs`.
+        Returns:
+            typing.Tuple[Msg, typing.Any]: A tuple containing the processed message and the 
+            response from the LLM.
+        Notes:
+            - This method uses the `llm_forward` function to handle the interaction with the LLM.
+            - The `_resp_proc` parameter is used to process the response from the LLM.
+        """
+        kwargs = {
+            **self._kwargs, 
+            **kwargs, 
+            self._message_arg:msg.to_list_input()
+        }
         async for r, c in await llm_astream(
             self._aclient.chat.completions.create, 
             _resp_proc=self.resp_procs, 
-            msg=msg,
             stream=True,
             **kwargs
         ):
