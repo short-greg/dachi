@@ -13,42 +13,42 @@ from ._ai import (
 from ._out import (
     PrimConv, PydanticConv, 
     ReadError, 
-    # NullOutConv, 
-    # OutConv,
+    NullOutConv, 
+    OutConv,
     KVConv, 
     JSONConv, IndexConv
 )
-# from ._op import (
-#     Op, Threaded
-# )
+from ._op import (
+    Op, Threaded
+)
 from ._msg import (
     ToMsg, ToText, MsgConv, FromMsg
 )
 from ._resp import RespConv
 from ._parse import (
-    # Parser,
+    ParseConv,
     FullParser,
-    # NullParser,
+    NullParser,
     CSVRowParser,
     CSVCellParser,
     CharDelimParser,
     LineParser
 )
 # from ._chat import Chat
-# from ._instruct_func import (
-#     Instruct,
-#     Cue,
-#     validate_out,
-#     IBase,
-#     InstF,
-#     SigF,
-#     FuncDec,
-#     FuncDecBase,
-#     AFuncDec,
-#     StreamDec,
-#     AStreamDec,
-#     instructfunc,
-#     instructmethod,
-#     signaturefunc,
-#     signaturemethod
-# )
+from ._instruct_func import (
+    Instruct,
+    Cue,
+    validate_out,
+    IBase,
+    InstF,
+    SigF,
+    FuncDec,
+    FuncDecBase,
+    AFuncDec,
+    StreamDec,
+    AStreamDec,
+    instructfunc,
+    instructmethod,
+    signaturefunc,
+    signaturemethod
+)

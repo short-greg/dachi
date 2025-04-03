@@ -2,7 +2,6 @@ from abc import ABC, abstractmethod
 
 import typing
 from uuid import uuid4
-from enum import Enum
 import pydantic
 
 

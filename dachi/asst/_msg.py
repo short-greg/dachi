@@ -98,7 +98,9 @@ class MsgConv(Module, AsyncModule, ABC):
     """
     last_val = ''
 
-    def __init__(self, name: str, from_: typing.Union[str, typing.List[str]]):
+    def __init__(
+        self, name: str, from_: typing.Union[str, typing.List[str]]
+    ):
 
         self.name = name
         if isinstance(from_, str):
@@ -107,6 +109,17 @@ class MsgConv(Module, AsyncModule, ABC):
         else:
             self._single = False
         self._from = from_
+
+    def post(self, msg: Msg, result, delta_store: typing.Dict, streamed: bool=False, is_last: bool=False):
+        """This method is executed after completion.
+        The default is to do nothing
+        Args:
+            msg (Msg): The message
+            result: The result of teh post
+            streamed (bool, optional): Whether streamed or not. Defaults to False.
+            is_last (bool, optional): Whether it is the last element if streamed. Defaults to False.
+        """
+        pass
 
     @abstractmethod
     def delta(self, resp, delta_store: typing.Dict, is_streamed: bool=False, is_last: bool=True) -> typing.Any:
@@ -139,9 +152,10 @@ class MsgConv(Module, AsyncModule, ABC):
         
         if is_undefined:
             return utils.UNDEFINED
-        msg['meta'][self.name] = self.delta(
+        msg['meta'][self.name] = res = self.delta(
             resp, delta_store, streamed, is_last
         )
+        self.post(msg, res, streamed, is_last)
         return msg
 
     async def aforward(self, msg: Msg) -> Msg:

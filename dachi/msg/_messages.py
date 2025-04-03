@@ -62,6 +62,15 @@ class Msg(dict):
 
         return d
     
+    def meta_(self, **kwargs) -> Self:
+        """Update the values of the meta table
+
+        Returns:
+            Self: The message after update
+        """
+        self['meta'].update(**kwargs)
+        return self
+    
     @property
     def m(self) -> typing.Dict:
         """Get the meta data from the message """

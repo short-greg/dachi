@@ -9,9 +9,10 @@ from abc import ABC, abstractmethod
 
 # local
 from ..msg._messages import (
-    Msg, BaseDialog, 
+    Msg, BaseDialog, StreamMsg,
     END_TOK
 )
+from ._msg import MsgConv
 from ._asst import Assistant
 from ..utils import (
     to_async_function, 
@@ -312,7 +313,7 @@ class LLM(Assistant):
             }
             return await llm_aforward(
                 self._aforward, **kwargs, 
-                _resp_proc=self.resp_procs,
+                _proc=self.resp_procs,
                 _role=self._role_name
             )
         else:
@@ -338,7 +339,7 @@ class LLM(Assistant):
             }
             for v in llm_stream(
                 self._stream, **kwargs, 
-                _resp_proc=self.resp_procs,
+                _proc=self.resp_procs,
                 _role=self._role_name, 
                 _delim=self._delim
             ):
@@ -396,11 +397,24 @@ class LLM(Assistant):
         )
 
 
+def _prepare(proc, kwargs):
+
+    if isinstance(proc, MsgConv):
+        proc = [proc]
+    elif proc is None:
+        proc = []
+    for r in proc:
+        if isinstance(proc, RespConv):
+            kwargs.update(r.prep())
+    return proc
+
+
 def llm_forward(
     f: typing.Callable, 
     *args, 
-    _resp_proc: typing.List[RespConv]=None, 
+    _proc: typing.List[RespConv]=None, 
     _role: str='assistant',
+    _response_name: str='response',
     **kwargs
 ):
     """
@@ -416,33 +430,23 @@ def llm_forward(
     """
     msg = Msg(role=_role)
 
-    if isinstance(_resp_proc, RespConv):
-        kwargs.update(_resp_proc.prep())
-    elif _resp_proc is not None:
-        for r in _resp_proc:
-            kwargs.update(r.prep())
+    _proc = _prepare(_proc, kwargs)
 
     response = f(
         *args, **kwargs
     )
-    msg['meta']['response'] = response
-
-    if _resp_proc is None:
-        return msg
-    
-    if isinstance(_resp_proc, RespConv):
-        return msg, _resp_proc(response, msg)
-
-    for r in _resp_proc:
-        msg = _resp_proc(msg)
+    msg.m[_response_name] = response
+    for r in _proc:
+        msg = r(msg)
     return msg
 
 
 async def llm_aforward(
     f, 
     *args, 
-    _resp_proc: typing.List[RespConv]=None, 
+    _proc: typing.List[RespConv]=None, 
     _role: str='assistant',
+    _response_name: str='response',
     **kwargs
 ):
     """
@@ -459,23 +463,15 @@ async def llm_aforward(
     msg = Msg(
         role=_role
     )
-    if isinstance(_resp_proc, RespConv):
-        kwargs.update(_resp_proc.prep())
-    elif _resp_proc is not None:
-        for r in _resp_proc:
-            kwargs.update(r.prep())
+    _proc = _prepare(_proc, kwargs)
+
     response = await f(
         *args, **kwargs
     )
-    msg['meta']['response'] = response
-    if _resp_proc is None:
-        return msg
-    
-    if isinstance(_resp_proc, RespConv):
-        return msg, _resp_proc(response, msg)
+    msg['meta'][_response_name] = response
 
-    for r in _resp_proc:
-        msg = _resp_proc(msg)
+    for r in _proc:
+        msg = r(msg)
     return msg
 
 
@@ -483,8 +479,9 @@ async def llm_aforward(
 def llm_stream(
     f: typing.Callable, 
     *args, 
-    _resp_proc: typing.List[RespConv]=None, 
+    _proc: typing.List[RespConv]=None, 
     _role: str='assistant',
+    _response_name: str='response',
     **kwargs
 ):
     """
@@ -498,34 +495,24 @@ def llm_stream(
     Yields:
         Tuple[Msg, Any]: A tuple containing the message object and the processed value from the response.
     """
-    _resp_proc = _resp_proc or []
-
-    if isinstance(_resp_proc, RespConv):
-        delta = {}
-        kwargs.update(_resp_proc.prep())
-    elif _resp_proc is None:
-        delta = None
-    else:
-        delta = [{} for _ in range(len(_resp_proc))]
-        for r in _resp_proc:
-            kwargs.update(r.prep())
-    delta_stores = [{} for _ in range(len(_resp_proc))]
+    _proc = _prepare(_proc, kwargs)
+    delta_stores = [{} for _ in range(len(_proc))]
     for response in f(
         *args, **kwargs
     ):
-        msg = Msg(role=_role)
-        msg['meta']['response'] = response
+        msg = StreamMsg(role=_role)
+        msg['meta'][_response_name] = response
 
-        for r, delta_store in zip(_resp_proc, delta_stores):
-            msg = r.delta(msg, delta_store, streamed=True)
+        for r, delta_store in zip(_proc, delta_stores):
+            msg = r(msg, delta_store)
         
         yield msg
     
-    msg = Msg(role=_role)
-    msg['meta']['response'] = END_TOK
+    msg = StreamMsg(role=_role, is_last=True)
+    msg['meta'][_response_name] = END_TOK
 
-    for r, delta_store in zip(_resp_proc, delta_stores):
-        msg = r.delta(msg, delta_store, streamed=True, is_last=True)
+    for r, delta_store in zip(_proc, delta_stores):
+        msg = r(msg, delta_store)
 
     yield msg
 
@@ -535,6 +522,7 @@ async def llm_astream(
     *args, 
     _resp_proc: typing.List[RespConv]=None, 
     _role: str='assistant',
+    _response_name: str='response',
     **kwargs
 ) -> typing.AsyncIterator:
     """
@@ -550,37 +538,25 @@ async def llm_astream(
     Yields:
         typing.AsyncIterator: The Message and the results
     """
-    _resp_proc = _resp_proc or []
-
-    if isinstance(_resp_proc, RespConv):
-        delta = {}
-        kwargs.update(_resp_proc.prep())
-    elif _resp_proc is None:
-        delta = None
-    else:
-        delta = [{} for _ in range(len(_resp_proc))]
-        for r in _resp_proc:
-            kwargs.update(r.prep())
+    _proc = _prepare(_proc, kwargs)
 
     delta_stores = [{} for _ in range(len(_resp_proc))]
     async for response in await f(
         *args, **kwargs
     ):
-        msg = Msg(role=_role)
-        msg['meta']['response'] = response
+        msg = StreamMsg(role=_role)
+        msg['meta'][_response_name] = response
         for r, delta_store in zip(_resp_proc, delta_stores):
-            msg = r.delta(msg, delta_store, streamed=True)
+            msg = r(msg, delta_store)
         
         yield msg
 
-    msg = Msg(role=_role)
+    msg = StreamMsg(role=_role, is_last=True)
+    msg['meta'][_response_name] = END_TOK
     for r, delta_store in zip(_resp_proc, delta_stores):
-        msg = r.delta(msg, delta_store, streamed=True, is_last=True)
+        msg = r(msg, delta_store)
 
     yield msg
-    # yield process_response(
-    #     END_TOK, msg, _resp_proc, delta
-    # )
 
 
 # def process_response(msg, convs):

@@ -7,7 +7,6 @@ from abc import abstractmethod
 # 3rd party
 
 # local
-from ..msg._messages import NULL_TOK
 from .. import utils
 from ._msg import MsgConv
 
@@ -19,6 +18,20 @@ class ParseConv(MsgConv):
     
     @abstractmethod
     def render(self, data) -> str:
+        pass
+
+
+class NullParser(MsgConv):
+    """
+    A parser that does not perform any parsing or transformation on the input.
+    Instead, it simply returns the input response as-is.
+    """
+
+    def delta(self, resp, delta_store: typing.Dict, streamed: bool=False, is_last: bool=False) -> typing.List:
+        
+        return [resp]
+    
+    def render(self, data):
         pass
 
 
@@ -221,7 +234,6 @@ class FullParser(ParseConv):
 
     def delta(self, resp, delta_store: typing.Dict, streamed: bool=False, is_last: bool=False) -> typing.List:
         
-        # resp = self.handle_null(resp, '')
         utils.add(delta_store, 'val', resp)
         if is_last:
             val = delta_store['val']
@@ -301,22 +313,6 @@ class LineParser(ParseConv):
             res.append(d.replace('\n', '\\n'))
         return f'\n'.join(data)
 
-
-# class NullParser(MsgConv):
-#     """
-#     A parser that does not perform any parsing or transformation on the input.
-#     Instead, it simply returns the input response as-is.
-#     """
-
-#     def delta(self, resp, delta_store: typing.Dict, streamed: bool=False, is_last: bool=False) -> typing.List:
-        
-#         if resp is NULL_TOK:
-#             return utils.UNDEFINED
-        
-#         return [resp]
-    
-#     def render(self, data):
-#         pass
 
 
 # class Parser(Module, AsyncModule, ABC):

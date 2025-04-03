@@ -467,7 +467,7 @@ class OpenAIChatComp(OpenAILLM, ABC):
         }
         return await llm_aforward(
             self._aclient.chat.completions.create, 
-            _resp_proc=self.resp_procs, 
+            _proc=self.resp_procs, 
             **kwargs
         )
 
@@ -493,7 +493,7 @@ class OpenAIChatComp(OpenAILLM, ABC):
         }
         for r, c in llm_stream(
             self._client.chat.completions.create, 
-            _resp_proc=self.resp_procs, 
+            _proc=self.resp_procs, 
             stream=True,
             **kwargs
         ):

@@ -1,8 +1,9 @@
-from dachi.msg._messages import Msg
+from dachi.msg._messages import Msg, StreamMsg
 
 from typing import Iterator
 from dachi.asst import _ai
 import typing
+from dachi import utils
 
 
 class DummyAIModel(
@@ -20,7 +21,7 @@ class DummyAIModel(
         self, 
         prompt: _ai.LLM_PROMPT, 
         **kwarg_override
-    ) -> _ai.LLM_RESPONSE:
+    ):
         """Run a standard query to the API
 
         Args:
@@ -31,22 +32,23 @@ class DummyAIModel(
         """
         return Msg(
             role='assistant', content=self.target
-        ), self.target
+        )# , self.target
     
     def stream(
         self, prompt: _ai.LLM_PROMPT, 
         **kwarg_override
-    ) -> Iterator[_ai.LLM_RESPONSE]:
+    ) -> Iterator:
 
         cur_out = ''
-        for c in self.target:
+        
+        for i, c in enumerate(self.target):
             cur_out += c
+            is_last = i == len(cur_out) - 1
             
-            msg = Msg(
-                role='assistant', content=cur_out, delta={'content': c}
+            msg = StreamMsg(
+                role='assistant', content=cur_out, delta={'content': c}, is_last=is_last
             )
-            print('Yielding ', c)
-            yield msg, c
+            yield msg
         
     async def aforward(self, dialog, **kwarg_overrides):
         return self.forward(dialog, **kwarg_overrides)
@@ -91,38 +93,43 @@ async def astream(msg: str) -> typing.AsyncIterator[typing.Dict]:
 class TextResp(_ai.RespConv):
 
     def __init__(self):
-        super().__init__(True)
+        super().__init__('content')
+    
+    def post(self, msg, result, delta_store, streamed = False, is_last = True):
+        msg[self.name] = delta_store.get('content', '')
 
-    def __call__(self, response, msg: Msg) -> typing.Any:
-        msg['content'] = response['content']
-        return msg['content']
-
-    def delta(self, response, msg: Msg, delta_store: typing.Dict) -> typing.Any: 
-        
-        if 'content' not in delta_store:
-            delta_store['content'] = '' 
-        if response is not None and response is not _ai.END_TOK:
-            delta_store['content'] += response['content']
-        msg['content'] = delta_store['content']
-        return msg['content']
+    def delta(self, resp, delta_store: typing.Dict, streamed: bool=False, is_last: bool=True) -> typing.Any: 
+        if resp is not _ai.END_TOK:
+            utils.add(delta_store, 'content', resp['content'])
+            return resp['content']
+        return ''
 
 
 class DeltaResp(_ai.RespConv):
 
-    def __init__(self):
-        super().__init__(True)
+    def __init__(self, name: str):
+        super().__init__(name, from_='response')
 
-    def __call__(self, response, msg: Msg) -> typing.Any:
-        msg['delta_content'] = ''
+    # def __call__(self, response, msg: Msg) -> typing.Any:
+    #     msg['delta_content'] = ''
+    #     return ''
+
+    # def delta(self, response, msg: Msg, delta_store: typing.Dict) -> typing.Any: 
+    #     if response is _ai.END_TOK:
+    #         msg['delta_content'] = None
+    #         return None
+        
+    #     msg['delta_content'] = response['content']
+    #     return response['content']
+
+    def post(self, msg, result, delta_store, streamed = False, is_last = True):
+        msg[self.name] = delta_store.get('content', '')
+
+    def delta(self, resp, delta_store: typing.Dict, streamed: bool=False, is_last: bool=True) -> typing.Any: 
+        if resp is not _ai.END_TOK:
+            return resp['content']
         return ''
 
-    def delta(self, response, msg: Msg, delta_store: typing.Dict) -> typing.Any: 
-        if response is _ai.END_TOK:
-            msg['delta_content'] = None
-            return None
-        
-        msg['delta_content'] = response['content']
-        return response['content']
 
 
 class TestLLM:
@@ -133,31 +140,32 @@ class TestLLM:
         assert res['meta']['response']['content'] == 'Hi! Jack'
 
     def test_llm_executes_forward_with_processor(self):
-        res, content = _ai.llm_forward(forward, 'Jack', _resp_proc=TextResp())
-        assert content == 'Hi! Jack'
-        assert res['meta']['response']['content'] == 'Hi! Jack'
+        res = _ai.llm_forward(forward, 'Jack', _proc=TextResp())
+        assert res['content'] == 'Hi! Jack'
+        assert res['meta']['content'] == 'Hi! Jack'
 
     def test_llm_executes_stream_with_processor(self):
         responses = []
         contents = []
-        for r, content in _ai.llm_stream(
-            stream, 'Jack', _resp_proc=TextResp()
+        for r in _ai.llm_stream(
+            stream, 'Jack', _proc=TextResp()
         ):
-            responses.append(r)
-            contents.append(content)
+            responses.append(r.m['response'])
+            contents.append(r['content'])
         assert contents[0] == 'H'
+        print(r)
         assert contents[-1] == 'Hi! Jack'
-        assert responses[-1]['content'] == 'Hi! Jack'
 
     def test_llm_executes_stream_with_two_processors(self):
         responses = []
         contents = []
         deltas = []
-        for r, (content, delta) in _ai.llm_stream(stream, 'Jack', _resp_proc=[TextResp(), DeltaResp()]):
+        for r in _ai.llm_stream(stream, 'Jack', _proc=[TextResp(), DeltaResp('delta')]):
+            print('R: ', type(r))
             responses.append(r)
-            contents.append(content)
-            deltas.append(delta)
+            contents.append(r['content'])
+            deltas.append(r.m['content'])
         assert contents[0] == 'H'
         assert contents[-1] == 'Hi! Jack'
-        assert delta is None
+        assert deltas[-1] is ''
         assert responses[-1]['content'] == 'Hi! Jack'

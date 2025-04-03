@@ -21,39 +21,35 @@ class RespConv(MsgConv, ABC):
     """Use to process the resoponse from an LLM
     """
 
-    conv_env_tok = ''
+    conv_env_tok = lambda : {'content': ''}
 
-    def __init__(self, name):
-        super().__init__(name, 'response')
+    def __init__(self, name, from_: str='response'):
+        super().__init__(name, from_)
 
-    def handle_end_tok(self, resp):
-
-        if resp is END_TOK:
-            return self.conv_env_tok
-        return resp
-    
     @abstractmethod
     def delta(
-        self, response, msg: Msg, delta_store: typing.Dict, streamed: bool=False, is_last: bool=False
+        self, resp, delta_store: typing.Dict, streamed: bool=False, is_last: bool=False
     ) -> Msg: 
         pass
 
-    def forward(self, msg: Msg):
-        resp = msg['meta']['response']
+    def forward(self, msg: Msg, delta_store: typing.Dict=None):
+
+        if delta_store is None:
+            delta_store = {}
+        resp = msg['meta'][self._from[0]]
+
         if isinstance(msg, StreamMsg):
             streamed = True
             is_last = msg.is_last
         else:
             streamed = False
             is_last = True
-        if resp is END_TOK:
-            resp = self.handle_end_tok(resp)
         
-        if resp is utils.UNDEFINED:
-            return utils.UNDEFINED
-        msg['meta'][self.name] = self.delta(
-            resp, {}, streamed, is_last
+        msg['meta'][self.name] = res = self.delta(
+            resp, delta_store, streamed, is_last
         )
+
+        self.post(msg, res, delta_store, streamed, is_last)
         return msg
 
     def prep(self) -> typing.Dict:

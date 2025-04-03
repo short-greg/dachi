@@ -421,35 +421,35 @@ class JSONConv(OutConv):
         return escape_curly_braces(self.key_descr)
 
 
-# class NullMsgConv(MsgConv):
-#     """A Reader that does not change the data. 
-#     So in most cases will simply output a string
-#     """
+class NullOutConv(MsgConv):
+    """A Reader that does not change the data. 
+    So in most cases will simply output a string
+    """
 
-#     def example(self, data: typing.Any) -> str:
-#         """Output an example of the data
+    def example(self, data: typing.Any) -> str:
+        """Output an example of the data
 
-#         Args:
-#             data (typing.Any): 
+        Args:
+            data (typing.Any): 
 
-#         Returns:
-#             str: 
-#         """
-#         return str(data)
+        Returns:
+            str: 
+        """
+        return str(data)
 
-#     def delta(self, resp, delta_store: typing.Dict, streamed: bool=False, is_last: bool=False) -> typing.Any:
-#         """Read in the output
+    def delta(self, resp, delta_store: typing.Dict, streamed: bool=False, is_last: bool=False) -> typing.Any:
+        """Read in the output
 
-#         Args:
-#             message (str): The message to read
+        Args:
+            message (str): The message to read
 
-#         Returns:
-#             typing.Any: The output of the reader
-#         """
-#         return resp
+        Returns:
+            typing.Any: The output of the reader
+        """
+        return resp
 
-#     def template(self) -> str:
-#         return None
+    def template(self) -> str:
+        return None
 
 
 

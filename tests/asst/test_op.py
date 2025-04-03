@@ -11,8 +11,8 @@ class TestOp:
     def test_op_parses_and_returns_line_values(self):
 
         op = Op(
-            DummyAIModel(lines), ToText(), parser=LineParser(),
-            out=NullOutConv()
+            DummyAIModel(lines), ToText(), parser=LineParser('F1'),
+            _out=NullOutConv()
         )
         r = op.forward("Message")
         assert r[0] == 'hi'
@@ -22,8 +22,8 @@ class TestOp:
     def test_op_parses_and_returns_line_values_with_streaming(self):
 
         op = Op(
-            DummyAIModel(lines), ToText(), parser=LineParser(),
-            out=NullOutConv()
+            DummyAIModel(lines), ToText(), parser=LineParser('data'),
+            _out=NullOutConv('')
         )
         rs = []
         for r_i in op.stream("Message"):
