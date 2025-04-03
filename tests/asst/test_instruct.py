@@ -13,10 +13,6 @@ def dummy_dec(f):
     return _
 
 
-class TestOp(object):
-
-    pass
-
 
 class TestSignatureF:
 

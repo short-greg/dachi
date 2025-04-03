@@ -1,16 +1,16 @@
 # 1st party
 import typing
 import json
-from abc import ABC, abstractmethod
 import inspect
+from abc import abstractmethod
 
 # 3rd party
 import pydantic
 
 # local
-from ..msg import render, struct_template
-from ._parse import Parser, NullParser
-from ..base import Templatable, TemplateField
+from ..msg import render, struct_template, Msg
+from ._msg import MsgConv
+from ..base import TemplateField, Templatable
 from ..utils import unescape_curly_braces
 from pydantic_core import PydanticUndefined
 from ..utils import (
@@ -41,95 +41,10 @@ class ReadError(Exception):
         raise ReadError(message, original_exception) from original_exception
 
 
-class OutConv(pydantic.BaseModel, Templatable, ABC):
-    """Use a reader to read in data convert data retrieved from
-    an LLM to a better format
+class OutConv(MsgConv, Templatable):
+    """Use for converting an AI response into a primitive value
     """
-
-    name: str = ''
-
-    @abstractmethod
-    def delta(self, resp, delta_store: typing.Dict) -> typing.Any:
-        """Read in the output
-
-        Args:
-            message (str): The message to read
-
-        Returns:
-            typing.Any: The output of the reader
-        """
-        pass
-
-    def stream(
-        self, resp_iterator: typing.Iterator, 
-        parser: Parser=None,
-        delta_store: typing.Dict=None, 
-        pdelta_store: typing.Dict=None,
-        get_msg: bool=False
-    ) -> typing.Iterator:
-        
-        parser = parser or NullParser()
-        print(resp_iterator)
-        for msg, resp in parser.stream(
-            resp_iterator, pdelta_store, True
-        ):
-            if resp is utils.UNDEFINED:
-                continue
-            for respi in resp:
-                if respi is utils.UNDEFINED:
-                    continue
-                respi = self.delta(respi, delta_store)
-                if get_msg:
-                    yield msg, respi
-                else:
-                    yield respi
-
-    async def astream(
-        self, resp_iterator: typing.Iterator, 
-        parser: Parser=None,
-        delta_store: typing.Dict=None, 
-        pdelta_store: typing.Dict=None,
-        get_msg: bool=False
-    ) -> typing.AsyncIterator:
-        
-        parser = parser or NullParser()
-        async for msg, resp in await parser.astream(
-            resp_iterator, pdelta_store, True
-        ):
-            if resp is utils.UNDEFINED:
-                continue
-            for respi in resp:
-                respi = self.delta(respi, delta_store)
-
-                if respi is utils.UNDEFINED:
-                    continue
-                if get_msg:
-                    yield msg, respi
-                else:
-                    yield respi
-
-
-# def stream_out(asst: StreamAssist, *args, parser: Parser=None, **kwargs) -> typing.Tuple[Msg, typing.Any]:
-
-
-        delta_store = delta_store or {}
-        for resp in resp_iterator:
-            yield self.delta(resp, delta_store)
-
-
-    def __call__(self, resp) -> typing.Any:
-        """Read in the output
-
-        Args:
-            message (str): The message to read
-
-        Returns:
-            typing.Any: The output of the reader
-        """
-        return self.delta(
-            resp, {}
-        )
-
+    
     @abstractmethod
     def example(self, data: typing.Any) -> str:
         """Output an example of the data
@@ -152,55 +67,24 @@ class OutConv(pydantic.BaseModel, Templatable, ABC):
         pass
 
 
-class NullOutConv(OutConv):
-    """A Reader that does not change the data. 
-    So in most cases will simply output a string
-    """
-    def example(self, data: typing.Any) -> str:
-        """Output an example of the data
-
-        Args:
-            data (typing.Any): 
-
-        Returns:
-            str: 
-        """
-        return str(data)
-
-    def delta(self, resp, delta_store: typing.Dict) -> typing.Any:
-        """Read in the output
-
-        Args:
-            message (str): The message to read
-
-        Returns:
-            typing.Any: The output of the reader
-        """
-        return resp
-
-    def template(self) -> str:
-        return None
-
-
 class PrimConv(OutConv):
     """Use for converting an AI response into a primitive value
     """
 
-    _out_cls: typing.Type
-
     def __init__(
-        self, out_cls: typing.Type,
-        **data
+        self, out_cls: typing.Type, name: str, from_: str='data'
     ):
         """Create a reader for Primitive values
 
         Args:
             out (typing.Type): The type of data
         """
-        super().__init__(**data)
+        super().__init__(
+            name=name, from_=from_
+        )
         self._out_cls = out_cls
 
-    def delta(self, resp, delta_store: typing.Dict) -> typing.Any:
+    def delta(self, resp, delta_store: typing.Dict, is_streamed: bool=False, is_last: bool=True) -> typing.Any:
         """Read in the output
 
         Args:
@@ -209,11 +93,17 @@ class PrimConv(OutConv):
         Returns:
             typing.Any: The output of the reader
         """
-        resp = resp[0]
 
+        val = utils.add(delta_store, 'val', resp)
+
+        if not is_last:
+            return utils.UNDEFINED
+        
         if self._out_cls is bool:
-            return resp.lower() in ('true', 'y', 'yes', '1', 't')
-        return self._out_cls(resp)
+            return (
+                val.lower() in ('true', 'y', 'yes', '1', 't')
+            )
+        return self._out_cls(val)
 
     def example(self, data: typing.Any) -> str:
         """Output an example of the data
@@ -238,15 +128,16 @@ class PrimConv(OutConv):
 class PydanticConv(OutConv, typing.Generic[S]):
     """Use for converting an AI response into a Pydantic BaseModel
     """
-    _out_cls: typing.Type[S] = pydantic.PrivateAttr()
-
-    def __init__(self, out_cls: S, **data):
-        """Read in a 
+    def __init__(
+        self, out_cls: typing.Type[S], 
+        name: str, from_: str='data'
+    ):
+        """Read in a Pydantic BaseModel
 
         Args:
             out_cls (S): The class to read in
         """
-        super().__init__(**data)
+        super().__init__(name, from_)
         self._out_cls = out_cls
 
     def example(self, data: typing.Any) -> str:
@@ -260,7 +151,7 @@ class PydanticConv(OutConv, typing.Generic[S]):
         """
         return data.model_dump_json()
 
-    def delta(self, resp, delta_store: typing.Dict) -> typing.Any:
+    def delta(self, resp, delta_store: typing.Dict, is_streamed: bool=False, is_last: bool=True) -> Msg:
     # def __call__(self, message: str) -> typing.Any:
         """Read in the output
 
@@ -270,12 +161,15 @@ class PydanticConv(OutConv, typing.Generic[S]):
         Returns:
             typing.Any: The output of the reader
         """
-        resp = resp[0]
+        val = utils.add(delta_store, 'val', resp)
+
+        if not is_last:
+            return utils.UNDEFINED
         
         # if resp is not END_TOK:
         #     utils.add(delta_store, 'val', resp)
         #     return utils.UNDEFINED
-        message = unescape_curly_braces(resp)
+        message = unescape_curly_braces(val)
         try:
             data = json.loads(message)
         except json.JSONDecodeError as e:
@@ -318,11 +212,17 @@ class PydanticConv(OutConv, typing.Generic[S]):
 class KVConv(OutConv):
     """Create a Reader of a list of key values
     """
-    sep: str = '::'
-    key_descr: typing.Optional[typing.Union[typing.Type[pydantic.BaseModel], typing.Dict]] = None
+
+    def __init__(
+        self, name: str, from_: str='data',
+        sep: str='::', key_descr: typing.Optional[typing.Union[typing.Type[pydantic.BaseModel], typing.Dict]] = None
+    ):
+        super().__init__(name, from_)
+        self.sep = sep
+        self.key_descr = key_descr
 
     def delta(
-        self, resp, delta_store: typing.Dict
+        self, resp, delta_store: typing.Dict, is_streamed: bool=False, is_last: bool=True
     ) -> typing.Any:
         """Read in the output
 
@@ -332,6 +232,7 @@ class KVConv(OutConv):
         Returns:
             typing.Any: The output of the reader
         """
+        
         result = {}
         for line in resp:
             try:
@@ -388,11 +289,19 @@ class KVConv(OutConv):
 class IndexConv(OutConv):
     """Create a Reader of a list of key values
     """
-    sep: str = '::'
-    key_descr: typing.Optional[str] = None
-    key_type: typing.Optional[typing.Type] = None
 
-    def delta(self, resp, delta_store: typing.Dict) -> typing.Any:
+    def __init__(
+        self, name: str, from_: str='data',
+        sep: str='::', key_descr: typing.Optional[typing.Union[typing.Type[pydantic.BaseModel], typing.Dict]] = None
+    ):
+        super().__init__(name, from_)
+        self.sep = sep
+        self.key_descr = key_descr
+        self.sep = sep
+        self.key_descr = key_descr
+        self.key_type = None
+
+    def delta(self, resp, delta_store: typing.Dict, is_streamed: bool=False, is_last: bool=True) -> typing.Any:
         """Read in the output
 
         Args:
@@ -401,7 +310,6 @@ class IndexConv(OutConv):
         Returns:
             typing.Any: The output of the reader
         """
-        
         result = []
         for line in resp:
             try:
@@ -453,16 +361,21 @@ class IndexConv(OutConv):
                 f'...',
                 f'count{self.sep}{key_descr}',
             ]
-        
         return '\n'.join(lines)
 
 
 class JSONConv(OutConv):
     """Use to read from a JSON
     """
-    key_descr: typing.Optional[typing.Dict] = None
 
-    def delta(self, resp, delta_store: typing.Dict) -> typing.Any:
+    def __init__(
+        self, name, from_ = 'data', 
+        key_descr: typing.Optional[typing.Dict] = None
+    ):
+        super().__init__(name, from_)
+        self.key_descr = key_descr
+
+    def delta(self, resp, delta_store: typing.Dict, streamed: bool=False, is_last: bool=True) -> typing.Any:
         """Read in the output
 
         Args:
@@ -479,7 +392,6 @@ class JSONConv(OutConv):
         Returns:
             typing.Dict: The result - if it fails, will return an empty dict
         """
-        resp = resp[0]
         # val = utils.add(
         #     delta_store, 'val', resp
         # )
@@ -507,3 +419,107 @@ class JSONConv(OutConv):
             str: The template for the output
         """
         return escape_curly_braces(self.key_descr)
+
+
+# class NullMsgConv(MsgConv):
+#     """A Reader that does not change the data. 
+#     So in most cases will simply output a string
+#     """
+
+#     def example(self, data: typing.Any) -> str:
+#         """Output an example of the data
+
+#         Args:
+#             data (typing.Any): 
+
+#         Returns:
+#             str: 
+#         """
+#         return str(data)
+
+#     def delta(self, resp, delta_store: typing.Dict, streamed: bool=False, is_last: bool=False) -> typing.Any:
+#         """Read in the output
+
+#         Args:
+#             message (str): The message to read
+
+#         Returns:
+#             typing.Any: The output of the reader
+#         """
+#         return resp
+
+#     def template(self) -> str:
+#         return None
+
+
+
+    # def stream(
+    #     self, resp_iterator: typing.Iterator, 
+    #     parser: Parser=None,
+    #     delta_store: typing.Dict=None, 
+    #     pdelta_store: typing.Dict=None,
+    #     get_msg: bool=False
+    # ) -> typing.Iterator:
+        
+    #     parser = parser or NullParser()
+    #     print(resp_iterator)
+    #     for msg, resp in parser.stream(
+    #         resp_iterator, pdelta_store, True
+    #     ):
+    #         if resp is utils.UNDEFINED:
+    #             continue
+    #         for respi in resp:
+    #             if respi is utils.UNDEFINED:
+    #                 continue
+    #             respi = self.delta(respi, delta_store)
+    #             if get_msg:
+    #                 yield msg, respi
+    #             else:
+    #                 yield respi
+
+    # async def astream(
+    #     self, resp_iterator: typing.Iterator, 
+    #     parser: Parser=None,
+    #     delta_store: typing.Dict=None, 
+    #     pdelta_store: typing.Dict=None,
+    #     get_msg: bool=False
+    # ) -> typing.AsyncIterator:
+        
+    #     parser = parser or NullParser()
+    #     async for msg, resp in await parser.astream(
+    #         resp_iterator, pdelta_store, True
+    #     ):
+    #         if resp is utils.UNDEFINED:
+    #             continue
+    #         for respi in resp:
+    #             respi = self.delta(respi, delta_store)
+
+    #             if respi is utils.UNDEFINED:
+    #                 continue
+    #             if get_msg:
+    #                 yield msg, respi
+    #             else:
+    #                 yield respi
+
+
+# def stream_out(asst: StreamAssist, *args, parser: Parser=None, **kwargs) -> typing.Tuple[Msg, typing.Any]:
+
+
+        # delta_store = delta_store or {}
+        # for resp in resp_iterator:
+        #     yield self.delta(resp, delta_store)
+
+
+    # def __call__(self, resp) -> typing.Any:
+    #     """Read in the output
+
+    #     Args:
+    #         message (str): The message to read
+
+    #     Returns:
+    #         typing.Any: The output of the reader
+    #     """
+    #     return self.delta(
+    #         resp, {}
+    #     )
+

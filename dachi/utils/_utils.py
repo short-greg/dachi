@@ -235,10 +235,12 @@ def add(
     Returns:
         typing.Any: The value specified by dictionary key
     """
+
     if key not in d:
         d[key] = init_val
     
-    d[key] = d[key] + value
+    if value is not UNDEFINED:
+        d[key] = d[key] + value
     return d[key]
 
 

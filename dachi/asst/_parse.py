@@ -1,142 +1,34 @@
 # 1st party
 import typing
-from abc import ABC, abstractmethod
-import typing
 import csv
 import io
+from abc import abstractmethod
 
 # 3rd party
 
 # local
 from ..msg._messages import NULL_TOK
 from .. import utils
+from ._msg import MsgConv
 
 
-class Parser(ABC):
-    """
-    Parser is an abstract base class designed to process and parse the output of a 
-    large language model (LLM) into discrete units. These units can then be 
-    converted into a structured output that is sent to the calling function.
-    The class provides a framework for implementing custom parsing logic through 
-    the `delta` and `template` methods, which must be defined in subclasses. It 
-    also includes a convenience method `__call__` to handle parsing of the entire 
-    response in one step.
-    """
-    @abstractmethod
-    def delta(self, resp, delta_store: typing.Dict, is_last: bool=False) -> typing.List | None:
-        """Parse the response one by one
+class ParseConv(MsgConv):
 
-        Args:
-            resp: The response
-            delta_store (typing.Dict): Dictionary to accumulate updates
-            last (bool, optional): Whether it is the last value or not. Defaults to False.
-
-        Returns:
-            typing.List: Will return a list if value defined else UNDEFINED
-        """
-        pass
-
-    def handle_null(self, resp, default):
-        """
-        Handles the case where the response (`resp`) is the `END_TOK`.
-        Args:
-            resp: The response to evaluate. If it matches `END_TOK`, the function
-                  will return the default value and a flag indicating the end.
-            default: The default value to return if `resp` is `END_TOK`.
-        Returns:
-            A tuple containing:
-                - The response (`resp`) or the default value if `resp` is `END_TOK`.
-                - A boolean flag indicating whether `resp` was `END_TOK` (True) or not (False).
-        """
-
-        if resp is NULL_TOK:
-            return default
-        return resp
+    def __init__(self, name, from_: str | typing.List[str]='data'):
+        super().__init__(name, from_)
     
-    def stream(self, resp_iter: typing.Iterable, delta_store: typing.Dict=None, get_msg: bool=False) -> typing.Iterator:
-        """
-        Parses a stream of responses from the LLM and yields processed results.
-        Args:
-            resp_iter (typing.Iterable): An iterable of response tuples, where each tuple
-                contains a key and a response object.
-            delta_store (typing.Dict, optional): A dictionary to store intermediate state
-                for delta processing. Defaults to an empty dictionary if not provided.
-        Yields:
-            typing.Iterator: Processed results from the responses, excluding undefined values.
-        Notes:
-            - The `delta` method is used to process each response and update the `delta_store`.
-            - If the processed result is not `utils.UNDEFINED`, it is yielded.
-            - After the iteration, a final call to `delta` is made with `END_TOK` to handle
-              any remaining processing.
-        """
-        delta_store = delta_store or {}
-        for msg, resp in resp_iter:
-            cur = self.delta(resp, delta_store, False)
-            if cur is not utils.UNDEFINED:
-                if get_msg:
-                    yield msg, cur
-                else: yield cur
-        cur = self.delta(NULL_TOK, delta_store, True)
-        if cur is not utils.UNDEFINED:
-            if get_msg:
-                yield msg, cur
-            else: yield cur
-
-    async def astream(self, resp_iter: typing.AsyncIterable, delta_store: typing.Dict=None, get_msg: bool=False) -> typing.AsyncIterator:
-        """
-        Parses a stream of responses from the LLM and yields processed results.
-        Args:
-            resp_iter (typing.Iterable): An iterable of response tuples, where each tuple
-                contains a key and a response object.
-            delta_store (typing.Dict, optional): A dictionary to store intermediate state
-                for delta processing. Defaults to an empty dictionary if not provided.
-        Yields:
-            typing.Iterator: Processed results from the responses, excluding undefined values.
-        Notes:
-            - The `delta` method is used to process each response and update the `delta_store`.
-            - If the processed result is not `utils.UNDEFINED`, it is yielded.
-            - After the iteration, a final call to `delta` is made with `END_TOK` to handle
-              any remaining processing.
-        """
-        delta_store = delta_store or {}
-        async for msg, resp in await resp_iter:
-            cur = self.delta(resp, delta_store, False)
-            if cur is not utils.UNDEFINED:
-                if get_msg:
-                    yield msg, cur
-                else: yield cur
-        cur = self.delta(NULL_TOK, delta_store, True)
-        if cur is not utils.UNDEFINED:
-            if get_msg:
-                yield msg, cur
-            else: yield cur
-
-    def __call__(self, resp) -> typing.List[typing.Any] | None:
-        """Convenience function to parse based on the whole set of data
-
-        Args:
-            resp: 
-
-        Returns:
-            typing.List[typing.Any]: The parsed values. Will return undefined if
-            cannot parse
-        """
-        return self.delta(
-            resp, {}, True
-        )
-
     @abstractmethod
     def render(self, data) -> str:
         pass
 
 
-class CSVRowParser(Parser):
+class CSVRowParser(ParseConv):
     """
     Dynamically parse CSV data, returning new rows as accumulated. 
     The header will be returned along with them if used.
     """
     
-    def __init__(self, delimiter: str = ',', use_header: bool = True):
+    def __init__(self, name: str, from_: str ='content', delimiter: str = ',', use_header: bool = True):
         """
         Initializes the CSV parser with the specified delimiter and header usage.
         This class is designed to dynamically parse CSV data, returning new rows 
@@ -148,21 +40,21 @@ class CSVRowParser(Parser):
             use_header (bool): Indicates whether the CSV file includes a header row. 
                                Defaults to False.
         """
+        super().__init__(name, from_)
         self._delimiter = delimiter
         self._use_header = use_header
 
-    def delta(self, resp, delta_store: typing.Dict, is_last: bool=False) -> typing.List | None:
+    def delta(self, resp, delta_store: typing.Dict, streamed: bool=False, is_last: bool=False) -> typing.List | None:
         """
         Parses CSV data incrementally using csv.reader.
         """
-        resp = self.handle_null(resp, '')
+        # resp = self.handle_null(resp, '')
 
         val = utils.add(delta_store, 'val', resp, '')
         row = utils.get_or_set(delta_store, 'row', 0)
         header = utils.get_or_set(
             delta_store, 'header', None
         )
-
         # Process accumulated data using csv.reader
         # csv_data = io.StringIO(delta_store['val'])
 
@@ -202,11 +94,11 @@ class CSVRowParser(Parser):
         pass
 
 
-class CSVCellParser(Parser):
+class CSVCellParser(MsgConv):
     """This parser assumes the input string is a CSV
     """
 
-    def __init__(self, delimiter: str = ',', use_header: bool = True):
+    def __init__(self, name: str, from_: str='content', delimiter: str = ',', use_header: bool = True):
         """
         Initializes the converter for parsing CSV data.
         Args:
@@ -216,15 +108,17 @@ class CSVCellParser(Parser):
         This class parses CSV data and returns all cells. If `use_header` is True, 
         the cells will be labeled using the values from the header row.
         """
+        super().__init__(name, from_)
         self._delimiter = delimiter
         self._use_header = use_header
 
-    def delta(self, resp, delta_store: typing.Dict, is_last: bool=False) -> typing.Any:
+    def delta(self, resp, delta_store: typing.Dict, streamed: bool=False, is_last: bool=False) -> typing.Any:
         """
         Parses a single-row CSV and returns one cell at a time.
         """
-        resp = self.handle_null(resp, '')
-        print('Resp: ', resp)
+        
+        # resp = self.handle_null(resp, '')
+        # print('Resp: ', resp)
 
         val = utils.add(delta_store, 'val', resp)
         cur_row = utils.get_or_set(delta_store, 'row', 0)
@@ -284,19 +178,18 @@ class CSVCellParser(Parser):
         pass
 
 
-class CharDelimParser(Parser):
+class CharDelimParser(ParseConv):
     """Parses based on a defined character
     """
-
-    def __init__(self, sep: str=','):
-        super().__init__()
+    def __init__(self, name: str, from_: str='content', sep: str=','):
+        super().__init__(name, from_)
         self.sep = sep
 
     def delta(
-        self, resp, delta_store: typing.Dict, is_last: bool=False
+        self, resp, delta_store: typing.Dict, streamed: bool=False, is_last: bool=False
     ) -> typing.List | None:
         
-        resp = self.handle_null(resp, '')
+        # resp = self.handle_null(resp, '')
         val = utils.add(delta_store, 'val', resp)
         res = val.split(self.sep)
         return_val = utils.UNDEFINED
@@ -319,31 +212,16 @@ class CharDelimParser(Parser):
         return f'{self.sep}'.join(data)
 
 
-class NullParser(Parser):
-    """
-    A parser that does not perform any parsing or transformation on the input.
-    Instead, it simply returns the input response as-is.
-    """
-
-    def delta(self, resp, delta_store: typing.Dict, is_last: bool=False) -> typing.List:
-        
-        if resp is NULL_TOK:
-            return utils.UNDEFINED
-        
-        return [resp]
-    
-    def render(self, data):
-        pass
-
-
-class FullParser(Parser):
+class FullParser(ParseConv):
     """
     A parser that accumulates input data until the end of a stream is reached.
     """
-    
-    def delta(self, resp, delta_store: typing.Dict, is_last: bool=False) -> typing.List:
+    def __init__(self, name: str, from_: str='content'):
+        super().__init__(name, from_)
+
+    def delta(self, resp, delta_store: typing.Dict, streamed: bool=False, is_last: bool=False) -> typing.List:
         
-        resp = self.handle_null(resp, '')
+        # resp = self.handle_null(resp, '')
         utils.add(delta_store, 'val', resp)
         if is_last:
             val = delta_store['val']
@@ -356,12 +234,15 @@ class FullParser(Parser):
         return str(data)
 
 
-class LineParser(Parser):
+class LineParser(ParseConv):
     """
     Parses line by line. Can have a line continue by putting a backslash at the end of the line.
     """
+    def __init__(self, name, from_ = 'content'):
+        super().__init__(name, from_)
+
     def delta(
-        self, resp, delta_store: typing.Dict, is_last: bool=False
+        self, resp, delta_store: typing.Dict, streamed: bool=False, is_last: bool=False
     ) -> typing.List:
         """
 
@@ -373,12 +254,11 @@ class LineParser(Parser):
         Returns:
             typing.Any: 
         """ 
-        resp = self.handle_null(resp, '')
+        # resp = self.handle_null(resp, '')
         utils.add(delta_store, 'val', resp)
         lines = delta_store['val'].splitlines()
         result = []
         buffer = []
-        
         for i, line in enumerate(lines):
 
             if not line:
@@ -420,3 +300,139 @@ class LineParser(Parser):
         for d in data:
             res.append(d.replace('\n', '\\n'))
         return f'\n'.join(data)
+
+
+# class NullParser(MsgConv):
+#     """
+#     A parser that does not perform any parsing or transformation on the input.
+#     Instead, it simply returns the input response as-is.
+#     """
+
+#     def delta(self, resp, delta_store: typing.Dict, streamed: bool=False, is_last: bool=False) -> typing.List:
+        
+#         if resp is NULL_TOK:
+#             return utils.UNDEFINED
+        
+#         return [resp]
+    
+#     def render(self, data):
+#         pass
+
+
+# class Parser(Module, AsyncModule, ABC):
+#     """
+#     Parser is an abstract base class designed to process and parse the output of a 
+#     large language model (LLM) into discrete units. These units can then be 
+#     converted into a structured output that is sent to the calling function.
+#     The class provides a framework for implementing custom parsing logic through 
+#     the `delta` and `template` methods, which must be defined in subclasses. It 
+#     also includes a convenience method `__call__` to handle parsing of the entire 
+#     response in one step.
+#     """
+#     @abstractmethod
+#     def delta(self, resp, delta_store: typing.Dict, is_last: bool=False) -> typing.List | None:
+#         """Parse the response one by one
+
+#         Args:
+#             resp: The response
+#             delta_store (typing.Dict): Dictionary to accumulate updates
+#             last (bool, optional): Whether it is the last value or not. Defaults to False.
+
+#         Returns:
+#             typing.List: Will return a list if value defined else UNDEFINED
+#         """
+#         pass
+
+#     def handle_null(self, resp, default):
+#         """
+#         Handles the case where the response (`resp`) is the `END_TOK`.
+#         Args:
+#             resp: The response to evaluate. If it matches `END_TOK`, the function
+#                   will return the default value and a flag indicating the end.
+#             default: The default value to return if `resp` is `END_TOK`.
+#         Returns:
+#             A tuple containing:
+#                 - The response (`resp`) or the default value if `resp` is `END_TOK`.
+#                 - A boolean flag indicating whether `resp` was `END_TOK` (True) or not (False).
+#         """
+
+#         if resp is NULL_TOK:
+#             return default
+#         return resp
+    
+#     def stream(self, resp_iter: typing.Iterable, delta_store: typing.Dict=None, get_msg: bool=False) -> typing.Iterator:
+#         """
+#         Parses a stream of responses from the LLM and yields processed results.
+#         Args:
+#             resp_iter (typing.Iterable): An iterable of response tuples, where each tuple
+#                 contains a key and a response object.
+#             delta_store (typing.Dict, optional): A dictionary to store intermediate state
+#                 for delta processing. Defaults to an empty dictionary if not provided.
+#         Yields:
+#             typing.Iterator: Processed results from the responses, excluding undefined values.
+#         Notes:
+#             - The `delta` method is used to process each response and update the `delta_store`.
+#             - If the processed result is not `utils.UNDEFINED`, it is yielded.
+#             - After the iteration, a final call to `delta` is made with `END_TOK` to handle
+#               any remaining processing.
+#         """
+#         delta_store = delta_store or {}
+#         for msg, resp in resp_iter:
+#             cur = self.delta(resp, delta_store, False)
+#             if cur is not utils.UNDEFINED:
+#                 if get_msg:
+#                     yield msg, cur
+#                 else: yield cur
+#         cur = self.delta(NULL_TOK, delta_store, True)
+#         if cur is not utils.UNDEFINED:
+#             if get_msg:
+#                 yield msg, cur
+#             else: yield cur
+
+#     async def astream(self, resp_iter: typing.AsyncIterable, delta_store: typing.Dict=None, get_msg: bool=False) -> typing.AsyncIterator:
+#         """
+#         Parses a stream of responses from the LLM and yields processed results.
+#         Args:
+#             resp_iter (typing.Iterable): An iterable of response tuples, where each tuple
+#                 contains a key and a response object.
+#             delta_store (typing.Dict, optional): A dictionary to store intermediate state
+#                 for delta processing. Defaults to an empty dictionary if not provided.
+#         Yields:
+#             typing.Iterator: Processed results from the responses, excluding undefined values.
+#         Notes:
+#             - The `delta` method is used to process each response and update the `delta_store`.
+#             - If the processed result is not `utils.UNDEFINED`, it is yielded.
+#             - After the iteration, a final call to `delta` is made with `END_TOK` to handle
+#               any remaining processing.
+#         """
+#         delta_store = delta_store or {}
+#         async for msg, resp in await resp_iter:
+#             cur = self.delta(resp, delta_store, False)
+#             if cur is not utils.UNDEFINED:
+#                 if get_msg:
+#                     yield msg, cur
+#                 else: yield cur
+#         cur = self.delta(NULL_TOK, delta_store, True)
+#         if cur is not utils.UNDEFINED:
+#             if get_msg:
+#                 yield msg, cur
+#             else: yield cur
+
+#     def __call__(self, resp) -> typing.List[typing.Any] | None:
+#         """Convenience function to parse based on the whole set of data
+
+#         Args:
+#             resp: 
+
+#         Returns:
+#             typing.List[typing.Any]: The parsed values. Will return undefined if
+#             cannot parse
+#         """
+#         return self.delta(
+#             resp, {}, True
+#         )
+
+#     @abstractmethod
+#     def render(self, data) -> str:
+#         pass
+

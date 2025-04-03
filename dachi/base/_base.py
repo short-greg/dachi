@@ -106,3 +106,18 @@ class Templatable(ABC):
             str: 
         """
         pass
+
+
+class ExampleMixin(ABC):
+    """A mixin to indicate that the class 
+    has an example function
+    """
+    @abstractmethod
+    def example(self) -> str:
+        """Get the template 
+
+        Returns:
+            str: 
+        """
+        pass
+

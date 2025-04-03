@@ -7,41 +7,54 @@ import typing
 import pydantic
 
 # local
-from ..msg._messages import Msg
+from ..msg._messages import Msg, END_TOK, StreamMsg
+from ._msg import MsgConv
+from .. import utils
+
+RESPONSE = 'resp'
 
 
 S = typing.TypeVar('S', bound=pydantic.BaseModel)
 
-class RespConv(ABC):
+
+class RespConv(MsgConv, ABC):
     """Use to process the resoponse from an LLM
     """
-    def __init__(self, resp: bool):
-        """
-        Initialize the instance.
-        Args:
-            resp (bool): Indicates if the response processor responds with data.
-        """
-        super().__init__()
-        self._resp = resp
 
-    @property
-    def resp(self) -> bool:
-        """Choose whether to include a response
+    conv_env_tok = ''
 
-        Returns:
-            bool: Whether to respond with a value
-        """
-        return self._resp
+    def __init__(self, name):
+        super().__init__(name, 'response')
 
-    @abstractmethod
-    def __call__(self, response, msg: Msg) -> typing.Any:
-        pass
+    def handle_end_tok(self, resp):
 
+        if resp is END_TOK:
+            return self.conv_env_tok
+        return resp
+    
     @abstractmethod
     def delta(
-        self, response, msg: Msg, delta_store: typing.Dict
-    ) -> typing.Any: 
+        self, response, msg: Msg, delta_store: typing.Dict, streamed: bool=False, is_last: bool=False
+    ) -> Msg: 
         pass
+
+    def forward(self, msg: Msg):
+        resp = msg['meta']['response']
+        if isinstance(msg, StreamMsg):
+            streamed = True
+            is_last = msg.is_last
+        else:
+            streamed = False
+            is_last = True
+        if resp is END_TOK:
+            resp = self.handle_end_tok(resp)
+        
+        if resp is utils.UNDEFINED:
+            return utils.UNDEFINED
+        msg['meta'][self.name] = self.delta(
+            resp, {}, streamed, is_last
+        )
+        return msg
 
     def prep(self) -> typing.Dict:
         return {}

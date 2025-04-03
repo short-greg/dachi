@@ -21,7 +21,6 @@ S = typing.TypeVar('S', bound=pydantic.BaseModel)
 
 
 LLM_PROMPT = typing.Union[typing.Iterable[Msg], Msg]
-LLM_RESPONSE = typing.Tuple[Msg, typing.Any]
 
 
 class Assist(Module, ABC):
@@ -39,7 +38,7 @@ class Assist(Module, ABC):
     @abstractmethod
     def forward(
         self, msg: Msg | BaseDialog, *args, **kwargs
-    ) -> typing.Tuple[Msg, typing.Any]:
+    ) -> Msg:
         pass
 
 
@@ -58,7 +57,7 @@ class AsyncAssist(AsyncModule, ABC):
     @abstractmethod
     async def aforward(
         self, msg: Msg | BaseDialog, *args, **kwargs
-    ) -> typing.Tuple[Msg, typing.Any]:
+    ) -> Msg:
         pass
 
 
@@ -76,7 +75,7 @@ class StreamAssist(StreamModule, ABC):
     @abstractmethod
     def stream(
         self, msg: Msg | BaseDialog, *args, **kwargs
-    ) -> typing.Iterator[typing.Tuple[Msg, typing.Any]]:
+    ) -> typing.Iterator[Msg]:
         pass
 
 
@@ -95,7 +94,7 @@ class AsyncStreamAssist(AsyncStreamModule, ABC):
     @abstractmethod
     async def astream(
         self, msg: Msg | BaseDialog, *args, **kwargs
-    ) -> typing.AsyncIterator[typing.Tuple[Msg, typing.Any]]:
+    ) -> typing.AsyncIterator[Msg]:
         pass
 
 
@@ -137,7 +136,7 @@ class Assistant(
         self._set_val(stream, 'stream')
         self._set_val(astream, 'astream')
     
-    def forward(self, msg: Msg | BaseDialog, *args, **kwargs) -> typing.Tuple[Msg, typing.Any]:
+    def forward(self, msg: Msg | BaseDialog, *args, **kwargs) -> typing.Tuple[Msg]:
         """
         Processes the given message and additional arguments.
         This method should be implemented by subclasses to define the specific
@@ -153,7 +152,7 @@ class Assistant(
             ''
         )
     
-    async def aforward(self, msg: Msg | BaseDialog, *args, **kwargs) -> typing.Tuple[Msg, typing.Any]:
+    async def aforward(self, msg: Msg | BaseDialog, *args, **kwargs) -> typing.Tuple[Msg]:
         """
         Asynchronous version of the forward method.
         This method calls the synchronous forward method with the provided
@@ -167,7 +166,7 @@ class Assistant(
         """
         return self.forward(msg, *args, **kwargs)
     
-    def stream(self, msg, *args, **kwargs) -> typing.Iterator[typing.Tuple[Msg, typing.Any]]:
+    def stream(self, msg, *args, **kwargs) -> typing.Iterator[Msg]:
         """
         Streams the assistant output for a given message.
         Args:
@@ -179,7 +178,7 @@ class Assistant(
         """
         yield self.forward(msg, *args, **kwargs)
     
-    async def astream(self, msg, *args, **kwargs) -> typing.AsyncIterator[typing.Tuple[Msg, typing.Any]]:
+    async def astream(self, msg, *args, **kwargs) -> typing.AsyncIterator[Msg]:
         """
         Asynchronous streaming function to get the Assistant's output.
         This function yields the output of the `stream` function with the given 

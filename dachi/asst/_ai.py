@@ -5,6 +5,7 @@ import json
 
 # 3rd party
 import pydantic
+from abc import ABC, abstractmethod
 
 # local
 from ..msg._messages import (
@@ -27,7 +28,6 @@ S = typing.TypeVar('S', bound=pydantic.BaseModel)
 
 
 LLM_PROMPT = typing.Union[typing.Iterable[Msg], Msg]
-LLM_RESPONSE = typing.Tuple[Msg, typing.Any]
 
 
 class ToolOption(pydantic.BaseModel):
@@ -265,7 +265,7 @@ class LLM(Assistant):
         self._set_val(streamf, '_streamff')
         self._set_val(astreamf, '_astreamf')
 
-    def forward(self, msg: Msg | BaseDialog, *args, **kwargs) -> typing.Tuple[Msg, typing.Any]:
+    def forward(self, msg: Msg | BaseDialog, *args, **kwargs) -> Msg:
         """
         Processes the given message and additional arguments.
         This method should be implemented by subclasses to define the specific
@@ -292,7 +292,7 @@ class LLM(Assistant):
             'The forward has not been defined for the LLM'
         )
     
-    async def aforward(self, msg: Msg | BaseDialog, *args, **kwargs) -> typing.Tuple[Msg, typing.Any]:
+    async def aforward(self, msg: Msg | BaseDialog, *args, **kwargs) -> Msg:
         """
         Asynchronous version of the forward method.
         This method calls the synchronous forward method with the provided
@@ -320,7 +320,7 @@ class LLM(Assistant):
                 msg, **kwargs
             )
     
-    def stream(self, msg: Msg | BaseDialog, *args, **kwargs) -> typing.Iterator[typing.Tuple[Msg, typing.Any]]:
+    def stream(self, msg: Msg | BaseDialog, *args, **kwargs) -> typing.Iterator[Msg]:
         """
         Streams the assistant output for a given message.
         Args:
@@ -348,7 +348,7 @@ class LLM(Assistant):
                 msg, **kwargs
             )
 
-    async def astream(self, msg: Msg | BaseDialog, *args, **kwargs) -> typing.AsyncIterator[typing.Tuple[Msg, typing.Any]]:
+    async def astream(self, msg: Msg | BaseDialog, *args, **kwargs) -> typing.AsyncIterator[Msg]:
         """
         Asynchronous streaming function to get the Assistant's output.
         This function yields the output of the `stream` function with the given 
@@ -433,9 +433,9 @@ def llm_forward(
     if isinstance(_resp_proc, RespConv):
         return msg, _resp_proc(response, msg)
 
-    return msg, tuple(
-        r(response, msg) for r in _resp_proc
-    )
+    for r in _resp_proc:
+        msg = _resp_proc(msg)
+    return msg
 
 
 async def llm_aforward(
@@ -474,9 +474,10 @@ async def llm_aforward(
     if isinstance(_resp_proc, RespConv):
         return msg, _resp_proc(response, msg)
 
-    return msg, tuple(
-        r(response, msg) for r in _resp_proc
-    )
+    for r in _resp_proc:
+        msg = _resp_proc(msg)
+    return msg
+
 
 
 def llm_stream(
@@ -508,22 +509,25 @@ def llm_stream(
         delta = [{} for _ in range(len(_resp_proc))]
         for r in _resp_proc:
             kwargs.update(r.prep())
+    delta_stores = [{} for _ in range(len(_resp_proc))]
     for response in f(
         *args, **kwargs
     ):
         msg = Msg(role=_role)
         msg['meta']['response'] = response
 
-        yield process_response(
-            response, msg, _resp_proc, delta
-        ) 
+        for r, delta_store in zip(_resp_proc, delta_stores):
+            msg = r.delta(msg, delta_store, streamed=True)
+        
+        yield msg
     
     msg = Msg(role=_role)
     msg['meta']['response'] = END_TOK
 
-    yield process_response(
-        END_TOK, msg, _resp_proc, delta
-    ) 
+    for r, delta_store in zip(_resp_proc, delta_stores):
+        msg = r.delta(msg, delta_store, streamed=True, is_last=True)
+
+    yield msg
 
 
 async def llm_astream(
@@ -558,40 +562,47 @@ async def llm_astream(
         for r in _resp_proc:
             kwargs.update(r.prep())
 
+    delta_stores = [{} for _ in range(len(_resp_proc))]
     async for response in await f(
         *args, **kwargs
     ):
         msg = Msg(role=_role)
         msg['meta']['response'] = response
-        yield process_response(
-            response, msg, _resp_proc, delta
-        ) 
+        for r, delta_store in zip(_resp_proc, delta_stores):
+            msg = r.delta(msg, delta_store, streamed=True)
+        
+        yield msg
 
     msg = Msg(role=_role)
-    msg['meta']['response'] = END_TOK
+    for r, delta_store in zip(_resp_proc, delta_stores):
+        msg = r.delta(msg, delta_store, streamed=True, is_last=True)
 
-    yield process_response(
-        END_TOK, msg, _resp_proc, delta
-    )
+    yield msg
+    # yield process_response(
+    #     END_TOK, msg, _resp_proc, delta
+    # )
 
 
-def process_response(response, msg, resp_proc, delta: typing.Dict):
-    """
-    Processes a response from the LLM (Language Model).
-    Args:
-        response: The response from the LLM.
-        msg: The message to be processed.
-        resp_proc: A converter that processes the response. It can be an instance of RespConv or a list of such instances.
-        delta (typing.Dict): A dictionary containing additional data for processing.
-    Returns:
-        If resp_proc is None, returns the original message.
-        If resp_proc is an instance of RespConv, returns a tuple containing the message and the processed delta.
-        If resp_proc is a list of RespConv instances, returns a tuple containing the message and a tuple of processed deltas.
-    """
-    if resp_proc is None:
-        return msg
-    if isinstance(resp_proc, RespConv):
-        return msg, resp_proc.delta(response, msg, delta)
-    return msg, tuple(
-        r.delta(response, msg, delta_i) for r, delta_i in zip(resp_proc, delta)
-    )
+# def process_response(msg, convs):
+#     """
+#     Processes a response from the LLM (Language Model).
+#     Args:
+#         response: The response from the LLM.
+#         msg: The message to be processed.
+#         resp_proc: A converter that processes the response. It can be an instance of RespConv or a list of such instances.
+#         delta (typing.Dict): A dictionary containing additional data for processing.
+#     Returns:
+#         If resp_proc is None, returns the original message.
+#         If resp_proc is an instance of RespConv, returns a tuple containing the message and the processed delta.
+#         If resp_proc is a list of RespConv instances, returns a tuple containing the message and a tuple of processed deltas.
+#     """
+
+#     # for conv in consv
+#     # if resp_proc is None:
+#     #     return msg
+#     # if isinstance(resp_proc, RespConv):
+#     #     return msg #, resp_proc.delta(response, msg, delta)
+#     # return msg
+#     # # , tuple(
+#     # #     r.delta(response, msg, delta_i) for r, delta_i in zip(resp_proc, delta)
+#     # # )

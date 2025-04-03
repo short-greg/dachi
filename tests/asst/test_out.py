@@ -3,7 +3,7 @@ from dachi.asst import _out as _out
 from dachi.msg import model_to_text
 
 
-from dachi.msg import model_to_text, END_TOK
+from dachi.msg import model_to_text, END_TOK, Msg, StreamMsg
 from dachi.asst import _out as text_proc
 from .._structs import SimpleStruct2
 from dachi import utils
@@ -20,7 +20,13 @@ class TestStructRead:
         )
         simple = SimpleStruct(x='hi')
         d = model_to_text(simple)
-        simple2 = out.__call__([d])
+        msg = Msg(
+            role='user',
+            meta={
+                'data': d,
+            }
+        )
+        simple2 = out.forward(msg)['meta']['F1']
         assert simple.x == simple2.x
 
     def test_out_creates_out_class_with_string(self):
@@ -31,7 +37,21 @@ class TestStructRead:
         )
         simple = SimpleStruct(x='hi')
         d = model_to_text(simple)
-        simple2 = out.__call__([d])
+        msg1 = StreamMsg(
+            role='user',
+            meta={
+                'data': d[:4],
+            }, is_last=False
+        )
+        msg2 = StreamMsg(
+            role='user',
+            meta={
+                'data': d[4:],
+            }, is_last=True
+        )
+        delta = {}
+        out(msg1, delta_store=delta)
+        simple2 = out(msg2, delta_store=delta)['meta']['F1']
         assert simple.x == simple2.x
     
     def test_out_template(self):
@@ -43,27 +63,6 @@ class TestStructRead:
         simple2 = out.template()
         assert 'x' in simple2
 
-    def test_read_reads_in_the_class(self):
-
-        out = _out.PydanticConv(
-            name='F1',
-            out_cls=SimpleStruct
-        )
-        s = model_to_text(SimpleStruct(x='2'))
-        simple2 = out([s])
-        assert simple2.x == '2'
-
-    def test_out_reads_in_the_class_with_str(self):
-
-        out = _out.PydanticConv(
-            name='F1',
-            out_cls=SimpleStruct
-        )
-
-        simple = SimpleStruct(x='2')
-
-        assert out([model_to_text(simple)]).x == '2'
-
 
 class TestPrimRead(object):
 
@@ -73,8 +72,14 @@ class TestPrimRead(object):
             name='F1',
             out_cls=int,
         )
+        msg1 = Msg(
+            role='user',
+            meta={
+                'data': '1'
+            }
+        )
 
-        result = out.__call__('1')
+        result = out(msg1)['meta']['F1']
         assert result == 1
 
     def test_template_contains_key(self):
@@ -92,17 +97,39 @@ class TestPrimRead(object):
             name='F1',
             out_cls=bool,
         )
-        result = out.__call__(['TRUE'])
+
+        msg1 = Msg(
+            role='user',
+            meta={
+                'data': 'TRUE'
+            }
+        )
+        result = out.__call__(msg1).m['F1']
         assert result is True
 
-    def test_prim_read_reads_bool_correctly(self):
+    def test_prim_read_reads_bool_with_stream(self):
 
         out = _out.PrimConv(
             name='F1',
             out_cls=bool,
         )
-        result = out.__call__(['false'])
-        assert result is False
+
+        msg1 = StreamMsg(
+            role='user',
+            meta={
+                'data': 'TR'
+            }, is_last=False
+        )
+        msg2 = StreamMsg(
+            role='user',
+            meta={
+                'data': 'UE'
+            }, is_last=True
+        )
+        store = {}
+        out.forward(msg1, delta_store=store)
+        result = out.forward(msg2, delta_store=store).m['F1']
+        assert result is True
 
 
 class TestKVRead(object):
@@ -120,7 +147,13 @@ class TestKVRead(object):
             },
         )
 
-        result = out(k)
+        msg1 = Msg(
+            role='user',
+            meta={
+                'data': k
+            }
+        )
+        result = out(msg1).m['F1']
         assert result['x'] == '1'
         assert result['y'] == '4'
 
@@ -151,14 +184,18 @@ class TestKVRead(object):
         )
         delta_store = {}
         ress = {}
-        
         for i, t in enumerate(k):
-            cur = out.delta([t], delta_store)
-            if cur is not utils.UNDEFINED:
-                ress.update(cur)
-        # ress.append(out.delta(END_TOK, delta_store))
-        # result = [res for res in ress if res is not None]
-        
+            msg1 = StreamMsg(
+                role='user',
+                meta={
+                    'data': [t]
+                }, is_streamed=True,
+                is_last=i == len(k)-1
+            )
+            res = out(msg1, delta_store).m['F1']
+            if res is not utils.UNDEFINED:
+                ress.update(res)
+
         assert ress['x'] == '1'
         assert ress['y'] == '4'
 
@@ -174,9 +211,16 @@ class TestJSONRead(object):
                 'y': 'The value of y'
             }
         )
+
         simple = SimpleStruct2(x='hi', y=1)
         d = model_to_text(simple)
-        simple2 = out([d])
+        msg1 = Msg(
+            role='user',
+            meta={
+                'data': d
+            }
+        )
+        simple2 = out(msg1).m['F1']
         assert simple.x == simple2['x']
 
     def test_out_template(self):
@@ -204,7 +248,13 @@ class TestJSONRead(object):
         delta_store = {}
         ress = []
         data = model_to_text(simple)
-        cur = out.delta([data], delta_store)
+        msg1 = Msg(
+            role='user',
+            meta={
+                'data': data
+            }
+        )
+        cur = out(msg1, delta_store).m['F1']
         assert cur['x'] == 'hi'
         assert cur['y'] == 1
 
@@ -221,7 +271,13 @@ class TestIndexRead(object):
             key_descr='the number of people'
         )
 
-        result = out.__call__(k)
+        msg1 = Msg(
+            role='user',
+            meta={
+                'data': k
+            }
+        )
+        result = out(msg1).m['F1']
         assert result[0] == '1'
         assert result[1] == '4'
 
@@ -248,7 +304,15 @@ class TestIndexRead(object):
         delta_store = {}
         ress = []
         for i, t in enumerate(k):
-            cur = out.delta([t], delta_store)
+
+            msg1 = StreamMsg(
+                role='user',
+                meta={
+                    'data': [t]
+                },
+                is_last=i == len(k) - 1
+            )
+            cur = out(msg1, delta_store).m['F1']
             if cur is not utils.UNDEFINED:
                 ress.extend(cur)
         

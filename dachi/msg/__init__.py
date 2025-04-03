@@ -15,13 +15,12 @@ from ._messages import (
     BaseDialog, 
     ListDialog,
     Msg, 
+    StreamMsg,
     to_input, 
     exclude_messages, 
     include_messages,
     RenderMsgField, 
     END_TOK,
-    ToMsg,
-    ToText,
     to_dialog,
 )
 from ._render import (

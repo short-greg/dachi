@@ -1,6 +1,6 @@
 # 1st party
 import typing
-from abc import abstractmethod, ABC
+from abc import abstractmethod
 from typing import Self
 import typing
 
@@ -61,6 +61,11 @@ class Msg(dict):
             del d['role']
 
         return d
+    
+    @property
+    def m(self) -> typing.Dict:
+        """Get the meta data from the message """
+        return self['meta']
 
     def to_list_input(self) -> typing.List[typing.Dict]:
         """Convert to an input appropriate for a list
@@ -84,6 +89,37 @@ class Msg(dict):
         }
         return f'{self.role} {vals}'
     
+    def __add__(self, other) -> 'ListDialog':
+
+        if isinstance(other, Msg):
+            return ListDialog([self, other])
+        messages = list(other)
+        return ListDialog(
+            [self, *messages]
+        )
+    
+
+class StreamMsg(Msg):
+    """A message that is streamed
+    """
+
+    def __init__(
+        self, role: str, type_: str='data', 
+        meta: typing.Dict=None, delta: typing.Dict=None, 
+        _include_role: bool=True, is_last: bool=False, **kwargs
+    ):
+        """Create a Stream Msg
+
+        Args:
+            type_ (str, optional): The type of message. Defaults to 'data'.
+            meta (typing.Dict, optional): Any additional information not related to the message specifically. Defaults to None.
+            delta (typing.Dict, optional): The change in the message. Defaults to None.
+        """
+        super().__init__(
+            role=role, type_=type_, meta=meta or {}, delta=delta or {},_include_role=_include_role, **kwargs
+        )
+        self.is_last = is_last
+
 
 class BaseDialog(pydantic.BaseModel, Renderable):
     """A Dialog stores the interactions between the system/user and the assistant
@@ -247,27 +283,10 @@ class BaseDialog(pydantic.BaseModel, Renderable):
         """
         pass
 
+    @abstractmethod
     def __add__(self, other) -> Self:
         pass
 
-    # def add(self, role: str='user', type_: str='data', delta: typing.Dict=None, meta: typing.Dict=None, _ind: typing.Optional[int]=None, _replace: bool=False, _inplace: bool=False, **kwargs) -> 'BaseDialog':
-    #     """Add a message to the dialog
-
-    #     Args:
-    #         type_ (str, optional): The type of message. Defaults to 'data'.
-    #         delta (typing.Dict, optional): The change in the message. Defaults to None.
-    #         meta (typing.Dict, optional): Any other information that is not a part of the message. Defaults to None.
-    #         ind (typing.Optional[int], optional): The index to add it to. Defaults to None.
-    #         replace (bool, optional): Whether to replace the value at the index or offset it. Defaults to False.
-
-    #     Returns:
-    #         Dialog: The dialog with the message appended
-    #     """
-    #     msg = Msg(
-    #         role=role, type_=type_, meta=meta, 
-    #         delta=delta, **kwargs
-    #     )
-    #     return self.insert(message=msg, ind=_ind, replace=_replace, inplace=_inplace)
     
 # How to handle a tree
 # dialog tree
@@ -315,7 +334,7 @@ class ListDialog(BaseDialog):
         for message in self._messages:
             yield message
 
-    def __add__(self, other: 'BaseDialog') -> 'ListDialog':
+    def __add__(self, other: BaseDialog | Msg) -> 'ListDialog':
         """Concatenate two dialogs together
 
         Args:
@@ -324,6 +343,10 @@ class ListDialog(BaseDialog):
         Returns:
             Dialog: The concatenated dialog
         """
+        if isinstance(other, typing.List):
+            return ListDialog(
+                self._messages + other
+            )
         return ListDialog(
             self._messages + other.aslist()
         )
@@ -596,6 +619,8 @@ class DialogTurn(BaseDialog):
         Args:
             dialog (typing.Union[&#39;Dialog&#39;, typing.List[Msg]]): _description_
         """
+        if isinstance(dialog, Msg):
+            dialog = [dialog]
         node = self
         for turn in dialog:
             node = node.append(turn)
@@ -677,6 +702,22 @@ class DialogTurn(BaseDialog):
             child._parent = inserted
         return inserted
 
+    def __add__(self, other: BaseDialog | Msg) -> 'ListDialog':
+        """Concatenate two dialogs together
+
+        Args:
+            other (Dialog): The other dialog to concatenate
+
+        Returns:
+            Dialog: The concatenated dialog
+        """
+        if isinstance(other, typing.List):
+            return ListDialog(
+                self.messages() + other
+            )
+        return ListDialog(
+            self.messages() + other.aslist()
+        )
 
 
 class RenderMsgField:
@@ -771,41 +812,4 @@ def include_role(messages: typing.Iterable[Msg], *role: str) -> typing.List[Msg]
     include = set(role)
     return [message for message in messages
         if message.role in include]
-
-
-class ToMsg(ABC):
-    """Converts the input to a message
-    """
-    @abstractmethod
-    def __call__(self, *args, **kwargs) -> Msg:
-        pass
-
-
-class ToText(ToMsg):
-    """Converts the input to a text message
-    """
-
-    def __init__(self, role: str='system', field: str='content'):
-        """Converts an input to a text message
-
-        Args:
-            role (str): The role for the message
-            field (str, optional): The name of the field for the text. Defaults to 'content'.
-        """
-        self.role = role
-        self.field = field
-
-    def __call__(self, text: str) -> Msg:
-        """Create a text message
-
-        Args:
-            text (str): The text for the message
-
-        Returns:
-            Msg: Converts to a text message
-        """
-        return Msg(
-            role=self.role, 
-            **{self.field: text}
-        )
 
