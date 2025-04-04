@@ -243,7 +243,6 @@ class TestInstructF:
         assert result == 'Awesome'
 
 
-
 class TestCue(object):
 
     def test_instruction_renders_with_text(self):
@@ -279,5 +278,3 @@ class TestCue(object):
             text=text
         )
         assert cue.i() is cue
-
-

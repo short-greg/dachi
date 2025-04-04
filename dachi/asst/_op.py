@@ -13,7 +13,7 @@ from ..msg._messages import (
     Msg, BaseDialog, 
 )
 from ._asst import Assistant
-from ._msg import ToMsg
+from ._msg import ToMsg, MR, Out
 from ._out import OutConv
 from ..proc import (
     Module, AsyncModule, 
@@ -37,6 +37,13 @@ LLM_PROMPT = typing.Union[typing.Iterable[Msg], Msg]
 LLM_RESPONSE = typing.Tuple[Msg, typing.Any]
 
 
+# TODO: Need to specify whether to use meta or not somehow
+# in out
+
+# out: M()
+
+
+
 class Op(Module, AsyncModule, StreamModule, AsyncStreamModule):
     """
     A class that facilitates the process of converting input into a message, 
@@ -46,7 +53,7 @@ class Op(Module, AsyncModule, StreamModule, AsyncStreamModule):
     as streaming responses.
     """
 
-    def __init__(self, assistant: Assistant, to_msg: ToMsg, parser: typing.Callable | ParseConv | typing.Any | None, out: typing.Optional[OutConv]=None):
+    def __init__(self, assistant: Assistant, to_msg: ToMsg, out: str | typing.List[str] | Out):
         """
         Initializes the class to facilitate interaction with a language model assistant by
         adapting inputs and outputs.
@@ -62,13 +69,18 @@ class Op(Module, AsyncModule, StreamModule, AsyncStreamModule):
         super().__init__()
         self.assistant = assistant
         self.to_msg = to_msg
-        self.out = out or (lambda x: x)
-        if isinstance(parser, str):
-            self.parser = CharDelimParser(parser)
-        elif parser is None:
-            self.parser = NullParser()
+        if not isinstance(out, Out):
+            out = Out(out)
         else:
-            self.parser = parser
+            print(out.key)
+        self.out = out
+        # if isinstance(parser, str):
+        #     self.parser = CharDelimParser(parser)
+        # elif parser is None:
+        #     self.parser = NullParser()
+        # else:
+        #     self.parser = parser
+
 
     def forward(self, *args, _out=None, _messages: typing.List[Msg]=None, **kwargs) -> typing.Any:
         """
@@ -89,14 +101,15 @@ class Op(Module, AsyncModule, StreamModule, AsyncStreamModule):
         msg = self.to_msg(*args, **kwargs)
 
         _messages = _messages or []
-        resp_msg, resp = self.assistant(
+        resp_msg = self.assistant(
             msg + _messages
         )
 
         if _messages is not None:
             _messages.append(resp_msg)
-        resp = self.parser(resp)
-        return _out(resp) 
+        return self.out(resp_msg, _out)
+        #resp_msg = self.parser(resp_msg)
+        #return _out(resp_msg) 
         
     async def aforward(
         self, *args, _out=None, 
@@ -115,18 +128,18 @@ class Op(Module, AsyncModule, StreamModule, AsyncStreamModule):
         Raises:
             Any exceptions raised during the assistant's execution or message processing.
         """
-        _out = _out or self.out
         msg = self.to_msg(*args, **kwargs)
 
         _messages = _messages or []
 
-        resp_msg, resp = await self.assistant.aforward(msg + _messages)
+        resp_msg = await self.assistant.aforward(msg + _messages)
 
         if _messages is not None:
             _messages.append(resp_msg)
-        resp = self.parser(resp)
+        # resp_msg = self.parser(resp_msg)
 
-        return _out(resp) 
+        return self.out(resp_msg, _out)
+        # return _out(resp_msg) 
     
     def stream(self, *args, _out=None,
         _messages: typing.List[Msg]=None, **kwargs) -> typing.Iterator:
@@ -148,15 +161,15 @@ class Op(Module, AsyncModule, StreamModule, AsyncStreamModule):
         msg = self.to_msg(*args, **kwargs)
 
         _messages = _messages or []
-            
+        
         resp_msg = None
 
-        for resp_msg, resp in self.out.stream(
-            self.assistant.stream(
-                msg + _messages
-            ), parser=self.parser, get_msg=True
+        for resp_msg in self.assistant.stream(
+            msg + _messages
         ):
-            yield resp
+            # self.parser(resp_msg, parse_delta)
+            # self.out(resp_msg, out_delta)
+            yield self.out(resp_msg, _out)
         
         if _messages is not None and resp_msg is not None:
             _messages.append(resp_msg)
@@ -184,12 +197,14 @@ class Op(Module, AsyncModule, StreamModule, AsyncStreamModule):
         _messages = _messages or []
         msg = self.to_msg(*args, **kwargs)
 
-        async for resp_msg, resp in await self.out.astream(
-            self.assistant.stream(
-                msg + _messages
-            ), parser=self.parser, get_msg=True
+        parse_delta = {}
+        out_delta = {}
+        async for resp_msg in await self.assistant.astream(
+            msg + _messages
         ):
-            yield resp
+            self.parser(resp_msg, parse_delta)
+            self.out(resp_msg, out_delta)
+            yield self.out(resp_msg, _out)
         
         if _messages is not None and resp_msg is not None:
             _messages.append(resp_msg)
@@ -207,8 +222,7 @@ class Op(Module, AsyncModule, StreamModule, AsyncStreamModule):
         )
 
     def spawn(
-        self, to_msg: ToMsg=UNDEFINED, assistant: Assistant=UNDEFINED, 
-        parser: ParseConv=UNDEFINED, out: OutConv=UNDEFINED,
+        self, to_msg: ToMsg=UNDEFINED, assistant: Assistant=UNDEFINED, out: str | MR | typing.List[str | MR]=UNDEFINED,
     ):
         """
         Spawns a new `Op` instance based on the updated arguments.
@@ -230,8 +244,8 @@ class Op(Module, AsyncModule, StreamModule, AsyncStreamModule):
         """
         to_msg = coalesce(to_msg, self.to_msg)
         assistant = coalesce(assistant, self.assistant)
-        parser = coalesce(parser, self.parser)
         out = coalesce(out, self.out)
+        # parser = coalesce(parser, self.parser)
         return Op(
             assistant, to_msg, out
         )

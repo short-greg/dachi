@@ -1,4 +1,5 @@
 from dachi.msg._messages import Msg, StreamMsg
+from dachi.asst._msg import MsgConv
 
 from typing import Iterator
 from dachi.asst import _ai
@@ -13,8 +14,9 @@ class DummyAIModel(
     API for a consistent interface
     """
 
-    def __init__(self, target='Great!'):
+    def __init__(self, target='Great!', proc: typing.List[MsgConv]=None):
         super().__init__()
+        self.proc = proc or []
         self.target = target
 
     def forward(
@@ -30,9 +32,15 @@ class DummyAIModel(
         Returns:
             typing.Dict: The result of the API call
         """
-        return Msg(
-            role='assistant', content=self.target
-        )# , self.target
+        msg = Msg(
+            role='assistant', content=self.target,
+            meta={'content': self.target}
+        )
+        
+        for p in self.proc:
+            p(msg)
+        return msg
+        # , self.target
     
     def stream(
         self, prompt: _ai.LLM_PROMPT, 
@@ -46,8 +54,11 @@ class DummyAIModel(
             is_last = i == len(cur_out) - 1
             
             msg = StreamMsg(
-                role='assistant', content=cur_out, delta={'content': c}, is_last=is_last
+                role='assistant', content=cur_out, meta={'content': c}, is_last=is_last
             )
+            for p in self.proc:
+                p(msg)
+                print(msg.m)
             yield msg
         
     async def aforward(self, dialog, **kwarg_overrides):
@@ -55,8 +66,9 @@ class DummyAIModel(
 
     async def astream(self, dialog, **kwarg_overrides):
         
-        for msg, c in self.stream(dialog, **kwarg_overrides):
-            yield msg, c
+        for msg in self.stream(dialog, **kwarg_overrides):
+
+            yield msg
 
 
 def forward(msg: str) -> typing.Dict:

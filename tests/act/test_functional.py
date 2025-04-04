@@ -288,7 +288,8 @@ class TestBuffer:
         )
         ctx = utils.Context()
         stream = F.stream_model(
-            buffer, model, message, ctx, interval=1./400.
+            buffer, model, message, ctx, interval=1./400.,
+            out='content'
         )
         res = stream()
         time.sleep(0.15)
@@ -305,7 +306,7 @@ class TestBuffer:
         )
         ctx = utils.Context()
         stream = F.stream_model(
-            buffer, model, message, ctx, interval=1./400.
+            buffer, model, message, ctx, out='content', interval=1./400.
         )
         stream()
         time.sleep(0.1)
@@ -326,7 +327,7 @@ class TestSharedTask:
         )
         ctx = utils.Context()
         stream = F.exec_model(
-            shared, model, message, ctx, interval=1./400.
+            shared, model, message, ctx, out='content', interval=1./400.
         )
         res = stream()
         time.sleep(0.1)
@@ -343,7 +344,7 @@ class TestSharedTask:
         )
         ctx = utils.Context()
         stream = F.exec_model(
-            shared, model, message, ctx, interval=1./400.
+            shared, model, message, ctx, out='content', interval=1./400.
         )
         res = stream()
         time.sleep(0.1)

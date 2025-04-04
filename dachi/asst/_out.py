@@ -94,10 +94,16 @@ class PrimConv(OutConv):
             typing.Any: The output of the reader
         """
 
+        if len(resp) > 0:
+            resp = resp[0]
+        else:
+            return utils.UNDEFINED
         val = utils.add(delta_store, 'val', resp)
 
         if not is_last:
             return utils.UNDEFINED
+        
+        resp = resp[0]
         
         if self._out_cls is bool:
             return (
@@ -166,6 +172,7 @@ class PydanticConv(OutConv, typing.Generic[S]):
         if not is_last:
             return utils.UNDEFINED
         
+        resp = resp[0]
         # if resp is not END_TOK:
         #     utils.add(delta_store, 'val', resp)
         #     return utils.UNDEFINED
@@ -395,6 +402,8 @@ class JSONConv(OutConv):
         # val = utils.add(
         #     delta_store, 'val', resp
         # )
+
+        resp = resp[0]
         try: 
             result = json.loads(resp)
             return result
@@ -446,11 +455,11 @@ class NullOutConv(MsgConv):
         Returns:
             typing.Any: The output of the reader
         """
+
         return resp
 
     def template(self) -> str:
         return None
-
 
 
     # def stream(

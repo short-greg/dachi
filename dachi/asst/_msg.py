@@ -8,6 +8,35 @@ from ..base import Templatable
 from .. import utils
 
 
+class MR:
+    """Retrieves from the message (not the meta in the message)"""
+
+    def __init__(self, name: str):
+        self.name = name
+
+    def __call__(self, msg):
+        return msg[self.name]
+
+
+class Out(object):
+
+    def __init__(self, key: str | MR | typing.List[str | MR]):
+
+        if isinstance(key, Out):
+            key = key.key
+        self.key = key
+
+    def __call__(self, msg: Msg, override=None) -> typing.Any:
+        if isinstance(override, Out):
+            override = override.key
+        key = override or self.key
+        if isinstance(key, str):
+            return msg.m[key]
+        elif isinstance(key, MR):
+            return key(msg)
+        return [k(msg) if isinstance(k, MR) else msg.m[k] for k in key]
+
+
 class ToMsg(Module, AsyncModule, ABC):
     """Converts the input to a message
     """
@@ -151,6 +180,7 @@ class MsgConv(Module, AsyncModule, ABC):
             resp = resp[0]
         
         if is_undefined:
+            msg.m[self.name] = utils.UNDEFINED
             return utils.UNDEFINED
         msg['meta'][self.name] = res = self.delta(
             resp, delta_store, streamed, is_last

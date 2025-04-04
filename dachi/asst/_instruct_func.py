@@ -158,7 +158,7 @@ class IBase(ABC):
     This is the base class for wrapping an Instruction functor. It is used to create an instruction when called.
     """
 
-    def __init__(self, f, is_method: bool=False, out: OutConv=None, parser: ParseConv=None):
+    def __init__(self, f, is_method: bool=False, out: OutConv=None, parser: ParseConv=None, content_name: str='content'):
         """ Initializes the IBase instance.
         Args:
             f (Callable): The function to be wrapped as an instruction.
@@ -174,26 +174,27 @@ class IBase(ABC):
         self._parameters = inspect.signature(f).parameters
         self._return_annotation = inspect.signature(f).return_annotation
 
+        self.content_name = content_name
         out_cls = self._return_annotation
         if out is None:
             if self.out_cls in primitives:
                 out = PrimConv(
-                    name=self._name, 
+                    name='out', from_='data',
                     out_cls=self.out_cls
                 )
             elif issubclass(out_cls, pydantic.BaseModel):
-                out = PydanticConv(name=self._name, out_cls=out_cls)
+                out = PydanticConv(name='out', from_='data', out_cls=out_cls)
             else:
-                out = NullOutConv(name=self._name)
+                out = NullOutConv(name='out', from_='data')
         if parser is None:
             if self.out_cls is str:
-                parser = NullParser()
+                parser = NullParser('data', self.content_name)
             elif self.out_cls in primitives:
-                parser = FullParser()
+                parser = FullParser('data', self.content_name)
             elif issubclass(out_cls, pydantic.BaseModel):
-                parser = FullParser()
+                parser = FullParser('data', self.content_name)
             else:
-                parser = NullParser()
+                parser = NullParser('data', self.content_name)
 
         self._parser = parser
         self._out: OutConv = out
@@ -309,7 +310,8 @@ class SigF(IBase):
         self, f, is_method = False, 
         doc: typing.Optional[str]=None,
         train: bool=False, out: OutConv=None,
-        parser: ParseConv=None
+        parser: ParseConv=None,
+        content_name: str='content'
     ):
         """
         Args:
@@ -319,7 +321,7 @@ class SigF(IBase):
             train (bool, optional): Whether to train the instruction. Defaults to False.
             out (OutConv, optional): The out to process the output. Defaults to None.
         """
-        super().__init__(f, is_method, out, parser)
+        super().__init__(f, is_method, out, parser, content_name)
 
         self._doc = doc or self._docstring
         cue = Cue(
@@ -510,11 +512,11 @@ class FuncDec(FuncDecBase, Module):
         msg = self._to_msg(cue.text)
         engine = self.get_engine(instance)
 
-        _, res = engine(
+        res_msg = engine(
             [msg], **self._kwargs
         )
-        res = self._inst.parser(res)
-        return self._inst.out(res)
+        res_msg = self._inst.parser(res_msg)
+        return self._inst.out(res_msg).m['out']
 
     def spawn(self, instance=None) -> Self:
         """
@@ -573,11 +575,11 @@ class AFuncDec(FuncDecBase, AsyncModule):
         )
         msg = self._to_msg(cue.text)
         engine = self.get_engine(instance)
-        _, res = await engine.aforward(
+        res_msg = await engine.aforward(
             [msg], **self._kwargs
         )
-        res = self._inst.parser(res)
-        return self._inst.out(res)
+        res_msg = self._inst.parser(res_msg)
+        return self._inst.out(res_msg)
     
     async def __call__(self, *args, **kwargs):
         """
@@ -642,12 +644,14 @@ class StreamDec(FuncDecBase, StreamModule):
         engine = self.get_engine(
             instance
         )
-        
-        for resp in self._inst.out.stream(
-            engine.stream([msg], **self._kwargs),
-            self._inst.parser
+
+        for resp_msg in engine.stream(
+            [msg], **self._kwargs
         ):
+            resp = self._inst.parser(resp_msg)
+            resp = self._inst.out(resp).m['out']
             yield resp
+
 
     def spawn(self, instance=None) -> Self:
         """
@@ -721,10 +725,11 @@ class AStreamDec(FuncDecBase, AsyncStreamModule):
             instance
         )
 
-        for resp in  self._inst.out.astream(
-            await engine.astream([msg], **self._kwargs),
-            self._inst.parser
+        async for resp_msg in engine.astream(
+            [msg], **self._kwargs
         ):
+            resp = self._inst.parser(resp_msg)
+            resp = self._inst.out(resp).m['out']
             yield resp
 
     def spawn(self, instance=None) -> Self:
@@ -752,6 +757,7 @@ def instructfunc(
     to_async: bool=False,
     to_stream: bool=False,
     to_msg: ToMsg=None,
+    content_name: str='content',
     **kwargs
 ):
     """Decorate a method with instructfunc
@@ -769,7 +775,7 @@ def instructfunc(
         def wrapper(*args, **kwargs):
             return f(*args, **kwargs)
         
-        inst = InstF(f, is_method, out, parser=parser)
+        inst = InstF(f, is_method, out, parser=parser, content_name=content_name)
 
         if not to_async and not to_stream:
             return FuncDec(
@@ -801,6 +807,7 @@ def instructmethod(
     to_async: bool=False,
     to_stream: bool=False,
     to_msg: ToMsg=None,
+    content_name: str='content',
     **kwargs
 ):
     """Decorate a method with instructfunc
@@ -815,6 +822,7 @@ def instructmethod(
         engine, out=out, is_method=True, to_msg=to_msg, to_async=to_async, 
         to_stream=to_stream, 
         parser=parser,
+        content_name=content_name,
         **kwargs
     )
 
@@ -829,6 +837,7 @@ def signaturefunc(
     to_async: bool=False,
     to_stream: bool=False,
     train: bool=False,
+    content_name: str='content',
     **kwargs
 ):
     """Decorate a method with instructfunc
@@ -848,7 +857,8 @@ def signaturefunc(
         
         inst = SigF(
             f, is_method, train=train, 
-            doc=doc, out=out, parser=parser
+            doc=doc, out=out, parser=parser,
+            content_name=content_name
         )
 
         if not to_async and not to_stream:
@@ -883,6 +893,7 @@ def signaturemethod(
     to_async: bool=False,
     to_stream: bool=False,
     train: bool=False,
+    content_name: str='content',
     **kwargs
 ):
     """Decorate a method with SignatureFunc
@@ -900,6 +911,7 @@ def signaturemethod(
         to_msg=to_msg, to_async=to_async, to_stream=to_stream,
         train=train,
         parser=parser,
+        content_name=content_name,
         **kwargs
     )
 

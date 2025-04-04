@@ -21,7 +21,7 @@ from ._messages import (
     include_messages,
     RenderMsgField, 
     END_TOK,
-    to_dialog,
+    to_dialog
 )
 from ._render import (
     model_from_text,

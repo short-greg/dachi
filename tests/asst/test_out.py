@@ -75,7 +75,7 @@ class TestPrimRead(object):
         msg1 = Msg(
             role='user',
             meta={
-                'data': '1'
+                'data': ['1']
             }
         )
 
@@ -101,7 +101,7 @@ class TestPrimRead(object):
         msg1 = Msg(
             role='user',
             meta={
-                'data': 'TRUE'
+                'data': ['TRUE']
             }
         )
         result = out.__call__(msg1).m['F1']
@@ -117,13 +117,13 @@ class TestPrimRead(object):
         msg1 = StreamMsg(
             role='user',
             meta={
-                'data': 'TR'
+                'data': ['TR']
             }, is_last=False
         )
         msg2 = StreamMsg(
             role='user',
             meta={
-                'data': 'UE'
+                'data': ['UE']
             }, is_last=True
         )
         store = {}
@@ -217,7 +217,7 @@ class TestJSONRead(object):
         msg1 = Msg(
             role='user',
             meta={
-                'data': d
+                'data': [d]
             }
         )
         simple2 = out(msg1).m['F1']
@@ -251,7 +251,7 @@ class TestJSONRead(object):
         msg1 = Msg(
             role='user',
             meta={
-                'data': data
+                'data': [data]
             }
         )
         cur = out(msg1, delta_store).m['F1']

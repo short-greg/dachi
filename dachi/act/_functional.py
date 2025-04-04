@@ -12,7 +12,7 @@ from ._core import (
 from ._data import Context, ContextSpawner, SharedBase
 from ._core import TOSTATUS
 from ._data import Buffer,Shared
-from ..asst import LLM, LLM_PROMPT
+from ..asst import LLM, LLM_PROMPT, Out
 
 TASK = typing.Union[
     Task, typing.Callable[[typing.Dict], TaskStatus]]
@@ -505,7 +505,7 @@ def threaded(task: TASK, ctx: Context, interval: float=1./60) -> CALL_TASK:
     return run
 
 
-def _stream_model(model: LLM, prompt: LLM_PROMPT, ctx: Context, *args, interval: float=1./60, **kwargs):
+def _stream_model(model: LLM, prompt: LLM_PROMPT, ctx: Context, out: Out, *args, interval: float=1./60, **kwargs):
     """Run periodically to update the status
 
     Args:
@@ -514,15 +514,16 @@ def _stream_model(model: LLM, prompt: LLM_PROMPT, ctx: Context, *args, interval:
         interval (float, optional): The interval to run at. Defaults to 1./60.
     """
     # print('Prompt: ', prompt)
-    for msg, c in model.stream(prompt, *args, **kwargs):
+    for msg in model.stream(prompt, *args, **kwargs):
         ctx['msg'] = msg
-        ctx['cur'].append(c)
+        ctx['cur'].append(out(msg))
+        print(msg)
         time.sleep(interval)
     ctx['thread_status'] = TaskStatus.SUCCESS
 
 
 def stream_model(
-    buffer: Buffer, engine: LLM, prompt: LLM_PROMPT, ctx: Context, 
+    buffer: Buffer, engine: LLM, prompt: LLM_PROMPT, ctx: Context, out: typing.List[str] | str,
     *args, interval: float=1./60,  **kwargs
 ) -> CALL_TASK:
     """Execute the AI model in a thread
@@ -535,6 +536,7 @@ def stream_model(
     Returns:
         CALL_TASK
     """
+    out = Out(out)
     def run() -> TaskStatus:
         if '_thread' not in ctx:
             ctx['msg'] = None
@@ -543,7 +545,7 @@ def stream_model(
             ctx['thread_status'] = TaskStatus.RUNNING
             t = threading.Thread(
                 target=_stream_model, args=(
-                    engine, prompt, ctx, *args
+                    engine, prompt, ctx, out, *args
                 ), kwargs={'interval': interval, **kwargs}
             )
             t.start()
@@ -559,7 +561,7 @@ def stream_model(
 
 
 # TODO: Improve Error Handling
-def _run_model(model: LLM, prompt: LLM_PROMPT, ctx: Context, **kwargs):
+def _run_model(model: LLM, prompt: LLM_PROMPT, ctx: Context, out: Out, **kwargs):
     """Run periodically to update the status
 
     Args:
@@ -567,12 +569,13 @@ def _run_model(model: LLM, prompt: LLM_PROMPT, ctx: Context, **kwargs):
         ctx (Context): The context
         interval (float, optional): The interval to run at. Defaults to 1./60.
     """
-    ctx['msg'], ctx['x'] = model(prompt, **kwargs)
+    ctx['msg'] = model(prompt, **kwargs)
+    ctx['x'] = out(ctx['msg'])
     ctx['thread_status'] = TaskStatus.SUCCESS
 
 
 def exec_model(
-    shared: Shared, engine: LLM, prompt: LLM_PROMPT, ctx: Context, 
+    shared: Shared, engine: LLM, prompt: LLM_PROMPT, ctx: Context, out: typing.List[str] | str,
     **kwargs
 ) -> CALL_TASK:
     """Execute the AI model in a thread
@@ -585,6 +588,7 @@ def exec_model(
     Returns:
         CALL_TASK
     """
+    out = Out(out)
     def run() -> TaskStatus:
         if '_thread' not in ctx:
             ctx['msg'] = None
@@ -592,7 +596,7 @@ def exec_model(
             ctx['thread_status'] = TaskStatus.RUNNING
             t = threading.Thread(
                 target=_run_model, args=(
-                    engine, prompt, ctx
+                    engine, prompt, ctx, out
                 ), kwargs=kwargs
             )
             t.start()
