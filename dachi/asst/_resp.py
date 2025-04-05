@@ -8,7 +8,7 @@ import pydantic
 
 # local
 from ..msg._messages import Msg, END_TOK, StreamMsg
-from ._msg import MsgConv
+from ._msg import MsgProc
 from .. import utils
 
 RESPONSE = 'resp'
@@ -17,7 +17,7 @@ RESPONSE = 'resp'
 S = typing.TypeVar('S', bound=pydantic.BaseModel)
 
 
-class RespConv(MsgConv, ABC):
+class RespConv(MsgProc, ABC):
     """Use to process the resoponse from an LLM
     """
 

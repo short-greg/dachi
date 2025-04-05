@@ -13,8 +13,7 @@ from ..msg._messages import (
     Msg, BaseDialog, 
 )
 from ._asst import Assistant
-from ._msg import ToMsg, MR, Out
-from ._out import OutConv
+from ._msg import ToMsg, MR, Get
 from ..proc import (
     Module, AsyncModule, 
     StreamModule, AsyncStreamModule
@@ -23,10 +22,6 @@ from ..utils import (
     coalesce, UNDEFINED,
     Args
 )
-from ._parse import (
-    ParseConv, CharDelimParser, NullParser
-)
-
 
 S = typing.TypeVar('S', bound=pydantic.BaseModel)
 
@@ -36,12 +31,8 @@ S = typing.TypeVar('S', bound=pydantic.BaseModel)
 LLM_PROMPT = typing.Union[typing.Iterable[Msg], Msg]
 LLM_RESPONSE = typing.Tuple[Msg, typing.Any]
 
-
 # TODO: Need to specify whether to use meta or not somehow
 # in out
-
-# out: M()
-
 
 
 class Op(Module, AsyncModule, StreamModule, AsyncStreamModule):
@@ -53,7 +44,7 @@ class Op(Module, AsyncModule, StreamModule, AsyncStreamModule):
     as streaming responses.
     """
 
-    def __init__(self, assistant: Assistant, to_msg: ToMsg, out: str | typing.List[str] | Out):
+    def __init__(self, assistant: Assistant, to_msg: ToMsg, out: str | typing.List[str] | Get):
         """
         Initializes the class to facilitate interaction with a language model assistant by
         adapting inputs and outputs.
@@ -69,8 +60,8 @@ class Op(Module, AsyncModule, StreamModule, AsyncStreamModule):
         super().__init__()
         self.assistant = assistant
         self.to_msg = to_msg
-        if not isinstance(out, Out):
-            out = Out(out)
+        if not isinstance(out, Get):
+            out = Get(out)
         else:
             print(out.key)
         self.out = out

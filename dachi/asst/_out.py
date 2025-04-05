@@ -9,7 +9,7 @@ import pydantic
 
 # local
 from ..msg import render, struct_template, Msg
-from ._msg import MsgConv
+from ._msg import MsgProc
 from ..base import TemplateField, Templatable
 from ..utils import unescape_curly_braces
 from pydantic_core import PydanticUndefined
@@ -41,7 +41,7 @@ class ReadError(Exception):
         raise ReadError(message, original_exception) from original_exception
 
 
-class OutConv(MsgConv, Templatable):
+class OutConv(MsgProc, Templatable):
     """Use for converting an AI response into a primitive value
     """
     
@@ -430,7 +430,7 @@ class JSONConv(OutConv):
         return escape_curly_braces(self.key_descr)
 
 
-class NullOutConv(MsgConv):
+class NullOutConv(MsgProc):
     """A Reader that does not change the data. 
     So in most cases will simply output a string
     """

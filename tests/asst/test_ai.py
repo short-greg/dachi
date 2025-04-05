@@ -1,5 +1,5 @@
 from dachi.msg._messages import Msg, StreamMsg
-from dachi.asst._msg import MsgConv
+from dachi.asst._msg import MsgProc
 
 from typing import Iterator
 from dachi.asst import _ai
@@ -14,7 +14,7 @@ class DummyAIModel(
     API for a consistent interface
     """
 
-    def __init__(self, target='Great!', proc: typing.List[MsgConv]=None):
+    def __init__(self, target='Great!', proc: typing.List[MsgProc]=None):
         super().__init__()
         self.proc = proc or []
         self.target = target

@@ -1,33 +1,53 @@
+# 1st party 
 from abc import ABC, abstractmethod
 import typing
 
-from ..msg import Msg, END_TOK, StreamMsg
+# local
+from ..msg import Msg, StreamMsg
 from ..proc import Module, AsyncModule
-
-from ..base import Templatable
 from .. import utils
 
 
-class MR:
+class MR(object):
     """Retrieves from the message (not the meta in the message)"""
-
     def __init__(self, name: str):
+        """Use to retrieve from the base message dict.
+
+        Args:
+            name (str): The name of the message key to retrieve
+        """
         self.name = name
 
     def __call__(self, msg):
         return msg[self.name]
 
 
-class Out(object):
+class Get(object):
+    """Use to get a value from a message. 
+    """
 
     def __init__(self, key: str | MR | typing.List[str | MR]):
+        """Use to get from 
 
-        if isinstance(key, Out):
+        Args:
+            key (str | MR | typing.List[str  |  MR]): 
+        """
+        if isinstance(key, Get):
             key = key.key
         self.key = key
 
     def __call__(self, msg: Msg, override=None) -> typing.Any:
-        if isinstance(override, Out):
+        """Use to get a value from the message
+        The default is to get from the meta dict in the message.
+
+        Args:
+            msg (Msg): The message to get a value from
+            override (_type_, optional): Whether to override the key to retrieve. Defaults to None.
+
+        Returns:
+            typing.Any: The value retrieved form the message
+        """
+        if isinstance(override, Get):
             override = override.key
         key = override or self.key
         if isinstance(key, str):
@@ -40,11 +60,22 @@ class Out(object):
 class ToMsg(Module, AsyncModule, ABC):
     """Converts the input to a message
     """
+
     @abstractmethod
     def forward(self, *args, **kwargs) -> Msg:
+        """Convert the args and kwargs to a message
+
+        Returns:
+            Msg: A message
+        """
         pass
 
-    async def aforward(self, *args, **kwargs):
+    async def aforward(self, *args, **kwargs) -> Msg:
+        """Convert the args and kwargs to a message
+
+        Returns:
+            Msg: A message
+        """
         return self.forward(*args, **kwargs)
 
 
@@ -121,7 +152,7 @@ class ToText(ToMsg):
         )
 
 
-class MsgConv(Module, AsyncModule, ABC):
+class MsgProc(Module, AsyncModule, ABC):
     """Use a reader to read in data convert data retrieved from
     an LLM to a better format
     """
@@ -130,7 +161,12 @@ class MsgConv(Module, AsyncModule, ABC):
     def __init__(
         self, name: str, from_: typing.Union[str, typing.List[str]]
     ):
+        """A module used to process a message
 
+        Args:
+            name (str): The name of the output
+            from_ (typing.Union[str, typing.List[str]]): 
+        """
         self.name = name
         if isinstance(from_, str):
             from_ = [from_]
@@ -163,7 +199,15 @@ class MsgConv(Module, AsyncModule, ABC):
         pass
 
     def forward(self, msg: Msg, delta_store: typing.Dict=None) -> Msg:
-        
+        """Processes the message
+
+        Args:
+            msg (Msg): The message to process
+            delta_store (typing.Dict, optional): The delta store. Defaults to None.
+
+        Returns:
+            Msg: The processed message
+        """
         delta_store = delta_store if delta_store is not None else {}
 
         if isinstance(msg, StreamMsg):
@@ -189,28 +233,58 @@ class MsgConv(Module, AsyncModule, ABC):
         return msg
 
     async def aforward(self, msg: Msg) -> Msg:
+        """Processes the message asynchronously
+
+        Args:
+            msg (Msg): The message to process
+            delta_store (typing.Dict, optional): The delta store. Defaults to None.
+
+        Returns:
+            Msg: The processed message
+        """
         return self.forward(msg)
 
 
-class MsgConvSeq(Module, AsyncModule):
+class MsgProcSeq(Module, AsyncModule):
     """A sequence of message converters
     """
 
-    def __init__(self, convs: typing.List[MsgConv]):
+    def __init__(self, procs: typing.List[MsgProc]):
+        """Sequence of message converters
+
+        Args:
+            procs (typing.List[MsgProc]): The processes to use in processing the message
+        """
         super().__init__()
-        self.convs = convs
+        self.procs = procs
 
     def forward(self, msg: Msg) -> Msg:
-        for conv in self.convs:
-            msg = conv.forward(msg)
+        """Process the message on the sequence
+
+        Args:
+            msg (Msg): The message to process
+
+        Returns:
+            Msg: The processed message
+        """
+        for proc in self.procs:
+            msg = proc.forward(msg)
         return msg
     
     async def forward(self, msg: Msg) -> Msg:
-        for conv in self.convs:
-            msg = conv.aforward(msg)
+        """Process the message on the sequence asynchronously
+
+        Args:
+            msg (Msg): The message to process
+
+        Returns:
+            Msg: The processed message
+        """
+        for proc in self.procs:
+            msg = await proc.aforward(msg)
         return msg
     
-    def __getitem__(self, key: str | int) -> MsgConv:
+    def __getitem__(self, key: str | int) -> MsgProc:
         """Get a message converter by name
 
         Args:
@@ -220,10 +294,10 @@ class MsgConvSeq(Module, AsyncModule):
             MsgConv: The message converter
         """
         if isinstance(key, int):
-            return self.convs[key]
+            return self.procs[key]
         
-        conv = None
-        for conv in self.convs:
-            if conv.name == key:
-                return conv
-        raise KeyError(f"Key {key} not found in {self.convs}")
+        proc = None
+        for proc in self.procs:
+            if proc.name == key:
+                return proc
+        raise KeyError(f"Key {key} not found in {self.procs}")

@@ -19,10 +19,10 @@ from ._out import (
     JSONConv, IndexConv
 )
 from ._op import (
-    Op, Threaded, Out
+    Op, Threaded, Get
 )
 from ._msg import (
-    ToMsg, ToText, MsgConv, FromMsg,
+    ToMsg, ToText, MsgProc, FromMsg,
     MR
 )
 from ._resp import RespConv

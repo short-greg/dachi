@@ -20,6 +20,7 @@ T = TypeVar("T", bound=Trainable)
 class Param(
     pydantic.BaseModel, 
     Renderable, 
+    Trainable,
     Storable
 ):
     """Use Param to wrap instructions so the instructions
@@ -29,7 +30,7 @@ class Param(
     data: Trainable
     training: bool=False
 
-    def update_param(self, data: typing.Dict) -> bool:
+    def update_param_dict(self, data: typing.Dict) -> bool:
         """Update the text for the parameter
         If not in "training" mode will not update
 
@@ -40,10 +41,10 @@ class Param(
             True if updated and Fals if not (not in training mode)
         """
         if self.training:
-            excluded = self.data.dict_excluded()
-            data.update(
-                excluded
-            )
+            # excluded = self.data.dict_excluded()
+            # data.update(
+            #     excluded
+            # )
 
             self.data = self.data.__class__(
                 **data
@@ -51,7 +52,7 @@ class Param(
             return True
         return False
 
-    def dump_param(self):
+    def param_dict(self):
         """Update the text for the parameter
         If not in "training" mode will not update
 
@@ -62,9 +63,12 @@ class Param(
             True if updated and Fals if not (not in training mode)
         """
         if self.training:
-            return {
-                self.name: self.data.dict_excluded()
-            }
+            return self.data.param_dict()
+        return {}
+    
+    def param_structure(self):
+        if self.training:
+            return self.data.param_structure()
         return {}
 
     def render(self) -> str:
@@ -79,22 +83,6 @@ class Param(
             return render(self.data)
         return self.text
     
-    def data_schema(self, exclude_fixed: bool=True) -> typing.Dict:
-        """Get thethe schema for the data used by the model
-
-        Returns:
-            typing.Dict: The schema for the data
-        """
-        schema = self.data.__class__.model_json_schema()
-
-        if exclude_fixed:
-            excluded = self.data.fixed_keys()
-            properties = {
-                k: v for k, v in schema["properties"].items() if k not in excluded
-            }
-            schema['properties'] = properties
-        return schema
-    
     def state_dict(self) -> typing.Dict:
         """Get the state dict for the Param
 
@@ -104,7 +92,7 @@ class Param(
         
         return {
             'name': self.name,
-            'cue': self.cue.state_dict(),
+            'data': self.data.param_dict(),
             'training': self.training,
             'text': self.text
         }
@@ -119,6 +107,23 @@ class Param(
         self.cue = self.cue.load_state_dict(params['cue'])
         self.training = params['training']
         self.text = params['text']
+
+    # def data_schema(self, exclude_fixed: bool=True) -> typing.Dict:
+    #     """Get thethe schema for the data used by the model
+
+    #     Returns:
+    #         typing.Dict: The schema for the data
+    #     """
+    #     schema = self.data.__class__.model_json_schema()
+
+    #     if exclude_fixed:
+    #         excluded = self.data.fixed_keys()
+    #         properties = {
+    #             k: v for k, v in schema["properties"].items() if k not in excluded
+    #         }
+    #         schema['properties'] = properties
+    #     return schema
+    
 
     # def read(self, data: typing.Dict) -> S:
     #     """Read in the data
@@ -164,4 +169,4 @@ class ParamSet(object):
     def load(self, data: typing.List[typing.Dict]):
 
         for datum, param in zip(data, self.params):
-            param.update(datum)
+            param.update_param_dict(datum)

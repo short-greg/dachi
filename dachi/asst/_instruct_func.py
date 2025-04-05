@@ -11,15 +11,12 @@ import pydantic
 # local
 from ..base import Trainable, Renderable
 from ..proc._process import (
-    Module, 
-    AsyncModule, StreamModule, AsyncStreamModule,
-    Param
+    Module, AsyncModule, StreamModule, 
+    AsyncStreamModule, Param
 )
 from ._parse import FullParser, ParseConv, NullParser
 from ..utils import is_primitive, primitives, str_formatter
-from ._msg import (
-    ToMsg, ToText
-)
+from ._msg import ToMsg, ToText
 from ._asst import (
     AsyncAssist, AsyncStreamAssist, 
     Assist, StreamAssist

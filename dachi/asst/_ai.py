@@ -12,7 +12,7 @@ from ..msg._messages import (
     Msg, BaseDialog, StreamMsg,
     END_TOK
 )
-from ._msg import MsgConv
+from ._msg import MsgProc
 from ._asst import Assistant
 from ..utils import (
     to_async_function, 
@@ -399,7 +399,7 @@ class LLM(Assistant):
 
 def _prepare(proc, kwargs):
 
-    if isinstance(proc, MsgConv):
+    if isinstance(proc, MsgProc):
         proc = [proc]
     elif proc is None:
         proc = []

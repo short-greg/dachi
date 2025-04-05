@@ -1,31 +1,6 @@
 from abc import ABC, abstractmethod
-
 import typing
 from uuid import uuid4
-import pydantic
-
-
-class Trainable(pydantic.BaseModel):
-
-    @property
-    def fixed_keys(self) -> typing.Set:
-        return set()
-    
-    def fixed_data(self) -> typing.Dict:
-        fixed = set(self.fixed_keys)
-        return {
-            key: val
-            for key, val in self.model_dump().items()
-            if key not in fixed
-        }
-
-    def unfixed_data(self) -> typing.Dict:
-        fixed = set(self.fixed_keys)
-        return {
-            key: val
-            for key, val in self.model_dump().items()
-            if key in fixed
-        }
 
 
 class Storable(ABC):
@@ -119,4 +94,62 @@ class ExampleMixin(ABC):
             str: 
         """
         pass
+
+
+class Trainable(ABC):
+    """
+    Trainable  mixin for objects that can be trained and defines the interface.
+    
+    Notes:
+        - This class is designed to be used as a mixin and should not be 
+          instantiated directly.
+        - Subclasses must implement all abstract methods to provide the 
+          required functionality.
+    """
+
+    @abstractmethod
+    def update_param_dict(self, param_dict: typing.Dict):
+        """Update the state dict for the object
+
+        Args:
+            state_dict (typing.Dict): The state dict
+        """
+        pass
+
+    @abstractmethod
+    def param_dict(self) -> typing.Dict:
+        """Update the state dict for the object
+
+        """
+        pass
+
+    @abstractmethod
+    def param_structure(self) -> typing.Dict:
+        """Get the structure of the object
+
+        Returns:
+            typing.Dict: The structure of the object
+        """
+        pass
+
+
+    # @property
+    # def fixed_keys(self) -> typing.Set:
+    #     return set()
+    
+    # def fixed_data(self) -> typing.Dict:
+    #     fixed = set(self.fixed_keys)
+    #     return {
+    #         key: val
+    #         for key, val in self.model_dump().items()
+    #         if key not in fixed
+    #     }
+
+    # def unfixed_data(self) -> typing.Dict:
+    #     fixed = set(self.fixed_keys)
+    #     return {
+    #         key: val
+    #         for key, val in self.model_dump().items()
+    #         if key in fixed
+    #     }
 

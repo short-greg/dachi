@@ -8,10 +8,10 @@ from abc import abstractmethod
 
 # local
 from .. import utils
-from ._msg import MsgConv
+from ._msg import MsgProc
 
 
-class ParseConv(MsgConv):
+class ParseConv(MsgProc):
 
     def __init__(self, name, from_: str | typing.List[str]='data'):
         super().__init__(name, from_)
@@ -21,7 +21,7 @@ class ParseConv(MsgConv):
         pass
 
 
-class NullParser(MsgConv):
+class NullParser(MsgProc):
     """
     A parser that does not perform any parsing or transformation on the input.
     Instead, it simply returns the input response as-is.
@@ -107,7 +107,7 @@ class CSVRowParser(ParseConv):
         pass
 
 
-class CSVCellParser(MsgConv):
+class CSVCellParser(MsgProc):
     """This parser assumes the input string is a CSV
     """
 
