@@ -7,6 +7,7 @@ from dachi.proc import _process
 import numpy as np
 # TODO: remove
 from dachi.asst import Cue
+import pytest
 
 
 class Append(
@@ -21,14 +22,14 @@ class Append(
     def forward(self, name: str='') -> Any:
         return name + self._append
     
-    async def aforward(self, *args, **kwargs):
-        return self.forward(*args, **kwargs)
+    async def aforward(self, name: str=''):
+        return self.forward(name)
 
-    def stream(self, *args, **kwargs):
-        yield self.forward(*args, **kwargs)
+    def stream(self, name: str=''):
+        yield self.forward(name)
     
-    async def astream(self, *args, **kwargs):
-        for v in self.stream(*args, **kwargs):
+    async def astream(self, name: str=''):
+        for v in self.stream(name):
             yield v
 
 
@@ -216,6 +217,29 @@ class TestModuleList(object):
         assert len(list(module_list.children())) == 2
 
 
+class TestForwardStream:
+
+    def test_forward_executes_module(self):
+
+        append = Append('s')
+        res = _process.forward(append, 't')
+        assert res == 'ts'
+
+    @pytest.mark.asyncio
+    async def test_aforward_executes_module(self):
+
+        append = Append('s')
+        res = await _process.aforward(append, 't')
+        assert res == 'ts'
+
+    def test_stream_executes_module(self):
+
+        append = Append('s')
+        for r in _process.stream(append, 't'):
+            pass
+        assert r == 'ts'
+
+
 class TestBatched:
 
     def test_batched_len_is_correct(self):
@@ -274,15 +298,6 @@ class TestReduce:
             b, _process.B('xy')
         )
         assert res == 'xyyy'
-
-    # def test_map_(self):
-        
-    #     batched = _process.Batched(['xyz', 'abc'], size=1)
-    #     append = Append('x')
-    #     res = batched.map(append)
-
-    #     assert batch_list[0][0] == [1, 2, 3]
-    #     assert batch_list[0][1] == [0, 1, 2]
 
 
 class TestMulti:
@@ -351,6 +366,42 @@ class NestedModule(Module):
 
     def forward(self) -> Any:
         return None
+
+
+class TestParallelLoop:
+
+    def test_parallel_loop_with_two_modules(self):
+
+        modules = _process.ModuleList([Append('s'), Append('t')])
+        ress = []
+        for m, r, kwargs in _process.parallel_loop(
+            modules, 'r'
+        ):
+            ress.append(m(*r, **kwargs))
+        assert ress[0] == 'rs'
+        assert ress[1] == 'rt'
+
+    def test_parallel_loop_with_two_inputs(self):
+
+        # modules = _process.ModuleList([Append('s'), Append('t')])
+        ress = []
+        for m, r, kwargs in _process.parallel_loop(
+            Append('s'), _process.B(['r', 'v'])
+        ):
+            ress.append(m(*r, **kwargs))
+        assert ress[0] == 'rs'
+        assert ress[1] == 'vs'
+
+    def test_parallel_loop_with_two_inputs_and_two_modles(self):
+
+        modules = _process.ModuleList([Append('s'), Append('t')])
+        ress = []
+        for m, r, kwargs in _process.parallel_loop(
+            modules, _process.B(['r', 'v'])
+        ):
+            ress.append(m(*r, **kwargs))
+        assert ress[0] == 'rs'
+        assert ress[1] == 'vt'
 
 
 class TestModule:

@@ -18,7 +18,7 @@ T = TypeVar("T", bound=Trainable)
 # TODO: Make this store just a Pydantic BaseModel
 # rather than a cue.
 class Param(
-    pydantic.BaseModel, 
+    # pydantic.BaseModel, 
     Renderable, 
     Trainable,
     Storable
@@ -26,9 +26,17 @@ class Param(
     """Use Param to wrap instructions so the instructions
     can update
     """
-    name: str
-    data: Trainable
-    training: bool=False
+    def __init__(self, name: str, data: Trainable, training: bool=False):
+        """_summary_
+
+        Args:
+            name (str): The param name
+            data (Trainable): the data in the param
+            training (bool, optional): whether training or not. Defaults to False.
+        """
+        self.name = name
+        self.data = data
+        self.training = training
 
     def update_param_dict(self, data: typing.Dict) -> bool:
         """Update the text for the parameter

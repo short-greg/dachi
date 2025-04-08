@@ -122,18 +122,6 @@ class DeltaResp(_ai.RespConv):
     def __init__(self, name: str):
         super().__init__(name, from_='response')
 
-    # def __call__(self, response, msg: Msg) -> typing.Any:
-    #     msg['delta_content'] = ''
-    #     return ''
-
-    # def delta(self, response, msg: Msg, delta_store: typing.Dict) -> typing.Any: 
-    #     if response is _ai.END_TOK:
-    #         msg['delta_content'] = None
-    #         return None
-        
-    #     msg['delta_content'] = response['content']
-    #     return response['content']
-
     def post(self, msg, result, delta_store, streamed = False, is_last = True):
         msg[self.name] = delta_store.get('content', '')
 

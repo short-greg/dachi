@@ -22,17 +22,20 @@ class MR(object):
         return msg[self.name]
 
 
-class Get(object):
+class FromMsg(object):
     """Use to get a value from a message. 
     """
 
-    def __init__(self, key: str | MR | typing.List[str | MR]):
-        """Use to get from 
+    def __init__(self, key: str | MR | typing.List[str | MR | None]):
+        """Use to retrieve values from a message
+
+        MR will return from the base of the message, otherwise
+        the meta storage is used. None will return the message itself.
 
         Args:
             key (str | MR | typing.List[str  |  MR]): 
         """
-        if isinstance(key, Get):
+        if isinstance(key, FromMsg):
             key = key.key
         self.key = key
 
@@ -47,14 +50,22 @@ class Get(object):
         Returns:
             typing.Any: The value retrieved form the message
         """
-        if isinstance(override, Get):
+        if isinstance(override, FromMsg):
             override = override.key
         key = override or self.key
         if isinstance(key, str):
             return msg.m[key]
+        elif key is None:
+            return msg
         elif isinstance(key, MR):
             return key(msg)
-        return [k(msg) if isinstance(k, MR) else msg.m[k] for k in key]
+        
+        return tuple(
+            k(msg) if isinstance(k, MR) 
+            else msg if k is None
+            else msg.m[k]
+            for k in key
+        )
 
 
 class ToMsg(Module, AsyncModule, ABC):
@@ -77,6 +88,28 @@ class ToMsg(Module, AsyncModule, ABC):
             Msg: A message
         """
         return self.forward(*args, **kwargs)
+
+
+class NullToMsg(Module, AsyncModule, ABC):
+    """Converts a message to a message (so actually does nothing)
+    """
+
+    def forward(self, msg: Msg) -> Msg:
+        """Convert the args and kwargs to a message
+
+        Returns:
+            Msg: A message
+        """
+        return msg
+
+    async def aforward(self, msg: Msg) -> Msg:
+        """Convert the args and kwargs to a message
+
+        Returns:
+            Msg: A message
+        """
+        return msg
+
 
 
 class FromMsg(Module, AsyncModule, ABC):

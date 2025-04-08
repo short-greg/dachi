@@ -33,7 +33,8 @@ S = typing.TypeVar('S', bound=pydantic.BaseModel)
 class BaseModule(Storable, ABC):
     """Base class for Modules
     """
-    def parameters(self, recurse: bool=True) -> typing.Iterator[Param]:
+    def parameters(
+        self, recurse: bool=True) -> typing.Iterator[Param]:
         """Loop over the parameters for the module
 
         Yields:
@@ -244,7 +245,8 @@ def stream(f: typing.Union[StreamModule, typing.Callable], *args, **kwargs) -> t
         raise NotImplementedError('Cannot stream with async function')
     elif not to_async_function(f) and not is_generator_function(f):
         yield f(*args, **kwargs)
-    raise RuntimeError()
+    else:
+        raise RuntimeError()
 
 
 async def astream(f: typing.Union[AsyncStreamModule, typing.Callable], *args, **kwargs) -> typing.Any:
@@ -281,7 +283,7 @@ async def astream(f: typing.Union[AsyncStreamModule, typing.Callable], *args, **
         yield await f(*args, **kwargs)
     elif not to_async_function(f) and not is_generator_function(f):
         yield f(*args, **kwargs)
-    raise RuntimeError()
+    else: raise RuntimeError()
 
 
 class I(object):
@@ -703,7 +705,7 @@ def reduce(
     return results[-1]
 
 
-async def _async_map(f: AsyncModule, *args, **kwargs) -> typing.Tuple[typing.Any]:
+async def async_map(f: AsyncModule, *args, **kwargs) -> typing.Tuple[typing.Any]:
     """Helper function to run async_map
 
     Args:
@@ -723,19 +725,7 @@ async def _async_map(f: AsyncModule, *args, **kwargs) -> typing.Tuple[typing.Any
     )
 
 
-def async_map(f: AsyncModule, *args, **kwargs) -> typing.Tuple[typing.Any]:
-    """Map *args and **kwargs through the module
-
-    Args:
-        f (Module): The module to use for mapping
-
-    Returns:
-        typing.Tuple[typing.Any]: The output of the modules
-    """
-    return asyncio.run(_async_map(f, *args, **kwargs))
-
-
-async def _async_multi(*f) -> typing.Tuple[typing.Any]:
+async def async_multi(*f) -> typing.Tuple[typing.Any]:
     """Helper function to run asynchronous processes
 
     Returns:
@@ -750,19 +740,6 @@ async def _async_multi(*f) -> typing.Tuple[typing.Any]:
     return tuple(
         task.result() for task in tasks
     )
-
-
-def async_multi(*f) -> typing.Tuple[typing.Any]:
-    """Run multiple asynchronous processes and return
-    the results
-
-    Args:
-       f (coroutine): The coroutines to run
-
-    Returns:
-        typing.Tuple: The output of the 
-    """
-    return asyncio.run(_async_multi(*f))
 
 
 @dataclass

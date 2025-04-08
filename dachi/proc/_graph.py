@@ -8,7 +8,7 @@ from typing import Self
 # local
 from . import (
     Partial, Streamer,
-    Module
+    Module, StreamModule
 )
 from ..utils import is_undefined
 from ..utils import UNDEFINED, WAITING
@@ -93,7 +93,7 @@ class T(object):
             self._val[idx], IdxSrc(self, idx)
         )
     
-    def probe(self, by: typing.Dict['T', typing.Any]) -> typing.Any:
+    def probe(self, by: typing.Dict['T', typing.Any]=None) -> typing.Any:
         """Probe the graph using the values specified in by
 
         Args:
@@ -105,6 +105,7 @@ class T(object):
         Returns:
             typing.Any: The value returned by the probe
         """
+        by = by or {}
         if not is_undefined(self._val):
             return self._val
 
@@ -153,7 +154,6 @@ class StreamSrc(Src):
     """A source used for streaming inputs such
     as streaming from an LLM
     """
-
     def __init__(self, module: 'Module', args: 'TArgs') -> None:
         """Create a Src which will handle the streaming of inputs
 
@@ -162,7 +162,6 @@ class StreamSrc(Src):
             args (Args): The arguments passed into the streamer
         """
         super().__init__()
-
         self._module = module
         self._args = args
 
@@ -189,18 +188,24 @@ class StreamSrc(Src):
             value: Streamer = by[self]
             return value
     
-        args = self._args.iterate(by)        
-        streamer = by[self] = self._module.streamer(
-            *args.args, **args.kwargs
+        args = self._args(by)
+        streamer = Streamer(
+            self._module.stream(
+                *args.args,
+                **args.kwargs
+            )
         )
+
         return streamer
     
-    def __call__(self, by: typing.Dict['T', typing.Any]) -> typing.Any:
+    def __call__(self, by: typing.Dict['T', typing.Any]=None) -> typing.Any:
         
         return self.forward(by)
 
 
 class TArgs(object):
+    """
+    """
 
     def __init__(self, *args, **kwargs):
         """Create a storage for the arguments to a module
@@ -251,9 +256,9 @@ class TArgs(object):
             if isinstance(a, T):
                 a = a.val
             if isinstance(a, Streamer):
-                a = a().cur
+                a = a().dx
             if isinstance(a, Partial):
-                a = a.cur
+                a = a.dx
             args.append(a)
         
         for k, a in self._kwargs.items():
@@ -262,13 +267,13 @@ class TArgs(object):
             if isinstance(a, Streamer):
                 a = a()
             if isinstance(a, Partial):
-                a = a.cur
+                a = a.dx
             kwargs[k] = a
         return TArgs(*args, **kwargs)
     
     @property
     def args(self) -> typing.List:
-        """_summary_
+        """Get the args
 
         Returns:
             typing.List: The args component of the Args
@@ -277,7 +282,7 @@ class TArgs(object):
     
     @property
     def kwargs(self) -> typing.Dict:
-        """
+        """Get the kwargs
         Returns:
             typing.Dict: The kwargs component of the Args
         """
@@ -312,16 +317,19 @@ class TArgs(object):
                 return True
         return False
     
-    def forward(self, by: typing.Dict['T', typing.Any]=None) -> Self:
+    def forward(
+        self, 
+        by: typing.Dict['T', typing.Any]=None
+    ) -> Self:
 
         by = by or {}
         args = []
         kwargs = {}
         for arg in self._args:
             is_t = isinstance(arg, T)
-            print('k: ', arg, arg in by)
-
-            if isinstance(arg, T) and arg in by:
+            
+            print(arg, is_t)
+            if is_t and arg in by:
                 val = by[arg]
                 if isinstance(val, Partial):
                     # partial = True
@@ -331,6 +339,8 @@ class TArgs(object):
                     args.append(val)
             elif is_t and arg.val is not UNDEFINED:
                 args.append(arg.val)
+            elif isinstance(arg, Var):
+                args.append(arg(by))
             elif is_t:
                 raise ValueError(f'Arg has not been defined')  
             else:
@@ -349,7 +359,7 @@ class TArgs(object):
         
         return TArgs(*args, **kwargs)
         
-    def __call__(self, by: typing.Dict['T', typing.Any]) -> Self:
+    def __call__(self, by: typing.Dict['T', typing.Any]=None) -> Self:
         return self.forward(by)
 
 
@@ -586,7 +596,7 @@ def link(module: Module, *args, **kwargs) -> T:
 # TODO: Combine the following two
 # TDOO: add async_link?
 # streamable
-def stream_link(module: 'Module', *args, **kwargs) -> T:
+def stream_link(module: 'StreamModule', *args, **kwargs) -> T:
     """
     Returns:
         T: The Streamable transmission
@@ -607,7 +617,7 @@ def stream_link(module: 'Module', *args, **kwargs) -> T:
     )
 
 
-def stream(module: 'Module', *args, interval: float=None, **kwargs) -> typing.Iterator[T]:
+def stream(module: 'StreamModule', *args, interval: float=None, **kwargs) -> typing.Iterator[T]:
     """Use to loop over a streamable module until complete
 
     Args:

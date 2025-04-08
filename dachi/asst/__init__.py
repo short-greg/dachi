@@ -19,10 +19,12 @@ from ._out import (
     JSONConv, IndexConv
 )
 from ._op import (
-    Op, Threaded, Get
+    Op, Threaded, FromMsg
 )
+from ._chat import Chat
 from ._msg import (
-    ToMsg, ToText, MsgProc, FromMsg,
+    ToMsg, ToText, MsgProc, 
+    FromMsg,
     MR
 )
 from ._resp import RespConv

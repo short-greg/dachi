@@ -12,7 +12,7 @@ from ._core import (
 from ._data import Context, ContextSpawner, SharedBase
 from ._core import TOSTATUS
 from ._data import Buffer,Shared
-from ..asst import LLM, LLM_PROMPT, Get
+from ..asst import LLM, LLM_PROMPT, FromMsg
 
 TASK = typing.Union[
     Task, typing.Callable[[typing.Dict], TaskStatus]]
@@ -505,7 +505,7 @@ def threaded(task: TASK, ctx: Context, interval: float=1./60) -> CALL_TASK:
     return run
 
 
-def _stream_model(model: LLM, prompt: LLM_PROMPT, ctx: Context, out: Get, *args, interval: float=1./60, **kwargs):
+def _stream_model(model: LLM, prompt: LLM_PROMPT, ctx: Context, out: FromMsg, *args, interval: float=1./60, **kwargs):
     """Run periodically to update the status
 
     Args:
@@ -536,7 +536,7 @@ def stream_model(
     Returns:
         CALL_TASK
     """
-    out = Get(out)
+    out = FromMsg(out)
     def run() -> TaskStatus:
         if '_thread' not in ctx:
             ctx['msg'] = None
@@ -561,7 +561,7 @@ def stream_model(
 
 
 # TODO: Improve Error Handling
-def _run_model(model: LLM, prompt: LLM_PROMPT, ctx: Context, out: Get, **kwargs):
+def _run_model(model: LLM, prompt: LLM_PROMPT, ctx: Context, out: FromMsg, **kwargs):
     """Run periodically to update the status
 
     Args:
@@ -588,7 +588,7 @@ def exec_model(
     Returns:
         CALL_TASK
     """
-    out = Get(out)
+    out = FromMsg(out)
     def run() -> TaskStatus:
         if '_thread' not in ctx:
             ctx['msg'] = None

@@ -782,6 +782,7 @@ def to_dialog(prompt: typing.Union[BaseDialog, Msg]) -> BaseDialog:
 
     return prompt
 
+
 def to_list_input(msg: typing.List | typing.Tuple | BaseDialog | Msg) -> typing.List:
 
     if not isinstance(msg, typing.List) and not isinstance(msg, typing.Tuple):

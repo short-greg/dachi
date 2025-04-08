@@ -41,19 +41,19 @@ class TestT:
         t = t.label(name='x')
         assert t.is_undefined()
 
-    def test_is_undefined_returns_true(self):
-        p = MyProcess()
-        src = g.ModSrc(p, (0, 1))
-        t = g.T(1, src=src)
-        t = t.label(name='x')
-        assert not t.is_undefined()
-
     def test_get_item_returns_first_item(self):
         p = MyProcess()
         src = g.ModSrc(p, (0, 1))
         t = g.T([1, 2], src=src)
         t = t.label(name='x')
         assert t[0].val == 1
+
+    def test_get_item_returns_first_index_source(self):
+        p = MyProcess()
+        src = g.ModSrc(p, (0, 1))
+        t = g.T(UNDEFINED, src=src)
+        t = t.label(name='x')
+        assert t.val is UNDEFINED
 
     def test_detach_has_no_source(self):
         p = MyProcess()
@@ -78,7 +78,14 @@ class TestT:
         src = g.ModSrc.create(module, p.B(['hi', 'hi']))
         res = src()
         assert res == ['hix', 'hiy']
-    
+
+    def test_t_has_correct_annotation(self):
+        p = MyProcess()
+        src = g.ModSrc(p, (0, 1))
+        annotation = 'A simple module.'
+        t = g.T(src=src, annotation=annotation)
+        assert t.annotation == annotation
+
 
 class TestVar:
 
@@ -100,20 +107,26 @@ class TestVar:
 
 class TestIdxSrc:
 
-    def test_var_returns_value(self):
+    def test_idx_returns_value(self):
+        src = g.Var([0, 1])
+        t = g.T(src=src)
+        idx = g.IdxSrc(t, 0)
+        
+        assert idx() == 0
 
-        var = g.Var(1)
-        assert var() == 1
+    def test_idx_incoming_returns_t(self):
+        src = g.Var([0, 1])
+        t = g.T(src=src)
+        idx = g.IdxSrc(t, 0)
+        
+        incoming = list(idx.incoming())[0]
+        assert incoming is t
 
-    def test_var_returns_value_with_factory(self):
-
-        var = g.Var(default_factory=lambda: 3)
-        assert var() == 3
-
-    def test_var_has_no_incoming(self):
-
-        var = g.Var(1)
-        assert len(list(var.incoming())) == 0
+    def test_probe_incoming_returns_val(self):
+        src = g.Var([0, 1])
+        idx = g.T(src=src)[0]
+        val = idx.probe()
+        assert val == 0
 
 
 class TestWaitSrc:
@@ -178,6 +191,28 @@ class TestLink:
             t.probe({})
 
 
+class TestStreamSrc:
+
+    def test_stream_src_returns_a_streamer(self):
+        k = g.Var('k')
+        src = g.StreamSrc(
+            Append('s'), g.TArgs(k)
+        )
+        val = src()
+        
+        assert isinstance(val, g.Streamer)
+
+    def test_streamer_returns_value(self):
+        k = g.Var('k')
+        src = g.StreamSrc(
+            Append('s'), g.TArgs(k)
+        )
+        val = src()
+        res = val()
+        
+        assert res.dx == 'ks'
+
+
 class TestStreamLink:
 
     def test_call_returns_t_with_streamer(self):
@@ -187,30 +222,30 @@ class TestStreamLink:
         partial = t.val()
         assert partial.dx == 'x'
 
-#     def test_call_returns_undefined_if_t_undefined(self):
+    def test_call_returns_undefined_if_t_undefined(self):
 
-#         writer = WriteOut('hi')
-#         t = g.stream_link(writer, g.T())
-#         assert t.is_undefined()
+        writer = WriteOut('hi')
+        t = g.stream_link(writer, g.T())
+        assert t.is_undefined()
 
 # # #     # TODO* make this return partial
-#     def test_chained_after_stream_appends(self):
+    def test_chained_after_stream_appends(self):
 
-#         writer = WriteOut('hi')
-#         append = Append('_t')
-#         t = g.stream_link(writer, g.T('xyz'))
-#         t = g.link(append, t)
-#         assert t.val.cur == 'x_t'
+        writer = WriteOut('hi')
+        append = Append('_t')
+        t = g.stream_link(writer, g.T('xyz'))
+        t = g.link(append, t)
+        print(t.val.dx)
+        assert t.val.dx == 'x_t'
 
-#     def test_stream_completes_the_stream(self):
+    def test_stream_completes_the_stream(self):
+        writer = WriteOut('hi')
+        append = Append('_t')
 
-#         writer = WriteOut('hi')
-#         append = Append('_t')
-
-#         for t in g.stream(writer, g.T('xyz')):
-#             t = g.link(append, t)
+        for t in g.stream(writer, g.T('xyz')):
+            t = g.link(append, t)
         
-#         assert t.val.cur == 'xyzhi_t'
+        assert t.val.dx == 'i_t'
 
 
 class TestWait:

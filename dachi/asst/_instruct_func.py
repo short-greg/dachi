@@ -53,8 +53,8 @@ class Cue(
 ):
     """Specific cue for the model to use
     """
-    text: str
-    _out: typing.Optional[OutConv] = pydantic.PrivateAttr(default=None)
+    # text: str
+    # _out: typing.Optional[OutConv] = pydantic.PrivateAttr(default=None)
 
     def __init__(
         self, text: str, name: str='', 
@@ -67,8 +67,10 @@ class Cue(
             name (str, optional): The name associated with the text. Defaults to an empty string.
             out (Optional[OutConv], optional): The converter to use for processing the output. Defaults to None.
         """
-        super().__init__(text=text, name=name)
+        super().__init__()
         self._out = out
+        self.text = text
+        self.name = name
 
     def i(self) -> Self:
         return self
@@ -122,6 +124,48 @@ class Cue(
     @property
     def fixed_data(self):
         return {"out"}
+
+    def update_param_dict(self, data: typing.Dict) -> bool:
+        """Update the text for the parameter
+        If not in "training" mode will not update
+
+        Args:
+            text (str): The text to update with
+        
+        Returns:
+            True if updated and Fals if not (not in training mode)
+        """
+        if self.training:
+            # excluded = self.data.dict_excluded()
+            # data.update(
+            #     excluded
+            # )
+
+            self.text = data[self.name]
+            return True
+        return False
+
+    def param_dict(self):
+        """Update the text for the parameter
+        If not in "training" mode will not update
+
+        Args:
+            text (str): The text to update with
+        
+        Returns:
+            True if updated and Fals if not (not in training mode)
+        """
+        if self.training:
+            return {self._name: self.text}
+        return {}
+
+    def param_structure(self) -> typing.Dict:
+        """Get the structure of the object
+
+        Returns:
+            typing.Dict: The structure of the object
+        """
+        return {}
 
 
 X = typing.Union[str, Cue]
