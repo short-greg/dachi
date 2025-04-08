@@ -123,7 +123,7 @@ class Glossary(pydantic.BaseModel, Renderable):
                 self.terms[term_i.name] = val
         return val
     
-    def add(self, name: str, definition: str, **meta) -> Self:
+    def add(self, term: Term) -> Self:
         """Add a term to the glossary
 
         Args:
@@ -133,9 +133,22 @@ class Glossary(pydantic.BaseModel, Renderable):
         Returns:
             Self: The glossary
         """
-        self.terms[name] = Term(name, definition, **meta)
+        self.terms[term.name] = term
         return self
-    
+
+    def remove(self, name: str) -> Self:
+        """Add a term to the glossary
+
+        Args:
+            name (str): The name of the term to add
+            definition (str): The definition of the term
+
+        Returns:
+            Self: The glossary
+        """
+        del self.terms[name]
+        return self
+
     def exclude(self, *meta: str) -> 'Glossary':
         """Filter by excluding meta fields from the glossary
 
@@ -163,6 +176,11 @@ class Glossary(pydantic.BaseModel, Renderable):
             }
             terms.append(Term(name, **cur_meta))
         return Glossary(terms)
+
+    def update(self, term: Term) -> 'Glossary':
+
+        self.terms[term.name] = term
+        return self
 
     def render(self) -> str:
         """Convert the glossary into a string
