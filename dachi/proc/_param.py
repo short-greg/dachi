@@ -18,16 +18,15 @@ T = TypeVar("T", bound=Trainable)
 # TODO: Make this store just a Pydantic BaseModel
 # rather than a cue.
 class Param(
-    # pydantic.BaseModel, 
     Renderable, 
-    Trainable,
+    # Trainable,
     Storable
 ):
     """Use Param to wrap instructions so the instructions
     can update
     """
     def __init__(self, name: str, data: Trainable, training: bool=False):
-        """_summary_
+        """
 
         Args:
             name (str): The param name
@@ -37,6 +36,17 @@ class Param(
         self.name = name
         self.data = data
         self.training = training
+
+    def data_schema(self) -> typing.Dict:
+
+        sub_schema = self.data.data_schema()
+        schema = {
+            "title": self.name,
+            "type": "object",
+            "properties": sub_schema,
+            # "required": [self.name]
+        }
+        return schema
 
     def update_param_dict(self, data: typing.Dict) -> bool:
         """Update the text for the parameter
@@ -116,37 +126,6 @@ class Param(
         self.training = params['training']
         self.text = params['text']
 
-    # def data_schema(self, exclude_fixed: bool=True) -> typing.Dict:
-    #     """Get thethe schema for the data used by the model
-
-    #     Returns:
-    #         typing.Dict: The schema for the data
-    #     """
-    #     schema = self.data.__class__.model_json_schema()
-
-    #     if exclude_fixed:
-    #         excluded = self.data.fixed_keys()
-    #         properties = {
-    #             k: v for k, v in schema["properties"].items() if k not in excluded
-    #         }
-    #         schema['properties'] = properties
-    #     return schema
-    
-
-    # def read(self, data: typing.Dict) -> S:
-    #     """Read in the data
-
-    #     Args:
-    #         data (typing.Dict): The data to read in
-
-    #     Returns:
-    #         S: The result of the reading
-    #     """
-    #     return self.cue.read(data)
-
-    # def reads(self, data: str) -> S:
-    #     return self.cue.read_out(data)
-
 
 class ParamSet(object):
 
@@ -154,7 +133,7 @@ class ParamSet(object):
         super().__init__()
         self.params = params
 
-    def schema(self) -> typing.Dict:
+    def data_schema(self) -> typing.Dict:
         """
         Generates a JSON schema dictionary for the parameters.
         The schema defines the structure of a JSON object with the title "ParamSet".
@@ -162,7 +141,6 @@ class ParamSet(object):
         Returns:
             typing.Dict: A dictionary representing the JSON schema.
         """
-
         schema = {
             "title": "ParamSet",
             "type": "object",
@@ -172,9 +150,43 @@ class ParamSet(object):
         for param in self.params:
             schema["properties"][param.name] = param.data_schema()
             schema["required"].append(param.name)
+        print(schema)
         return schema
-    
-    def load(self, data: typing.List[typing.Dict]):
 
-        for datum, param in zip(data, self.params):
-            param.update_param_dict(datum)
+    def update_param_dict(self, data: typing.Dict) -> bool:
+        """Update the text for the parameter
+        If not in "training" mode will not update
+
+        Args:
+            text (str): The text to update with
+        
+        Returns:
+            True if updated and Fals if not (not in training mode)
+        """
+        for param in self.params:
+            if param.name in data:
+                param.update_param_dict(data[param.name])
+    
+    def param_dict(self):
+        """Update the text for the parameter
+        If not in "training" mode will not update
+
+        Args:
+            text (str): The text to update with
+        
+        Returns:
+            True if updated and Fals if not (not in training mode)
+        """
+        data = {}
+        for param in self.params:
+            if param.training:
+                data[param.name] = param.param_dict()
+        return data
+    
+    def param_structure(self):
+
+        data = {}
+        for param in self.params:
+            if param.training:
+                data[param.name] = param.param_structure()
+        return data

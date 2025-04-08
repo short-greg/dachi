@@ -123,12 +123,21 @@ class Trainable(ABC):
         """
         pass
 
+    # @abstractmethod
+    # def param_structure(self) -> typing.Dict:
+    #     """Get the structure of the object
+
+    #     Returns:
+    #         typing.Dict: The structure of the object
+    #     """
+    #     pass
+
     @abstractmethod
-    def param_structure(self) -> typing.Dict:
-        """Get the structure of the object
+    def data_schema(self) -> typing.Dict:
+        """
 
         Returns:
-            typing.Dict: The structure of the object
+            typing.Dict: 
         """
         pass
 

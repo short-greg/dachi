@@ -1,5 +1,166 @@
 
-from dachi.msg._instruct import style_formatter
+from dachi.msg._instruct import style_formatter, bullet
+import pytest
+from dachi.msg._instruct import generate_numbered_list, numbered
+
+
+class TestGenerateNumberedList:
+
+    def test_arabic_numbering(self):
+        """Tests arabic numbering."""
+        result = generate_numbered_list(5, numbering_type='arabic')
+        expected = ['1', '2', '3', '4', '5']
+        assert result == expected
+
+    def test_roman_numbering(self):
+        """Tests roman numeral numbering."""
+        result = generate_numbered_list(5, numbering_type='roman')
+        expected = ['i', 'ii', 'iii', 'iv', 'v']
+        assert result == expected
+
+    def test_alphabet_numbering(self):
+        """Tests alphabetic numbering."""
+        result = generate_numbered_list(5, numbering_type='alphabet')
+        expected = ['A', 'B', 'C', 'D', 'E']
+        assert result == expected
+
+    def test_invalid_numbering_type(self):
+        """Tests invalid numbering type."""
+        with pytest.raises(ValueError):
+            generate_numbered_list(5, numbering_type='invalid')
+
+    def test_alphabet_numbering_exceeds_limit(self):
+        """Tests alphabetic numbering exceeding the limit."""
+        with pytest.raises(ValueError, match="Alphabetic numbering can only handle up to 26 items"):
+            generate_numbered_list(27, numbering_type='alphabet')
+
+    def test_zero_items(self):
+        """Tests generating a list with zero items."""
+        result = generate_numbered_list(0, numbering_type='arabic')
+        assert result == []
+
+    def test_negative_items(self):
+        """Tests generating a list with negative items."""
+        with pytest.raises(ValueError):
+            generate_numbered_list(-5, numbering_type='arabic')
+
+    def test_default_numbering_type(self):
+        """Tests default numbering type (arabic)."""
+        result = generate_numbered_list(3)
+        expected = ['1', '2', '3']
+        assert result == expected
+
+
+class TestNumbered:
+
+    def test_arabic_numbering(self):
+        """Tests arabic numbering with default indent."""
+        result = numbered(["Apple", "Banana", "Cherry"], numbering="arabic")
+        expected = "1. Apple\n2. Banana\n3. Cherry"
+        assert result == expected
+
+    def test_roman_numbering(self):
+        """Tests roman numeral numbering."""
+        result = numbered(["Apple", "Banana", "Cherry"], numbering="roman")
+        expected = "i. Apple\nii. Banana\niii. Cherry"
+        assert result == expected
+
+    def test_alphabet_numbering(self):
+        """Tests alphabetic numbering."""
+        result = numbered(["Apple", "Banana", "Cherry"], numbering="alphabet")
+        expected = "A. Apple\nB. Banana\nC. Cherry"
+        assert result == expected
+
+    def test_with_indent(self):
+        """Tests numbering with indentation."""
+        result = numbered(["Apple", "Banana", "Cherry"], indent=4, numbering="arabic")
+        expected = "    1. Apple\n    2. Banana\n    3. Cherry"
+        assert result == expected
+
+    def test_empty_list(self):
+        """Tests numbering with an empty list."""
+        result = numbered([], numbering="arabic")
+        assert result == ""
+
+    def test_invalid_numbering_type(self):
+        """Tests invalid numbering type."""
+        with pytest.raises(ValueError):
+            numbered(["Apple", "Banana"], numbering="invalid")
+
+    def test_single_item(self):
+        """Tests numbering with a single item."""
+        result = numbered(["Apple"], numbering="arabic")
+        expected = "1. Apple"
+        assert result == expected
+
+    def test_negative_indent(self):
+        """Tests numbering with a negative indent."""
+        result = numbered(["Apple", "Banana"], indent=-2, numbering="arabic")
+        expected = "1. Apple\n2. Banana"
+        assert result == expected  # Negative indent should be treated as no indent
+
+    def test_large_list(self):
+        """Tests numbering with a large list."""
+        with pytest.raises(ValueError):
+            items = [f"Item {i}" for i in range(1, 28)]
+            numbered(items, numbering="alphabet")
+            # expected = "\n".join([f"{chr(64 + i)}. Item {i}" for i in range(1, 27)])
+            # assert result == expected
+
+class TestBullet:
+
+    def test_basic_bullet_list(self):
+        """Tests basic bullet list generation."""
+        result = bullet(["Apple", "Banana", "Cherry"])
+        expected = "- Apple\n- Banana\n- Cherry"
+        assert result == expected
+
+    def test_custom_bullet_character(self):
+        """Tests bullet list with a custom bullet character."""
+        result = bullet(["Apple", "Banana", "Cherry"], bullets="*")
+        expected = "* Apple\n* Banana\n* Cherry"
+        assert result == expected
+
+    def test_with_indent(self):
+        """Tests bullet list with indentation."""
+        result = bullet(["Apple", "Banana", "Cherry"], indent=4)
+        expected = "    - Apple\n    - Banana\n    - Cherry"
+        assert result == expected
+
+    def test_empty_list(self):
+        """Tests bullet list with an empty list."""
+        result = bullet([])
+        assert result == ""
+
+    def test_single_item(self):
+        """Tests bullet list with a single item."""
+        result = bullet(["Apple"])
+        expected = "- Apple"
+        assert result == expected
+
+    def test_negative_indent(self):
+        """Tests bullet list with a negative indent."""
+        result = bullet(["Apple", "Banana"], indent=-2)
+        expected = "- Apple\n- Banana"  # Negative indent should be treated as no indent
+        assert result == expected
+
+    def test_numeric_items(self):
+        """Tests bullet list with numeric items."""
+        result = bullet([1, 2, 3])
+        expected = "- 1\n- 2\n- 3"
+        assert result == expected
+
+    def test_mixed_type_items(self):
+        """Tests bullet list with mixed type items."""
+        result = bullet(["Apple", 42, 3.14])
+        expected = "- Apple\n- 42\n- 3.14"
+        assert result == expected
+
+    def test_custom_bullet_and_indent(self):
+        """Tests bullet list with custom bullet and indentation."""
+        result = bullet(["Apple", "Banana"], bullets=">", indent=2)
+        expected = "  > Apple\n  > Banana"
+        assert result == expected
 
 
 class TestStyleFormat:

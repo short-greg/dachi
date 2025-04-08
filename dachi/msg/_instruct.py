@@ -28,6 +28,8 @@ def generate_numbered_list(n, numbering_type='arabic') -> typing.List:
     Returns:
         : 
     """
+    if n < -1:
+        raise ValueError('The number in list must be greater than or equal to 0.')
     if numbering_type == 'arabic':
         return [str(i) for i in range(1, n + 1)]
     elif numbering_type == 'roman':
@@ -113,7 +115,6 @@ def style_formatter(text, *args, _styles: typing.Dict=None, **kwargs) -> str:
     return text.format(*updated_args, **updated_kwargs)
 
 
-
 def numbered(xs: typing.Iterable[X], indent: int=0, numbering: str='arabic') -> str:
     """Create a numbered list
 
@@ -128,9 +129,8 @@ def numbered(xs: typing.Iterable[X], indent: int=0, numbering: str='arabic') -> 
     text = ''
     indent = ' ' * indent
     numbers = generate_numbered_list(len(xs), numbering)
-    # out = validate_out(xs)
     for i, (x_i, number) in enumerate(zip(xs, numbers)):
-        text = f'{indent}{number}. {render(x_i)}'
+        text += f'{indent}{number}. {render(x_i)}'
         if i < (len(numbers) - 1):
             text += "\n"
 
