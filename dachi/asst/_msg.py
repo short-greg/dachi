@@ -111,49 +111,48 @@ class NullToMsg(Module, AsyncModule, ABC):
         return msg
 
 
+# class FromMsg(Module, AsyncModule, ABC):
+#     """Converts the message to an output
+#     """
+#     def __init__(self, from_: typing.Union[str, typing.List[str]]):
 
-class FromMsg(Module, AsyncModule, ABC):
-    """Converts the message to an output
-    """
-    def __init__(self, from_: typing.Union[str, typing.List[str]]):
+#         if isinstance(from_, str):
+#             from_ = [from_]
+#             self._single = True
+#         else:
+#             self._single = False
+#         self._from = from_
 
-        if isinstance(from_, str):
-            from_ = [from_]
-            self._single = True
-        else:
-            self._single = False
-        self._from = from_
+#     @abstractmethod
+#     def delta(self, resp, delta_store: typing.Dict, 
+#               is_streamed: bool=False, is_last: bool=True) -> typing.Any:
+#         """Read in the output
 
-    @abstractmethod
-    def delta(self, resp, delta_store: typing.Dict, 
-              is_streamed: bool=False, is_last: bool=True) -> typing.Any:
-        """Read in the output
+#         Args:
+#             message (str): The message to read
 
-        Args:
-            message (str): The message to read
+#         Returns:
+#             typing.Any: The output of the reader
+#         """
+#         pass
 
-        Returns:
-            typing.Any: The output of the reader
-        """
-        pass
-
-    def forward(self, msg: Msg, delta_store: bool=None) -> typing.Any:
-        delta_store = delta_store or {}
-        resp = [msg['meta'][r] for r in self._from if r]
-        is_undefined = all(r is utils.UNDEFINED for r in resp)
+#     def forward(self, msg: Msg, delta_store: bool=None) -> typing.Any:
+#         delta_store = delta_store or {}
+#         resp = [msg['meta'][r] for r in self._from if r]
+#         is_undefined = all(r is utils.UNDEFINED for r in resp)
         
-        if self._single:
-            resp = resp[0]
+#         if self._single:
+#             resp = resp[0]
         
-        if is_undefined:
-            return utils.UNDEFINED
-        msg['meta'][self.name] = self.delta(
-            resp, delta_store, msg.is_streamed, msg.is_last
-        )
-        return msg
+#         if is_undefined:
+#             return utils.UNDEFINED
+#         msg['meta'][self.name] = self.delta(
+#             resp, delta_store, msg.is_streamed, msg.is_last
+#         )
+#         return msg
 
-    async def aforward(self, msg: Msg, delta_store: bool=None) -> typing.Any:
-        return self.forward(msg, delta_store)
+#     async def aforward(self, msg: Msg, delta_store: bool=None) -> typing.Any:
+#         return self.forward(msg, delta_store)
 
 
 class ToText(ToMsg):

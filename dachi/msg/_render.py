@@ -113,15 +113,17 @@ def render(
         return x.render()
 
     elif isinstance(x, pydantic.BaseModel):
-        return model_to_text(x, escape_curly_braces)
+        print(model_to_text(x, escape_braces))
+        return model_to_text(x, escape_braces)
     elif is_primitive(x):
         return str(x)
     elif isinstance(x, typing.Dict):
         items = {}
         for k, v in x.items():
-            v = render(v, escape_braces)
             if isinstance(v, str):
                 v = f'"{v}"'
+            else:
+                v = render(v, escape_braces)
             items[k] = v    
         items = ', '.join(
             f'"{k}": {v}' 
@@ -136,9 +138,10 @@ def render(
 
         items = []
         for v in x:
-            v = render(v, escape_braces)
             if isinstance(v, str):
                 v = f'"{v}"'
+            else:
+                v = render(v, escape_braces)
             items.append(v)
 
         return '[{}]'.format(', '.join(render(v) for v in items))

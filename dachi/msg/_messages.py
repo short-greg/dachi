@@ -84,7 +84,7 @@ class Msg(dict):
         """
         return [self.to_input()]
     
-    def render(self) -> str:
+    def render(self, to_str: bool=True) -> str:
         """
 
         Returns:
@@ -423,9 +423,7 @@ class ListDialog(BaseDialog):
         if isinstance(dialog, BaseDialog):
             dialog = dialog.aslist()
         
-        self._messages = [
-            self._messages + dialog
-        ]
+        self._messages.extend(dialog)
         return self
 
     def __len__(self) -> int:

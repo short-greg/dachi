@@ -159,13 +159,23 @@ class Cue(
             return {self._name: self.text}
         return {}
 
-    def param_structure(self) -> typing.Dict:
+    def data_schema(self) -> typing.Dict:
         """Get the structure of the object
 
         Returns:
             typing.Dict: The structure of the object
         """
-        return {}
+        return {
+            "title": self.name,
+            "type": "object",
+            "properties": {
+                "text": {
+                    "title": "Text",
+                    "type": "string"
+                }
+            },
+            "required": ["text"]
+        }
 
 
 X = typing.Union[str, Cue]
