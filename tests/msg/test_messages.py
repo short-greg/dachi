@@ -297,3 +297,113 @@ class TestDialogTurn:
         child_turn.replace(message3, 0)
         assert child_turn.list_messages()[1] == message2
 
+
+class TestExcludeRole:
+
+    def test_exclude_single_role(self):
+        messages = [
+            M.Msg(role="user", content="hi"),
+            M.Msg(role="system", content="hello"),
+            M.Msg(role="assistant", content="how can I help?")
+        ]
+        filtered = M.exclude_role(messages, "system")
+        assert len(filtered) == 2
+        assert all(msg.role != "system" for msg in filtered)
+
+    def test_exclude_multiple_roles(self):
+        messages = [
+            M.Msg(role="user", content="hi"),
+            M.Msg(role="system", content="hello"),
+            M.Msg(role="assistant", content="how can I help?")
+        ]
+        filtered = M.exclude_role(messages, "system", "assistant")
+        assert len(filtered) == 1
+        assert filtered[0].role == "user"
+
+    def test_exclude_no_roles(self):
+        messages = [
+            M.Msg(role="user", content="hi"),
+            M.Msg(role="system", content="hello"),
+            M.Msg(role="assistant", content="how can I help?")
+        ]
+        filtered = M.exclude_role(messages)
+        assert len(filtered) == 3
+        assert filtered == messages
+
+    def test_exclude_all_roles(self):
+        messages = [
+            M.Msg(role="user", content="hi"),
+            M.Msg(role="system", content="hello"),
+            M.Msg(role="assistant", content="how can I help?")
+        ]
+        filtered = M.exclude_role(messages, "user", "system", "assistant")
+        assert len(filtered) == 0
+
+    def test_exclude_with_empty_messages(self):
+        messages = []
+        filtered = M.exclude_role(messages, "user")
+        assert len(filtered) == 0
+
+    def test_exclude_with_nonexistent_role(self):
+        messages = [
+            M.Msg(role="user", content="hi"),
+            M.Msg(role="system", content="hello")
+        ]
+        filtered = M.exclude_role(messages, "assistant")
+        assert len(filtered) == 2
+        assert filtered == messages
+
+class TestIncludeRole:
+
+    def test_include_single_role(self):
+        messages = [
+            M.Msg(role="user", content="hi"),
+            M.Msg(role="system", content="hello"),
+            M.Msg(role="assistant", content="how can I help?")
+        ]
+        filtered = M.include_role(messages, "system")
+        assert len(filtered) == 1
+        assert filtered[0].role == "system"
+
+    def test_include_multiple_roles(self):
+        messages = [
+            M.Msg(role="user", content="hi"),
+            M.Msg(role="system", content="hello"),
+            M.Msg(role="assistant", content="how can I help?")
+        ]
+        filtered = M.include_role(messages, "system", "assistant")
+        assert len(filtered) == 2
+        assert all(msg.role in {"system", "assistant"} for msg in filtered)
+
+    def test_include_no_roles(self):
+        messages = [
+            M.Msg(role="user", content="hi"),
+            M.Msg(role="system", content="hello"),
+            M.Msg(role="assistant", content="how can I help?")
+        ]
+        filtered = M.include_role(messages)
+        assert len(filtered) == 0
+
+    def test_include_all_roles(self):
+        messages = [
+            M.Msg(role="user", content="hi"),
+            M.Msg(role="system", content="hello"),
+            M.Msg(role="assistant", content="how can I help?")
+        ]
+        filtered = M.include_role(messages, "user", "system", "assistant")
+        assert len(filtered) == 3
+        assert filtered == messages
+
+    def test_include_with_empty_messages(self):
+        messages = []
+        filtered = M.include_role(messages, "user")
+        assert len(filtered) == 0
+
+    def test_include_with_nonexistent_role(self):
+        messages = [
+            M.Msg(role="user", content="hi"),
+            M.Msg(role="system", content="hello")
+        ]
+        filtered = M.include_role(messages, "assistant")
+        assert len(filtered) == 0
+
