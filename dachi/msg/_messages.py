@@ -2,13 +2,14 @@
 import typing
 from abc import abstractmethod
 from typing import Self
-import typing
 
 # 3rd party
 import pydantic
+from ..proc import Module
 
 # local
 from ..base._core import Renderable
+from ._render import render
 
 
 class _Final:
@@ -84,7 +85,7 @@ class Msg(dict):
         """
         return [self.to_input()]
     
-    def render(self, to_str: bool=True) -> str:
+    def render(self) -> str:
         """
 
         Returns:
@@ -134,10 +135,9 @@ class BaseDialog(pydantic.BaseModel, Renderable):
     """A Dialog stores the interactions between the system/user and the assistant
     (i.e. the prompts and the responses)
     """
-    # msg_renderer: typing.Optional[typing.Callable[[Msg], str]] = None
 
     @abstractmethod
-    def messages(self) -> typing.Iterator[Msg]:
+    def list_messages(self) -> typing.List[Msg]:
         """Iterate over each message in the dialog"""
         pass
 
@@ -147,7 +147,7 @@ class BaseDialog(pydantic.BaseModel, Renderable):
         Yields:
             Iterator[typing.Iterator[Msg]]: Each message in the dialog
         """
-        for message in self.messages():
+        for message in self.list_messages():
             yield message
 
     @abstractmethod
@@ -251,7 +251,7 @@ class BaseDialog(pydantic.BaseModel, Renderable):
         """
         return '\n'.join(
             message.render()
-            for message in self.messages()
+            for message in self.list_messages()
         )
     
     def to_input(self) -> typing.List[typing.Dict]:
@@ -272,7 +272,7 @@ class BaseDialog(pydantic.BaseModel, Renderable):
         Returns:
             typing.List[Msg]: the messages in the dialog
         """
-        return list(self.messages())
+        return list(self.list_messages())
     
     @abstractmethod
     def __len__(self) -> int:
@@ -320,7 +320,7 @@ class ListDialog(BaseDialog):
     """
     _messages: typing.List[Msg] = pydantic.PrivateAttr(default_factory=list)
 
-    def messages(self):
+    def list_messages(self) -> typing.List[Msg]:
         return self._messages
 
     def __init__(
@@ -476,6 +476,28 @@ class ListDialog(BaseDialog):
         return self
 
 
+
+class MsgRenderer(Module):
+
+    @abstractmethod
+    def forward(self, msg: Msg) -> str:
+        pass
+
+
+class FieldRenderer(MsgRenderer):
+
+    def __init__(self, field: str='content', meta: bool=False):
+
+        self.field = field
+        self.meta = meta
+
+    def forward(self, msg: Msg) -> str:
+        
+        if self.meta:
+            return render(msg.m[self.field])
+        return render(msg[self.field])
+
+
 class DialogTurn(BaseDialog):
     """A Dialog that uses a list data structure.
     """
@@ -488,10 +510,10 @@ class DialogTurn(BaseDialog):
         parent: Msg=None, 
         children: typing.List[Msg]=None
     ):
+        super().__init__()
         self._message = message
         self._parent = parent
         self._children = children or []
-        super().__init__()
 
     def root(self) -> 'DialogTurn':
 
@@ -500,11 +522,48 @@ class DialogTurn(BaseDialog):
             node = node._parent
         return node
     
-    def messages(self) -> typing.List:
-        
+    @property
+    def parent(self) -> typing.Union['DialogTurn', None]:
+        """get the parent to this dialgo turn
+
+        Returns:
+            DIalogTurn: the parent dialog turn
+        """
+        return self._parent
+    
+    @property
+    def children(self) -> typing.Iterator['DialogTurn']:
+        """get the children to the dialog turn
+
+        Returns:
+            typing.List['DialogTurn']: The children
+        """
+        return iter(self._children)
+
+    def list_messages(self) -> typing.List[Msg]:
+        """List all messages up to this dialog turn
+
+        Returns:
+            typing.List[Msg]: the list of messages
+        """
         return list(
             msg for msg in self
         )
+    
+    def list_turns(self) -> typing.List['DialogTurn']:
+        """List all turns up to this dialog turn
+
+        Returns:
+            typing.List[Msg]: the list of messages
+        """
+        turns = []
+        turn = self
+        while True:
+            turns.append(turn)
+            turn = turn.parent
+            if turn is None:
+                break
+        return list(reversed(turns))
 
     def __iter__(self) -> typing.Iterator[Msg]:
         """Iterate over each message in the dialog
@@ -515,11 +574,13 @@ class DialogTurn(BaseDialog):
         """
         node = self
         nodes = []
-        while node.parent is not None:
-            nodes.append[node]
+        while True:
+            nodes.append(node)
+            if node.parent is None:
+                break
             node = node.parent
         for node in reversed(nodes):
-            yield node
+            yield node.message
 
     def child(self, idx: int) -> Msg:
 
@@ -548,7 +609,7 @@ class DialogTurn(BaseDialog):
         Returns:
             Msg: The message in the dialog
         """
-        return self.messages()[idx]
+        return self.list_messages()[idx]
 
     def __setitem__(self, idx, message) -> Self:
         """Set idx with a message
@@ -560,24 +621,25 @@ class DialogTurn(BaseDialog):
         Returns:
             Dialog: The updated dialog
         """
-        self._messages[idx] = message
+        turn = self.index(idx)
+        turn.message = message
         return self
     
     def index(self, idx: int) -> 'DialogTurn':
 
-        if idx < 0:
-            node = self
-            while idx < 0:
-                node = node._parent
-                if node is None:
-                    raise IndexError(
-                        f'Index {idx} is out of bounds for the Dialog'
-                    )
-                idx += 1
-            return node
+        # if idx < 0:
+        #     node = self
+        #     while idx < 0:
+        #         node = node._parent
+        #         if node is None:
+        #             raise IndexError(
+        #                 f'Index {idx} is out of bounds for the Dialog'
+        #             )
+        #         idx += 1
+        #     return node
 
-        messages = self.messages()
-        return messages[idx]
+        turns = self.list_turns()
+        return turns[idx]
     
     def find_in_children(self, message: Msg) -> 'DialogTurn':
 
@@ -589,6 +651,10 @@ class DialogTurn(BaseDialog):
             result = result or child.find_in_children(message)
 
         return result
+    
+    @property
+    def message(self) -> Msg:
+        return self._message
     
     def find(self, message: Msg) -> 'DialogTurn':
 
@@ -602,10 +668,14 @@ class DialogTurn(BaseDialog):
         """
         turn = self.index(index)
         parent = turn._parent
+        turn._parent = None
         for child in turn._children:
             child._parent = parent
+        turn._children = []
+        if parent is not None:
+            parent._children = turn._children
         if get_msg:
-            return self, turn._message
+            return self, turn.message
         return self
 
     def remove(self, message: Msg):
@@ -639,19 +709,42 @@ class DialogTurn(BaseDialog):
         Returns:
             int: the number of turns in the dialog
         """
-        return len(self._messages)
+        return len(self.list_messages())
         
-    def clone(self) -> typing.Self:
-        """Clones the dialog
+    def clone(self) -> 'DialogTurn':
+        """Clones the entire tree including the root
 
         Returns:
             Dialog: A dialog cloned with shallow copying of the messages
         """
-        return ListDialog(
-            messages=[message for message in self._messages]
-        )
+        root = self.root()
+        return root.clone_sub()
+    
+    def clone_sub(self) -> 'DialogTurn':
+        """clone the tree lying below this tree
 
-    def append(self, message: Msg) -> Self:
+        Returns:
+            DialogTurn: The sub tree
+        """
+        cloned_self = DialogTurn(
+            self.message
+        )
+        for child in self.children:
+
+            cloned_child = child.clone_sub()
+            cloned_self._children.append(cloned_child)
+            cloned_child._parent = cloned_self
+
+        return cloned_self
+
+    def depth_iter(self) -> typing.Iterator['DialogTurn']:
+
+        for child in self.children:
+            yield child
+            for turn in child.breadth_iter():
+                yield child
+
+    def append(self, message: Msg) -> 'DialogTurn':
         """Add a message to the end of the dialog
 
         Args:
@@ -685,6 +778,9 @@ class DialogTurn(BaseDialog):
             parent=turn._parent,
             children=[turn]
         )
+        if turn._parent is not None:
+            turn._parent._children.remove(turn)
+            turn._parent._children.append(inserted)
         turn._parent = inserted
         return inserted
 
@@ -707,6 +803,12 @@ class DialogTurn(BaseDialog):
         )
         for child in inserted._children:
             child._parent = inserted
+        if turn._parent is not None:
+            turn._parent._children.remove(turn)
+            turn._parent._children.append(inserted)
+
+        turn._children = []
+        turn._parent = None
         return inserted
 
     def __add__(self, other: BaseDialog | Msg) -> 'ListDialog':
@@ -720,14 +822,21 @@ class DialogTurn(BaseDialog):
         """
         if isinstance(other, typing.List):
             return ListDialog(
-                self.messages() + other
+                self.list_messages() + other
             )
         return ListDialog(
-            self.messages() + other.aslist()
+            self.list_messages() + other.aslist()
         )
 
 
-class RenderMsgField:
+class MsgRenderer(Module):
+
+    @abstractmethod
+    def forward(self, msg: Msg | BaseDialog) -> str:
+        pass
+
+
+class FieldRenderer(MsgRenderer):
 
     def __init__(self, field: str='content'):
         """Renderer to render a specific field in the message
@@ -737,7 +846,7 @@ class RenderMsgField:
         """
         self.field = field
 
-    def __call__(self, msg: Msg) -> str:
+    def forward(self, msg: Msg | BaseDialog) -> str:
         """Render a message
 
         Args:
@@ -746,7 +855,11 @@ class RenderMsgField:
         Returns:
             str: The result
         """
-        return f'{msg['role']}: {msg[self.field]}'
+        messages = msg.to_list_input()
+        return '\n'.join(
+            f'{msg['role']}: {msg[self.field]}'
+            for msg in messages
+        )
 
 
 def exclude_messages(dialog: BaseDialog, val: typing.Union[typing.Any, typing.Set], field='role') -> ListDialog:
@@ -755,7 +868,7 @@ def exclude_messages(dialog: BaseDialog, val: typing.Union[typing.Any, typing.Se
         val = {val}
 
     return ListDialog(
-        [msg for msg in dialog.messages() if msg[field] not in val]
+        [msg for msg in dialog.list_messages() if msg[field] not in val]
     )
 
             
@@ -765,7 +878,7 @@ def include_messages(dialog: BaseDialog, val: typing.Union[typing.Any, typing.Se
         val = {val}
 
     return ListDialog(
-        [msg for msg in dialog.messages() if msg[field] in val]
+        [msg for msg in dialog.list_messages() if msg[field] in val]
     )
 
 

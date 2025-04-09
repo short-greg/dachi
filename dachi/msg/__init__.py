@@ -19,7 +19,8 @@ from ._messages import (
     to_input, 
     exclude_messages, 
     include_messages,
-    RenderMsgField, 
+    FieldRenderer,
+    MsgRenderer, 
     END_TOK,
     to_dialog
 )
