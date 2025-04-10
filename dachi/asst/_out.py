@@ -128,7 +128,7 @@ class PrimConv(OutConv):
         Returns:
             str: The template for the data
         """
-        return f'<{self._out_cls}>'
+        return f'<{self._out_cls.__name__}>'
 
 
 class PydanticConv(OutConv, typing.Generic[S]):
@@ -167,12 +167,14 @@ class PydanticConv(OutConv, typing.Generic[S]):
         Returns:
             typing.Any: The output of the reader
         """
+        if len(resp) == 0:
+            return utils.UNDEFINED
+        resp = resp[0]
         val = utils.add(delta_store, 'val', resp)
 
         if not is_last:
             return utils.UNDEFINED
         
-        resp = resp[0]
         # if resp is not END_TOK:
         #     utils.add(delta_store, 'val', resp)
         #     return utils.UNDEFINED
@@ -321,7 +323,15 @@ class IndexConv(OutConv):
         for line in resp:
             try:
                 idx, value = line.split(self.sep)
-                result.append(value)
+                idx = int(idx) - 1
+                if idx > len(result):
+                    count = idx - len(result)
+                    result = [None] * count
+                    result[idx - 1] = value
+                elif idx < len(result):
+                    result[idx] = value
+                else:
+                    result.append(value)
             except ValueError as e:
                 raise RuntimeError(
                     f"Could not split the line {line} by the separator provided {self.sep}."
@@ -435,6 +445,9 @@ class NullOutConv(MsgProc):
     So in most cases will simply output a string
     """
 
+    def __init__(self, name, from_: str='data'):
+        super().__init__(name, from_)
+
     def example(self, data: typing.Any) -> str:
         """Output an example of the data
 
@@ -446,7 +459,7 @@ class NullOutConv(MsgProc):
         """
         return str(data)
 
-    def delta(self, resp, delta_store: typing.Dict, streamed: bool=False, is_last: bool=False) -> typing.Any:
+    def delta(self, resp: typing.List, delta_store: typing.Dict, streamed: bool=False, is_last: bool=False) -> typing.Any:
         """Read in the output
 
         Args:
@@ -455,80 +468,7 @@ class NullOutConv(MsgProc):
         Returns:
             typing.Any: The output of the reader
         """
-
-        return resp
+        return ''.join(resp)
 
     def template(self) -> str:
-        return None
-
-
-    # def stream(
-    #     self, resp_iterator: typing.Iterator, 
-    #     parser: Parser=None,
-    #     delta_store: typing.Dict=None, 
-    #     pdelta_store: typing.Dict=None,
-    #     get_msg: bool=False
-    # ) -> typing.Iterator:
-        
-    #     parser = parser or NullParser()
-    #     print(resp_iterator)
-    #     for msg, resp in parser.stream(
-    #         resp_iterator, pdelta_store, True
-    #     ):
-    #         if resp is utils.UNDEFINED:
-    #             continue
-    #         for respi in resp:
-    #             if respi is utils.UNDEFINED:
-    #                 continue
-    #             respi = self.delta(respi, delta_store)
-    #             if get_msg:
-    #                 yield msg, respi
-    #             else:
-    #                 yield respi
-
-    # async def astream(
-    #     self, resp_iterator: typing.Iterator, 
-    #     parser: Parser=None,
-    #     delta_store: typing.Dict=None, 
-    #     pdelta_store: typing.Dict=None,
-    #     get_msg: bool=False
-    # ) -> typing.AsyncIterator:
-        
-    #     parser = parser or NullParser()
-    #     async for msg, resp in await parser.astream(
-    #         resp_iterator, pdelta_store, True
-    #     ):
-    #         if resp is utils.UNDEFINED:
-    #             continue
-    #         for respi in resp:
-    #             respi = self.delta(respi, delta_store)
-
-    #             if respi is utils.UNDEFINED:
-    #                 continue
-    #             if get_msg:
-    #                 yield msg, respi
-    #             else:
-    #                 yield respi
-
-
-# def stream_out(asst: StreamAssist, *args, parser: Parser=None, **kwargs) -> typing.Tuple[Msg, typing.Any]:
-
-
-        # delta_store = delta_store or {}
-        # for resp in resp_iterator:
-        #     yield self.delta(resp, delta_store)
-
-
-    # def __call__(self, resp) -> typing.Any:
-    #     """Read in the output
-
-    #     Args:
-    #         message (str): The message to read
-
-    #     Returns:
-    #         typing.Any: The output of the reader
-    #     """
-    #     return self.delta(
-    #         resp, {}
-    #     )
-
+        return ''

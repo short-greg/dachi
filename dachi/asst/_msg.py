@@ -258,7 +258,7 @@ class MsgProc(Module, AsyncModule, ABC):
         if is_undefined:
             msg.m[self.name] = utils.UNDEFINED
             return utils.UNDEFINED
-        msg['meta'][self.name] = res = self.delta(
+        msg.m[self.name] = res = self.delta(
             resp, delta_store, streamed, is_last
         )
         self.post(msg, res, streamed, is_last)
