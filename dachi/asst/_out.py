@@ -98,7 +98,7 @@ class PrimConv(OutConv):
             resp = resp[0]
         else:
             return utils.UNDEFINED
-        val = utils.add(delta_store, 'val', resp)
+        val = utils.acc(delta_store, 'val', resp)
 
         if not is_last:
             return utils.UNDEFINED
@@ -170,13 +170,13 @@ class PydanticConv(OutConv, typing.Generic[S]):
         if len(resp) == 0:
             return utils.UNDEFINED
         resp = resp[0]
-        val = utils.add(delta_store, 'val', resp)
+        val = utils.acc(delta_store, 'val', resp)
 
         if not is_last:
             return utils.UNDEFINED
         
         # if resp is not END_TOK:
-        #     utils.add(delta_store, 'val', resp)
+        #     utils.acc(delta_store, 'val', resp)
         #     return utils.UNDEFINED
         message = unescape_curly_braces(val)
         try:
@@ -409,7 +409,7 @@ class JSONConv(OutConv):
         Returns:
             typing.Dict: The result - if it fails, will return an empty dict
         """
-        # val = utils.add(
+        # val = utils.acc(
         #     delta_store, 'val', resp
         # )
 
@@ -468,7 +468,7 @@ class NullOutConv(MsgProc):
         Returns:
             typing.Any: The output of the reader
         """
-        return ''.join(resp)
+        return resp
 
     def template(self) -> str:
         return ''

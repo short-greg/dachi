@@ -5,7 +5,7 @@ from ._utils import (
     is_nested_model, 
     primitives, get_member, 
     get_or_set, get_or_setf,
-    add,
+    acc,
     UNDEFINED,
     WAITING,
     is_undefined,

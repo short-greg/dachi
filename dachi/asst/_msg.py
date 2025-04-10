@@ -22,7 +22,7 @@ class MR(object):
         return msg[self.name]
 
 
-class FromMsg(object):
+class FromMsg(Module):
     """Use to get a value from a message. 
     """
 
@@ -39,7 +39,7 @@ class FromMsg(object):
             key = key.key
         self.key = key
 
-    def __call__(self, msg: Msg, override=None) -> typing.Any:
+    def forward(self, msg: Msg, override=None) -> typing.Any:
         """Use to get a value from the message
         The default is to get from the meta dict in the message.
 
@@ -54,18 +54,27 @@ class FromMsg(object):
             override = override.key
         key = override or self.key
         if isinstance(key, str):
-            return msg.m[key]
+            res = msg.m[key]
+            return res
         elif key is None:
             return msg
         elif isinstance(key, MR):
-            return key(msg)
+            res = key(msg)
+            return res
         
-        return tuple(
+        res = tuple(
             k(msg) if isinstance(k, MR) 
             else msg if k is None
             else msg.m[k]
             for k in key
         )
+        return res
+
+    def filter(self, msg: Msg, override=None) -> typing.Any | bool:
+        res = self.forward(msg, override)
+        if isinstance(self.key, typing.List):
+            return res, all(resi is utils.UNDEFINED for resi in res)
+        return res, res is utils.UNDEFINED
 
 
 class ToMsg(Module, AsyncModule, ABC):

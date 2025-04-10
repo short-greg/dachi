@@ -83,7 +83,7 @@ class CSVRowParser(ParseConv):
         """
         # resp = self.handle_null(resp, '')
 
-        val = utils.add(delta_store, 'val', resp, '')
+        val = utils.acc(delta_store, 'val', resp, '')
         row = utils.get_or_set(delta_store, 'row', 0)
         header = utils.get_or_set(
             delta_store, 'header', None
@@ -112,10 +112,10 @@ class CSVRowParser(ParseConv):
             and delta_store['header'] is None
         ):
             delta_store['header'] = new_rows.pop(0)
-            utils.add(delta_store, 'row', 1)
+            utils.acc(delta_store, 'row', 1)
 
         header = delta_store['header']
-        utils.add(delta_store, 'row', len(new_rows))
+        utils.acc(delta_store, 'row', len(new_rows))
         if len(new_rows) == 0:
             return utils.UNDEFINED
         
@@ -173,7 +173,7 @@ class CSVCellParser(MsgProc):
         # resp = self.handle_null(resp, '')
         # print('Resp: ', resp)
 
-        val = utils.add(delta_store, 'val', resp)
+        val = utils.acc(delta_store, 'val', resp)
         cur_row = utils.get_or_set(delta_store, 'row', 0)
         header = utils.get_or_set(delta_store, 'header', None)
         data = utils.get_or_set(delta_store, 'data', None)
@@ -219,8 +219,8 @@ class CSVCellParser(MsgProc):
                     cells.append((cur_row + i, cell))
         if not is_last and len(cells) > 0:
             cells.pop(-1)
-        utils.add(delta_store, 'col', j)
-        utils.add(delta_store, 'row', i)
+        utils.acc(delta_store, 'col', j)
+        utils.acc(delta_store, 'row', i)
         
         if len(cells) == 0:
             return utils.UNDEFINED
@@ -272,7 +272,7 @@ class CharDelimParser(ParseConv):
     ) -> typing.List | None:
         
         # resp = self.handle_null(resp, '')
-        val = utils.add(delta_store, 'val', resp)
+        val = utils.acc(delta_store, 'val', resp)
         res = val.split(self.sep)
         return_val = utils.UNDEFINED
         
@@ -312,8 +312,7 @@ class FullParser(ParseConv):
         super().__init__(name, from_)
 
     def delta(self, resp, delta_store: typing.Dict, streamed: bool=False, is_last: bool=False) -> typing.List:
-        print(resp)
-        utils.add(delta_store, 'val', resp)
+        utils.acc(delta_store, 'val', resp)
         if is_last:
             val = delta_store['val']
             delta_store.clear()
@@ -346,10 +345,14 @@ class LineParser(ParseConv):
             typing.Any: 
         """ 
         # resp = self.handle_null(resp, '')
-        utils.add(delta_store, 'val', resp)
+        utils.acc(delta_store, 'val', resp)
         lines = delta_store['val'].splitlines()
         result = []
         buffer = []
+
+        if is_last and len(lines) == 0:
+            return []
+
         for i, line in enumerate(lines):
 
             if not line:
@@ -365,7 +368,6 @@ class LineParser(ParseConv):
 
         if buffer:
             result.append("\n".join(buffer))
-        
         if not is_last and len(result) > 0:
             delta_store['val'] = result[-1]
             if resp[-1] == '\n':

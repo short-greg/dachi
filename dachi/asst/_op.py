@@ -43,8 +43,7 @@ class Op(Module, AsyncModule, StreamModule, AsyncStreamModule):
     This class supports both synchronous and asynchronous operations, as well 
     as streaming responses.
     """
-
-    def __init__(self, assistant: Assistant, to_msg: ToMsg, out: str | typing.List[str] | FromMsg):
+    def __init__(self, assistant: Assistant, to_msg: ToMsg, out: str | typing.List[str] | FromMsg, filter_undefined: bool=True):
         """
         Initializes the class to facilitate interaction with a language model assistant by
         adapting inputs and outputs.
@@ -62,16 +61,8 @@ class Op(Module, AsyncModule, StreamModule, AsyncStreamModule):
         self.to_msg = to_msg
         if not isinstance(out, FromMsg):
             out = FromMsg(out)
-        else:
-            print(out.key)
         self.out = out
-        # if isinstance(parser, str):
-        #     self.parser = CharDelimParser(parser)
-        # elif parser is None:
-        #     self.parser = NullParser()
-        # else:
-        #     self.parser = parser
-
+        self.filter_undefined = filter_undefined
 
     def forward(self, *args, _out=None, _messages: typing.List[Msg]=None, **kwargs) -> typing.Any:
         """
@@ -99,8 +90,6 @@ class Op(Module, AsyncModule, StreamModule, AsyncStreamModule):
         if _messages is not None:
             _messages.append(resp_msg)
         return self.out(resp_msg, _out)
-        #resp_msg = self.parser(resp_msg)
-        #return _out(resp_msg) 
         
     async def aforward(
         self, *args, _out=None, 
@@ -127,10 +116,8 @@ class Op(Module, AsyncModule, StreamModule, AsyncStreamModule):
 
         if _messages is not None:
             _messages.append(resp_msg)
-        # resp_msg = self.parser(resp_msg)
 
         return self.out(resp_msg, _out)
-        # return _out(resp_msg) 
     
     def stream(self, *args, _out=None,
         _messages: typing.List[Msg]=None, **kwargs) -> typing.Iterator:
@@ -160,7 +147,12 @@ class Op(Module, AsyncModule, StreamModule, AsyncStreamModule):
         ):
             # self.parser(resp_msg, parse_delta)
             # self.out(resp_msg, out_delta)
-            yield self.out(resp_msg, _out)
+            if self.filter_undefined:
+                res, filtered = self.out.filter(resp_msg, _out)
+                if not filtered:
+                    yield res
+            else:
+                yield self.out(resp_msg, _out)
         
         if _messages is not None and resp_msg is not None:
             _messages.append(resp_msg)
@@ -188,14 +180,20 @@ class Op(Module, AsyncModule, StreamModule, AsyncStreamModule):
         _messages = _messages or []
         msg = self.to_msg(*args, **kwargs)
 
-        parse_delta = {}
-        out_delta = {}
+        # parse_delta = {}
+        # out_delta = {}
         async for resp_msg in await self.assistant.astream(
             msg + _messages
         ):
-            self.parser(resp_msg, parse_delta)
-            self.out(resp_msg, out_delta)
-            yield self.out(resp_msg, _out)
+            # self.parser(resp_msg, parse_delta)
+            # self.out(resp_msg, out_delta)    
+
+            if self.filter_undefined:
+                res, filtered = self.out.filter(resp_msg, _out)
+                if not filtered:
+                    yield res
+            else:
+                yield self.out(resp_msg, _out)
         
         if _messages is not None and resp_msg is not None:
             _messages.append(resp_msg)

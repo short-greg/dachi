@@ -221,7 +221,7 @@ def call_or_set(d: typing.Dict, key, value, f: typing.Callable[[typing.Any, typi
     return d[key]
 
 
-def add(
+def acc(
     d: typing.Dict, key, value, init_val: str=''
 ) -> typing.Any:
     """Adds a value to the dictionary if not already

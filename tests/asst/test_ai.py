@@ -49,16 +49,16 @@ class DummyAIModel(
 
         cur_out = ''
         
+        delta_stores = [{} for i in range(len(self.proc))]
         for i, c in enumerate(self.target):
             cur_out += c
-            is_last = i == len(cur_out) - 1
+            is_last = i == len(self.target) - 1
             
             msg = StreamMsg(
                 role='assistant', content=cur_out, meta={'content': c}, is_last=is_last
             )
-            for p in self.proc:
-                p(msg)
-                print(msg.m)
+            for p, delta_store in zip(self.proc, delta_stores):
+                p(msg, delta_store)
             yield msg
         
     async def aforward(self, dialog, **kwarg_overrides):
@@ -112,7 +112,7 @@ class TextResp(_ai.RespConv):
 
     def delta(self, resp, delta_store: typing.Dict, streamed: bool=False, is_last: bool=True) -> typing.Any: 
         if resp is not _ai.END_TOK:
-            utils.add(delta_store, 'content', resp['content'])
+            utils.acc(delta_store, 'content', resp['content'])
             return resp['content']
         return ''
 
