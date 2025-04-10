@@ -612,7 +612,7 @@ class TestNullOutConv(object):
             }
         )
         result = out(msg).m['F1']
-        assert result == 'hello'
+        assert result == ['hello']
 
     def test_nulloutconv_handles_empty_data(self):
         """Test NullOutConv handles empty data gracefully."""
@@ -624,7 +624,7 @@ class TestNullOutConv(object):
             }
         )
         result = out(msg).m['F1']
-        assert result == ''
+        assert result == []
 
     def test_nulloutconv_handles_streamed_data(self):
         """Test NullOutConv processes streamed data correctly."""
@@ -646,7 +646,7 @@ class TestNullOutConv(object):
         delta_store = {}
         out(msg1, delta_store=delta_store)
         result = out(msg2, delta_store=delta_store).m['F1']
-        assert result == 'part2'
+        assert result == ['part2']
 
     def test_nulloutconv_example_output(self):
         """Test NullOutConv generates the correct example output."""
@@ -680,7 +680,7 @@ class TestNullOutConv(object):
         delta_store = {}
         out(msg1, delta_store=delta_store)
         result = out(msg2, delta_store=delta_store).m['F1']
-        assert result == 'stream'
+        assert result == ['stream']
 
     def test_nulloutconv_handles_large_data(self):
         """Test NullOutConv handles large data gracefully."""
@@ -693,7 +693,7 @@ class TestNullOutConv(object):
             }
         )
         result = out(msg).m['F1']
-        assert result == large_data
+        assert result == [large_data]
 
 
 class TestJSONRead(object):
