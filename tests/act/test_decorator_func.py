@@ -1,6 +1,4 @@
-from dachi.act import _core, _functional as F
 from dachi.act import TaskStatus
-from dachi.store import _data as utils
 import typing
 from dachi import proc as core
 from dachi.store import Shared, Context
@@ -22,7 +20,6 @@ class TaskAgent:
         if x < 5:
             return core.RUNNING
         return core.SUCCESS
-
 
     @DF.taskfunc()
     def decrement(self, x):
@@ -184,6 +181,48 @@ class TestSelectorFunc:
 
 
 class TestParallelFunc:
+
+    def test_parallelfunc_all_tasks_success(self):
+        agent = TaskAgent()
+        t = agent.increment_parallel.task(5, 5)
+        status = t()
+        assert status == TaskStatus.SUCCESS
+
+    def test_parallelfunc_one_task_running(self):
+        agent = TaskAgent()
+        t = agent.increment_parallel.task(5, 2)
+        status = t()
+        assert status == TaskStatus.RUNNING
+
+    def test_parallelfunc_one_task_failure(self):
+        agent = TaskAgent()
+        t = agent.increment_parallel.task(4, -2)
+        status = t()
+        assert status == TaskStatus.FAILURE
+
+    def test_parallelfunc_all_tasks_running(self):
+        agent = TaskAgent()
+        t = agent.increment_parallel.task(2, 2)
+        status = t()
+        assert status == TaskStatus.RUNNING
+
+    def test_parallelfunc_mixed_status_with_failure_priority(self):
+        agent = TaskAgent()
+        t = DF.parallelfunc(fails_on=1, success_priority=False)(agent.increment_parallel.task)(5, -2)
+        status = t()
+        assert status == TaskStatus.FAILURE
+
+    def test_parallelfunc_custom_succeeds_on(self):
+        agent = TaskAgent()
+        t = DF.parallelfunc(succeeds_on=2)(agent.increment_parallel.task)(5, 5)
+        status = t()
+        assert status == TaskStatus.SUCCESS
+
+    def test_parallelfunc_custom_fails_on(self):
+        agent = TaskAgent()
+        t = DF.parallelfunc(fails_on=2)(agent.increment_parallel.task)(-2, -2)
+        status = t()
+        assert status == TaskStatus.FAILURE
 
     def test_task_func_returns_running(self):
 
