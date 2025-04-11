@@ -925,3 +925,61 @@ class TestSharedTask:
 
 
         assert shared.data == 'Great!'
+
+    def test_tick_with_callable_task(self):
+        def mock_task():
+            return TaskStatus.RUNNING
+
+        status = F.tick(mock_task)
+        assert status == TaskStatus.RUNNING
+
+    def test_tick_with_invalid_task_type(self):
+        with pytest.raises(TypeError):
+            F.tick("invalid_task")
+
+    def test_tick_with_task_returning_failure(self):
+        def mock_task():
+            return TaskStatus.FAILURE
+
+        status = F.tick(mock_task)
+        assert status == TaskStatus.FAILURE
+
+    def test_tick_with_task_returning_running(self):
+        def mock_task():
+            return TaskStatus.RUNNING
+
+        status = F.tick(mock_task)
+        assert status == TaskStatus.RUNNING
+
+    def test_tick_with_task_returning_success(self):
+        def mock_task():
+            return TaskStatus.SUCCESS
+
+        status = F.tick(mock_task)
+        assert status == TaskStatus.SUCCESS
+
+    def test_tick_with_task_raising_exception(self):
+        def mock_task():
+            raise ValueError("Task failed")
+
+        with pytest.raises(ValueError):
+            F.tick(mock_task)
+
+    def test_tick_with_task_returning_none(self):
+        def mock_task():
+            return None
+
+        status = F.tick(mock_task)
+        assert status is None
+
+    def test_tick_with_task_returning_custom_status(self):
+        class CustomStatus:
+            def __init__(self, state):
+                self.state = state
+
+        def mock_task():
+            return CustomStatus("custom_state")
+
+        status = F.tick(mock_task)
+        assert isinstance(status, CustomStatus)
+        assert status.state == "custom_state"
