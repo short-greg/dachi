@@ -1,4 +1,5 @@
 import inspect
+import typing
 from typing import Iterator, AsyncIterator
 
 
@@ -31,3 +32,44 @@ def get_iterator_type(func) -> Any:
         elif issubclass(return_type.__origin__, AsyncIterator):
             return return_type.__args__[0]  # Type of the async iterator
     return None
+
+
+def get_function_info(func: Any) -> typing.Dict:
+    """_summary_
+
+    Args:
+        func (Any): 
+
+    Returns:
+        typing.Dict: Get information about the function
+    """
+    if not callable(func):
+        raise ValueError("Provided argument is not callable.")
+    
+    # Get the function name
+    name = func.__name__
+
+    # Get the docstring
+    docstring = inspect.getdoc(func)
+
+    # Get the signature
+    signature = inspect.signature(func)
+    parameters = []
+    for name, param in signature.parameters.items():
+        parameter_info = {
+            "name": name,
+            "type": param.annotation if param.annotation is not inspect.Parameter.empty else None,
+            "default": param.default if param.default is not inspect.Parameter.empty else None,
+            "keyword_only": param.kind == inspect.Parameter.KEYWORD_ONLY
+        }
+        parameters.append(parameter_info)
+
+    # Get the return type
+    return_type = signature.return_annotation if signature.return_annotation is not inspect.Parameter.empty else None
+
+    return {
+        "name": name,
+        "docstring": docstring,
+        "parameters": parameters,
+        "return_type": return_type
+    }

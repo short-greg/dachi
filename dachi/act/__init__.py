@@ -36,8 +36,3 @@ from ._decorator_func import (
     parallelfunc, selectorfunc, sequencefunc,
     taskfunc, condfunc
 )
-from ._data import (
-    Context, ContextStorage,
-    Shared, get_or_set, get_or_spawn, SharedBase,
-    Buffer, BufferIter, ContextSpawner
-)

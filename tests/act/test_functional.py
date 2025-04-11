@@ -1,16 +1,17 @@
 from dachi.act import _core, _functional as F
 from dachi.act import TaskStatus
-from dachi.act import _data as utils
+from dachi.store import _data as utils
 import typing
 from ..asst.test_ai import DummyAIModel
 from dachi import proc as core
 from dachi.msg._messages import Msg
+from dachi import store
 import time
 
 
 def sample_action(state: typing.Dict, x: int) -> _core.TaskStatus:
 
-    val = utils.get_or_set(state, 'val', 0)
+    val = store.get_or_set(state, 'val', 0)
     state['val'] = x + val
 
     if state['val'] < 3:

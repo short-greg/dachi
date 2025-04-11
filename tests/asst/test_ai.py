@@ -4,7 +4,7 @@ from dachi.asst._msg import MsgProc
 from typing import Iterator
 from dachi.asst import _ai
 import typing
-from dachi import utils
+from dachi import store
 
 
 class DummyAIModel(
@@ -112,7 +112,7 @@ class TextResp(_ai.RespConv):
 
     def delta(self, resp, delta_store: typing.Dict, streamed: bool=False, is_last: bool=True) -> typing.Any: 
         if resp is not _ai.END_TOK:
-            utils.acc(delta_store, 'content', resp['content'])
+            store.acc(delta_store, 'content', resp['content'])
             return resp['content']
         return ''
 

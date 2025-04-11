@@ -4,9 +4,7 @@ import string
 import re
 import pydantic
 from enum import Enum
-import inspect
-from typing import Self, get_type_hints
-from dataclasses import dataclass
+
 
 class _PartialFormatter(string.Formatter):
     """A partial formatter that does not require all keys to be specified"""
@@ -149,7 +147,6 @@ def is_nested_model(
     return False
 
 
-
 def get_member(obj, loc: str):
     """Get a member from an object recursively
 
@@ -164,84 +161,6 @@ def get_member(obj, loc: str):
     for loc in locs:
         obj = getattr(obj, loc)
     return obj
-
-
-def get_or_set(d: typing.Dict, key, value) -> typing.Any:
-    """Adds a value to the dictionary if not already
-    set.
-
-    Args:
-        d (typing.Dict): The dictionary
-        key: The key
-        value: The value to add
-
-    Returns:
-        typing.Any: The value specified by dictionary key
-    """
-    if key in d:
-        return d[key]
-    d[key] = value
-    return value
-
-
-def get_or_setf(d: typing.Dict, key, f: typing.Callable[[], typing.Any]) -> typing.Any:
-    """Adds a value to the dictionary if not already
-    set.
-
-    Args:
-        d (typing.Dict): The dictionary
-        key: The key
-        f: The function to call to get the value
-
-    Returns:
-        typing.Any: The value specified by dictionary key
-    """
-    if key in d:
-        return d[key]
-    d[key] = f()
-    return d[key]
-
-
-def call_or_set(d: typing.Dict, key, value, f: typing.Callable[[typing.Any, typing.Any], typing.Any]) -> typing.Any:
-    """Adds a value to the dictionary if not already
-    set.
-
-    Args:
-        d (typing.Dict): The dictionary
-        key: The key
-        f: The function to call to get the value
-
-    Returns:
-        typing.Any: The value specified by dictionary key
-    """
-    if key not in d:
-        d[key] = value
-        return value
-    d[key] = f(d[key], value)
-    return d[key]
-
-
-def acc(
-    d: typing.Dict, key, value, init_val: str=''
-) -> typing.Any:
-    """Adds a value to the dictionary if not already
-    set.
-
-    Args:
-        d (typing.Dict): The dictionary
-        key: The key
-        f: The function to call to get the value
-
-    Returns:
-        typing.Any: The value specified by dictionary key
-    """
-
-    if key not in d:
-        d[key] = init_val
-    
-    if value is not UNDEFINED:
-        d[key] = d[key] + value
-    return d[key]
 
 
 class _Types(Enum):

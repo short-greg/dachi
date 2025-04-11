@@ -68,7 +68,7 @@ class OpenAITextConv(RespConv):
 
         msg['delta']['delta'] = delta
 
-        utils.call_or_set(
+        store.call_or_set(
             msg['delta'], 'content', delta, 
             lambda x, delta: x + delta
         )
@@ -260,11 +260,11 @@ class OpenAIToolConv(RespConv):
             name = tool_call.function.name
             args = tool_call.function.arguments
 
-            utils.get_or_setf(
+            store.get_or_setf(
                 delta_store, 'builder', ToolBuilder
             )
 
-            builder = utils.get_or_set(delta_store, 'builder', ToolBuilder)
+            builder = store.get_or_set(delta_store, 'builder', ToolBuilder)
             tool = builder.update(index, name, args)
             msg['delta']['tool'] = tool
             if tool is not None:

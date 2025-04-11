@@ -283,7 +283,6 @@ def from_bool(status: bool) -> TaskStatus:
 class State(pydantic.BaseModel):
     """Use State creating a state machine
     """
-
     @abstractmethod
     def update(self) -> typing.Union['State', TaskStatus]:
         """Update the 
@@ -297,7 +296,6 @@ class State(pydantic.BaseModel):
 class Router(object):
     """Use to a state
     """
-
     @abstractmethod
     def __call__(self, val) -> TaskStatus | State:
         pass
@@ -305,56 +303,6 @@ class Router(object):
 
 ROUTE = Router | typing.Callable[[typing.Any], TaskStatus | State]
 
-
-# TODO: I think I need to update this
-
-class IOField(object):
-
-    def __init__(
-        self, name: str, type_: typing.Optional[typing.Type]=None, default: typing.Any=UNDEFINED, read: MsgProc=None
-    ):
-        self.name = name
-        self.type_ = type_
-        self.default = default
-        self.read = read
-
-
-def get_function_info(func: Any):
-    if not callable(func):
-        raise ValueError("Provided argument is not callable.")
-    
-    # Get the function name
-    name = func.__name__
-
-    # Get the docstring
-    docstring = inspect.getdoc(func)
-
-    # Get the signature
-    signature = inspect.signature(func)
-    parameters = []
-    for name, param in signature.parameters.items():
-        parameter_info = {
-            "name": name,
-            "type": param.annotation if param.annotation is not inspect.Parameter.empty else None,
-            "default": param.default if param.default is not inspect.Parameter.empty else None,
-            "keyword_only": param.kind == inspect.Parameter.KEYWORD_ONLY
-        }
-        parameters.append(parameter_info)
-
-    # Get the return type
-    return_type = signature.return_annotation if signature.return_annotation is not inspect.Parameter.empty else None
-
-    return {
-        "name": name,
-        "docstring": docstring,
-        "parameters": parameters,
-        "return_type": return_type
-    }
-
-
-
-# from .._core import AIModel, AIPrompt, Dialog
-# import threading
 
 # class Step:
 #     pass

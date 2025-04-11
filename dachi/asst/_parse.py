@@ -7,6 +7,7 @@ from abc import abstractmethod
 # 3rd party
 
 # local
+from .. import store
 from .. import utils
 from ._msg import MsgProc
 from collections import OrderedDict
@@ -83,9 +84,9 @@ class CSVRowParser(ParseConv):
         """
         # resp = self.handle_null(resp, '')
 
-        val = utils.acc(delta_store, 'val', resp, '')
-        row = utils.get_or_set(delta_store, 'row', 0)
-        header = utils.get_or_set(
+        val = store.acc(delta_store, 'val', resp, '')
+        row = store.get_or_set(delta_store, 'row', 0)
+        header = store.get_or_set(
             delta_store, 'header', None
         )
         # Process accumulated data using csv.reader
@@ -112,10 +113,10 @@ class CSVRowParser(ParseConv):
             and delta_store['header'] is None
         ):
             delta_store['header'] = new_rows.pop(0)
-            utils.acc(delta_store, 'row', 1)
+            store.acc(delta_store, 'row', 1)
 
         header = delta_store['header']
-        utils.acc(delta_store, 'row', len(new_rows))
+        store.acc(delta_store, 'row', len(new_rows))
         if len(new_rows) == 0:
             return utils.UNDEFINED
         
@@ -173,11 +174,11 @@ class CSVCellParser(MsgProc):
         # resp = self.handle_null(resp, '')
         # print('Resp: ', resp)
 
-        val = utils.acc(delta_store, 'val', resp)
-        cur_row = utils.get_or_set(delta_store, 'row', 0)
-        header = utils.get_or_set(delta_store, 'header', None)
-        data = utils.get_or_set(delta_store, 'data', None)
-        cur_col = utils.get_or_set(delta_store, 'col', 0)
+        val = store.acc(delta_store, 'val', resp)
+        cur_row = store.get_or_set(delta_store, 'row', 0)
+        header = store.get_or_set(delta_store, 'header', None)
+        data = store.get_or_set(delta_store, 'data', None)
+        cur_col = store.get_or_set(delta_store, 'col', 0)
 
         rows = list(csv.reader(io.StringIO(delta_store['val']), delimiter=self._delimiter))
         cells = []
@@ -219,8 +220,8 @@ class CSVCellParser(MsgProc):
                     cells.append((cur_row + i, cell))
         if not is_last and len(cells) > 0:
             cells.pop(-1)
-        utils.acc(delta_store, 'col', j)
-        utils.acc(delta_store, 'row', i)
+        store.acc(delta_store, 'col', j)
+        store.acc(delta_store, 'row', i)
         
         if len(cells) == 0:
             return utils.UNDEFINED
@@ -272,7 +273,7 @@ class CharDelimParser(ParseConv):
     ) -> typing.List | None:
         
         # resp = self.handle_null(resp, '')
-        val = utils.acc(delta_store, 'val', resp)
+        val = store.acc(delta_store, 'val', resp)
         res = val.split(self.sep)
         return_val = utils.UNDEFINED
         
@@ -312,7 +313,7 @@ class FullParser(ParseConv):
         super().__init__(name, from_)
 
     def delta(self, resp, delta_store: typing.Dict, streamed: bool=False, is_last: bool=False) -> typing.List:
-        utils.acc(delta_store, 'val', resp)
+        store.acc(delta_store, 'val', resp)
         if is_last:
             val = delta_store['val']
             delta_store.clear()
@@ -345,7 +346,7 @@ class LineParser(ParseConv):
             typing.Any: 
         """ 
         # resp = self.handle_null(resp, '')
-        utils.acc(delta_store, 'val', resp)
+        store.acc(delta_store, 'val', resp)
         lines = delta_store['val'].splitlines()
         result = []
         buffer = []

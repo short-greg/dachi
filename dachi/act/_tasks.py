@@ -11,7 +11,7 @@ import pydantic
 # local
 from . import _functional
 from ._core import Task, TaskStatus, State
-from ._data import Context
+from ..store._data import Context
 
 
 class Root(Task):

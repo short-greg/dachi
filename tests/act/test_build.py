@@ -1,6 +1,6 @@
 from dachi.act import _build as build
 from dachi.act import _tasks as tasks, Not, Sequence
-
+from dachi import store
 from .test_tasks import ATask
 
 

@@ -1,5 +1,5 @@
 from .test_ai import DummyAIModel
-from dachi.asst import LineParser, Op, Threaded, NullOutConv, ToText, ToMsg
+from dachi.asst import LineParser, Op, Threaded, NullOutConv, ToText
 from dachi.asst import KeyRet
 from dachi.utils import Args
 import pytest

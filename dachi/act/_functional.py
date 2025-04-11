@@ -9,9 +9,9 @@ import time
 from ._core import (
     TaskStatus, Task
 )
-from ._data import Context, ContextSpawner, SharedBase
+from ..store._data import Context, ContextSpawner, SharedBase
 from ._core import TOSTATUS
-from ._data import Buffer,Shared
+from ..store._data import Buffer,Shared
 from ..asst import LLM, LLM_PROMPT, FromMsg
 
 TASK = typing.Union[

@@ -59,3 +59,15 @@ class TestTaskStatus(object):
     def test_invert_converts_success_to_failure(self):
 
         assert (_core.TaskStatus.SUCCESS.invert()).failure
+
+
+class TestFromBool(object):
+
+    def test_from_bool_returns_success_for_true(self):
+        assert _core.from_bool(True) == _core.TaskStatus.SUCCESS
+
+    def test_from_bool_returns_failure_for_false(self):
+        assert _core.from_bool(False) == _core.TaskStatus.FAILURE
+
+
+

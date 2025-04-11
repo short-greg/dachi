@@ -16,6 +16,7 @@ from pydantic_core import PydanticUndefined
 from ..utils import (
     escape_curly_braces
 )
+from .. import store
 from .. import utils
 
 S = typing.TypeVar('S', bound=pydantic.BaseModel)
@@ -98,7 +99,7 @@ class PrimConv(OutConv):
             resp = resp[0]
         else:
             return utils.UNDEFINED
-        val = utils.acc(delta_store, 'val', resp)
+        val = store.acc(delta_store, 'val', resp)
 
         if not is_last:
             return utils.UNDEFINED
@@ -170,13 +171,13 @@ class PydanticConv(OutConv, typing.Generic[S]):
         if len(resp) == 0:
             return utils.UNDEFINED
         resp = resp[0]
-        val = utils.acc(delta_store, 'val', resp)
+        val = store.acc(delta_store, 'val', resp)
 
         if not is_last:
             return utils.UNDEFINED
         
         # if resp is not END_TOK:
-        #     utils.acc(delta_store, 'val', resp)
+        #     store.acc(delta_store, 'val', resp)
         #     return utils.UNDEFINED
         message = unescape_curly_braces(val)
         try:
@@ -409,7 +410,7 @@ class JSONConv(OutConv):
         Returns:
             typing.Dict: The result - if it fails, will return an empty dict
         """
-        # val = utils.acc(
+        # val = store.acc(
         #     delta_store, 'val', resp
         # )
 

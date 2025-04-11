@@ -1,5 +1,5 @@
 import pytest
-from dachi.act import _data as _data
+from dachi.store import _data as _data
 
 
 class TestGetOrSpawn(object):
