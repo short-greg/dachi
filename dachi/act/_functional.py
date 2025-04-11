@@ -513,11 +513,9 @@ def _stream_model(model: LLM, prompt: LLM_PROMPT, ctx: Context, out: FromMsg, *a
         ctx (Context): The context
         interval (float, optional): The interval to run at. Defaults to 1./60.
     """
-    # print('Prompt: ', prompt)
     for msg in model.stream(prompt, *args, **kwargs):
         ctx['msg'] = msg
         ctx['cur'].append(out(msg))
-        print(msg)
         time.sleep(interval)
     ctx['thread_status'] = TaskStatus.SUCCESS
 
@@ -536,6 +534,12 @@ def stream_model(
     Returns:
         CALL_TASK
     """
+    if interval <= 0.0:
+        raise ValueError(f'Interval must be greater than 0.0 not {interval}')
+    if not isinstance(ctx, Context):
+        raise AttributeError(
+            f'Context must be of type context not {type(ctx)} '
+        )
     out = FromMsg(out)
     def run() -> TaskStatus:
         if '_thread' not in ctx:
@@ -553,7 +557,7 @@ def stream_model(
         
         if ctx['i'] < len(ctx['cur']):
             buffer.add(*ctx['cur'][ctx['i']:])
-            ctx['i'] = len(ctx['cur'])
+            ctx['i'] += len(ctx['cur']) - ctx['i']
 
         return ctx['thread_status']
 

@@ -105,22 +105,7 @@ class FromMsg(Module):
         if isinstance(override, FromMsg):
             override = override.key
         key = override or self.key
-        if isinstance(key, str):
-            res = msg.m[key]
-            return res
-        elif key is None:
-            return msg
-        elif isinstance(key, KeyRet):
-            res = key(msg)
-            return res
-        
-        res = tuple(
-            k(msg) if isinstance(k, KeyRet) 
-            else msg if k is None
-            else msg.m[k]
-            for k in key
-        )
-        return res
+        return key.forward(msg)
 
     def filter(self, msg: Msg, override=None) -> typing.Any | bool:
         res = self.forward(msg, override)
