@@ -98,6 +98,39 @@ class TestTaskFunc:
         agent.increment2.task(-2)()
         assert agent.data.get() == -1
 
+    def test_taskfunc_increment_success(self):
+        agent = TaskAgent()
+        assert agent.increment.task(5)() == core.SUCCESS
+
+    def test_taskfunc_increment_running(self):
+        agent = TaskAgent()
+        assert agent.increment.task(3)() == core.RUNNING
+
+    def test_taskfunc_decrement_success(self):
+        agent = TaskAgent()
+        assert agent.decrement.task(-1)() == core.SUCCESS
+
+    def test_taskfunc_decrement_running(self):
+        agent = TaskAgent()
+        assert agent.decrement.task(6)() == core.RUNNING
+
+    def test_taskfunc_decrement_failure(self):
+        agent = TaskAgent()
+        assert agent.decrement.task(10)() == core.FAILURE
+
+    def test_taskfunc_increment2_success(self):
+        agent = TaskAgent()
+        assert agent.increment2.task(4)() == core.SUCCESS
+
+    def test_taskfunc_increment2_running(self):
+        agent = TaskAgent()
+        assert agent.increment2.task(2)() == core.RUNNING
+
+    def test_taskfunc_increment2_failure(self):
+        agent = TaskAgent()
+        agent.increment2.task(-2)()
+        assert agent.data.get() == -1
+
 
 class TestCondFunc:
 
@@ -113,6 +146,18 @@ class TestCondFunc:
 
     def test_task_func_returns_failure_with_neg_1(self):
 
+        agent = TaskAgent()
+        assert agent.is_nonnegative.task(-1)() == core.FAILURE
+
+    def test_condfunc_success(self):
+        agent = TaskAgent()
+        assert agent.is_nonnegative.task(3)() == core.SUCCESS
+
+    def test_condfunc_success_with_zero(self):
+        agent = TaskAgent()
+        assert agent.is_nonnegative.task(0)() == core.SUCCESS
+
+    def test_condfunc_failure(self):
         agent = TaskAgent()
         assert agent.is_nonnegative.task(-1)() == core.FAILURE
 
@@ -149,6 +194,28 @@ class TestSeqFunc:
         status = t()
         assert status == TaskStatus.FAILURE
 
+    def test_sequencefunc_all_tasks_success(self):
+        agent = TaskAgent()
+        t = agent.increment_seq.task(5)
+        status = t()
+        assert status == TaskStatus.RUNNING
+        status = t()
+        assert status == TaskStatus.SUCCESS
+
+    def test_sequencefunc_task_failure(self):
+        agent = TaskAgent()
+        t = agent.increment_seq.task(-1)
+        status = t()
+        assert status == TaskStatus.FAILURE
+
+    def test_sequencefunc_partial_success(self):
+        agent = TaskAgent()
+        t = agent.increment_seq.task(2)
+        status = t()
+        assert status == TaskStatus.RUNNING
+        status = t()
+        assert status == TaskStatus.RUNNING
+
 
 class TestSelectorFunc:
 
@@ -178,6 +245,35 @@ class TestSelectorFunc:
         assert status == TaskStatus.RUNNING
         status = t()
         assert status == TaskStatus.RUNNING
+
+    def test_selectorfunc_first_task_success(self):
+        agent = TaskAgent()
+        t = agent.increment_sel.task(5)
+        status = t()
+        assert status == TaskStatus.SUCCESS
+
+    def test_selectorfunc_second_task_success(self):
+        agent = TaskAgent()
+        t = agent.increment_sel.task(-2)
+        status = t()
+        assert status == TaskStatus.RUNNING
+        status = t()
+        assert status == TaskStatus.SUCCESS
+
+    def test_selectorfunc_all_tasks_running(self):
+        agent = TaskAgent()
+        t = agent.increment_sel.task(2)
+        status = t()
+        assert status == TaskStatus.RUNNING
+        status = t()
+        assert status == TaskStatus.RUNNING
+
+    def test_selectorfunc_first_task_failure(self):
+        agent = TaskAgent()
+        t = agent.increment_sel.task(-5)
+        status = t()
+        status = t()
+        assert status == TaskStatus.SUCCESS
 
 
 class TestParallelFunc:
