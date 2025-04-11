@@ -1,6 +1,6 @@
 from .test_ai import DummyAIModel
 from dachi.asst import LineParser, Op, Threaded, NullOutConv, ToText, ToMsg
-from dachi.asst import MR
+from dachi.asst import KeyRet
 from dachi.utils import Args
 import pytest
 
@@ -213,17 +213,17 @@ class TestThreaded:
             results.extend(res)
         assert results == ["hello", "world", "!@#$%^&*()"]
 
-    # def test_threaded_handles_multiple_roles(self):
-    #     """Test Threaded with multiple roles in the router."""
-    #     threaded = Threaded(
-    #         DummyAIModel("", proc=[NullOutConv('out', 'content')]),
-    #         router={"user": ToText("user"), "system": ToText("system")},
-    #         out='out'
-    #     )
-    #     user_result = threaded.forward("user", "Hello")
-    #     system_result = threaded.forward("system", "Hi there")
-    #     assert user_result == "Hello"
-    #     assert system_result == "Hi there"
+    def test_threaded_handles_multiple_roles(self):
+        """Test Threaded with multiple roles in the router."""
+        threaded = Threaded(
+            DummyAIModel("Hello", proc=[NullOutConv('out', 'content')]),
+            router={"user": ToText("user"), "system": ToText("system")},
+            out='out'
+        )
+        user_result = threaded.forward("user", "Hello")
+        system_result = threaded.forward("system", "Hi there")
+        assert user_result == "Hello"
+        assert system_result == "Hello"
 
     def test_threaded_stream_handles_partial_streaming(self):
         """Test Threaded's stream method to ensure partial results are returned."""

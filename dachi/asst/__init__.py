@@ -25,7 +25,10 @@ from ._chat import Chat
 from ._msg import (
     ToMsg, ToText, MsgProc, 
     FromMsg,
-    MR
+    MsgRet,
+    KeyRet,
+    to_ret,
+    TupleRet
 )
 from ._resp import RespConv
 from ._parse import (

@@ -8,25 +8,77 @@ from ..proc import Module, AsyncModule
 from .. import utils
 
 
-class MR(object):
+class MsgRet(Module):
     """Retrieves from the message (not the meta in the message)"""
-    def __init__(self, name: str):
+
+    @abstractmethod
+    def forward(self, msg: Msg) -> typing.Any:
+        pass
+
+
+class KeyRet(MsgRet):
+    """Retrieves from the message (not the meta in the message)"""
+    def __init__(self, name: str, meta: bool=False):
         """Use to retrieve from the base message dict.
 
         Args:
             name (str): The name of the message key to retrieve
         """
         self.name = name
+        self.meta = meta
 
-    def __call__(self, msg):
+    def forward(self, msg) -> typing.Any:
+        """
+
+        Args:
+            msg: Do a direct retrieval from the message
+
+        Returns:
+            typing.Any: The value referenced by key
+        """
+        if self.meta:
+            return msg.m[self.name]
         return msg[self.name]
+
+
+class TupleRet(MsgRet):
+    """Retrieves from the message (not the meta in the message)"""
+    def __init__(self, keys: typing.Iterable):
+        """Use to retrieve from the base message dict.
+
+        Args:
+            name (str): The name of the message key to retrieve
+        """
+        self._rets = [to_ret(key) for key in keys]
+
+    def forward(self, msg):
+        
+        return tuple(
+            ret(msg)
+            for ret in self._rets
+        )
+
+
+def to_ret(key: str) -> MsgRet:
+
+    if isinstance(key, KeyRet):
+        return key
+    elif isinstance(key, str):
+        return KeyRet(key, True)
+    elif isinstance(key, typing.Iterable):
+        return TupleRet(key)
+    
+    elif isinstance(key, MsgRet):
+        return key
+    
+    raise ValueError(f'Could not convert {key} to a MsgRet')
 
 
 class FromMsg(Module):
     """Use to get a value from a message. 
     """
 
-    def __init__(self, key: str | MR | typing.List[str | MR | None]):
+    def __init__(self, key: str | KeyRet | typing.List[str | KeyRet | None]):
         """Use to retrieve values from a message
 
         MR will return from the base of the message, otherwise
@@ -37,7 +89,7 @@ class FromMsg(Module):
         """
         if isinstance(key, FromMsg):
             key = key.key
-        self.key = key
+        self.key = to_ret(key)
 
     def forward(self, msg: Msg, override=None) -> typing.Any:
         """Use to get a value from the message
@@ -58,12 +110,12 @@ class FromMsg(Module):
             return res
         elif key is None:
             return msg
-        elif isinstance(key, MR):
+        elif isinstance(key, KeyRet):
             res = key(msg)
             return res
         
         res = tuple(
-            k(msg) if isinstance(k, MR) 
+            k(msg) if isinstance(k, KeyRet) 
             else msg if k is None
             else msg.m[k]
             for k in key
@@ -118,50 +170,6 @@ class NullToMsg(Module, AsyncModule, ABC):
             Msg: A message
         """
         return msg
-
-
-# class FromMsg(Module, AsyncModule, ABC):
-#     """Converts the message to an output
-#     """
-#     def __init__(self, from_: typing.Union[str, typing.List[str]]):
-
-#         if isinstance(from_, str):
-#             from_ = [from_]
-#             self._single = True
-#         else:
-#             self._single = False
-#         self._from = from_
-
-#     @abstractmethod
-#     def delta(self, resp, delta_store: typing.Dict, 
-#               is_streamed: bool=False, is_last: bool=True) -> typing.Any:
-#         """Read in the output
-
-#         Args:
-#             message (str): The message to read
-
-#         Returns:
-#             typing.Any: The output of the reader
-#         """
-#         pass
-
-#     def forward(self, msg: Msg, delta_store: bool=None) -> typing.Any:
-#         delta_store = delta_store or {}
-#         resp = [msg['meta'][r] for r in self._from if r]
-#         is_undefined = all(r is utils.UNDEFINED for r in resp)
-        
-#         if self._single:
-#             resp = resp[0]
-        
-#         if is_undefined:
-#             return utils.UNDEFINED
-#         msg['meta'][self.name] = self.delta(
-#             resp, delta_store, msg.is_streamed, msg.is_last
-#         )
-#         return msg
-
-#     async def aforward(self, msg: Msg, delta_store: bool=None) -> typing.Any:
-#         return self.forward(msg, delta_store)
 
 
 class ToText(ToMsg):

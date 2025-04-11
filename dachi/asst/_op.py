@@ -13,7 +13,7 @@ from ..msg._messages import (
     Msg, BaseDialog, ListDialog
 )
 from ._asst import Assistant
-from ._msg import ToMsg, MR, FromMsg
+from ._msg import ToMsg, KeyRet, FromMsg
 from ..proc import (
     Module, AsyncModule, 
     StreamModule, AsyncStreamModule
@@ -113,7 +113,8 @@ class Op(Module, AsyncModule, StreamModule, AsyncStreamModule):
 
         return self.out(resp_msg, _out)
     
-    def stream(self, *args, _out=None,
+    def stream(
+        self, *args, _out=None,
         _messages: typing.List[Msg]=None, **kwargs) -> typing.Iterator:
         """
         Streams the assistant with the provided arguments and returns the processed output.
@@ -197,7 +198,10 @@ class Op(Module, AsyncModule, StreamModule, AsyncStreamModule):
         )
 
     def spawn(
-        self, to_msg: ToMsg=UNDEFINED, assistant: Assistant=UNDEFINED, out: str | MR | typing.List[str | MR]=UNDEFINED, filter_undefined: bool=UNDEFINED
+        self, 
+        to_msg: ToMsg=UNDEFINED, 
+        assistant: Assistant=UNDEFINED, 
+        out: str | KeyRet | typing.List[str | KeyRet]=UNDEFINED, filter_undefined: bool=UNDEFINED
     ):
         """
         Spawns a new `Op` instance based on the updated arguments.
@@ -232,7 +236,6 @@ class Threaded(
 ):
     """A Threaded Op. Use to keep the Op 
     """
-    
     def __init__(
         self, assistant: Assistant, 
         router: typing.Dict[str, ToMsg],
@@ -380,7 +383,7 @@ class Threaded(
         )
 
     def spawn(
-        self, to_msg: ToMsg=UNDEFINED, assistant: Assistant=UNDEFINED, router: typing.Dict[str, ToMsg]=UNDEFINED, dialog: BaseDialog=UNDEFINED, out: str | MR | typing.List[str | MR]=UNDEFINED, filter_undefined: bool=UNDEFINED
+        self, to_msg: ToMsg=UNDEFINED, assistant: Assistant=UNDEFINED, router: typing.Dict[str, ToMsg]=UNDEFINED, dialog: BaseDialog=UNDEFINED, out: str | KeyRet | typing.List[str | KeyRet]=UNDEFINED, filter_undefined: bool=UNDEFINED
     ):
         """
         Spawns a new `Op` instance based on the updated arguments.
