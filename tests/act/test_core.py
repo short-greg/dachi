@@ -1,4 +1,3 @@
-import pytest
 from dachi.act import _core
 
 

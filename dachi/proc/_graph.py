@@ -171,7 +171,7 @@ class StreamSrc(Src):
         Yields:
             T: The incoming transmissions to the Src
         """
-        for incoming in self._args.incoming:
+        for incoming in self._args.incoming():
             yield incoming
 
     def forward(self, by: typing.Dict['T', typing.Any]=None) -> typing.Any:
@@ -297,9 +297,13 @@ class TArgs(object):
         for arg in self._args:
             if isinstance(arg, T):
                 yield arg
+            elif isinstance(arg, Var):
+                yield arg
 
         for k, arg in self._kwargs:
             if isinstance(arg, T):
+                yield arg
+            elif isinstance(arg, Var):
                 yield arg
 
     def has_partial(self) -> bool:
@@ -494,7 +498,7 @@ class Var(Src):
     """A Variable Src that stores a default value.
     """
     
-    def __init__(self, default=None, default_factory=None):
+    def __init__(self, default=UNDEFINED, default_factory=UNDEFINED):
         """A Variable Src
 
         Args:
@@ -503,7 +507,7 @@ class Var(Src):
         """
         self.default = default
         self.default_factory = default_factory
-        if default is None and default_factory is None:
+        if default is UNDEFINED and default_factory is UNDEFINED:
             raise RuntimeError('Either the default value or default factory must be defined')
 
     def incoming(self) -> typing.Iterator[T]:
@@ -528,9 +532,11 @@ class Var(Src):
             typing.Any: The value of the variable. If the 
         """
         by = by or {}
-        if self.default is not None:
+        if self.default is not UNDEFINED:
             return self.default
-        return self.default_factory()
+        if self.default_factory is not UNDEFINED:
+            return self.default_factory()
+        raise RuntimeError('There is no default for var.')
 
 
 class IdxSrc(Src):
