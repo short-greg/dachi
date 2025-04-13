@@ -9,7 +9,7 @@ from functools import wraps
 import pydantic
 
 # local
-from ..base import Trainable, Renderable
+from ..base import Trainable, Renderable, Templatable
 from ..proc._process import (
     Module, AsyncModule, StreamModule, 
     AsyncStreamModule, Param
@@ -209,14 +209,13 @@ class IBase(ABC):
     This is the base class for wrapping an Instruction functor. It is used to create an instruction when called.
     """
 
-    def __init__(self, f, is_method: bool=False, out: OutConv=None, parser: ParseConv=None, content_name: str='content'):
+    def __init__(self, f, is_method: bool=False, out: OutConv=None, parser: ParseConv=None, out_name: str='content', template: Templatable=None):
         """ Initializes the IBase instance.
         Args:
             f (Callable): The function to be wrapped as an instruction.
             is_method (bool, optional): Indicates if the function is a method. Defaults to False.
             out (OutConv, optional): The output converter that converts the output of the LLM into a more useful format. Defaults to None.
         """
-        
         self._f = f
         self._is_method = is_method
         self._docstring = f.__doc__
@@ -224,8 +223,9 @@ class IBase(ABC):
         self._signature = str(inspect.signature(f))
         self._parameters = inspect.signature(f).parameters
         self._return_annotation = inspect.signature(f).return_annotation
+        self._template = template
 
-        self.content_name = content_name
+        self.out_name = out_name
         out_cls = self._return_annotation
         if out is None:
             if self.out_cls in primitives:
@@ -239,13 +239,13 @@ class IBase(ABC):
                 out = NullOutConv(name='out', from_='data')
         if parser is None:
             if self.out_cls is str:
-                parser = NullParser('data', self.content_name)
+                parser = NullParser('data', self.out_name)
             elif self.out_cls in primitives:
-                parser = FullParser('data', self.content_name)
+                parser = FullParser('data', self.out_name)
             elif issubclass(out_cls, pydantic.BaseModel):
-                parser = FullParser('data', self.content_name)
+                parser = FullParser('data', self.out_name)
             else:
-                parser = NullParser('data', self.content_name)
+                parser = NullParser('data', self.out_name)
 
         self._parser = parser
         self._out: OutConv = out
@@ -253,7 +253,10 @@ class IBase(ABC):
     def _align_params(
         self, *args, **kwargs
     ) -> typing.Dict:
-
+        """
+        Returns:
+            typing.Dict: Get the parameters
+        """
         param_values = list(self._parameters.values())
         if self._is_method:
             param_values = param_values[1:]
@@ -267,6 +270,16 @@ class IBase(ABC):
             
         return values
     
+    def template(self) -> str:
+        """Produce a template for the instruction
+
+        Returns:
+            str: the template
+        """
+        if self._template is None:
+            return ''
+        return self._template.template()
+
     @property
     def name(self) -> str:
         """
@@ -347,6 +360,10 @@ class InstF(IBase):
 
     @property
     def out_cls(self) -> typing.Type:
+        """
+        Returns:
+            typing.Type: Get the type for the output
+        """
         return self._return_annotation
 
 
@@ -362,7 +379,8 @@ class SigF(IBase):
         doc: typing.Optional[str]=None,
         train: bool=False, out: OutConv=None,
         parser: ParseConv=None,
-        content_name: str='content'
+        out_name: str='content',
+        template: Templatable=None
     ):
         """
         Args:
@@ -372,8 +390,10 @@ class SigF(IBase):
             train (bool, optional): Whether to train the instruction. Defaults to False.
             out (OutConv, optional): The out to process the output. Defaults to None.
         """
-        super().__init__(f, is_method, out, parser, content_name)
-
+        super().__init__(
+            f, is_method, out, parser, out_name,
+            template=template
+        )
         self._doc = doc or self._docstring
         cue = Cue(
             text=self._doc
@@ -408,7 +428,7 @@ class SigF(IBase):
         kwargs.update(params)
         doc = self._doc_param.render()
         if "{TEMPLATE}" in doc:
-            kwargs['TEMPLATE'] = self._out.template()
+            kwargs['TEMPLATE'] = self.template()
 
         cue = Cue(
             text=str_formatter(
@@ -418,6 +438,11 @@ class SigF(IBase):
 
     @property
     def out_cls(self) -> typing.Type:
+        """Get the type of the return value
+
+        Returns:
+            typing.Type: The type of the return value
+        """
         return self._return_annotation
 
 
@@ -600,7 +625,15 @@ class AFuncDec(FuncDecBase, AsyncModule):
         kwargs: typing.Dict=None,
         instance=None
     ):
-        
+        """
+
+        Args:
+            inst: The Instruction class
+            engine (AsyncAssist): The engine to use for outputting
+            to_msg (ToMsg, optional): Use to convert to a message. Defaults to None.
+            kwargs (typing.Dict, optional): The key-word args. Defaults to None.
+            instance (optional): The instance to use . Defaults to None.
+        """
         super().__init__(inst, instance)
         self._engine = engine
         self._to_msg = to_msg or ToText()
@@ -619,7 +652,6 @@ class AFuncDec(FuncDecBase, AsyncModule):
         Returns:
             The result read from the engine's response.
         """
-
         instance, args = self.get_instance(args)
         cue = self._inst(
             instance, *args, **kwargs
@@ -808,7 +840,8 @@ def instructfunc(
     to_async: bool=False,
     to_stream: bool=False,
     to_msg: ToMsg=None,
-    content_name: str='content',
+    out_name: str='content',
+    template: Templatable=None,
     **kwargs
 ):
     """Decorate a method with instructfunc
@@ -826,7 +859,9 @@ def instructfunc(
         def wrapper(*args, **kwargs):
             return f(*args, **kwargs)
         
-        inst = InstF(f, is_method, out, parser=parser, content_name=content_name)
+        inst = InstF(
+            f, is_method, out, parser=parser, out_name=out_name, template=template
+        )
 
         if not to_async and not to_stream:
             return FuncDec(
@@ -858,7 +893,8 @@ def instructmethod(
     to_async: bool=False,
     to_stream: bool=False,
     to_msg: ToMsg=None,
-    content_name: str='content',
+    out_name: str='content',
+    template: Templatable=None,
     **kwargs
 ):
     """Decorate a method with instructfunc
@@ -873,7 +909,8 @@ def instructmethod(
         engine, out=out, is_method=True, to_msg=to_msg, to_async=to_async, 
         to_stream=to_stream, 
         parser=parser,
-        content_name=content_name,
+        out_name=out_name,
+        template=template,
         **kwargs
     )
 
@@ -888,7 +925,8 @@ def signaturefunc(
     to_async: bool=False,
     to_stream: bool=False,
     train: bool=False,
-    content_name: str='content',
+    out_name: str='content',
+    template: Templatable=None,
     **kwargs
 ):
     """Decorate a method with instructfunc
@@ -909,7 +947,8 @@ def signaturefunc(
         inst = SigF(
             f, is_method, train=train, 
             doc=doc, out=out, parser=parser,
-            content_name=content_name
+            out_name=out_name,
+            template=template
         )
 
         if not to_async and not to_stream:
@@ -944,7 +983,8 @@ def signaturemethod(
     to_async: bool=False,
     to_stream: bool=False,
     train: bool=False,
-    content_name: str='content',
+    out_name: str='content',
+    template: Templatable=None,
     **kwargs
 ):
     """Decorate a method with SignatureFunc
@@ -962,7 +1002,8 @@ def signaturemethod(
         to_msg=to_msg, to_async=to_async, to_stream=to_stream,
         train=train,
         parser=parser,
-        content_name=content_name,
+        out_name=out_name,
+        template=template
         **kwargs
     )
 
@@ -987,45 +1028,3 @@ def inst(x: typing.Union[typing.Iterable[X], X], cue: X) -> Cue:
     return Cue(
         text=text, out=out
     )
-
-
-# class Inst(Module):
-#     """An operation acts on an cue to produce a new cue
-#     """
-
-#     def __init__(
-#         self, name: str, cue: X, 
-#         tunable: bool=False):
-#         """Create an operation specifying the name
-
-#         Args:
-#             name (str): The name of the operation
-#             cue (X): The cue for the operation
-#             tunable: whether the cue is tunable
-#         """
-#         self.name = name
-#         if not isinstance(cue, Cue):
-#             cue = Param(
-#                 name=self.name, training=tunable, 
-#                 data=Cue(
-#                     text=render(cue)
-#             ))
-        
-#         self.cue = cue
-        
-#     def forward(
-#         self, *args: X, **kwargs: X
-#     ) -> Cue:
-#         """Fill in the cue with the inputs
-
-#         Returns:
-#             Cue: 
-#         """
-#         cue = render(self.cue)
-#         out = validate_out(
-#             [*args, *kwargs.values(), self.cue]
-#         )
-
-#         return Cue(
-#             text=fill(cue, *args, **kwargs), out=out
-#         )
