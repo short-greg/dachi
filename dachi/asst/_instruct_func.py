@@ -23,7 +23,8 @@ from ._asst import (
 )
 from ._out import (
     OutConv, NullOutConv,
-    PrimConv, PydanticConv
+    PrimConv, PydanticConv,
+    ConvTemplate
 )
 from ..msg import render, render_multi
 
@@ -223,6 +224,11 @@ class IBase(ABC):
         self._signature = str(inspect.signature(f))
         self._parameters = inspect.signature(f).parameters
         self._return_annotation = inspect.signature(f).return_annotation
+
+        if not isinstance(template, Templatable) and template is not None:
+            base = template[0]
+            preprocessors = template[1:]
+            template = ConvTemplate(base, preprocessors)
         self._template = template
 
         self.out_name = out_name
@@ -1003,7 +1009,7 @@ def signaturemethod(
         train=train,
         parser=parser,
         out_name=out_name,
-        template=template
+        template=template,
         **kwargs
     )
 

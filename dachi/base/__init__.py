@@ -1,10 +1,10 @@
 from ._base import (
     Storable, Renderable,
-    Templatable, Trainable
+    Templatable, Trainable, ExampleMixin
 )
 from ._core import (
     Renderable, 
     StructLoadException,
-    TemplateField
+    TemplateField,
 )
 

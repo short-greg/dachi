@@ -10,7 +10,7 @@ import pydantic
 # local
 from ..msg import render, struct_template, Msg
 from ._msg import MsgProc
-from ..base import TemplateField, Templatable
+from ..base import TemplateField, Templatable, ExampleMixin
 from ..utils import unescape_curly_braces
 from pydantic_core import PydanticUndefined
 from ..utils import (
@@ -42,7 +42,7 @@ class ReadError(Exception):
         raise ReadError(message, original_exception) from original_exception
 
 
-class OutConv(MsgProc, Templatable):
+class OutConv(MsgProc, Templatable, ExampleMixin):
     """Use for converting an AI response into a primitive value
     """
     
@@ -473,3 +473,34 @@ class NullOutConv(MsgProc):
 
     def template(self) -> str:
         return ''
+
+
+class ConvTemplate(Templatable):
+    """Use to generate a template from an out conv 
+    """
+
+    def __init__(self, conv: OutConv, preprocessors):
+        """
+
+        Args:
+            conv (OutConv): 
+            preprocessors: 
+        """
+        super().__init__()
+        self.conv = conv
+        self.preprocessors = preprocessors
+
+    def template(self) -> str:
+
+        template = self.conv.template()
+        for processor in reversed(self.preprocessors):
+            template = processor.render(template)
+        return template
+    
+    def example(self) -> str:
+
+        example = self.conv.example()
+        for processor in reversed(self.preprocessors):
+            example = processor.render(example)
+        return example
+    
