@@ -389,13 +389,13 @@ class OpenAIChatComp(OpenAILLM, ABC):
             **kwargs, 
             self._message_arg:msg.to_list_input()
         }
-        for r, c in llm_stream(
+        for r in llm_stream(
             self._client.chat.completions.create, 
             _proc=self.resp_procs, 
             stream=True,
             **kwargs
         ):
-            yield r, c
+            yield r
     
     async def astream(self, msg, *args, **kwargs) -> typing.AsyncIterator[typing.Tuple[Msg, typing.Any]]:
         """
@@ -416,10 +416,10 @@ class OpenAIChatComp(OpenAILLM, ABC):
             **kwargs, 
             self._message_arg:msg.to_list_input()
         }
-        async for r, c in await llm_astream(
+        async for r in await llm_astream(
             self._aclient.chat.completions.create, 
             _resp_proc=self.resp_procs, 
             stream=True,
             **kwargs
         ):
-            yield r, c
+            yield r
