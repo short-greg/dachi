@@ -11,13 +11,12 @@ installed = {pkg.key for pkg in pkg_resources.working_set}
 missing = required - installed
 
 # Local
-from ...msg import Msg, END_TOK
+from ...msg import Msg, END_TOK, to_list_input
 from .._ai import (
     LLM, llm_aforward, llm_astream, llm_forward, llm_stream, ToolSet, ToolCall, ToolBuilder
 )
 from .._resp import RespConv
 from ...utils import UNDEFINED, coalesce
-from ... import utils
 from ... import store
 
 # TODO: add utility for this
@@ -25,20 +24,27 @@ from ... import store
 import openai
 
 if len(missing) > 0:
-
     raise RuntimeError(f'To use this module openai must be installed.')
 
-# stream
-# parsed
-# create
 
 class OpenAITextConv(RespConv):
     """
     OpenAITextProc is a class that processes an OpenAI response and extracts text outputs from it.
     """
 
-    def post(self, msg, result, delta_store, streamed = False, is_last = False):
-        
+    def post(
+        self, msg, result, delta_store, 
+        streamed = False, is_last = False
+    ):
+        """_summary_
+
+        Args:
+            msg: The message to process
+            result: 
+            delta_store: 
+            streamed (bool, optional): whether streamed or not. Defaults to False.
+            is_last (bool, optional): the last. Defaults to False.
+        """
         store.acc(
             delta_store, 'all_content', msg.m['content']
         )
@@ -80,13 +86,18 @@ class OpenAIStructConv(RespConv):
         super().__init__(False)
         self._struct = struct
 
-    def post(self, msg, result, delta_store, streamed = False, is_last = False):
+    def post(
+        self, msg, result, delta_store, 
+        streamed = False, is_last = False
+    ):
         if is_last:
             msg['content'] = delta_store['content']
         msg['content'] = ''
 
-    def delta(self, resp, delta_store: typing.Dict, streamed: bool=False, is_last: bool=False):
-    # def delta(self, response, msg, delta_store: typing.Dict):
+    def delta(
+        self, resp, delta_store: typing.Dict, 
+        streamed: bool=False, is_last: bool=False
+    ):
         """
         Processes a delta response and extracts text.
         Args:
@@ -115,7 +126,6 @@ class OpenAIStructConv(RespConv):
 
     def prep(self) -> typing.Dict:
         """
-
         Returns:
             typing.Dict: 
         """
@@ -133,7 +143,10 @@ class OpenAIStructConv(RespConv):
 
 class OpenAIStreamStructConv(OpenAIStructConv):
     
-    def delta(self, resp, delta_store: typing.Dict, streamed: bool=False, is_last: bool=False):
+    def delta(
+        self, resp, delta_store: typing.Dict, 
+        streamed: bool=False, is_last: bool=False
+    ):
         """
         Processes a delta response and extracts text.
         Args:
@@ -190,7 +203,10 @@ class OpenAIToolConv(RespConv):
             'tools': [tool.to_input() for tool in self.tools] if len(self.tools) != 0 else None
         }
 
-    def delta(self, resp, delta_store: typing.Dict, streamed: bool=False, is_last: bool=False):
+    def delta(
+        self, resp, delta_store: typing.Dict, 
+        streamed: bool=False, is_last: bool=False
+    ):
 
         if streamed and resp is END_TOK:
             
@@ -247,7 +263,6 @@ class OpenAILLM(LLM, ABC):
         **client_kwargs
     ):
         """
-
         Args:
             tools (ToolSet, optional): . Defaults to None.
             json_output (bool | pydantic.BaseMode | typing.Dict, optional): . Defaults to False.
@@ -330,16 +345,15 @@ class OpenAIChatComp(OpenAILLM, ABC):
             - This method uses the `llm_forward` function to handle the interaction with the LLM.
             - The `_resp_proc` parameter is used to process the response from the LLM.
         """
-
         kwargs = {
             **self._kwargs, 
             **kwargs, 
-            self._message_arg:msg.to_list_input()
+            self._message_arg:to_list_input(msg)
         }
 
         return llm_forward(
             self._client.chat.completions.create, 
-            _resp_proc=self.resp_procs, 
+            _proc=self.procs, 
             **kwargs
         )
 
@@ -361,11 +375,11 @@ class OpenAIChatComp(OpenAILLM, ABC):
         kwargs = {
             **self._kwargs, 
             **kwargs, 
-            self._message_arg:msg.to_list_input()
+            self._message_arg: to_list_input(msg)
         }
         return await llm_aforward(
             self._aclient.chat.completions.create, 
-            _proc=self.resp_procs, 
+            _proc=self.procs, 
             **kwargs
         )
 
@@ -387,11 +401,11 @@ class OpenAIChatComp(OpenAILLM, ABC):
         kwargs = {
             **self._kwargs, 
             **kwargs, 
-            self._message_arg:msg.to_list_input()
+            self._message_arg:to_list_input(msg)
         }
         for r in llm_stream(
             self._client.chat.completions.create, 
-            _proc=self.resp_procs, 
+            _proc=self.procs, 
             stream=True,
             **kwargs
         ):
@@ -414,11 +428,11 @@ class OpenAIChatComp(OpenAILLM, ABC):
         kwargs = {
             **self._kwargs, 
             **kwargs, 
-            self._message_arg:msg.to_list_input()
+            self._message_arg:to_list_input(msg)
         }
         async for r in await llm_astream(
             self._aclient.chat.completions.create, 
-            _resp_proc=self.resp_procs, 
+            _proc=self.procs,
             stream=True,
             **kwargs
         ):

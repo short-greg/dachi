@@ -855,7 +855,7 @@ class FieldRenderer(MsgRenderer):
         Returns:
             str: The result
         """
-        messages = msg.to_list_input()
+        messages = to_list_input(msg)
         return '\n'.join(
             f'{msg['role']}: {msg[self.field]}'
             for msg in messages

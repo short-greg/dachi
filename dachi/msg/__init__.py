@@ -22,7 +22,9 @@ from ._messages import (
     FieldRenderer,
     MsgRenderer, 
     END_TOK,
-    to_dialog
+    to_dialog,
+    to_list_input,
+    NULL_TOK
 )
 from ._render import (
     model_from_text,

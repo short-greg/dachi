@@ -251,7 +251,7 @@ class MsgProc(Module, AsyncModule, ABC):
             streamed = False
             is_last = True
 
-        resp = [msg['meta'][r] for r in self._from]
+        resp = [msg.m[r] for r in self._from]
         is_undefined = all(r is utils.UNDEFINED for r in resp)
         
         if self._single:

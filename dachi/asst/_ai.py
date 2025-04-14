@@ -10,7 +10,7 @@ from abc import ABC, abstractmethod
 # local
 from ..msg._messages import (
     Msg, BaseDialog, StreamMsg,
-    END_TOK
+    END_TOK, to_list_input
 )
 from ._msg import MsgProc
 from ._asst import Assistant
@@ -254,7 +254,7 @@ class LLM(Assistant):
         """
         super().__init__()
         self._kwargs = kwargs or {}
-        self.resp_procs = procs or []
+        self.procs = procs or []
         self._message_arg = message_arg
         self._role_name = role_name
         self._base_aforwardf = aforwardf
@@ -281,12 +281,12 @@ class LLM(Assistant):
         kwargs = {
             **self._kwargs, 
             **kwargs, 
-            self._message_arg:msg.to_list_input()
+            self._message_arg:to_list_input(msg)
         }
         if self._forward is not None:
             return llm_forward(
                 self._forward, **kwargs, 
-                _resp_proc=self.resp_procs,
+                _resp_proc=self.procs,
                 _role=self._role_name
             )
         raise RuntimeError(
@@ -309,11 +309,11 @@ class LLM(Assistant):
             kwargs = {
                 **self._kwargs, 
                 **kwargs, 
-                self._message_arg: msg.to_list_input()
+                self._message_arg: to_list_input(msg)
             }
             return await llm_aforward(
                 self._aforward, **kwargs, 
-                _proc=self.resp_procs,
+                _proc=self.procs,
                 _role=self._role_name
             )
         else:
@@ -335,11 +335,11 @@ class LLM(Assistant):
             kwargs = {
                 **self._kwargs, 
                 **kwargs, 
-                self._message_arg: msg.to_list_input()
+                self._message_arg: to_list_input(msg)
             }
             for v in llm_stream(
                 self._stream, **kwargs, 
-                _proc=self.resp_procs,
+                _proc=self.procs,
                 _role=self._role_name, 
                 _delim=self._delim
             ):
@@ -366,11 +366,11 @@ class LLM(Assistant):
             kwargs = {
                 **self._kwargs, 
                 **kwargs, 
-                self._message_arg: msg.to_list_input()
+                self._message_arg: to_list_input(msg)
             }
             async for v in await llm_astream(
                 self._stream, **kwargs, 
-                _resp_proc=self.resp_procs,
+                _resp_proc=self.procs,
                 _role=self._role_name, 
                 _delim=self._delim
             ):
