@@ -235,7 +235,7 @@ class LLM(Assistant):
         aforwardf: typing.Callable=None,
         streamf: typing.Callable=None,
         astreamf: typing.Callable=None,
-        resp_procs: typing.List[RespConv]=None,
+        procs: typing.List[MsgProc]=None,
         kwargs: typing.Dict=None,
         message_arg: str='messages',
         role_name: str='assistant',
@@ -254,7 +254,7 @@ class LLM(Assistant):
         """
         super().__init__()
         self._kwargs = kwargs or {}
-        self.resp_procs = resp_procs or []
+        self.resp_procs = procs or []
         self._message_arg = message_arg
         self._role_name = role_name
         self._base_aforwardf = aforwardf
@@ -412,7 +412,7 @@ def _prepare(proc, kwargs):
 def llm_forward(
     f: typing.Callable, 
     *args, 
-    _proc: typing.List[RespConv]=None, 
+    _proc: typing.List[MsgProc]=None, 
     _role: str='assistant',
     _response_name: str='response',
     **kwargs
@@ -444,7 +444,7 @@ def llm_forward(
 async def llm_aforward(
     f, 
     *args, 
-    _proc: typing.List[RespConv]=None, 
+    _proc: typing.List[MsgProc]=None, 
     _role: str='assistant',
     _response_name: str='response',
     **kwargs
@@ -479,7 +479,7 @@ async def llm_aforward(
 def llm_stream(
     f: typing.Callable, 
     *args, 
-    _proc: typing.List[RespConv]=None, 
+    _proc: typing.List[MsgProc]=None, 
     _role: str='assistant',
     _response_name: str='response',
     **kwargs
@@ -520,7 +520,7 @@ def llm_stream(
 async def llm_astream(
     f: typing.Callable, 
     *args, 
-    _resp_proc: typing.List[RespConv]=None, 
+    _resp_proc: typing.List[MsgProc]=None, 
     _role: str='assistant',
     _response_name: str='response',
     **kwargs
