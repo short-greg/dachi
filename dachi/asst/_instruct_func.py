@@ -9,7 +9,7 @@ from functools import wraps
 import pydantic
 
 # local
-from ..base import Trainable, Renderable, Templatable
+from ..base import Templatable
 from ..proc._process import (
     Module, AsyncModule, StreamModule, 
     AsyncStreamModule, Param
@@ -26,8 +26,12 @@ from ._out import (
     PrimConv, PydanticConv,
     ConvTemplate
 )
+from ..msg import Cue, validate_out
 from ._msg import FromMsg
 from ..msg import render, render_multi
+
+
+X = typing.Union[str, Cue]
 
 
 Engine: typing.TypeAlias = Assist | AsyncAssist | StreamAssist | AsyncStreamAssist
@@ -35,174 +39,6 @@ Engine: typing.TypeAlias = Assist | AsyncAssist | StreamAssist | AsyncStreamAssi
 S = typing.TypeVar('S')
 
 # TODO: MOVE OUT OF HERE
-
-class Instruct(ABC):
-    """
-    """
-    @abstractmethod
-    def i(self) -> 'Cue':
-        """Create an Instruct class used for instructions
-
-        Returns:
-            Cue: Get the cue
-        """
-        pass
-
-
-class Cue(
-    Trainable, 
-    Instruct, typing.Generic[S], Renderable
-):
-    """Specific cue for the model to use
-    """
-    # text: str
-    # _out: typing.Optional[OutConv] = pydantic.PrivateAttr(default=None)
-
-    def __init__(
-        self, text: str, name: str='', 
-        out: typing.Optional[OutConv] = None
-    ):
-        """
-        Initializes the instance with the provided text, name, and optional output converter.
-        Args:
-            text (str): The text to be processed.
-            name (str, optional): The name associated with the text. Defaults to an empty string.
-            out (Optional[OutConv], optional): The converter to use for processing the output. Defaults to None.
-        """
-        super().__init__()
-        self._out = out
-        self.text = text
-        self.name = name
-
-    def i(self) -> Self:
-        return self
-
-    @pydantic.field_validator('text', mode='before')
-    def convert_renderable_to_string(cls, v):
-        if isinstance(v, Renderable):
-            return v.render()
-        if is_primitive(v):
-            return str(v)
-        return v
-
-    def render(self) -> str:
-        """Render the cue
-
-        Returns:
-            str: The text for the cue 
-        """
-        return self.text
-
-    def read(self, data: str) -> typing.Any:
-        """Read the data
-
-        Args:
-            data (str): The data to read
-
-        Raises:
-            RuntimeError: If the cue does not have a out
-
-        Returns:
-            S: The result of the read process
-        """
-        if self._out is None:
-            return data
-            # raise RuntimeError(
-            #     "Out has not been specified so can't read it"
-            # )
-        
-        return self._out(data)
-
-    def state_dict(self) -> typing.Dict:
-        
-        return {
-            'text': self.text,
-        }
-
-    def load_state_dict(self, params: typing.Dict):
-        
-        self.text = params['text']
-
-    @property
-    def fixed_data(self):
-        return {"out"}
-
-    def update_param_dict(self, data: typing.Dict) -> bool:
-        """Update the text for the parameter
-        If not in "training" mode will not update
-
-        Args:
-            text (str): The text to update with
-        
-        Returns:
-            True if updated and Fals if not (not in training mode)
-        """
-        if self.training:
-            # excluded = self.data.dict_excluded()
-            # data.update(
-            #     excluded
-            # )
-
-            self.text = data[self.name]
-            return True
-        return False
-
-    def param_dict(self):
-        """Update the text for the parameter
-        If not in "training" mode will not update
-
-        Args:
-            text (str): The text to update with
-        
-        Returns:
-            True if updated and Fals if not (not in training mode)
-        """
-        if self.training:
-            return {self._name: self.text}
-        return {}
-
-    def data_schema(self) -> typing.Dict:
-        """Get the structure of the object
-
-        Returns:
-            typing.Dict: The structure of the object
-        """
-        return {
-            "title": self.name,
-            "type": "object",
-            "properties": {
-                "text": {
-                    "title": "Text",
-                    "type": "string"
-                }
-            },
-            "required": ["text"]
-        }
-
-
-X = typing.Union[str, Cue]
-
-def validate_out(cues: typing.List[X]) -> typing.Optional[OutConv]:
-    """Validate an Out based on several instructions
-
-    Args:
-        instructions (typing.List[X]): The instructions 
-
-    Returns:
-        Out: The resulting "Out" to use from the instructions
-    """
-    if isinstance(cues, dict):
-        cues = cues.values()
-
-    out = None
-    for cue in cues:
-        if not isinstance(cue, Cue):
-            continue
-        if out is None and cue._out is not None:
-            out = cue._out
-        elif cue._out is not None:
-            raise RuntimeError(f'Out cannot be duplicated')
-    return out
 
 
 
@@ -780,8 +616,7 @@ class StreamDec(FuncDecBase, StreamModule):
             **kwargs: Arbitrary keyword arguments.
         Yields:
             The delta of the response from the LLM engine.
-        """
-        
+        """        
         yield from self.stream(*args, **kwargs)
 
 
@@ -835,6 +670,7 @@ class AStreamDec(FuncDecBase, AsyncStreamModule):
             resp = self._inst.parser(resp_msg)
             resp = self._inst.out_conv(resp)
             resp, filtered = self._inst.from_msg.filter(resp)
+
             if filtered:
                 yield None
             yield resp

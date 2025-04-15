@@ -13,6 +13,24 @@ S = typing.TypeVar('S', bound=pydantic.BaseModel)
 X = typing.Union[str]
 
 
+
+# 1st party
+import typing
+from abc import abstractmethod, ABC
+from typing import Self
+import inspect
+from functools import wraps
+
+# 3rd party
+import pydantic
+
+# local
+from ..base import Trainable, Renderable
+from ..utils import is_primitive, str_formatter
+
+from ._render import render, render_multi
+
+
 def generate_numbered_list(n, numbering_type='arabic') -> typing.List:
     """Generate a numbered list in arabic or roman numerals
 
@@ -191,60 +209,234 @@ DEFAULT_STYLE = {
 
 
 
-# def fill(x_instr: X, *args: X, **kwargs: X) -> 'Cue':
-#     """Format a string with variables
+# Engine: typing.TypeAlias = Assist | AsyncAssist | StreamAssist | AsyncStreamAssist
 
-#     Args:
-#         x_instr (X): The value to format
+S = typing.TypeVar('S')
 
-#     Returns:
-#         Cue: The resulting cue
-#     """
-#     out = validate_out([x_instr])
+# TODO: MOVE OUT OF HERE
 
-#     kwargs = dict(zip(kwargs.keys(), render_multi(kwargs.values())))
-#     args = render_multi(args)
-#     return Cue(
-#         text=str_formatter(render(x_instr), *args, **kwargs), out=out
-#     )
+class Instruct(ABC):
+    """
+    """
+    @abstractmethod
+    def i(self) -> 'Cue':
+        """Create an Instruct class used for instructions
 
-
-# def cat(xs: typing.List[Cue], sep: str=' ') -> Cue:
-#     """Concatenate multiple cues together
-
-#     Args:
-#         xs (typing.List[Cue]): THe cues 
-#         sep (str): The delimiter to use for the sections
-
-#     Raises:
-#         RuntimeError: 
-
-#     Returns:
-#         Cue: The concatenated cues
-#     """
-#     out = validate_out(xs)
-
-#     return Cue(text=f'{sep}'.join(
-#         render(x_i) for x_i in xs
-#     ), out=out)
+        Returns:
+            Cue: Get the cue
+        """
+        pass
 
 
-# def join(x1: X, x2: X, sep: str=' ') -> Cue:
-#     """Join two instructions together
+class Cue(
+    Trainable, 
+    Instruct, typing.Generic[S], Renderable
+):
+    """Specific cue for the model to use
+    """
+    # text: str
+    # _out: typing.Optional[OutConv] = pydantic.PrivateAttr(default=None)
 
-#     Args:
-#         x1 : Cue 1
-#         x2 : Cue 2
-#         sep (str): The separator between the two instructions
+    def __init__(
+        self, text: str, name: str='', 
+        out: typing.Optional[typing.Callable[[typing.Any], typing.Any]] = None
+    ):
+        """
+        Initializes the instance with the provided text, name, and optional output converter.
+        Args:
+            text (str): The text to be processed.
+            name (str, optional): The name associated with the text. Defaults to an empty string.
+            out (Optional[OutConv], optional): The converter to use for processing the output. Defaults to None.
+        """
+        super().__init__()
+        self._out = out
+        self.text = text
+        self.name = name
 
-#     Returns:
-#         Cue: The joined instructions
-#     """
-#     out = validate_out([x1, x2])
-#     return Cue(
-#         text=render(x1) + sep + render(x2),
-#         out=out
-#     )
+    def i(self) -> Self:
+        return self
+
+    @pydantic.field_validator('text', mode='before')
+    def convert_renderable_to_string(cls, v):
+        if isinstance(v, Renderable):
+            return v.render()
+        if is_primitive(v):
+            return str(v)
+        return v
+
+    def render(self) -> str:
+        """Render the cue
+
+        Returns:
+            str: The text for the cue 
+        """
+        return self.text
+
+    def read(self, data: str) -> typing.Any:
+        """Read the data
+
+        Args:
+            data (str): The data to read
+
+        Raises:
+            RuntimeError: If the cue does not have a out
+
+        Returns:
+            S: The result of the read process
+        """
+        if self._out is None:
+            return data
+        
+        return self._out(data)
+
+    def state_dict(self) -> typing.Dict:
+        
+        return {
+            'text': self.text,
+        }
+
+    def load_state_dict(self, params: typing.Dict):
+        
+        self.text = params['text']
+
+    @property
+    def fixed_data(self):
+        return {"out"}
+
+    def update_param_dict(self, data: typing.Dict) -> bool:
+        """Update the text for the parameter
+        If not in "training" mode will not update
+
+        Args:
+            text (str): The text to update with
+        
+        Returns:
+            True if updated and Fals if not (not in training mode)
+        """
+        if self.training:
+            # excluded = self.data.dict_excluded()
+            # data.update(
+            #     excluded
+            # )
+
+            self.text = data[self.name]
+            return True
+        return False
+
+    def param_dict(self):
+        """Update the text for the parameter
+        If not in "training" mode will not update
+
+        Args:
+            text (str): The text to update with
+        
+        Returns:
+            True if updated and Fals if not (not in training mode)
+        """
+        if self.training:
+            return {self._name: self.text}
+        return {}
+
+    def data_schema(self) -> typing.Dict:
+        """Get the structure of the object
+
+        Returns:
+            typing.Dict: The structure of the object
+        """
+        return {
+            "title": self.name,
+            "type": "object",
+            "properties": {
+                "text": {
+                    "title": "Text",
+                    "type": "string"
+                }
+            },
+            "required": ["text"]
+        }
+
+
+Y = typing.Union[str, Cue]
+
+
+
+def validate_out(cues: typing.List[Y]) -> typing.Optional[typing.Callable[[typing.Any], typing.Any]]:
+    """Validate an Out based on several instructions
+
+    Args:
+        instructions (typing.List[X]): The instructions 
+
+    Returns:
+        Out: The resulting "Out" to use from the instructions
+    """
+    if isinstance(cues, dict):
+        cues = cues.values()
+
+    out = None
+    for cue in cues:
+        if not isinstance(cue, Cue):
+            continue
+        if out is None and cue._out is not None:
+            out = cue._out
+        elif cue._out is not None:
+            raise RuntimeError(f'Out cannot be duplicated')
+    return out
+
+
+def fill(x_instr: Y, *args: Y, **kwargs: Y) -> 'Cue':
+    """Format a string with variables
+
+    Args:
+        x_instr (X): The value to format
+
+    Returns:
+        Cue: The resulting cue
+    """
+    out = validate_out([x_instr])
+
+    kwargs = dict(zip(kwargs.keys(), render_multi(kwargs.values())))
+    args = render_multi(args)
+    return Cue(
+        text=str_formatter(render(x_instr), *args, **kwargs), out=out
+    )
+
+
+def cat(xs: typing.List[Cue], sep: str=' ') -> Cue:
+    """Concatenate multiple cues together
+
+    Args:
+        xs (typing.List[Cue]): THe cues 
+        sep (str): The delimiter to use for the sections
+
+    Raises:
+        RuntimeError: 
+
+    Returns:
+        Cue: The concatenated cues
+    """
+    out = validate_out(xs)
+
+    return Cue(text=f'{sep}'.join(
+        render(x_i) for x_i in xs
+    ), out=out)
+
+
+def join(x1: Y, x2: Y, sep: str=' ') -> Cue:
+    """Join two instructions together
+
+    Args:
+        x1 : Cue 1
+        x2 : Cue 2
+        sep (str): The separator between the two instructions
+
+    Returns:
+        Cue: The joined instructions
+    """
+    out = validate_out([x1, x2])
+    return Cue(
+        text=render(x1) + sep + render(x2),
+        out=out
+    )
 
 
 # def bullet(xs: typing.Iterable[X], bullets: str='-', indent: int=0) -> 'Cue':

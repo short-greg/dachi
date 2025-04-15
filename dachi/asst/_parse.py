@@ -50,6 +50,7 @@ class NullParser(ParseConv):
         Returns:
             typing.List: 
         """
+        resp = resp or ''
         return [resp]
     
     def render(self, data):
@@ -174,6 +175,7 @@ class CSVCellParser(MsgProc):
         # resp = self.handle_null(resp, '')
         # print('Resp: ', resp)
 
+        resp = resp or ''
         val = store.acc(delta_store, 'val', resp)
         cur_row = store.get_or_set(delta_store, 'row', 0)
         header = store.get_or_set(delta_store, 'header', None)
@@ -273,6 +275,7 @@ class CharDelimParser(ParseConv):
     ) -> typing.List | None:
         
         # resp = self.handle_null(resp, '')
+        resp = resp or ''
         val = store.acc(delta_store, 'val', resp)
         res = val.split(self.sep)
         return_val = utils.UNDEFINED
@@ -313,6 +316,7 @@ class FullParser(ParseConv):
         super().__init__(name, from_)
 
     def delta(self, resp, delta_store: typing.Dict, streamed: bool=False, is_last: bool=False) -> typing.List:
+        resp = resp or ''
         store.acc(delta_store, 'val', resp)
         if is_last:
             val = delta_store['val']
@@ -345,7 +349,7 @@ class LineParser(ParseConv):
         Returns:
             typing.Any: 
         """ 
-        # resp = self.handle_null(resp, '')
+        resp = resp or ''
         store.acc(delta_store, 'val', resp)
         lines = delta_store['val'].splitlines()
         result = []

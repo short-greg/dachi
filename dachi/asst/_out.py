@@ -94,17 +94,17 @@ class PrimConv(OutConv):
         Returns:
             typing.Any: The output of the reader
         """
-
         if len(resp) > 0:
             resp = resp[0]
         else:
             return utils.UNDEFINED
+        
+        resp = resp or ''
+
         val = store.acc(delta_store, 'val', resp)
 
         if not is_last:
             return utils.UNDEFINED
-        
-        resp = resp[0]
         
         if self._out_cls is bool:
             return (
@@ -171,6 +171,8 @@ class PydanticConv(OutConv, typing.Generic[S]):
         if len(resp) == 0:
             return utils.UNDEFINED
         resp = resp[0]
+
+        resp = resp or ''
         val = store.acc(delta_store, 'val', resp)
 
         if not is_last:

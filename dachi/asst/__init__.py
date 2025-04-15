@@ -40,11 +40,9 @@ from ._parse import (
     CharDelimParser,
     LineParser
 )
+
 # from ._chat import Chat
 from ._instruct_func import (
-    Instruct,
-    Cue,
-    validate_out,
     IBase,
     InstF,
     SigF,

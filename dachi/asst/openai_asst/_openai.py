@@ -32,11 +32,14 @@ class OpenAITextConv(RespConv):
     OpenAITextProc is a class that processes an OpenAI response and extracts text outputs from it.
     """
 
+    def __init__(self, name: str='content', from_ = 'response'):
+        super().__init__(name, from_)
+
     def post(
         self, msg, result, delta_store, 
         streamed = False, is_last = False
     ):
-        """_summary_
+        """
 
         Args:
             msg: The message to process
@@ -45,8 +48,10 @@ class OpenAITextConv(RespConv):
             streamed (bool, optional): whether streamed or not. Defaults to False.
             is_last (bool, optional): the last. Defaults to False.
         """
+        content = '' if msg.m['content'] in (None, UNDEFINED) else msg.m['content']
+        print(msg.m['content'])
         store.acc(
-            delta_store, 'all_content', msg.m['content']
+            delta_store, 'all_content', content
         )
         msg['content'] = delta_store['all_content']
     
@@ -82,8 +87,8 @@ class OpenAIStructConv(RespConv):
     """
     OpenAITextProc is a class that processes an OpenAI response and extracts text outputs from it.
     """
-    def __init__(self, struct: pydantic.BaseModel | typing.Dict=None):
-        super().__init__(False)
+    def __init__(self, name: str='content', from_: str='response', struct: pydantic.BaseModel | typing.Dict=None):
+        super().__init__(name, from_)
         self._struct = struct
 
     def post(
@@ -142,6 +147,9 @@ class OpenAIStructConv(RespConv):
 
 
 class OpenAIStreamStructConv(OpenAIStructConv):
+
+    def __init__(self, name = 'content', from_ = 'response', struct = None):
+        super().__init__(name, from_, struct)
     
     def delta(
         self, resp, delta_store: typing.Dict, 
@@ -168,6 +176,9 @@ class OpenAIStreamStructConv(OpenAIStructConv):
 class OpenAIParsedStructConv(OpenAIStructConv):
     """For use with the "parse" API
     """
+
+    def __init__(self, name = 'content', from_ = 'response', struct = None):
+        super().__init__(name, from_, struct)
     
     def delta(self, response, msg, delta_store: typing.Dict):
         """
@@ -188,13 +199,13 @@ class OpenAIToolConv(RespConv):
     This class extends the RespProc class and is designed to handle responses from OpenAI's language model,
     specifically to extract and manage tool calls embedded within the responses.
     """
-    def __init__(self, tools: ToolSet):
+    def __init__(self, tools: ToolSet, name: str='tools', from_: str='response'):
         """
 
         Args:
             tools (typing.Dict[str, ToolOption]): 
         """
-        super().__init__(True)
+        super().__init__(name, from_)
         self.tools = tools
 
     def prep(self):

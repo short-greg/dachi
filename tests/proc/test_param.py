@@ -4,7 +4,6 @@ from typing import Any
 from dachi.proc import _process as core
 from dachi.proc import Param, Module, ParamSet
 from dachi.proc import _process
-from dachi.asst import Cue
 import numpy as np
 from dachi.base import Trainable
 

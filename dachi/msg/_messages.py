@@ -381,7 +381,10 @@ class ListDialog(BaseDialog):
         Returns:
             Dialog: The updated dialog
         """
-        self._messages[idx] = message
+        if idx == len(self._messages):
+            self._messages.append(message)
+        else:
+            self._messages[idx] = message
         return self
 
     def clone(self) -> 'ListDialog':
@@ -496,6 +499,11 @@ class FieldRenderer(MsgRenderer):
         if self.meta:
             return render(msg.m[self.field])
         return render(msg[self.field])
+
+
+class TreeDialog(BaseDialog):
+
+    pass
 
 
 class DialogTurn(BaseDialog):
