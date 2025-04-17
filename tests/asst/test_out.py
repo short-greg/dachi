@@ -8,6 +8,23 @@ from dachi.msg import model_to_text, END_TOK, Msg, StreamMsg
 from dachi.asst import _out as text_proc
 from .._structs import SimpleStruct2
 from dachi import utils
+from dachi.asst import _parse
+from dachi.msg import Msg, StreamMsg
+import typing
+from dachi import utils
+
+
+
+def asst_stream(data, convs) -> typing.Iterator:
+    """Use to simulate an assitant stream"""
+    delta_store = {}
+    for i, d in enumerate(data):
+        is_last = i == len(data) - 1
+        msg = StreamMsg('assistant', meta={'content': d}, is_last=is_last)
+        for conv in convs:
+            msg = conv(msg, delta_store)
+            yield msg
+
 
 
 class TestPydanticConv(object):
@@ -972,3 +989,155 @@ class TestIndexConv(object):
         
         assert ress[0] == '1'
         assert ress[1] == '4'
+
+
+csv_data1 = (
+"""name,age,city
+John,25,New York
+Jane,30,Los Angeles
+"Smith, Jr.",40,Chicago"""
+)
+
+csv_data2 = (
+"""product,price,description
+"Widget, Deluxe",19.99,"High-quality widget with multiple features"
+"Gadget",9.99,"Compact gadget, easy to use"
+"Tool, Multi-purpose",29.99,"Durable and versatile tool"""
+)
+
+csv_data3 = (
+""""Widget, Deluxe",19.99,"High-quality widget with multiple features"
+"Gadget",9.99,"Compact gadget, easy to use"
+"Tool, Multi-purpose",29.99,"Durable and versatile tool"""
+)
+
+from collections import OrderedDict
+
+class TestCSVParser(object):
+
+    
+    def test_csv_row_parser_handles_empty_data(self):
+        data = ""
+        parser = _parse.CSVRowParser('F1', use_header=True)
+        msg = Msg('user', meta={'content': data})
+        res = parser(msg).m['F1']
+        assert res == utils.UNDEFINED
+
+    def test_csv_row_parser_handles_single_row_no_header(self):
+        data = "John,25,New York"
+        parser = _parse.CSVRowParser('F1', use_header=False)
+        msg = Msg('user', meta={'content': data})
+        res = parser(msg).m['F1']
+        assert len(res) == 1
+        assert res[0] == ["John", "25", "New York"]
+
+    def test_csv_row_parser_handles_single_row_with_header(self):
+        data = "name,age,city\nJohn,25,New York"
+        parser = _parse.CSVRowParser('F1', use_header=True)
+        msg = Msg('user', meta={'content': data})
+        res = parser(msg).m['F1']
+        assert len(res) == 1
+        assert res[0] == OrderedDict(zip(["name", "age", "city"], ["John", "25", "New York"]))
+
+    def test_csv_row_parser_handles_multiple_rows_with_header(self):
+        data = csv_data1
+        parser = _parse.CSVRowParser('F1', use_header=True)
+        msg = Msg('user', meta={'content': data})
+        res = parser(msg).m['F1']
+        assert len(res) == 3
+        assert res[0] == OrderedDict(zip(["name", "age", "city"], ["John", "25", "New York"]))
+        assert res[1] == OrderedDict(zip(["name", "age", "city"], ["Jane", "30", "Los Angeles"]))
+        assert res[2] == OrderedDict(zip(["name", "age", "city"], ["Smith, Jr.", "40", "Chicago"]))
+
+    def test_csv_row_parser_handles_multiple_rows_no_header(self):
+        data = csv_data3
+        parser = _parse.CSVRowParser('F1', use_header=False)
+        msg = Msg('user', meta={'content': data})
+        res = parser(msg).m['F1']
+        assert len(res) == 3
+        assert res[0] == ["Widget, Deluxe", "19.99", "High-quality widget with multiple features"]
+        assert res[1] == ["Gadget", "9.99", "Compact gadget, easy to use"]
+        assert res[2] == ["Tool, Multi-purpose", "29.99", "Durable and versatile tool"]
+
+    def test_csv_row_parser_handles_streamed_data_with_header(self):
+        data = csv_data1
+        parser = _parse.CSVRowParser('F1', use_header=True)
+        res = []
+        for cur in asst_stream(data, [parser]):
+            cur = cur.m['F1']
+            if cur != utils.UNDEFINED:
+                res.extend(cur)
+        assert len(res) == 3
+        assert res[0] == OrderedDict(zip(["name", "age", "city"], ["John", "25", "New York"]))
+        assert res[1] == OrderedDict(zip(["name", "age", "city"], ["Jane", "30", "Los Angeles"]))
+        assert res[2] == OrderedDict(zip(["name", "age", "city"], ["Smith, Jr.", "40", "Chicago"]))
+
+    def test_csv_row_parser_handles_streamed_data_no_header(self):
+        data = csv_data3
+        parser = _parse.CSVRowParser('F1', use_header=False)
+        res = []
+        for cur in asst_stream(data, [parser]):
+            cur = cur.m['F1']
+            if cur != utils.UNDEFINED:
+                res.extend(cur)
+        assert len(res) == 3
+        assert res[0] == ["Widget, Deluxe", "19.99", "High-quality widget with multiple features"]
+        assert res[1] == ["Gadget", "9.99", "Compact gadget, easy to use"]
+        assert res[2] == ["Tool, Multi-purpose", "29.99", "Durable and versatile tool"]
+
+    def test_csv_row_parser_handles_different_delimiters(self):
+        data = "name|age|city\nJohn|25|New York\nJane|30|Los Angeles"
+        parser = _parse.CSVRowParser('F1', delimiter='|', use_header=True)
+        msg = Msg('user', meta={'content': data})
+        res = parser(msg).m['F1']
+        assert len(res) == 2
+        assert res[0] == OrderedDict(zip(["name", "age", "city"], ["John", "25", "New York"]))
+        assert res[1] == OrderedDict(zip(["name", "age", "city"], ["Jane", "30", "Los Angeles"]))
+
+    def test_csv_delim_parser_returns_correct_len_with_header(self):
+        
+        data = csv_data1
+        parser = _parse.CSVRowParser('F1', use_header=True)
+        msg = Msg('user', meta={'content': data})
+        res = parser(msg).m['F1']
+        assert len(res) == 3
+
+    def test_char_delim_parser_returns_csv_with_no_header(self):
+        
+        data = csv_data3
+        parser = _parse.CSVRowParser('F1', use_header=False)
+        msg = Msg('user', meta={'content': data})
+        res = parser(msg).m['F1']
+        assert len(res) == 3
+
+    def test_csv_delim_parser_returns_correct_len_with_header2(self):
+        
+        data = csv_data1
+        parser = _parse.CSVRowParser(
+            'F1', use_header=True
+        )
+        res = []
+
+        for cur in asst_stream(data, [parser]):
+            cur = cur.m['F1']
+            if cur != utils.UNDEFINED:
+                res.extend(cur)
+
+        assert len(res) == 3
+
+    def test_csv_delim_parser_returns_correct_len_with_newline(self):
+        
+        data = csv_data2
+        parser = _parse.CSVRowParser(
+            'F1', use_header=True
+        )
+        res = []
+
+        for cur in asst_stream(data, [parser]):
+            cur = cur.m['F1']
+            if cur != utils.UNDEFINED:
+                res.extend(cur)
+
+        assert len(res) == 3
+
+

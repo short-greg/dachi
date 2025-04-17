@@ -487,7 +487,6 @@ class CSVOut(OutConv):
     Dynamically parse CSV data, returning new rows as accumulated. 
     The header will be returned along with them if used.
     """
-    
     def __init__(self, name: str, from_: str ='content', delimiter: str = ',', use_header: bool = True):
         """
         Initializes the CSV parser with the specified delimiter and header usage.
@@ -604,3 +603,4 @@ class CSVOut(OutConv):
 #             example = processor.render(example)
 #         return example
     
+

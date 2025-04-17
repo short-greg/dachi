@@ -14,6 +14,26 @@ xy
 z: e"""
 )
 
+csv_data1 = (
+"""name,age,city
+John,25,New York
+Jane,30,Los Angeles
+"Smith, Jr.",40,Chicago"""
+)
+
+csv_data2 = (
+"""product,price,description
+"Widget, Deluxe",19.99,"High-quality widget with multiple features"
+"Gadget",9.99,"Compact gadget, easy to use"
+"Tool, Multi-purpose",29.99,"Durable and versatile tool"""
+)
+
+csv_data3 = (
+""""Widget, Deluxe",19.99,"High-quality widget with multiple features"
+"Gadget",9.99,"Compact gadget, easy to use"
+"Tool, Multi-purpose",29.99,"Durable and versatile tool"""
+)
+
 
 def asst_stream(data, convs) -> typing.Iterator:
     """Use to simulate an assitant stream"""
@@ -138,135 +158,6 @@ xy"""
 
         assert res[0] == t1
         assert res[1] == t2
-
-
-class TestFullParser(object):
-
-    def test_full_parser_accumulates_data_until_end_of_stream(self):
-        data = ["Hello", " ", "World"]
-        parser = _parse.FullParser('F1')
-        res = []
-        for cur in asst_stream(data, [parser]):
-            cur = cur.m['F1']
-            if cur != utils.UNDEFINED:
-                res.extend(cur)
-        assert len(res) == 1
-        assert res[0] == "Hello World"
-
-    def test_full_parser_handles_empty_stream(self):
-        data = []
-        parser = _parse.FullParser('F1')
-        res = []
-        for cur in asst_stream(data, [parser]):
-            cur = cur.m['F1']
-            if cur != utils.UNDEFINED:
-                res.extend(cur)
-        assert len(res) == 0
-
-    def test_full_parser_handles_single_chunk_stream(self):
-        data = ["SingleChunk"]
-        parser = _parse.FullParser('F1')
-        res = []
-        for cur in asst_stream(data, [parser]):
-            cur = cur.m['F1']
-            if cur != utils.UNDEFINED:
-                res.extend(cur)
-        assert len(res) == 1
-        assert res[0] == "SingleChunk"
-
-    def test_full_parser_handles_multiple_chunks_with_special_characters(self):
-        data = ["Hello,", " ", "this", " ", "is", " ", "a", " ", "test!"]
-        parser = _parse.FullParser('F1')
-        res = []
-        for cur in asst_stream(data, [parser]):
-            cur = cur.m['F1']
-            if cur != utils.UNDEFINED:
-                res.extend(cur)
-        assert len(res) == 1
-        assert res[0] == "Hello, this is a test!"
-
-    def test_full_parser_clears_delta_store_after_stream_end(self):
-        data = ["Part1", "Part2"]
-        parser = _parse.FullParser('F1')
-        delta_store = {}
-        for cur in asst_stream(data, [parser]):
-            parser.delta(cur.m['content'], delta_store, streamed=True, is_last=False)
-        assert 'val' in delta_store
-        parser.delta(data[-1], delta_store, streamed=True, is_last=True)
-        assert 'val' not in delta_store
-
-    def test_full_parser_render_converts_data_to_string(self):
-        data = ["Rendered", " ", "Output"]
-        parser = _parse.FullParser('F1')
-        res = parser.render(data)
-        assert res == "['Rendered', ' ', 'Output']"
-
-    def test_full_parser_handles_stream_with_numbers(self):
-        data = ["123", "456", "789"]
-        parser = _parse.FullParser('F1')
-        res = []
-        for cur in asst_stream(data, [parser]):
-            cur = cur.m['F1']
-            if cur != utils.UNDEFINED:
-                res.extend(cur)
-        assert len(res) == 1
-        assert res[0] == "123456789"
-
-    def test_full_parser_handles_stream_with_mixed_data_types(self):
-        data = ["Hello", "123", "World"]
-        parser = _parse.FullParser('F1')
-        res = []
-        for cur in asst_stream(data, [parser]):
-            cur = cur.m['F1']
-            if cur != utils.UNDEFINED:
-                res.extend(cur)
-        assert len(res) == 1
-        assert res[0] == "Hello123World"
-
-    def test_full_parser_handles_stream_with_unicode_characters(self):
-        data = ["こんにちは", " ", "世界"]
-        parser = _parse.FullParser('F1')
-        res = []
-        for cur in asst_stream(data, [parser]):
-            cur = cur.m['F1']
-            if cur != utils.UNDEFINED:
-                res.extend(cur)
-        assert len(res) == 1
-        assert res[0] == "こんにちは 世界"
-
-    def test_full_parser_handles_stream_with_empty_strings(self):
-        data = ["", "Hello", "", "World", ""]
-        parser = _parse.FullParser('F1')
-        res = []
-        for cur in asst_stream(data, [parser]):
-            cur = cur.m['F1']
-            if cur != utils.UNDEFINED:
-                res.extend(cur)
-        assert len(res) == 1
-        assert res[0] == "HelloWorld"
-
-    def test_full_parser_only_returns_last_element(self):
-        
-        data = "2.0"
-        full_parser = _parse.FullParser('F1')
-        msg = Msg('user', meta={'content': data})
-        res = full_parser(msg)
-        res = res.m['F1']
-        assert res == ["2.0"]
-
-    def test_full_parser_only_returns_last_element_with_stream(self):
-        
-        data = "2.0"
-        parser = _parse.FullParser('F1')
-
-        res = []
-
-        for cur in asst_stream(data, [parser]):
-            cur = cur.m['F1']
-            if cur != utils.UNDEFINED:
-                res.extend(cur)
-
-        assert res[0] == "2.0"
 
 
 class TestCharDelimParser(object):
@@ -430,155 +321,6 @@ class TestCharDelimParser(object):
         assert res[0] == "2"
         assert res[1] == "0"
 
-csv_data1 = (
-"""name,age,city
-John,25,New York
-Jane,30,Los Angeles
-"Smith, Jr.",40,Chicago"""
-)
-
-csv_data2 = (
-"""product,price,description
-"Widget, Deluxe",19.99,"High-quality widget with multiple features"
-"Gadget",9.99,"Compact gadget, easy to use"
-"Tool, Multi-purpose",29.99,"Durable and versatile tool"""
-)
-
-csv_data3 = (
-""""Widget, Deluxe",19.99,"High-quality widget with multiple features"
-"Gadget",9.99,"Compact gadget, easy to use"
-"Tool, Multi-purpose",29.99,"Durable and versatile tool"""
-)
-
-from collections import OrderedDict
-
-class TestCSVParser(object):
-
-    
-    def test_csv_row_parser_handles_empty_data(self):
-        data = ""
-        parser = _parse.CSVRowParser('F1', use_header=True)
-        msg = Msg('user', meta={'content': data})
-        res = parser(msg).m['F1']
-        assert res == utils.UNDEFINED
-
-    def test_csv_row_parser_handles_single_row_no_header(self):
-        data = "John,25,New York"
-        parser = _parse.CSVRowParser('F1', use_header=False)
-        msg = Msg('user', meta={'content': data})
-        res = parser(msg).m['F1']
-        assert len(res) == 1
-        assert res[0] == ["John", "25", "New York"]
-
-    def test_csv_row_parser_handles_single_row_with_header(self):
-        data = "name,age,city\nJohn,25,New York"
-        parser = _parse.CSVRowParser('F1', use_header=True)
-        msg = Msg('user', meta={'content': data})
-        res = parser(msg).m['F1']
-        assert len(res) == 1
-        assert res[0] == OrderedDict(zip(["name", "age", "city"], ["John", "25", "New York"]))
-
-    def test_csv_row_parser_handles_multiple_rows_with_header(self):
-        data = csv_data1
-        parser = _parse.CSVRowParser('F1', use_header=True)
-        msg = Msg('user', meta={'content': data})
-        res = parser(msg).m['F1']
-        assert len(res) == 3
-        assert res[0] == OrderedDict(zip(["name", "age", "city"], ["John", "25", "New York"]))
-        assert res[1] == OrderedDict(zip(["name", "age", "city"], ["Jane", "30", "Los Angeles"]))
-        assert res[2] == OrderedDict(zip(["name", "age", "city"], ["Smith, Jr.", "40", "Chicago"]))
-
-    def test_csv_row_parser_handles_multiple_rows_no_header(self):
-        data = csv_data3
-        parser = _parse.CSVRowParser('F1', use_header=False)
-        msg = Msg('user', meta={'content': data})
-        res = parser(msg).m['F1']
-        assert len(res) == 3
-        assert res[0] == ["Widget, Deluxe", "19.99", "High-quality widget with multiple features"]
-        assert res[1] == ["Gadget", "9.99", "Compact gadget, easy to use"]
-        assert res[2] == ["Tool, Multi-purpose", "29.99", "Durable and versatile tool"]
-
-    def test_csv_row_parser_handles_streamed_data_with_header(self):
-        data = csv_data1
-        parser = _parse.CSVRowParser('F1', use_header=True)
-        res = []
-        for cur in asst_stream(data, [parser]):
-            cur = cur.m['F1']
-            if cur != utils.UNDEFINED:
-                res.extend(cur)
-        assert len(res) == 3
-        assert res[0] == OrderedDict(zip(["name", "age", "city"], ["John", "25", "New York"]))
-        assert res[1] == OrderedDict(zip(["name", "age", "city"], ["Jane", "30", "Los Angeles"]))
-        assert res[2] == OrderedDict(zip(["name", "age", "city"], ["Smith, Jr.", "40", "Chicago"]))
-
-    def test_csv_row_parser_handles_streamed_data_no_header(self):
-        data = csv_data3
-        parser = _parse.CSVRowParser('F1', use_header=False)
-        res = []
-        for cur in asst_stream(data, [parser]):
-            cur = cur.m['F1']
-            if cur != utils.UNDEFINED:
-                res.extend(cur)
-        assert len(res) == 3
-        assert res[0] == ["Widget, Deluxe", "19.99", "High-quality widget with multiple features"]
-        assert res[1] == ["Gadget", "9.99", "Compact gadget, easy to use"]
-        assert res[2] == ["Tool, Multi-purpose", "29.99", "Durable and versatile tool"]
-
-    def test_csv_row_parser_handles_different_delimiters(self):
-        data = "name|age|city\nJohn|25|New York\nJane|30|Los Angeles"
-        parser = _parse.CSVRowParser('F1', delimiter='|', use_header=True)
-        msg = Msg('user', meta={'content': data})
-        res = parser(msg).m['F1']
-        assert len(res) == 2
-        assert res[0] == OrderedDict(zip(["name", "age", "city"], ["John", "25", "New York"]))
-        assert res[1] == OrderedDict(zip(["name", "age", "city"], ["Jane", "30", "Los Angeles"]))
-
-    def test_csv_delim_parser_returns_correct_len_with_header(self):
-        
-        data = csv_data1
-        parser = _parse.CSVRowParser('F1', use_header=True)
-        msg = Msg('user', meta={'content': data})
-        res = parser(msg).m['F1']
-        assert len(res) == 3
-
-    def test_char_delim_parser_returns_csv_with_no_header(self):
-        
-        data = csv_data3
-        parser = _parse.CSVRowParser('F1', use_header=False)
-        msg = Msg('user', meta={'content': data})
-        res = parser(msg).m['F1']
-        assert len(res) == 3
-
-    def test_csv_delim_parser_returns_correct_len_with_header2(self):
-        
-        data = csv_data1
-        parser = _parse.CSVRowParser(
-            'F1', use_header=True
-        )
-        res = []
-
-        for cur in asst_stream(data, [parser]):
-            cur = cur.m['F1']
-            if cur != utils.UNDEFINED:
-                res.extend(cur)
-
-        assert len(res) == 3
-
-    def test_csv_delim_parser_returns_correct_len_with_newline(self):
-        
-        data = csv_data2
-        parser = _parse.CSVRowParser(
-            'F1', use_header=True
-        )
-        res = []
-
-        for cur in asst_stream(data, [parser]):
-            cur = cur.m['F1']
-            if cur != utils.UNDEFINED:
-                res.extend(cur)
-
-        assert len(res) == 3
-
 
 class TestCSVCellParser(object):
 
@@ -730,24 +472,3 @@ class TestCSVCellParser(object):
                 res.extend(cur)
 
         assert len(res) == 9
-
-
-class TestNullParser(object):
-
-    def test_null_parser_returns_same_value(self):
-        
-        data = "2.0"
-        null_parser = _parse.NullParser('F1')
-        msg = Msg('assistant', meta={'content': data})
-        res = null_parser(msg).m['F1']
-        assert res == ["2.0"]
-
-    def test_null_parser_only_returns_last_element_when_continuing(self):
-        
-        data = "2.0"
-        parser = _parse.NullParser('F1')
-        res = []
-        for cur in asst_stream(data, [parser]):
-            res.extend(cur.m['F1'])
-            
-        assert res == ["2", ".", "0"]
