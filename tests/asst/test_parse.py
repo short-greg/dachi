@@ -748,7 +748,6 @@ class TestNullParser(object):
         parser = _parse.NullParser('F1')
         res = []
         for cur in asst_stream(data, [parser]):
-            print(cur.m['F1'])
             res.extend(cur.m['F1'])
             
         assert res == ["2", ".", "0"]

@@ -49,7 +49,6 @@ class OpenAITextConv(RespConv):
             is_last (bool, optional): the last. Defaults to False.
         """
         content = '' if msg.m['content'] in (None, UNDEFINED) else msg.m['content']
-        print(msg.m['content'])
         store.acc(
             delta_store, 'all_content', content
         )

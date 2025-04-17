@@ -136,7 +136,6 @@ class TestLLM:
 
     def test_llm_executes_forward(self):
         res = _ai.llm_forward(forward, 'Jack')
-        print(res['meta']['response'])
         assert res['meta']['response']['content'] == 'Hi! Jack'
 
     def test_llm_executes_forward_with_processor(self):
@@ -153,7 +152,6 @@ class TestLLM:
             responses.append(r.m['response'])
             contents.append(r['content'])
         assert contents[0] == 'H'
-        print(r)
         assert contents[-1] == 'Hi! Jack'
 
     def test_llm_executes_stream_with_two_processors(self):

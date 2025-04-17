@@ -150,7 +150,6 @@ class ParamSet(object):
         for param in self.params:
             schema["properties"][param.name] = param.data_schema()
             schema["required"].append(param.name)
-        print(schema)
         return schema
 
     def update_param_dict(self, data: typing.Dict) -> bool:

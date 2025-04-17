@@ -515,7 +515,6 @@ class TestStreamLink:
         append = Append('_t')
         t = g.stream_link(writer, g.T('xyz'))
         t = g.link(append, t)
-        print(t.val.dx)
         assert t.val.dx == 'x_t'
 
     def test_stream_completes_the_stream(self):

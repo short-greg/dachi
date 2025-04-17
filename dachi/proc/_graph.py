@@ -332,7 +332,6 @@ class TArgs(object):
         for arg in self._args:
             is_t = isinstance(arg, T)
             
-            print(arg, is_t)
             if is_t and arg in by:
                 val = by[arg]
                 if isinstance(val, Partial):

@@ -141,7 +141,6 @@ class TestRender:
         input_data = {"key": "value", "number": 42}
         expected = '{"key": "value", "number": 42}'
         result = _render.render(input_data, escape_braces=False)
-        print(result)
         assert result == expected
 
     def test_render_with_dict_escaped(self):

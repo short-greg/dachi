@@ -113,7 +113,6 @@ def render(
         return x.render()
 
     elif isinstance(x, pydantic.BaseModel):
-        print(model_to_text(x, escape_braces))
         return model_to_text(x, escape_braces)
     elif is_primitive(x):
         return str(x)

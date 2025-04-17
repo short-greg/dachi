@@ -72,7 +72,7 @@ class IBase(ABC):
 
         out_cls = self._return_annotation
         if out_conv is None:
-            if self.out_cls in primitives:
+            if out_cls in primitives:
                 out_conv = PrimConv(
                     name='out', from_='data',
                     out_cls=self.out_cls
@@ -82,9 +82,9 @@ class IBase(ABC):
             else:
                 out_conv = NullOutConv(name='out', from_='data')
         if parser is None:
-            if self.out_cls is str:
+            if out_cls is str:
                 parser = NullParser('data', out)
-            elif self.out_cls in primitives:
+            elif out_cls in primitives:
                 parser = FullParser('data', out)
             elif issubclass(out_cls, pydantic.BaseModel):
                 parser = FullParser('data', out)
@@ -93,7 +93,7 @@ class IBase(ABC):
 
         self._parser = parser
         self._out_conv: OutConv = out_conv
-        self._out = FromMsg(out)
+        self._out = FromMsg('out')
 
     def _align_params(
         self, *args, **kwargs
@@ -441,7 +441,9 @@ class FuncDec(FuncDecBase, Module):
             [msg], **self._kwargs
         )
         res_msg = self._inst.parser(res_msg)
+        res_msg = self._inst.out_conv(res_msg)
         res, filtered = self._inst.from_msg.filter(res_msg)
+
         if filtered:
             return None
         return res
