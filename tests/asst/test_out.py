@@ -14,7 +14,7 @@ class TestPydanticConv(object):
 
     def test_pydanticconv_handles_valid_json(self):
         """Test that PydanticConv correctly parses valid JSON into the Pydantic model."""
-        out = _out.PydanticConv(
+        out = _out.PydanticOut(
             name='F1',
             out_cls=SimpleStruct
         )
@@ -30,7 +30,7 @@ class TestPydanticConv(object):
 
     def test_pydanticconv_raises_error_on_invalid_json(self):
         """Test that PydanticConv raises an error for invalid JSON."""
-        out = _out.PydanticConv(
+        out = _out.PydanticOut(
             name='F1',
             out_cls=SimpleStruct
         )
@@ -46,7 +46,7 @@ class TestPydanticConv(object):
 
     def test_pydanticconv_handles_streamed_json(self):
         """Test that PydanticConv correctly handles streamed JSON data."""
-        out = _out.PydanticConv(
+        out = _out.PydanticOut(
             name='F1',
             out_cls=SimpleStruct
         )
@@ -71,7 +71,7 @@ class TestPydanticConv(object):
 
     def test_pydanticconv_handles_empty_data(self):
         """Test that PydanticConv handles empty data gracefully."""
-        out = _out.PydanticConv(
+        out = _out.PydanticOut(
             name='F1',
             out_cls=SimpleStruct
         )
@@ -86,7 +86,7 @@ class TestPydanticConv(object):
 
     def test_pydanticconv_template_contains_field(self):
         """Test that the template output contains the expected field."""
-        out = _out.PydanticConv(
+        out = _out.PydanticOut(
             name='F1',
             out_cls=SimpleStruct
         )
@@ -95,7 +95,7 @@ class TestPydanticConv(object):
 
     def test_pydanticconv_example_output(self):
         """Test that PydanticConv generates the correct example JSON."""
-        out = _out.PydanticConv(
+        out = _out.PydanticOut(
             name='F1',
             out_cls=SimpleStruct
         )
@@ -104,7 +104,7 @@ class TestPydanticConv(object):
 
     def test_pydanticconv_handles_partial_streamed_data(self):
         """Test that PydanticConv handles partial streamed data correctly."""
-        out = _out.PydanticConv(
+        out = _out.PydanticOut(
             name='F1',
             out_cls=SimpleStruct
         )
@@ -130,7 +130,7 @@ class TestPydanticConv(object):
 
     def test_out_creates_out_class(self):
 
-        out = _out.PydanticConv(
+        out = _out.PydanticOut(
             name='F1',
             out_cls=SimpleStruct
             # name='Simple', signature='...',
@@ -148,7 +148,7 @@ class TestPydanticConv(object):
 
     def test_out_creates_out_class_with_string(self):
 
-        out = _out.PydanticConv(
+        out = _out.PydanticOut(
             name='F1',
             out_cls=SimpleStruct
         )
@@ -173,7 +173,7 @@ class TestPydanticConv(object):
     
     def test_out_template(self):
 
-        out = _out.PydanticConv(
+        out = _out.PydanticOut(
             name='F1',
             out_cls=SimpleStruct
         )
@@ -185,7 +185,7 @@ class TestPrimRead(object):
 
     def test_prim_read_handles_empty_data(self):
         """Test that PrimConv handles empty data gracefully."""
-        out = _out.PrimConv(
+        out = _out.PrimOut(
             name='F1',
             out_cls=int,
         )
@@ -200,7 +200,7 @@ class TestPrimRead(object):
 
     def test_prim_read_handles_invalid_data(self):
         """Test that PrimConv raises an error for invalid data."""
-        out = _out.PrimConv(
+        out = _out.PrimOut(
             name='F1',
             out_cls=int,
         )
@@ -215,7 +215,7 @@ class TestPrimRead(object):
 
     def test_prim_read_handles_float_conversion(self):
         """Test that PrimConv correctly converts data to float."""
-        out = _out.PrimConv(
+        out = _out.PrimOut(
             name='F1',
             out_cls=float,
         )
@@ -230,7 +230,7 @@ class TestPrimRead(object):
 
     def test_prim_read_handles_streamed_data_with_partial_delta(self):
         """Test that PrimConv handles streamed data with partial delta."""
-        out = _out.PrimConv(
+        out = _out.PrimOut(
             name='F1',
             out_cls=str,
         )
@@ -255,7 +255,7 @@ class TestPrimRead(object):
 
     def test_prim_read_handles_bool_case_insensitivity(self):
         """Test that PrimConv correctly handles case-insensitive boolean values."""
-        out = _out.PrimConv(
+        out = _out.PrimOut(
             name='F1',
             out_cls=bool,
         )
@@ -270,7 +270,7 @@ class TestPrimRead(object):
 
     def test_prim_read_handles_multiple_data_entries(self):
         """Test that PrimConv processes only the first data entry."""
-        out = _out.PrimConv(
+        out = _out.PrimOut(
             name='F1',
             out_cls=int,
         )
@@ -285,7 +285,7 @@ class TestPrimRead(object):
 
     def test_prim_read_template_output(self):
         """Test that PrimConv generates the correct template string."""
-        out = _out.PrimConv(
+        out = _out.PrimOut(
             name='F1',
             out_cls=str,
         )
@@ -294,7 +294,7 @@ class TestPrimRead(object):
 
     def test_prim_read_example_output(self):
         """Test that PrimConv generates the correct example string."""
-        out = _out.PrimConv(
+        out = _out.PrimOut(
             name='F1',
             out_cls=int,
         )
@@ -303,7 +303,7 @@ class TestPrimRead(object):
 
     def test_read_reads_in_data(self):
 
-        out = _out.PrimConv(
+        out = _out.PrimOut(
             name='F1',
             out_cls=int,
         )
@@ -319,7 +319,7 @@ class TestPrimRead(object):
 
     def test_template_contains_key(self):
 
-        out = _out.PrimConv(
+        out = _out.PrimOut(
             name='F1',
             out_cls=int,
         )
@@ -328,7 +328,7 @@ class TestPrimRead(object):
 
     def test_prim_read_reads_bool(self):
 
-        out = _out.PrimConv(
+        out = _out.PrimOut(
             name='F1',
             out_cls=bool,
         )
@@ -344,7 +344,7 @@ class TestPrimRead(object):
 
     def test_prim_read_reads_bool_with_stream(self):
 
-        out = _out.PrimConv(
+        out = _out.PrimOut(
             name='F1',
             out_cls=bool,
         )
@@ -371,7 +371,7 @@ class TestKVConv(object):
 
     def test_kvconv_handles_valid_key_value_pairs(self):
         """Test KVConv processes valid key-value pairs correctly."""
-        out = text_proc.KVConv(
+        out = text_proc.KVOut(
             name='F1',
             key_descr={
                 'key1': 'description1',
@@ -390,7 +390,7 @@ class TestKVConv(object):
 
     def test_kvconv_raises_error_on_invalid_format(self):
         """Test KVConv raises an error for invalid key-value format."""
-        out = text_proc.KVConv(
+        out = text_proc.KVOut(
             name='F1',
             key_descr={
                 'key1': 'description1'
@@ -407,7 +407,7 @@ class TestKVConv(object):
 
     def test_kvconv_handles_empty_data(self):
         """Test KVConv handles empty data gracefully."""
-        out = text_proc.KVConv(
+        out = text_proc.KVOut(
             name='F1',
             key_descr={
                 'key1': 'description1'
@@ -424,7 +424,7 @@ class TestKVConv(object):
 
     def test_kvconv_handles_partial_streamed_data(self):
         """Test KVConv processes partial streamed data correctly."""
-        out = text_proc.KVConv(
+        out = text_proc.KVOut(
             name='F1',
             key_descr={
                 'key1': 'description1',
@@ -454,7 +454,7 @@ class TestKVConv(object):
 
     def test_kvconv_template_output(self):
         """Test KVConv generates the correct template string."""
-        out = text_proc.KVConv(
+        out = text_proc.KVOut(
             name='F1',
             key_descr={
                 'key1': 'description1',
@@ -467,7 +467,7 @@ class TestKVConv(object):
 
     def test_kvconv_example_output(self):
         """Test KVConv generates the correct example string."""
-        out = text_proc.KVConv(
+        out = text_proc.KVOut(
             name='F1',
             key_descr={
                 'key1': 'description1',
@@ -480,7 +480,7 @@ class TestKVConv(object):
 
     def test_kvconv_handles_duplicate_keys(self):
         """Test KVConv processes duplicate keys by overwriting with the latest value."""
-        out = text_proc.KVConv(
+        out = text_proc.KVOut(
             name='F1',
             key_descr={
                 'key1': 'description1'
@@ -497,7 +497,7 @@ class TestKVConv(object):
 
     def test_kvconv_handles_custom_separator(self):
         """Test KVConv processes key-value pairs with a custom separator."""
-        out = text_proc.KVConv(
+        out = text_proc.KVOut(
             name='F1',
             sep='=',
             key_descr={
@@ -517,7 +517,7 @@ class TestKVConv(object):
 
     def test_kvconv_handles_missing_keys(self):
         """Test KVConv handles missing keys gracefully."""
-        out = text_proc.KVConv(
+        out = text_proc.KVOut(
             name='F1',
             key_descr={
                 'key1': 'description1',
@@ -539,7 +539,7 @@ class TestKVConv(object):
         k = ['x::1']
         k += ['y::4']
 
-        out = text_proc.KVConv(
+        out = text_proc.KVOut(
             name='F1',
             key_descr={
                 'x': 'the value of x', 
@@ -559,7 +559,7 @@ class TestKVConv(object):
 
     def test_template_contains_key(self):
 
-        out = text_proc.KVConv(
+        out = text_proc.KVOut(
             name='F1',
             key_descr={
                 'x': 'the value of x', 
@@ -575,7 +575,7 @@ class TestKVConv(object):
         k = ['x::1']
         k += ['y::4']
 
-        out = text_proc.KVConv(
+        out = text_proc.KVOut(
             name='F1',
             key_descr={
                 'x': 'the value of x', 
@@ -604,7 +604,7 @@ class TestNullOutConv(object):
 
     def test_nulloutconv_handles_string_data(self):
         """Test NullOutConv processes string data correctly."""
-        out = text_proc.NullOutConv(name='F1')
+        out = text_proc.NullOut(name='F1')
         msg = Msg(
             role='user',
             meta={
@@ -616,7 +616,7 @@ class TestNullOutConv(object):
 
     def test_nulloutconv_handles_empty_data(self):
         """Test NullOutConv handles empty data gracefully."""
-        out = text_proc.NullOutConv(name='F1')
+        out = text_proc.NullOut(name='F1')
         msg = Msg(
             role='user',
             meta={
@@ -628,7 +628,7 @@ class TestNullOutConv(object):
 
     def test_nulloutconv_handles_streamed_data(self):
         """Test NullOutConv processes streamed data correctly."""
-        out = text_proc.NullOutConv(name='F1')
+        out = text_proc.NullOut(name='F1')
         msg1 = StreamMsg(
             role='user',
             meta={
@@ -650,19 +650,19 @@ class TestNullOutConv(object):
 
     def test_nulloutconv_example_output(self):
         """Test NullOutConv generates the correct example output."""
-        out = text_proc.NullOutConv(name='F1')
+        out = text_proc.NullOut(name='F1')
         example = out.example(123)
         assert example == '123'
 
     def test_nulloutconv_template_output(self):
         """Test NullOutConv generates an empty template."""
-        out = text_proc.NullOutConv(name='F1')
+        out = text_proc.NullOut(name='F1')
         template = out.template()
         assert template == ''
     
     def test_nulloutconv_handles_partial_streamed_data(self):
         """Test NullOutConv processes partial streamed data correctly."""
-        out = text_proc.NullOutConv(name='F1')
+        out = text_proc.NullOut(name='F1')
         msg1 = StreamMsg(
             role='user',
             meta={
@@ -684,7 +684,7 @@ class TestNullOutConv(object):
 
     def test_nulloutconv_handles_large_data(self):
         """Test NullOutConv handles large data gracefully."""
-        out = text_proc.NullOutConv(name='F1')
+        out = text_proc.NullOut(name='F1')
         large_data = 'a' * 10000
         msg = Msg(
             role='user',
@@ -700,7 +700,7 @@ class TestJSONRead(object):
 
     def test_out_creates_out_class(self):
 
-        out = text_proc.JSONConv(
+        out = text_proc.JSONOut(
             name='F1',
             key_descr={
                 'x': 'The value of x',
@@ -721,7 +721,7 @@ class TestJSONRead(object):
 
     def test_out_template(self):
 
-        out = text_proc.JSONConv(
+        out = text_proc.JSONOut(
             name='F1',
             key_descr={
                 'x': 'The value of x',
@@ -734,7 +734,7 @@ class TestJSONRead(object):
     def test_out_reads_in_with_delta(self):
 
         simple = SimpleStruct2(x='hi', y=1)
-        out = text_proc.JSONConv(
+        out = text_proc.JSONOut(
             name='F1',
             key_descr={
                 'x': 'The value of x',
@@ -759,7 +759,7 @@ class TestIndexConv(object):
 
     def test_indexconv_handles_empty_data(self):
         """Test IndexConv handles empty data gracefully."""
-        out = text_proc.IndexConv(
+        out = text_proc.IndexOut(
             name='F1',
             key_descr='the number of people'
         )
@@ -774,7 +774,7 @@ class TestIndexConv(object):
 
     def test_indexconv_raises_error_on_invalid_format(self):
         """Test IndexConv raises an error for invalid key-value format."""
-        out = text_proc.IndexConv(
+        out = text_proc.IndexOut(
             name='F1',
             key_descr='the number of people'
         )
@@ -789,7 +789,7 @@ class TestIndexConv(object):
 
     def test_indexconv_handles_partial_streamed_data(self):
         """Test IndexConv processes partial streamed data correctly."""
-        out = text_proc.IndexConv(
+        out = text_proc.IndexOut(
             name='F1',
             key_descr='the number of people'
         )
@@ -814,7 +814,7 @@ class TestIndexConv(object):
 
     def test_indexconv_handles_duplicate_indices(self):
         """Test IndexConv processes duplicate indices by overwriting with the latest value."""
-        out = text_proc.IndexConv(
+        out = text_proc.IndexOut(
             name='F1',
             key_descr='the number of people'
         )
@@ -829,7 +829,7 @@ class TestIndexConv(object):
 
     def test_indexconv_handles_custom_separator(self):
         """Test IndexConv processes key-value pairs with a custom separator."""
-        out = text_proc.IndexConv(
+        out = text_proc.IndexOut(
             name='F1',
             sep='=',
             key_descr='the number of people'
@@ -846,7 +846,7 @@ class TestIndexConv(object):
 
     def test_indexconv_handles_missing_indices(self):
         """Test IndexConv handles missing indices gracefully."""
-        out = text_proc.IndexConv(
+        out = text_proc.IndexOut(
             name='F1',
             key_descr='the number of people'
         )
@@ -862,7 +862,7 @@ class TestIndexConv(object):
 
     def test_indexconv_template_output(self):
         """Test IndexConv generates the correct template string."""
-        out = text_proc.IndexConv(
+        out = text_proc.IndexOut(
             name='F1',
             key_descr='the number of people'
         )
@@ -872,7 +872,7 @@ class TestIndexConv(object):
 
     def test_indexconv_example_output(self):
         """Test IndexConv generates the correct example string."""
-        out = text_proc.IndexConv(
+        out = text_proc.IndexOut(
             name='F1',
             key_descr='the number of people'
         )
@@ -882,7 +882,7 @@ class TestIndexConv(object):
 
     def test_indexconv_handles_invalid_separator_in_stream(self):
         """Test IndexConv raises an error for invalid separator in streamed data."""
-        out = text_proc.IndexConv(
+        out = text_proc.IndexOut(
             name='F1',
             sep='::',
             key_descr='the number of people'
@@ -900,7 +900,7 @@ class TestIndexConv(object):
 
     def test_indexconv_handles_large_data(self):
         """Test IndexConv handles a large number of key-value pairs."""
-        out = text_proc.IndexConv(
+        out = text_proc.IndexOut(
             name='F1',
             key_descr='the number of people'
         )
@@ -920,7 +920,7 @@ class TestIndexConv(object):
         k = ['1::1']
         k += ['2::4']
 
-        out = text_proc.IndexConv(
+        out = text_proc.IndexOut(
             name='F1',
             key_descr='the number of people'
         )
@@ -937,7 +937,7 @@ class TestIndexConv(object):
 
     def test_template_contains_key(self):
 
-        out = text_proc.IndexConv(
+        out = text_proc.IndexOut(
             name='F1',
             key_descr='the number of people'
         )
@@ -950,7 +950,7 @@ class TestIndexConv(object):
         k = ['1::1']
         k += ['2::4']
 
-        out = text_proc.IndexConv(
+        out = text_proc.IndexOut(
             name='F1',
             key_descr='the number of people'
         )

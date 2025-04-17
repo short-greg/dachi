@@ -3,6 +3,9 @@ import typing
 import json
 import inspect
 from abc import abstractmethod
+import csv
+import io
+from collections import OrderedDict
 
 # 3rd party
 import pydantic
@@ -16,6 +19,7 @@ from pydantic_core import PydanticUndefined
 from ..utils import (
     escape_curly_braces
 )
+from ._parse import LineParser
 from .. import store
 from .. import utils
 
@@ -68,7 +72,7 @@ class OutConv(MsgProc, Templatable, ExampleMixin):
         pass
 
 
-class PrimConv(OutConv):
+class PrimOut(OutConv):
     """Use for converting an AI response into a primitive value
     """
 
@@ -94,12 +98,8 @@ class PrimConv(OutConv):
         Returns:
             typing.Any: The output of the reader
         """
-        if len(resp) > 0:
-            resp = resp[0]
-        else:
-            return utils.UNDEFINED
-        
-        resp = resp or ''
+        if resp is None or resp is utils.UNDEFINED:
+            resp = ''
 
         val = store.acc(delta_store, 'val', resp)
 
@@ -132,7 +132,7 @@ class PrimConv(OutConv):
         return f'<{self._out_cls.__name__}>'
 
 
-class PydanticConv(OutConv, typing.Generic[S]):
+class PydanticOut(OutConv, typing.Generic[S]):
     """Use for converting an AI response into a Pydantic BaseModel
     """
     def __init__(
@@ -168,19 +168,14 @@ class PydanticConv(OutConv, typing.Generic[S]):
         Returns:
             typing.Any: The output of the reader
         """
-        if len(resp) == 0:
-            return utils.UNDEFINED
-        resp = resp[0]
+        if resp is None or resp is utils.UNDEFINED:
+            resp = ''
 
-        resp = resp or ''
         val = store.acc(delta_store, 'val', resp)
 
         if not is_last:
             return utils.UNDEFINED
         
-        # if resp is not END_TOK:
-        #     store.acc(delta_store, 'val', resp)
-        #     return utils.UNDEFINED
         message = unescape_curly_braces(val)
         try:
             data = json.loads(message)
@@ -221,7 +216,7 @@ class PydanticConv(OutConv, typing.Generic[S]):
         ) 
 
 
-class KVConv(OutConv):
+class KVOut(OutConv):
     """Create a Reader of a list of key values
     """
 
@@ -232,6 +227,7 @@ class KVConv(OutConv):
         super().__init__(name, from_)
         self.sep = sep
         self.key_descr = key_descr
+        self.line_parser = LineParser()
 
     def delta(
         self, resp, delta_store: typing.Dict, is_streamed: bool=False, is_last: bool=True
@@ -244,6 +240,9 @@ class KVConv(OutConv):
         Returns:
             typing.Any: The output of the reader
         """
+        resp = self.coalesce_resp(resp)
+        line_store = store.get_or_set(delta_store, 'lines', {})
+        resp = self.line_parser(resp, line_store, is_streamed, is_last)
         
         result = {}
         for line in resp:
@@ -298,7 +297,7 @@ class KVConv(OutConv):
         )
 
 
-class IndexConv(OutConv):
+class IndexOut(OutConv):
     """Create a Reader of a list of key values
     """
 
@@ -312,6 +311,7 @@ class IndexConv(OutConv):
         self.sep = sep
         self.key_descr = key_descr
         self.key_type = None
+        self.line_parser = LineParser()
 
     def delta(self, resp, delta_store: typing.Dict, is_streamed: bool=False, is_last: bool=True) -> typing.Any:
         """Read in the output
@@ -322,6 +322,9 @@ class IndexConv(OutConv):
         Returns:
             typing.Any: The output of the reader
         """
+        resp = self.coalesce_resp(resp)
+        line_store = store.get_or_set(delta_store, 'lines', {})
+        resp = self.line_parser(resp, line_store, is_streamed, is_last)
         result = []
         for line in resp:
             try:
@@ -384,7 +387,7 @@ class IndexConv(OutConv):
         return '\n'.join(lines)
 
 
-class JSONConv(OutConv):
+class JSONOut(OutConv):
     """Use to read from a JSON
     """
 
@@ -412,11 +415,13 @@ class JSONConv(OutConv):
         Returns:
             typing.Dict: The result - if it fails, will return an empty dict
         """
-        # val = store.acc(
-        #     delta_store, 'val', resp
-        # )
+        
+        resp = self.coalesce_resp(resp)
+        resp = store.acc(delta_store, 'val', resp)
 
-        resp = resp[0]
+        if not is_last:
+            return utils.UNDEFINED
+
         try: 
             result = json.loads(resp)
             return result
@@ -443,7 +448,7 @@ class JSONConv(OutConv):
         return escape_curly_braces(self.key_descr)
 
 
-class NullOutConv(MsgProc):
+class NullOut(OutConv):
     """A Reader that does not change the data. 
     So in most cases will simply output a string
     """
@@ -462,7 +467,7 @@ class NullOutConv(MsgProc):
         """
         return str(data)
 
-    def delta(self, resp: typing.List, delta_store: typing.Dict, streamed: bool=False, is_last: bool=False) -> typing.Any:
+    def delta(self, resp, delta_store: typing.Dict, streamed: bool=False, is_last: bool=False) -> typing.Any:
         """Read in the output
 
         Args:
@@ -477,32 +482,125 @@ class NullOutConv(MsgProc):
         return ''
 
 
-class ConvTemplate(Templatable):
-    """Use to generate a template from an out conv 
+class CSVOut(OutConv):
     """
+    Dynamically parse CSV data, returning new rows as accumulated. 
+    The header will be returned along with them if used.
+    """
+    
+    def __init__(self, name: str, from_: str ='content', delimiter: str = ',', use_header: bool = True):
+        """
+        Initializes the CSV parser with the specified delimiter and header usage.
+        This class is designed to dynamically parse CSV data, returning new rows 
+        as they are accumulated. It supports customization of the delimiter and 
+        whether the CSV file includes a header row.
+        Args:
+            delimiter (str): The character used to separate values in the CSV. 
+                             Defaults to ','.
+            use_header (bool): Indicates whether the CSV file includes a header row. 
+                               Defaults to False.
+        """
+        super().__init__(name, from_)
+        self._delimiter = delimiter
+        self._use_header = use_header
 
-    def __init__(self, conv: OutConv, preprocessors):
+    def delta(self, resp, delta_store: typing.Dict, streamed: bool=False, is_last: bool=False) -> typing.List | None:
+        """
+        Parses CSV data incrementally using csv.reader.
+        """
+        # resp = self.handle_null(resp, '')
+
+        val = store.acc(delta_store, 'val', resp, '')
+        row = store.get_or_set(delta_store, 'row', 0)
+        header = store.get_or_set(
+            delta_store, 'header', None
+        )
+        # Process accumulated data using csv.reader
+        # csv_data = io.StringIO(delta_store['val'])
+
+        rows = list(
+            csv.reader(io.StringIO(val), delimiter=self._delimiter)
+        )
+        new_rows = []
+        for i, row in enumerate(rows[row:]):  # Only return new rows
+            new_rows.append(row)
+
+        if len(new_rows) == 0:
+            return utils.UNDEFINED
+        
+        if not is_last:
+            new_rows.pop()
+
+        if len(new_rows) == 0:
+            return utils.UNDEFINED
+
+        if (
+            self._use_header is True 
+            and delta_store['header'] is None
+        ):
+            delta_store['header'] = new_rows.pop(0)
+            store.acc(delta_store, 'row', 1)
+
+        header = delta_store['header']
+        store.acc(delta_store, 'row', len(new_rows))
+        if len(new_rows) == 0:
+            return utils.UNDEFINED
+        
+        if self._use_header:
+            return [OrderedDict(zip(header, row)) for row in new_rows]
+        return new_rows
+
+    def render(self, data) -> str:
         """
 
         Args:
-            conv (OutConv): 
-            preprocessors: 
+            data: An iterable of rows. If header is set to true
+
+        Returns:
+            str: the rendered CSV
         """
-        super().__init__()
-        self.conv = conv
-        self.preprocessors = preprocessors
+        output = io.StringIO()
+        writer = csv.writer(output, delimiter=self._delimiter)
+        
+        if self._use_header:
+            header = [key for key, _ in data[0]]
+            writer.writerow(header)
+            for row in data:
+                writer.writerow([value for _, value in row])
+        else:
+            for row in data:
+                writer.writerow(row)
+        
+        return output.getvalue()
 
-    def template(self) -> str:
 
-        template = self.conv.template()
-        for processor in reversed(self.preprocessors):
-            template = processor.render(template)
-        return template
+
+# class ConvTemplate(Templatable):
+#     """Use to generate a template from an out conv 
+#     """
+
+#     def __init__(self, conv: OutConv, preprocessors):
+#         """
+
+#         Args:
+#             conv (OutConv): 
+#             preprocessors: 
+#         """
+#         super().__init__()
+#         self.conv = conv
+#         self.preprocessors = preprocessors
+
+#     def template(self) -> str:
+
+#         template = self.conv.template()
+#         for processor in reversed(self.preprocessors):
+#             template = processor.render(template)
+#         return template
     
-    def example(self) -> str:
+#     def example(self) -> str:
 
-        example = self.conv.example()
-        for processor in reversed(self.preprocessors):
-            example = processor.render(example)
-        return example
+#         example = self.conv.example()
+#         for processor in reversed(self.preprocessors):
+#             example = processor.render(example)
+#         return example
     

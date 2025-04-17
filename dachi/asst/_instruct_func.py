@@ -14,7 +14,7 @@ from ..proc._process import (
     Module, AsyncModule, StreamModule, 
     AsyncStreamModule, Param
 )
-from ._parse import FullParser, ParseConv, NullParser
+from ._parse import FullParser, Parser, NullParser
 from ..utils import is_primitive, primitives, str_formatter
 from ._msg import ToMsg, ToText
 from ._asst import (
@@ -22,8 +22,8 @@ from ._asst import (
     Assist, StreamAssist
 )
 from ._out import (
-    OutConv, NullOutConv,
-    PrimConv, PydanticConv,
+    OutConv, NullOut,
+    PrimOut, PydanticOut,
     ConvTemplate
 )
 from ..msg import Cue, validate_out
@@ -48,7 +48,7 @@ class IBase(ABC):
     """
 
     def __init__(
-        self, f, is_method: bool=False, out_conv: OutConv=None, parser: ParseConv=None, out: str='content', template: Templatable=None
+        self, f, is_method: bool=False, out_conv: OutConv=None, parser: Parser=None, out: str='content', template: Templatable=None
     ):
         """ Initializes the IBase instance.
         Args:
@@ -73,14 +73,14 @@ class IBase(ABC):
         out_cls = self._return_annotation
         if out_conv is None:
             if out_cls in primitives:
-                out_conv = PrimConv(
+                out_conv = PrimOut(
                     name='out', from_='data',
                     out_cls=self.out_cls
                 )
             elif issubclass(out_cls, pydantic.BaseModel):
-                out_conv = PydanticConv(name='out', from_='data', out_cls=out_cls)
+                out_conv = PydanticOut(name='out', from_='data', out_cls=out_cls)
             else:
-                out_conv = NullOutConv(name='out', from_='data')
+                out_conv = NullOut(name='out', from_='data')
         if parser is None:
             if out_cls is str:
                 parser = NullParser('data', out)
@@ -169,7 +169,7 @@ class IBase(ABC):
         pass
 
     @property
-    def parser(self) -> ParseConv:
+    def parser(self) -> Parser:
         return self._parser
 
     @property
@@ -227,7 +227,7 @@ class SigF(IBase):
         self, f, is_method = False, 
         doc: typing.Optional[str]=None,
         train: bool=False, out_conv: OutConv=None,
-        parser: ParseConv=None,
+        parser: Parser=None,
         out: str='content',
         template: Templatable=None
     ):
@@ -697,7 +697,7 @@ class AStreamDec(FuncDecBase, AsyncStreamModule):
 def instructfunc(
     engine: Engine=None,
     out_conv: OutConv=None,
-    parser: ParseConv=None,
+    parser: Parser=None,
     is_method: bool=False,
     to_async: bool=False,
     to_stream: bool=False,
@@ -751,7 +751,7 @@ def instructfunc(
 def instructmethod(
     engine: Engine=None,
     out_conv: OutConv=None,
-    parser: ParseConv=None,
+    parser: Parser=None,
     to_async: bool=False,
     to_stream: bool=False,
     to_msg: ToMsg=None,
@@ -780,7 +780,7 @@ def instructmethod(
 def signaturefunc(
     engine: Engine=None,
     out_conv: OutConv=None,
-    parser: ParseConv=None,
+    parser: Parser=None,
     to_msg: ToMsg=None,
     doc: typing.Union[str, typing.Callable[[], str]]=None,
     is_method: bool=False,
@@ -839,7 +839,7 @@ def signaturefunc(
 def signaturemethod(
     engine: Engine=None, 
     out_conv: OutConv=None,
-    parser: ParseConv=None,
+    parser: Parser=None,
     to_msg: ToMsg=None,
     doc: typing.Union[str, typing.Callable[[], str]]=None,
     to_async: bool=False,

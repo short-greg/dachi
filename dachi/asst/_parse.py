@@ -11,9 +11,10 @@ from .. import store
 from .. import utils
 from ._msg import MsgProc
 from collections import OrderedDict
+from ..proc import Module
 
 
-class ParseConv(MsgProc):
+class Parser(Module):
     """Base class for parsers. It converts the input text
     into a list of objects
     """
@@ -26,38 +27,16 @@ class ParseConv(MsgProc):
             from_ (str | typing.List[str], optional): The input for the parser. Defaults to 'data'.
         """
         super().__init__(name, from_)
-    
+
+    def forward(self, resp, delta_store: typing.Dict, streamed: bool=False, is_last: bool=False) -> typing.List | None:
+        pass
+
     @abstractmethod
     def render(self, data) -> str:
         pass
 
 
-class NullParser(ParseConv):
-    """
-    A parser that does not perform any parsing or transformation on the input.
-    Instead, it simply returns the input response as-is.
-    """
-
-    def delta(self, resp, delta_store: typing.Dict, streamed: bool=False, is_last: bool=False) -> typing.List:
-        """
-
-        Args:
-            resp: The response
-            delta_store (typing.Dict): The dictionary
-            streamed (bool, optional): Whether the response is streamed. Defaults to False.
-            is_last (bool, optional): Whether it is the last. Defaults to False.
-
-        Returns:
-            typing.List: 
-        """
-        resp = resp or ''
-        return [resp]
-    
-    def render(self, data):
-        return str(data)
-
-
-class CSVRowParser(ParseConv):
+class CSVRowParser(Parser):
     """
     Dynamically parse CSV data, returning new rows as accumulated. 
     The header will be returned along with them if used.
@@ -79,7 +58,7 @@ class CSVRowParser(ParseConv):
         self._delimiter = delimiter
         self._use_header = use_header
 
-    def delta(self, resp, delta_store: typing.Dict, streamed: bool=False, is_last: bool=False) -> typing.List | None:
+    def forward(self, resp, delta_store: typing.Dict, streamed: bool=False, is_last: bool=False) -> typing.List | None:
         """
         Parses CSV data incrementally using csv.reader.
         """
@@ -149,6 +128,122 @@ class CSVRowParser(ParseConv):
         return output.getvalue()
 
 
+class CharDelimParser(Parser):
+    """Parses based on a defined character
+    """
+    def __init__(self, name: str, from_: str='content', sep: str=','):
+        super().__init__(name, from_)
+        self.sep = sep
+
+    def forward(
+        self, resp, delta_store: typing.Dict, streamed: bool=False, is_last: bool=False
+    ) -> typing.List | None:
+        
+        # resp = self.handle_null(resp, '')
+        resp = resp or ''
+        val = store.acc(delta_store, 'val', resp)
+        res = val.split(self.sep)
+        return_val = utils.UNDEFINED
+        
+        if len(res) > 0:
+            if len(val) == 0:
+                return_val = []
+            elif val[-1] == self.sep:
+                return_val = res[:-1]
+                delta_store['val'] = ''
+            elif is_last:
+                return_val = res
+                delta_store['val'] = ''
+            else:
+                return_val = res[:-1]
+                delta_store['val'] = res[-1]
+                
+        return return_val
+
+    def render(self, data) -> str:
+        """Renders the data separated by lines
+
+        Args:
+            data: The data to render
+
+        Returns:
+            str: The rendered data
+        """
+        
+        return f'{self.sep}'.join(data)
+
+
+class LineParser(Parser):
+    """
+    Parses line by line. Can have a line continue by putting a backslash at the end of the line.
+    """
+    def __init__(self, name, from_ = 'content'):
+        super().__init__(name, from_)
+
+    def forward(
+        self, resp, delta_store: typing.Dict, streamed: bool=False, is_last: bool=False
+    ) -> typing.List:
+        """
+
+        Args:
+            resp : 
+            delta_store (typing.Dict): 
+            is_last (bool, optional): . Defaults to False.
+
+        Returns:
+            typing.Any: 
+        """ 
+        resp = resp or ''
+        store.acc(delta_store, 'val', resp)
+        lines = delta_store['val'].splitlines()
+        result = []
+        buffer = []
+
+        if is_last and len(lines) == 0:
+            return []
+
+        for i, line in enumerate(lines):
+
+            if not line:
+                continue  # skip empty lines if that's desired
+
+            if line.endswith("\\"):
+                buffer.append(line[:-1])
+            else:
+                buffer.append(line)
+                logical_line = "\n".join(buffer)
+                result.append(logical_line)
+                buffer = []
+
+        if buffer:
+            result.append("\n".join(buffer))
+        if not is_last and len(result) > 0:
+            delta_store['val'] = result[-1]
+            if resp[-1] == '\n':
+                delta_store['val'] += '\n'
+            result = result[:-1]
+        elif is_last:
+            delta_store['val'] = ''
+        if len(result) == 0:
+            return utils.UNDEFINED
+
+        return result
+
+    def render(self, data) -> str:
+        """Render the data
+
+        Args:
+            data: The data to render
+
+        Returns:
+            str: The data rendered in lines
+        """
+        res = []
+        for d in data:
+            res.append(d.replace('\n', '\\n'))
+        return f'\n'.join(data)
+
+
 class CSVCellParser(MsgProc):
     """This parser assumes the input string is a CSV
     """
@@ -167,7 +262,7 @@ class CSVCellParser(MsgProc):
         self._delimiter = delimiter
         self._use_header = use_header
 
-    def delta(self, resp, delta_store: typing.Dict, streamed: bool=False, is_last: bool=False) -> typing.Any:
+    def forward(self, resp, delta_store: typing.Dict, streamed: bool=False, is_last: bool=False) -> typing.Any:
         """
         Parses a single-row CSV and returns one cell at a time.
         """
@@ -263,138 +358,28 @@ class CSVCellParser(MsgProc):
         return output.getvalue()
 
 
-class CharDelimParser(ParseConv):
-    """Parses based on a defined character
-    """
-    def __init__(self, name: str, from_: str='content', sep: str=','):
-        super().__init__(name, from_)
-        self.sep = sep
 
-    def delta(
-        self, resp, delta_store: typing.Dict, streamed: bool=False, is_last: bool=False
-    ) -> typing.List | None:
-        
-        # resp = self.handle_null(resp, '')
-        resp = resp or ''
-        val = store.acc(delta_store, 'val', resp)
-        res = val.split(self.sep)
-        return_val = utils.UNDEFINED
-        
-        if len(res) > 0:
-            if len(val) == 0:
-                return_val = []
-            elif val[-1] == self.sep:
-                return_val = res[:-1]
-                delta_store['val'] = ''
-            elif is_last:
-                return_val = res
-                delta_store['val'] = ''
-            else:
-                return_val = res[:-1]
-                delta_store['val'] = res[-1]
-                
-        return return_val
+# class NullParser(ParseConv):
+#     """
+#     A parser that does not perform any parsing or transformation on the input.
+#     Instead, it simply returns the input response as-is.
+#     """
 
-    def render(self, data) -> str:
-        """Renders the data separated by lines
+#     def delta(self, resp, delta_store: typing.Dict, streamed: bool=False, is_last: bool=False) -> typing.List:
+#         """
 
-        Args:
-            data: The data to render
+#         Args:
+#             resp: The response
+#             delta_store (typing.Dict): The dictionary
+#             streamed (bool, optional): Whether the response is streamed. Defaults to False.
+#             is_last (bool, optional): Whether it is the last. Defaults to False.
 
-        Returns:
-            str: The rendered data
-        """
-        
-        return f'{self.sep}'.join(data)
+#         Returns:
+#             typing.List: 
+#         """
+#         resp = resp or ''
+#         return [resp]
+    
+#     def render(self, data):
+#         return str(data)
 
-
-class FullParser(ParseConv):
-    """
-    A parser that accumulates input data until the end of a stream is reached.
-    """
-    def __init__(self, name: str, from_: str='content'):
-        super().__init__(name, from_)
-
-    def delta(self, resp, delta_store: typing.Dict, streamed: bool=False, is_last: bool=False) -> typing.List:
-        resp = resp or ''
-        store.acc(delta_store, 'val', resp)
-        if is_last:
-            val = delta_store['val']
-            delta_store.clear()
-            return [val]
-        return utils.UNDEFINED
-
-    def render(self, data):
-        
-        return str(data)
-
-
-class LineParser(ParseConv):
-    """
-    Parses line by line. Can have a line continue by putting a backslash at the end of the line.
-    """
-    def __init__(self, name, from_ = 'content'):
-        super().__init__(name, from_)
-
-    def delta(
-        self, resp, delta_store: typing.Dict, streamed: bool=False, is_last: bool=False
-    ) -> typing.List:
-        """
-
-        Args:
-            resp : 
-            delta_store (typing.Dict): 
-            is_last (bool, optional): . Defaults to False.
-
-        Returns:
-            typing.Any: 
-        """ 
-        resp = resp or ''
-        store.acc(delta_store, 'val', resp)
-        lines = delta_store['val'].splitlines()
-        result = []
-        buffer = []
-
-        if is_last and len(lines) == 0:
-            return []
-
-        for i, line in enumerate(lines):
-
-            if not line:
-                continue  # skip empty lines if that's desired
-
-            if line.endswith("\\"):
-                buffer.append(line[:-1])
-            else:
-                buffer.append(line)
-                logical_line = "\n".join(buffer)
-                result.append(logical_line)
-                buffer = []
-
-        if buffer:
-            result.append("\n".join(buffer))
-        if not is_last and len(result) > 0:
-            delta_store['val'] = result[-1]
-            if resp[-1] == '\n':
-                delta_store['val'] += '\n'
-            result = result[:-1]
-        elif is_last:
-            delta_store['val'] = ''
-        if len(result) == 0:
-            return utils.UNDEFINED
-
-        return result
-
-    def render(self, data) -> str:
-        """Render the data
-
-        Args:
-            data: The data to render
-
-        Returns:
-            str: The data rendered in lines
-        """
-        res = []
-        for d in data:
-            res.append(d.replace('\n', '\\n'))
-        return f'\n'.join(data)
