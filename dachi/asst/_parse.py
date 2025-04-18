@@ -19,16 +19,7 @@ class Parser(Module):
     into a list of objects
     """
 
-    def __init__(self, name, from_: str | typing.List[str]='content'):
-        """Create the parser
-
-        Args:
-            name: The name of the parser
-            from_ (str | typing.List[str], optional): The input for the parser. Defaults to 'data'.
-        """
-        super().__init__(name, from_)
-
-    def forward(self, resp, delta_store: typing.Dict, streamed: bool=False, is_last: bool=False) -> typing.List | None:
+    def forward(self, resp, delta_store: typing.Dict, streamed: bool=False, is_last: bool=True) -> typing.List | None:
         pass
 
     @abstractmethod
@@ -42,7 +33,7 @@ class CSVRowParser(Parser):
     The header will be returned along with them if used.
     """
     
-    def __init__(self, name: str, from_: str ='content', delimiter: str = ',', use_header: bool = True):
+    def __init__(self, delimiter: str = ',', use_header: bool = True):
         """
         Initializes the CSV parser with the specified delimiter and header usage.
         This class is designed to dynamically parse CSV data, returning new rows 
@@ -54,11 +45,11 @@ class CSVRowParser(Parser):
             use_header (bool): Indicates whether the CSV file includes a header row. 
                                Defaults to False.
         """
-        super().__init__(name, from_)
+        super().__init__()
         self._delimiter = delimiter
         self._use_header = use_header
 
-    def forward(self, resp, delta_store: typing.Dict, streamed: bool=False, is_last: bool=False) -> typing.List | None:
+    def forward(self, resp, delta_store: typing.Dict, streamed: bool=False, is_last: bool=True) -> typing.List | None:
         """
         Parses CSV data incrementally using csv.reader.
         """
@@ -131,17 +122,19 @@ class CSVRowParser(Parser):
 class CharDelimParser(Parser):
     """Parses based on a defined character
     """
-    def __init__(self, name: str, from_: str='content', sep: str=','):
-        super().__init__(name, from_)
+    def __init__(self, sep: str=','):
+        super().__init__()
         self.sep = sep
 
     def forward(
-        self, resp, delta_store: typing.Dict, streamed: bool=False, is_last: bool=False
+        self, resp, delta_store: typing.Dict=None, streamed: bool=False, is_last: bool=True
     ) -> typing.List | None:
         
+        delta_store = delta_store if delta_store is not None else {}
         # resp = self.handle_null(resp, '')
         resp = resp or ''
         val = store.acc(delta_store, 'val', resp)
+        print(val)
         res = val.split(self.sep)
         return_val = utils.UNDEFINED
         
@@ -158,6 +151,7 @@ class CharDelimParser(Parser):
                 return_val = res[:-1]
                 delta_store['val'] = res[-1]
                 
+        print(return_val)
         return return_val
 
     def render(self, data) -> str:
@@ -177,11 +171,9 @@ class LineParser(Parser):
     """
     Parses line by line. Can have a line continue by putting a backslash at the end of the line.
     """
-    def __init__(self, name, from_ = 'content'):
-        super().__init__(name, from_)
 
     def forward(
-        self, resp, delta_store: typing.Dict, streamed: bool=False, is_last: bool=False
+        self, resp, delta_store: typing.Dict=None, streamed: bool=False, is_last: bool=True
     ) -> typing.List:
         """
 
@@ -193,6 +185,7 @@ class LineParser(Parser):
         Returns:
             typing.Any: 
         """ 
+        delta_store = delta_store if delta_store is not None else {}
         resp = resp or ''
         store.acc(delta_store, 'val', resp)
         lines = delta_store['val'].splitlines()
@@ -244,11 +237,11 @@ class LineParser(Parser):
         return f'\n'.join(data)
 
 
-class CSVCellParser(MsgProc):
+class CSVCellParser(Parser):
     """This parser assumes the input string is a CSV
     """
 
-    def __init__(self, name: str, from_: str='content', delimiter: str = ',', use_header: bool = True):
+    def __init__(self, delimiter: str = ',', use_header: bool = True):
         """
         Initializes the converter for parsing CSV data.
         Args:
@@ -258,11 +251,11 @@ class CSVCellParser(MsgProc):
         This class parses CSV data and returns all cells. If `use_header` is True, 
         the cells will be labeled using the values from the header row.
         """
-        super().__init__(name, from_)
+        super().__init__()
         self._delimiter = delimiter
         self._use_header = use_header
 
-    def forward(self, resp, delta_store: typing.Dict, streamed: bool=False, is_last: bool=False) -> typing.Any:
+    def forward(self, resp, delta_store: typing.Dict=None, streamed: bool=False, is_last: bool=True) -> typing.Any:
         """
         Parses a single-row CSV and returns one cell at a time.
         """
@@ -270,6 +263,7 @@ class CSVCellParser(MsgProc):
         # resp = self.handle_null(resp, '')
         # print('Resp: ', resp)
 
+        delta_store = delta_store if delta_store is not None else {}
         resp = resp or ''
         val = store.acc(delta_store, 'val', resp)
         cur_row = store.get_or_set(delta_store, 'row', 0)
@@ -356,30 +350,3 @@ class CSVCellParser(MsgProc):
                 writer.writerow(rows[row_num])
 
         return output.getvalue()
-
-
-
-# class NullParser(ParseConv):
-#     """
-#     A parser that does not perform any parsing or transformation on the input.
-#     Instead, it simply returns the input response as-is.
-#     """
-
-#     def delta(self, resp, delta_store: typing.Dict, streamed: bool=False, is_last: bool=False) -> typing.List:
-#         """
-
-#         Args:
-#             resp: The response
-#             delta_store (typing.Dict): The dictionary
-#             streamed (bool, optional): Whether the response is streamed. Defaults to False.
-#             is_last (bool, optional): Whether it is the last. Defaults to False.
-
-#         Returns:
-#             typing.List: 
-#         """
-#         resp = resp or ''
-#         return [resp]
-    
-#     def render(self, data):
-#         return str(data)
-

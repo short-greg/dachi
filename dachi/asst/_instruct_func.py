@@ -14,7 +14,6 @@ from ..proc._process import (
     Module, AsyncModule, StreamModule, 
     AsyncStreamModule, Param
 )
-from ._parse import FullParser, Parser, NullParser
 from ..utils import is_primitive, primitives, str_formatter
 from ._msg import ToMsg, ToText
 from ._asst import (
@@ -24,7 +23,6 @@ from ._asst import (
 from ._out import (
     OutConv, NullOut,
     PrimOut, PydanticOut,
-    ConvTemplate
 )
 from ..msg import Cue, validate_out
 from ._msg import FromMsg
@@ -48,7 +46,7 @@ class IBase(ABC):
     """
 
     def __init__(
-        self, f, is_method: bool=False, out_conv: OutConv=None, parser: Parser=None, out: str='content', template: Templatable=None
+        self, f, is_method: bool=False, out_conv: OutConv=None, llm_out: str='content', template: Templatable=None
     ):
         """ Initializes the IBase instance.
         Args:
@@ -64,12 +62,6 @@ class IBase(ABC):
         self._parameters = inspect.signature(f).parameters
         self._return_annotation = inspect.signature(f).return_annotation
 
-        if not isinstance(template, Templatable) and template is not None:
-            base = template[0]
-            preprocessors = template[1:]
-            template = ConvTemplate(base, preprocessors)
-        self._template = template
-
         out_cls = self._return_annotation
         if out_conv is None:
             if out_cls in primitives:
@@ -81,19 +73,9 @@ class IBase(ABC):
                 out_conv = PydanticOut(name='out', from_='data', out_cls=out_cls)
             else:
                 out_conv = NullOut(name='out', from_='data')
-        if parser is None:
-            if out_cls is str:
-                parser = NullParser('data', out)
-            elif out_cls in primitives:
-                parser = FullParser('data', out)
-            elif issubclass(out_cls, pydantic.BaseModel):
-                parser = FullParser('data', out)
-            else:
-                parser = NullParser('data', out)
 
-        self._parser = parser
         self._out_conv: OutConv = out_conv
-        self._out = FromMsg('out')
+        self._out = FromMsg(llm_out)
 
     def _align_params(
         self, *args, **kwargs
@@ -121,9 +103,9 @@ class IBase(ABC):
         Returns:
             str: the template
         """
-        if self._template is None:
+        if self._out_conv is None:
             return ''
-        return self._template.template()
+        return self.out_conv.template()
 
     @property
     def name(self) -> str:
@@ -167,10 +149,6 @@ class IBase(ABC):
             typing.Type: 
         """
         pass
-
-    @property
-    def parser(self) -> Parser:
-        return self._parser
 
     @property
     def out_conv(self) -> OutConv:
@@ -227,7 +205,6 @@ class SigF(IBase):
         self, f, is_method = False, 
         doc: typing.Optional[str]=None,
         train: bool=False, out_conv: OutConv=None,
-        parser: Parser=None,
         out: str='content',
         template: Templatable=None
     ):
@@ -240,7 +217,7 @@ class SigF(IBase):
             out (OutConv, optional): The out to process the output. Defaults to None.
         """
         super().__init__(
-            f, is_method, out_conv, parser, out,
+            f, is_method, out_conv, out,
             template=template
         )
         self._doc = doc or self._docstring
@@ -440,7 +417,6 @@ class FuncDec(FuncDecBase, Module):
         res_msg = engine(
             [msg], **self._kwargs
         )
-        res_msg = self._inst.parser(res_msg)
         res_msg = self._inst.out_conv(res_msg)
         res, filtered = self._inst.from_msg.filter(res_msg)
 
@@ -515,7 +491,6 @@ class AFuncDec(FuncDecBase, AsyncModule):
         res_msg = await engine.aforward(
             [msg], **self._kwargs
         )
-        res_msg = self._inst.parser(res_msg)
         res_msg = self._inst.out_conv(res_msg)
         res, filtered = self._inst.from_msg.filter(res_msg)
         if filtered:
@@ -588,7 +563,6 @@ class StreamDec(FuncDecBase, StreamModule):
         for resp_msg in engine.stream(
             [msg], **self._kwargs
         ):
-            resp = self._inst.parser(resp_msg)
             resp = self._inst.out_conv(resp)
             resp, filtered = self._inst.from_msg.filter(resp)
             if filtered:
@@ -669,7 +643,6 @@ class AStreamDec(FuncDecBase, AsyncStreamModule):
         async for resp_msg in engine.astream(
             [msg], **self._kwargs
         ):
-            resp = self._inst.parser(resp_msg)
             resp = self._inst.out_conv(resp)
             resp, filtered = self._inst.from_msg.filter(resp)
 
@@ -697,7 +670,6 @@ class AStreamDec(FuncDecBase, AsyncStreamModule):
 def instructfunc(
     engine: Engine=None,
     out_conv: OutConv=None,
-    parser: Parser=None,
     is_method: bool=False,
     to_async: bool=False,
     to_stream: bool=False,
@@ -722,7 +694,7 @@ def instructfunc(
             return f(*args, **kwargs)
         
         inst = InstF(
-            f, is_method, out_conv, parser=parser, out=out, template=template
+            f, is_method, out_conv, llm_out=out, template=template
         )
 
         if not to_async and not to_stream:
@@ -751,7 +723,6 @@ def instructfunc(
 def instructmethod(
     engine: Engine=None,
     out_conv: OutConv=None,
-    parser: Parser=None,
     to_async: bool=False,
     to_stream: bool=False,
     to_msg: ToMsg=None,
@@ -770,7 +741,6 @@ def instructmethod(
     return instructfunc(
         engine, out_conv=out_conv, is_method=True, to_msg=to_msg, to_async=to_async, 
         to_stream=to_stream, 
-        parser=parser,
         out=out,
         template=template,
         **kwargs
@@ -780,7 +750,6 @@ def instructmethod(
 def signaturefunc(
     engine: Engine=None,
     out_conv: OutConv=None,
-    parser: Parser=None,
     to_msg: ToMsg=None,
     doc: typing.Union[str, typing.Callable[[], str]]=None,
     is_method: bool=False,
@@ -808,7 +777,7 @@ def signaturefunc(
         
         inst = SigF(
             f, is_method, train=train, 
-            doc=doc, out_conv=out_conv, parser=parser,
+            doc=doc, out_conv=out_conv, 
             out=out,
             template=template
         )
@@ -839,7 +808,6 @@ def signaturefunc(
 def signaturemethod(
     engine: Engine=None, 
     out_conv: OutConv=None,
-    parser: Parser=None,
     to_msg: ToMsg=None,
     doc: typing.Union[str, typing.Callable[[], str]]=None,
     to_async: bool=False,
@@ -863,7 +831,6 @@ def signaturemethod(
         engine, out_conv=out_conv, doc=doc, is_method=True,
         to_msg=to_msg, to_async=to_async, to_stream=to_stream,
         train=train,
-        parser=parser,
         out=out,
         template=template,
         **kwargs

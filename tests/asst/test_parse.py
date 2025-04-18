@@ -35,59 +35,44 @@ csv_data3 = (
 )
 
 
-def asst_stream(data, convs) -> typing.Iterator:
+def asst_stream(data, parser) -> typing.Iterator:
     """Use to simulate an assitant stream"""
     delta_store = {}
     for i, d in enumerate(data):
         is_last = i == len(data) - 1
-        msg = StreamMsg('assistant', meta={'content': d}, is_last=is_last)
-        for conv in convs:
-            msg = conv(msg, delta_store)
-            yield msg
+        # msg = StreamMsg('assistant', meta={'content': d}, is_last=is_last)
+        msg = parser(d, delta_store, True, is_last)
+        yield msg
 
 
 class TestLineParser(object):
 
     def test_line_parse_parses_when_no_newline_symbols_with_correct_num_lines(self):
         
-        line_parser = _parse.LineParser(
-            'F1', 'content' 
-        )
-        msg = Msg(
-            role='user', meta={'content': data}
-        )
-        lines = line_parser(msg).m['F1']
+        line_parser = _parse.LineParser()
+        lines = line_parser(data)
         assert len(lines) == 2
 
     def test_line_parse_parses_when_no_newline_symbols_with_correct_val(self):
         
-        msg = Msg(
-            role='user', meta={'content': data}
-        )
-        line_parser = _parse.LineParser('F1')
-        lines = line_parser(msg).m['F1']
+        line_parser = _parse.LineParser()
+        lines = line_parser(data)
         assert lines[1] == "z: e"
 
     def test_line_parse_parses_when_newline_symbols_with_correct_count(self):
         
-        msg = Msg(
-            role='user', meta={'content': data}
-        )
-        line_parser = _parse.LineParser('F1')
-        msg = line_parser(msg)
+        line_parser = _parse.LineParser()
+        lines = line_parser(data)
         
-        assert len(msg.m['F1']) == 2
+        assert len(lines) == 2
 
     def test_line_parse_parses_when_newline_symbols_with_correct_count(self):
         target = (
 """t: y\
 xy"""
         )
-        msg = Msg(
-            role='user', meta={'content': data2}
-        )
-        line_parser = _parse.LineParser('F1')
-        lines = line_parser(msg).m['F1']
+        line_parser = _parse.LineParser()
+        lines = line_parser(data2)
         assert lines[0] == target
 
     def test_line_parse_delta_correctly(self):
@@ -101,11 +86,11 @@ xy"""
             z: e"""
         )
 
-        parser = _parse.LineParser('F1')
+        parser = _parse.LineParser()
         
-        for cur in asst_stream(data, [parser]):
-            if cur.m['F1'] != utils.UNDEFINED:
-                res.extend(cur.m['F1'])
+        for cur in asst_stream(data, parser):
+            if cur != utils.UNDEFINED:
+                res.extend(cur)
 
         assert len(res) == 2
 
@@ -114,10 +99,9 @@ xy"""
         t2 = "z: e"
         res = []
 
-        parser = _parse.LineParser('F1')
+        parser = _parse.LineParser()
 
-        for cur in asst_stream(data, [parser]):
-            cur = cur.m['F1']
+        for cur in asst_stream(data, parser):
             if cur != utils.UNDEFINED:
                 res.extend(cur)
 
@@ -132,10 +116,9 @@ xy"""
         t2 = "z: e"
         res = []
 
-        parser = _parse.LineParser('F1')
+        parser = _parse.LineParser()
 
-        for cur in asst_stream(data2, [parser]):
-            cur = cur.m['F1']
+        for cur in asst_stream(data2, parser):
             if cur != utils.UNDEFINED:
                 res.extend(cur)
 
@@ -149,10 +132,9 @@ xy"""
         t2 = "z: e"
         res = []
 
-        parser = _parse.LineParser('F1')
+        parser = _parse.LineParser()
 
-        for cur in asst_stream(data2, [parser]):
-            cur = cur.m['F1']
+        for cur in asst_stream(data2, parser):
             if cur != utils.UNDEFINED:
                 res.extend(cur)
 
@@ -164,32 +146,28 @@ class TestCharDelimParser(object):
 
     def test_char_delim_parser_handles_empty_string(self):
         data = ""
-        parser = _parse.CharDelimParser(name='F1', sep=',')
-        msg = Msg('user', meta={'content': data})
-        res = parser(msg).m['F1']
+        parser = _parse.CharDelimParser()
+        res = parser(data)
         assert res == []
 
     def test_char_delim_parser_handles_single_character(self):
         data = "a"
-        parser = _parse.CharDelimParser(name='F1', sep=',')
-        msg = Msg('user', meta={'content': data})
-        res = parser(msg).m['F1']
+        parser = _parse.CharDelimParser(sep=',')
+        res = parser(data)
         assert len(res) == 1
         assert res[0] == "a"
 
     def test_char_delim_parser_handles_no_delimiters(self):
         data = "abc"
-        parser = _parse.CharDelimParser(name='F1', sep=',')
-        msg = Msg('user', meta={'content': data})
-        res = parser(msg).m['F1']
+        parser = _parse.CharDelimParser(sep=',')
+        res = parser(data)
         assert len(res) == 1
         assert res[0] == "abc"
 
     def test_char_delim_parser_handles_multiple_delimiters(self):
         data = "a,b,c"
-        parser = _parse.CharDelimParser(name='F1', sep=',')
-        msg = Msg('user', meta={'content': data})
-        res = parser(msg).m['F1']
+        parser = _parse.CharDelimParser(sep=',')
+        res = parser(data)
         assert len(res) == 3
         assert res[0] == "a"
         assert res[1] == "b"
@@ -197,9 +175,8 @@ class TestCharDelimParser(object):
 
     def test_char_delim_parser_handles_trailing_delimiter(self):
         data = "a,b,c,"
-        parser = _parse.CharDelimParser(name='F1', sep=',')
-        msg = Msg('user', meta={'content': data})
-        res = parser(msg).m['F1']
+        parser = _parse.CharDelimParser(sep=',')
+        res = parser(data)
         assert len(res) == 3
         assert res[0] == "a"
         assert res[1] == "b"
@@ -207,9 +184,8 @@ class TestCharDelimParser(object):
 
     def test_char_delim_parser_handles_leading_delimiter(self):
         data = ",a,b,c"
-        parser = _parse.CharDelimParser(name='F1', sep=',')
-        msg = Msg('user', meta={'content': data})
-        res = parser(msg).m['F1']
+        parser = _parse.CharDelimParser(sep=',')
+        res = parser(data)
         assert len(res) == 4
         assert res[0] == ""
         assert res[1] == "a"
@@ -218,9 +194,8 @@ class TestCharDelimParser(object):
 
     def test_char_delim_parser_handles_custom_delimiter(self):
         data = "a|b|c"
-        parser = _parse.CharDelimParser(name='F1', sep='|')
-        msg = Msg('user', meta={'content': data})
-        res = parser(msg).m['F1']
+        parser = _parse.CharDelimParser(sep='|')
+        res = parser(data)
         assert len(res) == 3
         assert res[0] == "a"
         assert res[1] == "b"
@@ -228,10 +203,9 @@ class TestCharDelimParser(object):
 
     def test_char_delim_parser_handles_streamed_data(self):
         data = "a,b,c"
-        parser = _parse.CharDelimParser(name='F1', sep=',')
+        parser = _parse.CharDelimParser(sep=',')
         res = []
-        for cur in asst_stream(data, [parser]):
-            cur = cur.m['F1']
+        for cur in asst_stream(data, parser):
             if cur != utils.UNDEFINED:
                 res.extend(cur)
         assert len(res) == 3
@@ -241,23 +215,22 @@ class TestCharDelimParser(object):
 
     def test_char_delim_parser_handles_streamed_data_with_trailing_delimiter(self):
         data = "a,b,c,"
-        parser = _parse.CharDelimParser(name='F1', sep=',')
+        parser = _parse.CharDelimParser(sep=',')
         res = []
-        for cur in asst_stream(data, [parser]):
-            cur = cur.m['F1']
+        for cur in asst_stream(data, parser):
             if cur != utils.UNDEFINED:
                 res.extend(cur)
         assert len(res) == 3
+        print(res)
         assert res[0] == "a"
         assert res[1] == "b"
         assert res[2] == "c"
 
     def test_char_delim_parser_handles_streamed_data_with_partial_chunk(self):
         data = ["a,b", ",c"]
-        parser = _parse.CharDelimParser(name='F1', sep=',')
+        parser = _parse.CharDelimParser(sep=',')
         res = []
-        for cur in asst_stream(data, [parser]):
-            cur = cur.m['F1']
+        for cur in asst_stream(data, parser):
             if cur != utils.UNDEFINED:
                 res.extend(cur)
         assert len(res) == 3
@@ -267,10 +240,9 @@ class TestCharDelimParser(object):
 
     def test_char_delim_parser_handles_streamed_data_with_custom_delimiter(self):
         data = "a|b|c"
-        parser = _parse.CharDelimParser(name='F1', sep='|')
+        parser = _parse.CharDelimParser(sep='|')
         res = []
-        for cur in asst_stream(data, [parser]):
-            cur = cur.m['F1']
+        for cur in asst_stream(data, parser):
             if cur != utils.UNDEFINED:
                 res.extend(cur)
         assert len(res) == 3
@@ -280,41 +252,38 @@ class TestCharDelimParser(object):
 
     def test_char_delim_parser_handles_rendering(self):
         data = ["a", "b", "c"]
-        parser = _parse.CharDelimParser(name='F1', sep=',')
+        parser = _parse.CharDelimParser(sep=',')
         rendered = parser.render(data)
         assert rendered == "a,b,c"
 
     def test_char_delim_parser_handles_rendering_with_custom_delimiter(self):
         data = ["a", "b", "c"]
-        parser = _parse.CharDelimParser(name='F1', sep='|')
+        parser = _parse.CharDelimParser(sep='|')
         rendered = parser.render(data)
         assert rendered == "a|b|c"
 
     def test_char_delim_parser_returns_len_2(self):
         
         data = "2.0"
-        parser = _parse.CharDelimParser(name='F1', sep='.')
-        msg = Msg('user', meta={'content': data})
-        res = parser(msg).m['F1']
+        parser = _parse.CharDelimParser(sep='.')
+        res = parser(data)
         assert len(res) == 2
 
     def test_char_delim_parser_returns_correct_values(self):
         
         data = "2.0"
-        parser = _parse.CharDelimParser(name='F1', sep='.')
-        msg = Msg('user', meta={'content': data})
-        res = parser(msg).m['F1']
+        parser = _parse.CharDelimParser(sep='.')
+        res = parser(data)
         assert res[0] == "2"
         assert res[1] == "0"
 
     def test_char_delim_parser_returns_correct_values_with_delta(self):
         
         data = "2.0"
-        parser = _parse.CharDelimParser(name='F1', sep='.')
+        parser = _parse.CharDelimParser(sep='.')
         res = []
 
-        for cur in asst_stream(data, [parser]):
-            cur = cur.m['F1']
+        for cur in asst_stream(data, parser):
             if cur != utils.UNDEFINED:
                 res.extend(cur)
 
@@ -326,16 +295,14 @@ class TestCSVCellParser(object):
 
     def test_csv_cell_parser_handles_empty_data(self):
         data = ""
-        parser = _parse.CSVCellParser('F1', use_header=True)
-        msg = Msg('user', meta={'content': data})
-        res = parser(msg).m['F1']
+        parser = _parse.CSVCellParser(use_header=True)
+        res = parser(data)
         assert res == utils.UNDEFINED
 
     def test_csv_cell_parser_handles_single_row_with_header(self):
         data = "name,age,city\nJohn,25,New York"
-        parser = _parse.CSVCellParser('F1', use_header=True)
-        msg = Msg('user', meta={'content': data})
-        res = parser(msg).m['F1']
+        parser = _parse.CSVCellParser(use_header=True)
+        res = parser(data)
         assert len(res) == 3
         assert res[0] == (0, "name", "John")
         assert res[1] == (0, "age", "25")
@@ -343,9 +310,8 @@ class TestCSVCellParser(object):
 
     def test_csv_cell_parser_handles_single_row_without_header(self):
         data = "John,25,New York"
-        parser = _parse.CSVCellParser('F1', use_header=False)
-        msg = Msg('user', meta={'content': data})
-        res = parser(msg).m['F1']
+        parser = _parse.CSVCellParser(use_header=False)
+        res = parser(data)
         assert len(res) == 3
         assert res[0] == (0, "John")
         assert res[1] == (0, "25")
@@ -353,9 +319,8 @@ class TestCSVCellParser(object):
 
     def test_csv_cell_parser_handles_multiple_rows_with_header(self):
         data = "name,age,city\nJohn,25,New York\nJane,30,Los Angeles"
-        parser = _parse.CSVCellParser('F1', use_header=True)
-        msg = Msg('user', meta={'content': data})
-        res = parser(msg).m['F1']
+        parser = _parse.CSVCellParser(use_header=True)
+        res = parser(data)
         assert len(res) == 6
         assert res[0] == (0, "name", "John")
         assert res[1] == (0, "age", "25")
@@ -366,9 +331,8 @@ class TestCSVCellParser(object):
 
     def test_csv_cell_parser_handles_multiple_rows_without_header(self):
         data = "John,25,New York\nJane,30,Los Angeles"
-        parser = _parse.CSVCellParser('F1', use_header=False)
-        msg = Msg('user', meta={'content': data})
-        res = parser(msg).m['F1']
+        parser = _parse.CSVCellParser(use_header=False)
+        res = parser(data)
         assert len(res) == 6
         assert res[0] == (0, "John")
         assert res[1] == (0, "25")
@@ -379,9 +343,8 @@ class TestCSVCellParser(object):
 
     def test_csv_cell_parser_handles_different_delimiters(self):
         data = "name|age|city\nJohn|25|New York\nJane|30|Los Angeles"
-        parser = _parse.CSVCellParser('F1', delimiter='|', use_header=True)
-        msg = Msg('user', meta={'content': data})
-        res = parser(msg).m['F1']
+        parser = _parse.CSVCellParser(delimiter='|', use_header=True)
+        res = parser(data)
         assert len(res) == 6
         assert res[0] == (0, "name", "John")
         assert res[1] == (0, "age", "25")
@@ -392,10 +355,9 @@ class TestCSVCellParser(object):
 
     def test_csv_cell_parser_handles_streamed_data_with_header(self):
         data = csv_data1
-        parser = _parse.CSVCellParser('F1', use_header=True)
+        parser = _parse.CSVCellParser(use_header=True)
         res = []
-        for cur in asst_stream(data, [parser]):
-            cur = cur.m['F1']
+        for cur in asst_stream(data, parser):
             if cur != utils.UNDEFINED:
                 res.extend(cur)
         assert len(res) == 9
@@ -411,10 +373,9 @@ class TestCSVCellParser(object):
 
     def test_csv_cell_parser_handles_streamed_data_without_header(self):
         data = csv_data3
-        parser = _parse.CSVCellParser('F1', use_header=False)
+        parser = _parse.CSVCellParser(use_header=False)
         res = []
-        for cur in asst_stream(data, [parser]):
-            cur = cur.m['F1']
+        for cur in asst_stream(data, parser):
             if cur != utils.UNDEFINED:
                 res.extend(cur)
         assert len(res) == 9
@@ -431,29 +392,26 @@ class TestCSVCellParser(object):
     def test_csv_cell_parser(self):
         
         data = csv_data1
-        parser = _parse.CSVCellParser('F1', use_header=True)
-        msg = Msg('user', meta={'content': data})
-        res = parser(msg).m['F1']
+        parser = _parse.CSVCellParser(use_header=True)
+        res = parser(data)
         assert len(res) == 9
 
     def test_csv_cell_parser_without_header(self):
         
         data = csv_data3
-        parser = _parse.CSVCellParser('F1', use_header=False)
-        msg = Msg('user', meta={'content': data})
-        res = parser(msg).m['F1']
+        parser = _parse.CSVCellParser(use_header=False)
+        res = parser(data)
         assert len(res) == 9
 
     def test_csv_delim_parser_returns_correct_len_with_newline(self):
         
         data = csv_data1
         parser = _parse.CSVCellParser(
-            'F1', use_header=True
+            use_header=True
         )
         res = []
 
-        for cur in asst_stream(data, [parser]):
-            cur = cur.m['F1']
+        for cur in asst_stream(data, parser):
             if cur != utils.UNDEFINED:
                 res.extend(cur)
 
@@ -463,11 +421,10 @@ class TestCSVCellParser(object):
         
         data = csv_data3
         parser = _parse.CSVCellParser(
-            'F1', use_header=False
+            use_header=False
         )
         res = []
-        for cur in asst_stream(data, [parser]):
-            cur = cur.m['F1']
+        for cur in asst_stream(data, parser):
             if cur != utils.UNDEFINED:
                 res.extend(cur)
 
