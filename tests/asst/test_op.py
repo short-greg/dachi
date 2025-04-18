@@ -1,6 +1,7 @@
 from .test_ai import DummyAIModel
 from dachi.asst import LineParser, Op, Threaded, NullOut, ToText
 from dachi.asst import KeyRet
+from dachi.asst._out import ParsedOut, LineParser
 from dachi.utils import Args
 import pytest
 
@@ -26,7 +27,7 @@ class TestOp:
         op = Op(
             DummyAIModel(
                 large_input, 
-                proc=[LineParser('data'), NullOut('out', 'data')]
+                proc=[ParsedOut(LineParser(), 'out', 'content')]
             ), ToText(),
             out='out'
         )
@@ -38,7 +39,7 @@ class TestOp:
     def test_op_stream_handles_empty_input(self):
         """Test Op's stream method with empty input."""
         op = Op(
-            DummyAIModel("", proc=[NullOut('out', 'content')]), ToText(),
+            DummyAIModel("", proc=[ParsedOut(LineParser(), 'out', 'content')]), ToText(),
             out='out'
         )
         rs = list(op.stream(""))
@@ -49,7 +50,7 @@ class TestOp:
         large_input = "\n".join([f"line {i}" for i in range(1000)])
         op = Op(
             DummyAIModel(
-                large_input, proc=[LineParser('data', 'content'), NullOut('out', 'data')]
+                large_input, proc=[ParsedOut(LineParser(), 'out', 'content')]
             ), ToText(), out='out', filter_undefined=True
         )
         rs = []
@@ -60,29 +61,29 @@ class TestOp:
         assert rs[0] == "line 0"
         assert rs[-1] == "line 999"
 
-    # def test_op_handles_non_string_input(self):
-    #     """Test Op with non-string input to ensure type robustness."""
-    #     op = Op(
-    #         DummyAIModel(lines, proc=[LineParser('data'), NullOutConv('out', 'data')]), ToText(),
-    #         out='out'
-    #     )
-    #     with pytest.raises(TypeError):
-    #         op.forward(12345)
+#     # def test_op_handles_non_string_input(self):
+#     #     """Test Op with non-string input to ensure type robustness."""
+#     #     op = Op(
+#     #         DummyAIModel(lines, proc=[LineParser('data'), NullOutConv('out', 'data')]), ToText(),
+#     #         out='out'
+#     #     )
+#     #     with pytest.raises(TypeError):
+#     #         op.forward(12345)
 
-    # def test_op_stream_handles_non_string_input(self):
-    #     """Test Op's stream method with non-string input."""
-    #     op = Op(
-    #         DummyAIModel(lines, proc=[LineParser('data'), NullOutConv('out', 'data')]), ToText(),
-    #         out='out'
-    #     )
-    #     with pytest.raises(TypeError):
-    #         list(op.stream(12345))
+#     # def test_op_stream_handles_non_string_input(self):
+#     #     """Test Op's stream method with non-string input."""
+#     #     op = Op(
+#     #         DummyAIModel(lines, proc=[LineParser('data'), NullOutConv('out', 'data')]), ToText(),
+#     #         out='out'
+#     #     )
+#     #     with pytest.raises(TypeError):
+#     #         list(op.stream(12345))
 
     def test_op_handles_special_characters(self):
         """Test Op with input containing special characters."""
         special_input = "hello\nworld\n!@#$%^&*()"
         op = Op(
-            DummyAIModel(special_input, proc=[LineParser('data'), NullOut('out', 'data')]), ToText(),
+            DummyAIModel(special_input, proc=[ParsedOut(LineParser(), 'out', 'content')]), ToText(),
             out='out'
         )
         r = op.forward("Message")
@@ -92,7 +93,7 @@ class TestOp:
         """Test Op's stream method with input containing special characters."""
         special_input = "hello\nworld\n!@#$%^&*()"
         op = Op(
-            DummyAIModel(special_input, proc=[LineParser('data'), NullOut('out', 'data')]), ToText(),
+            DummyAIModel(special_input, proc=[ParsedOut(LineParser(), 'out', 'content')]), ToText(),
             out='out'
         )
         rs = []
@@ -104,7 +105,7 @@ class TestOp:
         """Test Op's stream method to ensure partial results are returned."""
         partial_input = "line 1\nline 2\nline 3"
         op = Op(
-            DummyAIModel(partial_input, proc=[LineParser('data'), NullOut('out', 'data')]), ToText(),
+            DummyAIModel(partial_input, proc=[ParsedOut(LineParser(), 'out', 'content')]), ToText(),
             out='out'
         )
         stream = op.stream("Message")
@@ -115,7 +116,7 @@ class TestOp:
     def test_op_parses_and_returns_line_values(self):
 
         op = Op(
-            DummyAIModel(lines, proc=[LineParser('data'), NullOut('out', 'data')]), ToText(), 
+            DummyAIModel(lines, proc=[ParsedOut(LineParser(), 'out', 'content')]), ToText(), 
             out='out'
         )
         r = op.forward("Message")
@@ -126,7 +127,7 @@ class TestOp:
     def test_op_parses_and_returns_line_values_with_streaming(self):
 
         op = Op(
-            DummyAIModel(lines, proc=[LineParser('data'), NullOut('out', 'data')]), ToText(),
+            DummyAIModel(lines, proc=[ParsedOut(LineParser(), 'out', 'content')]), ToText(),
             out='out'
         )
         rs = []
@@ -153,7 +154,7 @@ class TestThreaded:
         """Test Threaded with a large dialog to ensure it processes correctly."""
         large_dialog = "\n".join([f"line {i}" for i in range(1000)])
         threaded = Threaded(
-            DummyAIModel(large_dialog, proc=[LineParser('data'), NullOut('out', 'data')]),
+            DummyAIModel(large_dialog, proc=[ParsedOut(LineParser(), 'out', 'content')]),
             router={"user": ToText("user"), "system": ToText("system")},
             out='out'
         )
@@ -165,7 +166,7 @@ class TestThreaded:
     def test_threaded_stream_handles_empty_dialog(self):
         """Test Threaded's stream method with an empty dialog."""
         threaded = Threaded(
-            DummyAIModel("", proc=[NullOut('out', 'content')]),
+            DummyAIModel("", proc=[ParsedOut(LineParser(), 'out', 'content')]),
             router={"user": ToText("user"), "system": ToText("system")},
             out='out'
         )
@@ -176,7 +177,8 @@ class TestThreaded:
         """Test Threaded's stream method with a large dialog."""
         large_dialog = "\n".join([f"line {i}" for i in range(1000)])
         threaded = Threaded(
-            DummyAIModel(large_dialog, proc=[LineParser('data'), NullOut('out', 'data')]),
+            
+            DummyAIModel(large_dialog, proc=[ParsedOut(LineParser(), 'out', 'content')]),
             router={"user": ToText("user"), "system": ToText("system")},
             out='out',
             filter_undefined=True
@@ -193,7 +195,7 @@ class TestThreaded:
         """Test Threaded with input containing special characters."""
         special_input = "hello\nworld\n!@#$%^&*()"
         threaded = Threaded(
-            DummyAIModel(special_input, proc=[LineParser('data'), NullOut('out', 'data')]),
+            DummyAIModel(special_input, proc=[ParsedOut(LineParser(), 'out', 'content')]),
             router={"user": ToText("user"), "system": ToText("system")},
             out='out'
         )
@@ -204,7 +206,7 @@ class TestThreaded:
         """Test Threaded's stream method with input containing special characters."""
         special_input = "hello\nworld\n!@#$%^&*()"
         threaded = Threaded(
-            DummyAIModel(special_input, proc=[LineParser('data'), NullOut('out', 'data')]),
+            DummyAIModel(special_input, proc=[ParsedOut(LineParser(), 'out', 'content')]),
             router={"user": ToText("user"), "system": ToText("system")},
             out='out'
         )
@@ -229,7 +231,7 @@ class TestThreaded:
         """Test Threaded's stream method to ensure partial results are returned."""
         partial_input = "line 1\nline 2\nline 3"
         threaded = Threaded(
-            DummyAIModel(partial_input, proc=[LineParser('data'), NullOut('out', 'data')]),
+            DummyAIModel(partial_input, proc=[ParsedOut(LineParser(), 'out', 'content')]),
             router={"user": ToText("user"), "system": ToText("system")},
             out='out'
         )

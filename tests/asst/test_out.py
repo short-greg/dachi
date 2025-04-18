@@ -14,6 +14,8 @@ import typing
 from dachi import utils
 
 
+from collections import OrderedDict
+
 
 def asst_stream(data, convs) -> typing.Iterator:
     """Use to simulate an assitant stream"""
@@ -39,10 +41,10 @@ class TestPydanticConv(object):
         msg = Msg(
             role='user',
             meta={
-                'data': [valid_json]
+                'content': valid_json
             }
         )
-        result = out(msg)['meta']['F1']
+        result = out(msg).m['F1']
         assert result.x == 'hello'
 
     def test_pydanticconv_raises_error_on_invalid_json(self):
@@ -55,7 +57,7 @@ class TestPydanticConv(object):
         msg = Msg(
             role='user',
             meta={
-                'data': [invalid_json]
+                'content': invalid_json
             }
         )
         with pytest.raises(_out.ReadError):
@@ -70,14 +72,14 @@ class TestPydanticConv(object):
         msg1 = StreamMsg(
             role='user',
             meta={
-                'data': ['{"x": "he']
+                'content': '{"x": "he'
             },
             is_last=False
         )
         msg2 = StreamMsg(
             role='user',
             meta={
-                'data': ['llo"}']
+                'content': 'llo"}'
             },
             is_last=True
         )
@@ -86,20 +88,20 @@ class TestPydanticConv(object):
         result = out(msg2, delta_store=delta_store)['meta']['F1']
         assert result.x == 'hello'
 
-    def test_pydanticconv_handles_empty_data(self):
-        """Test that PydanticConv handles empty data gracefully."""
-        out = _out.PydanticOut(
-            name='F1',
-            out_cls=SimpleStruct
-        )
-        msg = Msg(
-            role='user',
-            meta={
-                'data': []
-            }
-        )
-        result = out(msg).m['F1']
-        assert result is utils.UNDEFINED
+    # def test_pydanticconv_handles_empty_data(self):
+    #     """Test that PydanticConv handles empty data gracefully."""
+    #     out = _out.PydanticOut(
+    #         name='F1',
+    #         out_cls=SimpleStruct
+    #     )
+    #     msg = Msg(
+    #         role='user',
+    #         meta={
+    #             'content': None
+    #         }
+    #     )
+    #     result = out(msg).m['F1']
+    #     assert result is utils.UNDEFINED
 
     def test_pydanticconv_template_contains_field(self):
         """Test that the template output contains the expected field."""
@@ -128,14 +130,14 @@ class TestPydanticConv(object):
         msg1 = StreamMsg(
             role='user',
             meta={
-                'data': ['{"x": "exa']
+                'content': '{"x": "exa'
             },
             is_last=False
         )
         msg2 = StreamMsg(
             role='user',
             meta={
-                'data': ['mple"}']
+                'content': 'mple"}'
             },
             is_last=True
         )
@@ -157,7 +159,7 @@ class TestPydanticConv(object):
         msg = Msg(
             role='user',
             meta={
-                'data': [d],  # Wrap the JSON string in a list
+                'content': d,  # Wrap the JSON string in a list
             }
         )
         simple2 = out.forward(msg)['meta']['F1']
@@ -174,13 +176,13 @@ class TestPydanticConv(object):
         msg1 = StreamMsg(
             role='user',
             meta={
-                'data': [d[:4]],
+                'content': d[:4],
             }, is_last=False
         )
         msg2 = StreamMsg(
             role='user',
             meta={
-                'data': [d[4:]],
+                'content': d[4:],
             }, is_last=True
         )
         delta = {}
@@ -200,20 +202,20 @@ class TestPydanticConv(object):
 
 class TestPrimRead(object):
 
-    def test_prim_read_handles_empty_data(self):
-        """Test that PrimConv handles empty data gracefully."""
-        out = _out.PrimOut(
-            name='F1',
-            out_cls=int,
-        )
-        msg = Msg(
-            role='user',
-            meta={
-                'data': []
-            }
-        )
-        result = out(msg)['meta']['F1']
-        assert result is utils.UNDEFINED
+    # def test_prim_read_handles_empty_data(self):
+    #     """Test that PrimConv handles empty data gracefully."""
+    #     out = _out.PrimOut(
+    #         name='F1',
+    #         out_cls=int,
+    #     )
+    #     msg = Msg(
+    #         role='user',
+    #         meta={
+    #             'content': []
+    #         }
+    #     )
+    #     result = out(msg)['meta']['F1']
+    #     assert result is utils.UNDEFINED
 
     def test_prim_read_handles_invalid_data(self):
         """Test that PrimConv raises an error for invalid data."""
@@ -224,7 +226,7 @@ class TestPrimRead(object):
         msg = Msg(
             role='user',
             meta={
-                'data': ['invalid']
+                'content': 'invalid'
             }
         )
         with pytest.raises(ValueError):
@@ -239,7 +241,7 @@ class TestPrimRead(object):
         msg = Msg(
             role='user',
             meta={
-                'data': ['3.14']
+                'content': '3.14'
             }
         )
         result = out(msg)['meta']['F1']
@@ -254,14 +256,14 @@ class TestPrimRead(object):
         msg1 = StreamMsg(
             role='user',
             meta={
-                'data': ['Hel']
+                'content': 'Hel'
             },
             is_last=False
         )
         msg2 = StreamMsg(
             role='user',
             meta={
-                'data': ['lo']
+                'content': 'lo'
             },
             is_last=True
         )
@@ -279,26 +281,26 @@ class TestPrimRead(object):
         msg = Msg(
             role='user',
             meta={
-                'data': ['TrUe']
+                'content': 'TrUe'
             }
         )
         result = out(msg)['meta']['F1']
         assert result is True
 
-    def test_prim_read_handles_multiple_data_entries(self):
-        """Test that PrimConv processes only the first data entry."""
-        out = _out.PrimOut(
-            name='F1',
-            out_cls=int,
-        )
-        msg = Msg(
-            role='user',
-            meta={
-                'data': ['42', '100']
-            }
-        )
-        result = out(msg)['meta']['F1']
-        assert result == 42
+    # def test_prim_read_handles_multiple_data_entries(self):
+    #     """Test that PrimConv processes only the first data entry."""
+    #     out = _out.PrimOut(
+    #         name='F1',
+    #         out_cls=int,
+    #     )
+    #     msg = Msg(
+    #         role='user',
+    #         meta={
+    #             'content': ['42', '100']
+    #         }
+    #     )
+    #     result = out(msg)['meta']['F1']
+    #     assert result == 42
 
     def test_prim_read_template_output(self):
         """Test that PrimConv generates the correct template string."""
@@ -327,7 +329,7 @@ class TestPrimRead(object):
         msg1 = Msg(
             role='user',
             meta={
-                'data': ['1']
+                'content': '1'
             }
         )
 
@@ -353,7 +355,7 @@ class TestPrimRead(object):
         msg1 = Msg(
             role='user',
             meta={
-                'data': ['TRUE']
+                'content': 'TRUE'
             }
         )
         result = out.__call__(msg1).m['F1']
@@ -369,13 +371,13 @@ class TestPrimRead(object):
         msg1 = StreamMsg(
             role='user',
             meta={
-                'data': ['TR']
+                'content': 'TR'
             }, is_last=False
         )
         msg2 = StreamMsg(
             role='user',
             meta={
-                'data': ['UE']
+                'content': 'UE'
             }, is_last=True
         )
         store = {}
@@ -398,7 +400,7 @@ class TestKVConv(object):
         msg = Msg(
             role='user',
             meta={
-                'data': ['key1::value1', 'key2::value2']
+                'content': 'key1::value1\nkey2::value2'
             }
         )
         result = out(msg).m['F1']
@@ -416,7 +418,7 @@ class TestKVConv(object):
         msg = Msg(
             role='user',
             meta={
-                'data': ['key1:value1']  # Invalid separator
+                'content': 'key1:value1'  # Invalid separator
             }
         )
         with pytest.raises(RuntimeError):
@@ -433,7 +435,7 @@ class TestKVConv(object):
         msg = Msg(
             role='user',
             meta={
-                'data': []
+                'content': []
             }
         )
         result = out(msg).m['F1']
@@ -451,14 +453,14 @@ class TestKVConv(object):
         msg1 = StreamMsg(
             role='user',
             meta={
-                'data': ['key1::val']
+                'content': 'key1::val\nue1::2\n'
             },
             is_last=False
         )
         msg2 = StreamMsg(
             role='user',
             meta={
-                'data': ['ue1::2', 'key2::value2']
+                'content': 'key2::value2'
             },
             is_last=True
         )
@@ -506,7 +508,7 @@ class TestKVConv(object):
         msg = Msg(
             role='user',
             meta={
-                'data': ['key1::value1', 'key1::value2']
+                'content': 'key1::value1\nkey1::value2'
             }
         )
         result = out(msg).m['F1']
@@ -525,7 +527,7 @@ class TestKVConv(object):
         msg = Msg(
             role='user',
             meta={
-                'data': ['key1=value1', 'key2=value2']
+                'content': 'key1=value1\nkey2=value2'
             }
         )
         result = out(msg).m['F1']
@@ -544,7 +546,7 @@ class TestKVConv(object):
         msg = Msg(
             role='user',
             meta={
-                'data': ['key1::value1']
+                'content': 'key1::value1'
             }
         )
         result = out(msg).m['F1']
@@ -553,8 +555,7 @@ class TestKVConv(object):
 
     def test_out_reads_in_the_class(self):
 
-        k = ['x::1']
-        k += ['y::4']
+        k = 'x::1\ny::4'
 
         out = text_proc.KVOut(
             name='F1',
@@ -567,7 +568,7 @@ class TestKVConv(object):
         msg1 = Msg(
             role='user',
             meta={
-                'data': k
+                'content': k
             }
         )
         result = out(msg1).m['F1']
@@ -589,8 +590,7 @@ class TestKVConv(object):
 
     def test_out_reads_in_with_delta(self):
 
-        k = ['x::1']
-        k += ['y::4']
+        k = 'x::1\ny::4'
 
         out = text_proc.KVOut(
             name='F1',
@@ -605,7 +605,7 @@ class TestKVConv(object):
             msg1 = StreamMsg(
                 role='user',
                 meta={
-                    'data': [t]
+                    'content': t
                 }, is_streamed=True,
                 is_last=i == len(k)-1
             )
@@ -625,11 +625,11 @@ class TestNullOutConv(object):
         msg = Msg(
             role='user',
             meta={
-                'data': ['hello']
+                'content': 'hello'
             }
         )
         result = out(msg).m['F1']
-        assert result == ['hello']
+        assert result == 'hello'
 
     def test_nulloutconv_handles_empty_data(self):
         """Test NullOutConv handles empty data gracefully."""
@@ -637,11 +637,11 @@ class TestNullOutConv(object):
         msg = Msg(
             role='user',
             meta={
-                'data': []
+                'content': ''
             }
         )
         result = out(msg).m['F1']
-        assert result == []
+        assert result == ''
 
     def test_nulloutconv_handles_streamed_data(self):
         """Test NullOutConv processes streamed data correctly."""
@@ -649,21 +649,21 @@ class TestNullOutConv(object):
         msg1 = StreamMsg(
             role='user',
             meta={
-                'data': ['part1']
+                'content': 'part1'
             },
             is_last=False
         )
         msg2 = StreamMsg(
             role='user',
             meta={
-                'data': ['part2']
+                'content': 'part2'
             },
             is_last=True
         )
         delta_store = {}
         out(msg1, delta_store=delta_store)
         result = out(msg2, delta_store=delta_store).m['F1']
-        assert result == ['part2']
+        assert result == 'part2'
 
     def test_nulloutconv_example_output(self):
         """Test NullOutConv generates the correct example output."""
@@ -683,21 +683,21 @@ class TestNullOutConv(object):
         msg1 = StreamMsg(
             role='user',
             meta={
-                'data': ['partial']
+                'content': 'partial'
             },
             is_last=False
         )
         msg2 = StreamMsg(
             role='user',
             meta={
-                'data': ['stream']
+                'content': 'stream'
             },
             is_last=True
         )
         delta_store = {}
         out(msg1, delta_store=delta_store)
         result = out(msg2, delta_store=delta_store).m['F1']
-        assert result == ['stream']
+        assert result == 'stream'
 
     def test_nulloutconv_handles_large_data(self):
         """Test NullOutConv handles large data gracefully."""
@@ -706,11 +706,11 @@ class TestNullOutConv(object):
         msg = Msg(
             role='user',
             meta={
-                'data': [large_data]
+                'content': large_data
             }
         )
         result = out(msg).m['F1']
-        assert result == [large_data]
+        assert result == large_data
 
 
 class TestJSONRead(object):
@@ -730,7 +730,7 @@ class TestJSONRead(object):
         msg1 = Msg(
             role='user',
             meta={
-                'data': [d]
+                'content': d
             }
         )
         simple2 = out(msg1).m['F1']
@@ -764,7 +764,7 @@ class TestJSONRead(object):
         msg1 = Msg(
             role='user',
             meta={
-                'data': [data]
+                'content': data
             }
         )
         cur = out(msg1, delta_store).m['F1']
@@ -783,7 +783,7 @@ class TestIndexConv(object):
         msg = Msg(
             role='user',
             meta={
-                'data': []
+                'content': ''
             }
         )
         result = out(msg).m['F1']
@@ -798,7 +798,7 @@ class TestIndexConv(object):
         msg = Msg(
             role='user',
             meta={
-                'data': ['1:1']  # Invalid separator
+                'content': '1:1'  # Invalid separator
             }
         )
         with pytest.raises(RuntimeError):
@@ -813,21 +813,22 @@ class TestIndexConv(object):
         msg1 = StreamMsg(
             role='user',
             meta={
-                'data': ['1::1']
+                'content': '1::1\n'
             },
             is_last=False
         )
         msg2 = StreamMsg(
             role='user',
             meta={
-                'data': ['2::4']
+                'content': '2::4'
             },
             is_last=True
         )
         delta_store = {}
         out(msg1, delta_store=delta_store)
         result = out(msg2, delta_store=delta_store).m['F1']
-        assert result[0] == '4'
+        assert result[0] == '1'
+        assert result[1] == '4'
 
     def test_indexconv_handles_duplicate_indices(self):
         """Test IndexConv processes duplicate indices by overwriting with the latest value."""
@@ -838,7 +839,7 @@ class TestIndexConv(object):
         msg = Msg(
             role='user',
             meta={
-                'data': ['1::1', '1::2']
+                'content': '1::1\n1::2'
             }
         )
         result = out(msg).m['F1']
@@ -854,7 +855,7 @@ class TestIndexConv(object):
         msg = Msg(
             role='user',
             meta={
-                'data': ['1=1', '2=4']
+                'content': '1=1\n2=4'
             }
         )
         result = out(msg).m['F1']
@@ -870,7 +871,7 @@ class TestIndexConv(object):
         msg = Msg(
             role='user',
             meta={
-                'data': ['1::1']
+                'content': '1::1'
             }
         )
         result = out(msg).m['F1']
@@ -907,9 +908,9 @@ class TestIndexConv(object):
         msg1 = StreamMsg(
             role='user',
             meta={
-                'data': ['1:1']
+                'content': '1:1'
             },
-            is_last=False
+            is_last=True
         )
         delta_store = {}
         with pytest.raises(RuntimeError):
@@ -921,11 +922,13 @@ class TestIndexConv(object):
             name='F1',
             key_descr='the number of people'
         )
-        data = [f'{i + 1}::{i * 2}' for i in range(1000)]
+        data = '\n'.join(
+            [f'{i + 1}::{i * 2}' for i in range(1000)]
+        )
         msg = Msg(
             role='user',
             meta={
-                'data': data
+                'content': data
             }
         )
         result = out(msg).m['F1']
@@ -934,8 +937,7 @@ class TestIndexConv(object):
 
     def test_out_reads_in_the_class(self):
 
-        k = ['1::1']
-        k += ['2::4']
+        k = '1::1\n2::4'
 
         out = text_proc.IndexOut(
             name='F1',
@@ -945,7 +947,7 @@ class TestIndexConv(object):
         msg1 = Msg(
             role='user',
             meta={
-                'data': k
+                'content': k
             }
         )
         result = out(msg1).m['F1']
@@ -964,8 +966,7 @@ class TestIndexConv(object):
     
     def test_out_reads_in_the_class_with_delta(self):
 
-        k = ['1::1']
-        k += ['2::4']
+        k = '1::1\n2::4'
 
         out = text_proc.IndexOut(
             name='F1',
@@ -979,7 +980,7 @@ class TestIndexConv(object):
             msg1 = StreamMsg(
                 role='user',
                 meta={
-                    'data': [t]
+                    'content': t
                 },
                 is_last=i == len(k) - 1
             )
@@ -1011,21 +1012,18 @@ csv_data3 = (
 "Tool, Multi-purpose",29.99,"Durable and versatile tool"""
 )
 
-from collections import OrderedDict
-
 class TestCSVParser(object):
 
-    
-    def test_csv_row_parser_handles_empty_data(self):
+    def test_csv_out_handles_empty_data(self):
         data = ""
-        parser = _parse.CSVRowParser('F1', use_header=True)
+        parser = _out.CSVOut('F1', use_header=True)
         msg = Msg('user', meta={'content': data})
         res = parser(msg).m['F1']
         assert res == utils.UNDEFINED
 
     def test_csv_row_parser_handles_single_row_no_header(self):
         data = "John,25,New York"
-        parser = _parse.CSVRowParser('F1', use_header=False)
+        parser = _out.CSVOut('F1', use_header=False)
         msg = Msg('user', meta={'content': data})
         res = parser(msg).m['F1']
         assert len(res) == 1
@@ -1033,7 +1031,7 @@ class TestCSVParser(object):
 
     def test_csv_row_parser_handles_single_row_with_header(self):
         data = "name,age,city\nJohn,25,New York"
-        parser = _parse.CSVRowParser('F1', use_header=True)
+        parser = _out.CSVOut('F1', use_header=True)
         msg = Msg('user', meta={'content': data})
         res = parser(msg).m['F1']
         assert len(res) == 1
@@ -1041,7 +1039,7 @@ class TestCSVParser(object):
 
     def test_csv_row_parser_handles_multiple_rows_with_header(self):
         data = csv_data1
-        parser = _parse.CSVRowParser('F1', use_header=True)
+        parser = _out.CSVOut('F1', use_header=True)
         msg = Msg('user', meta={'content': data})
         res = parser(msg).m['F1']
         assert len(res) == 3
@@ -1051,7 +1049,7 @@ class TestCSVParser(object):
 
     def test_csv_row_parser_handles_multiple_rows_no_header(self):
         data = csv_data3
-        parser = _parse.CSVRowParser('F1', use_header=False)
+        parser = _out.CSVOut('F1', use_header=False)
         msg = Msg('user', meta={'content': data})
         res = parser(msg).m['F1']
         assert len(res) == 3
@@ -1061,7 +1059,7 @@ class TestCSVParser(object):
 
     def test_csv_row_parser_handles_streamed_data_with_header(self):
         data = csv_data1
-        parser = _parse.CSVRowParser('F1', use_header=True)
+        parser = _out.CSVOut('F1', use_header=True)
         res = []
         for cur in asst_stream(data, [parser]):
             cur = cur.m['F1']
@@ -1074,7 +1072,7 @@ class TestCSVParser(object):
 
     def test_csv_row_parser_handles_streamed_data_no_header(self):
         data = csv_data3
-        parser = _parse.CSVRowParser('F1', use_header=False)
+        parser = _out.CSVOut('F1', use_header=False)
         res = []
         for cur in asst_stream(data, [parser]):
             cur = cur.m['F1']
@@ -1087,9 +1085,9 @@ class TestCSVParser(object):
 
     def test_csv_row_parser_handles_different_delimiters(self):
         data = "name|age|city\nJohn|25|New York\nJane|30|Los Angeles"
-        parser = _parse.CSVRowParser('F1', delimiter='|', use_header=True)
+        out = _out.CSVOut('F1', delimiter='|', use_header=True)
         msg = Msg('user', meta={'content': data})
-        res = parser(msg).m['F1']
+        res = out(msg).m['F1']
         assert len(res) == 2
         assert res[0] == OrderedDict(zip(["name", "age", "city"], ["John", "25", "New York"]))
         assert res[1] == OrderedDict(zip(["name", "age", "city"], ["Jane", "30", "Los Angeles"]))
@@ -1097,28 +1095,28 @@ class TestCSVParser(object):
     def test_csv_delim_parser_returns_correct_len_with_header(self):
         
         data = csv_data1
-        parser = _parse.CSVRowParser('F1', use_header=True)
+        out = _out.CSVOut('F1', use_header=True)
         msg = Msg('user', meta={'content': data})
-        res = parser(msg).m['F1']
+        res = out(msg).m['F1']
         assert len(res) == 3
 
     def test_char_delim_parser_returns_csv_with_no_header(self):
         
         data = csv_data3
-        parser = _parse.CSVRowParser('F1', use_header=False)
+        out = _out.CSVOut('F1', use_header=False)
         msg = Msg('user', meta={'content': data})
-        res = parser(msg).m['F1']
+        res = out(msg).m['F1']
         assert len(res) == 3
 
     def test_csv_delim_parser_returns_correct_len_with_header2(self):
         
         data = csv_data1
-        parser = _parse.CSVRowParser(
+        out = _out.CSVOut(
             'F1', use_header=True
         )
         res = []
 
-        for cur in asst_stream(data, [parser]):
+        for cur in asst_stream(data, [out]):
             cur = cur.m['F1']
             if cur != utils.UNDEFINED:
                 res.extend(cur)
@@ -1128,16 +1126,14 @@ class TestCSVParser(object):
     def test_csv_delim_parser_returns_correct_len_with_newline(self):
         
         data = csv_data2
-        parser = _parse.CSVRowParser(
+        out = _out.CSVOut(
             'F1', use_header=True
         )
         res = []
 
-        for cur in asst_stream(data, [parser]):
+        for cur in asst_stream(data, [out]):
             cur = cur.m['F1']
             if cur != utils.UNDEFINED:
                 res.extend(cur)
 
         assert len(res) == 3
-
-

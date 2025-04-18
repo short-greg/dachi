@@ -19,7 +19,7 @@ from pydantic_core import PydanticUndefined
 from ..utils import (
     escape_curly_braces
 )
-from ._parse import LineParser
+from ._parse import LineParser, Parser
 from .. import store
 from .. import utils
 
@@ -71,13 +71,27 @@ class OutConv(MsgProc, Templatable, ExampleMixin):
         """
         pass
 
+    def coalesce_resp(self, resp, default='') -> str:
+        """_summary_
+
+        Args:
+            resp : 
+
+        Returns:
+            str: 
+        """
+        if resp is utils.UNDEFINED or resp is None:
+            return default
+        
+        return resp
+
 
 class PrimOut(OutConv):
     """Use for converting an AI response into a primitive value
     """
 
     def __init__(
-        self, out_cls: typing.Type, name: str, from_: str='data'
+        self, out_cls: typing.Type, name: str, from_: str='content'
     ):
         """Create a reader for Primitive values
 
@@ -137,7 +151,7 @@ class PydanticOut(OutConv, typing.Generic[S]):
     """
     def __init__(
         self, out_cls: typing.Type[S], 
-        name: str, from_: str='data'
+        name: str, from_: str='content'
     ):
         """Read in a Pydantic BaseModel
 
@@ -158,7 +172,12 @@ class PydanticOut(OutConv, typing.Generic[S]):
         """
         return data.model_dump_json()
 
-    def delta(self, resp, delta_store: typing.Dict, is_streamed: bool=False, is_last: bool=True) -> Msg:
+    def delta(
+        self, resp, 
+        delta_store: typing.Dict, 
+        is_streamed: bool=False, 
+        is_last: bool=True
+    ) -> Msg:
     # def __call__(self, message: str) -> typing.Any:
         """Read in the output
 
@@ -170,7 +189,6 @@ class PydanticOut(OutConv, typing.Generic[S]):
         """
         if resp is None or resp is utils.UNDEFINED:
             resp = ''
-
         val = store.acc(delta_store, 'val', resp)
 
         if not is_last:
@@ -221,7 +239,7 @@ class KVOut(OutConv):
     """
 
     def __init__(
-        self, name: str, from_: str='data',
+        self, name: str, from_: str='content',
         sep: str='::', key_descr: typing.Optional[typing.Union[typing.Type[pydantic.BaseModel], typing.Dict]] = None
     ):
         super().__init__(name, from_)
@@ -242,10 +260,13 @@ class KVOut(OutConv):
         """
         resp = self.coalesce_resp(resp)
         line_store = store.get_or_set(delta_store, 'lines', {})
-        resp = self.line_parser(resp, line_store, is_streamed, is_last)
+        res = self.line_parser(resp, line_store, is_streamed, is_last)
+
+        if res is utils.UNDEFINED or res is None:
+            return res
         
         result = {}
-        for line in resp:
+        for line in res:
             try:
 
                 key, value = line.split(self.sep)
@@ -302,7 +323,7 @@ class IndexOut(OutConv):
     """
 
     def __init__(
-        self, name: str, from_: str='data',
+        self, name: str, from_: str='content',
         sep: str='::', key_descr: typing.Optional[typing.Union[typing.Type[pydantic.BaseModel], typing.Dict]] = None
     ):
         super().__init__(name, from_)
@@ -325,6 +346,8 @@ class IndexOut(OutConv):
         resp = self.coalesce_resp(resp)
         line_store = store.get_or_set(delta_store, 'lines', {})
         resp = self.line_parser(resp, line_store, is_streamed, is_last)
+        if resp is utils.UNDEFINED or resp is None:
+            return utils.UNDEFINED
         result = []
         for line in resp:
             try:
@@ -392,7 +415,7 @@ class JSONOut(OutConv):
     """
 
     def __init__(
-        self, name, from_ = 'data', 
+        self, name, from_ = 'content', 
         key_descr: typing.Optional[typing.Dict] = None
     ):
         super().__init__(name, from_)
@@ -448,13 +471,13 @@ class JSONOut(OutConv):
         return escape_curly_braces(self.key_descr)
 
 
-class NullOut(OutConv):
+class ParsedOut(OutConv):
     """A Reader that does not change the data. 
     So in most cases will simply output a string
     """
-
-    def __init__(self, name, from_: str='data'):
+    def __init__(self, parser: Parser, name, from_: str='content'):
         super().__init__(name, from_)
+        self._parser = parser
 
     def example(self, data: typing.Any) -> str:
         """Output an example of the data
@@ -476,6 +499,50 @@ class NullOut(OutConv):
         Returns:
             typing.Any: The output of the reader
         """
+        return self._parser.forward(
+            resp, delta_store, streamed=streamed,
+            is_last=is_last
+        )
+
+    def template(self) -> str:
+        return ''
+
+
+
+class NullOut(OutConv):
+    """A Reader that does not change the data. 
+    So in most cases will simply output a string
+    """
+
+    def __init__(self, name, from_: str='content', parser: Parser=None):
+        super().__init__(name, from_)
+        self._parser = parser
+
+    def example(self, data: typing.Any) -> str:
+        """Output an example of the data
+
+        Args:
+            data (typing.Any): 
+
+        Returns:
+            str: 
+        """
+        return str(data)
+
+    def delta(self, resp, delta_store: typing.Dict, streamed: bool=False, is_last: bool=False) -> typing.Any:
+        """Read in the output
+
+        Args:
+            message (str): The message to read
+
+        Returns:
+            typing.Any: The output of the reader
+        """
+        if self._parser is not None:
+            return self._parser.forward(
+                resp, delta_store, streamed=streamed,
+                is_last=is_last
+            )
         return resp
 
     def template(self) -> str:
@@ -572,6 +639,11 @@ class CSVOut(OutConv):
         
         return output.getvalue()
 
+    def example(self, data):
+        return super().example(data)
+    
+    def template(self):
+        return super().template()
 
 
 # class ConvTemplate(Templatable):

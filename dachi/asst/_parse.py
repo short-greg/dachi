@@ -49,11 +49,12 @@ class CSVRowParser(Parser):
         self._delimiter = delimiter
         self._use_header = use_header
 
-    def forward(self, resp, delta_store: typing.Dict, streamed: bool=False, is_last: bool=True) -> typing.List | None:
+    def forward(self, resp, delta_store: typing.Dict=None, streamed: bool=False, is_last: bool=True) -> typing.List | None:
         """
         Parses CSV data incrementally using csv.reader.
         """
         # resp = self.handle_null(resp, '')
+        delta_store = delta_store if delta_store is not None else {}
 
         val = store.acc(delta_store, 'val', resp, '')
         row = store.get_or_set(delta_store, 'row', 0)

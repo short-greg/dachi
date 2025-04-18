@@ -66,13 +66,13 @@ class IBase(ABC):
         if out_conv is None:
             if out_cls in primitives:
                 out_conv = PrimOut(
-                    name='out', from_='data',
+                    name='out', from_='content',
                     out_cls=self.out_cls
                 )
             elif issubclass(out_cls, pydantic.BaseModel):
-                out_conv = PydanticOut(name='out', from_='data', out_cls=out_cls)
+                out_conv = PydanticOut(name='out', from_='content', out_cls=out_cls)
             else:
-                out_conv = NullOut(name='out', from_='data')
+                out_conv = NullOut(name='out', from_='content')
 
         self._out_conv: OutConv = out_conv
         self._out = FromMsg(llm_out)
@@ -563,7 +563,7 @@ class StreamDec(FuncDecBase, StreamModule):
         for resp_msg in engine.stream(
             [msg], **self._kwargs
         ):
-            resp = self._inst.out_conv(resp)
+            resp = self._inst.out_conv(resp_msg)
             resp, filtered = self._inst.from_msg.filter(resp)
             if filtered:
                 yield None
@@ -643,7 +643,7 @@ class AStreamDec(FuncDecBase, AsyncStreamModule):
         async for resp_msg in engine.astream(
             [msg], **self._kwargs
         ):
-            resp = self._inst.out_conv(resp)
+            resp = self._inst.out_conv(resp_msg)
             resp, filtered = self._inst.from_msg.filter(resp)
 
             if filtered:
