@@ -28,7 +28,8 @@ class CompositeFunc:
 
     def __init__(
         self, f, base_f, ctx: 
-        Context=None, is_method: bool=False, instance=None
+        Context=None, is_method: bool=False, 
+        instance=None
     ):
         """Create a composite function
 

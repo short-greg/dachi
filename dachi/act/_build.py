@@ -205,7 +205,7 @@ class build_unless(build_decorate):
             decorated: The task to loop over
             parent (Task, optional): The parent task. Defaults to None.
         """
-        super().__init__(behavior.Unless, decorated, parent, target_status=target_status)
+        super().__init__(behavior.AsLongAs, decorated, parent, target_status=target_status)
 
 
 class build_until(build_decorate):

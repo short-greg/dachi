@@ -9,7 +9,10 @@ from dachi import store
 import time
 
 
-def sample_action(state: typing.Dict, x: int) -> _core.TaskStatus:
+def sample_action(state: typing.Dict, x: int, reset: bool=False) -> _core.TaskStatus:
+
+    if reset:
+        state['val'] = 0
 
     val = store.get_or_set(state, 'val', 0)
     state['val'] = x + val
@@ -19,7 +22,7 @@ def sample_action(state: typing.Dict, x: int) -> _core.TaskStatus:
     return _core.TaskStatus.SUCCESS
 
 
-def sample_cond(x: int) -> bool:
+def sample_cond(x: int, reset: bool=False) -> bool:
 
     return x > 3
 
@@ -534,45 +537,45 @@ class TestParallel:
 
         assert status.failure
 
-    # def test_parallel_returns_success_if_both_succeed(self):
-    #     state = utils.ContextStorage()
+#     # def test_parallel_returns_success_if_both_succeed(self):
+#     #     state = utils.ContextStorage()
 
-    #     status = F.parallel([
-    #         F.condf(sample_cond, 4),
-    #         F.action(sample_action, state.A, 4)
-    #     ])()
+#     #     status = F.parallel([
+#     #         F.condf(sample_cond, 4),
+#     #         F.action(sample_action, state.A, 4)
+#     #     ])()
 
-    #     assert status.success
+#     #     assert status.success
 
-    # def test_parallel_returns_running_if_one_running(self):
-    #     state = utils.ContextStorage()
+#     # def test_parallel_returns_running_if_one_running(self):
+#     #     state = utils.ContextStorage()
 
-    #     status = F.parallel([
-    #         F.condf(sample_cond, 4),
-    #         F.action(sample_action, state.A, 2)
-    #     ])()
+#     #     status = F.parallel([
+#     #         F.condf(sample_cond, 4),
+#     #         F.action(sample_action, state.A, 2)
+#     #     ])()
 
-    #     assert status.running
+#     #     assert status.running
 
-    # def test_parallel_returns_running_with_nested_sequence(self):
-    #     state = utils.ContextStorage()
+#     # def test_parallel_returns_running_with_nested_sequence(self):
+#     #     state = utils.ContextStorage()
 
-    #     status = F.parallel([
-    #         F.condf(sample_cond, 4),
-    #         F.sequence(
-    #             [F.action(sample_action, state.A, 2)], state.S
-    #         )
-    #     ])()
+#     #     status = F.parallel([
+#     #         F.condf(sample_cond, 4),
+#     #         F.sequence(
+#     #             [F.action(sample_action, state.A, 2)], state.S
+#     #         )
+#     #     ])()
 
-    #     assert status.running
+#     #     assert status.running
 
 
-class TestUnless:
+class TestAsLongAs:
 
     def test_unless_returns_failure_if_failed(self):
         state = utils.ContextStorage()
 
-        status = F.unless(
+        status = F.aslongas(
             F.sequence([
                 F.condf(sample_cond, 2),
                 F.action(sample_action, state.A, 4)
@@ -584,14 +587,14 @@ class TestUnless:
     def test_unless_returns_running_if_succeeded(self):
         state = utils.ContextStorage()
 
-        status = F.unless(
+        status = F.aslongas(
             F.sequence([
                 F.condf(sample_cond, 4),
                 F.action(sample_action, state.A, 4)
             ], state.S)
         )()
 
-        status = F.unless(
+        status = F.aslongas(
             F.sequence([
                 F.condf(sample_cond, 4),
                 F.action(sample_action, state.S, 4)
@@ -728,7 +731,6 @@ class TestNot:
         )()
 
         assert status.success
-
 
     def test_not_returns_failed_if_success(self):
 
@@ -926,7 +928,7 @@ class TestSharedTask:
         assert shared.data == 'Great!'
 
     def test_tick_with_callable_task(self):
-        def mock_task():
+        def mock_task(reset: bool=False):
             return TaskStatus.RUNNING
 
         status = F.tick(mock_task)
@@ -937,35 +939,35 @@ class TestSharedTask:
             F.tick("invalid_task")
 
     def test_tick_with_task_returning_failure(self):
-        def mock_task():
+        def mock_task(reset: bool=False):
             return TaskStatus.FAILURE
 
         status = F.tick(mock_task)
         assert status == TaskStatus.FAILURE
 
     def test_tick_with_task_returning_running(self):
-        def mock_task():
+        def mock_task(reset: bool=False):
             return TaskStatus.RUNNING
 
         status = F.tick(mock_task)
         assert status == TaskStatus.RUNNING
 
     def test_tick_with_task_returning_success(self):
-        def mock_task():
+        def mock_task(reset: bool=False):
             return TaskStatus.SUCCESS
 
         status = F.tick(mock_task)
         assert status == TaskStatus.SUCCESS
 
     def test_tick_with_task_raising_exception(self):
-        def mock_task():
+        def mock_task(reset: bool=False):
             raise ValueError("Task failed")
 
         with pytest.raises(ValueError):
             F.tick(mock_task)
 
     def test_tick_with_task_returning_none(self):
-        def mock_task():
+        def mock_task(reset: bool=False):
             return None
 
         status = F.tick(mock_task)
@@ -976,7 +978,7 @@ class TestSharedTask:
             def __init__(self, state):
                 self.state = state
 
-        def mock_task():
+        def mock_task(reset: bool=False):
             return CustomStatus("custom_state")
 
         status = F.tick(mock_task)

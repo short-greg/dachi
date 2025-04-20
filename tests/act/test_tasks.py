@@ -7,7 +7,7 @@ class ATask(behavior.Action):
 
     x: int = 1
 
-    def act(self):
+    def act(self, reset: bool=False):
         return TaskStatus.SUCCESS
 
 
@@ -15,7 +15,7 @@ class SetStorageAction(behavior.Action):
 
     value: int = 4
 
-    def act(self) -> TaskStatus:
+    def act(self, reset: bool=False) -> TaskStatus:
 
         if self.value < 0:
             return TaskStatus.FAILURE
@@ -23,12 +23,23 @@ class SetStorageAction(behavior.Action):
         return TaskStatus.SUCCESS
 
 
+class SampleCondition(behavior.Condition):
+
+    x: int
+
+    def condition(self, reset: bool=False) -> bool:
+
+        if self.x < 0:
+            return False
+        return True
+
+
 class SetStorageActionCounter(behavior.Action):
 
     value: int = 4
     _count: int = pydantic.PrivateAttr(default=0)
 
-    def act(self):
+    def act(self, reset: bool=False):
 
         if self.value == 0:
             return TaskStatus.FAILURE
@@ -66,7 +77,7 @@ class TestAction:
 
         action = SetStorageActionCounter(value=2)
         action.tick()
-        action.reset()
+        action.reset_status()
         assert action.status == TaskStatus.READY
 
     def test_load_state_dict_sets_state(self):
@@ -121,7 +132,7 @@ class TestSequence:
         )
         sequence.tick()
         sequence.tick()
-        sequence.reset()
+        sequence.reset_status()
         assert sequence.status == TaskStatus.READY
 
     def test_sequence_finished_after_three_ticks(self):
@@ -135,17 +146,6 @@ class TestSequence:
         sequence.tick()
         
         assert sequence.tick() == TaskStatus.SUCCESS
-
-
-class SampleCondition(behavior.Condition):
-
-    x: int
-
-    def condition(self) -> bool:
-
-        if self.x < 0:
-            return False
-        return True
 
 
 class TestCondition:
@@ -170,7 +170,7 @@ class TestCondition:
 
         condition = SampleCondition(x=-1)
         condition.tick()
-        condition.reset()
+        condition.reset_status()
         assert condition.status == TaskStatus.READY
 
 
@@ -224,11 +224,11 @@ class TestFallback:
             tasks=[action1, action2]
         )
         fallback.tick()
-        fallback.reset()
+        fallback.reset_status()
         assert fallback.status == TaskStatus.READY
 
 
-class TestUnless:
+class TestAsLongAs:
 
     def test_while_fails_if_failure(self):
 
@@ -236,21 +236,21 @@ class TestUnless:
             value=0
         )
         action1._count = -1
-        while_ = behavior.Unless(
-            task=action1, target_status=TaskStatus.FAILURE
+        while_ = behavior.AsLongAs(
+            task=action1
         )
 
         while_.tick()
         action1.value = 1
 
-        assert while_.status == TaskStatus.FAILURE
+        assert while_.status == TaskStatus.RUNNING
 
     def test_while_fails_if_failure_after_two(self):
 
         action1 = SetStorageActionCounter(value=1)
         action1._count = 1
         action1.value = 1
-        while_ = behavior.Unless(task=action1)
+        while_ = behavior.AsLongAs(task=action1)
 
         while_.tick()
         action1.value = 0
@@ -277,4 +277,3 @@ class TestUntil:
         action1.value = 1
 
         assert until_.tick() == TaskStatus.SUCCESS
-

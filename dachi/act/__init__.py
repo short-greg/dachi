@@ -4,9 +4,9 @@ from ._core import (
     from_bool
 )
 from ._functional import (
-    parallel, unless, until, sequence,
+    parallel, aslongas, until, sequence,
     action, not_, tick, condf, selector,
-    unlessf, untilf, notf, parallelf,
+    aslongasf, untilf, notf, parallelf,
     selectorf, sequencef, fallbackf,
     fallback, taskf, PARALLEL, threaded,
     stream_model, exec_model,
@@ -18,7 +18,7 @@ from ._tasks import (
     Parallel, Action,
     Condition, Root,
     Not, 
-    Unless, Until,
+    AsLongAs, Until,
     run_task,
     Fallback,
     StateMachine,

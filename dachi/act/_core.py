@@ -3,17 +3,12 @@ from enum import Enum
 from abc import abstractmethod
 import typing
 from dataclasses import dataclass
-import inspect
-from typing import Any
-
 import pydantic
 
 # local
 from ..base import Storable
 
 # TODO: Add in Action (For GOAP)
-from ..asst import MsgProc
-from ..utils import UNDEFINED
 
 
 class TaskStatus(Enum):
@@ -186,15 +181,15 @@ class Task(pydantic.BaseModel, Storable):
     def tick(self) -> TaskStatus:
         raise NotImplementedError
 
-    def __call__(self) -> TaskStatus:
+    def __call__(self, reset: bool=False) -> TaskStatus:
         """Execute the task
 
         Returns:
             TaskStatus: The status of the task after execution
         """
-        return self.tick()
+        return self.tick(reset)
 
-    def reset(self):
+    def reset_status(self):
         """Reset the terminal
 
         """
@@ -239,7 +234,10 @@ class Task(pydantic.BaseModel, Storable):
         """
         cur = {}
 
-        all_items = {**self.__dict__, **self.__pydantic_private__}
+        all_items = {
+            **self.__dict__, 
+            **self.__pydantic_private__
+        }
         for k, v in all_items.items():
             if isinstance(v, Storable):
                 cur[k] = v.state_dict()

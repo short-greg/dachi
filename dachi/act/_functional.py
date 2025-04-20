@@ -13,6 +13,7 @@ from ..store._data import Context, ContextSpawner, SharedBase
 from ._core import TOSTATUS
 from ..store._data import Buffer,Shared
 from ..asst import LLM, LLM_PROMPT, FromMsg
+import itertools
 
 TASK = typing.Union[
     Task, typing.Callable[[typing.Dict], TaskStatus]]
@@ -21,11 +22,21 @@ CALL_TASK = typing.Callable[[],TaskStatus]
 
 PARALLEL = typing.Callable[[typing.Iterable[Task], int, int, bool], TaskStatus]
 
+def reset_arg_ctx(*args, **kwargs):
+    """Use to reset the context to the args and kwargs
+    """
+
+    for k, arg in itertools.chain(enumerate(args), kwargs.items()):
+        if isinstance(arg, Task):
+            arg.reset_status()
+        elif isinstance(arg, Context):
+            arg.reset()
 
 async def _parallel(
     tasks: typing.Iterable[TASK], 
     success_on: int=-1, 
-    fails_on: int=1, success_priority: bool=True
+    fails_on: int=1, success_priority: bool=True,
+    reset: bool=False
 ) -> TaskStatus:
     """Run in parallel
 
@@ -47,7 +58,7 @@ async def _parallel(
         for _, task in enumerate(tasks):
 
             tg_tasks.append(tg.create_task(
-                (asyncio.to_thread(task))
+                (asyncio.to_thread(task, reset))
             ))
 
         if success_on < 0:
@@ -109,12 +120,17 @@ def parallel(
     succeeds_on = (
         succeeds_on if succeeds_on is not None else (len(self._tasks) + 1 - self._fails_on)
     )
-    def _f():
+    def _f(reset: bool=False):
         if parallelizer:
-            return parallelizer(tasks, succeeds_on, fails_on, success_priority)
+            return parallelizer(
+                tasks, succeeds_on, 
+                fails_on, 
+                success_priority, 
+                reset=reset
+            )
         
         return asyncio.run(
-            _parallel(tasks, succeeds_on, fails_on, success_priority)
+            _parallel(tasks, succeeds_on, fails_on, success_priority, reset=reset)
         )
     return _f
 
@@ -186,7 +202,9 @@ def sequence(tasks: typing.Iterable[TASK], ctx: Context) -> CALL_TASK:
     Returns:
         CALL_TASK: The task to call
     """
-    def _f():
+    def _f(reset: bool=False):
+        if reset:
+            ctx.reset()
         status = ctx.get_or_set('status', TaskStatus.RUNNING)
 
         if status.is_done:
@@ -310,7 +328,9 @@ def selector(tasks: TASK, ctx: Context) -> CALL_TASK:
     Returns:
         CALL_TASK: The task to call
     """
-    def _f():
+    def _f(reset: bool=False):
+        if reset:
+            ctx.reset()
         return _selector(tasks, ctx)
 
     return _f
@@ -345,8 +365,10 @@ def action(task: TASK, *args, **kwargs) -> CALL_TASK:
     Returns:
         TaskStatus: The status of the result
     """
-    def _f():
-        result = task(*args, **kwargs)
+    def _f(reset: bool=False):
+        if reset:
+            reset_arg_ctx(*args, **kwargs)
+        result = task(*args, reset=reset, **kwargs)
         return result
 
     return _f
@@ -366,10 +388,16 @@ def threadedf(
             'the task passed in is does not match'
         )
 
-    def _f():
+    def _f(reset: bool=False):
         """Run the task in a thread"""
+        if reset:
+            reset_arg_ctx(*args, **kwargs)
         def task_wrapper():
-            result = task(*args, **kwargs)
+            
+            result = task(
+                *args, reset=reset, 
+                **kwargs
+            )
             if out is not None:
                 out.set(result)
             if to_status is not None:
@@ -403,8 +431,10 @@ def taskf(
     Returns:
         CALL_TASK: The CALL_TASK to execute
     """
-    def _f():
-        result = f(*args, **kwargs)
+    def _f(reset: bool=False):
+        if reset:
+            reset_arg_ctx(*args, **kwargs)
+        result = f(*args, reset=reset, **kwargs)
         if out is not None:
             out.set(result)
         
@@ -429,7 +459,9 @@ def condf(task: typing.Callable, *args, **kwargs) -> CALL_TASK:
     Returns:
         TaskStatus: The status of the result
     """
-    def _f():
+    def _f(reset: bool=False):
+        if reset:
+            reset_arg_ctx(*args, **kwargs)
         result = task(*args, **kwargs)
         return TaskStatus.from_bool(result)
 
@@ -446,8 +478,8 @@ def not_(task: TASK) -> CALL_TASK:
     Returns:
         TaskStatus: The status of the result
     """
-    def _f() -> TaskStatus:
-        status = tick(task)
+    def _f(reset: bool=False) -> TaskStatus:
+        status = tick(task, reset)
         return status.invert()
 
     return _f
@@ -661,7 +693,7 @@ def exec_func(
     return run
 
 
-def tick(task: TASK) -> TaskStatus:
+def tick(task: TASK, reset: bool=False) -> TaskStatus:
     """Run the task
 
     Args:
@@ -672,12 +704,12 @@ def tick(task: TASK) -> TaskStatus:
     """
 
     if isinstance(task, Task):
-        return task.tick()
+        return task.tick(reset)
     
-    return task()
+    return task(reset)
 
 
-def unless(task: TASK, status: TaskStatus=TaskStatus.FAILURE) -> CALL_TASK:
+def aslongas(task: TASK, status: TaskStatus=TaskStatus.FAILURE) -> CALL_TASK:
     """Loop unless a condition is met
 
     Args:
@@ -686,16 +718,20 @@ def unless(task: TASK, status: TaskStatus=TaskStatus.FAILURE) -> CALL_TASK:
     Returns:
         TaskStatus: The status of the result
     """
-    def _f():
-        cur_status = task()
-        
+    local_reset = False
+    def _f(reset: bool=False):
+        nonlocal local_reset
+        cur_status = task(reset or local_reset)
+        local_reset = False
         if cur_status == status:
+            if cur_status.is_done:
+                local_reset = True
             return TaskStatus.RUNNING
         return cur_status
     return _f
 
 
-def unlessf(
+def aslongasf(
     f, *args, status: TaskStatus=TaskStatus.FAILURE, **kwargs
 ) -> CALL_TASK:
     """Loop unless a condition is met
@@ -706,10 +742,13 @@ def unlessf(
     Returns:
         CALL_TASK: The status of the result
     """
-    return unless(partial(f, *args, **kwargs), status)
+    return aslongas(partial(f, *args, **kwargs), status)
 
 
-def until(task: TASK, status: TaskStatus=TaskStatus.SUCCESS) -> CALL_TASK:
+def until(
+    task: TASK, 
+    status: TaskStatus=TaskStatus.SUCCESS
+) -> CALL_TASK:
     """Loop until a condition is met
 
     Args:
@@ -718,12 +757,19 @@ def until(task: TASK, status: TaskStatus=TaskStatus.SUCCESS) -> CALL_TASK:
     Returns:
         TaskStatus: The status of the result
     """
+    local_reset = False
 
-    def _f():
-        cur_status = task()
+    def _f(reset: bool=False):
+        nonlocal local_reset
+        cur_status = task(local_reset or reset)
         
+        local_reset = False
         if cur_status == status:
             return cur_status
+
+        if cur_status == status:
+            if cur_status.is_done:
+                local_reset = True
         return TaskStatus.RUNNING
     return _f
 

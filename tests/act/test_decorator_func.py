@@ -13,7 +13,7 @@ class TaskAgent:
         self.ctx = Context()
 
     @DF.taskfunc()
-    def increment(self, x):
+    def increment(self, x, reset: bool=False):
         x = x + 1
         if x < 0:
             return core.FAILURE
@@ -22,7 +22,7 @@ class TaskAgent:
         return core.SUCCESS
 
     @DF.taskfunc()
-    def decrement(self, x):
+    def decrement(self, x, reset: bool=False):
         x = x - 1
         if x < 0:
             return core.SUCCESS
@@ -38,28 +38,28 @@ class TaskAgent:
         return core.SUCCESS
 
     @DF.taskfunc(out='data', to_status='convert')
-    def increment2(self, x):
+    def increment2(self, x, reset: bool=False):
         x = x + 1
         return x
     
     @DF.condfunc()
-    def is_nonnegative(self, x):
+    def is_nonnegative(self, x, reset: bool=False):
         return x >= 0
 
     @DF.sequencefunc('ctx')
-    def increment_seq(self, x) -> typing.Iterator[core.Task]:
+    def increment_seq(self, x, reset: bool=False) -> typing.Iterator[core.Task]:
 
         yield self.is_nonnegative.task(x)
         yield self.increment.task(x)
 
     @DF.selectorfunc('ctx')
-    def increment_sel(self, x) -> typing.Iterator[core.Task]:
+    def increment_sel(self, x, reset: bool=False) -> typing.Iterator[core.Task]:
 
         yield self.increment.task(x)
         yield self.decrement.task(x)
 
     @DF.parallelfunc()
-    def increment_parallel(self, x, y) -> typing.Iterator[core.Task]:
+    def increment_parallel(self, x, y, reset: bool=False) -> typing.Iterator[core.Task]:
 
         yield self.increment.task(x)
         yield self.increment.task(y)

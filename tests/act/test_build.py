@@ -68,7 +68,7 @@ class TestWhile:
 
             while_.task.tasks.append(ATask())
             while_.task.tasks.append(ATask())
-        assert isinstance(while_, tasks.Unless)
+        assert isinstance(while_, tasks.AsLongAs)
 
 
 class TestUntil:
