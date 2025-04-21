@@ -282,7 +282,7 @@ class State(pydantic.BaseModel):
     """Use State creating a state machine
     """
     @abstractmethod
-    def update(self) -> typing.Union['State', TaskStatus]:
+    def update(self, reset: bool=False) -> typing.Union['State', TaskStatus]:
         """Update the 
 
         Returns: bool
@@ -290,9 +290,12 @@ class State(pydantic.BaseModel):
         """
         pass
 
+    def __call__(self, reset: bool=False):
+        return self.update(reset)
+
 
 class Router(object):
-    """Use to a state
+    """
     """
     @abstractmethod
     def __call__(self, val) -> TaskStatus | State:

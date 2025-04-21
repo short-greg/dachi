@@ -7,7 +7,7 @@ import time
 
 # local
 from ._core import (
-    TaskStatus, Task
+    TaskStatus, Task, State
 )
 from ..store._data import Context, ContextSpawner, SharedBase
 from ._core import TOSTATUS
@@ -789,3 +789,49 @@ def untilf(f, *args, status: TaskStatus=TaskStatus.SUCCESS, **kwargs) -> CALL_TA
         TaskStatus: The status of the result
     """
     return until(partial(f, *args, **kwargs), status)
+
+
+def statemachine(f: State | typing.Callable[[], State | TaskStatus], ctx: Context):
+    """A state machine "task" allows 
+
+    Args:
+        f (State | typing.Callable[[], State  |  TaskStatus]): 
+        ctx (Context): 
+    """
+
+    def _(reset: bool=False):
+        if reset:
+            del ctx['cur']
+        
+        if 'cur' not in ctx:
+            if callable(f):
+                ctx['cur'] = f()
+            else:
+                ctx['cur'] = f
+        
+        updated = ctx['cur']()
+        if isinstance(updated, TaskStatus):
+            return updated
+        else:
+            if callable(updated):
+                ctx['cur'] = updated()
+            else:
+                ctx['cur'] = updated
+
+            return TaskStatus.RUNNING
+
+    return _
+
+
+def statemachinef(f: typing.Callable[[typing.Any], State | TaskStatus], ctx: Context, *args, **kwargs) -> CALL_TASK:
+    """Run a callable sequence task
+
+    Args:
+        tasks (typing.Iterable[TASK]): The tasks to execute
+        state (State): The current state
+
+    Returns:
+        CALL_TASK: The task to call
+    """
+    
+    return f(*args, ctx=ctx, **kwargs)
