@@ -33,7 +33,7 @@ def reset_arg_ctx(*args, **kwargs):
             arg.reset()
 
 async def _parallel(
-    tasks: typing.Iterable[TASK], 
+    tasks: typing.Iterable[TASK] | typing.Callable[[], typing.Iterable[TASK]], 
     success_on: int=-1, 
     fails_on: int=1, success_priority: bool=True,
     reset: bool=False
@@ -55,10 +55,11 @@ async def _parallel(
     tg_tasks = []
     async with asyncio.TaskGroup() as tg:
 
-        for _, task in enumerate(tasks):
+        _tasks = tasks() if callable(tasks) else tasks
+        for _, task in enumerate(_tasks):
 
             tg_tasks.append(tg.create_task(
-                (asyncio.to_thread(task, reset))
+                (asyncio.to_thread(task, reset=reset))
             ))
 
         if success_on < 0:
@@ -97,7 +98,7 @@ async def _parallel(
 
 
 def parallel(
-    tasks: typing.Iterable[TASK], 
+    tasks: typing.Iterable[TASK] | typing.Callable[[], typing.Iterable[TASK]], 
     succeeds_on: int=-1, 
     fails_on: int=1, 
     success_priority: bool=True,
@@ -155,7 +156,7 @@ def parallelf(
         CALL_TASK: The task to call
     """
     return parallel(
-        f(*args, **kwargs), succeeds_on, fails_on, success_priority
+        partial(f, *args, **kwargs), succeeds_on, fails_on, success_priority
     )
 
 
@@ -192,7 +193,7 @@ def spawn(
     return tasks
 
 
-def sequence(tasks: typing.Iterable[TASK], ctx: Context) -> CALL_TASK:
+def sequence(tasks: typing.Iterable[TASK] | typing.Callable[[], typing.Iterable[TASK]], ctx: Context) -> CALL_TASK:
     """Run a sequence task
 
     Args:
@@ -204,7 +205,9 @@ def sequence(tasks: typing.Iterable[TASK], ctx: Context) -> CALL_TASK:
     """
     def _f(reset: bool=False):
         if reset:
-            ctx.reset()
+            ctx['status'] = TaskStatus.READY
+            ctx['cur_task'] = None
+            del ctx['it']
         status = ctx.get_or_set('status', TaskStatus.RUNNING)
 
         if status.is_done:
@@ -212,7 +215,10 @@ def sequence(tasks: typing.Iterable[TASK], ctx: Context) -> CALL_TASK:
         
         # get the iterator
         if 'it' not in ctx:
-            ctx['it'] = iter(tasks)
+            if callable(tasks):
+                ctx["it"] = iter(tasks())
+            else:
+                ctx['it'] = iter(tasks)
 
             try:
                 cur_task = next(ctx['it'])
@@ -229,7 +235,7 @@ def sequence(tasks: typing.Iterable[TASK], ctx: Context) -> CALL_TASK:
             cur_status = cur_status
         # It must be a task
         else:
-            cur_status = cur_task()
+            cur_status = cur_task(reset)
 
         # update the sequence status
         if cur_status.running:
@@ -263,15 +269,21 @@ def sequencef(f: typing.Callable[[typing.Any], typing.Iterator[TASK]], ctx: Cont
     Returns:
         CALL_TASK: The task to call
     """
-    return sequence(f(*args, **kwargs), ctx)
+    return sequence(partial(f, *args, **kwargs), ctx)
 
 
 # SELECTOR does not seem to be working correctly
 
 def _selector(
-    tasks: typing.List[TASK], 
-    ctx: Context
+    tasks: typing.Iterable[TASK] | typing.Callable[[], typing.Iterable[TASK]], 
+    ctx: Context,
+    reset: bool=False
 ) -> TaskStatus:
+
+    if reset:
+        ctx['status'] = TaskStatus.READY
+        ctx['cur_task'] = None
+        del ctx['it']
 
     status = ctx.get_or_set('status', TaskStatus.RUNNING)
 
@@ -280,7 +292,10 @@ def _selector(
     
     # get the iterator
     if 'it' not in ctx:
-        ctx['it'] = iter(tasks)
+        if callable(tasks):
+            ctx["it"] = iter(tasks())
+        else:
+            ctx['it'] = iter(tasks)
 
         try:
             cur_task = next(ctx['it'])
@@ -318,7 +333,7 @@ def _selector(
     return ctx['status']
 
 
-def selector(tasks: TASK, ctx: Context) -> CALL_TASK:
+def selector(tasks: typing.Iterable[TASK] | typing.Callable[[], typing.Iterable[TASK]], ctx: Context) -> CALL_TASK:
     """Create a selector task
 
     Args:
@@ -329,9 +344,7 @@ def selector(tasks: TASK, ctx: Context) -> CALL_TASK:
         CALL_TASK: The task to call
     """
     def _f(reset: bool=False):
-        if reset:
-            ctx.reset()
-        return _selector(tasks, ctx)
+        return _selector(tasks, ctx, reset)
 
     return _f
 
@@ -348,7 +361,7 @@ def selectorf(
     Returns:
         CALL_TASK: The task to call
     """
-    return selector(f(*args, **kwargs), ctx)
+    return selector(partial(f, *args, **kwargs), ctx)
 
 
 fallback = selector
@@ -366,8 +379,6 @@ def action(task: TASK, *args, **kwargs) -> CALL_TASK:
         TaskStatus: The status of the result
     """
     def _f(reset: bool=False):
-        if reset:
-            reset_arg_ctx(*args, **kwargs)
         result = task(*args, reset=reset, **kwargs)
         return result
 
@@ -390,8 +401,6 @@ def threadedf(
 
     def _f(reset: bool=False):
         """Run the task in a thread"""
-        if reset:
-            reset_arg_ctx(*args, **kwargs)
         def task_wrapper():
             
             result = task(
@@ -432,8 +441,6 @@ def taskf(
         CALL_TASK: The CALL_TASK to execute
     """
     def _f(reset: bool=False):
-        if reset:
-            reset_arg_ctx(*args, **kwargs)
         result = f(*args, reset=reset, **kwargs)
         if out is not None:
             out.set(result)
@@ -460,9 +467,7 @@ def condf(task: typing.Callable, *args, **kwargs) -> CALL_TASK:
         TaskStatus: The status of the result
     """
     def _f(reset: bool=False):
-        if reset:
-            reset_arg_ctx(*args, **kwargs)
-        result = task(*args, **kwargs)
+        result = task(*args, reset=reset, **kwargs)
         return TaskStatus.from_bool(result)
 
     return _f

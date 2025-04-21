@@ -3,6 +3,7 @@ from functools import reduce
 from abc import ABC, abstractmethod
 from ..msg._render import render, Renderable
 from ..msg._messages import Msg
+from ..utils import UNDEFINED
 import pydantic
 
 
@@ -380,6 +381,98 @@ class Context(dict):
         
         return self[key]
 
+    def get_or_setf(self, key, f: typing.Callable[[], typing.Any]) -> typing.Any:
+        """Adds a value to the dictionary if not already
+        set.
+
+        Args:
+            d (typing.Dict): The dictionary
+            key: The key
+            f: The function to call to get the value
+
+        Returns:
+            typing.Any: The value specified by dictionary key
+        """
+        if key in self:
+            return self[key]
+        self[key] = f()
+        return self[key]
+
+    def call_or_set(self, key, value, f: typing.Callable[[typing.Any, typing.Any], typing.Any]) -> typing.Any:
+        """Adds a value to the dictionary if not already
+        set.
+
+        Args:
+            d (typing.Dict): The dictionary
+            key: The key
+            f: The function to call to get the value
+
+        Returns:
+            typing.Any: The value specified by dictionary key
+        """
+        if key not in self:
+            self[key] = value
+            return value
+        self[key] = f(self[key], value)
+        return self[key]
+
+
+    def acc(
+        self, key, value, init_val: str=''
+    ) -> typing.Any:
+        """Adds a value to the dictionary if not already
+        set.
+
+        Args:
+            d (typing.Dict): The dictionary
+            key: The key
+            f: The function to call to get the value
+
+        Returns:
+            typing.Any: The value specified by dictionary key
+        """
+
+        if key not in self:
+            self[key] = init_val
+        
+        if value is not UNDEFINED:
+            self[key] = self[key] + value
+        return self[key]
+    
+    def __call__(self, key) -> 'ContextWriter':
+        """Create a ContextWriter to set the value for
+        a key in the context
+
+        Args:
+            key: The key to write to
+
+        Returns:
+            ContextWriter: The ContextWriter that writes
+            the value
+        """
+
+        return ContextWriter(self, key)
+
+
+class ContextWriter:
+    """Use to write to the context
+    """
+
+    def __init__(self, context: Context, key: str):
+        """_summary_
+
+        Args:
+            context (Context): _description_
+            key (str): _description_
+        """
+
+        self.context = context
+        self.key = key
+
+    def __call__(self, value):
+
+        self.context[self.key] = value
+
 
 class ContextStorage(object):
     """Use to manage context storage such as spawning new
@@ -450,31 +543,48 @@ class ContextStorage(object):
         return self._data[key]
 
 
-class Blackboard(object):
+import pydantic
+import typing
+
+
+class Blackboard(pydantic.BaseModel):
     """A blackboard is for sharing information
     across tasks
     """
 
-    def __init__(self):
+    _data: typing.Dict[str, typing.Any] = pydantic.PrivateAttr(default_factory=dict)
+    _member_callbacks: typing.Dict[str, typing.List[typing.Callable[[typing.Any], typing.NoReturn]]] = pydantic.PrivateAttr(
+        default_factory=dict
+    )
+    _dict_callbacks: typing.Dict[str, typing.List[typing.Callable[[typing.Any], typing.NoReturn]]] = pydantic.PrivateAttr(
+        default_factory=dict
+    )
+
+    def __init__(
+        self, 
+        data: typing.Dict=None, 
+        member_callbacks: typing.Dict=None, dict_callbacks: typing.Dict=None,
+        **kwargs
+    ):
         """The data for the blackboard
         """
-        object.__setattr__('_data', {})
-        object.__setattr__('_callbacks', {})
-        self._data: typing.Dict
-        self._callbacks: typing.Dict[str, typing.List[typing.Callable[[typing.Any]]]]
+        super().__init__(**kwargs)
+        self._data = data or {}
+        self._member_callbacks = member_callbacks or {}
+        self._dict_callbacks = dict_callbacks or {}
 
-    def r(self, key) -> 'Retriever':
-        """Get a retriever for the blackboard
+    # def r(self, key) -> 'Retriever':
+    #     """Get a retriever for the blackboard
 
-        Args:
-            key: The name of the key for the retriever
+    #     Args:
+    #         key: The name of the key for the retriever
 
-        Returns:
-            Retriever: The retriever for the blackboard
-        """
-        return Retriever(self, key)
+    #     Returns:
+    #         Retriever: The retriever for the blackboard
+    #     """
+    #     return Retriever(self, key)
 
-    def register(self, key, callback) -> bool:
+    def register_member(self, key, callback) -> bool:
         """Register a callback to call on data updates
 
         Args:
@@ -483,17 +593,35 @@ class Blackboard(object):
         Returns:
             bool: True the callback was registered, False if already registered
         """
-        if key not in self._callbacks:
-            self._callbacks[key] = [callable]
+        if key not in self._member_callbacks:
+            self._member_callbacks[key] = [callback]
             return True
 
-        if callback in self._callbacks[key]:
+        if callback in self._member_callbacks[key]:
             return False
         
-        self._callbacks[key].append(callback)
+        self._member_callbacks[key].append(callback)
         return True
 
-    def unregister(self, key, callback) -> bool:
+    def register_dict(self, key, callback) -> bool:
+        """Register a callback to call on data updates
+
+        Args:
+            callback (function): The callback to register
+
+        Returns:
+            bool: True the callback was registered, False if already registered
+        """
+        if key not in self._dict_callbacks:
+            self._dict_callbacks[key] = [callback]
+
+        if callback in self._dict_callbacks[key]:
+            return False
+        
+        self._dict_callbacks[key].append(callback)
+        return True
+
+    def unregister_member(self, key, callback) -> bool:
         """Unregister a callback to call on data updates
 
         Args:
@@ -502,13 +630,31 @@ class Blackboard(object):
         Returns:
             bool: True if the callback was removed, False if callback was not registered
         """
-        if key not in self._callbacks:
+        if key not in self._member_callbacks:
             return False
 
-        if callback not in self._callbacks[key]:
+        if callback not in self._member_callbacks[key]:
             return False
         
-        self._callbacks[key].remove(callback)
+        self._member_callbacks[key].remove(callback)
+        return True
+
+    def unregister_dict(self, key, callback) -> bool:
+        """Unregister a callback to call on data updates
+
+        Args:
+            callback (function): The callback to unregister
+
+        Returns:
+            bool: True if the callback was removed, False if callback was not registered
+        """
+        if key not in self._dict_callbacks:
+            return False
+
+        if callback not in self._dict_callbacks[key]:
+            return False
+        
+        self._dict_callbacks[key].remove(callback)
         return True
 
     def __getitem__(self, key) -> typing.Any:
@@ -533,15 +679,29 @@ class Blackboard(object):
             typing.Any: The name of the 
         """
         self._data[key] = val
+        for callback in self._dict_callbacks.get(key, []):
+            callback(val)
+        
         return val
 
-    def __getattr__(self, key):
+    def __setattr__(self, key, value):
 
-        if key not in self._data:
-            d = Context()
-            self._data[key] = d
+        super().__setattr__(key, value)
+        for callback in self._member_callbacks.get(key, []):
+            callback(value)
         
-        return self._data[key]
+        return value
+
+    def r(self, key) -> 'Retriever':
+        """Get a retriever for the blackboard
+
+        Args:
+            key: The name of the key for the retriever
+
+        Returns:
+            Retriever: The retriever for the blackboard
+        """
+        return Retriever(self, key)
 
 
 class Retriever(SharedBase):

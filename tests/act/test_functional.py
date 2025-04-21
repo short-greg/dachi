@@ -146,6 +146,18 @@ class TestSequence:
         status = task()
         assert status.success
 
+    def test_sequence_multiple_tasks_returns_running_after_reset(self):
+        state = utils.ContextStorage()
+
+        task = F.sequence([
+            F.condf(sample_cond, 4),
+            F.action(sample_action, state.A, 4)
+        ], state.S)
+        status = task()
+        status = task()
+        status = task(True)
+        assert status.running
+
     def test_sequence_multiple_tasks_with_failure(self):
         state = utils.ContextStorage()
 
@@ -302,6 +314,19 @@ class TestSelector:
         status = task()
 
         assert status.success
+
+    def test_selector_second_task_is_running_with_reset(self):
+        state = utils.ContextStorage()
+
+        task = F.selector([
+            F.condf(sample_cond, 2),
+            F.condf(sample_cond, 4)
+        ], state.S)
+        status = task()
+        status = task()
+        status = task(reset=True)
+
+        assert status.running
 
     def test_selector_mixed_task_types(self):
         state = utils.ContextStorage()
