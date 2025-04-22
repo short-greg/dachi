@@ -97,13 +97,13 @@ class FromMsg(Module):
 
         Args:
             msg (Msg): The message to get a value from
-            override (_type_, optional): Whether to override the key to retrieve. Defaults to None.
+            override (, optional): Whether to override the key to retrieve. Defaults to None.
 
         Returns:
             typing.Any: The value retrieved form the message
         """
-        if isinstance(override, FromMsg):
-            override = override.key
+        if not isinstance(override, FromMsg) and override is not None:
+            override = FromMsg(override)
         key = override or self.key
         return key.forward(msg)
 

@@ -573,17 +573,6 @@ class Blackboard(pydantic.BaseModel):
         self._member_callbacks = member_callbacks or {}
         self._dict_callbacks = dict_callbacks or {}
 
-    # def r(self, key) -> 'Retriever':
-    #     """Get a retriever for the blackboard
-
-    #     Args:
-    #         key: The name of the key for the retriever
-
-    #     Returns:
-    #         Retriever: The retriever for the blackboard
-    #     """
-    #     return Retriever(self, key)
-
     def register_member(self, key, callback) -> bool:
         """Register a callback to call on data updates
 

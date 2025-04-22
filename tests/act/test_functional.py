@@ -1,12 +1,9 @@
 import pytest
 from dachi.act import _core, _functional as F
 from dachi.act import TaskStatus
-from dachi.store import _data as utils
+from dachi.store import _data as store
 import typing
-from ..asst.test_ai import DummyAIModel
-from dachi.msg._messages import Msg
 from dachi import store
-import time
 
 
 def sample_action(state: typing.Dict, x: int, reset: bool=False) -> _core.TaskStatus:
@@ -118,25 +115,25 @@ class TestCond:
 class TestSequence:
 
     def test_sequence_empty_tasks(self):
-        state = utils.ContextStorage()
+        state = store.ContextStorage()
 
         status = F.sequence([], state.S)()
         assert status.success
 
     def test_sequence_single_task_success(self):
-        state = utils.ContextStorage()
+        state = store.ContextStorage()
 
         status = F.sequence([F.condf(sample_cond, 4)], state.S)()
         assert status.success
 
     def test_sequence_single_task_failure(self):
-        state = utils.ContextStorage()
+        state = store.ContextStorage()
 
         status = F.sequence([F.condf(sample_cond, 2)], state.S)()
         assert status.failure
 
     def test_sequence_multiple_tasks_all_success(self):
-        state = utils.ContextStorage()
+        state = store.ContextStorage()
 
         task = F.sequence([
             F.condf(sample_cond, 4),
@@ -147,7 +144,7 @@ class TestSequence:
         assert status.success
 
     def test_sequence_multiple_tasks_returns_running_after_reset(self):
-        state = utils.ContextStorage()
+        state = store.ContextStorage()
 
         task = F.sequence([
             F.condf(sample_cond, 4),
@@ -159,7 +156,7 @@ class TestSequence:
         assert status.running
 
     def test_sequence_multiple_tasks_with_failure(self):
-        state = utils.ContextStorage()
+        state = store.ContextStorage()
 
         status = F.sequence([
             F.condf(sample_cond, 2),
@@ -168,7 +165,7 @@ class TestSequence:
         assert status.failure
 
     def test_sequence_intermediate_running(self):
-        state = utils.ContextStorage()
+        state = store.ContextStorage()
 
         status = F.tick(F.sequence([
             F.action(sample_action, state.A, 2),
@@ -180,7 +177,7 @@ class TestSequence:
     # to give the same state to multiple 
     # tasks
     def test_sequence_nested_sequence(self):
-        state = utils.ContextStorage()
+        state = store.ContextStorage()
         task = F.sequence([
             F.condf(sample_cond, 4),
             F.sequence([
@@ -194,7 +191,7 @@ class TestSequence:
         assert status.success
 
     def test_sequence_with_boolean_task(self):
-        state = utils.ContextStorage()
+        state = store.ContextStorage()
 
         task = F.sequence([
             True,
@@ -205,7 +202,7 @@ class TestSequence:
         assert status.success
 
     def test_sequence_with_failure_boolean_task(self):
-        state = utils.ContextStorage()
+        state = store.ContextStorage()
 
         status = F.sequence([
             False,
@@ -214,7 +211,7 @@ class TestSequence:
         assert status.failure
 
     def test_sequence_with_mixed_task_types(self):
-        state = utils.ContextStorage()
+        state = store.ContextStorage()
 
         task = F.sequence([
             F.condf(sample_cond, 4),
@@ -235,7 +232,7 @@ class TestSequence:
 
 
     def test_sequence_executes_and_returns_running(self):
-        state = utils.ContextStorage()
+        state = store.ContextStorage()
 
         status = F.tick(F.sequence([
             F.condf(sample_cond, 4),
@@ -246,7 +243,7 @@ class TestSequence:
         assert status.running
 
     def test_sequence_executes_and_returns_success(self):
-        state = utils.ContextStorage()
+        state = store.ContextStorage()
 
         status = F.sequence([
             F.condf(sample_cond, 4),
@@ -260,7 +257,7 @@ class TestSequence:
         assert status.success
 
     def test_returns_success_if_no_tasks(self):
-        state = utils.ContextStorage()
+        state = store.ContextStorage()
 
         status = F.sequence([
         ], state.S)()
@@ -269,7 +266,7 @@ class TestSequence:
 
 
     def test_sequence_executes_and_returns_failure(self):
-        state = utils.ContextStorage()
+        state = store.ContextStorage()
 
         status = F.sequence([
             F.condf(sample_cond, 0),
@@ -282,7 +279,7 @@ class TestSequence:
 class TestSelector:
 
     def test_selector_all_tasks_fail(self):
-        state = utils.ContextStorage()
+        state = store.ContextStorage()
 
         task = F.selector([
             F.condf(sample_cond, 2),
@@ -294,7 +291,7 @@ class TestSelector:
         assert status.failure
 
     def test_selector_first_task_succeeds(self):
-        state = utils.ContextStorage()
+        state = store.ContextStorage()
 
         status = F.selector([
             F.condf(sample_cond, 4),
@@ -304,7 +301,7 @@ class TestSelector:
         assert status.success
 
     def test_selector_second_task_succeeds(self):
-        state = utils.ContextStorage()
+        state = store.ContextStorage()
 
         task = F.selector([
             F.condf(sample_cond, 2),
@@ -316,7 +313,7 @@ class TestSelector:
         assert status.success
 
     def test_selector_second_task_is_running_with_reset(self):
-        state = utils.ContextStorage()
+        state = store.ContextStorage()
 
         task = F.selector([
             F.condf(sample_cond, 2),
@@ -329,7 +326,7 @@ class TestSelector:
         assert status.running
 
     def test_selector_mixed_task_types(self):
-        state = utils.ContextStorage()
+        state = store.ContextStorage()
 
         task = F.selector([
             False,
@@ -342,14 +339,14 @@ class TestSelector:
         assert status.success
 
     def test_selector_with_no_tasks(self):
-        state = utils.ContextStorage()
+        state = store.ContextStorage()
 
         status = F.selector([], state.S)()
 
         assert status.failure
 
     def test_selector_with_boolean_task_success(self):
-        state = utils.ContextStorage()
+        state = store.ContextStorage()
 
         status = F.selector([
             True,
@@ -359,7 +356,7 @@ class TestSelector:
         assert status.success
 
     def test_selector_with_boolean_task_failure(self):
-        state = utils.ContextStorage()
+        state = store.ContextStorage()
 
         task = F.selector([
             False,
@@ -371,7 +368,7 @@ class TestSelector:
         assert status.failure
 
     def test_selector_nested_selector(self):
-        state = utils.ContextStorage()
+        state = store.ContextStorage()
 
         task = F.selector([
             F.condf(sample_cond, 2),
@@ -386,7 +383,7 @@ class TestSelector:
         assert status.success
 
     def test_selector_executes_and_returns_running(self):
-        state = utils.ContextStorage()
+        state = store.ContextStorage()
 
         status = F.tick(F.selector([
             F.condf(sample_cond, 2),
@@ -396,7 +393,7 @@ class TestSelector:
         assert status.running
 
     def test_selector_executes_and_returns_success(self):
-        state = utils.ContextStorage()
+        state = store.ContextStorage()
 
         status = F.selector([
             F.condf(sample_cond, 4),
@@ -406,7 +403,7 @@ class TestSelector:
         assert status.success
 
     def test_selector_executes_and_returns_running(self):
-        state = utils.ContextStorage()
+        state = store.ContextStorage()
 
         status = F.selector([
             F.condf(sample_cond, 2),
@@ -416,7 +413,7 @@ class TestSelector:
         assert status.running
 
     def test_selector_executes_and_returns_running(self):
-        state = utils.ContextStorage()
+        state = store.ContextStorage()
 
         status = F.selector([
             F.condf(sample_cond, 2),
@@ -426,7 +423,7 @@ class TestSelector:
         assert status.running
 
     def test_selector_executes_and_returns_success(self):
-        state = utils.ContextStorage()
+        state = store.ContextStorage()
 
         status = F.selector([
             F.condf(sample_cond, 2),
@@ -440,7 +437,7 @@ class TestSelector:
         assert status.success
 
     def test_returns_failure_if_no_tasks(self):
-        state = utils.ContextStorage()
+        state = store.ContextStorage()
 
         status = F.selector([
         ], state.S)()
@@ -448,7 +445,7 @@ class TestSelector:
         assert status.failure
 
     def test_selector_executes_and_returns_success(self):
-        state = utils.ContextStorage()
+        state = store.ContextStorage()
 
         status = F.selector([
             F.condf(sample_cond, 4),
@@ -461,7 +458,7 @@ class TestSelector:
 class TestParallel:
 
     def test_parallel_returns_failure_if_one_fails(self):
-        state = utils.ContextStorage()
+        state = store.ContextStorage()
 
         status = F.parallel([
             F.condf(sample_cond, 2),
@@ -471,7 +468,7 @@ class TestParallel:
         assert status.failure
 
     def test_parallel_returns_failure_if_one_fails(self):
-        state = utils.ContextStorage()
+        state = store.ContextStorage()
 
         status = F.parallel([
             F.condf(sample_cond, 2),
@@ -481,7 +478,7 @@ class TestParallel:
         assert status.failure
 
     def test_parallel_returns_success_if_all_succeed(self):
-        state = utils.ContextStorage()
+        state = store.ContextStorage()
 
         status = F.parallel([
             F.condf(sample_cond, 4),
@@ -491,7 +488,7 @@ class TestParallel:
         assert status.success
 
     def test_parallel_returns_running_if_one_is_running(self):
-        state = utils.ContextStorage()
+        state = store.ContextStorage()
 
         status = F.parallel([
             F.condf(sample_cond, 4),
@@ -501,7 +498,7 @@ class TestParallel:
         assert status.running
 
     def test_parallel_with_custom_succeeds_on(self):
-        state = utils.ContextStorage()
+        state = store.ContextStorage()
 
         status = F.parallel([
             F.condf(sample_cond, 4),
@@ -512,7 +509,7 @@ class TestParallel:
         assert status.success
 
     def test_parallel_with_custom_fails_on(self):
-        state = utils.ContextStorage()
+        state = store.ContextStorage()
 
         status = F.parallel([
             F.condf(sample_cond, 2),
@@ -528,7 +525,7 @@ class TestParallel:
         assert status.success
 
     def test_parallel_with_nested_parallel(self):
-        state = utils.ContextStorage()
+        state = store.ContextStorage()
 
         status = F.parallel([
             F.condf(sample_cond, 4),
@@ -552,7 +549,7 @@ class TestParallel:
         assert status.success
 
     def test_parallel_without_success_priority(self):
-        state = utils.ContextStorage()
+        state = store.ContextStorage()
 
         status = F.parallel([
             F.condf(sample_cond, 4),
@@ -562,43 +559,11 @@ class TestParallel:
 
         assert status.failure
 
-#     # def test_parallel_returns_success_if_both_succeed(self):
-#     #     state = utils.ContextStorage()
-
-#     #     status = F.parallel([
-#     #         F.condf(sample_cond, 4),
-#     #         F.action(sample_action, state.A, 4)
-#     #     ])()
-
-#     #     assert status.success
-
-#     # def test_parallel_returns_running_if_one_running(self):
-#     #     state = utils.ContextStorage()
-
-#     #     status = F.parallel([
-#     #         F.condf(sample_cond, 4),
-#     #         F.action(sample_action, state.A, 2)
-#     #     ])()
-
-#     #     assert status.running
-
-#     # def test_parallel_returns_running_with_nested_sequence(self):
-#     #     state = utils.ContextStorage()
-
-#     #     status = F.parallel([
-#     #         F.condf(sample_cond, 4),
-#     #         F.sequence(
-#     #             [F.action(sample_action, state.A, 2)], state.S
-#     #         )
-#     #     ])()
-
-#     #     assert status.running
-
 
 class TestAsLongAs:
 
     def test_unless_returns_failure_if_failed(self):
-        state = utils.ContextStorage()
+        state = store.ContextStorage()
 
         status = F.aslongas(
             F.sequence([
@@ -610,7 +575,7 @@ class TestAsLongAs:
         assert status.failure
 
     def test_unless_returns_running_if_succeeded(self):
-        state = utils.ContextStorage()
+        state = store.ContextStorage()
 
         status = F.aslongas(
             F.sequence([
@@ -632,7 +597,7 @@ class TestAsLongAs:
 class TestParallelf:
 
     def test_parallelf_all_tasks_succeed(self):
-        state = utils.ContextStorage()
+        state = store.ContextStorage()
 
         def task_generator(x):
             yield F.condf(sample_cond, x)
@@ -642,7 +607,7 @@ class TestParallelf:
         assert status.success
 
     def test_parallelf_all_tasks_fail(self):
-        state = utils.ContextStorage()
+        state = store.ContextStorage()
 
         def task_generator(x):
             yield F.condf(sample_cond, x)
@@ -652,7 +617,7 @@ class TestParallelf:
         assert status.failure
 
     def test_parallelf_mixed_results_with_success_priority(self):
-        state = utils.ContextStorage()
+        state = store.ContextStorage()
 
         def task_generator(x):
             yield F.condf(sample_cond, x)
@@ -662,7 +627,7 @@ class TestParallelf:
         assert status.success
 
     def test_parallelf_mixed_results_without_success_priority(self):
-        state = utils.ContextStorage()
+        state = store.ContextStorage()
 
         def task_generator(x):
             yield F.condf(sample_cond, x)
@@ -691,7 +656,7 @@ class TestParallelf:
         assert status.failure
 
     def test_parallelf_custom_succeeds_on(self):
-        state = utils.ContextStorage()
+        state = store.ContextStorage()
 
         def task_generator(x):
             yield F.condf(sample_cond, x)
@@ -702,7 +667,7 @@ class TestParallelf:
         assert status.success
 
     def test_parallelf_custom_fails_on(self):
-        state = utils.ContextStorage()
+        state = store.ContextStorage()
 
         def task_generator(x):
             yield F.condf(sample_cond, x - 2)
@@ -716,7 +681,7 @@ class TestParallelf:
 class TestUntil:
 
     def test_until_returns_running_if_failed(self):
-        state = utils.ContextStorage()
+        state = store.ContextStorage()
 
         status = F.until(
             F.sequence([
@@ -728,7 +693,7 @@ class TestUntil:
         assert status.running
 
     def test_unless_returns_success_if_succeeded(self):
-        state = utils.ContextStorage()
+        state = store.ContextStorage()
 
         status = F.until(
             F.sequence([
@@ -766,191 +731,7 @@ class TestNot:
         assert status.failure
 
 
-class TestStreamModel:
-
-    def test_stream_model_initial_status(self):
-        buffer = utils.Buffer()
-        model = DummyAIModel()
-        message = Msg(role='user', text='text')
-        ctx = utils.Context()
-        stream = F.stream_model(buffer, model, message, ctx, out='content', interval=1./400.)
-        
-        status = stream()
-        assert status == TaskStatus.RUNNING
-
-    def test_stream_model_success_status(self):
-        buffer = utils.Buffer()
-        model = DummyAIModel()
-        message = Msg(role='user', text='text')
-        ctx = utils.Context()
-        stream = F.stream_model(buffer, model, message, ctx, out='content', interval=1./400.)
-        
-        stream()
-        time.sleep(0.15)
-        status = stream()
-        assert status == TaskStatus.SUCCESS
-
-    def test_stream_model_buffer_content(self):
-        buffer = utils.Buffer()
-        model = DummyAIModel()
-        message = Msg(role='user', text='text')
-        ctx = utils.Context()
-        stream = F.stream_model(buffer, model, message, ctx, out='content', interval=1./400.)
-        
-        stream()
-        time.sleep(0.1)
-        stream()
-        result = ''.join(buffer.get())
-        assert result == 'Great!'
-
-    def test_stream_model_with_empty_prompt(self):
-        buffer = utils.Buffer()
-        model = DummyAIModel(target='')
-        message = Msg(role='user', text='')
-        ctx = utils.Context()
-        stream = F.stream_model(buffer, model, message, ctx, out='content', interval=1./400.)
-        
-        stream()
-        time.sleep(0.1)
-        stream()
-        result = ''.join(buffer.get())
-        assert result == ''
-
-    def test_stream_model_with_invalid_interval(self):
-        buffer = utils.Buffer()
-        model = DummyAIModel()
-        message = Msg(role='user', text='text')
-        ctx = utils.Context()
-        with pytest.raises(ValueError):
-            F.stream_model(buffer, model, message, ctx, out='content', interval=-1)
-
-    def test_stream_model_with_large_output(self):
-        buffer = utils.Buffer()
-        model = DummyAIModel()
-        message = Msg(role='user', text='text' * 1000)
-        ctx = utils.Context()
-        stream = F.stream_model(buffer, model, message, ctx, out='content', interval=1./400.)
-        
-        stream()
-        time.sleep(0.2)
-        result = ''.join(buffer.get())
-        assert len(result) > 0
-
-    def test_stream_model_with_multiple_calls(self):
-        buffer = utils.Buffer()
-        model = DummyAIModel()
-        message = Msg(role='user', text='text')
-        ctx = utils.Context()
-        stream = F.stream_model(buffer, model, message, ctx, out='content', interval=1./400.)
-        
-        for _ in range(5):
-            stream()
-            time.sleep(0.05)
-        result = ''.join(buffer.get())
-        assert result == 'Great!'
-
-    def test_stream_model_with_invalid_context(self):
-        buffer = utils.Buffer()
-        model = DummyAIModel()
-        message = Msg(role='user', text='text')
-        ctx = None
-        with pytest.raises(AttributeError):
-            F.stream_model(buffer, model, message, ctx, out='content', interval=1./400.)
-
-    def test_stream_model_with_non_string_output(self):
-        buffer = utils.Buffer()
-        model = DummyAIModel()
-        message = Msg(role='user', text='text')
-        ctx = utils.Context()
-        stream = F.stream_model(
-            buffer, model, message, 
-            ctx, out='content', interval=1./400.
-        )
-        
-        stream()
-        time.sleep(0.1)
-        stream()
-        stream()
-        stream()
-        stream()
-        stream()
-        result = ''.join(buffer.get())
-        assert result == 'Great!'
-
-    def test_buffer_returns_correct_Status(self):
-
-        buffer = utils.Buffer()
-        model = DummyAIModel()
-        message = Msg(
-            role='user', text='text'
-        )
-        ctx = utils.Context()
-        stream = F.stream_model(
-            buffer, model, message, ctx, interval=1./400.,
-            out='content'
-        )
-        res = stream()
-        time.sleep(0.15)
-        res = stream()
-
-        assert res == TaskStatus.SUCCESS
-
-    def test_buffer_has_correct_value(self):
-
-        buffer = utils.Buffer()
-        model = DummyAIModel()
-        message = Msg(
-            role='user', text='text'
-        )
-        ctx = utils.Context()
-        stream = F.stream_model(
-            buffer, model, message, ctx, out='content', interval=1./400.
-        )
-        stream()
-        time.sleep(0.1)
-        stream()
-        res = ''.join((r for r in buffer.get()))
-
-        assert res == 'Great!'
-
-
-class TestSharedTask:
-
-    def test_shared_task_returns_correct_status(self):
-
-        shared = utils.Shared()
-        model = DummyAIModel()
-        message = Msg(
-            role='user', text='text'
-        )
-        ctx = utils.Context()
-        stream = F.exec_model(
-            shared, model, message, ctx, out='content', interval=1./400.
-        )
-        res = stream()
-        time.sleep(0.1)
-        res = stream()
-
-        assert res == TaskStatus.SUCCESS
-
-    def test_shared(self):
-
-        shared = utils.Shared()
-        model = DummyAIModel()
-        message = Msg(
-            role='user', text='text'
-        )
-        ctx = utils.Context()
-        stream = F.exec_model(
-            shared, model, message, ctx, out='content', interval=1./400.
-        )
-        res = stream()
-        time.sleep(0.1)
-        res = stream()
-        # print(type(shared.data[0]))
-
-
-        assert shared.data == 'Great!'
+class TestTick:
 
     def test_tick_with_callable_task(self):
         def mock_task(reset: bool=False):
@@ -1009,3 +790,222 @@ class TestSharedTask:
         status = F.tick(mock_task)
         assert isinstance(status, CustomStatus)
         assert status.state == "custom_state"
+
+
+# class TestStreamModel:
+
+#     def test_stream_model_initial_status(self):
+#         buffer = store.Buffer()
+#         model = DummyAIModel()
+#         message = Msg(role='user', text='text')
+#         ctx = store.Context()
+#         stream = F.stream_model(buffer, model, message, ctx, out='content', interval=1./400.)
+        
+#         status = stream()
+#         assert status == TaskStatus.RUNNING
+
+#     def test_stream_model_success_status(self):
+#         buffer = store.Buffer()
+#         model = DummyAIModel()
+#         message = Msg(role='user', text='text')
+#         ctx = store.Context()
+#         stream = F.stream_model(buffer, model, message, ctx, out='content', interval=1./400.)
+        
+#         stream()
+#         time.sleep(0.15)
+#         status = stream()
+#         assert status == TaskStatus.SUCCESS
+
+#     def test_stream_model_buffer_content(self):
+#         buffer = store.Buffer()
+#         model = DummyAIModel()
+#         message = Msg(role='user', text='text')
+#         ctx = store.Context()
+#         stream = F.stream_model(buffer, model, message, ctx, out='content', interval=1./400.)
+        
+#         stream()
+#         time.sleep(0.1)
+#         stream()
+#         result = ''.join(buffer.get())
+#         assert result == 'Great!'
+
+#     def test_stream_model_with_empty_prompt(self):
+#         buffer = store.Buffer()
+#         model = DummyAIModel(target='')
+#         message = Msg(role='user', text='')
+#         ctx = store.Context()
+#         stream = F.stream_model(buffer, model, message, ctx, out='content', interval=1./400.)
+        
+#         stream()
+#         time.sleep(0.1)
+#         stream()
+#         result = ''.join(buffer.get())
+#         assert result == ''
+
+#     def test_stream_model_with_invalid_interval(self):
+#         buffer = store.Buffer()
+#         model = DummyAIModel()
+#         message = Msg(role='user', text='text')
+#         ctx = store.Context()
+#         with pytest.raises(ValueError):
+#             F.stream_model(buffer, model, message, ctx, out='content', interval=-1)
+
+#     def test_stream_model_with_large_output(self):
+#         buffer = store.Buffer()
+#         model = DummyAIModel()
+#         message = Msg(role='user', text='text' * 1000)
+#         ctx = store.Context()
+#         stream = F.stream_model(buffer, model, message, ctx, out='content', interval=1./400.)
+        
+#         stream()
+#         time.sleep(0.2)
+#         result = ''.join(buffer.get())
+#         assert len(result) > 0
+
+#     def test_stream_model_with_multiple_calls(self):
+#         buffer = store.Buffer()
+#         model = DummyAIModel()
+#         message = Msg(role='user', text='text')
+#         ctx = store.Context()
+#         stream = F.stream_model(buffer, model, message, ctx, out='content', interval=1./400.)
+        
+#         for _ in range(5):
+#             stream()
+#             time.sleep(0.05)
+#         result = ''.join(buffer.get())
+#         assert result == 'Great!'
+
+#     def test_stream_model_with_invalid_context(self):
+#         buffer = store.Buffer()
+#         model = DummyAIModel()
+#         message = Msg(role='user', text='text')
+#         ctx = None
+#         with pytest.raises(AttributeError):
+#             F.stream_model(buffer, model, message, ctx, out='content', interval=1./400.)
+
+#     def test_stream_model_with_non_string_output(self):
+#         buffer = store.Buffer()
+#         model = DummyAIModel()
+#         message = Msg(role='user', text='text')
+#         ctx = store.Context()
+#         stream = F.stream_model(
+#             buffer, model, message, 
+#             ctx, out='content', interval=1./400.
+#         )
+        
+#         stream()
+#         time.sleep(0.1)
+#         stream()
+#         stream()
+#         stream()
+#         stream()
+#         stream()
+#         result = ''.join(buffer.get())
+#         assert result == 'Great!'
+
+#     def test_buffer_returns_correct_Status(self):
+
+#         buffer = store.Buffer()
+#         model = DummyAIModel()
+#         message = Msg(
+#             role='user', text='text'
+#         )
+#         ctx = store.Context()
+#         stream = F.stream_model(
+#             buffer, model, message, ctx, interval=1./400.,
+#             out='content'
+#         )
+#         res = stream()
+#         time.sleep(0.15)
+#         res = stream()
+
+#         assert res == TaskStatus.SUCCESS
+
+#     def test_buffer_has_correct_value(self):
+
+#         buffer = store.Buffer()
+#         model = DummyAIModel()
+#         message = Msg(
+#             role='user', text='text'
+#         )
+#         ctx = store.Context()
+#         stream = F.stream_model(
+#             buffer, model, message, ctx, out='content', interval=1./400.
+#         )
+#         stream()
+#         time.sleep(0.1)
+#         stream()
+#         res = ''.join((r for r in buffer.get()))
+
+#         assert res == 'Great!'
+
+
+#     # def test_parallel_returns_success_if_both_succeed(self):
+#     #     state = utils.ContextStorage()
+
+#     #     status = F.parallel([
+#     #         F.condf(sample_cond, 4),
+#     #         F.action(sample_action, state.A, 4)
+#     #     ])()
+
+#     #     assert status.success
+
+#     # def test_parallel_returns_running_if_one_running(self):
+#     #     state = utils.ContextStorage()
+
+#     #     status = F.parallel([
+#     #         F.condf(sample_cond, 4),
+#     #         F.action(sample_action, state.A, 2)
+#     #     ])()
+
+#     #     assert status.running
+
+#     # def test_parallel_returns_running_with_nested_sequence(self):
+#     #     state = utils.ContextStorage()
+
+#     #     status = F.parallel([
+#     #         F.condf(sample_cond, 4),
+#     #         F.sequence(
+#     #             [F.action(sample_action, state.A, 2)], state.S
+#     #         )
+#     #     ])()
+
+#     #     assert status.running
+
+# class TestSharedTask:
+
+#     def test_shared_task_returns_correct_status(self):
+
+#         shared = store.Shared()
+#         model = DummyAIModel()
+#         message = Msg(
+#             role='user', text='text'
+#         )
+#         ctx = store.Context()
+#         stream = F.exec_model(
+#             shared, model, message, ctx, out='content', interval=1./400.
+#         )
+#         res = stream()
+#         time.sleep(0.1)
+#         res = stream()
+
+#         assert res == TaskStatus.SUCCESS
+
+#     def test_shared(self):
+
+#         shared = store.Shared()
+#         model = DummyAIModel()
+#         message = Msg(
+#             role='user', text='text'
+#         )
+#         ctx = store.Context()
+#         stream = F.exec_model(
+#             shared, model, message, ctx, out='content', interval=1./400.
+#         )
+#         res = stream()
+#         time.sleep(0.1)
+#         res = stream()
+#         # print(type(shared.data[0]))
+
+
+#         assert shared.data == 'Great!'

@@ -294,6 +294,9 @@ class State(pydantic.BaseModel):
         return self.update(reset)
 
 
+STATE_CALL = State | typing.Callable[[], State | TaskStatus]
+
+
 class Router(object):
     """
     """
@@ -303,44 +306,3 @@ class Router(object):
 
 
 ROUTE = Router | typing.Callable[[typing.Any], TaskStatus | State]
-
-
-# class Step:
-#     pass
-
-# class LLMAgent(object):
-
-#     __template__: str = ""
-#     __out__: Reader = None
-
-#     def __init__(
-#         self, model: AIModel, reader: Reader, check: typing.Callable[[typing.Any], TaskStatus]=None
-#     ):
-#         super().__init__()
-#         self.model = model
-#         self.reader = reader
-#         self.check = check
-#         self.dialog = Dialog()
-#         # set the reader on the dialog
-#         # set the system message
-#         # based on the template
-
-#     def reset(self):
-#         # Reset the dialog
-#         pass
-
-#     def llm(self):
-#         pass
-
-#     def forward(self, message) -> typing.Iterator[Step]:
-
-#         while not complete:
-#             self.dialog.append(message)
-#             result = self.model(self.dialog)
-#             self.dialog.append(result.message)
-#             complete = self.check(self.dialog)
-
-
-
-# agent = LLMAgent()
-# response = agent

@@ -433,7 +433,6 @@ class FuncDec(FuncDecBase, Module):
         Returns:
             Self: A new instance of the current class with updated attributes.
         """
-        
         return self.__class__(
             inst=self._inst, 
             engine=self._engine, instance=instance,

@@ -1,28 +1,41 @@
 from . import _functional as F
 from ..store._data import Context, SharedBase
 from ..utils import get_member
+from ._core import STATE_CALL
 import typing
 import functools
 
 
-def get_instance(instance, is_method, args):
-    """Get the instance
+class TaskFuncBase(object):
 
-    Args:
-        instance: _description_
-        is_method (bool): whether the function is a method
-        args: The args for the insta
+    def __init__(
+        self, instance=None, 
+        is_method: bool=False
+    ):
+        
+        self._is_method = is_method
+        self._instance = instance
 
-    Returns:
-        the instance and args
-    """
-    if is_method and instance is None:
-        return args[0], args[1:]
-    
-    return instance, args
-    
+    def get_instance(self, args):
+        """Get the instance
 
-class CompositeFunc:
+        Args:
+            instance: _description_
+            is_method (bool): whether the function is a method
+            args: The args for the insta
+
+        Returns:
+            the instance and args
+        """
+        if self._is_method:
+            if self._instance is None:
+                return args[0], args[1:]
+            return self._instance, args
+        
+        return None, args
+        
+
+class CompositeFunc(TaskFuncBase):
     """CompositeFunc is used for decorating sequences and selectors
     """
 
@@ -57,7 +70,7 @@ class CompositeFunc:
         """
         # This method will handle "task" and correctly bind to the instance
 
-        instance, args = get_instance(self.instance, self.is_method, args)
+        instance, args = self.get_instance(args)
         
         ctx = _get(instance, self._ctx, _ctx)  
         if instance is None:
@@ -71,7 +84,7 @@ class CompositeFunc:
         Returns: The output of the function
         """
         # This handles the original method call
-        instance, args = get_instance(self.instance, self.is_method, args)
+        instance, args = self.get_instance(args)
 
         if instance is not None:
             return self.f(instance, *args, **kwargs)
@@ -87,7 +100,73 @@ class CompositeFunc:
         return task
 
 
-class ParallelFunc:
+class StateMachineFunc(TaskFuncBase):
+    """CompositeFunc is used for decorating sequences and selectors
+    """
+
+    def __init__(
+        self, f, init_state: STATE_CALL, ctx: 
+        Context=None, is_method: bool=False, 
+        instance=None
+    ):
+        """Create a composite function
+
+        Args:
+            f: The function to execute
+            base_f: The base composite function to use (i.e. selector or sequence)
+            ctx (Context, optional): The context for the function. Defaults to None.
+            is_method (bool): Whether it is a method or not
+            instance (optional): The instance. Defaults to None.
+        """
+        self.f = f
+        self.init_state = init_state
+        self.instance = instance
+        self.is_method = is_method
+        self._ctx = ctx
+
+    def task(self, *args, **kwargs):
+        """Get the task from the function
+
+        Returns:
+            The task to exeucte
+        """
+        instance, args = self.get_instance(args)
+
+        if instance is None:
+            return F.statemachinef(
+                self.f, *args, init_state=self.init_state, **kwargs
+            )
+        
+        return F.parallelf(
+            self.f, instance, *args, 
+            init_state=self.init_state, 
+            **kwargs
+        )
+
+    def __call__(self, *args, **kwargs):
+        """Execute the function
+
+        Returns: The output of the function
+        """
+        # This handles the original method call
+
+        instance, args = self.get_instance(args)
+
+        if instance is not None:
+            return self.f(instance, *args, **kwargs)
+        return self.f(*args, **kwargs)
+
+    def __get__(self, instance, owner):
+
+        if self.f.__name__ in instance.__dict__:
+            return instance.__dict__[self.f.__name__]
+        
+        task = StateMachineFunc(self.f, self.base_f, self._ctx, True, instance)
+        instance.__dict__[self.f.__name__] = task
+        return task
+
+
+class ParallelFunc(TaskFuncBase):
     """TaskF is used for function decorators to 
     """
 
@@ -120,8 +199,7 @@ class ParallelFunc:
         Returns:
             The task to exeucte
         """
-        instance, args = get_instance(self.instance, self.is_method, args)
-
+        instance, args = self.get_instance(args)
         if instance is None:
             return F.parallelf(
                 self.f, *args, succeeds_on=self.succeeds_on, 
@@ -138,7 +216,7 @@ class ParallelFunc:
 
         Returns: The output of the function
         """
-        instance, args = get_instance(self.instance, self.is_method, args)
+        instance, args = self.get_instance(args)
 
         if instance is not None:
             return self.f(instance, *args, **kwargs)
@@ -159,7 +237,7 @@ class ParallelFunc:
         return task
 
 
-class CondFunc:
+class CondFunc(TaskFuncBase):
     """TaskF is used for function decorators to 
     """
 
@@ -184,7 +262,7 @@ class CondFunc:
         """
         # This method will handle "task" and correctly bind to the instance
 
-        instance, args = get_instance(self.instance, self.is_method, args)
+        instance, args = self.get_instance(args)
 
         if instance is None:
             return F.condf(self.f, *args, **kwargs)
@@ -195,7 +273,7 @@ class CondFunc:
 
         Returns: The output of the function
         """
-        instance, args = get_instance(self.instance, self.is_method, args)
+        instance, args = self.get_instance(args)
 
         if instance is not None:
             return self.f(instance, *args, **kwargs)
@@ -224,7 +302,7 @@ def _get_str(obj, key):
     return get_member(obj, key) if isinstance(key, str) else key
             
 
-class TaskFunc:
+class TaskFunc(TaskFuncBase):
     """TaskF is used for function decorators to 
     """
 
@@ -254,7 +332,8 @@ class TaskFunc:
         Returns:
             The task
         """
-        instance, args = get_instance(self.instance, self.is_method, args)
+
+        instance, args = self.get_instance(args)
 
         if instance is None:
             out = self._out
@@ -269,7 +348,8 @@ class TaskFunc:
             )
 
     def __call__(self, *args, **kwargs):
-        instance, args = get_instance(self.instance, self.is_method, args)
+
+        instance, args = self.get_instance(args)
 
         if instance is not None:
             return self.f(instance, *args, **kwargs)
@@ -329,6 +409,30 @@ def sequencemethod(ctx: Context):
     Returns: The task
     """
     return sequencefunc(ctx, True)
+
+
+def statemachinefunc(ctx: Context=None):
+    """Decorate a state machine function that yields tasks
+
+    Args:
+        ctx (Context, optional): The context for the task. Defaults to None.
+
+    Returns: the task
+    """
+    def _(f):
+        return StateMachineFunc(f, F.statemachinef, ctx)
+    return _
+
+
+def statemachinemethod(ctx: Context):
+    """Decorate a state machine method that yields tasks
+
+    Args:
+        ctx (Context): The context for the task
+
+    Returns: the task
+    """
+    return statemachinefunc(ctx, True)
 
 
 def selectorfunc(ctx: Context=None):

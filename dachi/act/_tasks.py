@@ -55,14 +55,6 @@ class Serial(Task):
     tasks: typing.List[Task] = pydantic.Field(default_factory=list)
     _context: Context = pydantic.PrivateAttr(default_factory=Context)
 
-    # def reset_status(self):
-    #     """Reset the state
-    #     """
-    #     super().reset_status()
-    #     # self._context = Context()
-    #     # for task in self.tasks:
-    #     #     task.reset_status()
-
 
 class Sequence(Serial):
     """Create a sequence of tasks to execute
@@ -200,14 +192,6 @@ class Parallel(Task):
             )
         self._status = self._f(reset)
         return self._status
-
-    # def reset_status(self):
-    #     """Reset the task and subtasks
-    #     """
-
-    #     super().reset_status()
-    #     for task in self._ticked:
-    #         task.reset()
 
     @property
     def fails_on(self) -> int:
@@ -468,7 +452,7 @@ class StateMachine(Task):
         if self._status.is_done:
             return self._status
         
-        self._cur_state = self._cur_state.update()
+        self._cur_state = self._cur_state()
         if self._cur_state == TaskStatus.FAILURE or self._cur_state == TaskStatus.SUCCESS:
             self._status = self._cur_state
         else:
