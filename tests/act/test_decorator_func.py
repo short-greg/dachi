@@ -82,7 +82,6 @@ class TestTaskFunc:
         agent = TaskAgent()
         assert agent.increment.task(-2)() == core.FAILURE
 
-
     def test_task_func2_returns_running(self):
         agent = TaskAgent()
         assert agent.increment2.task(2)() == core.RUNNING

@@ -4,6 +4,7 @@ import asyncio
 from functools import partial
 import threading
 import time
+import uuid
 
 # local
 from ._core import (
@@ -426,6 +427,48 @@ def threadedf(
     return _f
 
 
+# def streamedf(
+#     f, ctx: Context, 
+#     *args, out: SharedBase=None, 
+#     to_status: TOSTATUS=None, **kwargs
+# ) -> CALL_TASK:
+#     """Use to wrap the task in a thread"""
+
+#     if 'task_id' in ctx and id(task) != ctx['task_id']:
+
+#         raise RuntimeError(
+#             'Task context has been initialized but '
+#             'the task passed in is does not match'
+#         )
+
+#     def _f(reset: bool=False):
+#         """Run the task in a thread"""
+#         def task_wrapper():
+            
+#             result = task(
+#                 *args, reset=reset, 
+#                 **kwargs
+#             )
+#             if out is not None:
+#                 out.set(result)
+#             if to_status is not None:
+#                 status = to_status(result)
+#             ctx['thread_status'] = status
+
+#         if '_thread' not in ctx:
+#             ctx['thread_status'] = TaskStatus.RUNNING
+#             t = threading.Thread(target=task_wrapper)
+#             ctx['_thread'] = t
+#             t.start()
+        
+#         if t.is_alive():
+#             return TaskStatus.RUNNING
+        
+#         return ctx['thread_status']
+#     return _f
+
+
+
 def taskf(
     f, *args, out: SharedBase=None, 
     to_status: TOSTATUS=None, **kwargs) -> CALL_TASK:
@@ -833,8 +876,131 @@ def statemachinef(f: typing.Callable[[typing.Any], State | TaskStatus], ctx: Con
     Returns:
         CALL_TASK: The task to call
     """
-    
     return f(*args, ctx=ctx, **kwargs)
 
 
+def _f_task_wrapper(
+    f, ctx, id, to_status=None,
+    callback=None
+):
+    """
 
+    Args:
+        f: The function to wrap
+        ctx: The Context
+        id: The id of the task
+        to_status: Convert the output to a status. Defaults to None.
+        callback: Callback after compleeting. Defaults to None.
+    """
+    
+    id = ctx['tick_id']
+    try:
+        res = f()
+        if id == ctx['tick_id']:
+            ctx['res'] = res
+
+            # if id != ctx['tick_id']
+            if to_status is not None:
+                status = to_status(ctx['res'])
+            else:
+                status = TaskStatus.SUCCESS
+        else:
+            ctx['res'] = None
+            status = TaskStatus.SUCCESS
+            
+    except Exception as e:
+        ctx['error'] = e
+        ctx['res'] = None
+        status = TaskStatus.FAILURE
+    ctx['thread_status'] = status
+    if callback:
+        callback(ctx)
+
+
+def _streamf_task_wrapper(
+    f, ctx, id, to_status=None, 
+    callback=None
+):
+    """
+
+    Args:
+        f: The function to wrap
+        ctx: The Context
+        id: The id of the task
+        to_status: Convert the output to a status. Defaults to None.
+        callback: Callback after compleeting. Defaults to None.
+    """
+    
+    rs = []
+    id = ctx['tick_id']
+    try:
+        for r in f():
+            rs.append(f())
+        if id == ctx['tick_id']:
+            ctx['res'] = rs
+
+            if to_status is not None:
+                status = to_status(ctx['res'])
+            else:
+                status = TaskStatus.SUCCESS
+        else:
+            ctx['res'] = None
+            status = TaskStatus.SUCCESS
+            
+    except Exception as e:
+        ctx['error'] = e
+        ctx['res'] = None
+        status = TaskStatus.FAILURE
+    ctx['thread_status'] = status
+    if callback is not None:
+        callback(ctx)
+
+
+def threadedf2(
+    f, ctx: Context, to_status: TOSTATUS=None,
+    streamed: bool=False, callback: typing.Callable[[Context], typing.NoReturn]=None
+) -> CALL_TASK:
+    """Use to wrap the task in a thread"""
+
+    if 'task_id' in ctx and id(f) != ctx['task_id']:
+
+        raise RuntimeError(
+            'Task context has been initialized but '
+            'the task passed in is does not match'
+        )
+
+    def _f(reset: bool=False):
+        """Run the task in a thread"""
+        if 'tick_id' not in ctx or reset:
+            ctx['tick_id'] = str(uuid.uuid4())
+        
+        if '_thread' not in ctx:
+            ctx['thread_status'] = TaskStatus.RUNNING
+            target = _streamf_task_wrapper if streamed else _f_task_wrapper
+            t = threading.Thread(
+                target=target,
+                args=(
+                    f, ctx,
+                    id, to_status,
+                    callback
+                )
+            )
+
+            ctx['_thread'] = t
+            t.start()
+            return TaskStatus.RUNNING
+        
+        if ctx['_thread'].is_alive():
+            return TaskStatus.RUNNING
+        return ctx['thread_status']
+    return _f
+
+
+def streamedf2(
+    f, ctx: Context, to_status: TOSTATUS=None, callback: typing.Callable[[Context], typing.NoReturn]=None
+) -> CALL_TASK:
+    """Use to wrap the task in a thread"""
+
+    return threadedf2(
+        f, ctx, to_status, True, callback
+    )

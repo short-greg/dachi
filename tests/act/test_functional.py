@@ -4,6 +4,9 @@ from dachi.act import TaskStatus
 from dachi.store import _data as store
 import typing
 from dachi import store
+import threading
+from dachi.store import Context
+import time
 
 
 def sample_action(state: typing.Dict, x: int, reset: bool=False) -> _core.TaskStatus:
@@ -791,6 +794,123 @@ class TestTick:
         assert isinstance(status, CustomStatus)
         assert status.state == "custom_state"
 
+
+class TestThreaded:
+
+    def test_threadedf2_initial_status(self):
+        ctx = Context()
+        def mock_task():
+            return TaskStatus.SUCCESS
+
+        task = F.threadedf2(mock_task, ctx)
+        status = task()
+        assert status == TaskStatus.RUNNING
+
+    def test_threadedf2_success_status(self):
+        ctx = Context()
+        def mock_task():
+            return TaskStatus.SUCCESS
+
+        task = F.threadedf2(mock_task, ctx)
+        task()
+        task()
+        assert ctx['thread_status'] == TaskStatus.SUCCESS
+
+    def test_threadedf2_failure_status(self):
+        ctx = Context()
+        def mock_task():
+            raise ValueError("Task failed")
+
+        task = F.threadedf2(mock_task, ctx)
+        task()
+        task()
+        assert ctx['thread_status'] == TaskStatus.FAILURE
+
+    def test_threadedf2_with_reset(self):
+        ctx = Context()
+        def mock_task():
+            return TaskStatus.SUCCESS
+
+        task = F.threadedf2(mock_task, ctx)
+        task(reset=True)
+        assert ctx['tick_id'] is not None
+
+    def test_threadedf2_with_callback(self):
+        ctx = Context()
+        callback_called = False
+
+        def mock_task():
+            return TaskStatus.SUCCESS
+
+        def callback(ctx):
+            nonlocal callback_called
+            callback_called = True
+
+        task = F.threadedf2(mock_task, ctx, callback=callback)
+        task()
+        task()
+        assert callback_called
+
+    def test_threadedf2_with_streamed_task(self):
+        ctx = Context()
+        def mock_task():
+            yield TaskStatus.RUNNING
+            yield TaskStatus.SUCCESS
+
+        task = F.streamedf2(mock_task, ctx)
+        status = task()
+        assert status == TaskStatus.RUNNING
+
+    def test_threadedf2_with_invalid_context(self):
+        with pytest.raises(RuntimeError):
+            ctx = Context()
+            def mock_task():
+                return TaskStatus.SUCCESS
+
+            ctx['task_id'] = id(mock_task)
+            task = F.threadedf2(lambda: None, ctx)
+            task()
+
+    # TODO: Think how to handle this case where the user accidentally
+    #  sends the same context.
+    #  I should have a general approach.. That prevents a context
+    #  being reused
+    # def test_threadedf2_with_multiple_threads(self):
+    #     ctx = Context()
+    #     def mock_task():
+    #         return TaskStatus.SUCCESS
+
+    #     task1 = F.threadedf2(mock_task, ctx)
+    #     task2 = F.threadedf2(mock_task, ctx)
+
+    #     status1 = task1()
+    #     status2 = task2()
+
+    #     assert status1 == TaskStatus.RUNNING
+    #     assert status2 == TaskStatus.RUNNING
+
+    def test_threadedf2_with_long_running_task(self):
+        ctx = Context()
+        def mock_task():
+            time.sleep(0.1)
+            return TaskStatus.SUCCESS
+
+        task = F.threadedf2(mock_task, ctx)
+        status = task()
+        assert status == TaskStatus.RUNNING
+
+    def test_threadedf2_with_to_status_conversion(self):
+        ctx = Context()
+        def mock_task():
+            return "custom_result"
+
+        def to_status(result):
+            return TaskStatus.SUCCESS if result == "custom_result" else TaskStatus.FAILURE
+
+        task = F.threadedf2(mock_task, ctx, to_status=to_status)
+        task()
+        task()
+        assert ctx['thread_status'] == TaskStatus.SUCCESS
 
 # class TestStreamModel:
 

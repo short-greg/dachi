@@ -141,7 +141,6 @@ def run_op(
     Returns:
         CALL_TASK
     """
-
     args = args or Args()
     def run() -> TaskStatus:
         if '_thread' not in ctx:
@@ -173,7 +172,6 @@ def _stream_assist(
     out: FromMsg, 
     args: Args,
     _interval: float=1./60, 
-    **kwargs
 ):
     """Run periodically to update the status
 

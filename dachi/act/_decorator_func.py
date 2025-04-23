@@ -55,8 +55,8 @@ class CompositeFunc(TaskFuncBase):
         """
         self.f = f
         self.base_f = base_f
-        self.instance = instance
-        self.is_method = is_method
+        self._instance = instance
+        self._is_method = is_method
         self._ctx = ctx
 
     def task(self, *args, _ctx: Context=None, **kwargs):
@@ -120,8 +120,8 @@ class StateMachineFunc(TaskFuncBase):
         """
         self.f = f
         self.init_state = init_state
-        self.instance = instance
-        self.is_method = is_method
+        self._instance = instance
+        self._is_method = is_method
         self._ctx = ctx
 
     def task(self, *args, **kwargs):
@@ -187,10 +187,10 @@ class ParallelFunc(TaskFuncBase):
             instance (optional): The instance. Defaults to None.
         """
         self.f = f
-        self.instance = instance
+        self._instance = instance
         self.succeeds_on = succeeds_on
         self.fails_on = fails_on
-        self.is_method = is_method
+        self._is_method = is_method
         self.success_priority = success_priority
 
     def task(self, *args, **kwargs):
@@ -251,8 +251,8 @@ class CondFunc(TaskFuncBase):
             instance (optional): _description_. Defaults to None.
         """
         self.f = f
-        self.instance = instance
-        self.is_method = is_method
+        self._instance = instance
+        self._is_method = is_method
 
     def task(self, *args, **kwargs):
         """Get the task from the function
@@ -321,8 +321,8 @@ class TaskFunc(TaskFuncBase):
             to_status (F.TOSTATUS, optional): How to convert to a status. Defaults to None.
         """
         self.f = f
-        self.instance = instance
-        self.is_method = is_method
+        self._instance = instance
+        self._is_method = is_method
         self._to_status = to_status
         self._out = out
 
@@ -477,7 +477,10 @@ def parallelfunc(
     """
 
     def _(f):
-        return ParallelFunc(f, succeeds_on, fails_on, success_priority, is_method)
+        return ParallelFunc(
+            f, succeeds_on, fails_on, 
+            success_priority, is_method
+        )
     return _
 
 

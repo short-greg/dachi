@@ -993,3 +993,17 @@ def stream_thread(
     return StreamRunner(
         module, *args, **kwargs
     )
+
+
+class F(Module):
+
+    def __init__(self, f, *args, **kwargs):
+        self.f = f
+        self.args = args
+        self.kwargs = kwargs
+    
+    def forward(self, *args, **kwargs):
+
+        return self.f(
+            *self.args, *args, **self.kwargs, **kwargs
+        )
