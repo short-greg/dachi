@@ -463,201 +463,6 @@ def notf(f, *args, **kwargs) -> CALL_TASK:
     return not_(partial(f, *args, **kwargs))
 
 
-def _run_thread(task: TASK, ctx: Context, interval: float=1./60):
-    """Run periodically to update the status
-
-    Args:
-        task (TASK): The task to run
-        ctx (Context): The context
-        interval (float, optional): The interval to run at. Defaults to 1./60.
-    """
-    while True:
-        status = task()
-        ctx['thread_status'] = status
-        if status.is_done:
-            break
-        time.sleep(interval)
-
-
-def threaded(task: TASK, ctx: Context, interval: float=1./60) -> CALL_TASK:
-    """Use to wrap the task in a thread"""
-
-    def run() -> TaskStatus:
-        """Run the task in a thread"""
-        if '_thread' not in ctx:
-            ctx['thread_status'] = TaskStatus.RUNNING
-            t = threading.Thread(target=_run_thread, args=(task, ctx, interval))
-            t.start()
-            ctx['_thread'] = t
-        
-        return ctx['thread_status']
-
-    if 'task_id' in ctx and id(task) != ctx['task_id']:
-
-        raise RuntimeError(
-            'Task context has been initialized but '
-            'the task passed in is does not match'
-        )
-
-    return run
-
-
-def _stream_model(model: LLM, prompt: LLM_PROMPT, ctx: Context, out: FromMsg, *args, interval: float=1./60, **kwargs):
-    """Run periodically to update the status
-
-    Args:
-        task (TASK): The task to run
-        ctx (Context): The context
-        interval (float, optional): The interval to run at. Defaults to 1./60.
-    """
-    for msg in model.stream(prompt, *args, **kwargs):
-        ctx['msg'] = msg
-        ctx['cur'].append(out(msg))
-        time.sleep(interval)
-    ctx['thread_status'] = TaskStatus.SUCCESS
-
-
-def stream_model(
-    buffer: Buffer, engine: LLM, prompt: LLM_PROMPT, ctx: Context, out: typing.List[str] | str,
-    *args, interval: float=1./60,  **kwargs
-) -> CALL_TASK:
-    """Execute the AI model in a thread
-
-    Args:
-        shared (Shared): THe shared
-        engine (AIModel): The model to use
-        ctx (Context): The context to use for maintaining state
-
-    Returns:
-        CALL_TASK
-    """
-    if interval <= 0.0:
-        raise ValueError(f'Interval must be greater than 0.0 not {interval}')
-    if not isinstance(ctx, Context):
-        raise AttributeError(
-            f'Context must be of type context not {type(ctx)} '
-        )
-    out = FromMsg(out)
-    def run() -> TaskStatus:
-        if '_thread' not in ctx:
-            ctx['msg'] = None
-            ctx['cur'] = []
-            ctx['i'] = 0
-            ctx['thread_status'] = TaskStatus.RUNNING
-            t = threading.Thread(
-                target=_stream_model, args=(
-                    engine, prompt, ctx, out, *args
-                ), kwargs={'interval': interval, **kwargs}
-            )
-            t.start()
-            ctx['_thread'] = t
-        
-        if ctx['i'] < len(ctx['cur']):
-            buffer.add(*ctx['cur'][ctx['i']:])
-            ctx['i'] += len(ctx['cur']) - ctx['i']
-
-        return ctx['thread_status']
-
-    return run
-
-
-# TODO: Improve Error Handling
-def _run_model(model: LLM, prompt: LLM_PROMPT, ctx: Context, out: FromMsg, **kwargs):
-    """Run periodically to update the status
-
-    Args:
-        task (TASK): The task to run
-        ctx (Context): The context
-        interval (float, optional): The interval to run at. Defaults to 1./60.
-    """
-    ctx['msg'] = model(prompt, **kwargs)
-    ctx['x'] = out(ctx['msg'])
-    ctx['thread_status'] = TaskStatus.SUCCESS
-
-
-def exec_model(
-    shared: Shared, engine: LLM, prompt: LLM_PROMPT, ctx: Context, out: typing.List[str] | str,
-    **kwargs
-) -> CALL_TASK:
-    """Execute the AI model in a thread
-
-    Args:
-        shared (Shared): THe shared
-        engine (AIModel): The model to use
-        ctx (Context): The context to use for maintaining state
-
-    Returns:
-        CALL_TASK
-    """
-    out = FromMsg(out)
-    def run() -> TaskStatus:
-        if '_thread' not in ctx:
-            ctx['msg'] = None
-            ctx['x'] = None
-            ctx['thread_status'] = TaskStatus.RUNNING
-            t = threading.Thread(
-                target=_run_model, args=(
-                    engine, prompt, ctx, out
-                ), kwargs=kwargs
-            )
-            t.start()
-            ctx['_thread'] = t
-        
-        if ctx['thread_status'].is_done:
-            shared.set(ctx['x'])
-
-        return ctx['thread_status']
-
-    return run
-
-
-def _run_func(ctx: Context, f, *args, **kwargs):
-    """Run periodically to update the status
-
-    Args:
-        task (TASK): The task to run
-        ctx (Context): The context
-        interval (float, optional): The interval to run at. Defaults to 1./60.
-    """
-    ctx['x'] = f(*args, **kwargs)
-    ctx['thread_status'] = TaskStatus.SUCCESS
-
-
-def exec_func(
-    shared: Shared, ctx: Context, f: typing.Callable,
-    *args,
-    **kwargs
-) -> CALL_TASK:
-    """Execute the AI model in a thread
-
-    Args:
-        shared (Shared): THe shared
-        engine (AIModel): The model to use
-        ctx (Context): The context to use for maintaining state
-
-    Returns:
-        CALL_TASK
-    """
-    def run() -> TaskStatus:
-        if '_thread' not in ctx:
-            ctx['x'] = None
-            ctx['thread_status'] = TaskStatus.RUNNING
-            t = threading.Thread(
-                target=_run_func, args=(
-                    ctx, f, *args
-                ), kwargs=kwargs
-            )
-            t.start()
-            ctx['_thread'] = t
-        
-        if ctx['thread_status'].is_done:
-            shared.set(ctx['x'])
-
-        return ctx['thread_status']
-
-    return run
-
-
 def tick(task: TASK, reset: bool=False) -> TaskStatus:
     """Run the task
 
@@ -878,7 +683,7 @@ def _streamf_task_wrapper(
         callback(ctx)
 
 
-def threadedf2(
+def threadedf(
     f, ctx: Context, shared: SharedBase=None, to_status: TOSTATUS=None, 
     callback: typing.Callable[[Context], typing.NoReturn]=None
 ) -> CALL_TASK:
@@ -918,7 +723,7 @@ def threadedf2(
     return _f
 
 
-def streamedf2(
+def streamedf(
     f, ctx: Context, buffer: Buffer=None, to_status: TOSTATUS=None,  interval: float=1/60.0, callback: typing.Callable[[Context], typing.NoReturn]=None
 ) -> CALL_TASK:
     """Use to wrap the task in a thread"""
@@ -962,13 +767,34 @@ def streamedf2(
     return _f
 
 
+# def _run_thread(task: TASK, ctx: Context, interval: float=1./60):
+#     """Run periodically to update the status
 
-# def threadedf(
-#     task: TASK, ctx: Context, 
-#     *args, out: SharedBase=None, 
-#     to_status: TOSTATUS=None, **kwargs
-# ) -> CALL_TASK:
+#     Args:
+#         task (TASK): The task to run
+#         ctx (Context): The context
+#         interval (float, optional): The interval to run at. Defaults to 1./60.
+#     """
+#     while True:
+#         status = task()
+#         ctx['thread_status'] = status
+#         if status.is_done:
+#             break
+#         time.sleep(interval)
+
+
+# def threaded(task: TASK, ctx: Context, interval: float=1./60) -> CALL_TASK:
 #     """Use to wrap the task in a thread"""
+
+#     def run() -> TaskStatus:
+#         """Run the task in a thread"""
+#         if '_thread' not in ctx:
+#             ctx['thread_status'] = TaskStatus.RUNNING
+#             t = threading.Thread(target=_run_thread, args=(task, ctx, interval))
+#             t.start()
+#             ctx['_thread'] = t
+        
+#         return ctx['thread_status']
 
 #     if 'task_id' in ctx and id(task) != ctx['task_id']:
 
@@ -977,71 +803,161 @@ def streamedf2(
 #             'the task passed in is does not match'
 #         )
 
-#     def _f(reset: bool=False):
-#         """Run the task in a thread"""
-#         def task_wrapper():
-            
-#             result = task(
-#                 *args, reset=reset, 
-#                 **kwargs
-#             )
-#             if out is not None:
-#                 out.set(result)
-#             if to_status is not None:
-#                 status = to_status(result)
-#             ctx['thread_status'] = status
-
-#         if '_thread' not in ctx:
-#             ctx['thread_status'] = TaskStatus.RUNNING
-#             t = threading.Thread(target=task_wrapper)
-#             ctx['_thread'] = t
-#             t.start()
-        
-#         if t.is_alive():
-#             return TaskStatus.RUNNING
-        
-#         return ctx['thread_status']
-#     return _f
+#     return run
 
 
-# def streamedf(
-#     f, ctx: Context, 
-#     *args, out: SharedBase=None, 
-#     to_status: TOSTATUS=None, **kwargs
+# def _stream_model(model: LLM, prompt: LLM_PROMPT, ctx: Context, out: FromMsg, *args, interval: float=1./60, **kwargs):
+#     """Run periodically to update the status
+
+#     Args:
+#         task (TASK): The task to run
+#         ctx (Context): The context
+#         interval (float, optional): The interval to run at. Defaults to 1./60.
+#     """
+#     for msg in model.stream(prompt, *args, **kwargs):
+#         ctx['msg'] = msg
+#         ctx['cur'].append(out(msg))
+#         time.sleep(interval)
+#     ctx['thread_status'] = TaskStatus.SUCCESS
+
+
+# def stream_model(
+#     buffer: Buffer, engine: LLM, prompt: LLM_PROMPT, ctx: Context, out: typing.List[str] | str,
+#     *args, interval: float=1./60,  **kwargs
 # ) -> CALL_TASK:
-#     """Use to wrap the task in a thread"""
+#     """Execute the AI model in a thread
 
-#     if 'task_id' in ctx and id(task) != ctx['task_id']:
+#     Args:
+#         shared (Shared): THe shared
+#         engine (AIModel): The model to use
+#         ctx (Context): The context to use for maintaining state
 
-#         raise RuntimeError(
-#             'Task context has been initialized but '
-#             'the task passed in is does not match'
+#     Returns:
+#         CALL_TASK
+#     """
+#     if interval <= 0.0:
+#         raise ValueError(f'Interval must be greater than 0.0 not {interval}')
+#     if not isinstance(ctx, Context):
+#         raise AttributeError(
+#             f'Context must be of type context not {type(ctx)} '
 #         )
-
-#     def _f(reset: bool=False):
-#         """Run the task in a thread"""
-#         def task_wrapper():
-            
-#             result = task(
-#                 *args, reset=reset, 
-#                 **kwargs
-#             )
-#             if out is not None:
-#                 out.set(result)
-#             if to_status is not None:
-#                 status = to_status(result)
-#             ctx['thread_status'] = status
-
+#     out = FromMsg(out)
+#     def run() -> TaskStatus:
 #         if '_thread' not in ctx:
+#             ctx['msg'] = None
+#             ctx['cur'] = []
+#             ctx['i'] = 0
 #             ctx['thread_status'] = TaskStatus.RUNNING
-#             t = threading.Thread(target=task_wrapper)
-#             ctx['_thread'] = t
+#             t = threading.Thread(
+#                 target=_stream_model, args=(
+#                     engine, prompt, ctx, out, *args
+#                 ), kwargs={'interval': interval, **kwargs}
+#             )
 #             t.start()
+#             ctx['_thread'] = t
         
-#         if t.is_alive():
-#             return TaskStatus.RUNNING
-        
-#         return ctx['thread_status']
-#     return _f
+#         if ctx['i'] < len(ctx['cur']):
+#             buffer.add(*ctx['cur'][ctx['i']:])
+#             ctx['i'] += len(ctx['cur']) - ctx['i']
 
+#         return ctx['thread_status']
+
+#     return run
+
+
+# # TODO: Improve Error Handling
+# def _run_model(model: LLM, prompt: LLM_PROMPT, ctx: Context, out: FromMsg, **kwargs):
+#     """Run periodically to update the status
+
+#     Args:
+#         task (TASK): The task to run
+#         ctx (Context): The context
+#         interval (float, optional): The interval to run at. Defaults to 1./60.
+#     """
+#     ctx['msg'] = model(prompt, **kwargs)
+#     ctx['x'] = out(ctx['msg'])
+#     ctx['thread_status'] = TaskStatus.SUCCESS
+
+
+# def exec_model(
+#     shared: Shared, engine: LLM, prompt: LLM_PROMPT, ctx: Context, out: typing.List[str] | str,
+#     **kwargs
+# ) -> CALL_TASK:
+#     """Execute the AI model in a thread
+
+#     Args:
+#         shared (Shared): THe shared
+#         engine (AIModel): The model to use
+#         ctx (Context): The context to use for maintaining state
+
+#     Returns:
+#         CALL_TASK
+#     """
+#     out = FromMsg(out)
+#     def run() -> TaskStatus:
+#         if '_thread' not in ctx:
+#             ctx['msg'] = None
+#             ctx['x'] = None
+#             ctx['thread_status'] = TaskStatus.RUNNING
+#             t = threading.Thread(
+#                 target=_run_model, args=(
+#                     engine, prompt, ctx, out
+#                 ), kwargs=kwargs
+#             )
+#             t.start()
+#             ctx['_thread'] = t
+        
+#         if ctx['thread_status'].is_done:
+#             shared.set(ctx['x'])
+
+#         return ctx['thread_status']
+
+#     return run
+
+
+# def _run_func(ctx: Context, f, *args, **kwargs):
+#     """Run periodically to update the status
+
+#     Args:
+#         task (TASK): The task to run
+#         ctx (Context): The context
+#         interval (float, optional): The interval to run at. Defaults to 1./60.
+#     """
+#     ctx['x'] = f(*args, **kwargs)
+#     ctx['thread_status'] = TaskStatus.SUCCESS
+
+
+# def exec_func(
+#     shared: Shared, ctx: Context, f: typing.Callable,
+#     *args,
+#     **kwargs
+# ) -> CALL_TASK:
+#     """Execute the AI model in a thread
+
+#     Args:
+#         shared (Shared): THe shared
+#         engine (AIModel): The model to use
+#         ctx (Context): The context to use for maintaining state
+
+#     Returns:
+#         CALL_TASK
+#     """
+#     def run() -> TaskStatus:
+#         if '_thread' not in ctx:
+#             ctx['x'] = None
+#             ctx['thread_status'] = TaskStatus.RUNNING
+#             t = threading.Thread(
+#                 target=_run_func, args=(
+#                     ctx, f, *args
+#                 ), kwargs=kwargs
+#             )
+#             t.start()
+#             ctx['_thread'] = t
+        
+#         if ctx['thread_status'].is_done:
+#             shared.set(ctx['x'])
+
+#         return ctx['thread_status']
+
+#     return run
 

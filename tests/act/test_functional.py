@@ -4,7 +4,6 @@ from dachi.act import TaskStatus
 from dachi.store import _data as store
 import typing
 from dachi import store
-import threading
 from dachi.store import Context
 import time
 
@@ -112,7 +111,6 @@ class TestCond:
 
         status = F.tick(F.condf(sample_cond, 4))
         assert status.success
-
 
 
 class TestSequence:
@@ -802,7 +800,7 @@ class TestThreaded:
         def mock_task():
             return TaskStatus.SUCCESS
 
-        task = F.threadedf2(mock_task, ctx)
+        task = F.threadedf(mock_task, ctx)
         status = task()
         assert status == TaskStatus.RUNNING
 
@@ -811,7 +809,7 @@ class TestThreaded:
         def mock_task():
             return TaskStatus.SUCCESS
 
-        task = F.threadedf2(mock_task, ctx)
+        task = F.threadedf(mock_task, ctx)
         task()
         task()
         assert ctx['thread_status'] == TaskStatus.SUCCESS
@@ -821,7 +819,7 @@ class TestThreaded:
         def mock_task():
             raise ValueError("Task failed")
 
-        task = F.threadedf2(mock_task, ctx)
+        task = F.threadedf(mock_task, ctx)
         task()
         task()
         assert ctx['thread_status'] == TaskStatus.FAILURE
@@ -831,7 +829,7 @@ class TestThreaded:
         def mock_task():
             return TaskStatus.SUCCESS
 
-        task = F.threadedf2(mock_task, ctx)
+        task = F.threadedf(mock_task, ctx)
         task(reset=True)
         assert ctx['tick_id'] is not None
 
@@ -846,7 +844,7 @@ class TestThreaded:
             nonlocal callback_called
             callback_called = True
 
-        task = F.threadedf2(mock_task, ctx, callback=callback)
+        task = F.threadedf(mock_task, ctx, callback=callback)
         task()
         task()
         assert callback_called
@@ -857,7 +855,7 @@ class TestThreaded:
             yield TaskStatus.RUNNING
             yield TaskStatus.SUCCESS
 
-        task = F.streamedf2(mock_task, ctx)
+        task = F.streamedf(mock_task, ctx)
         status = task()
         assert status == TaskStatus.RUNNING
 
@@ -868,7 +866,7 @@ class TestThreaded:
                 return TaskStatus.SUCCESS
 
             ctx['task_id'] = id(mock_task)
-            task = F.threadedf2(lambda: None, ctx)
+            task = F.threadedf(lambda: None, ctx)
             task()
 
     # TODO: Think how to handle this case where the user accidentally
@@ -895,7 +893,7 @@ class TestThreaded:
             time.sleep(0.1)
             return TaskStatus.SUCCESS
 
-        task = F.threadedf2(mock_task, ctx)
+        task = F.threadedf(mock_task, ctx)
         status = task()
         assert status == TaskStatus.RUNNING
 
@@ -907,225 +905,7 @@ class TestThreaded:
         def to_status(result):
             return TaskStatus.SUCCESS if result == "custom_result" else TaskStatus.FAILURE
 
-        task = F.threadedf2(mock_task, ctx, to_status=to_status)
+        task = F.threadedf(mock_task, ctx, to_status=to_status)
         task()
         task()
         assert ctx['thread_status'] == TaskStatus.SUCCESS
-
-# class TestStreamModel:
-
-#     def test_stream_model_initial_status(self):
-#         buffer = store.Buffer()
-#         model = DummyAIModel()
-#         message = Msg(role='user', text='text')
-#         ctx = store.Context()
-#         stream = F.stream_model(buffer, model, message, ctx, out='content', interval=1./400.)
-        
-#         status = stream()
-#         assert status == TaskStatus.RUNNING
-
-#     def test_stream_model_success_status(self):
-#         buffer = store.Buffer()
-#         model = DummyAIModel()
-#         message = Msg(role='user', text='text')
-#         ctx = store.Context()
-#         stream = F.stream_model(buffer, model, message, ctx, out='content', interval=1./400.)
-        
-#         stream()
-#         time.sleep(0.15)
-#         status = stream()
-#         assert status == TaskStatus.SUCCESS
-
-#     def test_stream_model_buffer_content(self):
-#         buffer = store.Buffer()
-#         model = DummyAIModel()
-#         message = Msg(role='user', text='text')
-#         ctx = store.Context()
-#         stream = F.stream_model(buffer, model, message, ctx, out='content', interval=1./400.)
-        
-#         stream()
-#         time.sleep(0.1)
-#         stream()
-#         result = ''.join(buffer.get())
-#         assert result == 'Great!'
-
-#     def test_stream_model_with_empty_prompt(self):
-#         buffer = store.Buffer()
-#         model = DummyAIModel(target='')
-#         message = Msg(role='user', text='')
-#         ctx = store.Context()
-#         stream = F.stream_model(buffer, model, message, ctx, out='content', interval=1./400.)
-        
-#         stream()
-#         time.sleep(0.1)
-#         stream()
-#         result = ''.join(buffer.get())
-#         assert result == ''
-
-#     def test_stream_model_with_invalid_interval(self):
-#         buffer = store.Buffer()
-#         model = DummyAIModel()
-#         message = Msg(role='user', text='text')
-#         ctx = store.Context()
-#         with pytest.raises(ValueError):
-#             F.stream_model(buffer, model, message, ctx, out='content', interval=-1)
-
-#     def test_stream_model_with_large_output(self):
-#         buffer = store.Buffer()
-#         model = DummyAIModel()
-#         message = Msg(role='user', text='text' * 1000)
-#         ctx = store.Context()
-#         stream = F.stream_model(buffer, model, message, ctx, out='content', interval=1./400.)
-        
-#         stream()
-#         time.sleep(0.2)
-#         result = ''.join(buffer.get())
-#         assert len(result) > 0
-
-#     def test_stream_model_with_multiple_calls(self):
-#         buffer = store.Buffer()
-#         model = DummyAIModel()
-#         message = Msg(role='user', text='text')
-#         ctx = store.Context()
-#         stream = F.stream_model(buffer, model, message, ctx, out='content', interval=1./400.)
-        
-#         for _ in range(5):
-#             stream()
-#             time.sleep(0.05)
-#         result = ''.join(buffer.get())
-#         assert result == 'Great!'
-
-#     def test_stream_model_with_invalid_context(self):
-#         buffer = store.Buffer()
-#         model = DummyAIModel()
-#         message = Msg(role='user', text='text')
-#         ctx = None
-#         with pytest.raises(AttributeError):
-#             F.stream_model(buffer, model, message, ctx, out='content', interval=1./400.)
-
-#     def test_stream_model_with_non_string_output(self):
-#         buffer = store.Buffer()
-#         model = DummyAIModel()
-#         message = Msg(role='user', text='text')
-#         ctx = store.Context()
-#         stream = F.stream_model(
-#             buffer, model, message, 
-#             ctx, out='content', interval=1./400.
-#         )
-        
-#         stream()
-#         time.sleep(0.1)
-#         stream()
-#         stream()
-#         stream()
-#         stream()
-#         stream()
-#         result = ''.join(buffer.get())
-#         assert result == 'Great!'
-
-#     def test_buffer_returns_correct_Status(self):
-
-#         buffer = store.Buffer()
-#         model = DummyAIModel()
-#         message = Msg(
-#             role='user', text='text'
-#         )
-#         ctx = store.Context()
-#         stream = F.stream_model(
-#             buffer, model, message, ctx, interval=1./400.,
-#             out='content'
-#         )
-#         res = stream()
-#         time.sleep(0.15)
-#         res = stream()
-
-#         assert res == TaskStatus.SUCCESS
-
-#     def test_buffer_has_correct_value(self):
-
-#         buffer = store.Buffer()
-#         model = DummyAIModel()
-#         message = Msg(
-#             role='user', text='text'
-#         )
-#         ctx = store.Context()
-#         stream = F.stream_model(
-#             buffer, model, message, ctx, out='content', interval=1./400.
-#         )
-#         stream()
-#         time.sleep(0.1)
-#         stream()
-#         res = ''.join((r for r in buffer.get()))
-
-#         assert res == 'Great!'
-
-
-#     # def test_parallel_returns_success_if_both_succeed(self):
-#     #     state = utils.ContextStorage()
-
-#     #     status = F.parallel([
-#     #         F.condf(sample_cond, 4),
-#     #         F.action(sample_action, state.A, 4)
-#     #     ])()
-
-#     #     assert status.success
-
-#     # def test_parallel_returns_running_if_one_running(self):
-#     #     state = utils.ContextStorage()
-
-#     #     status = F.parallel([
-#     #         F.condf(sample_cond, 4),
-#     #         F.action(sample_action, state.A, 2)
-#     #     ])()
-
-#     #     assert status.running
-
-#     # def test_parallel_returns_running_with_nested_sequence(self):
-#     #     state = utils.ContextStorage()
-
-#     #     status = F.parallel([
-#     #         F.condf(sample_cond, 4),
-#     #         F.sequence(
-#     #             [F.action(sample_action, state.A, 2)], state.S
-#     #         )
-#     #     ])()
-
-#     #     assert status.running
-
-# class TestSharedTask:
-
-#     def test_shared_task_returns_correct_status(self):
-
-#         shared = store.Shared()
-#         model = DummyAIModel()
-#         message = Msg(
-#             role='user', text='text'
-#         )
-#         ctx = store.Context()
-#         stream = F.exec_model(
-#             shared, model, message, ctx, out='content', interval=1./400.
-#         )
-#         res = stream()
-#         time.sleep(0.1)
-#         res = stream()
-
-#         assert res == TaskStatus.SUCCESS
-
-#     def test_shared(self):
-
-#         shared = store.Shared()
-#         model = DummyAIModel()
-#         message = Msg(
-#             role='user', text='text'
-#         )
-#         ctx = store.Context()
-#         stream = F.exec_model(
-#             shared, model, message, ctx, out='content', interval=1./400.
-#         )
-#         res = stream()
-#         time.sleep(0.1)
-#         res = stream()
-#         # print(type(shared.data[0]))
-
-
-#         assert shared.data == 'Great!'
