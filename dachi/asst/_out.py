@@ -588,7 +588,8 @@ class CSVOut(OutConv):
             csv.reader(io.StringIO(val), delimiter=self._delimiter)
         )
         new_rows = []
-        for i, row in enumerate(rows[row:]):  # Only return new rows
+        for i, row in enumerate(rows[row:]):  
+            # Only return new rows
             new_rows.append(row)
 
         if len(new_rows) == 0:
@@ -646,33 +647,35 @@ class CSVOut(OutConv):
         return super().template()
 
 
-# class ConvTemplate(Templatable):
-#     """Use to generate a template from an out conv 
-#     """
+def conv_to_out(
+    out, 
+    name: str='out', 
+    from_: str='content'
+) -> OutConv:
+    """
 
-#     def __init__(self, conv: OutConv, preprocessors):
-#         """
+    Args:
+        out: 
+        name (str, optional): . Defaults to 'out'.
+        from_ (str, optional): . Defaults to 'content'.
 
-#         Args:
-#             conv (OutConv): 
-#             preprocessors: 
-#         """
-#         super().__init__()
-#         self.conv = conv
-#         self.preprocessors = preprocessors
+    Raises:
+        ValueError: 
 
-#     def template(self) -> str:
-
-#         template = self.conv.template()
-#         for processor in reversed(self.preprocessors):
-#             template = processor.render(template)
-#         return template
+    Returns:
+        OutConv: 
+    """
+    if isinstance(out, OutConv):
+        return out
     
-#     def example(self) -> str:
-
-#         example = self.conv.example()
-#         for processor in reversed(self.preprocessors):
-#             example = processor.render(example)
-#         return example
-    
-
+    if out is bool:
+        return PrimOut(bool, name, from_)
+    if out is str:
+        return PrimOut(str, name, from_)
+    if out is int:
+        return PrimOut(int, name, from_)
+    if out is None:
+        return None
+    if inspect.isclass(out) and issubclass(out, pydantic.BaseModel):
+        return PydanticOut(out, name, from_)
+    raise ValueError

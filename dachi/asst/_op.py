@@ -1,5 +1,4 @@
 # TODO: Update this once LLM and convs are done
-
 # 1st party
 import typing
 from typing import Self
@@ -14,6 +13,8 @@ from ..msg._messages import (
 )
 from ._asst import Assistant
 from ._msg import ToMsg, KeyRet, FromMsg
+from ._out import OutConv
+from ._out import conv_to_out
 from ..proc import (
     Module, AsyncModule, 
     StreamModule, AsyncStreamModule
@@ -37,7 +38,10 @@ class Op(Module, AsyncModule, StreamModule, AsyncStreamModule):
     This class supports both synchronous and asynchronous operations, as well 
     as streaming responses.
     """
-    def __init__(self, assistant: Assistant, to_msg: ToMsg, out: str | typing.List[str] | FromMsg, filter_undefined: bool=True):
+    def __init__(
+        self, assistant: Assistant, 
+        to_msg: ToMsg, 
+        out: str | typing.List[str] | FromMsg, filter_undefined: bool=True):
         """
         Initializes the class to facilitate interaction with a language model assistant by
         adapting inputs and outputs.
@@ -58,7 +62,12 @@ class Op(Module, AsyncModule, StreamModule, AsyncStreamModule):
         self.out = out
         self.filter_undefined = filter_undefined
 
-    def forward(self, *args, _out=None, _messages: typing.List[Msg]=None, **kwargs) -> typing.Any:
+    def forward(
+        self, *args,  
+        _conv: OutConv=None,
+        _messages: typing.List[Msg]=None, 
+        **kwargs
+    ) -> typing.Any:
         """
         Executes the assistant with the provided arguments and returns the processed output.
         Args:
@@ -74,6 +83,7 @@ class Op(Module, AsyncModule, StreamModule, AsyncStreamModule):
             Any exceptions raised during the assistant's execution or message processing.
         """
         msg = self.to_msg(*args, **kwargs)
+        _conv = conv_to_out(_conv)
 
         _messages = _messages or []
         _messages.append(msg)
@@ -83,11 +93,15 @@ class Op(Module, AsyncModule, StreamModule, AsyncStreamModule):
 
         if _messages is not None:
             _messages.append(resp_msg)
-        return self.out(resp_msg, _out)
+        res = self.out(resp_msg)
+        if _conv is None:
+            return res
+        return _conv.delta(res, {})
         
     async def aforward(
-        self, *args, _out=None, 
-        _messages: typing.List[Msg]=None, **kwargs
+        self, *args, _conv: OutConv=None, 
+        _messages: typing.List[Msg]=None,
+        **kwargs
     ) -> typing.Any:
         """
         Asynchronously executes the assistant with the provided arguments and returns the processed output.
@@ -103,7 +117,7 @@ class Op(Module, AsyncModule, StreamModule, AsyncStreamModule):
             Any exceptions raised during the assistant's execution or message processing.
         """
         msg = self.to_msg(*args, **kwargs)
-
+        _conv = conv_to_out(_conv)
         _messages = _messages or []
         _messages.append(msg)
         resp_msg = await self.assistant.aforward( _messages)
@@ -111,11 +125,17 @@ class Op(Module, AsyncModule, StreamModule, AsyncStreamModule):
         if _messages is not None:
             _messages.append(resp_msg)
 
-        return self.out(resp_msg, _out)
+        res = self.out(resp_msg)
+        if _conv is None:
+            return res
+        return _conv.delta(res, {})
     
     def stream(
-        self, *args, _out=None,
-        _messages: typing.List[Msg]=None, **kwargs) -> typing.Iterator:
+        self, *args, 
+        _conv: OutConv=None,
+        _messages: typing.List[Msg]=None, 
+        **kwargs
+    ) -> typing.Iterator:
         """
         Streams the assistant with the provided arguments and returns the processed output.
         Args:
@@ -134,31 +154,42 @@ class Op(Module, AsyncModule, StreamModule, AsyncStreamModule):
 
         _messages = _messages or []
         
+        _conv = conv_to_out(_conv)
         _messages.append(msg)
         resp_msg = None
 
+        delta_store = {}
         for resp_msg in self.assistant.stream(
             _messages
         ):
             if self.filter_undefined:
-                res, filtered = self.out.filter(resp_msg, _out)
+                res, filtered = self.out.filter(resp_msg)
+
+                res = self.out(resp_msg)
+                if _conv is not None:
+                    res = _conv.delta(
+                        res, delta_store
+                    )
+                    filtered = filtered or res == UNDEFINED
                 if not filtered:
                     yield res
             else:
-                yield self.out(resp_msg, _out)
+                res = self.out(resp_msg)
+                if _conv is not None:
+                    res = _conv.delta(res, {})
+                yield res
         
         if _messages is not None and resp_msg is not None:
             _messages.append(resp_msg)
 
     async def astream(
-        self, *args, _out=None, 
+        self, *args, _conv: OutConv=None,
         _messages: typing.List[Msg]=None, **kwargs
     ) -> typing.AsyncIterator:
         """
         Asynchronously streams the assistant with the provided arguments and returns the processed output.
         Args:
-            *args: Positional arguments to be passed to the `to_msg` method for message creation.
-            _out (callable, optional): A callable to process the assistant's response. Defaults to `self.out`.
+            *args: Positional arguments to be passed to the `to_msg` method for message creation..
             _asst (typing.Dict or object, optional): A dictionary to spawn a new assistant instance or an existing assistant object. 
             
             If None, defaults to `self.assistant`.
@@ -170,17 +201,30 @@ class Op(Module, AsyncModule, StreamModule, AsyncStreamModule):
         """
         _messages = _messages or []
         msg = self.to_msg(*args, **kwargs)
+        _conv = conv_to_out(_conv)
 
         _messages.append(msg)
+        delta_store = {}
         async for resp_msg in await self.assistant.astream(
             _messages
         ):
             if self.filter_undefined:
-                res, filtered = self.out.filter(resp_msg, _out)
+                res, filtered = self.out.filter(
+                    resp_msg
+                )
+                if _conv is not None:
+                    res = _conv.delta(
+                        res, delta_store
+                    )
+                    filtered = filtered or res == UNDEFINED
+
                 if not filtered:
                     yield res
             else:
-                yield self.out(resp_msg, _out)
+                res = self.out(resp_msg)
+                if _conv is not None:
+                    res = _conv.delta(res)
+                yield res
         
         if _messages is not None and resp_msg is not None:
             _messages.append(resp_msg)
@@ -264,12 +308,17 @@ class Threaded(
         self.dialog = dialog or ListDialog()
         self.filter_undefined = filter_undefined
 
-    def forward(self, route: str, *args, _out=None, **kwargs) -> typing.Any:
+    def forward(
+        self, 
+        route: str, 
+        *args, 
+        _conv: OutConv=None,
+        **kwargs
+    ) -> typing.Any:
         """
         Executes the assistant with the provided arguments and returns the processed output.
         Args:
-            *args: Positional arguments to be passed to the `to_msg` method for message creation.
-            _out (callable, optional): A callable to process the assistant's response. Defaults to `self.out`.
+            *args: Positional arguments to be passed to the `to_msg` method for message creation..
             _asst (typing.Dict or object, optional): A dictionary to spawn a new assistant instance or an existing assistant object. 
             
             If None, defaults to `self.assistant`.
@@ -280,22 +329,29 @@ class Threaded(
             Any exceptions raised during the assistant's execution or message processing.
         """
         msg = self.router[route](*args, **kwargs)
+        _conv = conv_to_out(_conv)
         self.dialog = self.dialog.append(msg)
 
         resp_msg = self.assistant(
             self.dialog.list_messages()
         )
         self.dialog.append(resp_msg)
-        return self.out(resp_msg, _out)
+        res = self.out(resp_msg)
+        if _conv is None:
+            return res
+        return _conv.delta(res, {})
 
     async def aforward(
-        self, route: str, *args, _out=None, **kwargs
+        self, 
+        route: str, 
+        *args, 
+        _conv: OutConv=None,
+        **kwargs
     ) -> typing.Any:
         """
         Asynchronously executes the assistant with the provided arguments and returns the processed output.
         Args:
-            *args: Positional arguments to be passed to the `to_msg` method for message creation.
-            _out (callable, optional): A callable to process the assistant's response. Defaults to `self.out`.
+            *args: Positional arguments to be passed to the `to_msg` method for message creation.`.
             _asst (typing.Dict or object, optional): A dictionary to spawn a new assistant instance or an existing assistant object. 
                 If None, defaults to `self.assistant`.
             **kwargs: Additional keyword arguments to be passed to the `to_msg` method.
@@ -305,16 +361,24 @@ class Threaded(
             Any exceptions raised during the assistant's execution or message processing.
         """
         msg = self.router[route](*args, **kwargs)
+        _conv = conv_to_out(_conv)
         self.dialog = self.dialog.append(msg)
 
         resp_msg = await self.assistant.aforward(
             self.dialog.list_messages()
         )
         self.dialog = self.dialog.append(resp_msg)
-        return self.out(resp_msg, _out)
+        res = self.out(resp_msg)
+        if _conv is None:
+            return res
+        return _conv.delta(res, {})
 
     def stream(
-        self, route: str, *args, _out=None, **kwargs
+        self, 
+        route: str, 
+        *args, 
+        _conv: OutConv=None,
+        **kwargs
     ) -> typing.Iterator:
         """Stream the Operation
 
@@ -326,24 +390,40 @@ class Threaded(
         """
         msg = self.router[route](*args, **kwargs)
         self.dialog = self.dialog.append(msg)
+        _conv = conv_to_out(_conv)
         
         resp_msg = None
-
+        delta_store = {}
         for resp_msg in self.assistant.stream(
             self.dialog.list_messages()
         ):
             if self.filter_undefined:
-                res, filtered = self.out.filter(resp_msg, _out)
+                res, filtered = self.out.filter(
+                    resp_msg
+                )
+                if _conv is not None:
+                    res = _conv.delta(
+                        res, delta_store
+                    )
+                    filtered = filtered or res == UNDEFINED
+
                 if not filtered:
                     yield res
             else:
-                yield self.out(resp_msg, _out)
+                res = self.out(resp_msg)
+                if _conv is not None:
+                    res = _conv.delta(res, delta_store)
+                yield res
         
         if resp_msg is not None:
             self.dialog = self.dialog.append(resp_msg)
 
     async def astream(
-        self, route: str, *args, _out=None, **kwargs
+        self, 
+        route: str, 
+        *args, 
+        _conv: OutConv=None,
+        **kwargs
     ) -> typing.AsyncIterator:
         """Asynchronously stream
 
@@ -354,18 +434,31 @@ class Threaded(
             typing.Any: The result of of the op
         """
         msg = self.router[route](*args, **kwargs)
+        _conv = conv_to_out(_conv)
         self.dialog = self.dialog.append(msg)
         resp_msg = None
 
+        delta_store = {}
         async for resp_msg in await self.assistant.astream(
             self.dialog.list_messages()
         ):
             if self.filter_undefined:
-                res, filtered = self.out.filter(resp_msg, _out)
+                res, filtered = self.out.filter(
+                    resp_msg
+                )
+                if _conv is not None:
+                    res = _conv.delta(
+                        res, delta_store
+                    )
+                    filtered = filtered or res == UNDEFINED
+
                 if not filtered:
                     yield res
             else:
-                yield self.out(resp_msg, _out)
+                res = self.out(resp_msg)
+                if _conv is not None:
+                    res = _conv.delta(res, delta_store)
+                yield res
         
         if resp_msg is not None:
             self.dialog = self.dialog.append(resp_msg)
@@ -377,7 +470,9 @@ class Threaded(
         Returns:
             Self: 
         """
-        asst = self.assistant.spawn(*args, **kwargs)
+        asst = self.assistant.spawn(
+            *args, **kwargs
+        )
         return self.spawn(
             assistant=asst
         )

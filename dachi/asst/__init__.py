@@ -30,7 +30,8 @@ from ._out import (
     OutConv,
     KVOut, 
     CSVOut,
-    JSONOut, IndexOut
+    JSONOut, IndexOut,
+    conv_to_out
 )
 from ._parse import (
     Parser,
@@ -38,8 +39,6 @@ from ._parse import (
     CharDelimParser,
     LineParser
 )
-
-# from ._chat import Chat
 from ._instruct_func import (
     IBase,
     InstF,

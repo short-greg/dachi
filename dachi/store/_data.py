@@ -5,6 +5,7 @@ from ..msg._render import render, Renderable
 from ..msg._messages import Msg
 from ..utils import UNDEFINED
 import pydantic
+import typing
 
 
 def get_or_spawn(state: typing.Dict, child: str) -> typing.Dict:
@@ -543,10 +544,6 @@ class ContextStorage(object):
         return self._data[key]
 
 
-import pydantic
-import typing
-
-
 class Blackboard(pydantic.BaseModel):
     """A blackboard is for sharing information
     across tasks
@@ -560,18 +557,16 @@ class Blackboard(pydantic.BaseModel):
         default_factory=dict
     )
 
-    def __init__(
-        self, 
-        data: typing.Dict=None, 
-        member_callbacks: typing.Dict=None, dict_callbacks: typing.Dict=None,
-        **kwargs
-    ):
-        """The data for the blackboard
-        """
-        super().__init__(**kwargs)
-        self._data = data or {}
-        self._member_callbacks = member_callbacks or {}
-        self._dict_callbacks = dict_callbacks or {}
+    # def __init__(
+    #     self, 
+    #     member_callbacks: typing.Dict=None, dict_callbacks: typing.Dict=None,
+    #     **data
+    # ):
+    #     """The data for the blackboard
+    #     """
+    #     super().__init__(**data)
+    #     self._member_callbacks = member_callbacks or {}
+    #     self._dict_callbacks = dict_callbacks or {}
 
     def register_member(self, key, callback) -> bool:
         """Register a callback to call on data updates

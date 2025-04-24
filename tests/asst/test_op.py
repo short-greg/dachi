@@ -45,6 +45,42 @@ class TestOp:
         rs = list(op.stream(""))
         assert rs == []
 
+    def test_op_with_int_converter(self):
+        """Test Op with an integer converter to ensure proper type conversion."""
+        op = Op(
+            DummyAIModel("123", proc=[]), ToText(),
+            out='content', 
+        )
+        result = op.forward("Message", _conv=int)
+        assert result == 123
+
+    def test_op_with_bool_converter(self):
+        """Test Op with a boolean converter to ensure proper type conversion."""
+        op = Op(
+            DummyAIModel("true", proc=[]), ToText(),
+            out='content'
+        )
+        result = op.forward("Message", _conv=bool)
+        assert result is True
+
+    def test_op_with_str_converter(self):
+        """Test Op with a string converter to ensure proper type conversion."""
+        op = Op(
+            DummyAIModel("12345", proc=[]), ToText(),
+            out='content'
+        )
+        result = op.forward("Message", _conv=str)
+        assert result == "12345"
+
+    def test_op_with_invalid_converter(self):
+        """Test Op with an invalid converter to ensure it raises an exception."""
+        op = Op(
+            DummyAIModel("invalid", proc=[]), ToText(),
+            out='content'
+        )
+        with pytest.raises(ValueError):
+            op.forward("Message", _conv=int)
+
     def test_op_stream_handles_large_input(self):
         """Test Op's stream method with a very large input."""
         large_input = "\n".join([f"line {i}" for i in range(1000)])
