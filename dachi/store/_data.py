@@ -587,7 +587,7 @@ class Blackboard(pydantic.BaseModel):
         self._member_callbacks[key].append(callback)
         return True
 
-    def register_dict(self, key, callback) -> bool:
+    def register_item(self, key, callback) -> bool:
         """Register a callback to call on data updates
 
         Args:
@@ -623,7 +623,7 @@ class Blackboard(pydantic.BaseModel):
         self._member_callbacks[key].remove(callback)
         return True
 
-    def unregister_dict(self, key, callback) -> bool:
+    def unregister_item(self, key, callback) -> bool:
         """Unregister a callback to call on data updates
 
         Args:
@@ -676,7 +676,7 @@ class Blackboard(pydantic.BaseModel):
         
         return value
 
-    def r(self, key) -> 'Retriever':
+    def d(self, key) -> 'ItemRetriever':
         """Get a retriever for the blackboard
 
         Args:
@@ -685,10 +685,103 @@ class Blackboard(pydantic.BaseModel):
         Returns:
             Retriever: The retriever for the blackboard
         """
-        return Retriever(self, key)
+        return ItemRetriever(self, key, True)
+
+    def m(self, key) -> 'MemberRetriever':
+        """Get a retriever for the blackboard
+
+        Args:
+            key: The name of the key for the retriever
+
+        Returns:
+            Retriever: The retriever for the blackboard
+        """
+        return MemberRetriever(self, key, False)
 
 
-class Retriever(SharedBase):
+class MemberRetriever(SharedBase):
+    """Use to retrieve data and set data in the blackboard
+    """
+
+    _blackboard: Blackboard = pydantic.PrivateAttr()
+    _key: str = pydantic.PrivateAttr()
+
+    def __init__(self, blackboard: Blackboard, key: str):
+        """Create a retriever to retrieve data from the blackboard
+
+        Args:
+            blackboard (Blackboard): The blackboard to retrieve from
+            key (str): The key to retrieve from
+        """
+        self._blackboard = blackboard
+        self._key = key
+
+    def get(self) -> typing.Any:
+        """Get a value from the blackboard
+
+        Returns:
+            typing.Any: The value to get
+        """
+        return getattr(self._blackboard, self._key)
+    
+    def set(self, val) -> typing.Any:
+        """Set the value the retriever points to
+
+        Args:
+            val: The value to set to
+
+        Returns:
+            typing.Any: The value to set
+        """
+        setattr(self._blackboard, self._key, val)
+        return val
+
+    def register(self, callback) -> bool:
+        """Register a callback to call on data updates
+
+        Args:
+            callback (function): The callback to register
+
+        Returns:
+            bool: True the callback was registered, False if already registered
+        """
+        self._blackboard.register_member(self._key, callback)
+
+    def unregister(self, callback) -> bool:
+        """Unregister a callback to call on data updates
+
+        Args:
+            callback (function): The callback to unregister
+
+        Returns:
+            bool: True if the callback was removed, False if callback was not registered
+        """
+        self._blackboard.unregister_member(self._key, callback)
+
+    @property
+    def data(self) -> typing.Any:
+        """Get the data shared
+
+        Returns:
+            typing.Any: The shared data
+        """
+        return self.get()
+
+    @data.setter
+    def data(self, val) -> typing.Any:
+        """Update the data
+
+        Args:
+            data: The data to share
+
+        Returns:
+            typing.Any: The value for the data
+        """
+        self.set(val)
+        return val
+
+
+class ItemRetriever(SharedBase):
     """Use to retrieve data and set data in the blackboard
     """
 
@@ -734,7 +827,7 @@ class Retriever(SharedBase):
         Returns:
             bool: True the callback was registered, False if already registered
         """
-        self._blackboard.register(self._key, callback)
+        self._blackboard.register_item(self._key, callback)
 
     def unregister(self, callback) -> bool:
         """Unregister a callback to call on data updates
@@ -745,7 +838,7 @@ class Retriever(SharedBase):
         Returns:
             bool: True if the callback was removed, False if callback was not registered
         """
-        self._blackboard.unregister(self._key, callback)
+        self._blackboard.unregister_item(self._key, callback)
 
     @property
     def data(self) -> typing.Any:
@@ -768,6 +861,7 @@ class Retriever(SharedBase):
         """
         self._blackboard[self._key] = data
         return data
+
 
 
 class ContextSpawner(object):

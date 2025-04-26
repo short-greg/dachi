@@ -51,7 +51,7 @@ class TestOp:
             DummyAIModel("123", proc=[]), ToText(),
             out='content', 
         )
-        result = op.forward("Message", _conv=int)
+        result = op.forward("Message", _out=int)
         assert result == 123
 
     def test_op_with_bool_converter(self):
@@ -60,7 +60,7 @@ class TestOp:
             DummyAIModel("true", proc=[]), ToText(),
             out='content'
         )
-        result = op.forward("Message", _conv=bool)
+        result = op.forward("Message", _out=bool)
         assert result is True
 
     def test_op_with_str_converter(self):
@@ -69,7 +69,7 @@ class TestOp:
             DummyAIModel("12345", proc=[]), ToText(),
             out='content'
         )
-        result = op.forward("Message", _conv=str)
+        result = op.forward("Message", _out=str)
         assert result == "12345"
 
     def test_op_with_invalid_converter(self):
@@ -79,7 +79,7 @@ class TestOp:
             out='content'
         )
         with pytest.raises(ValueError):
-            op.forward("Message", _conv=int)
+            op.forward("Message", _out=int)
 
     def test_op_stream_handles_large_input(self):
         """Test Op's stream method with a very large input."""

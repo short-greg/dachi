@@ -14,6 +14,7 @@ from ..proc import (
     Module, AsyncModule, 
     StreamModule, AsyncStreamModule
 )
+from ._msg import MsgProc
 
 S = typing.TypeVar('S', bound=pydantic.BaseModel)
 
@@ -116,7 +117,8 @@ class Assistant(
         forward=None, 
         aforward=None,
         stream=None,
-        astream=None
+        astream=None,
+        role: str='assistant'
     ):
         """
         Initialize the instance with optional method overrides.
@@ -127,6 +129,7 @@ class Assistant(
             astream (callable, optional): A callable to override the default 'astream' method.
         """
         super().__init__()
+        self.role = role
         self._forward = forward
         self._aforward = aforward
         self._stream = stream
@@ -136,7 +139,12 @@ class Assistant(
         self._set_val(stream, 'stream')
         self._set_val(astream, 'astream')
     
-    def forward(self, msg: Msg | BaseDialog, *args, **kwargs) -> typing.Tuple[Msg]:
+    def forward(
+        self, msg: Msg | BaseDialog, 
+        *args, 
+        _proc: typing.List[MsgProc]=None,
+        **kwargs
+    ) -> typing.Tuple[Msg]:
         """
         Processes the given message and additional arguments.
         This method should be implemented by subclasses to define the specific
@@ -148,11 +156,21 @@ class Assistant(
         Raises:
             NotImplementedError: If the method is not implemented by a subclass.
         """
-        raise NotImplementedError(
+        if self._forward is not None:
+            response = self._forward(msg, *args, **kwargs)
+            msg = Msg(role=self.role, meta=dict(response=response))
+            return MsgProc.run(msg, _proc)
+        raise RuntimeError(
             ''
         )
     
-    async def aforward(self, msg: Msg | BaseDialog, *args, **kwargs) -> typing.Tuple[Msg]:
+    async def aforward(
+        self, 
+        msg: Msg | BaseDialog, 
+        _proc: typing.List[MsgProc]=None,
+        *args, 
+        **kwargs
+    ) -> typing.Tuple[Msg]:
         """
         Asynchronous version of the forward method.
         This method calls the synchronous forward method with the provided
@@ -164,9 +182,21 @@ class Assistant(
         Returns:
             The result of the forward method.
         """
-        return self.forward(msg, *args, **kwargs)
+        if self._aforward is not None:
+            response = await self._aforward(msg, *args, **kwargs)
+            msg = Msg(role=self.role, meta=dict(response=response))
+            return MsgProc.run(msg, _proc)
+        raise RuntimeError(
+            ''
+        )
     
-    def stream(self, msg, *args, **kwargs) -> typing.Iterator[Msg]:
+    def stream(
+        self, 
+        msg, 
+        *args, 
+        _proc: typing.List[MsgProc]=None,
+        **kwargs
+    ) -> typing.Iterator[Msg]:
         """
         Streams the assistant output for a given message.
         Args:
@@ -176,9 +206,23 @@ class Assistant(
         Yields:
             The output from the forward method.
         """
-        yield self.forward(msg, *args, **kwargs)
+        delta_store = []
+        if self._stream is not None:
+            for resp in self.stream(msg, *args, **kwargs):
+                
+                msg = Msg(role=self.role, meta=dict(response=resp))
+                yield MsgProc.run(msg, _proc, delta_store)
+        raise RuntimeError(
+            ''
+        )
     
-    async def astream(self, msg, *args, **kwargs) -> typing.AsyncIterator[Msg]:
+    async def astream(
+        self, 
+        msg, 
+        *args, 
+        _proc: typing.List[MsgProc]=None,
+        **kwargs
+    ) -> typing.AsyncIterator[Msg]:
         """
         Asynchronous streaming function to get the Assistant's output.
         This function yields the output of the `stream` function with the given 
@@ -190,7 +234,15 @@ class Assistant(
         Yields:
             The output of the `stream` function.
         """
-        yield self.stream(msg, *args, **kwargs)
+        delta_store = []
+        if self._stream is not None:
+            for resp in self.stream(msg, *args, **kwargs):
+                
+                msg = Msg(role=self.role, meta=dict(response=resp))
+                yield MsgProc.run(msg, _proc, delta_store)
+        raise RuntimeError(
+            ''
+        )
 
     def spawn(self, *args, **kwargs) -> typing.Self:
         
@@ -198,5 +250,6 @@ class Assistant(
             self._forward,
             self._aforward,
             self._stream,
-            self._astream
+            self._astream,
+            self.role
         )

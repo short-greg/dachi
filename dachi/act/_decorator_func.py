@@ -4,6 +4,7 @@ from ..utils import get_member
 from ._core import STATE_CALL
 import typing
 import functools
+from functools import partial
 
 
 class TaskFuncBase(object):
@@ -40,8 +41,7 @@ class CompositeFunc(TaskFuncBase):
     """
 
     def __init__(
-        self, f, base_f, ctx: 
-        Context=None, is_method: bool=False, 
+        self, f, base_f, is_method: bool=False, 
         instance=None
     ):
         """Create a composite function
@@ -57,9 +57,8 @@ class CompositeFunc(TaskFuncBase):
         self.base_f = base_f
         self._instance = instance
         self._is_method = is_method
-        self._ctx = ctx
 
-    def task(self, *args, _ctx: Context=None, **kwargs):
+    def __call__(self, ctx: Context, *args, **kwargs):
         """Get the task for the function
 
         Args:
@@ -72,23 +71,23 @@ class CompositeFunc(TaskFuncBase):
 
         instance, args = self.get_instance(args)
         
-        ctx = _get(instance, self._ctx, _ctx)  
+        # ctx = _get(instance, self._ctx, ctx)  
         if instance is None:
             return self.base_f(self.f, ctx, *args, **kwargs)
         
         return self.base_f(self.f, ctx, instance, *args, **kwargs)
 
-    def __call__(self, *args, **kwargs):
-        """Execute the function
+    # def __call__(self, *args, **kwargs):
+    #     """Execute the function
 
-        Returns: The output of the function
-        """
-        # This handles the original method call
-        instance, args = self.get_instance(args)
+    #     Returns: The output of the function
+    #     """
+    #     # This handles the original method call
+    #     instance, args = self.get_instance(args)
 
-        if instance is not None:
-            return self.f(instance, *args, **kwargs)
-        return self.f(*args, **kwargs)
+    #     if instance is not None:
+    #         return self.f(instance, *args, **kwargs)
+    #     return self.f(*args, **kwargs)
 
     def __get__(self, instance, owner):
 
@@ -105,8 +104,8 @@ class StateMachineFunc(TaskFuncBase):
     """
 
     def __init__(
-        self, f, init_state: STATE_CALL, ctx: 
-        Context=None, is_method: bool=False, 
+        self, f, init_state: STATE_CALL, 
+        is_method: bool=False, 
         instance=None
     ):
         """Create a composite function
@@ -122,46 +121,49 @@ class StateMachineFunc(TaskFuncBase):
         self.init_state = init_state
         self._instance = instance
         self._is_method = is_method
-        self._ctx = ctx
+        # self._ctx = ctx
 
-    def task(self, *args, **kwargs):
+    def __call__(self, ctx: Context, *args, **kwargs):
         """Get the task from the function
 
         Returns:
             The task to exeucte
         """
+        # ctx = _get(instance, self._ctx, ctx)
         instance, args = self.get_instance(args)
 
         if instance is None:
-            return F.statemachinef(
-                self.f, *args, init_state=self.init_state, **kwargs
-            )
-        
-        return F.parallelf(
-            self.f, instance, *args, 
-            init_state=self.init_state, 
-            **kwargs
+            f = partial(
+                self.f, instance, ctx, *args, **kwargs)
+        else:
+            f = partial(self.f, instance, ctx, *args, **kwargs)
+
+        return F.statemachinef(
+            f, ctx, *args, init_state=self.init_state, **kwargs
         )
 
-    def __call__(self, *args, **kwargs):
-        """Execute the function
+    # def __call__(self, *args, **kwargs):
+    #     """Execute the function
 
-        Returns: The output of the function
-        """
-        # This handles the original method call
+    #     Returns: The output of the function
+    #     """
+    #     # This handles the original method call
 
-        instance, args = self.get_instance(args)
+    #     instance, args = self.get_instance(args)
 
-        if instance is not None:
-            return self.f(instance, *args, **kwargs)
-        return self.f(*args, **kwargs)
+    #     if instance is not None:
+    #         return self.f(instance, *args, **kwargs)
+    #     return self.f(*args, **kwargs)
 
     def __get__(self, instance, owner):
 
         if self.f.__name__ in instance.__dict__:
             return instance.__dict__[self.f.__name__]
         
-        task = StateMachineFunc(self.f, self.base_f, self._ctx, True, instance)
+        task = StateMachineFunc(
+            self.f, self.base_f, 
+            True, instance
+        )
         instance.__dict__[self.f.__name__] = task
         return task
 
@@ -171,7 +173,8 @@ class ParallelFunc(TaskFuncBase):
     """
 
     def __init__(
-        self, f, succeeds_on=-1, fails_on=1, success_priority=True,
+        self, f, succeeds_on=-1, 
+        fails_on=1, success_priority=True,
         is_method: bool=False,
         instance=None
     ):
@@ -193,7 +196,7 @@ class ParallelFunc(TaskFuncBase):
         self._is_method = is_method
         self.success_priority = success_priority
 
-    def task(self, *args, **kwargs):
+    def __call__(self, ctx: Context, *args, **kwargs):
         """Get the task from the function
 
         Returns:
@@ -202,25 +205,25 @@ class ParallelFunc(TaskFuncBase):
         instance, args = self.get_instance(args)
         if instance is None:
             return F.parallelf(
-                self.f, *args, succeeds_on=self.succeeds_on, 
+                self.f, ctx, *args, succeeds_on=self.succeeds_on, 
                 fails_on=self.fails_on, success_priority=self.success_priority, **kwargs
             )
         
         return F.parallelf(
-            self.f, instance, *args, 
+            self.f, instance, ctx, *args, 
             succeeds_on=self.succeeds_on, fails_on=self.fails_on, success_priority=self.success_priority, **kwargs
         )
 
-    def __call__(self, *args, **kwargs):
-        """Execute the function
+    # def __call__(self, *args, **kwargs):
+    #     """Execute the function
 
-        Returns: The output of the function
-        """
-        instance, args = self.get_instance(args)
+    #     Returns: The output of the function
+    #     """
+    #     instance, args = self.get_instance(args)
 
-        if instance is not None:
-            return self.f(instance, *args, **kwargs)
-        return self.f(*args, **kwargs)
+    #     if instance is not None:
+    #         return self.f(instance, *args, **kwargs)
+    #     return self.f(*args, **kwargs)
 
     def __get__(self, instance, owner):
         """Add the task to the instance if not already there
@@ -254,7 +257,7 @@ class CondFunc(TaskFuncBase):
         self._instance = instance
         self._is_method = is_method
 
-    def task(self, *args, **kwargs):
+    def __call__(self, ctx: Context, *args, **kwargs):
         """Get the task from the function
 
         Returns:
@@ -265,19 +268,19 @@ class CondFunc(TaskFuncBase):
         instance, args = self.get_instance(args)
 
         if instance is None:
-            return F.condf(self.f, *args, **kwargs)
-        return F.condf(self.f, instance, *args, **kwargs)
+            return F.condf(self.f, ctx, *args, **kwargs)
+        return F.condf(self.f, instance, ctx, *args, **kwargs)
 
-    def __call__(self, *args, **kwargs):
-        """Execute the function
+    # def __call__(self, *args, **kwargs):
+    #     """Execute the function
 
-        Returns: The output of the function
-        """
-        instance, args = self.get_instance(args)
+    #     Returns: The output of the function
+    #     """
+    #     instance, args = self.get_instance(args)
 
-        if instance is not None:
-            return self.f(instance, *args, **kwargs)
-        return self.f(*args, **kwargs)
+    #     if instance is not None:
+    #         return self.f(instance, *args, **kwargs)
+    #     return self.f(*args, **kwargs)
 
     def __get__(self, instance, owner):
         """Add the task to the instance if not already there
@@ -326,7 +329,7 @@ class TaskFunc(TaskFuncBase):
         self._to_status = to_status
         self._out = out
 
-    def task(self, *args, **kwargs):
+    def __call__(self, ctx: Context, *args, **kwargs):
         """Get the "task" for the function
 
         Returns:
@@ -338,22 +341,22 @@ class TaskFunc(TaskFuncBase):
         if instance is None:
             out = self._out
             to_status = self._to_status
-            return F.taskf(self.f, *args, out=out, to_status=to_status, **kwargs)
+            return F.taskf(self.f, ctx, *args, out=out, to_status=to_status, **kwargs)
         else:
             to_status = _get_str(instance, self._to_status)
             out = _get_str(instance, self._out)
             return F.taskf(
-                self.f, instance, out=out, to_status=to_status, 
-                *args, **kwargs
+                self.f, instance, ctx, 
+                *args, out=out, to_status=to_status, **kwargs
             )
 
-    def __call__(self, *args, **kwargs):
+    # def __call__(self, *args, **kwargs):
 
-        instance, args = self.get_instance(args)
+    #     instance, args = self.get_instance(args)
 
-        if instance is not None:
-            return self.f(instance, *args, **kwargs)
-        return self.f(*args, **kwargs)
+    #     if instance is not None:
+    #         return self.f(instance, *args, **kwargs)
+    #     return self.f(*args, **kwargs)
 
     def __get__(self, instance, owner):
         """Add the task to the instance if not already there
@@ -366,25 +369,25 @@ class TaskFunc(TaskFuncBase):
         return task
 
 
-def _get(self, override, base):
-    """Get the an override value if defined
+# def _get(self, override, base):
+#     """Get the an override value if defined
 
-    Args:
-        override: The override value
-        base: The base value
+#     Args:
+#         override: The override value
+#         base: The base value
 
-    Raises:
-        ValueError: If neither value has been set
+#     Raises:
+#         ValueError: If neither value has been set
 
-    Returns:
-        Any
-    """
-    base = base or override
-    if base is None:
-        raise ValueError('Value has not been defined')
-    elif isinstance(base, str):
-        return get_member(self, base)
-    return base
+#     Returns:
+#         Any
+#     """
+#     base = base or override
+#     if base is None:
+#         raise ValueError('Value has not been defined')
+#     elif isinstance(base, str):
+#         return get_member(self, base)
+#     return base
 
 
 def sequencefunc(ctx: Context=None, is_method: bool=False):
@@ -411,7 +414,7 @@ def sequencemethod(ctx: Context):
     return sequencefunc(ctx, True)
 
 
-def statemachinefunc(ctx: Context=None):
+def statemachinefunc():
     """Decorate a state machine function that yields tasks
 
     Args:
@@ -420,11 +423,11 @@ def statemachinefunc(ctx: Context=None):
     Returns: the task
     """
     def _(f):
-        return StateMachineFunc(f, F.statemachinef, ctx)
+        return StateMachineFunc(f, F.statemachinef)
     return _
 
 
-def statemachinemethod(ctx: Context):
+def statemachinemethod():
     """Decorate a state machine method that yields tasks
 
     Args:
@@ -432,10 +435,10 @@ def statemachinemethod(ctx: Context):
 
     Returns: the task
     """
-    return statemachinefunc(ctx, True)
+    return statemachinefunc(True)
 
 
-def selectorfunc(ctx: Context=None):
+def selectorfunc():
     """Decorate a selector function that yields tasks
 
     Args:
@@ -444,11 +447,11 @@ def selectorfunc(ctx: Context=None):
     Returns: the task
     """
     def _(f):
-        return CompositeFunc(f, F.selectorf, ctx)
+        return CompositeFunc(f, F.selectorf)
     return _
 
 
-def selectormethod(ctx: Context):
+def selectormethod():
     """Decorate a selector method that yields tasks
 
     Args:
@@ -456,7 +459,7 @@ def selectormethod(ctx: Context):
 
     Returns: the task
     """
-    return selectorfunc(ctx, True)
+    return selectorfunc(True)
 
 
 fallbackfunc = selectorfunc

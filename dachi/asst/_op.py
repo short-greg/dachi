@@ -2,7 +2,6 @@
 # 1st party
 import typing
 from typing import Self
-import typing
 
 # 3rd party
 import pydantic
@@ -12,7 +11,7 @@ from ..msg._messages import (
     Msg, BaseDialog, ListDialog
 )
 from ._asst import Assistant
-from ._msg import ToMsg, KeyRet, FromMsg
+from ._msg import ToMsg, KeyRet, FromMsg, MsgProc
 from ._out import OutConv
 from ._out import conv_to_out
 from ..proc import (
@@ -64,7 +63,7 @@ class Op(Module, AsyncModule, StreamModule, AsyncStreamModule):
 
     def forward(
         self, *args,  
-        _conv: OutConv=None,
+        _out: OutConv=None,
         _messages: typing.List[Msg]=None, 
         **kwargs
     ) -> typing.Any:
@@ -83,7 +82,7 @@ class Op(Module, AsyncModule, StreamModule, AsyncStreamModule):
             Any exceptions raised during the assistant's execution or message processing.
         """
         msg = self.to_msg(*args, **kwargs)
-        _conv = conv_to_out(_conv)
+        _out = conv_to_out(_out)
 
         _messages = _messages or []
         _messages.append(msg)
@@ -94,12 +93,13 @@ class Op(Module, AsyncModule, StreamModule, AsyncStreamModule):
         if _messages is not None:
             _messages.append(resp_msg)
         res = self.out(resp_msg)
-        if _conv is None:
+        if _out is None:
             return res
-        return _conv.delta(res, {})
+        return _out.delta(res, {})
         
     async def aforward(
-        self, *args, _conv: OutConv=None, 
+        self, *args, 
+        _out: OutConv=None, 
         _messages: typing.List[Msg]=None,
         **kwargs
     ) -> typing.Any:
@@ -117,22 +117,24 @@ class Op(Module, AsyncModule, StreamModule, AsyncStreamModule):
             Any exceptions raised during the assistant's execution or message processing.
         """
         msg = self.to_msg(*args, **kwargs)
-        _conv = conv_to_out(_conv)
+        _out = conv_to_out(_out)
         _messages = _messages or []
         _messages.append(msg)
-        resp_msg = await self.assistant.aforward( _messages)
+        resp_msg = await self.assistant.aforward(
+            _messages
+        )
 
         if _messages is not None:
             _messages.append(resp_msg)
 
         res = self.out(resp_msg)
-        if _conv is None:
+        if _out is None:
             return res
-        return _conv.delta(res, {})
+        return _out.delta(res, {})
     
     def stream(
         self, *args, 
-        _conv: OutConv=None,
+        _out: OutConv=None,
         _messages: typing.List[Msg]=None, 
         **kwargs
     ) -> typing.Iterator:
@@ -154,7 +156,7 @@ class Op(Module, AsyncModule, StreamModule, AsyncStreamModule):
 
         _messages = _messages or []
         
-        _conv = conv_to_out(_conv)
+        _out = conv_to_out(_out)
         _messages.append(msg)
         resp_msg = None
 
@@ -166,8 +168,8 @@ class Op(Module, AsyncModule, StreamModule, AsyncStreamModule):
                 res, filtered = self.out.filter(resp_msg)
 
                 res = self.out(resp_msg)
-                if _conv is not None:
-                    res = _conv.delta(
+                if _out is not None:
+                    res = _out.delta(
                         res, delta_store
                     )
                     filtered = filtered or res == UNDEFINED
@@ -175,15 +177,17 @@ class Op(Module, AsyncModule, StreamModule, AsyncStreamModule):
                     yield res
             else:
                 res = self.out(resp_msg)
-                if _conv is not None:
-                    res = _conv.delta(res, {})
+                if _out is not None:
+                    res = _out.delta(res, {})
                 yield res
         
         if _messages is not None and resp_msg is not None:
             _messages.append(resp_msg)
 
     async def astream(
-        self, *args, _conv: OutConv=None,
+        self, 
+        *args, 
+        _out: OutConv=None, 
         _messages: typing.List[Msg]=None, **kwargs
     ) -> typing.AsyncIterator:
         """
@@ -201,7 +205,7 @@ class Op(Module, AsyncModule, StreamModule, AsyncStreamModule):
         """
         _messages = _messages or []
         msg = self.to_msg(*args, **kwargs)
-        _conv = conv_to_out(_conv)
+        _out = conv_to_out(_out)
 
         _messages.append(msg)
         delta_store = {}
@@ -212,8 +216,8 @@ class Op(Module, AsyncModule, StreamModule, AsyncStreamModule):
                 res, filtered = self.out.filter(
                     resp_msg
                 )
-                if _conv is not None:
-                    res = _conv.delta(
+                if _out is not None:
+                    res = _out.delta(
                         res, delta_store
                     )
                     filtered = filtered or res == UNDEFINED
@@ -222,8 +226,8 @@ class Op(Module, AsyncModule, StreamModule, AsyncStreamModule):
                     yield res
             else:
                 res = self.out(resp_msg)
-                if _conv is not None:
-                    res = _conv.delta(res)
+                if _out is not None:
+                    res = _out.delta(res)
                 yield res
         
         if _messages is not None and resp_msg is not None:
@@ -312,7 +316,7 @@ class Threaded(
         self, 
         route: str, 
         *args, 
-        _conv: OutConv=None,
+        _out: OutConv=None,
         **kwargs
     ) -> typing.Any:
         """
@@ -329,7 +333,7 @@ class Threaded(
             Any exceptions raised during the assistant's execution or message processing.
         """
         msg = self.router[route](*args, **kwargs)
-        _conv = conv_to_out(_conv)
+        _out = conv_to_out(_out)
         self.dialog = self.dialog.append(msg)
 
         resp_msg = self.assistant(
@@ -337,15 +341,15 @@ class Threaded(
         )
         self.dialog.append(resp_msg)
         res = self.out(resp_msg)
-        if _conv is None:
+        if _out is None:
             return res
-        return _conv.delta(res, {})
+        return _out.delta(res, {})
 
     async def aforward(
         self, 
         route: str, 
         *args, 
-        _conv: OutConv=None,
+        _out: OutConv=None,
         **kwargs
     ) -> typing.Any:
         """
@@ -361,7 +365,7 @@ class Threaded(
             Any exceptions raised during the assistant's execution or message processing.
         """
         msg = self.router[route](*args, **kwargs)
-        _conv = conv_to_out(_conv)
+        _out = conv_to_out(_out)
         self.dialog = self.dialog.append(msg)
 
         resp_msg = await self.assistant.aforward(
@@ -369,15 +373,15 @@ class Threaded(
         )
         self.dialog = self.dialog.append(resp_msg)
         res = self.out(resp_msg)
-        if _conv is None:
+        if _out is None:
             return res
-        return _conv.delta(res, {})
+        return _out.delta(res, {})
 
     def stream(
         self, 
         route: str, 
         *args, 
-        _conv: OutConv=None,
+        _out: OutConv=None,
         **kwargs
     ) -> typing.Iterator:
         """Stream the Operation
@@ -390,7 +394,7 @@ class Threaded(
         """
         msg = self.router[route](*args, **kwargs)
         self.dialog = self.dialog.append(msg)
-        _conv = conv_to_out(_conv)
+        _out = conv_to_out(_out)
         
         resp_msg = None
         delta_store = {}
@@ -401,8 +405,8 @@ class Threaded(
                 res, filtered = self.out.filter(
                     resp_msg
                 )
-                if _conv is not None:
-                    res = _conv.delta(
+                if _out is not None:
+                    res = _out.delta(
                         res, delta_store
                     )
                     filtered = filtered or res == UNDEFINED
@@ -411,8 +415,8 @@ class Threaded(
                     yield res
             else:
                 res = self.out(resp_msg)
-                if _conv is not None:
-                    res = _conv.delta(res, delta_store)
+                if _out is not None:
+                    res = _out.delta(res, delta_store)
                 yield res
         
         if resp_msg is not None:
@@ -422,7 +426,7 @@ class Threaded(
         self, 
         route: str, 
         *args, 
-        _conv: OutConv=None,
+        _out: OutConv=None,
         **kwargs
     ) -> typing.AsyncIterator:
         """Asynchronously stream
@@ -434,7 +438,7 @@ class Threaded(
             typing.Any: The result of of the op
         """
         msg = self.router[route](*args, **kwargs)
-        _conv = conv_to_out(_conv)
+        _out = conv_to_out(_out)
         self.dialog = self.dialog.append(msg)
         resp_msg = None
 
@@ -446,8 +450,8 @@ class Threaded(
                 res, filtered = self.out.filter(
                     resp_msg
                 )
-                if _conv is not None:
-                    res = _conv.delta(
+                if _out is not None:
+                    res = _out.delta(
                         res, delta_store
                     )
                     filtered = filtered or res == UNDEFINED
@@ -456,8 +460,8 @@ class Threaded(
                     yield res
             else:
                 res = self.out(resp_msg)
-                if _conv is not None:
-                    res = _conv.delta(res, delta_store)
+                if _out is not None:
+                    res = _out.delta(res, delta_store)
                 yield res
         
         if resp_msg is not None:
@@ -506,4 +510,14 @@ class Threaded(
         filter_undefined = coalesce(filter_undefined, self.filter_undefined)
         return Threaded(
             assistant, to_msg, out, dialog, filter_undefined
+        )
+
+    def asst(self, *args, **kwargs) -> 'Op':
+        """Use to spawn a new Op with a different assistant
+
+        Returns:
+            Op: a new op
+        """
+        return self.spawn(
+            assistant=self.assistant.spawn(*args, **kwargs)
         )

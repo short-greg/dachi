@@ -186,7 +186,7 @@ class ToText(ToMsg):
         )
 
 
-class MsgProc(Module, AsyncModule, ABC):
+class MsgProc(Module, ABC):
     """Use a reader to read in data convert data retrieved from
     an LLM to a better format
     """
@@ -266,17 +266,20 @@ class MsgProc(Module, AsyncModule, ABC):
         self.post(msg, res, streamed, is_last)
         return msg
 
-    async def aforward(self, msg: Msg) -> Msg:
-        """Processes the message asynchronously
-
-        Args:
-            msg (Msg): The message to process
-            delta_store (typing.Dict, optional): The delta store. Defaults to None.
-
-        Returns:
-            Msg: The processed message
-        """
-        return self.forward(msg)
+    @classmethod
+    def run(cls, msg: Msg, proc: typing.Union['MsgProc', None, typing.List['MsgProc']], delta_store: typing.List=None) -> 'Msg':
+        if proc is None:
+            return msg
+        if isinstance(proc, MsgProc):
+            if delta_store is None:
+                delta_store = [{}]
+            return proc(msg, delta_store=delta_store[0])
+        
+        if delta_store is None:
+            delta_store = [{} for _ in range(len(proc))]
+        for p, delta_store_i in zip(proc, delta_store):
+            msg = p(msg, delta_store=delta_store_i)
+        return msg
 
 
 class MsgProcSeq(Module, AsyncModule):

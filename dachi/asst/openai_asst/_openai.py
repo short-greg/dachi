@@ -27,7 +27,7 @@ if len(missing) > 0:
     raise RuntimeError(f'To use this module openai must be installed.')
 
 
-class OpenAITextConv(RespConv):
+class TextConv(RespConv):
     """
     OpenAITextProc is a class that processes an OpenAI response and extracts text outputs from it.
     """
@@ -82,11 +82,11 @@ class OpenAITextConv(RespConv):
         return {}
 
 
-class OpenAIStructConv(RespConv):
+class StructConv(RespConv):
     """
     OpenAITextProc is a class that processes an OpenAI response and extracts text outputs from it.
     """
-    def __init__(self, name: str='content', from_: str='response', struct: pydantic.BaseModel | typing.Dict=None):
+    def __init__(self, struct: pydantic.BaseModel | typing.Dict=None, name: str='content', from_: str='response'):
         super().__init__(name, from_)
         self._struct = struct
 
@@ -145,10 +145,10 @@ class OpenAIStructConv(RespConv):
         }
 
 
-class OpenAIStreamStructConv(OpenAIStructConv):
+class StructStreamConv(StructConv):
 
-    def __init__(self, name = 'content', from_ = 'response', struct = None):
-        super().__init__(name, from_, struct)
+    def __init__(self, struct = None, name = 'content', from_ = 'response'):
+        super().__init__(struct, name, from_)
     
     def delta(
         self, resp, delta_store: typing.Dict, 
@@ -172,12 +172,12 @@ class OpenAIStreamStructConv(OpenAIStructConv):
             raise RuntimeError(resp.error)
 
 
-class OpenAIParsedStructConv(OpenAIStructConv):
+class ParsedConv(StructConv):
     """For use with the "parse" API
     """
 
-    def __init__(self, name = 'content', from_ = 'response', struct = None):
-        super().__init__(name, from_, struct)
+    def __init__(self, struct = None, name = 'content', from_ = 'response'):
+        super().__init__(struct=struct, name=name, from_=from_)
     
     def delta(self, response, msg, delta_store: typing.Dict):
         """
@@ -192,7 +192,7 @@ class OpenAIParsedStructConv(OpenAIStructConv):
         raise RuntimeError('Cannot use ParseConv with a stream')
 
 
-class OpenAIToolConv(RespConv):
+class ToolConv(RespConv):
     """
     Process OpenAI LLM responses to extract tool calls.
     This class extends the RespProc class and is designed to handle responses from OpenAI's language model,
@@ -261,7 +261,7 @@ class OpenAIToolConv(RespConv):
         return []
     
 
-class OpenAILLM(LLM, ABC):
+class LLM(LLM, ABC):
     """An adapter for the OpenAILLM
     """
 
@@ -282,11 +282,11 @@ class OpenAILLM(LLM, ABC):
         super().__init__()
         convs = []
         if json_output is False:
-            convs.append(OpenAITextConv())
+            convs.append(TextConv())
         else:
-            convs.append(OpenAIStructConv(json_output))
+            convs.append(StructConv(json_output))
         if tools is not None:
-            convs.append(OpenAIToolConv(tools))
+            convs.append(ToolConv(tools))
         super().__init__(
             procs=convs, 
         )
@@ -306,12 +306,12 @@ class OpenAILLM(LLM, ABC):
             tools, self._tools
         )
         json_output = coalesce(json_output, self._json_output)
-        return OpenAILLM(
+        return LLM(
             tools, json
         )
 
 
-class OpenAIChatComp(OpenAILLM, ABC):
+class ChatComp(LLM, ABC):
     """
     OpenAIChatComp is an adapter for the OpenAI Chat Completions API. It provides methods for 
     interacting with the API, including synchronous and asynchronous message forwarding, 
@@ -337,7 +337,7 @@ class OpenAIChatComp(OpenAILLM, ABC):
             tools, self._tools
         )
         json_output = coalesce(json_output, self._json_output)
-        return OpenAIChatComp(
+        return ChatComp(
             tools, json
         )
     
