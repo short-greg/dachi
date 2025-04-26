@@ -33,5 +33,10 @@ from ._agent import (
 )
 from ._decorator_func import (
     parallelfunc, selectorfunc, sequencefunc,
-    taskfunc, condfunc
+    taskfunc, condfunc,
+    selectormethod, sequencemethod, statemachinefunc,
+    statemachinemethod, StateMachineFunc, TaskFunc,
+    CondFunc, TaskFuncBase, ParallelFunc, CompositeFunc,
+    fallbackfunc, fallbackmethod,  condmethod, taskmethod,
+    parallelmethod
 )

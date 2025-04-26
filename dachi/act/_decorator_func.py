@@ -78,18 +78,6 @@ class CompositeFunc(TaskFuncBase):
         return self.base_f(
             self.f, ctx, instance, ctx, *args, **kwargs)
 
-    # def __call__(self, *args, **kwargs):
-    #     """Execute the function
-
-    #     Returns: The output of the function
-    #     """
-    #     # This handles the original method call
-    #     instance, args = self.get_instance(args)
-
-    #     if instance is not None:
-    #         return self.f(instance, *args, **kwargs)
-    #     return self.f(*args, **kwargs)
-
     def __get__(self, instance, owner):
 
         if self.f.__name__ in instance.__dict__:
@@ -142,19 +130,6 @@ class StateMachineFunc(TaskFuncBase):
         return F.statemachinef(
             f, ctx, *args, init_state=self.init_state, **kwargs
         )
-
-    # def __call__(self, *args, **kwargs):
-    #     """Execute the function
-
-    #     Returns: The output of the function
-    #     """
-    #     # This handles the original method call
-
-    #     instance, args = self.get_instance(args)
-
-    #     if instance is not None:
-    #         return self.f(instance, *args, **kwargs)
-    #     return self.f(*args, **kwargs)
 
     def __get__(self, instance, owner):
 
@@ -215,17 +190,6 @@ class ParallelFunc(TaskFuncBase):
             succeeds_on=self.succeeds_on, fails_on=self.fails_on, success_priority=self.success_priority, **kwargs
         )
 
-    # def __call__(self, *args, **kwargs):
-    #     """Execute the function
-
-    #     Returns: The output of the function
-    #     """
-    #     instance, args = self.get_instance(args)
-
-    #     if instance is not None:
-    #         return self.f(instance, *args, **kwargs)
-    #     return self.f(*args, **kwargs)
-
     def __get__(self, instance, owner):
         """Add the task to the instance if not already there
         """
@@ -271,17 +235,6 @@ class CondFunc(TaskFuncBase):
         if instance is None:
             return F.condf(self.f, *args, **kwargs)
         return F.condf(self.f, instance, *args, **kwargs)
-
-    # def __call__(self, *args, **kwargs):
-    #     """Execute the function
-
-    #     Returns: The output of the function
-    #     """
-    #     instance, args = self.get_instance(args)
-
-    #     if instance is not None:
-    #         return self.f(instance, *args, **kwargs)
-    #     return self.f(*args, **kwargs)
 
     def __get__(self, instance, owner):
         """Add the task to the instance if not already there
@@ -350,14 +303,6 @@ class TaskFunc(TaskFuncBase):
                 self.f, instance, 
                 *args, out=out, to_status=to_status, **kwargs
             )
-
-    # def __call__(self, *args, **kwargs):
-
-    #     instance, args = self.get_instance(args)
-
-    #     if instance is not None:
-    #         return self.f(instance, *args, **kwargs)
-    #     return self.f(*args, **kwargs)
 
     def __get__(self, instance, owner):
         """Add the task to the instance if not already there
