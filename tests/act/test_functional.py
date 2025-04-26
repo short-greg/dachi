@@ -800,7 +800,7 @@ class TestThreaded:
         def mock_task():
             return TaskStatus.SUCCESS
 
-        task = F.threadedf(mock_task, ctx)
+        task = F.threaded_task(mock_task, ctx)
         status = task()
         assert status == TaskStatus.RUNNING
 
@@ -809,7 +809,7 @@ class TestThreaded:
         def mock_task():
             return TaskStatus.SUCCESS
 
-        task = F.threadedf(mock_task, ctx)
+        task = F.threaded_task(mock_task, ctx)
         task()
         task()
         assert ctx['thread_status'] == TaskStatus.SUCCESS
@@ -819,7 +819,7 @@ class TestThreaded:
         def mock_task():
             raise ValueError("Task failed")
 
-        task = F.threadedf(mock_task, ctx)
+        task = F.threaded_task(mock_task, ctx)
         task()
         task()
         assert ctx['thread_status'] == TaskStatus.FAILURE
@@ -829,7 +829,7 @@ class TestThreaded:
         def mock_task():
             return TaskStatus.SUCCESS
 
-        task = F.threadedf(mock_task, ctx)
+        task = F.threaded_task(mock_task, ctx)
         task(reset=True)
         assert ctx['tick_id'] is not None
 
@@ -844,7 +844,7 @@ class TestThreaded:
             nonlocal callback_called
             callback_called = True
 
-        task = F.threadedf(mock_task, ctx, callback=callback)
+        task = F.threaded_task(mock_task, ctx, callback=callback)
         task()
         task()
         assert callback_called
@@ -855,7 +855,7 @@ class TestThreaded:
             yield TaskStatus.RUNNING
             yield TaskStatus.SUCCESS
 
-        task = F.streamedf(mock_task, ctx)
+        task = F.streamed_task(mock_task, ctx)
         status = task()
         assert status == TaskStatus.RUNNING
 
@@ -866,7 +866,7 @@ class TestThreaded:
                 return TaskStatus.SUCCESS
 
             ctx['task_id'] = id(mock_task)
-            task = F.threadedf(lambda: None, ctx)
+            task = F.threaded_task(lambda: None, ctx)
             task()
 
     # TODO: Think how to handle this case where the user accidentally
@@ -893,7 +893,7 @@ class TestThreaded:
             time.sleep(0.1)
             return TaskStatus.SUCCESS
 
-        task = F.threadedf(mock_task, ctx)
+        task = F.threaded_task(mock_task, ctx)
         status = task()
         assert status == TaskStatus.RUNNING
 
@@ -905,7 +905,7 @@ class TestThreaded:
         def to_status(result):
             return TaskStatus.SUCCESS if result == "custom_result" else TaskStatus.FAILURE
 
-        task = F.threadedf(mock_task, ctx, to_status=to_status)
+        task = F.threaded_task(mock_task, ctx, to_status=to_status)
         task()
         task()
         assert ctx['thread_status'] == TaskStatus.SUCCESS

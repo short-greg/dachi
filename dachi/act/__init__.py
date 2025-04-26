@@ -9,7 +9,7 @@ from ._functional import (
     aslongasf, untilf, notf, parallelf,
     selectorf, sequencef, fallbackf,
     fallback, taskf, PARALLEL, 
-    threadedf, streamedf
+    threaded_task, streamed_task
 )
 from ._tasks import (
     Serial, Sequence, 
