@@ -73,9 +73,10 @@ class CompositeFunc(TaskFuncBase):
         
         # ctx = _get(instance, self._ctx, ctx)  
         if instance is None:
-            return self.base_f(self.f, ctx, *args, **kwargs)
+            return self.base_f(self.f, ctx, ctx, *args, **kwargs)
         
-        return self.base_f(self.f, ctx, instance, *args, **kwargs)
+        return self.base_f(
+            self.f, ctx, instance, ctx, *args, **kwargs)
 
     # def __call__(self, *args, **kwargs):
     #     """Execute the function
@@ -94,7 +95,7 @@ class CompositeFunc(TaskFuncBase):
         if self.f.__name__ in instance.__dict__:
             return instance.__dict__[self.f.__name__]
         
-        task = CompositeFunc(self.f, self.base_f, self._ctx, True, instance)
+        task = CompositeFunc(self.f, self.base_f, True, instance)
         instance.__dict__[self.f.__name__] = task
         return task
 
@@ -196,7 +197,7 @@ class ParallelFunc(TaskFuncBase):
         self._is_method = is_method
         self.success_priority = success_priority
 
-    def __call__(self, ctx: Context, *args, **kwargs):
+    def __call__(self, *args, **kwargs):
         """Get the task from the function
 
         Returns:
@@ -205,12 +206,12 @@ class ParallelFunc(TaskFuncBase):
         instance, args = self.get_instance(args)
         if instance is None:
             return F.parallelf(
-                self.f, ctx, *args, succeeds_on=self.succeeds_on, 
+                self.f, *args, succeeds_on=self.succeeds_on, 
                 fails_on=self.fails_on, success_priority=self.success_priority, **kwargs
             )
         
         return F.parallelf(
-            self.f, instance, ctx, *args, 
+            self.f, instance, *args, 
             succeeds_on=self.succeeds_on, fails_on=self.fails_on, success_priority=self.success_priority, **kwargs
         )
 
@@ -257,7 +258,7 @@ class CondFunc(TaskFuncBase):
         self._instance = instance
         self._is_method = is_method
 
-    def __call__(self, ctx: Context, *args, **kwargs):
+    def __call__(self, *args, **kwargs):
         """Get the task from the function
 
         Returns:
@@ -268,8 +269,8 @@ class CondFunc(TaskFuncBase):
         instance, args = self.get_instance(args)
 
         if instance is None:
-            return F.condf(self.f, ctx, *args, **kwargs)
-        return F.condf(self.f, instance, ctx, *args, **kwargs)
+            return F.condf(self.f, *args, **kwargs)
+        return F.condf(self.f, instance, *args, **kwargs)
 
     # def __call__(self, *args, **kwargs):
     #     """Execute the function
@@ -329,7 +330,7 @@ class TaskFunc(TaskFuncBase):
         self._to_status = to_status
         self._out = out
 
-    def __call__(self, ctx: Context, *args, **kwargs):
+    def __call__(self, *args, **kwargs):
         """Get the "task" for the function
 
         Returns:
@@ -341,12 +342,12 @@ class TaskFunc(TaskFuncBase):
         if instance is None:
             out = self._out
             to_status = self._to_status
-            return F.taskf(self.f, ctx, *args, out=out, to_status=to_status, **kwargs)
+            return F.taskf(self.f, *args, out=out, to_status=to_status, **kwargs)
         else:
             to_status = _get_str(instance, self._to_status)
             out = _get_str(instance, self._out)
             return F.taskf(
-                self.f, instance, ctx, 
+                self.f, instance, 
                 *args, out=out, to_status=to_status, **kwargs
             )
 
@@ -390,7 +391,7 @@ class TaskFunc(TaskFuncBase):
 #     return base
 
 
-def sequencefunc(ctx: Context=None, is_method: bool=False):
+def sequencefunc(is_method: bool=False):
     """Decorate a sequence function that yields tasks
 
     Args:
@@ -399,11 +400,11 @@ def sequencefunc(ctx: Context=None, is_method: bool=False):
     Returns: The task
     """
     def _(f):
-        return CompositeFunc(f, F.sequencef, ctx, is_method)
+        return CompositeFunc(f, F.sequencef, is_method)
     return _
 
 
-def sequencemethod(ctx: Context):
+def sequencemethod():
     """Decorate a sequence method that yields tasks
 
     Args:
@@ -411,7 +412,7 @@ def sequencemethod(ctx: Context):
 
     Returns: The task
     """
-    return sequencefunc(ctx, True)
+    return sequencefunc(True)
 
 
 def statemachinefunc():
@@ -438,7 +439,7 @@ def statemachinemethod():
     return statemachinefunc(True)
 
 
-def selectorfunc():
+def selectorfunc(is_method: bool=False):
     """Decorate a selector function that yields tasks
 
     Args:
@@ -447,7 +448,7 @@ def selectorfunc():
     Returns: the task
     """
     def _(f):
-        return CompositeFunc(f, F.selectorf)
+        return CompositeFunc(f, F.selectorf, is_method)
     return _
 
 
