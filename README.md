@@ -4,13 +4,13 @@ Here's the updated README skeleton with the name "Dachi":
 
 # Dachi - AI Library for Building Intelligent Systems
 
-**Dachi** is designed to provide flexibility and control when building intelligent systems using LLMs (Large Language Models). The library provides developers to interact with large language models and other AI models seamlessly within Python code, to be able to easily process responses from LLMs, and to construct complex behaviors making use of parallelization and other decision processes through the behavior tree paradigm.
+**Dachi** is an AI framework for building  building intelligent systems using LLMs (Large Language Models). It provides developers to interact with large language models and other AI models seamlessly within Python code, to be able to easily process responses from LLMs, and to construct complex behaviors making use of parallelization and other decision processes through the behavior tree paradigm.
 
 ## Features
 
 - **Flexible Interaction**: Easily read and interact with LLMs directly in Python code, allowing for more natural and controlled usage.
-- **Behavior Trees**: Use behavior trees to build complex behaviors such as decision-making and parallel processes.
-- **Customizable Workflows**: Define and customize workflows for LLM interaction, giving you fine-grained control over the AI's behavior.
+- **Task Coordination**: Use behavior trees to build complex behaviors such as decision-making with multiple agents. Behavior trees make orchestration and coordination straightforward.
+- **Customizable Workflows**: Define and customize workflows for LLMs using behavior trees or dynamically generated graphs.
 
 ## Installation
 
@@ -29,7 +29,9 @@ Below is a basic example of how to use Dachi to interact with an LLM:
 ```python
 from dachi import LLM
 
-engine = dachi.act.OpenAIChatModel(model='gpt-4o-mini')
+engine = dachi.act.OpenAIChatModel(
+    model='gpt-4o-mini'
+)
 
 @dachi.signaturefunc(engine=engine)
 def summarize(document: str, num_sentences: int) -> str:
@@ -72,7 +74,6 @@ import dachi
 
 
 # This is the standard way to create a behavior tree
-
 engine = dachi.adapt.openai.OpenAIChatModel(model='gpt-4o-mini')
 
 # Define behavior tree nodes
@@ -97,11 +98,14 @@ def task2(document: str, num_sentences: int):
     pass
 
 
+keywords = dachi.act.Shared()
+summarized = dachi.act.Shared()
+
 # Create a behavior tree with parallel execution
 tree = Sango(
     root=Parallel([
-        dachi.act.taskf(task1), 
-        dachi.act.taskf(task2)
+        dachi.act.taskf(task1, '<Some document>', out=keywords), 
+        dachi.act.taskf(task2, '<Some document>', 4, out=summarized)
     ])
 )
 
@@ -116,31 +120,40 @@ class Agent(Task):
 
     def __init__(self):
 
-        self.context = ContextSpawner()
+        self.context = Context()
         self.data = Shared()
         self.task1 = SomeTask()
         self.task2 = SomeTask2(self.data)
+        self._sequence = None
 
-    @sequencefunc('context.sequence')
+    @sequencemethod()
     def sequence(self):
+        """
+        This method yields the tasks or the task statuses
+        to the caller. The sequence fails on the first failure.
+        """
 
         yield y == 'ready'
+        # This does not actually do anything
+        yield dachi.act.TaskStatus.SUCCESS
         yield self.task1
         yield self.task2
 
     def tick(self) -> TaskStatus:
+        
+        if self._sequence is None:
+            self._sequence = self.sequence()
 
-        return self.sequence.task()()
+        return self._sequence()
         
     def reset(self):
-        self.context = ContextSpawner()
+        self._sequence = None
 
 ```
 
 ## Roadmap
 
 - **Improve planning**: Add support for proactive planning and better integration of planning systems with LLMs.
-- **Add more reading features**: Increase the 
 - **Add adapters**: Add adapters for a wider variety.
 - **Add evaluation and learning capabilities**: Add the ability for the systems to evaluate the output and learn.
 
