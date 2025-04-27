@@ -601,44 +601,6 @@ def statemachinef(f: typing.Callable[[typing.Any], State | TaskStatus], ctx: Con
     return f(*args, ctx=ctx, **kwargs)
 
 
-def _f_task_wrapper(
-    f, ctx, id, to_status=None, shared: SharedBase=None,
-    callback=None
-):
-    """
-
-    Args:
-        f: The function to wrap
-        ctx: The Context
-        id: The id of the task
-        to_status: Convert the output to a status. Defaults to None.
-        callback: Callback after compleeting. Defaults to None.
-    """
-    
-    id = ctx['tick_id']
-    try:
-        res = f()
-        if id == ctx['tick_id']:
-            ctx['res'] = res
-            if shared is not None:
-                shared.set(res)
-
-            # if id != ctx['tick_id']
-            if to_status is not None:
-                status = to_status(ctx['res'])
-            else:
-                status = TaskStatus.SUCCESS
-        else:
-            ctx['res'] = None
-            status = TaskStatus.SUCCESS
-            
-    except Exception as e:
-        ctx['error'] = e
-        ctx['res'] = None
-        status = TaskStatus.FAILURE
-    ctx['thread_status'] = status
-    if callback:
-        callback(ctx)
 
 
 def _streamf_task_wrapper(
@@ -680,6 +642,47 @@ def _streamf_task_wrapper(
         status = TaskStatus.FAILURE
     ctx['thread_status'] = status
     if callback is not None:
+        callback(ctx)
+
+
+
+def _f_task_wrapper(
+    f, ctx, id, to_status=None, shared: SharedBase=None,
+    callback=None
+):
+    """
+
+    Args:
+        f: The function to wrap
+        ctx: The Context
+        id: The id of the task
+        to_status: Convert the output to a status. Defaults to None.
+        callback: Callback after compleeting. Defaults to None.
+    """
+    
+    id = ctx['tick_id']
+    try:
+        res = f()
+        if id == ctx['tick_id']:
+            ctx['res'] = res
+            if shared is not None:
+                shared.set(res)
+
+            # if id != ctx['tick_id']
+            if to_status is not None:
+                status = to_status(ctx['res'])
+            else:
+                status = TaskStatus.SUCCESS
+        else:
+            ctx['res'] = None
+            status = TaskStatus.SUCCESS
+            
+    except Exception as e:
+        ctx['error'] = e
+        ctx['res'] = None
+        status = TaskStatus.FAILURE
+    ctx['thread_status'] = status
+    if callback:
         callback(ctx)
 
 

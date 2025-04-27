@@ -365,7 +365,6 @@ class BufferIter(object):
 class Context(dict):
     """Use to store state
     """
-
     def get_or_set(self, key, value):
         """Get or set a value in the context
 
@@ -416,7 +415,6 @@ class Context(dict):
             return value
         self[key] = f(self[key], value)
         return self[key]
-
 
     def acc(
         self, key, value, init_val: str=''
@@ -556,18 +554,6 @@ class Blackboard(pydantic.BaseModel):
     _dict_callbacks: typing.Dict[str, typing.List[typing.Callable[[typing.Any], typing.NoReturn]]] = pydantic.PrivateAttr(
         default_factory=dict
     )
-
-    # def __init__(
-    #     self, 
-    #     member_callbacks: typing.Dict=None, dict_callbacks: typing.Dict=None,
-    #     **data
-    # ):
-    #     """The data for the blackboard
-    #     """
-    #     super().__init__(**data)
-    #     self._member_callbacks = member_callbacks or {}
-    #     self._dict_callbacks = dict_callbacks or {}
-
     def register_member(self, key, callback) -> bool:
         """Register a callback to call on data updates
 
@@ -676,7 +662,7 @@ class Blackboard(pydantic.BaseModel):
         
         return value
 
-    def d(self, key) -> 'ItemRetriever':
+    def d(self, key) -> 'DictRetriever':
         """Get a retriever for the blackboard
 
         Args:
@@ -685,7 +671,7 @@ class Blackboard(pydantic.BaseModel):
         Returns:
             Retriever: The retriever for the blackboard
         """
-        return ItemRetriever(self, key, True)
+        return DictRetriever(self, key, True)
 
     def m(self, key) -> 'MemberRetriever':
         """Get a retriever for the blackboard
@@ -697,6 +683,14 @@ class Blackboard(pydantic.BaseModel):
             Retriever: The retriever for the blackboard
         """
         return MemberRetriever(self, key, False)
+    
+    def model_copy(self, udpate, deep: bool=True) -> 'Blackboard':
+
+        copy = super().model_copy(udpate, deep)
+        copy._data = {**self._data}
+        copy._member_callbacks = {*self._member_callbacks}
+        copy._dict_callbacks = {**self._dict_callbacks}
+        return copy
 
 
 class MemberRetriever(SharedBase):
@@ -781,7 +775,7 @@ class MemberRetriever(SharedBase):
         return val
 
 
-class ItemRetriever(SharedBase):
+class DictRetriever(SharedBase):
     """Use to retrieve data and set data in the blackboard
     """
 
@@ -861,7 +855,6 @@ class ItemRetriever(SharedBase):
         """
         self._blackboard[self._key] = data
         return data
-
 
 
 class ContextSpawner(object):
@@ -955,3 +948,35 @@ class Comm(object):
         if callback is not None:
             callback(with_message)
         self._processing.pop(0)
+
+
+T = typing.TypeVar("T")
+K = bool | str | None | int | float
+
+
+class ItemQueue(pydantic.BaseModel, typing.Generic[T]):
+    
+    items: typing.Dict[K, typing.List[T]] = pydantic.Field(
+        default_factory=dict
+    )
+
+    def write(self, val: T, key: K=None):
+
+        if key not in self.items:
+            self.items[key] = []
+        self.items[key].append(val)
+
+    def get(self, key: K=None) -> T | None:
+
+        if key not in self.items:
+            return None
+        if len(self.items[key]) == 0:
+            return None
+        
+        return self.items[key].pop(0)
+    
+    def count(self, **key) -> int:
+
+        if key not in self.items:
+            return 0
+        return len(self.items[key])

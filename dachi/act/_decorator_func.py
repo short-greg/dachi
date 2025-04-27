@@ -13,6 +13,12 @@ class TaskFuncBase(object):
         self, instance=None, 
         is_method: bool=False
     ):
+        """This is the base function for the 
+
+        Args:
+            instance (optional): The instance. Defaults to None.
+            is_method (bool, optional): Whether the function is a method. Defaults to False.
+        """
         
         self._is_method = is_method
         self._instance = instance
@@ -79,6 +85,15 @@ class CompositeFunc(TaskFuncBase):
             self.f, ctx, instance, ctx, *args, **kwargs)
 
     def __get__(self, instance, owner):
+        """_summary_
+
+        Args:
+            instance: The instance for the function
+            owner: 
+
+        Returns:
+            TaskFunc: the task
+        """
 
         if self.f.__name__ in instance.__dict__:
             return instance.__dict__[self.f.__name__]
@@ -132,7 +147,15 @@ class StateMachineFunc(TaskFuncBase):
         )
 
     def __get__(self, instance, owner):
+        """_summary_
 
+        Args:
+            instance: The instance for the function
+            owner: 
+
+        Returns:
+            TaskFunc: the task
+        """
         if self.f.__name__ in instance.__dict__:
             return instance.__dict__[self.f.__name__]
         
@@ -313,27 +336,6 @@ class TaskFunc(TaskFuncBase):
         task = TaskFunc(self.f, True, instance, self._out, self._to_status)
         instance.__dict__[id(self.f)] = task
         return task
-
-
-# def _get(self, override, base):
-#     """Get the an override value if defined
-
-#     Args:
-#         override: The override value
-#         base: The base value
-
-#     Raises:
-#         ValueError: If neither value has been set
-
-#     Returns:
-#         Any
-#     """
-#     base = base or override
-#     if base is None:
-#         raise ValueError('Value has not been defined')
-#     elif isinstance(base, str):
-#         return get_member(self, base)
-#     return base
 
 
 def sequencefunc(is_method: bool=False):

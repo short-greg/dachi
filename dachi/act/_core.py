@@ -298,7 +298,7 @@ STATE_CALL = State | typing.Callable[[], State | TaskStatus]
 
 
 class Router(object):
-    """
+    """Use to route a value to a Task
     """
     @abstractmethod
     def __call__(self, val) -> TaskStatus | State:
