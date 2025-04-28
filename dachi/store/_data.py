@@ -253,6 +253,11 @@ class Buffer(pydantic.BaseModel):
             bool: Whether the buffer is open
         """
         return self._opened
+    
+    def clear(self):
+        """Remove all elements in the buffer
+        """
+        self._buffer.clear()
         
     def it(self) -> 'BufferIter':
         return BufferIter(self)
