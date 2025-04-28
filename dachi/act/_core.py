@@ -2,12 +2,9 @@
 from enum import Enum
 from abc import abstractmethod
 import typing
-# from dataclasses import dataclass
-# import pydantic
 
 # local
 from ..base import Storable
-
 # TODO: Add in Action (For GOAP)
 
 

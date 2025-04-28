@@ -105,7 +105,6 @@ class SharedBase(pydantic.BaseModel, Renderable, ABC):
 class Shared(SharedBase):
     """Allows for shared data between tasks
     """
-
     _data = pydantic.PrivateAttr()
     _callbacks = pydantic.PrivateAttr()
     _default = pydantic.PrivateAttr()
