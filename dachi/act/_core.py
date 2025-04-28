@@ -2,8 +2,8 @@
 from enum import Enum
 from abc import abstractmethod
 import typing
-from dataclasses import dataclass
-import pydantic
+# from dataclasses import dataclass
+# import pydantic
 
 # local
 from ..base import Storable
@@ -160,22 +160,29 @@ SUCCESS = TaskStatus.SUCCESS
 FAILURE = TaskStatus.FAILURE
 RUNNING = TaskStatus.RUNNING
 
-@dataclass
-class TaskMessage:
+# @dataclass
+# class TaskMessage:
 
-    name: str
-    data: typing.Any
+#     name: str
+#     data: typing.Any
 
 
-class Task(pydantic.BaseModel, Storable):
+class Task(Storable):
     """The base class for a task in the behavior tree
     """
 
-    _status: TaskStatus = pydantic.PrivateAttr(default=TaskStatus.READY)
+    # _status: TaskStatus = pydantic.PrivateAttr(default=TaskStatus.READY)
 
-    SUCCESS: typing.ClassVar[TaskStatus] = TaskStatus.SUCCESS
-    FAILURE: typing.ClassVar[TaskStatus] = TaskStatus.FAILURE
-    RUNNING: typing.ClassVar[TaskStatus] = TaskStatus.RUNNING
+    SUCCESS: TaskStatus = TaskStatus.SUCCESS
+    FAILURE: TaskStatus = TaskStatus.FAILURE
+    READY: TaskStatus = TaskStatus.READY
+    RUNNING: TaskStatus = TaskStatus.RUNNING
+
+    def __init__(self):
+
+        super().__init__()
+
+        self._status = self.READY
 
     @abstractmethod    
     def tick(self) -> TaskStatus:
@@ -219,31 +226,12 @@ class Task(pydantic.BaseModel, Storable):
         Args:
             state_dict (typing.Dict): The state dict
         """
-        all_items = {**self.__dict__, **self.__pydantic_private__}
+        all_items = {**self.__dict__}
         for k, v in all_items.items():
             if isinstance(v, Storable):
                 self.__dict__[k] = v.load_state_dict(state_dict[k])
             else:
                 self.__dict__[k] = state_dict[k]
-        
-    def state_dict(self) -> typing.Dict:
-        """Retrieve the state dict for the object
-
-        Returns:
-            typing.Dict: The state dict
-        """
-        cur = {}
-
-        all_items = {
-            **self.__dict__, 
-            **self.__pydantic_private__
-        }
-        for k, v in all_items.items():
-            if isinstance(v, Storable):
-                cur[k] = v.state_dict()
-            else:
-                cur[k] = v
-        return cur
 
 
 class ToStatus(object):
@@ -278,7 +266,7 @@ def from_bool(status: bool) -> TaskStatus:
     return TaskStatus.from_bool(status)
 
 
-class State(pydantic.BaseModel):
+class State(Storable):
     """Use State creating a state machine
     """
     @abstractmethod

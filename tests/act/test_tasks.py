@@ -5,7 +5,10 @@ from dachi.act._core import TaskStatus
 
 class ATask(behavior.Action):
 
-    x: int = 1
+    # x: int = 1
+    def __init__(self, x: int=1):
+        super().__init__()
+        self.x = x
 
     def act(self, reset: bool=False):
         return TaskStatus.SUCCESS
@@ -13,7 +16,11 @@ class ATask(behavior.Action):
 
 class SetStorageAction(behavior.Action):
 
-    value: int = 4
+    # value: int = 4
+
+    def __init__(self, value: int=4):
+        super().__init__()
+        self.value = value
 
     def act(self, reset: bool=False) -> TaskStatus:
 
@@ -25,7 +32,11 @@ class SetStorageAction(behavior.Action):
 
 class SampleCondition(behavior.Condition):
 
-    x: int
+    # x: int
+
+    def __init__(self, x: int=1):
+        super().__init__()
+        self.x = x
 
     def condition(self, reset: bool=False) -> bool:
 
@@ -36,8 +47,13 @@ class SampleCondition(behavior.Condition):
 
 class SetStorageActionCounter(behavior.Action):
 
-    value: int = 4
-    _count: int = pydantic.PrivateAttr(default=0)
+    # value: int = 4
+    # _count: int = pydantic.PrivateAttr(default=0)
+
+    def __init__(self, value: int=4):
+        super().__init__()
+        self.value = value
+        self._count = 0
 
     def act(self, reset: bool=False):
 
@@ -237,25 +253,24 @@ class TestAsLongAs:
         )
         action1._count = -1
         while_ = behavior.AsLongAs(
-            task=action1
+            task=action1, target_status=TaskStatus.FAILURE
         )
 
         while_.tick()
         action1.value = 1
-
         assert while_.status == TaskStatus.RUNNING
 
-    def test_while_fails_if_failure_after_two(self):
+    def test_aslongas_fails_if_failure_after_two(self):
 
         action1 = SetStorageActionCounter(value=1)
         action1._count = 1
-        action1.value = 1
-        while_ = behavior.AsLongAs(task=action1)
+        action1.value = 4
+        aslongas = behavior.AsLongAs(task=action1)
 
-        while_.tick()
+        aslongas.tick()
         action1.value = 0
 
-        assert while_.tick() == TaskStatus.SUCCESS
+        assert aslongas.tick() == TaskStatus.FAILURE
 
 
 class TestUntil:

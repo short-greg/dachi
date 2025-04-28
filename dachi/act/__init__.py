@@ -1,5 +1,5 @@
 from ._core import (
-    Task, TaskMessage, TaskStatus,
+    Task, TaskStatus,
     Router, ROUTE, TOSTATUS, ToStatus, State,
     from_bool
 )
