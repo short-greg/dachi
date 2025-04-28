@@ -1,11 +1,9 @@
 from dachi.act import _tasks as behavior
-import pydantic
 from dachi.act._core import TaskStatus
 
 
 class ATask(behavior.Action):
 
-    # x: int = 1
     def __init__(self, x: int=1):
         super().__init__()
         self.x = x
@@ -15,8 +13,6 @@ class ATask(behavior.Action):
 
 
 class SetStorageAction(behavior.Action):
-
-    # value: int = 4
 
     def __init__(self, value: int=4):
         super().__init__()
@@ -32,8 +28,6 @@ class SetStorageAction(behavior.Action):
 
 class SampleCondition(behavior.Condition):
 
-    # x: int
-
     def __init__(self, x: int=1):
         super().__init__()
         self.x = x
@@ -46,9 +40,6 @@ class SampleCondition(behavior.Condition):
 
 
 class SetStorageActionCounter(behavior.Action):
-
-    # value: int = 4
-    # _count: int = pydantic.PrivateAttr(default=0)
 
     def __init__(self, value: int=4):
         super().__init__()

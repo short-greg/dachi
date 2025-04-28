@@ -4,9 +4,6 @@ import typing
 import time
 import random
 
-# 3rd party
-import pydantic
-
 # local
 from . import _functional
 from ._core import Task, TaskStatus, State
@@ -34,29 +31,11 @@ class Root(Task):
             return TaskStatus.SUCCESS
         return self.root.tick(reset)
 
-    # @property
-    # def root(self) -> Task:
-    #     """
-    #     Returns:
-    #         Task: The root task
-    #     """
-    #     return self.root
-    
-    # @root.setter
-    # def root(self, root: 'Task'):
-    #     """
-    #     Args:
-    #         root (Task): The root task
-    #     """
-    #     self.root = root
-
 
 class Serial(Task):
     """A task consisting of other tasks executed one 
     after the other
     """
-    # tasks: typing.List[Task] = pydantic.Field(default_factory=list)
-    # _context: Context = pydantic.PrivateAttr(default_factory=Context)
 
     def __init__(
         self, 
@@ -71,8 +50,6 @@ class Serial(Task):
 class Sequence(Serial):
     """Create a sequence of tasks to execute
     """
-
-    # _f: typing.Callable = pydantic.PrivateAttr()
 
     def __init__(self, **data):
         """Create a sequence of tasks
@@ -133,12 +110,6 @@ class Selector(Serial):
         self._status = self._f(reset)
         return self._status
 
-    # def reset_status(self):
-    #     super().reset_status()
-        # self._f = _functional.selector(
-        #     self.tasks, self._context
-        # )
-
 
 Fallback = Selector
 
@@ -146,12 +117,6 @@ Fallback = Selector
 class Parallel(Task):
     """A composite task for running multiple tasks in parallel
     """
-    # tasks: typing.List[Task] = pydantic.Field(default_factory=list)
-    # _fails_on: int = pydantic.PrivateAttr(1)
-    # _succeeds_on: int = pydantic.PrivateAttr(-1)
-    # _success_priority: bool = pydantic.PrivateAttr(True)
-    # _f: typing.Callable = pydantic.PrivateAttr()
-    # _ticked: typing.Set = pydantic.PrivateAttr(default_factory=set)
 
     def __init__(
         self, tasks: typing.List[Task],
@@ -321,8 +286,6 @@ class Condition(Task):
 
 class Decorator(Task):
 
-    # task: Task
-
     def __init__(self, task: Task):
         super().__init__()
         self.task = task
@@ -330,15 +293,6 @@ class Decorator(Task):
     @abstractmethod
     def decorate(self, status: TaskStatus, reset: bool=False) -> bool:
         pass
-
-    # @property
-    # def task(self) -> Task:
-    #     """Get the task to execute
-
-    #     Returns:
-    #         Task: The decorated task
-    #     """
-    #     return self.task
 
     def tick(self, reset: bool=False) -> TaskStatus:
         """Decorate the tick for the decorated task
@@ -359,12 +313,6 @@ class Decorator(Task):
             self.task(reset), reset
         )
         return self._status
-
-    # def reset_status(self):
-    #     """Reset the task and subtask
-    #     """
-    #     super().reset_status()
-    #     # self.task.reset_status()
 
 
 class Until(Decorator):
@@ -531,10 +479,6 @@ class FixedTimer(Action):
 class RandomTimer(Action):
     """A timer that will randomly choose a time between two values
     """
-    # seconds_lower: float
-    # seconds_upper: float
-    # _start: typing.Optional[float] = pydantic.PrivateAttr(default=None)
-    # _target: typing.Optional[float] = pydantic.PrivateAttr(default=None)
 
     def __init__(self, seconds_lower: float, seconds_upper: float):
         super().__init__()
@@ -584,7 +528,11 @@ def loop_aslongas(task: Task, status: TaskStatus, reset: bool=False):
 
 
 @contextmanager
-def loop_until(task: Task, status: TaskStatus, reset: bool=False):
+def loop_until(
+    task: Task, 
+    status: TaskStatus, 
+    reset: bool=False
+):
     """A context manager for running a task functionally
 
     Args:
