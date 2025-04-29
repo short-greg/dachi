@@ -48,6 +48,67 @@ class Storable(ABC):
         return cur
 
 
+def dict_state_dict(d) -> typing.Dict:
+    """Convert the dictionary into a state dict.
+    All "Storable" values will be converted into a 
+    state dict
+
+    Args:
+        d : The dictionary to convert
+
+    Returns:
+        typing.Dict: The dictionary
+    """
+    
+    return {
+        k: v.state_dict() if isinstance(v, Storable)
+        else v
+        for k, v in d.items()
+    }
+
+
+def list_state_dict(d) -> typing.List:
+    """Convert the list input into a "state dict"
+    The actual output of this will be a list, though.
+
+    Args:
+        d : Get the state dict for a list
+
+    Returns:
+        typing.List: The state "dict" for the list
+    """
+
+    return [
+        v.state_dict() if isinstance(v, Storable)
+        else v
+        for v in d
+    ]
+
+
+def load_dict_state_dict(d, state):
+    """
+
+    Args:
+        d : _description_
+        state : _description_
+    """
+    for k, v in d.items():
+        if k not in state:
+            continue
+        if isinstance(v, Storable):
+            v.load_state_dict(state[k])
+        else:
+            d[k] = state[k]
+
+
+def load_list_state_dict(d, state):
+        
+    for i, a in enumerate(d):
+        if isinstance(a, Storable):
+            a.load_state_dict()
+        else:
+            d[i] = state[i]
+
 
 class Renderable(ABC):
     """Mixin for classes that implement the render()
@@ -123,14 +184,6 @@ class Trainable(ABC):
         """
         pass
 
-    # @abstractmethod
-    # def param_structure(self) -> typing.Dict:
-    #     """Get the structure of the object
-
-    #     Returns:
-    #         typing.Dict: The structure of the object
-    #     """
-    #     pass
 
     @abstractmethod
     def data_schema(self) -> typing.Dict:
@@ -141,6 +194,14 @@ class Trainable(ABC):
         """
         pass
 
+    # @abstractmethod
+    # def param_structure(self) -> typing.Dict:
+    #     """Get the structure of the object
+
+    #     Returns:
+    #         typing.Dict: The structure of the object
+    #     """
+    #     pass
 
     # @property
     # def fixed_keys(self) -> typing.Set:
@@ -162,3 +223,65 @@ class Trainable(ABC):
     #         if key in fixed
     #     }
 
+# import pydantic
+# from ..utils import is_primitive
+
+# def state_dict(data):
+    
+#     if isinstance(data, Storable):
+#         return data.state_dict()
+#     if isinstance(data, typing.Dict):
+#         return {state_dict(d) for d in data.items()}
+#     if isinstance(data, typing.List):
+#         return [state_dict(d) for d in data]
+#     if isinstance(data, typing.Tuple):
+#         return (state_dict(d) for d in data)
+#     if isinstance(data, pydantic.BaseModel):
+#         cur = {}
+
+#         all_items = {
+#             **data.__dict__, 
+#             **data.__pydantic_private__
+#         }
+#         for k, v in all_items.items():
+#             if isinstance(v, Storable):
+#                 cur[k] = v.state_dict()
+#             else:
+#                 cur[k] = v
+#         return cur
+#     if is_primitive(data):
+#         return data
+
+#     if hasattr(data, '__dict__'):
+#         cur = {}
+#         for k, v in data.__dict__.items():
+#             if isinstance(v, Storable):
+#                 cur[k] = v.state_dict()
+#             else:
+#                 cur[k] = v
+#         return cur
+#     return data
+
+
+# def load_state_dict(data, state_dict):
+#     if isinstance(data, Storable):
+#         return data.load_state_dict(state_dict)
+#     if isinstance(data, pydantic.BaseModel):
+#         for k, v in data.__dict__items():
+#             if isinstance(v, Storable):
+#                 data.__dict__[k] = v.load_state_dict(state_dict[k])
+#             else:
+#                 data.__dict__[k] = load_state_dict(state_dict[k])
+#         for k, v in data.__pydantic_private__.items():
+#             if isinstance(v, Storable):
+#                 data.__pydantic_private__[k] = v.load_state_dict(state_dict[k])
+#             else:
+#                 data.__pydantic_private__[k] = load_state_dict(state_dict[k])
+#     if hasattr(data, '__dict__'):
+#         for k, v in data.__dict__.items():
+#             if isinstance(v, Storable):
+#                 data.__dict__[k] = v.load_state_dict(state_dict[k])
+#             else:
+#                 data.__dict__[k] = load_state_dict(v, state_dict[k])
+
+#     return data

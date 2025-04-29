@@ -8,15 +8,26 @@ import random
 from . import _functional
 from ._core import Task, TaskStatus, State
 from ..store._data import Context
+from ..base import Storable
 from contextlib import contextmanager
 
+from ..base import (
+    list_state_dict,
+    load_dict_state_dict,
+    load_list_state_dict,
+    dict_state_dict
+)
 
 class Root(Task):
     """The root task for a behavior tree
     """
 
     def __init__(self, root: Task | None=None):
-        
+        """Create a root task
+
+        Args:
+            root (Task | None, optional): . Defaults to None.
+        """
         self.root = root
 
     def tick(self, reset: bool=False) -> TaskStatus:
@@ -32,6 +43,84 @@ class Root(Task):
         return self.root.tick(reset)
 
 
+class TaskList(list, Storable):
+
+    def __init__(self, tasks: typing.Iterable):
+        """
+
+        Args:
+            tasks (typing.Iterable): 
+        """
+        super().__init__(tasks)
+
+    def load_state_dict(
+        self, state_dict: typing.List):
+
+        for task, state in zip(
+            self._tasks, state_dict
+        ):
+            task.load_state_dict(state)
+
+    def state_dict(self) -> typing.List:
+        
+        return [
+            task.state_dict()
+            for task in self._tasks
+        ]
+
+
+class FTask(Task):
+
+    def __init__(
+        self, 
+        f: typing.Callable[[], typing.Callable],
+        *args, 
+        **kwargs
+    ):
+        """
+
+        Args:
+            f (typing.Callable[[], typing.Callable]): 
+        """
+        super().__init__()
+        self._f = f
+        self._args = args
+        self._kwargs = kwargs
+        self._cur = None
+
+    def tick(self, reset: bool=False) -> TaskStatus:
+        """
+
+        Returns:
+            : 
+        """
+        if reset is True:
+            self._cur = None
+    
+        if self._cur is None:
+            self._cur = self._f(
+                *self._args, **self._kwargs
+            )
+
+        return self._cur()
+    
+    def state_dict(self):
+        
+        return {
+            'kwargs': dict_state_dict(self._kwargs),
+            'args': list_state_dict(self._args)
+        }
+    
+    def load_state_dict(self, state_dict):
+        
+        load_list_state_dict(
+            self._args, state_dict['args']
+        )
+        load_dict_state_dict(
+            self._kwargs, state_dict['kwargs']
+        )
+
+
 class Serial(Task):
     """A task consisting of other tasks executed one 
     after the other
@@ -42,9 +131,47 @@ class Serial(Task):
         tasks: typing.List[Task]=None,
         context: Context=None
     ):
+        """
+
+        Args:
+            tasks (typing.List[Task], optional): The tasks. Defaults to None.
+            context (Context, optional): . Defaults to None.
+        """
         super().__init__()
         self._context = context or Context()
         self.tasks = tasks or []
+
+    def load_state_dict(self, state_dict: typing.Dict):
+        """Load the state dict for the object
+
+        Args:
+            state_dict (typing.Dict): The state dict
+        """
+        for k, v in self.__dict__.items():
+
+            if k == "tasks":
+                load_list_state_dict(v, state_dict[k])
+            elif isinstance(v, Storable):
+                v.load_state_dict(state_dict[k])
+            else:
+                self.__dict__[k] = state_dict[k]
+        
+    def state_dict(self) -> typing.Dict:
+        """Retrieve the state dict for the object
+
+        Returns:
+            typing.Dict: The state dict
+        """
+        cur = {}
+
+        for k, v in self.__dict__.items():
+            if k == "tasks":
+                cur[k] = list_state_dict(v)
+            elif isinstance(v, Storable):
+                cur[k] = v.state_dict()
+            else:
+                cur[k] = v
+        return cur
 
 
 class Sequence(Serial):
@@ -72,7 +199,8 @@ class Sequence(Serial):
             self.reset_status()
             self._context = Context()
             self._f = _functional.sequence(
-                self.tasks, self._context
+                self.tasks, 
+                self._context
             )
 
         self._status = self._f(reset)
@@ -92,7 +220,8 @@ class Selector(Serial):
         """
         super().__init__(**data)
         self._f = _functional.selector(
-            self.tasks, self._context
+            self.tasks, 
+            self._context
         )
 
     def tick(self, reset: bool=False) -> TaskStatus:
@@ -105,7 +234,8 @@ class Selector(Serial):
             self.reset_status()
             self._context = Context()
             self._f = _functional.selector(
-                self.tasks, self._context
+                self.tasks, 
+                self._context
             )
         self._status = self._f(reset)
         return self._status
@@ -139,19 +269,25 @@ class Parallel(Task):
         self._success_priority = success_priority
         self._update_f()
         self._f = _functional.parallel(
-            self.tasks, self._succeeds_on, self._fails_on,
+            self.tasks, 
+            self._succeeds_on, 
+            self._fails_on,
             self._success_priority
         )
 
     def _update_f(self):
         self._f = _functional.parallel(
-            self.tasks, self.succeeds_on, self.fails_on,
+            self.tasks, 
+            self.succeeds_on, 
+            self.fails_on,
             self.success_priority
         )
 
     def validate(self):
         
-        if (self._fails_on + self._succeeds_on - 1) > len(self.tasks):
+        if (
+            self._fails_on + self._succeeds_on - 1
+        ) > len(self.tasks):
             raise ValueError('')
         if self._fails_on <= 0 or self._succeeds_on <= 0:
             raise ValueError('')

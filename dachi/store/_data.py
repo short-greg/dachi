@@ -1,11 +1,16 @@
 import typing
 from functools import reduce
 from abc import ABC, abstractmethod
+from ..base import Storable
 from ..msg._render import render, Renderable
 from ..msg._messages import Msg
 from ..utils import UNDEFINED
 import pydantic
 import typing
+
+from ..base import load_dict_state_dict, dict_state_dict
+
+from dataclasses import dataclass
 
 
 def get_or_spawn(state: typing.Dict, child: str) -> typing.Dict:
@@ -39,10 +44,9 @@ def get_or_set(state: typing.Dict, key: str, val: typing.Any) -> typing.Any:
     return state[key]
 
 
-class SharedBase(pydantic.BaseModel, Renderable, ABC):
+class SharedBase(Storable, Renderable, ABC):
     """Allows for shared data between tasks
     """
-
     @abstractmethod
     def register(self, callback) -> bool:
         """Register a callback to call on data updates
@@ -105,9 +109,9 @@ class SharedBase(pydantic.BaseModel, Renderable, ABC):
 class Shared(SharedBase):
     """Allows for shared data between tasks
     """
-    _data = pydantic.PrivateAttr()
-    _callbacks = pydantic.PrivateAttr()
-    _default = pydantic.PrivateAttr()
+    # _data = pydantic.PrivateAttr()
+    # _callbacks = pydantic.PrivateAttr()
+    # _default = pydantic.PrivateAttr()
 
     def __init__(
         self, data: typing.Any=None, 
@@ -207,12 +211,12 @@ class Shared(SharedBase):
         self.data = self._default
 
 
-class Buffer(pydantic.BaseModel):
+class Buffer(Storable):
     """Create a buffer to add data to
     """
 
-    _buffer = pydantic.PrivateAttr()
-    _opened = pydantic.PrivateAttr(default=True)
+    # _buffer = pydantic.PrivateAttr()
+    # _opened = pydantic.PrivateAttr(default=True)
 
     def __init__(self) -> None:
         """Create a buffer
@@ -366,7 +370,7 @@ class BufferIter(object):
         )
 
 
-class Context(dict):
+class Context(dict, Storable):
     """Use to store state
     """
     def get_or_set(self, key, value):
@@ -455,6 +459,14 @@ class Context(dict):
         """
 
         return ContextWriter(self, key)
+    
+    def state_dict(self):
+        return dict_state_dict(self)
+    
+    def load_state_dict(self, state_dict):
+        load_dict_state_dict(
+            self
+        )
 
 
 class ContextWriter:
@@ -468,7 +480,6 @@ class ContextWriter:
             context (Context): _description_
             key (str): _description_
         """
-
         self.context = context
         self.key = key
 
@@ -477,7 +488,7 @@ class ContextWriter:
         self.context[self.key] = value
 
 
-class ContextStorage(object):
+class ContextStorage(Storable):
     """Use to manage context storage such as spawning new
     contexts.
     """
@@ -545,20 +556,40 @@ class ContextStorage(object):
         
         return self._data[key]
 
+    def state_dict(self):
+        """
 
-class Blackboard(pydantic.BaseModel):
+        Returns:
+            typing.Dict: 
+        """
+        return dict_state_dict(self._data)
+    
+    def load_state_dict(self, state_dict):
+        """
+
+        Args:
+            state_dict: 
+        """
+        load_dict_state_dict(self._data, state_dict)
+
+# TODO: Change to a dataclass
+
+
+CALLBACK = typing.Callable[[typing.Any], typing.NoReturn]
+
+@dataclass
+class Blackboard(Storable):
     """A blackboard is for sharing information
     across tasks
     """
 
-    _data: typing.Dict[str, typing.Any] = pydantic.PrivateAttr(default_factory=dict)
-    _member_callbacks: typing.Dict[str, typing.List[typing.Callable[[typing.Any], typing.NoReturn]]] = pydantic.PrivateAttr(
-        default_factory=dict
-    )
-    _dict_callbacks: typing.Dict[str, typing.List[typing.Callable[[typing.Any], typing.NoReturn]]] = pydantic.PrivateAttr(
-        default_factory=dict
-    )
-    def register_member(self, key, callback) -> bool:
+    def __post_init__(self):
+
+        # self._data: typing.Dict[str, typing.Any] = {}
+        self._callbacks: typing.Dict[str, typing.List[CALLBACK]] = {}
+        # self._dict_callbacks: typing.Dict[str, typing.List[CALLBACK]] = {}
+
+    def register(self, key, callback) -> bool:
         """Register a callback to call on data updates
 
         Args:
@@ -567,35 +598,35 @@ class Blackboard(pydantic.BaseModel):
         Returns:
             bool: True the callback was registered, False if already registered
         """
-        if key not in self._member_callbacks:
-            self._member_callbacks[key] = [callback]
+        if key not in self._callbacks:
+            self._callbacks[key] = [callback]
             return True
 
-        if callback in self._member_callbacks[key]:
+        if callback in self._callbacks[key]:
             return False
         
-        self._member_callbacks[key].append(callback)
+        self._callbacks[key].append(callback)
         return True
 
-    def register_item(self, key, callback) -> bool:
-        """Register a callback to call on data updates
+    # def register_item(self, key, callback) -> bool:
+    #     """Register a callback to call on data updates
 
-        Args:
-            callback (function): The callback to register
+    #     Args:
+    #         callback (function): The callback to register
 
-        Returns:
-            bool: True the callback was registered, False if already registered
-        """
-        if key not in self._dict_callbacks:
-            self._dict_callbacks[key] = [callback]
+    #     Returns:
+    #         bool: True the callback was registered, False if already registered
+    #     """
+    #     if key not in self._dict_callbacks:
+    #         self._dict_callbacks[key] = [callback]
 
-        if callback in self._dict_callbacks[key]:
-            return False
+    #     if callback in self._dict_callbacks[key]:
+    #         return False
         
-        self._dict_callbacks[key].append(callback)
-        return True
+    #     self._dict_callbacks[key].append(callback)
+    #     return True
 
-    def unregister_member(self, key, callback) -> bool:
+    def unregister(self, key, callback) -> bool:
         """Unregister a callback to call on data updates
 
         Args:
@@ -604,80 +635,80 @@ class Blackboard(pydantic.BaseModel):
         Returns:
             bool: True if the callback was removed, False if callback was not registered
         """
-        if key not in self._member_callbacks:
+        if key not in self._callbacks:
             return False
 
-        if callback not in self._member_callbacks[key]:
+        if callback not in self._callbacks[key]:
             return False
         
-        self._member_callbacks[key].remove(callback)
+        self._callbacks[key].remove(callback)
         return True
 
-    def unregister_item(self, key, callback) -> bool:
-        """Unregister a callback to call on data updates
+    # def unregister_item(self, key, callback) -> bool:
+    #     """Unregister a callback to call on data updates
 
-        Args:
-            callback (function): The callback to unregister
+    #     Args:
+    #         callback (function): The callback to unregister
 
-        Returns:
-            bool: True if the callback was removed, False if callback was not registered
-        """
-        if key not in self._dict_callbacks:
-            return False
+    #     Returns:
+    #         bool: True if the callback was removed, False if callback was not registered
+    #     """
+    #     if key not in self._dict_callbacks:
+    #         return False
 
-        if callback not in self._dict_callbacks[key]:
-            return False
+    #     if callback not in self._dict_callbacks[key]:
+    #         return False
         
-        self._dict_callbacks[key].remove(callback)
-        return True
+    #     self._dict_callbacks[key].remove(callback)
+    #     return True
 
-    def __getitem__(self, key) -> typing.Any:
-        """Get an item from the blackboard
+    # def __getitem__(self, key) -> typing.Any:
+    #     """Get an item from the blackboard
 
-        Args:
-            key: The key to retrieve for
+    #     Args:
+    #         key: The key to retrieve for
 
-        Returns:
-            typing.Any: The value for the key
-        """
-        return self._data[key]
+    #     Returns:
+    #         typing.Any: The value for the key
+    #     """
+    #     return self._data[key]
 
-    def __setitem__(self, key, val) -> typing.Any:
-        """Set an item in the blackboard
+    # def __setitem__(self, key, val) -> typing.Any:
+    #     """Set an item in the blackboard
 
-        Args:
-            key: The name of the item to set
-            val: The value to set to
+    #     Args:
+    #         key: The name of the item to set
+    #         val: The value to set to
 
-        Returns:
-            typing.Any: The name of the 
-        """
-        self._data[key] = val
-        for callback in self._dict_callbacks.get(key, []):
-            callback(val)
+    #     Returns:
+    #         typing.Any: The name of the 
+    #     """
+    #     self._data[key] = val
+    #     for callback in self._dict_callbacks.get(key, []):
+    #         callback(val)
         
-        return val
+    #     return val
 
-    def __setattr__(self, key, value):
+    # def __setattr__(self, key, value):
 
-        super().__setattr__(key, value)
-        for callback in self._member_callbacks.get(key, []):
-            callback(value)
+    #     super().__setattr__(key, value)
+    #     for callback in self._callbacks.get(key, []):
+    #         callback(value)
         
-        return value
+    #     return value
 
-    def d(self, key) -> 'DictRetriever':
-        """Get a retriever for the blackboard
+    # def d(self, key) -> 'DictRetriever':
+    #     """Get a retriever for the blackboard
 
-        Args:
-            key: The name of the key for the retriever
+    #     Args:
+    #         key: The name of the key for the retriever
 
-        Returns:
-            Retriever: The retriever for the blackboard
-        """
-        return DictRetriever(self, key, True)
+    #     Returns:
+    #         Retriever: The retriever for the blackboard
+    #     """
+    #     return DictRetriever(self, key, True)
 
-    def m(self, key) -> 'MemberRetriever':
+    def r(self, key) -> 'MemberRetriever':
         """Get a retriever for the blackboard
 
         Args:
@@ -692,7 +723,7 @@ class Blackboard(pydantic.BaseModel):
 
         copy = super().model_copy(udpate, deep)
         copy._data = {**self._data}
-        copy._member_callbacks = {*self._member_callbacks}
+        copy._member_callbacks = {*self._callbacks}
         copy._dict_callbacks = {**self._dict_callbacks}
         return copy
 
@@ -743,7 +774,7 @@ class MemberRetriever(SharedBase):
         Returns:
             bool: True the callback was registered, False if already registered
         """
-        self._blackboard.register_member(self._key, callback)
+        self._blackboard.register(self._key, callback)
 
     def unregister(self, callback) -> bool:
         """Unregister a callback to call on data updates
@@ -754,7 +785,7 @@ class MemberRetriever(SharedBase):
         Returns:
             bool: True if the callback was removed, False if callback was not registered
         """
-        self._blackboard.unregister_member(self._key, callback)
+        self._blackboard.unregister(self._key, callback)
 
     @property
     def data(self) -> typing.Any:
@@ -861,11 +892,15 @@ class DictRetriever(SharedBase):
         return data
 
 
-class ContextSpawner(object):
+class ContextSpawner(Storable):
     """Use to Spawn contexts for your behaviors
     """
 
-    def __init__(self, manager: ContextStorage, base_name: str):
+    def __init__(
+        self, 
+        manager: ContextStorage, 
+        base_name: str
+    ):
         """Create a context Spawner specifying the Storage and the
         base name to use in spawning
 
@@ -900,6 +935,13 @@ class ContextSpawner(object):
         """
         name = f'{self.base_name}_{name}'
         return self.manager.add(name)
+    
+    def state_dict(self):
+        
+        pass
+    
+    def load_state_dict(self, state_dict):
+        return super().load_state_dict(state_dict)
 
 
 class Comm(object):

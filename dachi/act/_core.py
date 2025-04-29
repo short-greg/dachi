@@ -182,7 +182,7 @@ class Task(Storable):
         self._status = self.READY
 
     @abstractmethod    
-    def tick(self) -> TaskStatus:
+    def tick(self, reset: bool=False) -> TaskStatus:
         raise NotImplementedError
 
     def __call__(self, reset: bool=False) -> TaskStatus:
