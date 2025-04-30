@@ -6,6 +6,9 @@ from uuid import uuid4
 class Storable(ABC):
     """Object to serialize objects to make them easy to recover
     """
+
+    __store__ = []
+
     def __init__(self):
         """Create the storable object
         """
@@ -27,9 +30,11 @@ class Storable(ABC):
             state_dict (typing.Dict): The state dict
         """
         for k, v in self.__dict__.items():
+            if k == '__store__':
+                continue
             if isinstance(v, Storable):
                 self.__dict__[k] = v.load_state_dict(state_dict[k])
-            else:
+            elif k in self.__store__:
                 self.__dict__[k] = state_dict[k]
         
     def state_dict(self) -> typing.Dict:
@@ -41,9 +46,11 @@ class Storable(ABC):
         cur = {}
 
         for k, v in self.__dict__.items():
+            if k == '__store__':
+                continue
             if isinstance(v, Storable):
                 cur[k] = v.state_dict()
-            else:
+            elif k in self.__store__:
                 cur[k] = v
         return cur
 
@@ -183,7 +190,6 @@ class Trainable(ABC):
 
         """
         pass
-
 
     @abstractmethod
     def data_schema(self) -> typing.Dict:

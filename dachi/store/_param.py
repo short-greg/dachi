@@ -19,13 +19,16 @@ T = TypeVar("T", bound=Trainable)
 # rather than a cue.
 class Param(
     Renderable, 
-    # Trainable,
     Storable
 ):
     """Use Param to wrap instructions so the instructions
     can update
     """
-    def __init__(self, name: str, data: Trainable, training: bool=False):
+    def __init__(
+        self, name: str, 
+        data: Trainable, 
+        training: bool=False
+    ):
         """
 
         Args:

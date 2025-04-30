@@ -370,7 +370,7 @@ class BufferIter(object):
         )
 
 
-class Context(dict, Storable):
+class Context(dict):
     """Use to store state
     """
     def get_or_set(self, key, value):
@@ -459,14 +459,6 @@ class Context(dict, Storable):
         """
 
         return ContextWriter(self, key)
-    
-    def state_dict(self):
-        return dict_state_dict(self)
-    
-    def load_state_dict(self, state_dict):
-        load_dict_state_dict(
-            self
-        )
 
 
 class ContextWriter:
@@ -488,7 +480,7 @@ class ContextWriter:
         self.context[self.key] = value
 
 
-class ContextStorage(Storable):
+class ContextStorage(object):
     """Use to manage context storage such as spawning new
     contexts.
     """
@@ -556,22 +548,6 @@ class ContextStorage(Storable):
         
         return self._data[key]
 
-    def state_dict(self):
-        """
-
-        Returns:
-            typing.Dict: 
-        """
-        return dict_state_dict(self._data)
-    
-    def load_state_dict(self, state_dict):
-        """
-
-        Args:
-            state_dict: 
-        """
-        load_dict_state_dict(self._data, state_dict)
-
 # TODO: Change to a dataclass
 
 
@@ -582,7 +558,6 @@ class Blackboard(Storable):
     """A blackboard is for sharing information
     across tasks
     """
-
     def __post_init__(self):
 
         # self._data: typing.Dict[str, typing.Any] = {}
@@ -608,24 +583,6 @@ class Blackboard(Storable):
         self._callbacks[key].append(callback)
         return True
 
-    # def register_item(self, key, callback) -> bool:
-    #     """Register a callback to call on data updates
-
-    #     Args:
-    #         callback (function): The callback to register
-
-    #     Returns:
-    #         bool: True the callback was registered, False if already registered
-    #     """
-    #     if key not in self._dict_callbacks:
-    #         self._dict_callbacks[key] = [callback]
-
-    #     if callback in self._dict_callbacks[key]:
-    #         return False
-        
-    #     self._dict_callbacks[key].append(callback)
-    #     return True
-
     def unregister(self, key, callback) -> bool:
         """Unregister a callback to call on data updates
 
@@ -643,70 +600,6 @@ class Blackboard(Storable):
         
         self._callbacks[key].remove(callback)
         return True
-
-    # def unregister_item(self, key, callback) -> bool:
-    #     """Unregister a callback to call on data updates
-
-    #     Args:
-    #         callback (function): The callback to unregister
-
-    #     Returns:
-    #         bool: True if the callback was removed, False if callback was not registered
-    #     """
-    #     if key not in self._dict_callbacks:
-    #         return False
-
-    #     if callback not in self._dict_callbacks[key]:
-    #         return False
-        
-    #     self._dict_callbacks[key].remove(callback)
-    #     return True
-
-    # def __getitem__(self, key) -> typing.Any:
-    #     """Get an item from the blackboard
-
-    #     Args:
-    #         key: The key to retrieve for
-
-    #     Returns:
-    #         typing.Any: The value for the key
-    #     """
-    #     return self._data[key]
-
-    # def __setitem__(self, key, val) -> typing.Any:
-    #     """Set an item in the blackboard
-
-    #     Args:
-    #         key: The name of the item to set
-    #         val: The value to set to
-
-    #     Returns:
-    #         typing.Any: The name of the 
-    #     """
-    #     self._data[key] = val
-    #     for callback in self._dict_callbacks.get(key, []):
-    #         callback(val)
-        
-    #     return val
-
-    # def __setattr__(self, key, value):
-
-    #     super().__setattr__(key, value)
-    #     for callback in self._callbacks.get(key, []):
-    #         callback(value)
-        
-    #     return value
-
-    # def d(self, key) -> 'DictRetriever':
-    #     """Get a retriever for the blackboard
-
-    #     Args:
-    #         key: The name of the key for the retriever
-
-    #     Returns:
-    #         Retriever: The retriever for the blackboard
-    #     """
-    #     return DictRetriever(self, key, True)
 
     def r(self, key) -> 'MemberRetriever':
         """Get a retriever for the blackboard
@@ -892,7 +785,7 @@ class DictRetriever(SharedBase):
         return data
 
 
-class ContextSpawner(Storable):
+class ContextSpawner(object):
     """Use to Spawn contexts for your behaviors
     """
 
@@ -935,13 +828,6 @@ class ContextSpawner(Storable):
         """
         name = f'{self.base_name}_{name}'
         return self.manager.add(name)
-    
-    def state_dict(self):
-        
-        pass
-    
-    def load_state_dict(self, state_dict):
-        return super().load_state_dict(state_dict)
 
 
 class Comm(object):
@@ -1026,3 +912,66 @@ class ItemQueue(pydantic.BaseModel, typing.Generic[T]):
         if key not in self.items:
             return 0
         return len(self.items[key])
+
+
+T = typing.TypeVar("T")
+V = typing.TypeVar("V")
+
+class StoreList(list, Storable, typing.Generic[T]):
+
+    def __init__(self, items: typing.Iterable[T]):
+        """
+
+        Args:
+            tasks (typing.Iterable): 
+        """
+        super().__init__(items)
+
+    def load_state_dict(
+        self, state_dict: typing.List):
+
+        if len(state_dict) != len(self):
+            raise ValueError(
+                f'Length of state dict {len(state_dict)} does not match length of tasks {len(self)}'
+            )
+
+        for item, state in zip(
+            self, state_dict
+        ):
+            item.load_state_dict(state)
+
+    def state_dict(self) -> typing.List:
+        
+        return [
+            item.state_dict()
+            for item in self
+        ]
+
+
+class StoreDict(dict, Storable, typing.Generic[T, V]):
+
+    def load_state_dict(
+        self, state_dict: typing.Dict
+    ):
+
+        if len(state_dict) != len(self):
+            raise ValueError(
+                f'Length of state dict {len(state_dict)} does not match length of tasks {len(self)}'
+            )
+
+        for key, val in self.items():
+            if key not in state_dict:
+                raise ValueError(
+                    f'Key {key} not in state dict'
+                )
+            if isinstance(val, Storable):
+                val.load_state_dict(state_dict[key])
+            else:
+                self[key] = state_dict[key]
+
+    def state_dict(self) -> typing.List:
+        
+        return {
+            key: val.state_dict() if isinstance(val, Storable) else val
+            for key, val in self.items()
+        }

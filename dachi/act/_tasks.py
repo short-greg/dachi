@@ -43,32 +43,6 @@ class Root(Task):
         return self.root.tick(reset)
 
 
-class TaskList(list, Storable):
-
-    def __init__(self, tasks: typing.Iterable):
-        """
-
-        Args:
-            tasks (typing.Iterable): 
-        """
-        super().__init__(tasks)
-
-    def load_state_dict(
-        self, state_dict: typing.List):
-
-        for task, state in zip(
-            self._tasks, state_dict
-        ):
-            task.load_state_dict(state)
-
-    def state_dict(self) -> typing.List:
-        
-        return [
-            task.state_dict()
-            for task in self._tasks
-        ]
-
-
 class FTask(Task):
 
     def __init__(

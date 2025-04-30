@@ -1,5 +1,3 @@
-
-
 from ._process import (
     forward,
     aforward,
@@ -11,7 +9,6 @@ from ._process import (
     parallel_loop,
     MultiParallel, 
     ModuleList,
-    Param,
     Sequential, 
     Batched,
     Streamer, 
@@ -29,13 +26,9 @@ from ._process import (
     StreamRunner,
     AsyncModule,
     AsyncStreamModule,
-    StreamModule
+    StreamModule,
 )
-from ._param import (
-    Trainable,
-    Param,
-    ParamSet
-)
+
 from ._graph import (
     link, Src, StreamSrc, ModSrc, WaitSrc, Var, T, TArgs,
     stream_link, wait, stream, 

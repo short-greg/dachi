@@ -24,7 +24,7 @@ from ..utils import (
     is_generator_function
 )
 import dataclasses
-from ._param import Param
+from ..store._param import Param
 
 
 S = typing.TypeVar('S', bound=pydantic.BaseModel)
@@ -75,28 +75,28 @@ class BaseModule(Storable, ABC):
                         yielded.add(id(v))
                         yield v
 
-    def state_dict(self):
-        """Get the state dict for the module"""
-        state_dict = {}
-        for i, child in enumerate(self.children(False)):
-            state_dict[i] = child.state_dict()
+    # def state_dict(self):
+    #     """Get the state dict for the module"""
+    #     state_dict = {}
+    #     for i, child in enumerate(self.children(False)):
+    #         state_dict[i] = child.state_dict()
         
-        params = {}
-        for i, param in enumerate(self.parameters(False)):
-            params[i] = param.state_dict()
-        state_dict['__params__'] = params
+    #     params = {}
+    #     for i, param in enumerate(self.parameters(False)):
+    #         params[i] = param.state_dict()
+    #     state_dict['__params__'] = params
 
-        return state_dict
+    #     return state_dict
     
-    def load_state_dict(self, state_dict):
-        """Load the state dict for the module"""
-        for i, child in enumerate(self.children(False)):
-            cur_dict = state_dict[i]
-            child.load_state_dict(cur_dict)
+    # def load_state_dict(self, state_dict):
+    #     """Load the state dict for the module"""
+    #     for i, child in enumerate(self.children(False)):
+    #         cur_dict = state_dict[i]
+    #         child.load_state_dict(cur_dict)
 
-        params = state_dict['__params__']
-        for i, cur in enumerate(self.parameters(False)):
-            cur.load_state_dict(params[i])
+    #     params = state_dict['__params__']
+    #     for i, cur in enumerate(self.parameters(False)):
+    #         cur.load_state_dict(params[i])
 
 
 class Module(BaseModule):

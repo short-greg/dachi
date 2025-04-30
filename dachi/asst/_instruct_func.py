@@ -12,9 +12,10 @@ import pydantic
 from ..base import Templatable
 from ..proc._process import (
     Module, AsyncModule, StreamModule, 
-    AsyncStreamModule, Param
+    AsyncStreamModule
 )
-from ..utils import is_primitive, primitives, str_formatter
+from ..store import Param
+from ..utils import primitives, str_formatter
 from ._msg import ToMsg, ToText
 from ._asst import (
     AsyncAssist, AsyncStreamAssist, 
@@ -24,9 +25,12 @@ from ._out import (
     OutConv, NullOut,
     PrimOut, PydanticOut,
 )
-from ..msg import Cue, validate_out
-from ._msg import FromMsg
-from ..msg import render, render_multi
+from ..msg import (
+    Cue, validate_out,
+    FromMsg,
+    render,
+    render_multi
+)
 
 
 X = typing.Union[str, Cue]

@@ -10,3 +10,7 @@ from ._utils import (
     call_or_set,
     acc
 )
+from ._param import (
+    Param,
+    ParamSet
+)

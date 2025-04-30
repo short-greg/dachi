@@ -217,18 +217,18 @@ class Task(Storable):
         """
         return self._id
     
-    def load_state_dict(self, state_dict: typing.Dict):
-        """Load the state dict for the object
+    # def load_state_dict(self, state_dict: typing.Dict):
+    #     """Load the state dict for the object
 
-        Args:
-            state_dict (typing.Dict): The state dict
-        """
-        all_items = {**self.__dict__}
-        for k, v in all_items.items():
-            if isinstance(v, Storable):
-                self.__dict__[k] = v.load_state_dict(state_dict[k])
-            else:
-                self.__dict__[k] = state_dict[k]
+    #     Args:
+    #         state_dict (typing.Dict): The state dict
+    #     """
+    #     all_items = {**self.__dict__}
+    #     for k, v in all_items.items():
+    #         if isinstance(v, Storable):
+    #             self.__dict__[k] = v.load_state_dict(state_dict[k])
+    #         else:
+    #             self.__dict__[k] = state_dict[k]
 
 
 class ToStatus(object):

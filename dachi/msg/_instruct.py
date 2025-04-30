@@ -234,8 +234,7 @@ class Cue(
 ):
     """Specific cue for the model to use
     """
-    # text: str
-    # _out: typing.Optional[OutConv] = pydantic.PrivateAttr(default=None)
+    __store__ = "text"
 
     def __init__(
         self, text: str, name: str='', 
@@ -288,16 +287,6 @@ class Cue(
             return data
         
         return self._out(data)
-
-    def state_dict(self) -> typing.Dict:
-        
-        return {
-            'text': self.text,
-        }
-
-    def load_state_dict(self, params: typing.Dict):
-        
-        self.text = params['text']
 
     @property
     def fixed_data(self):
