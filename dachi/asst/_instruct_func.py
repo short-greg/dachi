@@ -16,7 +16,7 @@ from ..proc._process import (
 )
 from ..store import Param
 from ..utils import primitives, str_formatter
-from ._msg import ToMsg, ToText
+from ._msg import ToMsg, ToText, FromMsg
 from ._asst import (
     AsyncAssist, AsyncStreamAssist, 
     Assist, StreamAssist
@@ -27,7 +27,6 @@ from ._out import (
 )
 from ..msg import (
     Cue, validate_out,
-    FromMsg,
     render,
     render_multi
 )

@@ -41,6 +41,8 @@ class SampleCondition(behavior.Condition):
 
 class SetStorageActionCounter(behavior.Action):
 
+    __store__ = ["value"]
+
     def __init__(self, value: int=4):
         super().__init__()
         self.value = value
@@ -92,10 +94,8 @@ class TestAction:
         action = SetStorageActionCounter(value=3)
         action2 = SetStorageActionCounter(value=2)
         action.tick()
-        # print(action.state_dict())
         action2.load_state_dict(action.state_dict())
         assert action2.value == 3
-        assert action2.status == TaskStatus.RUNNING
 
 
 class TestSequence:

@@ -164,7 +164,7 @@ class ExampleMixin(ABC):
         pass
 
 
-class Trainable(ABC):
+class Trainable(Storable):
     """
     Trainable  mixin for objects that can be trained and defines the interface.
     
@@ -174,22 +174,21 @@ class Trainable(ABC):
         - Subclasses must implement all abstract methods to provide the 
           required functionality.
     """
+    # @abstractmethod
+    # def update_param_dict(self, param_dict: typing.Dict):
+    #     """Update the state dict for the object
 
-    @abstractmethod
-    def update_param_dict(self, param_dict: typing.Dict):
-        """Update the state dict for the object
+    #     Args:
+    #         state_dict (typing.Dict): The state dict
+    #     """
+    #     pass
 
-        Args:
-            state_dict (typing.Dict): The state dict
-        """
-        pass
+    # @abstractmethod
+    # def param_dict(self) -> typing.Dict:
+    #     """Update the state dict for the object
 
-    @abstractmethod
-    def param_dict(self) -> typing.Dict:
-        """Update the state dict for the object
-
-        """
-        pass
+    #     """
+    #     pass
 
     @abstractmethod
     def data_schema(self) -> typing.Dict:
@@ -199,95 +198,3 @@ class Trainable(ABC):
             typing.Dict: 
         """
         pass
-
-    # @abstractmethod
-    # def param_structure(self) -> typing.Dict:
-    #     """Get the structure of the object
-
-    #     Returns:
-    #         typing.Dict: The structure of the object
-    #     """
-    #     pass
-
-    # @property
-    # def fixed_keys(self) -> typing.Set:
-    #     return set()
-    
-    # def fixed_data(self) -> typing.Dict:
-    #     fixed = set(self.fixed_keys)
-    #     return {
-    #         key: val
-    #         for key, val in self.model_dump().items()
-    #         if key not in fixed
-    #     }
-
-    # def unfixed_data(self) -> typing.Dict:
-    #     fixed = set(self.fixed_keys)
-    #     return {
-    #         key: val
-    #         for key, val in self.model_dump().items()
-    #         if key in fixed
-    #     }
-
-# import pydantic
-# from ..utils import is_primitive
-
-# def state_dict(data):
-    
-#     if isinstance(data, Storable):
-#         return data.state_dict()
-#     if isinstance(data, typing.Dict):
-#         return {state_dict(d) for d in data.items()}
-#     if isinstance(data, typing.List):
-#         return [state_dict(d) for d in data]
-#     if isinstance(data, typing.Tuple):
-#         return (state_dict(d) for d in data)
-#     if isinstance(data, pydantic.BaseModel):
-#         cur = {}
-
-#         all_items = {
-#             **data.__dict__, 
-#             **data.__pydantic_private__
-#         }
-#         for k, v in all_items.items():
-#             if isinstance(v, Storable):
-#                 cur[k] = v.state_dict()
-#             else:
-#                 cur[k] = v
-#         return cur
-#     if is_primitive(data):
-#         return data
-
-#     if hasattr(data, '__dict__'):
-#         cur = {}
-#         for k, v in data.__dict__.items():
-#             if isinstance(v, Storable):
-#                 cur[k] = v.state_dict()
-#             else:
-#                 cur[k] = v
-#         return cur
-#     return data
-
-
-# def load_state_dict(data, state_dict):
-#     if isinstance(data, Storable):
-#         return data.load_state_dict(state_dict)
-#     if isinstance(data, pydantic.BaseModel):
-#         for k, v in data.__dict__items():
-#             if isinstance(v, Storable):
-#                 data.__dict__[k] = v.load_state_dict(state_dict[k])
-#             else:
-#                 data.__dict__[k] = load_state_dict(state_dict[k])
-#         for k, v in data.__pydantic_private__.items():
-#             if isinstance(v, Storable):
-#                 data.__pydantic_private__[k] = v.load_state_dict(state_dict[k])
-#             else:
-#                 data.__pydantic_private__[k] = load_state_dict(state_dict[k])
-#     if hasattr(data, '__dict__'):
-#         for k, v in data.__dict__.items():
-#             if isinstance(v, Storable):
-#                 data.__dict__[k] = v.load_state_dict(state_dict[k])
-#             else:
-#                 data.__dict__[k] = load_state_dict(v, state_dict[k])
-
-#     return data

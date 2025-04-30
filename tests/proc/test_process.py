@@ -2,8 +2,9 @@ import asyncio
 import typing
 from typing import Any
 from dachi.proc import _process as core
-from dachi.proc import Param, Module
+from dachi.proc import Module
 from dachi.proc import _process
+from dachi.store import Param
 import numpy as np
 # TODO: remove
 from dachi.msg import Cue

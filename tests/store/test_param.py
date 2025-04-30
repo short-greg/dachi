@@ -1,34 +1,18 @@
 import asyncio
 import typing
 from typing import Any
-from dachi.proc import _process as core
-from dachi.proc import Param, Module, ParamSet
-from dachi.proc import _process
+from dachi.store._param import Param, ParamSet
 import numpy as np
 from dachi.base import Trainable
 
 
 class Value(Trainable):
 
+    __store__ = ['val']
+
     def __init__(self, val: float):
 
         self.val = val
-
-    def update_param_dict(self, param_dict: typing.Dict):
-        """Update the state dict for the object
-
-        Args:
-            state_dict (typing.Dict): The state dict
-        """
-        self.val = param_dict['val']
-
-    def param_dict(self) -> typing.Dict:
-        """Update the state dict for the object
-
-        """
-        return {
-            'val': self.val
-        }
 
     def data_schema(self) -> typing.Dict:
         """Get the structure of the object
@@ -79,7 +63,7 @@ class TestParamSet(object):
         )])
         param_dict = param_set.param_dict()
         assert param_dict['X']['val'] == 1.0
-
+    
     def test_update_param_dict_returns_value(self):
 
         param_set = ParamSet([Param(

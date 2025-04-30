@@ -3,7 +3,6 @@ import typing
 
 # 3rd party
 import numpy as np
-import pydantic
 
 # local
 from ..base import Renderable, Storable, Trainable
@@ -24,6 +23,8 @@ class Param(
     """Use Param to wrap instructions so the instructions
     can update
     """
+    __store__ = ["data", "training"]
+
     def __init__(
         self, name: str, 
         data: Trainable, 
@@ -62,14 +63,7 @@ class Param(
             True if updated and Fals if not (not in training mode)
         """
         if self.training:
-            # excluded = self.data.dict_excluded()
-            # data.update(
-            #     excluded
-            # )
-
-            self.data = self.data.__class__(
-                **data
-            )
+            self.data.load_state_dict(data)
             return True
         return False
 
@@ -84,7 +78,7 @@ class Param(
             True if updated and Fals if not (not in training mode)
         """
         if self.training:
-            return self.data.param_dict()
+            return self.data.state_dict()
         return {}
     
     def param_structure(self):
@@ -104,30 +98,6 @@ class Param(
             return render(self.data)
         return self.text
     
-    def state_dict(self) -> typing.Dict:
-        """Get the state dict for the Param
-
-        Returns:
-            typing.Dict: the state dict
-        """
-        
-        return {
-            'name': self.name,
-            'data': self.data.param_dict(),
-            'training': self.training,
-            'text': self.text
-        }
-
-    def load_state_dict(self, params: typing.Dict):
-        """Load the state dict for the Param
-        
-        Args:
-            params (typing.Dict): the state dict
-        """
-        self.name = params['name']
-        self.cue = self.cue.load_state_dict(params['cue'])
-        self.training = params['training']
-        self.text = params['text']
 
 
 class ParamSet(object):
