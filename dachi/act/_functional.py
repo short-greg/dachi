@@ -17,7 +17,7 @@ import itertools
 
 TASK = typing.Union[
     Task, typing.Callable[[typing.Dict], TaskStatus]]
-CALL_TASK = typing.Callable[[],TaskStatus]
+CALL_TASK = typing.Callable[[bool], TaskStatus]
 
 
 PARALLEL = typing.Callable[[typing.Iterable[Task], int, int, bool], TaskStatus]
@@ -59,9 +59,14 @@ async def _parallel(
         _tasks = tasks() if callable(tasks) else tasks
         for _, task in enumerate(_tasks):
 
-            tg_tasks.append(tg.create_task(
-                (asyncio.to_thread(task, reset=reset))
-            ))
+            if isinstance(task, TaskStatus):
+                tg_tasks.append(task)
+            elif isinstance(task, bool):
+                tg_tasks.append(TaskStatus.from_bool(task))
+            else:
+                tg_tasks.append(tg.create_task(
+                    (asyncio.to_thread(task, reset=reset))
+                ))
 
         if success_on < 0:
             success_on = len(tg_tasks) + 1 + success_on
@@ -194,7 +199,10 @@ def spawn(
     return tasks
 
 
-def sequence(tasks: typing.Iterable[TASK] | typing.Callable[[], typing.Iterable[TASK]], ctx: Context) -> CALL_TASK:
+def sequence(
+    tasks: typing.Iterable[TASK] | typing.Callable[[], typing.Iterable[TASK]], 
+    ctx: Context
+) -> CALL_TASK:
     """Run a sequence task
 
     Args:
@@ -214,7 +222,6 @@ def sequence(tasks: typing.Iterable[TASK] | typing.Callable[[], typing.Iterable[
         if status.is_done:
             return status
         
-        # get the iterator
         if 'it' not in ctx:
             if callable(tasks):
                 ctx["it"] = iter(tasks())
@@ -232,9 +239,8 @@ def sequence(tasks: typing.Iterable[TASK] | typing.Callable[[], typing.Iterable[
 
         if isinstance(cur_task, bool):
             cur_status = TaskStatus.from_bool(cur_task)
-        elif cur_task == TaskStatus.FAILURE or cur_task == TaskStatus.SUCCESS:
-            cur_status = cur_status
-        # It must be a task
+        elif isinstance(cur_task, TaskStatus):
+            cur_status = cur_task
         else:
             cur_status = cur_task(reset)
 
@@ -309,11 +315,11 @@ def _selector(
     
     if isinstance(cur_task, bool):
         cur_status = TaskStatus.from_bool(cur_task)
-    elif cur_task == TaskStatus.FAILURE or cur_task == TaskStatus.SUCCESS:
-        cur_status = cur_status
+    elif isinstance(cur_task, TaskStatus):
+        cur_status = cur_task
     # It must be a task
     else:
-        cur_status = cur_task()
+        cur_status = cur_task(reset)
 
     if cur_status.running:
         ctx['status'] = TaskStatus.RUNNING
@@ -334,7 +340,9 @@ def _selector(
     return ctx['status']
 
 
-def selector(tasks: typing.Iterable[TASK] | typing.Callable[[], typing.Iterable[TASK]], ctx: Context) -> CALL_TASK:
+def selector(
+    tasks: typing.Iterable[TASK] | typing.Callable[[], 
+    typing.Iterable[TASK]], ctx: Context) -> CALL_TASK:
     """Create a selector task
 
     Args:

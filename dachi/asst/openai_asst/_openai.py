@@ -270,6 +270,7 @@ class LLM(LLM, ABC):
         tools: ToolSet=None,
         json_output: bool | pydantic.BaseModel | typing.Dict=False,
         api_key: str=None,
+        #procs: typing.List[MsgProc]=None,
         **client_kwargs
     ):
         """
@@ -283,6 +284,8 @@ class LLM(LLM, ABC):
         convs = []
         if json_output is False:
             convs.append(TextConv())
+        elif isinstance(json_output, pydantic.BaseModel):
+            convs.append(ParsedConv(json_output))
         else:
             convs.append(StructConv(json_output))
         if tools is not None:
@@ -300,14 +303,18 @@ class LLM(LLM, ABC):
         
     def spawn(self, 
         tools: ToolSet=UNDEFINED,
-        json_output: bool | pydantic.BaseModel | typing.Dict=UNDEFINED
+        json_output: bool | pydantic.BaseModel | typing.Dict=UNDEFINED,
+        procs: typing.List[RespConv]=UNDEFINED
     ):
         tools = coalesce(
             tools, self._tools
         )
+        procs = coalesce(
+            procs, self.procs
+        )
         json_output = coalesce(json_output, self._json_output)
         return LLM(
-            tools, json
+            tools, json, 
         )
 
 
