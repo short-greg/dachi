@@ -37,7 +37,8 @@ async def _parallel(
     tasks: typing.Iterable[TASK] | typing.Callable[[], typing.Iterable[TASK]], 
     success_on: int=-1, 
     fails_on: int=1, success_priority: bool=True,
-    reset: bool=False
+    reset: bool=False,
+    preempt: bool=False
 ) -> TaskStatus:
     """Run in parallel
 
@@ -60,6 +61,10 @@ async def _parallel(
         for _, task in enumerate(_tasks):
 
             if isinstance(task, TaskStatus):
+                if task.running:
+                    raise RuntimeError(
+                        'Must return a task status of SUCCESS or FAILURE'
+                    )
                 tg_tasks.append(task)
             elif isinstance(task, bool):
                 tg_tasks.append(TaskStatus.from_bool(task))
@@ -90,6 +95,9 @@ async def _parallel(
         if cur_status.failure:
             failed += 1
 
+    if not preempt and (succeeded + failed) < len(_tasks):
+        return TaskStatus.RUNNING
+
     if success_priority:
         if succeeded >= success_on:
             return TaskStatus.SUCCESS
@@ -108,7 +116,8 @@ def parallel(
     succeeds_on: int=-1, 
     fails_on: int=1, 
     success_priority: bool=True,
-    parallelizer: PARALLEL=None
+    parallelizer: PARALLEL=None,
+    preempt: bool=True
 ) -> CALL_TASK:
     """Create a parallel task
 
@@ -133,11 +142,18 @@ def parallel(
                 tasks, succeeds_on, 
                 fails_on, 
                 success_priority, 
-                reset=reset
+                reset=reset,
+                preempt=preempt
             )
         
         return asyncio.run(
-            _parallel(tasks, succeeds_on, fails_on, success_priority, reset=reset)
+            _parallel(
+                tasks, succeeds_on, 
+                fails_on, 
+                success_priority, 
+                reset=reset,
+                preempt=preempt
+            )
         )
     return _f
 
@@ -240,6 +256,10 @@ def sequence(
         if isinstance(cur_task, bool):
             cur_status = TaskStatus.from_bool(cur_task)
         elif isinstance(cur_task, TaskStatus):
+            if cur_task.running:
+                raise RuntimeError(
+                    'Must return a task status of SUCCESS or FAILURE'
+                )
             cur_status = cur_task
         else:
             cur_status = cur_task(reset)
@@ -316,6 +336,10 @@ def _selector(
     if isinstance(cur_task, bool):
         cur_status = TaskStatus.from_bool(cur_task)
     elif isinstance(cur_task, TaskStatus):
+        if cur_task.running:
+            raise RuntimeError(
+                'Must return a task status of SUCCESS or FAILURE'
+            )
         cur_status = cur_task
     # It must be a task
     else:
@@ -609,6 +633,89 @@ def statemachinef(f: typing.Callable[[typing.Any], State | TaskStatus], ctx: Con
     return f(*args, ctx=ctx, **kwargs)
 
 
+def _f_task_wrapper(
+    f, ctx, id, to_status=None, shared: SharedBase=None,
+    callback=None
+):
+    """
+
+    Args:
+        f: The function to wrap
+        ctx: The Context
+        id: The id of the task
+        to_status: Convert the output to a status. Defaults to None.
+        callback: Callback after compleeting. Defaults to None.
+    """
+    
+    id = ctx['tick_id']
+    try:
+        res = f()
+        if id == ctx['tick_id']:
+            ctx['res'] = res
+            if shared is not None:
+                shared.set(res)
+
+            # if id != ctx['tick_id']
+            if to_status is not None:
+                status = to_status(ctx['res'])
+            else:
+                status = TaskStatus.SUCCESS
+        else:
+            ctx['res'] = None
+            status = TaskStatus.SUCCESS
+            
+    except Exception as e:
+        ctx['error'] = e
+        ctx['res'] = None
+        status = TaskStatus.FAILURE
+    ctx['thread_status'] = status
+
+
+def threaded_task(
+    f, ctx: Context, shared: SharedBase=None, to_status: TOSTATUS=None, 
+    callback: typing.Callable[[Context], typing.NoReturn]=None
+) -> CALL_TASK:
+    """Use to wrap the task in a thread"""
+
+    if 'task_id' in ctx and id(f) != ctx['task_id']:
+
+        raise RuntimeError(
+            'Task context has been initialized but '
+            'the task passed in is does not match'
+        )
+
+    def _f(reset: bool=False):
+        """Run the task in a thread"""
+        if 'tick_id' not in ctx or reset:
+            ctx['tick_id'] = str(uuid.uuid4())
+        
+        if '_thread' not in ctx:
+            ctx['thread_status'] = TaskStatus.RUNNING
+            t = threading.Thread(
+                target=_f_task_wrapper,
+                args=(
+                    f, ctx,
+                    id, to_status,
+                    shared,
+                    callback
+                )
+            )
+
+            ctx['_thread'] = t
+            t.start()
+            return TaskStatus.RUNNING
+        
+        if 'error' in ctx:
+            raise ctx['error']
+        
+        # if callback:
+        #     callback(ctx)
+        if ctx['_thread'].is_alive():
+            return TaskStatus.RUNNING
+        elif ctx['thread_status'].is_done:
+            print('Thread is alive but task is finished')
+        return ctx['thread_status']
+    return _f
 
 
 def _streamf_task_wrapper(
@@ -649,89 +756,8 @@ def _streamf_task_wrapper(
         ctx['res'] = None
         status = TaskStatus.FAILURE
     ctx['thread_status'] = status
-    if callback is not None:
-        callback(ctx)
-
-
-
-def _f_task_wrapper(
-    f, ctx, id, to_status=None, shared: SharedBase=None,
-    callback=None
-):
-    """
-
-    Args:
-        f: The function to wrap
-        ctx: The Context
-        id: The id of the task
-        to_status: Convert the output to a status. Defaults to None.
-        callback: Callback after compleeting. Defaults to None.
-    """
-    
-    id = ctx['tick_id']
-    try:
-        res = f()
-        if id == ctx['tick_id']:
-            ctx['res'] = res
-            if shared is not None:
-                shared.set(res)
-
-            # if id != ctx['tick_id']
-            if to_status is not None:
-                status = to_status(ctx['res'])
-            else:
-                status = TaskStatus.SUCCESS
-        else:
-            ctx['res'] = None
-            status = TaskStatus.SUCCESS
-            
-    except Exception as e:
-        ctx['error'] = e
-        ctx['res'] = None
-        status = TaskStatus.FAILURE
-    ctx['thread_status'] = status
-    if callback:
-        callback(ctx)
-
-
-def threaded_task(
-    f, ctx: Context, shared: SharedBase=None, to_status: TOSTATUS=None, 
-    callback: typing.Callable[[Context], typing.NoReturn]=None
-) -> CALL_TASK:
-    """Use to wrap the task in a thread"""
-
-    if 'task_id' in ctx and id(f) != ctx['task_id']:
-
-        raise RuntimeError(
-            'Task context has been initialized but '
-            'the task passed in is does not match'
-        )
-
-    def _f(reset: bool=False):
-        """Run the task in a thread"""
-        if 'tick_id' not in ctx or reset:
-            ctx['tick_id'] = str(uuid.uuid4())
-        
-        if '_thread' not in ctx:
-            ctx['thread_status'] = TaskStatus.RUNNING
-            t = threading.Thread(
-                target=_f_task_wrapper,
-                args=(
-                    f, ctx,
-                    id, to_status,
-                    shared,
-                    callback
-                )
-            )
-
-            ctx['_thread'] = t
-            t.start()
-            return TaskStatus.RUNNING
-        
-        if ctx['_thread'].is_alive():
-            return TaskStatus.RUNNING
-        return ctx['thread_status']
-    return _f
+    # if callback is not None:
+    #     callback(ctx)
 
 
 def streamed_task(
@@ -772,6 +798,12 @@ def streamed_task(
             t.start()
             return TaskStatus.RUNNING
         
+        if 'error' in ctx:
+            raise ctx['error']
+        
+        if callback:
+            callback(ctx)
+
         if ctx['_thread'].is_alive():
             return TaskStatus.RUNNING
         return ctx['thread_status']

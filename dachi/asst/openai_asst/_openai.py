@@ -145,6 +145,8 @@ class StructConv(RespConv):
         }
 
 
+# TODO: Update these converters
+
 class StructStreamConv(StructConv):
 
     def __init__(self, struct = None, name = 'content', from_ = 'response'):
@@ -170,16 +172,28 @@ class StructStreamConv(StructConv):
             return None
         elif resp.type == "error":
             raise RuntimeError(resp.error)
+        
+    def prep(self):
+        return {
+            "response_format": "json_object"
+        }
 
 
 class ParsedConv(StructConv):
     """For use with the "parse" API
     """
 
-    def __init__(self, struct = None, name = 'content', from_ = 'response'):
+    def __init__(
+        self, 
+        struct: typing.Type[pydantic.BaseModel] = None, 
+        name = 'content', from_ = 'response'
+    ):
         super().__init__(struct=struct, name=name, from_=from_)
     
-    def delta(self, response, msg, delta_store: typing.Dict):
+    def delta(
+        self, resp, delta_store: typing.Dict, 
+        streamed: bool=False, is_last: bool=False
+    ):
         """
         Processes a delta response and extracts text.
         Args:
@@ -189,8 +203,30 @@ class ParsedConv(StructConv):
         Returns:
             tuple: A tuple containing the updated msg dictionary and the extracted delta content.
         """
-        raise RuntimeError('Cannot use ParseConv with a stream')
-
+        # if (message.refusal):
+        #     raise RuntimeError(
+        #         f"Refusal: {message.refusal}"
+        #     )
+        # return message.parsed
+        if not is_last:
+            return UNDEFINED
+        print(resp.choices[0].message.content)
+        delta_store["content"] = self._struct.model_validate_json(
+            resp.choices[0].message.content
+        )
+        return delta_store["content"]
+    
+    def prep(self):
+        
+        return {
+            "response_format": {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": self._struct.__name__,  # or a custom string identifier
+                    "schema": self._struct.model_json_schema()
+                }
+            }
+        }
 
 class ToolConv(RespConv):
     """
@@ -264,7 +300,6 @@ class ToolConv(RespConv):
 class LLM(LLM, ABC):
     """An adapter for the OpenAILLM
     """
-
     def __init__(
         self, 
         tools: ToolSet=None,
@@ -318,7 +353,7 @@ class LLM(LLM, ABC):
         )
 
 
-class ChatComp(LLM, ABC):
+class ChatCompletion(LLM, ABC):
     """
     OpenAIChatComp is an adapter for the OpenAI Chat Completions API. It provides methods for 
     interacting with the API, including synchronous and asynchronous message forwarding, 
@@ -344,7 +379,7 @@ class ChatComp(LLM, ABC):
             tools, self._tools
         )
         json_output = coalesce(json_output, self._json_output)
-        return ChatComp(
+        return ChatCompletion(
             tools, json
         )
     

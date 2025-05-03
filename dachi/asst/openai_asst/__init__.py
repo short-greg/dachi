@@ -1,5 +1,5 @@
 from ._openai import (
-    ChatComp, LLM,
+    ChatCompletion, LLM,
     ParsedConv, StructStreamConv,
     StructConv, TextConv,
     ToolConv

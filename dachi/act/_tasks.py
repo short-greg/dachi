@@ -51,10 +51,12 @@ class FTask(Task):
         *args, 
         **kwargs
     ):
-        """
+        """Create a task based on a function
 
         Args:
-            f (typing.Callable[[], typing.Callable]): 
+            f (typing.Callable[[], typing.Callable]): The function to execute
+            *args: The arguments to pass to the function
+            **kwargs: The keyword arguments to pass to the function
         """
         super().__init__()
         self._f = f
@@ -63,10 +65,10 @@ class FTask(Task):
         self._cur = None
 
     def tick(self, reset: bool=False) -> TaskStatus:
-        """
+        """Execute the task
 
         Returns:
-            : 
+            TaskStatus: The status of the task
         """
         if reset is True:
             self._cur = None
@@ -79,14 +81,13 @@ class FTask(Task):
         return self._cur()
     
     def state_dict(self):
-        
+        """"Retrieve the state dict for the object"""
         return {
             'kwargs': dict_state_dict(self._kwargs),
             'args': list_state_dict(self._args)
         }
     
     def load_state_dict(self, state_dict):
-        
         load_list_state_dict(
             self._args, state_dict['args']
         )
@@ -151,7 +152,6 @@ class Serial(Task):
 class Sequence(Serial):
     """Create a sequence of tasks to execute
     """
-
     def __init__(self, **data):
         """Create a sequence of tasks
 
@@ -184,7 +184,6 @@ class Sequence(Serial):
 class Selector(Serial):
     """Create a set of tasks to select from
     """
-    # _f: typing.Callable = pydantic.PrivateAttr()
 
     def __init__(self, **data):
         """Create a selector of tasks
@@ -225,7 +224,11 @@ class Parallel(Task):
     def __init__(
         self, tasks: typing.List[Task],
         fails_on: int=1, succeeds_on: int=-1,
-        success_priority: bool=True
+        success_priority: bool=True,
+        parallelizer: typing.Optional[
+            _functional.PARALLEL
+        ]=None,
+        preempt: bool=False,
     ):
         """The parallel
 
@@ -246,10 +249,14 @@ class Parallel(Task):
             self.tasks, 
             self._succeeds_on, 
             self._fails_on,
-            self._success_priority
+            self._success_priority,
+            parallelizer=parallelizer,
+            preempt=preempt
         )
 
     def _update_f(self):
+        """Update the parallel function
+        """
         self._f = _functional.parallel(
             self.tasks, 
             self.succeeds_on, 
@@ -258,13 +265,19 @@ class Parallel(Task):
         )
 
     def validate(self):
-        
+        """Validate the number of tasks required to succeed and fail
+        Raises:
+            ValueError: If the number of tasks is less than the number of fails or succeeds
+            ValueError: If the number of fails or succeeds is less than 0
+        """
         if (
             self._fails_on + self._succeeds_on - 1
         ) > len(self.tasks):
-            raise ValueError('')
+            raise ValueError(
+                'The number of tasks required to succeed or fail is greater than the number of tasks'
+            )
         if self._fails_on <= 0 or self._succeeds_on <= 0:
-            raise ValueError('')
+            raise ValueError('The number of fails or succeeds must be greater than 0')
     
     def tick(self, reset: bool=False) -> TaskStatus:
         """Tick the task
@@ -283,10 +296,22 @@ class Parallel(Task):
 
     @property
     def fails_on(self) -> int:
+        """
+        Returns:
+            int: The number of failures required to fail
+        """
         return self._fails_on
 
     @fails_on.setter
     def fails_on(self, val) -> int:
+        """Set the number of failures required to fail
+
+        Args:
+            val: The number of failures required to fail
+
+        Returns:
+            int: The number of failures required to fail 
+        """
         self._fails_on = val
         self._update_f()
         return val
@@ -522,9 +547,6 @@ def run_task(
 class StateMachine(Task):
     """StateMachine is a task composed of multiple tasks in a directed graph
     """
-
-    # init_state: State
-    # _cur_state: State = pydantic.PrivateAttr()
 
     def __init__(self, init_state: State):
         """Create the status
