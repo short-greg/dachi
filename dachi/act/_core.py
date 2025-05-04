@@ -157,12 +157,6 @@ SUCCESS = TaskStatus.SUCCESS
 FAILURE = TaskStatus.FAILURE
 RUNNING = TaskStatus.RUNNING
 
-# @dataclass
-# class TaskMessage:
-
-#     name: str
-#     data: typing.Any
-
 
 class Task(Storable):
     """The base class for a task in the behavior tree
@@ -176,6 +170,8 @@ class Task(Storable):
     RUNNING: TaskStatus = TaskStatus.RUNNING
 
     def __init__(self):
+        """Initialize the task
+        """
 
         super().__init__()
 

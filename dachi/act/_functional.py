@@ -407,11 +407,20 @@ def preempt_cond(
     cond: typing.Iterable[TASK],
     task: TASK,
 ) -> CALL_TASK:
-    
+    """Run a task if the condition is met
+    Args:
+        cond (typing.Iterable[TASK]): The condition to check
+        task (typing.Union[_tasks.Task, typing.Callable[[], TaskStatus]]): the task to execute
+    Returns:
+        CALL_TASK
+    """
     def _f(reset: bool=False):
         status = TaskStatus.READY
         for c in cond:
-            status = status & c(reset)
+            cur_status = c(reset)
+            if isinstance(cur_status, bool):
+                cur_status = TaskStatus.from_bool(cur_status)
+            status = status & cur_status
         if not status.success:
             return status
         
