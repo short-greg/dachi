@@ -682,3 +682,39 @@ def loop_until(
                 reset = True
 
         cur_status = task(reset)
+
+
+class PreemptCond(Task):
+    """Use to have a condition applied with
+    each tick in order to stop the execution
+    of other tasks
+    """
+
+    def __init__(
+        self, 
+        conds: typing.Iterable[Condition], 
+        task: Task
+    ):
+        """Create a PreemptCond
+
+        Args:
+            conds (typing.Iterable[Condition]): The conditions to execute
+            task (Task): The task to execute if satisfied
+        """
+        super().__init__()
+
+        self.conds = conds
+        self.task = task
+
+    def tick(self, reset = False) -> TaskStatus:
+        """_summary_
+
+        Args:
+            reset (bool, optional): . Defaults to False.
+
+        Returns:
+            TaskStatus: 
+        """
+        return _functional.preempt_cond(
+            self.conds, self.task
+        )(reset)

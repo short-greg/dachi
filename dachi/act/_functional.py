@@ -312,7 +312,9 @@ def _selector(
         ctx['cur_task'] = None
         del ctx['it']
 
-    status = ctx.get_or_set('status', TaskStatus.RUNNING)
+    status = ctx.get_or_set(
+        'status', TaskStatus.RUNNING
+    )
 
     if status.is_done:
         return status
@@ -399,6 +401,23 @@ def selectorf(
 
 fallback = selector
 fallbackf = selectorf
+
+
+def preempt_cond(
+    cond: typing.Iterable[TASK],
+    task: TASK,
+) -> CALL_TASK:
+    
+    def _f(reset: bool=False):
+        status = TaskStatus.READY
+        for c in cond:
+            status = status & c(reset)
+        if not status.success:
+            return status
+        
+        return task(reset)
+
+    return _f
 
 
 def action(task: TASK, *args, **kwargs) -> CALL_TASK:

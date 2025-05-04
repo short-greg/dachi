@@ -116,7 +116,7 @@ class TaskStatus(Enum):
         raise ValueError(f'Invalid combination of statuses {self} and {other}')
 
     def __and__(self, other: 'TaskStatus') -> 'TaskStatus':
-        """Compute the union of two statuses
+        """Compute the intersection of two statuses
 
         Returns:
             SangoStatus: The resulting status. Returns failure if one status

@@ -9,7 +9,8 @@ from ._functional import (
     aslongasf, untilf, notf, parallelf,
     selectorf, sequencef, fallbackf,
     fallback, taskf, PARALLEL, 
-    threaded_task, streamed_task
+    threaded_task, streamed_task,
+    preempt_cond
 )
 from ._tasks import (
     Serial, Sequence, 
@@ -21,7 +22,8 @@ from ._tasks import (
     run_task,
     Fallback,
     StateMachine,
-    FixedTimer, RandomTimer
+    FixedTimer, RandomTimer,
+    PreemptCond
 )
 from ._build import (
     build_composite, build_sequence,
@@ -38,5 +40,5 @@ from ._decorator_func import (
     statemachinemethod, StateMachineFunc, TaskFunc,
     CondFunc, TaskFuncBase, ParallelFunc, CompositeFunc,
     fallbackfunc, fallbackmethod,  condmethod, taskmethod,
-    parallelmethod
+    parallelmethod,
 )

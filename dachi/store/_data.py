@@ -785,51 +785,6 @@ class DictRetriever(SharedBase):
         return data
 
 
-class ContextSpawner(object):
-    """Use to Spawn contexts for your behaviors
-    """
-
-    def __init__(
-        self, 
-        manager: ContextStorage, 
-        base_name: str
-    ):
-        """Create a context Spawner specifying the Storage and the
-        base name to use in spawning
-
-        Args:
-            manager (): The manager to use
-            base_name (str): The base name of all contexts to spawn
-        """
-        object.__setattr__('manager', manager)
-        object.__setattr__('base_name', base_name)
-
-    def __getitem__(self, name) -> Context:
-        """Get item specified by name
-
-        Args:
-            name: The context to get
-
-        Returns:
-            Context: The context
-        """
-
-        name = f'{self.base_name}_{name}'
-        return self.manager.add(name)
-
-    def __getattr__(self, name: int) -> Context:
-        """Get item specified by name
-
-        Args:
-            name: The context to get
-
-        Returns:
-            Context: The context
-        """
-        name = f'{self.base_name}_{name}'
-        return self.manager.add(name)
-
-
 class Comm(object):
     """Use to have communication between two components 
     (two agents etc)
@@ -975,3 +930,49 @@ class StoreDict(dict, Storable, typing.Generic[T, V]):
             key: val.state_dict() if isinstance(val, Storable) else val
             for key, val in self.items()
         }
+
+
+
+class ContextSpawner(object):
+    """Use to Spawn contexts for your behaviors
+    """
+
+    def __init__(
+        self, 
+        manager: ContextStorage, 
+        base_name: str
+    ):
+        """Create a context Spawner specifying the Storage and the
+        base name to use in spawning
+
+        Args:
+            manager (): The manager to use
+            base_name (str): The base name of all contexts to spawn
+        """
+        object.__setattr__('manager', manager)
+        object.__setattr__('base_name', base_name)
+
+    def __getitem__(self, name) -> Context:
+        """Get item specified by name
+
+        Args:
+            name: The context to get
+
+        Returns:
+            Context: The context
+        """
+
+        name = f'{self.base_name}_{name}'
+        return self.manager.add(name)
+
+    def __getattr__(self, name: int) -> Context:
+        """Get item specified by name
+
+        Args:
+            name: The context to get
+
+        Returns:
+            Context: The context
+        """
+        name = f'{self.base_name}_{name}'
+        return self.manager.add(name)
