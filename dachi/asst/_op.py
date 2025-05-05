@@ -40,7 +40,10 @@ class Op(Module, AsyncModule, StreamModule, AsyncStreamModule):
     def __init__(
         self, assistant: Assistant, 
         to_msg: ToMsg, 
-        out: str | typing.List[str] | FromMsg, filter_undefined: bool=True):
+        out: str | typing.List[str] | FromMsg, 
+        filter_undefined: bool=True,
+        follow_up: bool=False
+    ):
         """
         Initializes the class to facilitate interaction with a language model assistant by
         adapting inputs and outputs.
@@ -60,6 +63,7 @@ class Op(Module, AsyncModule, StreamModule, AsyncStreamModule):
             out = FromMsg(out)
         self.out = out
         self.filter_undefined = filter_undefined
+        self.follow_up = follow_up
 
     def forward(
         self, *args,  
@@ -86,9 +90,14 @@ class Op(Module, AsyncModule, StreamModule, AsyncStreamModule):
 
         _messages = _messages or []
         _messages.append(msg)
-        resp_msg = self.assistant(
-            _messages
-        )
+
+        while True:
+            resp_msg = self.assistant(
+                _messages
+            )
+            if not self.follow_up or len(resp_msg.follow_up) == 0:
+                break
+            _messages.extend(resp_msg.follow_up)
 
         if _messages is not None:
             _messages.append(resp_msg)
@@ -120,12 +129,14 @@ class Op(Module, AsyncModule, StreamModule, AsyncStreamModule):
         _out = conv_to_out(_out)
         _messages = _messages or []
         _messages.append(msg)
-        resp_msg = await self.assistant.aforward(
-            _messages
-        )
-
-        if _messages is not None:
+        while True:
+            resp_msg = await self.assistant.aforward(
+                _messages
+            )
             _messages.append(resp_msg)
+            if not self.follow_up or len(resp_msg.follow_up) == 0:
+                break
+            _messages.extend(resp_msg.follow_up)
 
         res = self.out(resp_msg)
         if _out is None:
@@ -161,28 +172,31 @@ class Op(Module, AsyncModule, StreamModule, AsyncStreamModule):
         resp_msg = None
 
         delta_store = {}
-        for resp_msg in self.assistant.stream(
-            _messages
-        ):
-            if self.filter_undefined:
-                res, filtered = self.out.filter(resp_msg)
+        while True: 
+            
+            for resp_msg in self.assistant.stream(
+                _messages
+            ):
+                if self.filter_undefined:
+                    res, filtered = self.out.filter(resp_msg)
 
-                res = self.out(resp_msg)
-                if _out is not None:
-                    res = _out.delta(
-                        res, delta_store
-                    )
-                    filtered = filtered or res == UNDEFINED
-                if not filtered:
+                    res = self.out(resp_msg)
+                    if _out is not None:
+                        res = _out.delta(
+                            res, delta_store
+                        )
+                        filtered = filtered or res == UNDEFINED
+                    if not filtered:
+                        yield res
+                else:
+                    res = self.out(resp_msg)
+                    if _out is not None:
+                        res = _out.delta(res, {})
                     yield res
-            else:
-                res = self.out(resp_msg)
-                if _out is not None:
-                    res = _out.delta(res, {})
-                yield res
-        
-        if _messages is not None and resp_msg is not None:
             _messages.append(resp_msg)
+            if not self.follow_up or len(resp_msg.follow_up) == 0:
+                break
+            _messages.extend(resp_msg.follow_up)
 
     async def astream(
         self, 
@@ -209,29 +223,32 @@ class Op(Module, AsyncModule, StreamModule, AsyncStreamModule):
 
         _messages.append(msg)
         delta_store = {}
-        async for resp_msg in await self.assistant.astream(
-            _messages
-        ):
-            if self.filter_undefined:
-                res, filtered = self.out.filter(
-                    resp_msg
-                )
-                if _out is not None:
-                    res = _out.delta(
-                        res, delta_store
+        while True:
+            async for resp_msg in await self.assistant.astream(
+                _messages
+            ):
+                if self.filter_undefined:
+                    res, filtered = self.out.filter(
+                        resp_msg
                     )
-                    filtered = filtered or res == UNDEFINED
+                    if _out is not None:
+                        res = _out.delta(
+                            res, delta_store
+                        )
+                        filtered = filtered or res == UNDEFINED
 
-                if not filtered:
+                    if not filtered:
+                        yield res
+                else:
+                    res = self.out(resp_msg)
+                    if _out is not None:
+                        res = _out.delta(res)
                     yield res
-            else:
-                res = self.out(resp_msg)
-                if _out is not None:
-                    res = _out.delta(res)
-                yield res
-        
-        if _messages is not None and resp_msg is not None:
+            
             _messages.append(resp_msg)
+            if not self.follow_up or len(resp_msg.follow_up) == 0:
+                break
+            _messages.extend(resp_msg.follow_up)
 
     def asst(self, *args, **kwargs) -> Self:
         """Create a new operation with specified
@@ -289,7 +306,8 @@ class Threaded(
         router: typing.Dict[str, ToMsg],
         out: str | typing.List[str] | FromMsg, 
         dialog: BaseDialog=None,
-        filter_undefined: bool=True
+        filter_undefined: bool=True,
+        follow_up: bool=False
     ):
         """
         Initializes the class to facilitate interaction with a language model assistant by
@@ -311,6 +329,7 @@ class Threaded(
         self.out = out
         self.dialog = dialog or ListDialog()
         self.filter_undefined = filter_undefined
+        self.follow_up = follow_up
 
     def forward(
         self, 
@@ -336,10 +355,14 @@ class Threaded(
         _out = conv_to_out(_out)
         self.dialog = self.dialog.append(msg)
 
-        resp_msg = self.assistant(
-            self.dialog.list_messages()
-        )
-        self.dialog.append(resp_msg)
+        while True:
+            resp_msg = self.assistant(
+                self.dialog.list_messages()
+            )
+            if not self.follow_up or len(resp_msg.follow_up) == 0:
+                break
+            self.dialog = self.dialog.append(resp_msg.follow_up)
+
         res = self.out(resp_msg)
         if _out is None:
             return res
@@ -367,7 +390,14 @@ class Threaded(
         msg = self.router[route](*args, **kwargs)
         _out = conv_to_out(_out)
         self.dialog = self.dialog.append(msg)
-
+        while True:
+            resp_msg = await self.assistant.aforward(
+                self.dialog.list_messages()
+            )
+            self.dialog = self.dialog.append(resp_msg.follow_up)
+            if not self.follow_up or len(resp_msg.follow_up) == 0:
+                break
+            self.dialog.extend(resp_msg.follow_up)
         resp_msg = await self.assistant.aforward(
             self.dialog.list_messages()
         )
@@ -398,29 +428,32 @@ class Threaded(
         
         resp_msg = None
         delta_store = {}
-        for resp_msg in self.assistant.stream(
-            self.dialog.list_messages()
-        ):
-            if self.filter_undefined:
-                res, filtered = self.out.filter(
-                    resp_msg
-                )
-                if _out is not None:
-                    res = _out.delta(
-                        res, delta_store
+        while True:
+            for resp_msg in self.assistant.stream(
+                self.dialog.list_messages()
+            ):
+                if self.filter_undefined:
+                    res, filtered = self.out.filter(
+                        resp_msg
                     )
-                    filtered = filtered or res == UNDEFINED
+                    if _out is not None:
+                        res = _out.delta(
+                            res, delta_store
+                        )
+                        filtered = filtered or res == UNDEFINED
 
-                if not filtered:
+                    if not filtered:
+                        yield res
+                else:
+                    res = self.out(resp_msg)
+                    if _out is not None:
+                        res = _out.delta(res, delta_store)
                     yield res
-            else:
-                res = self.out(resp_msg)
-                if _out is not None:
-                    res = _out.delta(res, delta_store)
-                yield res
-        
-        if resp_msg is not None:
+            
             self.dialog = self.dialog.append(resp_msg)
+            if not self.follow_up or len(resp_msg.follow_up) == 0:
+                break
+            self.dialog.extend(resp_msg.follow_up)
 
     async def astream(
         self, 
@@ -443,29 +476,32 @@ class Threaded(
         resp_msg = None
 
         delta_store = {}
-        async for resp_msg in await self.assistant.astream(
-            self.dialog.list_messages()
-        ):
-            if self.filter_undefined:
-                res, filtered = self.out.filter(
-                    resp_msg
-                )
-                if _out is not None:
-                    res = _out.delta(
-                        res, delta_store
+        while True:
+            async for resp_msg in await self.assistant.astream(
+                self.dialog.list_messages()
+            ):
+                if self.filter_undefined:
+                    res, filtered = self.out.filter(
+                        resp_msg
                     )
-                    filtered = filtered or res == UNDEFINED
+                    if _out is not None:
+                        res = _out.delta(
+                            res, delta_store
+                        )
+                        filtered = filtered or res == UNDEFINED
 
-                if not filtered:
+                    if not filtered:
+                        yield res
+                else:
+                    res = self.out(resp_msg)
+                    if _out is not None:
+                        res = _out.delta(res, delta_store)
                     yield res
-            else:
-                res = self.out(resp_msg)
-                if _out is not None:
-                    res = _out.delta(res, delta_store)
-                yield res
-        
-        if resp_msg is not None:
+            
             self.dialog = self.dialog.append(resp_msg)
+            if not self.follow_up or len(resp_msg.follow_up) == 0:
+                break
+            self.dialog.extend(resp_msg.follow_up)
 
     def asst(self, *args, **kwargs) -> Self:
         """Create a new operation with specified

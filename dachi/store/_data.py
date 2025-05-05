@@ -8,8 +8,6 @@ from ..utils import UNDEFINED
 import pydantic
 import typing
 
-from ..base import load_dict_state_dict, dict_state_dict
-
 from dataclasses import dataclass
 
 
@@ -547,9 +545,13 @@ class ContextStorage(object):
             self._data[key] = d
         
         return self._data[key]
+    
+    def reset(self):
+        """Reset the context storage
+        """
+        self._data.clear()
 
 # TODO: Change to a dataclass
-
 
 CALLBACK = typing.Callable[[typing.Any], typing.NoReturn]
 
@@ -932,7 +934,6 @@ class StoreDict(dict, Storable, typing.Generic[T, V]):
         }
 
 
-
 class ContextSpawner(object):
     """Use to Spawn contexts for your behaviors
     """
@@ -976,3 +977,4 @@ class ContextSpawner(object):
         """
         name = f'{self.base_name}_{name}'
         return self.manager.add(name)
+

@@ -73,17 +73,17 @@ async def _parallel(
                     (asyncio.to_thread(task, reset=reset))
                 ))
 
-        if success_on < 0:
-            success_on = len(tg_tasks) + 1 + success_on
+    if success_on < 0:
+        success_on = len(tg_tasks) + 1 + success_on
 
-        if fails_on < 0:
-            fails_on = len(tg_tasks) + 1 + fails_on
+    if fails_on < 0:
+        fails_on = len(tg_tasks) + 1 + fails_on
 
-        if (fails_on + success_on) > (len(tg_tasks) + 1):
-            raise ValueError(
-                f'Success + failure must be lte the number '
-                f'of tasks not {fails_on + success_on}'
-            )
+    if (fails_on + success_on) > (len(tg_tasks) + 1):
+        raise ValueError(
+            f'Success + failure must be lte the number '
+            f'of tasks not {fails_on + success_on}'
+        )
 
     failed = 0
     succeeded = 0
@@ -95,7 +95,7 @@ async def _parallel(
         if cur_status.failure:
             failed += 1
 
-    if not preempt and (succeeded + failed) < len(_tasks):
+    if not preempt and (succeeded + failed) < len(tg_tasks):
         return TaskStatus.RUNNING
 
     if success_priority:
@@ -117,7 +117,7 @@ def parallel(
     fails_on: int=1, 
     success_priority: bool=True,
     parallelizer: PARALLEL=None,
-    preempt: bool=True
+    preempt: bool=False
 ) -> CALL_TASK:
     """Create a parallel task
 
@@ -164,6 +164,8 @@ def parallelf(
     succeeds_on: int=-1, 
     fails_on: int=1, 
     success_priority: bool=True,
+    parallelizer: PARALLEL=None,
+    preempt: bool=False,
     **kwargs
 ) -> CALL_TASK:
     """Create a parallel task
@@ -178,7 +180,8 @@ def parallelf(
         CALL_TASK: The task to call
     """
     return parallel(
-        partial(f, *args, **kwargs), succeeds_on, fails_on, success_priority
+        partial(f, *args, **kwargs), succeeds_on, fails_on, 
+        success_priority, parallelizer, preempt
     )
 
 
@@ -229,7 +232,7 @@ def sequence(
         CALL_TASK: The task to call
     """
     def _f(reset: bool=False):
-        if reset:
+        if reset and 'status' in ctx:
             ctx['status'] = TaskStatus.READY
             ctx['cur_task'] = None
             del ctx['it']
@@ -307,7 +310,7 @@ def _selector(
     reset: bool=False
 ) -> TaskStatus:
 
-    if reset:
+    if reset and 'status' in ctx:
         ctx['status'] = TaskStatus.READY
         ctx['cur_task'] = None
         del ctx['it']
@@ -625,7 +628,7 @@ def statemachine(f: State | typing.Callable[[], State | TaskStatus], ctx: Contex
     """
 
     def _(reset: bool=False):
-        if reset:
+        if reset and 'cur' in ctx:
             del ctx['cur']
         
         if 'cur' not in ctx:

@@ -13,16 +13,21 @@ from ._functional import (
     preempt_cond
 )
 from ._tasks import (
-    Serial, Sequence, 
+    Serial, 
+    Sequence, 
     Selector, 
-    Parallel, Action,
-    Condition, Root,
+    Parallel, 
+    Action,
+    Condition, 
+    Root,
     Not, 
-    AsLongAs, Until,
+    AsLongAs, 
+    Until,
     run_task,
     Fallback,
     StateMachine,
-    FixedTimer, RandomTimer,
+    FixedTimer, 
+    RandomTimer,
     PreemptCond
 )
 from ._build import (

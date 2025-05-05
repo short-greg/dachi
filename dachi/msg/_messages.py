@@ -28,7 +28,7 @@ class Msg(dict):
     def __init__(
         self, role: str, type_: str='data', 
         meta: typing.Dict=None, delta: typing.Dict=None, 
-        _include_role: bool=True, **kwargs
+        _include_role: bool=True, _follow_up: typing.List['Msg']=None, _filtered: bool=False, **kwargs
     ):
         """Create a Msg
 
@@ -40,6 +40,8 @@ class Msg(dict):
         super().__init__(
             role=role, _include_role=_include_role, type_=type_, meta=meta or {}, delta=delta or {}, **kwargs
         )
+        self._follow_up = _follow_up if _follow_up is not None else []
+        self._filtered = _filtered
 
     @property
     def type(self) -> str:
@@ -83,6 +85,8 @@ class Msg(dict):
         Returns:
             typing.List[typing.Dict]: The message converted to a list
         """
+        if self.filtered:
+            return []
         return [self.to_input()]
     
     def render(self) -> str:
@@ -107,7 +111,47 @@ class Msg(dict):
         return ListDialog(
             [self, *messages]
         )
+
+    @property
+    def follow_up(self) -> typing.List['Msg'] | None:
+        """Get the follow up message
+
+        Returns:
+            typing.List[Msg]: The follow up message
+        """
+        return [*self._follow_up]
     
+    @follow_up.setter
+    def follow_up(self, messages: typing.List['Msg'] | None) -> Self:
+        """Set the follow up message
+
+        Args:
+            message (typing.Union[Msg, typing.List[Msg]]): The follow up message
+        """
+        if self._follow_up is None:
+            self._follow_up = []
+        else:
+            self._follow_up = messages
+        return messages
+
+    @property
+    def filtered(self) -> bool:
+        """Get the filtered status of the message
+
+        Returns:
+            bool: The filtered status
+        """
+        return self._filtered
+    @filtered.setter
+    def filtered(self, val: bool) -> Self:
+        """Set the filtered status of the message
+
+        Args:
+            val (bool): The filtered status
+        """
+        self._filtered = val
+        return self
+
 
 class StreamMsg(Msg):
     """A message that is streamed
@@ -260,7 +304,7 @@ class BaseDialog(pydantic.BaseModel, Renderable):
         Returns:
             typing.List[typing.Dict]: A list of inputs
         """
-        return [msg.to_input() for msg in self]
+        return [msg.to_input() for msg in self if msg.filtered is False]
 
     def to_list_input(self) -> typing.List[typing.Dict]:
 
@@ -310,9 +354,9 @@ def to_input(inp: typing.Union[typing.Iterable[Msg], Msg]) -> typing.Union[typin
         typing.Union[typing.List[Msg], Msg]: The input
     """
     if isinstance(inp, Msg):
-        return inp.to_input()
+        return inp.to_input() if inp.filtered is False else None
     
-    return {msg.to_input() for msg in inp}
+    return {msg.to_input() for msg in inp if msg.filtered is False}
 
 
 class ListDialog(BaseDialog):

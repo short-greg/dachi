@@ -172,8 +172,11 @@ class ParallelFunc(TaskFuncBase):
     """
 
     def __init__(
-        self, f, succeeds_on=-1, 
-        fails_on=1, success_priority=True,
+        self, f, 
+        succeeds_on=-1, 
+        fails_on=1, 
+        success_priority=True,
+        preempt: bool=False,
         is_method: bool=False,
         instance=None
     ):
@@ -194,6 +197,7 @@ class ParallelFunc(TaskFuncBase):
         self.fails_on = fails_on
         self._is_method = is_method
         self.success_priority = success_priority
+        self.preempt = preempt
 
     def __call__(self, *args, **kwargs):
         """Get the task from the function
@@ -205,12 +209,15 @@ class ParallelFunc(TaskFuncBase):
         if instance is None:
             return F.parallelf(
                 self.f, *args, succeeds_on=self.succeeds_on, 
-                fails_on=self.fails_on, success_priority=self.success_priority, **kwargs
+                fails_on=self.fails_on, success_priority=self.success_priority, preempt=self.preempt, **kwargs
             )
         
         return F.parallelf(
             self.f, instance, *args, 
-            succeeds_on=self.succeeds_on, fails_on=self.fails_on, success_priority=self.success_priority, **kwargs
+            succeeds_on=self.succeeds_on, 
+            fails_on=self.fails_on, 
+            success_priority=self.success_priority, 
+            preempt=self.preempt, **kwargs
         )
 
     def __get__(self, instance, owner):
@@ -222,7 +229,8 @@ class ParallelFunc(TaskFuncBase):
         
         task = ParallelFunc(
             self.f, self.succeeds_on, self.fails_on, 
-            self.success_priority, True, instance
+            self.success_priority, self.preempt, 
+            True, instance
         )
         instance.__dict__[self.f.__name__] = task
         return task
@@ -415,8 +423,11 @@ fallbackmethod = selectormethod
 
 
 def parallelfunc(
-    succeeds_on: int=-1, fails_on: int=1, 
-    success_priority: bool=True, is_method: bool=False
+    succeeds_on: int=-1, 
+    fails_on: int=1, 
+    success_priority: bool=True,
+    preempt: bool=False, 
+    is_method: bool=False
 ):
     """Decorate a parallel function that yields tasks
 
@@ -430,14 +441,16 @@ def parallelfunc(
     def _(f):
         return ParallelFunc(
             f, succeeds_on, fails_on, 
-            success_priority, is_method
+            success_priority, preempt, is_method
         )
     return _
 
 
 def parallelmethod(
-    succeeds_on: int=-1, fails_on: int=1, 
-    success_priority: bool=True
+    succeeds_on: int=-1, 
+    fails_on: int=1, 
+    success_priority: bool=True,
+    preempt: bool=False
 ):
     """Decorate a parallel method that yields tasks
 
@@ -447,7 +460,7 @@ def parallelmethod(
         success_priority (bool, optional): Whether success prioritized over failure if equal. Defaults to True.
     """
     return parallelfunc(
-        succeeds_on, fails_on, success_priority, True
+        succeeds_on, fails_on, success_priority, preempt, True
     )
 
 
