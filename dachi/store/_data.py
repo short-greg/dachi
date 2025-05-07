@@ -8,6 +8,7 @@ from ..utils import UNDEFINED
 import pydantic
 import typing
 
+import pandas as pd
 from dataclasses import dataclass
 
 
@@ -107,9 +108,6 @@ class SharedBase(Storable, Renderable, ABC):
 class Shared(SharedBase):
     """Allows for shared data between tasks
     """
-    # _data = pydantic.PrivateAttr()
-    # _callbacks = pydantic.PrivateAttr()
-    # _default = pydantic.PrivateAttr()
 
     def __init__(
         self, data: typing.Any=None, 
@@ -212,9 +210,6 @@ class Shared(SharedBase):
 class Buffer(Storable):
     """Create a buffer to add data to
     """
-
-    # _buffer = pydantic.PrivateAttr()
-    # _opened = pydantic.PrivateAttr(default=True)
 
     def __init__(self) -> None:
         """Create a buffer
@@ -978,3 +973,73 @@ class ContextSpawner(object):
         name = f'{self.base_name}_{name}'
         return self.manager.add(name)
 
+
+class Record(Renderable):
+    """Use to create a pairwise object
+    """
+
+    def __init__(self, indexed: bool=False, **kwargs):
+        """Create a pairwise object
+
+        Args:
+            items (typing.List[T]): The items to create the pairwise object from
+        """
+        super().__init__()
+        self._data = pd.DataFrame(kwargs)
+        self.indexed = indexed
+
+    def extend(self, **kwargs) -> typing.Self:
+        """Extend the pairwise object with new items
+
+        Args:
+            items (typing.List[T]): The items to create the pairwise object from
+        """
+        self._data = pd.concat(
+            [self._data, pd.DataFrame(kwargs)]
+        )
+
+    def append(self, **kwargs) -> typing.Self:
+        """Append the pairwise object with new items
+
+        Args:
+            items (typing.List[T]): The items to create the pairwise object from
+        """
+        kwargs = {k: [v] for k, v in kwargs.items()}
+        self._data = pd.concat(
+            [self._data, pd.DataFrame(kwargs)]
+        )
+    
+    def join(self, **kwargs) -> 'Record':
+        """Join the pairwise object with new items
+
+        Args:
+            items (typing.List[T]): The items to create the pairwise object from
+        """
+        data = self._data.copy()
+        data[kwargs.keys()] = list(kwargs.values())
+        return data
+    
+    @property
+    def df(self) -> pd.DataFrame:
+        """Get the dataframe for the pairwise object
+
+        Returns:
+            pd.DataFrame: The dataframe for the pairwise object
+        """
+        return pd.DataFrame(self._items)
+    
+    def __len__(self) -> int:
+        """Get the length of the pairwise object
+
+        Returns:
+            int: The length of the pairwise object
+        """
+        return len(self._data.index)
+    
+    def render(self) -> str:
+        """Render the pairwise object
+
+        Returns:
+            str: The rendered string
+        """
+        return render(self._data.to_dict(orient='records'))

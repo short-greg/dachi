@@ -4,8 +4,9 @@ import typing
 
 # local
 from ..msg import Msg, StreamMsg
-from ..proc import Module, AsyncModule
+from . import Module, AsyncModule
 from .. import utils
+from ..msg import BaseDialog, to_list_input
 
 
 class MsgRet(Module):
@@ -338,3 +339,37 @@ class MsgProcSeq(Module, AsyncModule):
             if proc.name == key:
                 return proc
         raise KeyError(f"Key {key} not found in {self.procs}")
+
+
+
+class MsgRenderer(Module):
+
+    @abstractmethod
+    def forward(self, msg: Msg | BaseDialog) -> str:
+        pass
+
+
+class FieldRenderer(MsgRenderer):
+
+    def __init__(self, field: str='content'):
+        """Renderer to render a specific field in the message
+
+        Args:
+            field (str, optional): The field name. Defaults to 'content'.
+        """
+        self.field = field
+
+    def forward(self, msg: Msg | BaseDialog) -> str:
+        """Render a message
+
+        Args:
+            msg (Msg): The message to render
+
+        Returns:
+            str: The result
+        """
+        messages = to_list_input(msg)
+        return '\n'.join(
+            f'{msg['role']}: {msg[self.field]}'
+            for msg in messages
+        )

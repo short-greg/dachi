@@ -1,5 +1,5 @@
 from dachi.msg._messages import Msg, StreamMsg
-from dachi.asst._msg import MsgProc
+from dachi.proc._msg import MsgProc
 
 from typing import Iterator
 from dachi.asst import _ai

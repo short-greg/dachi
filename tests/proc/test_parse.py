@@ -1,4 +1,4 @@
-from dachi.asst import _parse
+from dachi.proc import _parse
 import typing
 from dachi import utils
 

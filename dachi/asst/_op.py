@@ -2,25 +2,25 @@
 # 1st party
 import typing
 from typing import Self
-
 # 3rd party
 import pydantic
-
 # local
 from ..msg._messages import (
     Msg, BaseDialog, ListDialog
 )
 from ._asst import Assistant
-from ._msg import ToMsg, KeyRet, FromMsg, MsgProc
-from ._out import OutConv
-from ._out import conv_to_out
+from ..proc._msg import ToMsg, KeyRet, FromMsg
+from ..proc._out import OutConv
+from ..proc._out import conv_to_out
 from ..proc import (
     Module, AsyncModule, 
     StreamModule, AsyncStreamModule
 )
 from ..utils import (
-    coalesce, UNDEFINED,
+    coalesce, UNDEFINED
 )
+from .. import utils
+
 
 S = typing.TypeVar('S', bound=pydantic.BaseModel)
 
@@ -557,3 +557,4 @@ class Threaded(
         return self.spawn(
             assistant=self.assistant.spawn(*args, **kwargs)
         )
+

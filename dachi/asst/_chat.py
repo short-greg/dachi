@@ -13,7 +13,7 @@ CHAT_RES = typing.Union[
     typing.Any, typing.Tuple[typing.Any, Msg]
 ]
 
-from ._msg import ToMsg, FromMsg, NullToMsg
+from ..proc._msg import ToMsg, FromMsg, NullToMsg
 
 
 class Chat(Module, AsyncModule, StreamModule, AsyncStreamModule):

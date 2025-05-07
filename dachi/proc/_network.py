@@ -13,7 +13,13 @@ class Network(object):
     """
 
     def _build_network(self, ts: typing.List[T], G: nx.DiGraph, all_ts: typing.Dict, incoming: typing.Dict):
-
+        """Build a network of the nodes
+        Args:
+            ts (typing.List[T]): List of nodes to build the network from
+            G (nx.DiGraph): Graph to build the network on
+            all_ts (typing.Dict): Dictionary of all the nodes
+            incoming (typing.Dict): Dictionary of the incoming nodes
+        """
         for t in ts:
             t_id = id(t)
             if not G.has_node(t_id):
@@ -33,6 +39,11 @@ class Network(object):
             self._build_network(inc_ts, G, all_ts, incoming)
                 
     def __init__(self, outputs: typing.List[T]):
+        """Instantiate a network
+        Args:
+            outputs (typing.List[T]): List of nodes to build the network from
+        """
+        super().__init__()
         # get all of the ts
 
         self._ts = {}
@@ -45,34 +56,57 @@ class Network(object):
 
     @property
     def G(self) -> nx.DiGraph:
+        """Return the graph of the network
+        Returns:
+            nx.DiGraph: The graph of the network
+        """
         return self._g
 
     def __len__(self) -> int:
+        """Return the number of nodes in the network
+        Returns:
+            int: The number of nodes in the network
+        """
         return len(self._execution_order)
 
     def __getitem__(self, idx: int) -> typing.Dict[T, typing.List[T]]:
+        """Return the node at the given index
+        Args:
+            idx (int): The index of the node to return
+        Returns:
+            typing.Dict[T, typing.List[T]]: The node at the given index
+        """
         name = self._execution_order[idx]
         return self._ts[name]
     
     def __iter__(self) -> typing.Iterator[T]:
-
+        """Return an iterator over the nodes in the network
+        Returns:
+            typing.Iterator[T]: An iterator over the nodes in the network
+        """
         for name in self._execution_order:
             yield self._ts[name]
 
     def incoming(self, t: T) -> typing.List[T]:
-    
+        """Return the incoming nodes for the given node
+        Args:
+            t (T): The node to get the incoming nodes for
+        Returns:
+            typing.List[T]: The incoming nodes for the given node
+        """
         return self._incoming[id(t)]
 
 
 class TAdapter(Module):
-    """A Node which wraps a graph
+    """Define a Graph Node that wraps multiple other nodes
     """
 
     def __init__(
         self, inputs: typing.List[typing.Tuple[str, T]], 
         outputs: typing.List[typing.Union[typing.Tuple[T, int], T]]
     ):
-        """Instantiate a node which adaptas
+        """Instantiate a node which adapts the inputs to the outputs
+        This is useful for wrapping multiple nodes into a single node
 
         Args:
             name (str): Name of the Adapter
@@ -84,7 +118,13 @@ class TAdapter(Module):
         self._outputs = outputs
 
     def forward(self, *args, **kwargs) -> typing.Any:
-        
+        """Forward the inputs to the outputs
+        Args:
+            *args: The inputs to the node
+            **kwargs: The inputs to the node
+        Returns:
+            typing.Any: The outputs of the node
+        """
         by = {}
         defined = {}
         for arg, t in zip(args, self._inputs):

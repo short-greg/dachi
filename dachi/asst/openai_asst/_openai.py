@@ -4,6 +4,7 @@ import pkg_resources
 import typing
 import json
 import pydantic
+from ... import utils
 
 # 3rd party
 required = {'openai'}
@@ -15,7 +16,7 @@ from ...msg import Msg, END_TOK, to_list_input
 from .._ai import (
     LLM, llm_aforward, llm_astream, llm_forward, llm_stream, ToolSet, ToolCall, ToolBuilder
 )
-from .._resp import RespConv
+from ...proc._resp import RespConv, OutConv
 from ...utils import UNDEFINED, coalesce
 from ... import store
 
@@ -228,13 +229,17 @@ class ParsedConv(StructConv):
             }
         }
 
+
 class ToolConv(RespConv):
     """
     Process OpenAI LLM responses to extract tool calls.
     This class extends the RespProc class and is designed to handle responses from OpenAI's language model,
     specifically to extract and manage tool calls embedded within the responses.
     """
-    def __init__(self, tools: ToolSet, name: str='tools', from_: str='response'):
+    def __init__(
+        self, tools: ToolSet, name: str='tools', 
+        from_: str='response'
+    ):
         """
 
         Args:
@@ -489,3 +494,40 @@ class ChatCompletion(LLM, ABC):
             **kwargs
         ):
             yield r
+
+
+
+class ToolExecConv(OutConv):
+    """Use for converting a tool from a response
+    """
+    def __init__(self, name: str, from_: str='content'):
+        """Create a reader for Primitive values
+
+        Args:
+            out (typing.Type): The type of data
+        """
+        super().__init__(
+            name=name, from_=from_
+        )
+        self._name = name
+    
+    def delta(self, resp, delta_store: typing.Dict, is_streamed: bool=False, is_last: bool=True) -> typing.Any:
+        """Read in the output
+
+        Args:
+            message (str): The message to read
+
+        Returns:
+            typing.Any: The output of the reader
+        """
+        if resp is None or resp is utils.UNDEFINED:
+            return utils.UNDEFINED
+        
+        if isinstance(resp, ToolCall):
+            return resp()
+        
+        if isinstance(resp, typing.List):
+            return [r() for r in resp]
+        
+        return utils.UNDEFINED
+

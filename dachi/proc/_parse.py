@@ -9,9 +9,8 @@ from abc import abstractmethod
 # local
 from .. import store
 from .. import utils
-from ._msg import MsgProc
 from collections import OrderedDict
-from ..proc import Module
+from . import Module
 
 
 class Parser(Module):

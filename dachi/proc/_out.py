@@ -505,6 +505,7 @@ class ParsedOut(OutConv):
         )
 
     def template(self) -> str:
+
         return ''
 
 
@@ -618,7 +619,7 @@ class CSVOut(OutConv):
         return new_rows
 
     def render(self, data) -> str:
-        """
+        """Convert the data to a CSV string
 
         Args:
             data: An iterable of rows. If header is set to true

@@ -5,11 +5,9 @@ from typing import Self
 
 # 3rd party
 import pydantic
-from ..proc import Module
 
 # local
 from ..base._core import Renderable
-from ._render import render
 
 
 class _Final:
@@ -524,33 +522,8 @@ class ListDialog(BaseDialog):
 
 
 
-class MsgRenderer(Module):
 
-    @abstractmethod
-    def forward(self, msg: Msg) -> str:
-        pass
-
-
-class FieldRenderer(MsgRenderer):
-
-    def __init__(self, field: str='content', meta: bool=False):
-
-        self.field = field
-        self.meta = meta
-
-    def forward(self, msg: Msg) -> str:
-        
-        if self.meta:
-            return render(msg.m[self.field])
-        return render(msg[self.field])
-
-
-class TreeDialog(BaseDialog):
-
-    pass
-
-
-class DialogTurn(BaseDialog):
+class DialogTurn(pydantic.BaseModel):
     """A Dialog that uses a list data structure.
     """
     _message: Msg = pydantic.PrivateAttr()
@@ -573,7 +546,27 @@ class DialogTurn(BaseDialog):
         while node.parent is not None:
             node = node._parent
         return node
+
+    def leaf(self) -> 'DialogTurn':
+        """Get the leftmost leaf node below the current node
+
+        Returns:
+            DialogTurn: The leaf node
+        """
+        if len(self._children) == 0:
+            return self
+        return self._children[0].leaf()
     
+    @property
+    def ancestors(self) -> typing.Iterator['DialogTurn']:
+
+        turn = self
+        while True:
+            if turn._parent is None:
+                return
+            turn = turn._parent
+            yield turn
+        
     @property
     def parent(self) -> typing.Union['DialogTurn', None]:
         """get the parent to this dialgo turn
@@ -583,7 +576,6 @@ class DialogTurn(BaseDialog):
         """
         return self._parent
     
-    @property
     def children(self) -> typing.Iterator['DialogTurn']:
         """get the children to the dialog turn
 
@@ -591,55 +583,413 @@ class DialogTurn(BaseDialog):
             typing.List['DialogTurn']: The children
         """
         return iter(self._children)
-
-    def list_messages(self) -> typing.List[Msg]:
-        """List all messages up to this dialog turn
-
-        Returns:
-            typing.List[Msg]: the list of messages
-        """
-        return list(
-            msg for msg in self
-        )
     
-    def list_turns(self) -> typing.List['DialogTurn']:
-        """List all turns up to this dialog turn
+    def prepend(self, message: 'Msg') -> 'DialogTurn':
+        """
+
+        Args:
+            turn (DialogTurn): 
 
         Returns:
-            typing.List[Msg]: the list of messages
+            DialogTurn: 
         """
-        turns = []
+        turn = DialogTurn(message)
+        turn._parent = self._parent
+        turn._children.append(self)
+        self._parent = turn
+        return turn
+    
+    def append(self, message: 'Msg') -> 'DialogTurn':
+        """
+
+        Args:
+            message (Msg): _description_
+
+        Returns:
+            DialogTurn: _description_
+        """
+        turn = DialogTurn(message)
+        turn._parent = self
+        self._children.append(turn)
+
+    def ascend(self, count: int):
+        i = 0
         turn = self
         while True:
-            turns.append(turn)
-            turn = turn.parent
-            if turn is None:
-                break
-        return list(reversed(turns))
+            if i == count:
+                return turn._message
+            if turn._parent is None:
+                raise RuntimeError(
+                    "There are only "
+                    f"{i} ancestors yet"
+                    f"you passed {count}"
+                )
+            turn = turn._parent
+            i += 1
 
-    def __iter__(self) -> typing.Iterator[Msg]:
+    # def list_messages(self) -> typing.List[Msg]:
+    #     """List all messages up to this dialog turn
+
+    #     Returns:
+    #         typing.List[Msg]: the list of messages
+    #     """
+    #     return list(
+    #         msg for msg in self
+    #     )
+    
+    # def list_turns(self) -> typing.List['DialogTurn']:
+    #     """List all turns up to this dialog turn
+
+    #     Returns:
+    #         typing.List[Msg]: the list of messages
+    #     """
+    #     turns = []
+    #     turn = self
+    #     while True:
+    #         turns.append(turn)
+    #         turn = turn.parent
+    #         if turn is None:
+    #             break
+    #     return list(reversed(turns))
+
+    # def __iter__(self) -> typing.Iterator[Msg]:
+    #     """Iterate over each message in the dialog
+    #     up to the current position
+
+    #     Yields:
+    #         Iterator[typing.Iterator[Msg]]: Each message in the dialog
+    #     """
+    #     node = self
+    #     nodes = []
+    #     while True:
+    #         nodes.append(node)
+    #         if node.parent is None:
+    #             break
+    #         node = node.parent
+    #     for node in reversed(nodes):
+    #         yield node.message
+
+    # def child(self, idx: int) -> Msg:
+
+    #     return self._children[idx]
+
+    # def __add__(self, other: 'BaseDialog') -> 'DialogTurn':
+    #     """Concatenate two dialogs together
+
+    #     Args:
+    #         other (Dialog): The other dialog to concatenate
+
+    #     Returns:
+    #         Dialog: The concatenated dialog
+    #     """
+    #     cur = self
+    #     for node in other:
+    #         cur = cur.append(node)
+    #     return cur
+
+    # def __getitem__(self, idx) -> Msg:
+    #     """Retrieve a value from the dialog
+
+    #     Args:
+    #         idx : The index to add at
+
+    #     Returns:
+    #         Msg: The message in the dialog
+    #     """
+    #     return self.list_messages()[idx]
+
+    # def __setitem__(self, idx, message) -> Self:
+    #     """Set idx with a message
+
+    #     Args:
+    #         idx: The index to set
+    #         message: The message to set
+
+    #     Returns:
+    #         Dialog: The updated dialog
+    #     """
+    #     turn = self.index(idx)
+    #     turn.message = message
+    #     return self
+    
+    # def index(self, idx: int) -> 'DialogTurn':
+    #     turns = self.list_turns()
+    #     return turns[idx]
+    
+
+    # def find_in_children(self, message: Msg) -> 'DialogTurn':
+
+    #     if self._message == message:
+    #         return self
+
+    #     result = None
+    #     for child in self._children:
+    #         result = result or child.find_in_children(message)
+
+    #     return result
+    
+    # @property
+    # def message(self) -> Msg:
+    #     return self._message
+    
+    # def find(self, message: Msg) -> 'DialogTurn':
+
+    #     return self.root().find_in_children(message)
+
+    # def pop(self, index: int, get_msg: bool=False) -> typing.Union['ListDialog', Msg]:
+    #     """Remove a value from the dialog
+
+    #     Args:
+    #         index (int): The index to pop
+    #     """
+    #     turn = self.index(index)
+    #     parent = turn._parent
+    #     turn._parent = None
+    #     for child in turn._children:
+    #         child._parent = parent
+    #     turn._children = []
+    #     if parent is not None:
+    #         parent._children = turn._children
+    #     if get_msg:
+    #         return self, turn.message
+    #     return self
+
+    # def remove(self, message: Msg):
+    #     """Remove a message from the dialog
+
+    #     Args:
+    #         message (Msg): The message to remove
+    #     """
+    #     turn = self.find(message)
+    #     if turn is None:
+    #         raise KeyError(
+    #             f'There is no message {message} in'
+    #         )
+
+    # def extend(self, dialog: typing.Union['BaseDialog', typing.List[Msg]]):
+    #     """Extend the dialog with another dialog or a list of messages
+
+    #     Args:
+    #         dialog (typing.Union[&#39;Dialog&#39;, typing.List[Msg]]): _description_
+    #     """
+    #     if isinstance(dialog, Msg):
+    #         dialog = [dialog]
+    #     node = self
+    #     for turn in dialog:
+    #         node = node.append(turn)
+    #     return node
+
+    # def __len__(self) -> int:
+    #     """Get the size of the dialog
+
+    #     Returns:
+    #         int: the number of turns in the dialog
+    #     """
+    #     return len(self.list_messages())
+        
+    # def clone(self) -> 'DialogTurn':
+    #     """Clones the entire tree including the root
+
+    #     Returns:
+    #         Dialog: A dialog cloned with shallow copying of the messages
+    #     """
+    #     root = self.root()
+    #     return root.clone_sub()
+    
+    # def clone_sub(self) -> 'DialogTurn':
+    #     """clone the tree lying below this tree
+
+    #     Returns:
+    #         DialogTurn: The sub tree
+    #     """
+    #     cloned_self = DialogTurn(
+    #         self.message
+    #     )
+    #     for child in self.children:
+
+    #         cloned_child = child.clone_sub()
+    #         cloned_self._children.append(cloned_child)
+    #         cloned_child._parent = cloned_self
+
+    #     return cloned_self
+
+    # def depth_iter(self) -> typing.Iterator['DialogTurn']:
+
+    #     for child in self.children:
+    #         yield child
+    #         for turn in child.breadth_iter():
+    #             yield child
+
+    # def append(self, message: Msg) -> 'DialogTurn':
+    #     """Add a message to the end of the dialog
+
+    #     Args:
+    #         message (Msg): The message to add
+    #         replace (bool, optional): Whether to replace at the index. Defaults to False.
+
+    #     Raises:
+    #         ValueError: If the index is not correct
+    #     """
+    #     turn = DialogTurn(
+    #         message=message, 
+    #         parent=self
+    #     )
+    #     self._children.append(turn)
+    #     return turn
+
+    # def insert(self, idx: int, message: Msg) -> Self:
+    #     """Add a message to the dialog
+
+    #     Args:
+    #         message (Msg): The message to add
+    #         ind (typing.Optional[int], optional): The index to add. Defaults to None.
+    #         replace (bool, optional): Whether to replace at the index. Defaults to False.
+
+    #     Raises:
+    #         ValueError: If the index is not correct
+    #     """
+    #     turn = self.index(idx)
+    #     inserted = DialogTurn(
+    #         message=message,
+    #         parent=turn._parent,
+    #         children=[turn]
+    #     )
+    #     if turn._parent is not None:
+    #         turn._parent._children.remove(turn)
+    #         turn._parent._children.append(inserted)
+    #     turn._parent = inserted
+    #     return inserted
+
+    # def replace(self, message: Msg, idx: int) -> 'BaseDialog':
+    #     """Add a message to the dialog
+
+    #     Args:
+    #         message (Msg): The message to add
+    #         idx (typing.Optional[int], optional): The index to add. Defaults to None.
+    #         replace (bool, optional): Whether to replace at the index. Defaults to False.
+
+    #     Raises:
+    #         ValueError: If the index is not correct
+    #     """
+    #     turn = self.index(idx)
+    #     inserted = DialogTurn(
+    #         message=message,
+    #         parent=turn._parent,
+    #         children=turn._children
+    #     )
+    #     for child in inserted._children:
+    #         child._parent = inserted
+    #     if turn._parent is not None:
+    #         turn._parent._children.remove(turn)
+    #         turn._parent._children.append(inserted)
+
+    #     turn._children = []
+    #     turn._parent = None
+    #     return inserted
+
+    # def __add__(self, other: BaseDialog | Msg) -> 'ListDialog':
+    #     """Concatenate two dialogs together
+
+    #     Args:
+    #         other (Dialog): The other dialog to concatenate
+
+    #     Returns:
+    #         Dialog: The concatenated dialog
+    #     """
+    #     if isinstance(other, typing.List):
+    #         return ListDialog(
+    #             self.list_messages() + other
+    #         )
+    #     return ListDialog(
+    #         self.list_messages() + other.aslist()
+    #     )
+
+
+class TreeDialog(BaseDialog):
+
+    _root: DialogTurn = pydantic.PrivateAttr(default=None)
+    _leaf: DialogTurn = pydantic.PrivateAttr(default=None)
+    _indices: typing.List = pydantic.PrivateAttr(default=list)
+    _counts: typing.List = pydantic.PrivateAttr(default=list)
+
+    def __init__(
+        self, leaf: DialogTurn=None
+    ):
+        """Create a dialog
+
+        Args:
+            messages: The messages
+        """
+        super().__init__()
+        self._leaf = leaf
+        self._indices = []
+        self._counts = []
+        if leaf is None:
+            self._root = None
+        else:
+            self._root = leaf.root()
+        self._update()
+
+    def ascend(self, count: int):
+        
+        self._leaf = self._leaf.ascend(count)
+        self._update()
+
+    def sibling(self, idx: int):
+    
+        if self._leaf.parent is None:
+            raise RuntimeError(
+
+            )
+        self._leaf = self._leaf.parent._children[idx]
+        self._update()
+
+    def _indices(self):
+
+        indices = []
+        turn = self._leaf
+        for ancestor in self._leaf.ancestors:
+            idx = ancestor._children.index(turn)
+            indices.append(idx)
+        return indices
+
+    @property
+    def indices(self):
+        return [*self._indices]
+    
+    @property
+    def counts(self):
+        return [*self._counts]
+
+    def _counts(self) -> typing.List[int]:
+
+        return list(
+            reversed(
+                len(ancestor._children) 
+                for ancestor in self._leaf.ancestors
+            )
+        )
+
+    def list_messages(self) -> typing.List[Msg]:
         """Iterate over each message in the dialog
         up to the current position
 
         Yields:
             Iterator[typing.Iterator[Msg]]: Each message in the dialog
         """
-        node = self
-        nodes = []
-        while True:
-            nodes.append(node)
-            if node.parent is None:
-                break
-            node = node.parent
-        for node in reversed(nodes):
-            yield node.message
+        return list(self)
 
-    def child(self, idx: int) -> Msg:
+    def __iter__(self) -> typing.Iterator[Msg]:
+        """Iterate over each message in the dialog
 
-        return self._children[idx]
+        Yields:
+            Iterator[typing.Iterator[Msg]]: Each message in the dialog
+        """
+        for message in reversed(self._leaf.ancestors):
+            yield message
 
-    def __add__(self, other: 'BaseDialog') -> 'DialogTurn':
-        """Concatenate two dialogs together
+    def __add__(self, other: BaseDialog | Msg) -> 'ListDialog':
+        """Add the leaf to 
 
         Args:
             other (Dialog): The other dialog to concatenate
@@ -647,10 +997,9 @@ class DialogTurn(BaseDialog):
         Returns:
             Dialog: The concatenated dialog
         """
-        cur = self
-        for node in other:
-            cur = cur.append(node)
-        return cur
+        clone = self.clone()
+        clone.extend(other)
+        return clone
 
     def __getitem__(self, idx) -> Msg:
         """Retrieve a value from the dialog
@@ -661,7 +1010,8 @@ class DialogTurn(BaseDialog):
         Returns:
             Msg: The message in the dialog
         """
-        return self.list_messages()[idx]
+        ancestors = list(self._leaf.ancestors)
+        return ancestors[idx]._message
 
     def __setitem__(self, idx, message) -> Self:
         """Set idx with a message
@@ -673,74 +1023,110 @@ class DialogTurn(BaseDialog):
         Returns:
             Dialog: The updated dialog
         """
-        turn = self.index(idx)
-        turn.message = message
-        return self
-    
-    def index(self, idx: int) -> 'DialogTurn':
+        ancestors = list(self._leaf.ancestors())
+        ancestors[idx]._message = message
+        return message
 
-        # if idx < 0:
-        #     node = self
-        #     while idx < 0:
-        #         node = node._parent
-        #         if node is None:
-        #             raise IndexError(
-        #                 f'Index {idx} is out of bounds for the Dialog'
-        #             )
-        #         idx += 1
-        #     return node
+    def clone(self) -> 'ListDialog':
+        """Clones the dialog
 
-        turns = self.list_turns()
-        return turns[idx]
-    
-    def find_in_children(self, message: Msg) -> 'DialogTurn':
+        Returns:
+            Dialog: A dialog cloned with shallow copying of the messages
+        """
+        if self._root is None:
+            return TreeDialog()
 
-        if self._message == message:
-            return self
+        # Perform a BFS to clone the tree
+        root_clone = DialogTurn(self._root._message)
+        queue = [(self._root, root_clone)]
 
-        result = None
-        for child in self._children:
-            result = result or child.find_in_children(message)
+        while queue:
+            original_node, cloned_node = queue.pop(0)
 
-        return result
-    
-    @property
-    def message(self) -> Msg:
-        return self._message
-    
-    def find(self, message: Msg) -> 'DialogTurn':
+            for child in original_node._children:
+                child_clone = DialogTurn(child._message)
+                cloned_node._children.append(child_clone)
+                child_clone._parent = cloned_node
+                queue.append((child, child_clone))
 
-        return self.root().find_in_children(message)
+        return TreeDialog(leaf=root_clone.leaf())
 
-    def pop(self, index: int, get_msg: bool=False) -> typing.Union['ListDialog', Msg]:
+    def pop(self, idx: int, get_msg: bool=False) -> typing.Union['ListDialog', Msg]:
         """Remove a value from the dialog
 
         Args:
             index (int): The index to pop
         """
-        turn = self.index(index)
-        parent = turn._parent
-        turn._parent = None
-        for child in turn._children:
-            child._parent = parent
-        turn._children = []
-        if parent is not None:
-            parent._children = turn._children
+        ancestors = list(self._leaf.ancestors)
+        target = ancestors[idx]
+        
+        for turn in target._children:
+            turn._parent = target._parent
+            target._children.append(turn)
+        
+        if target._parent is not None:
+            target._parent._children.remove(target)
+        
+        target._parent = None
+        target._children = []
+        if self._leaf is target:
+            if turn.parent is not None:
+                self._leaf = turn
+            elif len(turn._children) > 0:
+                self._leaf = turn._children[0]
+            else:
+                self._leaf = None
+        self._update()
         if get_msg:
-            return self, turn.message
+            return self, target._message
         return self
+
+    def _bfs_find(self, root: DialogTurn, message: Msg) -> typing.Optional[DialogTurn]:
+        """Perform a breadth-first search to find a message in the tree.
+
+        Args:
+            root (DialogTurn): The root of the tree to search.
+            message (Msg): The message to find.
+
+        Returns:
+            typing.Optional[DialogTurn]: The DialogTurn containing the message, or None if not found.
+        """
+        queue = [root]
+        while queue:
+            current = queue.pop(0)
+            if current._message == message:
+                return current
+            queue.extend(current._children)
+        return None
 
     def remove(self, message: Msg):
         """Remove a message from the dialog
 
+        If turn is the current "leaf" then
+        it will set the turn to the parent if that is not None
+        Or the first child or None
+
         Args:
             message (Msg): The message to remove
         """
-        turn = self.find(message)
-        if turn is None:
-            raise KeyError(
-                f'There is no message {message} in'
-            )
+        turn = self._bfs_find(self._root, message)
+        for child in turn._children:
+            child.parent = turn.parent
+            if turn.parent is not None:
+                turn.parent.append(child)
+        if turn.parent is not None:
+            turn.parent._children.remove(turn)
+        if self._leaf is turn:
+            if turn.parent is not None:
+                self._leaf = turn
+            elif len(turn._children) > 0:
+                self._leaf = turn._children[0]
+            else:
+                self._leaf = None
+        turn.parent = None
+        turn._children.clear()
+        self._update()
+        return self
 
     def extend(self, dialog: typing.Union['BaseDialog', typing.List[Msg]]):
         """Extend the dialog with another dialog or a list of messages
@@ -748,12 +1134,11 @@ class DialogTurn(BaseDialog):
         Args:
             dialog (typing.Union[&#39;Dialog&#39;, typing.List[Msg]]): _description_
         """
-        if isinstance(dialog, Msg):
-            dialog = [dialog]
-        node = self
-        for turn in dialog:
-            node = node.append(turn)
-        return node
+        for msg in dialog:
+            turn = self._leaf.append(msg)
+            self._leaf = turn
+        
+        self._update()
 
     def __len__(self) -> int:
         """Get the size of the dialog
@@ -761,42 +1146,9 @@ class DialogTurn(BaseDialog):
         Returns:
             int: the number of turns in the dialog
         """
-        return len(self.list_messages())
+        return len(self._counts)
         
-    def clone(self) -> 'DialogTurn':
-        """Clones the entire tree including the root
-
-        Returns:
-            Dialog: A dialog cloned with shallow copying of the messages
-        """
-        root = self.root()
-        return root.clone_sub()
-    
-    def clone_sub(self) -> 'DialogTurn':
-        """clone the tree lying below this tree
-
-        Returns:
-            DialogTurn: The sub tree
-        """
-        cloned_self = DialogTurn(
-            self.message
-        )
-        for child in self.children:
-
-            cloned_child = child.clone_sub()
-            cloned_self._children.append(cloned_child)
-            cloned_child._parent = cloned_self
-
-        return cloned_self
-
-    def depth_iter(self) -> typing.Iterator['DialogTurn']:
-
-        for child in self.children:
-            yield child
-            for turn in child.breadth_iter():
-                yield child
-
-    def append(self, message: Msg) -> 'DialogTurn':
+    def append(self, message: Msg) -> Self:
         """Add a message to the end of the dialog
 
         Args:
@@ -806,14 +1158,11 @@ class DialogTurn(BaseDialog):
         Raises:
             ValueError: If the index is not correct
         """
-        turn = DialogTurn(
-            message=message, 
-            parent=self
-        )
-        self._children.append(turn)
-        return turn
+        self._leaf = self._leaf.append(message)
+        self._update()
+        return self
 
-    def insert(self, idx: int, message: Msg) -> Self:
+    def insert(self, ind: int, message: Msg) -> Self:
         """Add a message to the dialog
 
         Args:
@@ -824,94 +1173,31 @@ class DialogTurn(BaseDialog):
         Raises:
             ValueError: If the index is not correct
         """
-        turn = self.index(idx)
-        inserted = DialogTurn(
-            message=message,
-            parent=turn._parent,
-            children=[turn]
-        )
-        if turn._parent is not None:
-            turn._parent._children.remove(turn)
-            turn._parent._children.append(inserted)
-        turn._parent = inserted
-        return inserted
-
-    def replace(self, message: Msg, idx: int) -> 'BaseDialog':
+        ancestors = list(self._leaf.ancestors())
+        turn = ancestors[ind]
+        turn.prepend(message)
+        self._update()
+        return self
+    
+    def replace(self, idx: int, message: Msg) -> 'BaseDialog':
         """Add a message to the dialog
 
         Args:
-            message (Msg): The message to add
             idx (typing.Optional[int], optional): The index to add. Defaults to None.
+            message (Msg): The message to add
             replace (bool, optional): Whether to replace at the index. Defaults to False.
 
         Raises:
             ValueError: If the index is not correct
         """
-        turn = self.index(idx)
-        inserted = DialogTurn(
-            message=message,
-            parent=turn._parent,
-            children=turn._children
-        )
-        for child in inserted._children:
-            child._parent = inserted
-        if turn._parent is not None:
-            turn._parent._children.remove(turn)
-            turn._parent._children.append(inserted)
-
-        turn._children = []
-        turn._parent = None
-        return inserted
-
-    def __add__(self, other: BaseDialog | Msg) -> 'ListDialog':
-        """Concatenate two dialogs together
-
-        Args:
-            other (Dialog): The other dialog to concatenate
-
-        Returns:
-            Dialog: The concatenated dialog
-        """
-        if isinstance(other, typing.List):
-            return ListDialog(
-                self.list_messages() + other
-            )
-        return ListDialog(
-            self.list_messages() + other.aslist()
-        )
-
-
-class MsgRenderer(Module):
-
-    @abstractmethod
-    def forward(self, msg: Msg | BaseDialog) -> str:
-        pass
-
-
-class FieldRenderer(MsgRenderer):
-
-    def __init__(self, field: str='content'):
-        """Renderer to render a specific field in the message
-
-        Args:
-            field (str, optional): The field name. Defaults to 'content'.
-        """
-        self.field = field
-
-    def forward(self, msg: Msg | BaseDialog) -> str:
-        """Render a message
-
-        Args:
-            msg (Msg): The message to render
-
-        Returns:
-            str: The result
-        """
-        messages = to_list_input(msg)
-        return '\n'.join(
-            f'{msg['role']}: {msg[self.field]}'
-            for msg in messages
-        )
+        ancestors = list(self._leaf.ancestors())
+        ancestors[idx]._message = message
+        self._update()
+        return self
+    
+    def _update(self):
+        self._counts()
+        self._indices()
 
 
 def exclude_messages(dialog: BaseDialog, val: typing.Union[typing.Any, typing.Set], field='role') -> ListDialog:

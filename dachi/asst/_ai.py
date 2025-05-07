@@ -5,14 +5,15 @@ import json
 
 # 3rd party
 import pydantic
-from abc import ABC, abstractmethod
+
+from ..proc import AsyncModule, Module, StreamModule, AsyncStreamModule
 
 # local
 from ..msg._messages import (
     Msg, BaseDialog, StreamMsg,
     END_TOK, to_list_input
 )
-from ._msg import MsgProc
+from ..proc._msg import MsgProc
 from ._asst import Assistant
 from ..utils import (
     to_async_function, 
@@ -20,7 +21,7 @@ from ..utils import (
     is_generator_function,
     coalesce, UNDEFINED,
 )
-from._resp import RespConv
+from..proc._resp import RespConv
 
 
 S = typing.TypeVar('S', bound=pydantic.BaseModel)
@@ -118,7 +119,8 @@ class ToolSet(object):
         return self.tools[name]
 
 
-class ToolCall(pydantic.BaseModel):
+
+class ToolCall(AsyncModule, Module, StreamModule, AsyncStreamModule, pydantic.BaseModel):
     """A response from the LLM that a tool was called
     """
     option: ToolOption = pydantic.Field(

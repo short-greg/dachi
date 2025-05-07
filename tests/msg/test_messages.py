@@ -1,4 +1,5 @@
 from dachi.msg import _messages as M
+from dachi import proc as P
 
 
 class TextMessage(M.Msg):
@@ -78,7 +79,7 @@ class TestListDialog:
     def test_render_creates_correct_string(self):
         message1 = M.Msg(role='assistant', content='Hello')
         message2 = M.Msg(role='user', content='Hi')
-        msg_renderer = M.FieldRenderer()
+        msg_renderer = P.FieldRenderer()
         dialog = M.ListDialog(
             messages=[message1, message2], 
         )

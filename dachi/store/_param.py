@@ -1,5 +1,6 @@
 # 1st party
 import typing
+from typing import TypeVar
 
 # 3rd party
 import numpy as np
@@ -7,8 +8,6 @@ import numpy as np
 # local
 from ..base import Renderable, Storable, Trainable
 from ..msg._render import render
-
-from typing import TypeVar
 
 
 T = TypeVar("T", bound=Trainable)
@@ -99,10 +98,17 @@ class Param(
         return self.text
     
 
-
 class ParamSet(object):
+    """A set of parameters
+    This is used to define a set of parameters
+    and their structure
+    """
 
     def __init__(self, params: typing.List[Param]):
+        """Instantiate a set of parameters
+        Args:
+            params (typing.List[Param]): The parameters to set
+        """
         super().__init__()
         self.params = params
 
@@ -156,6 +162,13 @@ class ParamSet(object):
         return data
     
     def param_structure(self):
+        """Update the text for the parameter
+        If not in "training" mode will not update
+        Args:
+            text (str): The text to update with
+        Returns:
+            True if updated and Fals if not (not in training mode)
+        """
 
         data = {}
         for param in self.params:
