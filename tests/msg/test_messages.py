@@ -190,25 +190,20 @@ class TestDialogTurn:
         child_turn = root_turn.append(message2)
         assert child_turn.root() is root_turn
 
-    def test_messages_returns_all_messages(self):
+    def test_depth_returns_2(self):
+        message1 = M.Msg(role='assistant', content='Hello')
+        message2 = M.Msg(role='user', content='Hi')
+        root_turn = M.DialogTurn(message=message1)
+        leaf_turn = root_turn.append(message2)
+        assert leaf_turn.depth() == 2
+
+    def test_depth_returns_1_if_root(self):
         message1 = M.Msg(role='assistant', content='Hello')
         message2 = M.Msg(role='user', content='Hi')
         root_turn = M.DialogTurn(message=message1)
         root_turn.append(message2)
-        messages = root_turn.list_messages()
-        assert len(messages) == 1
-        assert messages[0] == root_turn.message
 
-    def test_iter_yields_messages_in_order(self):
-        message1 = M.Msg(role='assistant', content='Hello')
-        message2 = M.Msg(role='user', content='Hi')
-        root_turn = M.DialogTurn(message=message1)
-        child_turn = root_turn.append(message2)
-
-        messages = list(child_turn)
-        assert len(messages) == 2
-        assert messages[0] == message1
-        assert messages[1] == message2
+        assert root_turn.depth() == 1
 
     def test_child_returns_correct_child(self):
         message1 = M.Msg(role='assistant', content='Hello')
@@ -222,81 +217,376 @@ class TestDialogTurn:
         message2 = M.Msg(role='user', content='Hi')
         root_turn = M.DialogTurn(message=message1)
         child_turn = root_turn.append(message2)
-        found_turn = root_turn.find(message2)
+        found_turn = root_turn.find(child_turn)
         assert found_turn is child_turn
 
-    def test_pop_removes_and_returns_message(self):
+    def test_prune_removes_and_returns_message(self):
+        message1 = M.Msg(role='assistant', content='Hello')
+        message2 = M.Msg(role='user', content='Hi')
+        message3 = M.Msg(role='user', content='Hi')
+        root_turn = M.DialogTurn(message=message1)
+        child_turn = root_turn.append(message2)
+        grandchild_turn = child_turn.append(message3)
+        pruned = root_turn.prune(0)
+        assert pruned.message == message2
+        assert grandchild_turn.depth() == 2
+
+    def test_prune_results_in_one_child(self):
+        message1 = M.Msg(role='assistant', content='Hello')
+        message2 = M.Msg(role='user', content='Hi')
+        message3 = M.Msg(role='user', content='Hi')
+        root_turn = M.DialogTurn(message=message1)
+        root_turn.append(message2)
+        root_turn.append(message3)
+        root_turn.prune(0)
+        assert root_turn.n_children == 1
+
+    def test_leaf_returns_self_if_no_children(self):
+        message = M.Msg(role='assistant', content='Hello')
+        turn = M.DialogTurn(message=message)
+        assert turn.leaf() is turn
+
+    def test_leaf_returns_leftmost_leaf(self):
+        message1 = M.Msg(role='assistant', content='Hello')
+        message2 = M.Msg(role='user', content='Hi')
+        message3 = M.Msg(role='system', content='Goodbye')
+        root_turn = M.DialogTurn(message=message1)
+        child_turn = root_turn.append(message2)
+        child_turn = child_turn.append(message3)
+        assert root_turn.leaf() is child_turn
+
+    def test_ancestors_returns_correct_order(self):
+        message1 = M.Msg(role='assistant', content='Hello')
+        message2 = M.Msg(role='user', content='Hi')
+        message3 = M.Msg(role='system', content='Goodbye')
+        root_turn = M.DialogTurn(message=message1)
+        child_turn = root_turn.append(message2)
+        grandchild_turn = child_turn.append(message3)
+        ancestors = list(grandchild_turn.ancestors)
+        assert ancestors == [child_turn, root_turn]
+
+    def test_prepend_creates_new_parent(self):
+        message1 = M.Msg(role='assistant', content='Hello')
+        message2 = M.Msg(role='system', content='Goodbye')
+        turn = M.DialogTurn(message=message1)
+        new_parent = turn.prepend(message2)
+        assert new_parent.message == message2
+        assert new_parent.child(0) is turn
+        assert turn.parent is new_parent
+
+    def test_append_creates_new_child(self):
+        message1 = M.Msg(role='assistant', content='Hello')
+        message2 = M.Msg(role='user', content='Hi')
+        turn = M.DialogTurn(message=message1)
+        child_turn = turn.append(message2)
+        assert child_turn.message == message2
+        assert child_turn.parent is turn
+        assert turn.child(0) is child_turn
+
+    def test_ascend_raises_error_if_too_high(self):
+        message = M.Msg(role='assistant', content='Hello')
+        turn = M.DialogTurn(message=message)
+        try:
+            turn.ascend(1)
+        except ValueError as e:
+            assert str(e) == "Cannot ascend 1.Only 0 parents."
+
+    def test_ascend_returns_correct_ancestor(self):
         message1 = M.Msg(role='assistant', content='Hello')
         message2 = M.Msg(role='user', content='Hi')
         root_turn = M.DialogTurn(message=message1)
         child_turn = root_turn.append(message2)
-        dialog, popped_message = child_turn.pop(1, get_msg=True)
-        assert popped_message == message2
-        assert len(dialog.list_messages()) == 1
+        assert child_turn.ascend(1) is root_turn
 
-    def test_remove_deletes_message(self):
+    def test_find_val_locates_message(self):
+        message1 = M.Msg(role='assistant', content='Hello')
+        message2 = M.Msg(role='user', content='Hi')
+        root_turn = M.DialogTurn(message=message1)
+        child_turn = root_turn.append(message2)
+        found_turn = root_turn.find_val(message2)
+        assert found_turn is child_turn
+
+    def test_find_val_returns_none_if_not_found(self):
+        message1 = M.Msg(role='assistant', content='Hello')
+        message2 = M.Msg(role='user', content='Hi')
+        root_turn = M.DialogTurn(message=message1)
+        child_turn = M.DialogTurn(message=message2)
+        child_turn = root_turn.append(child_turn)
+        assert child_turn.find_val(message1) is None
+
+    def test_prune_removes_correct_child(self):
+        message1 = M.Msg(role='assistant', content='Hello')
+        message2 = M.Msg(role='user', content='Hi')
+        root_turn = M.DialogTurn(message=message1)
+        child_turn = root_turn.append(message2)
+        pruned = root_turn.prune(0)
+        assert pruned is child_turn
+        assert pruned.parent is None
+        assert root_turn.n_children == 0
+
+    def test_prune_raises_error_for_invalid_index(self):
+        message = M.Msg(role='assistant', content='Hello')
+        root_turn = M.DialogTurn(message=message)
+        try:
+            root_turn.prune(0)
+        except IndexError as e:
+            assert str(e) == "Index out of range for pruning."
+
+    def test_sibling_returns_correct_sibling(self):
+        message1 = M.Msg(role='assistant', content='Hello')
+        message2 = M.Msg(role='user', content='Hi')
+        message3 = M.Msg(role='system', content='Goodbye')
+        root_turn = M.DialogTurn(message=message1)
+        child1 = root_turn.append(message2)
+        child2 = root_turn.append(message3)
+        assert child1.sibling(1) is child2
+
+    def test_sibling_raises_error_if_no_parent(self):
+        message = M.Msg(role='assistant', content='Hello')
+        turn = M.DialogTurn(message=message)
+        try:
+            turn.sibling(1)
+        except RuntimeError as e:
+            assert str(e) == "There is no parent so must be 1."
+
+    def test_n_children_returns_correct_count(self):
         message1 = M.Msg(role='assistant', content='Hello')
         message2 = M.Msg(role='user', content='Hi')
         root_turn = M.DialogTurn(message=message1)
         root_turn.append(message2)
-        root_turn.remove(message2)
-        assert len(root_turn.list_messages()) == 1
-        assert root_turn.list_messages()[0] == message1
+        assert root_turn.n_children == 1
 
-    def test_extend_adds_messages(self):
+    def test_n_siblings_returns_correct_count(self):
         message1 = M.Msg(role='assistant', content='Hello')
         message2 = M.Msg(role='user', content='Hi')
         message3 = M.Msg(role='system', content='Goodbye')
         root_turn = M.DialogTurn(message=message1)
-        child_turn = root_turn.append(message2)
-        child_turn = child_turn.extend([message3])
-        assert len(child_turn.list_messages()) == 3
-        assert child_turn.list_messages()[2] == message3
+        root_turn.append(message2)
+        root_turn.append(message3)
+        child_turn = root_turn.child(0)
+        assert child_turn.n_siblings == 2
 
-    def test_clone_creates_independent_copy(self):
-        message1 = M.Msg(role='assistant', content='Hello')
+    def test_sibling_returns_correct_sibling(self):
+        message1 = M.Msg(
+            role='assistant', 
+            content='Hello'
+        )
         message2 = M.Msg(role='user', content='Hi')
-        root_turn = M.DialogTurn(message=message1)
-        child_turn = root_turn.append(message2)
-        cloned_turn = child_turn.clone()
-        assert cloned_turn is not root_turn
-        assert cloned_turn.list_messages() == root_turn.list_messages()
+        message3 = M.Msg(role='user', content='Hi2')
+        root_turn = M.DialogTurn(
+            message=message1
+        )
+        child1 = root_turn.append(message2)
+        child2 = root_turn.append(message3)
+        assert child2.sibling(0) is child1
 
-    def test_append_adds_message(self):
-        message1 = M.Msg(role='assistant', content='Hello')
-        message2 = M.Msg(role='user', content='Hi')
-        root_turn = M.DialogTurn(message=message1)
-        appended_turn = root_turn.append(message2)
-        assert len(appended_turn.list_messages()) == 2
-        assert appended_turn._message == message2
 
-    def test_insert_inserts_message_at_position(self):
-        message1 = M.Msg(role='assistant', content='Hello')
-        message2 = M.Msg(role='user', content='Hi')
-        message3 = M.Msg(role='system', content='Goodbye')
-        root_turn = M.DialogTurn(message=message1)
-        child_turn = root_turn.append(message2)
-        inserted_turn = child_turn.insert(1, message3)
-        assert len(child_turn.list_messages()) == 3
-        assert child_turn.list_turns()[1] is inserted_turn
+class TestTreeDialog:
+
+    def test_initialization_creates_empty_dialog(self):
+        dialog = M.TreeDialog()
+        assert len(dialog) == 0
+        assert dialog._leaf is None
+        assert dialog._root is None
+
+    def test_append_adds_message_to_dialog(self):
+        dialog =M.TreeDialog()
+        message = M.Msg(role="assistant", content="Hello")
+        dialog.append(message)
+        assert len(dialog) == 1
+        assert dialog._leaf.message == message
+
+    def test_extend_with_list_of_messages(self):
+        dialog = M.TreeDialog()
+        messages = [
+            M.Msg(role="assistant", content="Hello"),
+            M.Msg(role="user", content="Hi")
+        ]
+        dialog.extend(messages)
+        assert len(dialog) == 2
+        # print(type(dialog[0]), type(messages[0]))
+        assert dialog[0] is messages[0]
+        assert dialog[1] is messages[1]
+
+    def test_extend_with_another_dialog(self):
+        dialog1 =M.TreeDialog()
+        dialog2 =M.TreeDialog()
+        message1 = M.Msg(role="assistant", content="Hello")
+        message2 = M.Msg(role="user", content="Hi")
+        dialog1.append(message1)
+        dialog2.append(message2)
+        dialog1.extend(dialog2)
+        assert len(dialog1) == 2
+        assert dialog1[1] == message2
 
     def test_replace_replaces_message_at_index(self):
-        message1 = M.Msg(role='assistant', content='Hello')
-        message2 = M.Msg(role='user', content='Hi')
-        message3 = M.Msg(role='system', content='Goodbye')
-        root_turn = M.DialogTurn(message=message1)
-        child_turn = root_turn.append(message2)
-        replaced_turn = child_turn.replace(message3, 1)
-        assert replaced_turn.list_messages()[1] == message3
+        dialog =M.TreeDialog()
+        message1 = M.Msg(
+            role="assistant", 
+            content="Hello"
+        )
+        message2 = M.Msg(
+            role="user", content="Hi"
+        )
+        dialog.append(message1)
+        dialog.replace(0, message2)
+        assert dialog[0] == message2
 
-    def test_replace_replaces_message_at_parent_index(self):
-        message1 = M.Msg(role='assistant', content='Hello')
-        message2 = M.Msg(role='user', content='Hi')
-        message3 = M.Msg(role='system', content='Goodbye')
-        root_turn = M.DialogTurn(message=message1)
-        child_turn = root_turn.append(message2)
-        child_turn.replace(message3, 0)
-        assert child_turn.list_messages()[1] == message2
+    def test_insert_inserts_message_at_index(self):
+        dialog = M.TreeDialog()
+        message1 = M.Msg(role="assistant", content="Hello")
+        message2 = M.Msg(role="user", content="Hi")
+        dialog.append(message1)
+        dialog.insert(0, message2)
+        assert len(dialog) == 2
+        assert dialog[0] == message2
+
+    # def test_pop_removes_message_at_index(self):
+    #     dialog = M.TreeDialog()
+    #     message1 = M.Msg(role="assistant", content="Hello")
+    #     message2 = M.Msg(role="user", content="Hi")
+    #     dialog.extend([message1, message2])
+    #     dialog.pop(0)
+    #     assert len(dialog) == 1
+    #     assert dialog[0] == message2
+
+    def test_clone_creates_independent_copy(self):
+        dialog = M.TreeDialog()
+        message1 = M.Msg(role="assistant", content="Hello")
+        message2 = M.Msg(role="user", content="Hi")
+        dialog.extend([message1, message2])
+        cloned_dialog = dialog.clone()
+        assert cloned_dialog is not dialog
+        assert len(cloned_dialog) == len(dialog)
+        assert cloned_dialog[0] == dialog[0]
+
+    def test_clone_creates_independent_copy_with_none(self):
+        dialog = M.TreeDialog()
+        cloned_dialog = dialog.clone()
+        assert cloned_dialog is not dialog
+        assert len(cloned_dialog) == 0
+
+    def test_clone_creates_independent_copy_with_complex(self):
+        dialog = M.TreeDialog()
+        message1 = M.Msg(role="assistant", content="Hello")
+        message2 = M.Msg(role="user", content="Hi")
+        message3 = M.Msg(role="user", content="Yo")
+        message4 = M.Msg(role="user", content="Mo")
+        dialog.extend([message1, message2])
+        dialog.ascend(1)
+        dialog.extend([message3, message4])
+        cloned_dialog = dialog.clone()
+        assert cloned_dialog is not dialog
+        assert len(cloned_dialog) == len(dialog)
+        assert len(cloned_dialog) == 3
+        assert cloned_dialog[2] == dialog[2]
+
+    def test_remove_deletes_message(self):
+        pass
+        # dialog = M.TreeDialog()
+        # message1 = M.Msg(role="assistant", content="Hello")
+        # message2 = M.Msg(role="user", content="Hi")
+        # dialog.extend([message1, message2])
+        # dialog.remove(message1)
+        # assert len(dialog) == 1
+        # assert dialog[0] == message2
+
+    # def test_list_messages_returns_all_messages(self):
+    #     dialog = M.TreeDialog()
+    #     message1 = M.Msg(role="assistant", content="Hello")
+    #     message2 = M.Msg(role="user", content="Hi")
+    #     dialog.extend([message1, message2])
+    #     messages = dialog.list_messages()
+    #     assert len(messages) == 2
+    #     assert messages[0] == message1
+    #     assert messages[1] == message2
+
+    def test_indices_property_returns_correct_indices(self):
+        dialog = M.TreeDialog()
+        message1 = M.Msg(role="assistant", content="Hello")
+        message2 = M.Msg(role="user", content="Hi")
+        dialog.extend([message1, message2])
+        assert dialog.indices == [0, 0]
+
+    def test_indices_property_returns_correct_indices_with2(self):
+        dialog = M.TreeDialog()
+        message1 = M.Msg(role="assistant", content="Hello")
+        message2 = M.Msg(role="user", content="Hi")
+        dialog.extend([message1, message2])
+        dialog.ascend(1)
+        dialog.append(M.Msg(role="user", content="Hi"))
+        assert dialog.indices == [0, 1]
+
+    def test_counts_property_returns_correct_counts(self):
+        dialog = M.TreeDialog()
+        message1 = M.Msg(role="assistant", content="Hello")
+        message2 = M.Msg(role="user", content="Hi")
+        dialog.extend([message1, message2])
+        assert dialog.counts == [1, 1]
+
+    def test_counts_property_returns_correct_counts_with2(self):
+        dialog = M.TreeDialog()
+        message1 = M.Msg(role="assistant", content="Hello")
+        message2 = M.Msg(role="user", content="Hi")
+        dialog.extend([message1, message2])
+        dialog.ascend(1)
+        dialog.append(M.Msg(role="user", content="Hi"))
+        assert dialog.counts == [1, 2]
+
+    def test_ascend_moves_leaf_up(self):
+        dialog = M.TreeDialog()
+        message1 = M.Msg(role="assistant", content="Hello")
+        message2 = M.Msg(role="user", content="Hi")
+        dialog.extend([message1, message2])
+        dialog.ascend(1)
+        assert dialog._leaf.message == message1
+
+    def test_sibling_moves_to_correct_sibling(self):
+        dialog = M.TreeDialog()
+        message1 = M.Msg(role="assistant", content="Hello")
+        message2 = M.Msg(role="user", content="Hi")
+        dialog.extend([message1, message2])
+        dialog.ascend(1)
+        msg3 = M.Msg(role="user", content="Hi")
+        dialog.append(msg3)
+        dialog.sibling(1)
+        assert dialog._leaf.message is msg3
+
+    def test_len_returns_correct_count(self):
+        dialog = M.TreeDialog()
+        message1 = M.Msg(role="assistant", content="Hello")
+        message2 = M.Msg(role="user", content="Hi")
+        dialog.extend([message1, message2])
+        assert len(dialog) == 2
+
+    def test_iter_yields_all_messages(self):
+        dialog = M.TreeDialog()
+        message1 = M.Msg(role="assistant", content="Hello")
+        message2 = M.Msg(role="user", content="Hi")
+        dialog.extend([message1, message2])
+        messages = list(iter(dialog))
+        assert len(messages) == 2
+        assert messages[0] == message1
+        assert messages[1] == message2
+
+    def test_getitem_retrieves_correct_message(self):
+        dialog = M.TreeDialog()
+        message1 = M.Msg(role="assistant", content="Hello")
+        message2 = M.Msg(role="user", content="Hi")
+        dialog.extend([message1, message2])
+        assert dialog[0] == message1
+        assert dialog[1] == message2
+
+    def test_setitem_updates_message_at_index(self):
+        dialog = M.TreeDialog()
+        message1 = M.Msg(
+            role="assistant", 
+            content="Hello"
+        )
+        message2 = M.Msg(role="user", content="Hi")
+        dialog.append(message1)
+        dialog[0] = message2
+        assert dialog[0] == message2
 
 
 class TestExcludeRole:

@@ -17,6 +17,11 @@ class ParamSet(object):
         """
         self._params = list(params)
 
+    def __iter__(self) -> Param:
+
+        for param in self._params:
+            yield param
+
 
 def update_params(param_set: ParamSet, update: typing.List[typing.Dict]):
     """_summary_

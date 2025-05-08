@@ -41,9 +41,10 @@ class ToolOption(pydantic.BaseModel):
         f (typing.Callable[[typing.Any], typing.Any]): The function to be executed by the tool.
         kwargs (typing.Dict): A dictionary of additional keyword arguments to be passed to the function.
     """
-
     name: str
-    f: typing.Callable[[typing.Any], typing.Any]
+    f: typing.Callable[
+        [typing.Any], typing.Any
+    ]
     kwargs: typing.Dict
 
     def to_input(self) -> typing.Dict:
@@ -119,8 +120,12 @@ class ToolSet(object):
         return self.tools[name]
 
 
-
-class ToolCall(AsyncModule, Module, StreamModule, AsyncStreamModule, pydantic.BaseModel):
+class ToolCall(
+    AsyncModule, Module, 
+    StreamModule, 
+    AsyncStreamModule, 
+    pydantic.BaseModel
+):
     """A response from the LLM that a tool was called
     """
     option: ToolOption = pydantic.Field(
