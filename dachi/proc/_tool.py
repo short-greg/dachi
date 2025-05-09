@@ -10,7 +10,12 @@ import inspect
 import pydantic
 from pydantic import create_model
 from pydantic import BaseModel
-from ..proc import AsyncModule, Module, StreamModule, AsyncStreamModule
+from ..proc import AsyncModule, Module
+from inspect import signature, Parameter
+from typing import Any, Dict, Callable, get_type_hints
+from pydantic import create_model, BaseModel
+import pydantic
+
 
 # local
 from ..utils import (
@@ -81,88 +86,6 @@ class ToolDef(pydantic.BaseModel):
     def is_async(self) -> bool:
 
         return is_async_function(self.fn)
-    
-    # def to_tool_call(self, *args, **kwargs) -> typing.Union['ToolCall', 'AsyncToolCall']:
-
-    #     print(args, kwargs)
-    #     bound_args = signature(self.fn).bind_partial(*args, **kwargs)
-    #     bound_args.apply_defaults()
-    #     input_data = self.input_model(**bound_args.arguments)
-    #     print(input_data)
-    #     if self.is_async():
-    #         return AsyncToolCall(
-    #             option=self,
-    #             inputs=input_data
-    #         )
-    #     return ToolCall(
-    #         option=self, inputs=input_data
-    #     )
-
-    # def to_tool_call(self, *args, **kwargs):
-    #     fn_sig = signature(self.fn)
-    #     params = list(fn_sig.parameters.values())
-
-    #     input_dict = {}
-    #     named_param_names = [p.name for p in params if p.kind not in (Parameter.VAR_POSITIONAL, Parameter.VAR_KEYWORD)]
-
-    #     # First, match named params with args or kwargs
-    #     for i, name in enumerate(named_param_names):
-    #         if i < len(args):
-    #             input_dict[name] = args[i]
-    #         elif name in kwargs:
-    #             input_dict[name] = kwargs[name]
-
-    #     # Remaining positional args go to _args
-    #     num_consumed = len(input_dict)
-    #     if any(p.kind == Parameter.VAR_POSITIONAL for p in params):
-    #         input_dict["_args"] = list(args[num_consumed:])
-
-    #     # Extra kwargs go to _kwargs
-    #     if any(p.kind == Parameter.VAR_KEYWORD for p in params):
-    #         remaining_keys = set(kwargs.keys()) - set(named_param_names)
-    #         input_dict["_kwargs"] = {k: kwargs[k] for k in remaining_keys}
-
-    #     input_data = self.input_model(**input_dict)
-
-    #     if self.is_async():
-    #         return AsyncToolCall(option=self, inputs=input_data)
-    #     return ToolCall(option=self, inputs=input_data)
-
-IS_V2 = int(pydantic.__version__.split(".")[0]) >= 2
-
-
-# def make_tool_def(func: Callable) -> ToolDef:
-#     sig = signature(func)
-#     hints = get_type_hints(func)
-#     fields: Dict[str, tuple[type, Any]] = {}
-
-#     for name, param in sig.parameters.items():
-#         if param.kind in (Parameter.VAR_POSITIONAL, Parameter.VAR_KEYWORD):
-#             continue
-#         typ = hints.get(name) or (
-#             type(param.default) if param.default is not Parameter.empty else Any
-#         )
-#         default = param.default if param.default is not Parameter.empty else ...
-#         fields[name] = (typ, default)
-
-#     input_model = create_model(
-#         f"{func.__name__.title()}Inputs",
-#         **fields,
-#         __base__=BaseModel
-#     )
-
-#     return ToolDef(
-#         name=func.__name__,
-#         description=(func.__doc__ or "").strip() or f"Tool for {func.__name__}",
-#         fn=func,
-#         input_model=input_model,
-#         return_type=hints.get("return", None)
-#     )
-
-from inspect import signature, Parameter
-from typing import Any, Dict, Callable, get_type_hints
-from pydantic import create_model, BaseModel
-import pydantic
 
 IS_V2 = int(pydantic.__version__.split(".")[0]) >= 2
 
