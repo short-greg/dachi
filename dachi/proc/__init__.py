@@ -35,9 +35,11 @@ from ._graph import (
     IdxSrc,
 )
 from ._tool import (
-    ToolOption, 
-    ToolCall, 
-    ToolSet,
+    # ToolOption, 
+    ToolDef,
+    ToolBuilder,
+    ToolCall,
+    make_tool_def
 )
 
 from ._msg import (
