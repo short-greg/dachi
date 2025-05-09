@@ -1,12 +1,12 @@
 import inspect
 import typing
 from typing import Iterator, AsyncIterator
+from typing import Any, get_type_hints
 
 
-def to_async_function(func) -> bool:
+def is_async_function(func) -> bool:
     """Check if a function is asynchronous."""
     return inspect.iscoroutinefunction(func)
-from typing import Any, get_type_hints
 
 
 def get_return_type(func) -> Any:

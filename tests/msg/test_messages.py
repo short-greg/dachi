@@ -287,7 +287,7 @@ class TestDialogTurn:
         message = M.Msg(role='assistant', content='Hello')
         turn = M.DialogTurn(message=message)
         try:
-            turn.ascend(1)
+            turn.ancestor(1)
         except ValueError as e:
             assert str(e) == "Cannot ascend 1.Only 0 parents."
 
@@ -296,7 +296,7 @@ class TestDialogTurn:
         message2 = M.Msg(role='user', content='Hi')
         root_turn = M.DialogTurn(message=message1)
         child_turn = root_turn.append(message2)
-        assert child_turn.ascend(1) is root_turn
+        assert child_turn.ancestor(1) is root_turn
 
     def test_find_val_locates_message(self):
         message1 = M.Msg(role='assistant', content='Hello')
@@ -473,7 +473,7 @@ class TestTreeDialog:
         message3 = M.Msg(role="user", content="Yo")
         message4 = M.Msg(role="user", content="Mo")
         dialog.extend([message1, message2])
-        dialog.ascend(1)
+        dialog.ancestor(1)
         dialog.extend([message3, message4])
         cloned_dialog = dialog.clone()
         assert cloned_dialog is not dialog
@@ -513,7 +513,7 @@ class TestTreeDialog:
         message1 = M.Msg(role="assistant", content="Hello")
         message2 = M.Msg(role="user", content="Hi")
         dialog.extend([message1, message2])
-        dialog.ascend(1)
+        dialog.ancestor(1)
         dialog.append(M.Msg(role="user", content="Hi"))
         assert dialog.indices == [0, 1]
 
@@ -529,7 +529,7 @@ class TestTreeDialog:
         message1 = M.Msg(role="assistant", content="Hello")
         message2 = M.Msg(role="user", content="Hi")
         dialog.extend([message1, message2])
-        dialog.ascend(1)
+        dialog.ancestor(1)
         dialog.append(M.Msg(role="user", content="Hi"))
         assert dialog.counts == [1, 2]
 
@@ -538,7 +538,7 @@ class TestTreeDialog:
         message1 = M.Msg(role="assistant", content="Hello")
         message2 = M.Msg(role="user", content="Hi")
         dialog.extend([message1, message2])
-        dialog.ascend(1)
+        dialog.ancestor(1)
         assert dialog._leaf.message == message1
 
     def test_sibling_moves_to_correct_sibling(self):
@@ -546,7 +546,7 @@ class TestTreeDialog:
         message1 = M.Msg(role="assistant", content="Hello")
         message2 = M.Msg(role="user", content="Hi")
         dialog.extend([message1, message2])
-        dialog.ascend(1)
+        dialog.ancestor(1)
         msg3 = M.Msg(role="user", content="Hi")
         dialog.append(msg3)
         dialog.sibling(1)

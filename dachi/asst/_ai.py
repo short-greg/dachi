@@ -1,12 +1,9 @@
 # 1st party
 import typing
 from typing import Self
-import json
 
 # 3rd party
 import pydantic
-
-from ..proc import AsyncModule, Module, StreamModule, AsyncStreamModule
 
 # local
 from ..msg._messages import (
@@ -16,9 +13,6 @@ from ..msg._messages import (
 from ..proc._msg import MsgProc
 from ._asst import Assistant
 from ..utils import (
-    to_async_function, 
-    to_async_function, to_async_function, 
-    is_generator_function,
     coalesce, UNDEFINED,
 )
 from..proc._resp import RespConv
@@ -27,210 +21,7 @@ from..proc._resp import RespConv
 S = typing.TypeVar('S', bound=pydantic.BaseModel)
 
 # TODO: MOVE OUT OF HERE
-
-
 LLM_PROMPT = typing.Union[typing.Iterable[Msg], Msg]
-
-
-class ToolOption(pydantic.BaseModel):
-    """
-    Represents an option for a tool, encapsulating the tool's name, 
-    the function to be executed, and any additional keyword arguments.
-    Attributes:
-        name (str): The name of the tool.
-        f (typing.Callable[[typing.Any], typing.Any]): The function to be executed by the tool.
-        kwargs (typing.Dict): A dictionary of additional keyword arguments to be passed to the function.
-    """
-    name: str
-    f: typing.Callable[
-        [typing.Any], typing.Any
-    ]
-    kwargs: typing.Dict
-
-    def to_input(self) -> typing.Dict:
-        """
-        Converts the instance's keyword arguments into a dictionary of arguments.
-        Returns:
-            dict: A dictionary containing the keyword arguments of the instance.
-        """
-        return {
-            **self.kwargs
-        }
-
-
-class ToolSet(object):
-    """A set of tools that the LLM can use
-    """
-    def __init__(self, tools: typing.List[ToolOption], **kwargs):
-        """The set of tools
-
-        Args:
-            tools (typing.List[ToolOption]): The list of tools
-        """
-        self.tools = {
-            tool.name: tool
-            for tool in tools
-        }
-        self.kwargs = kwargs
-
-    def add(self, option: ToolOption):
-        """Add a tool to the set
-
-        Args:
-            option (ToolOption): The option to add
-        """
-        self.tools[option.name] = option
-
-    def remove(self, option: ToolOption):
-        """Remove a tool from the tool set
-
-        Args:
-            option (ToolOption): The option to add
-        """
-        del self.tools[option.name]
-
-    def to_input(self):
-        return list(
-            tool.to_input() for _, tool in self.tools.items()
-        )
-    
-    def __len__(self) -> int:
-        return len(self.tools)
-
-    def __iter__(self) -> typing.Iterator:
-        """
-        Returns an iterator over the tools in the collection.
-        Yields:
-            tool: Each tool in the collection.
-        """
-
-        for _, tool in self.tools.items():
-            yield tool
-
-    def __getitem__(self, name):
-        """
-        Retrieve a tool by its name.
-        Args:
-            name (str): The name of the tool to retrieve.
-        Returns:
-            object: The tool associated with the given name.
-        Raises:
-            KeyError: If the tool with the specified name does not exist.
-        """
-        return self.tools[name]
-
-
-class ToolCall(
-    AsyncModule, Module, 
-    StreamModule, 
-    AsyncStreamModule, 
-    pydantic.BaseModel
-):
-    """A response from the LLM that a tool was called
-    """
-    option: ToolOption = pydantic.Field(
-        description="The tool that was chosen."
-    )
-    args: typing.Dict[str, typing.Any] = pydantic.Field(
-        description="The arguments to the tool."
-    )
-
-    def forward(self) -> typing.Any:
-        """Call the tool
-
-        Raises:
-            NotImplementedError: If the function is async
-            NotImplementedError: If the function is a generator function
-
-        Returns:
-            typing.Any: The result of the call
-        """
-        # Check if valid to use with forward
-        if to_async_function(self.option.f):
-            raise NotImplementedError
-        if is_generator_function(self.option.f):
-            raise NotImplementedError
-        return self.option.f(**self.args)
-
-    async def aforward(self) -> typing.Any:
-        """Call the tool 
-
-        Raises:
-            NotImplementedError: If the function is a generator
-
-        Returns:
-            typing.Any: The result of the call
-        """
-        if to_async_function(self.option.f):
-            return await self.option.f(**self.args)
-        if is_generator_function(self.option.f):
-            raise NotImplementedError
-        return self.option.f(**self.args)
-
-    def stream(self) -> typing.Iterator:
-        """Stream the tool
-
-        Raises:
-            NotImplementedError: The result
-
-        Yields:
-            Iterator[typing.Iterator]: The result of the call
-        """
-        if to_async_function(self.option.f):
-            raise NotImplementedError
-        elif is_generator_function(self.option.f):
-            for k in self.option.f(**self.args):
-                yield k
-        else:
-            yield self.option.f(**self.args)
-        
-    async def astream(self):
-        """Stream the tool
-
-        Yields:
-            Iterator[typing.Iterator]: The result of the call
-        """
-        if is_generator_function(
-            self.option.f
-        ) and to_async_function(self.option.f):
-            async for k in await self.option.f(**self.args):
-                yield k
-        elif is_generator_function(self.option.f):
-            for k in await self.option.f(**self.args):
-                yield k
-        elif to_async_function(self.option.f):
-            yield await self.option.f(**self.args)
-        else:
-            yield self.option.f(**self.args)
-
-
-class ToolBuilder(object):
-
-    def __init__(self):
-        
-        self._index = None
-        self._name = ''
-        self._args = ''
-        self._tools = []
-
-    def update(self, index, name, args):        
-        
-        if index != self._index:
-            if self._index is not None:
-                result = ToolCall(
-                    option=self.tools[self._name],
-                    args=json.loads(self._args)
-                )
-                self._tools.append(result)
-            self._index = index
-            self._name = name
-            self._args = args
-            return {
-                'name': self._name,
-                'args': self._args
-            }
-        self._args += args
-        return None
 
 
 class LLM(Assistant):

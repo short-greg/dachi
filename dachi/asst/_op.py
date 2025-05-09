@@ -9,7 +9,7 @@ from ..msg._messages import (
     Msg, BaseDialog, ListDialog
 )
 from ._asst import Assistant
-from ..proc._msg import ToMsg, KeyRet, FromMsg
+from ..proc._msg import ToMsg, KeyGet, FromMsg
 from ..proc._out import OutConv
 from ..proc._out import conv_to_out
 from ..proc import (
@@ -266,7 +266,7 @@ class Op(Module, AsyncModule, StreamModule, AsyncStreamModule):
         self, 
         to_msg: ToMsg=UNDEFINED, 
         assistant: Assistant=UNDEFINED, 
-        out: str | KeyRet | typing.List[str | KeyRet]=UNDEFINED, filter_undefined: bool=UNDEFINED
+        out: str | KeyGet | typing.List[str | KeyGet]=UNDEFINED, filter_undefined: bool=UNDEFINED
     ):
         """
         Spawns a new `Op` instance based on the updated arguments.
@@ -357,7 +357,7 @@ class Threaded(
 
         while True:
             resp_msg = self.assistant(
-                self.dialog.list_messages()
+                list(self.dialog)
             )
             if not self.follow_up or len(resp_msg.follow_up) == 0:
                 break
@@ -392,14 +392,14 @@ class Threaded(
         self.dialog = self.dialog.append(msg)
         while True:
             resp_msg = await self.assistant.aforward(
-                self.dialog.list_messages()
+                list(self.dialog)
             )
             self.dialog = self.dialog.append(resp_msg.follow_up)
             if not self.follow_up or len(resp_msg.follow_up) == 0:
                 break
             self.dialog.extend(resp_msg.follow_up)
         resp_msg = await self.assistant.aforward(
-            self.dialog.list_messages()
+            list(self.dialog)
         )
         self.dialog = self.dialog.append(resp_msg)
         res = self.out(resp_msg)
@@ -430,7 +430,7 @@ class Threaded(
         delta_store = {}
         while True:
             for resp_msg in self.assistant.stream(
-                self.dialog.list_messages()
+                list(self.dialog)
             ):
                 if self.filter_undefined:
                     res, filtered = self.out.filter(
@@ -478,7 +478,7 @@ class Threaded(
         delta_store = {}
         while True:
             async for resp_msg in await self.assistant.astream(
-                self.dialog.list_messages()
+                list(self.dialog)
             ):
                 if self.filter_undefined:
                     res, filtered = self.out.filter(
@@ -518,7 +518,7 @@ class Threaded(
         )
 
     def spawn(
-        self, to_msg: ToMsg=UNDEFINED, assistant: Assistant=UNDEFINED, router: typing.Dict[str, ToMsg]=UNDEFINED, dialog: BaseDialog=UNDEFINED, out: str | KeyRet | typing.List[str | KeyRet]=UNDEFINED, filter_undefined: bool=UNDEFINED
+        self, to_msg: ToMsg=UNDEFINED, assistant: Assistant=UNDEFINED, router: typing.Dict[str, ToMsg]=UNDEFINED, dialog: BaseDialog=UNDEFINED, out: str | KeyGet | typing.List[str | KeyGet]=UNDEFINED, filter_undefined: bool=UNDEFINED
     ):
         """
         Spawns a new `Op` instance based on the updated arguments.

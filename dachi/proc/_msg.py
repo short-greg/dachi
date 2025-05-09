@@ -6,10 +6,9 @@ import typing
 from ..msg import Msg, StreamMsg
 from . import Module, AsyncModule
 from .. import utils
-from ..msg import BaseDialog, to_list_input
 
 
-class MsgRet(Module):
+class MsgGet(Module):
     """Retrieves from the message (not the meta in the message)"""
 
     @abstractmethod
@@ -17,7 +16,7 @@ class MsgRet(Module):
         pass
 
 
-class KeyRet(MsgRet):
+class KeyGet(MsgGet):
     """Retrieves from the message (not the meta in the message)"""
     def __init__(self, name: str, meta: bool=False):
         """Use to retrieve from the base message dict.
@@ -42,7 +41,7 @@ class KeyRet(MsgRet):
         return msg[self.name]
 
 
-class TupleRet(MsgRet):
+class TupleGet(MsgGet):
     """Retrieves from the message (not the meta in the message)"""
     def __init__(self, keys: typing.Iterable):
         """Use to retrieve from the base message dict.
@@ -50,7 +49,7 @@ class TupleRet(MsgRet):
         Args:
             name (str): The name of the message key to retrieve
         """
-        self._rets = [to_ret(key) for key in keys]
+        self._rets = [to_get(key) for key in keys]
 
     def forward(self, msg):
         
@@ -60,16 +59,26 @@ class TupleRet(MsgRet):
         )
 
 
-def to_ret(key: str) -> MsgRet:
+def to_get(key: str) -> MsgGet:
+    """Retrieve a value
 
-    if isinstance(key, KeyRet):
+    Args:
+        key (str): The key to get
+
+    Raises:
+        ValueError: 
+
+    Returns:
+        MsgGet: The getter
+    """
+    if isinstance(key, KeyGet):
         return key
     elif isinstance(key, str):
-        return KeyRet(key, True)
+        return KeyGet(key, True)
     elif isinstance(key, typing.Iterable):
-        return TupleRet(key)
+        return TupleGet(key)
     
-    elif isinstance(key, MsgRet):
+    elif isinstance(key, MsgGet):
         return key
     
     raise ValueError(f'Could not convert {key} to a MsgRet')
@@ -79,7 +88,7 @@ class FromMsg(Module):
     """Use to get a value from a message. 
     """
 
-    def __init__(self, key: str | KeyRet | typing.List[str | KeyRet | None]):
+    def __init__(self, key: str | KeyGet | typing.List[str | KeyGet | None]):
         """Use to retrieve values from a message
 
         MR will return from the base of the message, otherwise
@@ -90,7 +99,7 @@ class FromMsg(Module):
         """
         if isinstance(key, FromMsg):
             key = key.key
-        self.key = to_ret(key)
+        self.key = to_get(key)
 
     def forward(self, msg: Msg, override=None) -> typing.Any:
         """Use to get a value from the message

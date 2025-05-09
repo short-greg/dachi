@@ -570,7 +570,16 @@ class DialogTurn(object):
         self._children.append(turn)
         return turn
 
-    def ascend(self, count: int):
+    def ancestor(self, count: int) -> 'DialogTurn':
+        """Get an an answer
+
+        Args:
+            count (int): The number to ascend
+
+        Returns:
+            DialogTurn: The ancestor
+        """
+
         i = 0
         turn = self
         while True:
@@ -673,7 +682,7 @@ class DialogTurn(object):
             return self
         return self._parent.child(idx)
     
-    def ascend(self, count: int) -> 'DialogTurn':
+    def ancestor(self, count: int) -> 'DialogTurn':
         """
 
         Args:
@@ -745,19 +754,27 @@ class TreeDialog(BaseDialog):
         self._root: DialogTurn | None = None
         self._update()
 
-    def ascend(self, count: int):
+    def ancestor(self, count: int):
         
-        self._leaf = self._leaf.ascend(count)
+        self._leaf = self._leaf.ancestor(count)
+        self._update()
+
+    def child(self, idx: int):
+        """Descend 
+
+        Args:
+            idx (int): The index of the child
+        """
+        self._leaf = self._leaf.child(idx)
         self._update()
 
     def sibling(self, idx: int):
-    
+        """Update the tree to use a sibling
+
+        Args:
+            idx (int): The index of the sibling to use
+        """
         self._leaf = self._leaf.sibling(idx)
-        self._update()
-
-    def descend(self, idx: int):
-
-        self._leaf = self._leaf.child(idx)
         self._update()
 
     @property
@@ -881,59 +898,50 @@ class TreeDialog(BaseDialog):
                 if turn is None:
                     break
                 count = counts.pop()
-                dialog.ascend(1)
+                dialog.ancestor(1)
                 count += 1
 
         dialog._leaf = leaf
         dialog._update()
         return dialog
-        # for child in self._leaf.children():
-        #     dialog.append(child)
-        # while queue:
-        #     original_node, cloned_node = queue.pop(0)
-
-        #     for child in original_node._children:
-        #         child_clone = DialogTurn(child._message).clone()
-        #         cloned_node._children.append(child_clone)
-        #         child_clone._parent = cloned_node
-        #         queue.append((child, child_clone))
-
 
     def pop(
         self, idx: int, get_msg: bool=False
     ) -> 'TreeDialog':
         """Remove a value from the dialog
-
+        Cannot remove the root node.
         Args:
             index (int): The index to pop
         """
-        # TODO: Figure out the best way to do this
-        raise NotImplementedError
-        # ancestors = self._turn_list()
-        # target = ancestors[idx]
+        if idx == 0:
+            raise ValueError(
+                'Cannot remove root node in tree dialog.'
+            )
+        ancestors = self._turn_list()
+        target = ancestors[idx]
         
-        # parent = target._parent
-        # for turn in target._children:
-        #     turn._parent = parent
-        #     if parent is not None:
-        #         parent._children.append(turn)
+        parent = target._parent
+        for turn in target._children:
+            turn._parent = parent
+            if parent is not None:
+                parent._children.append(turn)
         
-        # if target._parent is not None:
-        #     target._parent._children.remove(target)
+        if target._parent is not None:
+            target._parent._children.remove(target)
         
-        # target._parent = None
-        # target._children = []
-        # if self._leaf is target:
-        #     if turn.parent is not None:
-        #         self._leaf = turn
-        #     elif len(turn._children) > 0:
-        #         self._leaf = turn._children[0]
-        #     else:
-        #         self._leaf = None
-        # self._update()
-        # if get_msg:
-        #     return self, target._message
-        # return self
+        target._parent = None
+        target._children = []
+        if self._leaf is target:
+            if turn.parent is not None:
+                self._leaf = turn
+            elif len(turn._children) > 0:
+                self._leaf = turn._children[0]
+            else:
+                self._leaf = None
+        self._update()
+        if get_msg:
+            return self, target._message
+        return self
 
     def _bfs_find(self, root: DialogTurn, message: Msg) -> typing.Optional[DialogTurn]:
         """Perform a breadth-first search to find a message in the tree.
@@ -963,25 +971,28 @@ class TreeDialog(BaseDialog):
         Args:
             message (Msg): The message to remove
         """
-        raise NotImplementedError
-        # turn = self._root.find_val(message)
-        # for child in turn._children:
-        #     child.parent = turn.parent
-        #     if turn.parent is not None:
-        #         turn.parent.append(child)
-        # if turn.parent is not None:
-        #     turn.parent._children.remove(turn)
-        # if self._leaf is turn:
-        #     if turn.parent is not None:
-        #         self._leaf = turn
-        #     elif len(turn._children) > 0:
-        #         self._leaf = turn._children[0]
-        #     else:
-        #         self._leaf = None
-        # turn.parent = None
-        # turn._children.clear()
-        # self._update()
-        # return self
+        turn = self._root.find_val(message)
+        if turn is self._root:
+            raise ValueError(
+                'Cannot remove root node in tree dialog.'
+            )
+        for child in turn._children:
+            child.parent = turn.parent
+            if turn.parent is not None:
+                turn.parent.append(child)
+        if turn.parent is not None:
+            turn.parent._children.remove(turn)
+        if self._leaf is turn:
+            if turn.parent is not None:
+                self._leaf = turn
+            elif len(turn._children) > 0:
+                self._leaf = turn._children[0]
+            else:
+                self._leaf = None
+        turn.parent = None
+        turn._children.clear()
+        self._update()
+        return self
 
     def extend(self, dialog: typing.Iterable[Msg]):
         """Extend the dialog with another dialog or a list of messages

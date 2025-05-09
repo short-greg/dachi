@@ -20,7 +20,7 @@ from ..base import Storable, Renderable
 from ..utils import UNDEFINED
 from ..msg._render import render
 from ..utils import (
-    to_async_function,
+    is_async_function,
     is_generator_function
 )
 import dataclasses
@@ -177,11 +177,11 @@ def forward(
     """ 
     if isinstance(f, Module):
         return f.forward(*args, **kwargs)
-    if not to_async_function(f) and not is_generator_function(f):
+    if not is_async_function(f) and not is_generator_function(f):
         return f(*args, **kwargs)
-    if not to_async_function(f) and is_generator_function(f):
+    if not is_async_function(f) and is_generator_function(f):
         return [v for v in f(*args, **kwargs)]
-    if to_async_function(f) and not is_generator_function(f):
+    if is_async_function(f) and not is_generator_function(f):
         raise NotImplementedError('Cannot forward with async function')
     raise RuntimeError()
 
@@ -206,13 +206,13 @@ async def aforward(
         return await f.aforward(*args, **kwargs)
     if isinstance(f, Module):
         return f.forward(*args, **kwargs)
-    if not to_async_function(f) and not is_generator_function(f):
+    if not is_async_function(f) and not is_generator_function(f):
         return f(*args, **kwargs)
-    if to_async_function(f) and not is_generator_function(f):
+    if is_async_function(f) and not is_generator_function(f):
         return await f(*args, **kwargs)
-    if not to_async_function(f) and is_generator_function(f):
+    if not is_async_function(f) and is_generator_function(f):
         return [v for v in f(*args, **kwargs)]
-    if to_async_function(f) and is_generator_function(f):
+    if is_async_function(f) and is_generator_function(f):
         return [v async for v in await f(*args, **kwargs)]
 
 
@@ -236,14 +236,14 @@ def stream(f: typing.Union[StreamModule, typing.Callable], *args, **kwargs) -> t
     if isinstance(f, StreamModule):
         for v in f.stream(*args, **kwargs):
             yield v
-    elif not to_async_function(f) and is_generator_function(f):
+    elif not is_async_function(f) and is_generator_function(f):
         for v in f(*args, **kwargs):
             yield v
-    elif to_async_function(f) and is_generator_function(f):
+    elif is_async_function(f) and is_generator_function(f):
         raise NotImplementedError('Cannot execute an async streaming function from a streaming function')
-    elif to_async_function(f) and not is_generator_function(f):
+    elif is_async_function(f) and not is_generator_function(f):
         raise NotImplementedError('Cannot stream with async function')
-    elif not to_async_function(f) and not is_generator_function(f):
+    elif not is_async_function(f) and not is_generator_function(f):
         yield f(*args, **kwargs)
     else:
         raise RuntimeError()
@@ -273,15 +273,15 @@ async def astream(f: typing.Union[AsyncStreamModule, typing.Callable], *args, **
     elif isinstance(f, StreamModule):
         for v in f.stream(*args, **kwargs):
             yield v
-    elif to_async_function(f) and is_generator_function(f):
+    elif is_async_function(f) and is_generator_function(f):
         async for v in await f(*args, **kwargs):
             yield v
-    elif not to_async_function(f) and is_generator_function(f):
+    elif not is_async_function(f) and is_generator_function(f):
         for v in f(*args, **kwargs):
             yield v
-    elif to_async_function(f) and not is_generator_function(f):
+    elif is_async_function(f) and not is_generator_function(f):
         yield await f(*args, **kwargs)
-    elif not to_async_function(f) and not is_generator_function(f):
+    elif not is_async_function(f) and not is_generator_function(f):
         yield f(*args, **kwargs)
     else: raise RuntimeError()
 
