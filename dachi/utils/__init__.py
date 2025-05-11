@@ -11,7 +11,8 @@ from ._utils import (
     is_undefined,
     coalesce,
     doc,
-    Args
+    Args,
+    pydantic_v2
 
 )
 from ._f_utils import (

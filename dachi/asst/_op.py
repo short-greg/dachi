@@ -95,12 +95,11 @@ class Op(Module, AsyncModule, StreamModule, AsyncStreamModule):
             resp_msg = self.assistant(
                 _messages
             )
+            _messages.append(resp_msg)
             if not self.follow_up or len(resp_msg.follow_up) == 0:
                 break
             _messages.extend(resp_msg.follow_up)
 
-        if _messages is not None:
-            _messages.append(resp_msg)
         res = self.out(resp_msg)
         if _out is None:
             return res

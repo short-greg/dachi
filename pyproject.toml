@@ -20,6 +20,7 @@ packages = [
     {include="dachi/learn"},
     {include="dachi/msg"},
     {include="dachi/proc"},
+    {include="dachi/inst"},
     {include="dachi/store"},
     {include="dachi/utils"}
 ]

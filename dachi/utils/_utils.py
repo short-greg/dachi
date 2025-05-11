@@ -218,3 +218,7 @@ class Args:
     def __init__(self, *args, **kwargs):
         self.args = args
         self.kwargs = kwargs
+
+
+def pydantic_v2():
+    return int(pydantic.__version__.split(".")[0]) >= 2

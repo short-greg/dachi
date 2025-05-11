@@ -16,11 +16,13 @@ from ._messages import (
 
 
 from ._tool import (
-    # ToolOption, 
     ToolDef,
     ToolBuilder,
     ToolCall,
-    make_tool_def
+    AsyncToolCall,
+    ToolOut,
+    make_tool_def,
+    make_tool_defs
 )
 
 from ._msg import (

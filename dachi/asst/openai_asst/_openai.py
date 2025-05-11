@@ -4,7 +4,6 @@ import pkg_resources
 import typing
 import json
 import pydantic
-from ... import utils
 
 # 3rd party
 required = {'openai'}
@@ -16,10 +15,12 @@ from ...msg import (
     Msg, END_TOK, to_list_input,
     ToolDef, ToolBuilder, ToolCall
 )
+from ... import utils
+from ...inst import render
 from .._ai import (
     LLM, llm_aforward, llm_astream, llm_forward, llm_stream
 )
-from ...msg._resp import RespConv, OutConv
+from ...msg import RespConv, OutConv
 from ...utils import UNDEFINED, coalesce
 from ... import store
 
@@ -40,14 +41,14 @@ def to_openai_tool(tool: ToolDef | list[ToolDef]) -> list[dict]:
     Returns:
         list[dict]: 
     """
-    if not isinstance(tool, list):
+    if isinstance(tool, ToolDef):
         tool = [tool]
 
     tools = []
     for t in tool:
         schema = (
             t.input_model.model_json_schema()
-            if IS_V2 else
+            if utils.pydantic_v2() else
             t.input_model.schema()
         )
 
@@ -67,12 +68,20 @@ class TextConv(RespConv):
     OpenAITextProc is a class that processes an OpenAI response and extracts text outputs from it.
     """
 
-    def __init__(self, name: str='content', from_ = 'response'):
+    def __init__(
+        self, 
+        name: str='content', 
+        from_ = 'response'
+    ):
         super().__init__(name, from_)
 
     def post(
-        self, msg, result, delta_store, 
-        streamed = False, is_last = False
+        self, 
+        msg, 
+        result, 
+        delta_store, 
+        streamed = False, 
+        is_last = False
     ):
         """
 
@@ -127,13 +136,21 @@ class StructConv(RespConv):
     """
     OpenAITextProc is a class that processes an OpenAI response and extracts text outputs from it.
     """
-    def __init__(self, struct: pydantic.BaseModel | typing.Dict=None, name: str='content', from_: str='response'):
+    def __init__(
+        self, 
+        struct: pydantic.BaseModel | typing.Dict=None, name: str='content', 
+        from_: str='response'
+    ):
         super().__init__(name, from_)
         self._struct = struct
 
     def post(
-        self, msg, result, delta_store, 
-        streamed = False, is_last = False
+        self, 
+        msg, 
+        result, 
+        delta_store, 
+        streamed = False, 
+        is_last = False
     ):
         if is_last:
             msg['content'] = delta_store['content']
@@ -174,13 +191,20 @@ class StructConv(RespConv):
         Returns:
             typing.Dict: 
         """
-        if isinstance(self._struct, typing.Dict):
+        if isinstance(
+            self._struct, 
+            typing.Dict
+        ):
             return {'response_format': {
                 "type": "json_schema",
                 "json_schema": self._struct
             }}
-        elif isinstance(self._struct, pydantic.BaseModel):
-            return {'response_format': self._struct}
+        elif isinstance(
+            self._struct, pydantic.BaseModel
+        ):
+            return {
+                'response_format': self._struct
+            }
         return {
             'response_format': "json_object"
         }
@@ -280,25 +304,54 @@ class ToolConv(RespConv):
         self, 
         tools: typing.Iterable[ToolDef], 
         name: str='tools', 
-        from_: str='response'
+        from_: str='response',
+        run_call: bool=False
     ):
         """
-
         Args:
             tools (typing.Dict[str, ToolOption]): 
         """
         super().__init__(name, from_)
-        self.tools = list(tools)
+        self.tools = {
+            tool.name: tool
+            for tool in tools
+        }
+        self.run_call = run_call
 
     def prep(self):
         """
-
         Returns:
             : 
         """
         return {
-            'tools': to_openai_tool(self.tools)
+            'tools': to_openai_tool(
+                self.tools.values()
+            )
         }
+    
+    def post(
+        self, 
+        msg: Msg, 
+        result, 
+        delta_store, 
+        streamed = False, 
+        is_last = False
+    ):
+        if len(delta_store['tools']) != 0 and self.run_call: 
+            
+            msg['tool_calls'] = [
+                tc.model_dump() if hasattr(tc, "model_dump") else tc.to_dict()
+                for tc in    
+                delta_store['tool_calls']
+            ]
+
+            for tool in delta_store['tools']:
+                msg.follow_up.append(Msg(
+                    role="tool",
+                    content=render(tool.result),
+                    tool_call_id=tool.tool_id,
+                    name=tool.option.name
+                ))
 
     def delta(
         self, 
@@ -318,46 +371,66 @@ class ToolConv(RespConv):
         Returns:
             typing.Any
         """
-
+        store.get_or_set(
+            delta_store, 'tool_calls', []
+        )
+        store.get_or_set(delta_store, 'tools', [])
         if streamed and resp is END_TOK:
-            return self.delta_store['delta']['builder'].tools
-
-        if streamed:        
+            if 'delta' not in delta_store:
+                return utils.UNDEFINED
+            return delta_store[
+                'delta'
+            ]['builder'].tools
+        
+        if streamed:
+            # TODO: Finish implementing streaming
             if resp.choices[0].delta.tool_calls is not None:
-                if 'tools' not in delta_store:
-                    delta_store['tools'] = []
 
                 tool_call = resp.choices[0].delta.tool_calls[0]
                 index = tool_call.index
                 name = tool_call.function.name
                 args = tool_call.function.arguments
 
-                store.get_or_setf(
-                    delta_store, 'builder', ToolBuilder
-                )
+                # store.get_or_setf(
+                #     delta_store, 'builder', ToolBuilder
+                # )
 
                 builder = store.get_or_set(
                     delta_store, 'builder', ToolBuilder
                 )
-                tool = builder.update(index, name, args)
+                tool = builder.update(tool_call.id, index, name, args)
+
                 delta_store['tool'] = tool
-                if tool is not None:
+                if isinstance(tool, ToolCall):
                     delta_store['tools'].append(tool)
+                    if self.run_call:
+                        tool.forward(True)
                 return [tool]
         else:
             tools = []
-            if resp.choices[0].finish_reason == 'tool_calls':
+            if (
+                resp.choices[0].finish_reason == 'tool_calls'
+            ):
+                delta_store['tool_calls'] = resp.choices[0].message.tool_calls
                 for tool_call in resp.choices[0].message.tool_calls:
                     name = tool_call.function.name
                     argstr = tool_call.function.arguments
                     args = json.loads(argstr)
                     
+                    tool_def = self.tools[name]
+                    
+                    # TODO: Add in Async
                     cur_call = ToolCall(
-                        option=self.tools[name], 
-                        args=args
+                        tool_id=tool_call.id,
+                        option=tool_def,
+                        inputs=tool_def.input_model(**args)
                     )
+                    if self.run:
+                        cur_call.forward(True)
                     tools.append(cur_call)
-                    return tools
+
+                delta_store['tools'] = tools
+                return tools
                 
         return []
     
@@ -398,7 +471,9 @@ class LLM(LLM, ABC):
         self._client = openai.Client(
             api_key=api_key, **client_kwargs
         )
-        self._aclient = openai.AsyncClient(api_key=api_key, **client_kwargs)
+        self._aclient = openai.AsyncClient(
+            api_key=api_key, **client_kwargs
+        )
         
     def spawn(self, 
         tools: typing.Iterable[ToolDef]=UNDEFINED,
@@ -423,7 +498,6 @@ class ChatCompletion(LLM, ABC):
     interacting with the API, including synchronous and asynchronous message forwarding, 
     streaming, and spawning new instances with modified configurations.
     """
-
     def spawn(self, 
         tools: typing.Iterable[ToolDef]=UNDEFINED,
         json_output: bool | pydantic.BaseModel | typing.Dict=UNDEFINED

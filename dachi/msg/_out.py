@@ -12,6 +12,8 @@ import pydantic
 
 # local
 from ..inst import render, struct_template
+
+from ._tool import ToolCall, ToolOut
 from ._messages import Msg
 from ._msg import MsgProc
 from ..base import TemplateField, Templatable, ExampleMixin

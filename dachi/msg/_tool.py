@@ -16,7 +16,7 @@ from pydantic import create_model, BaseModel
 from ..proc import AsyncModule, Module
 
 # local
-from ..utils import is_async_function
+from ..utils import is_async_function, pydantic_v2
 
 # 1) How can the tool be used by the LLM
 # 2) So I would simply pass the tool to the
@@ -82,7 +82,6 @@ class ToolDef(pydantic.BaseModel):
 
         return is_async_function(self.fn)
 
-IS_V2 = int(pydantic.__version__.split(".")[0]) >= 2
 
 def make_tool_def(func: Callable) -> ToolDef:
     sig = signature(func)
@@ -114,23 +113,54 @@ def make_tool_def(func: Callable) -> ToolDef:
     )
 
 
+def make_tool_defs(*tools) -> typing.List[ToolDef]:
+    """Make multiple tools
+
+    Returns:
+        typing.List[ToolDef]: 
+    """
+    return list(
+        make_tool_def(tool)
+        for tool in tools
+    )
+
+
 class ToolCall(
     pydantic.BaseModel,
     Module
 ):
     """A response from the LLM that a tool was called
     """
+    tool_id: str
     option: ToolDef = pydantic.Field(
         description="The tool that was chosen."
     )
     inputs: pydantic.BaseModel = pydantic.Field(
         description="The inputs to use for calling the ToolDef"
     )
+    result: typing.Any = None
+    option_text: str | None = None
 
-    def forward(self):
-        data = self.inputs.model_dump() if IS_V2 else self.inputs.dict()
+    def forward(self, store: bool=False):
+        data = self.inputs.model_dump() if pydantic_v2() else self.inputs.dict()
         # remaining keys are normal named parameters
-        return self.option.fn(**data)
+        result = self.option.fn(**data)
+        if store:
+            self.result = result
+        return result
+
+
+class ToolOut(
+    pydantic.BaseModel
+):
+    """A response from the LLM that a tool was called
+    """
+    option: ToolDef = pydantic.Field(
+        description="The tool that was chosen."
+    )
+    result: typing.Any = pydantic.Field(
+        description="The output of the tool"
+    )
 
 
 class AsyncToolCall(
@@ -145,8 +175,10 @@ class AsyncToolCall(
     inputs: pydantic.BaseModel = pydantic.Field(
         description="The inputs to use for calling the ToolDef"
     )
+    result: typing.Any = None
+    option_text: str | None = None
 
-    async def aforward(self) -> typing.Any:
+    async def aforward(self, store: bool=False) -> typing.Any:
         """Call the tool 
 
         Raises:
@@ -155,8 +187,11 @@ class AsyncToolCall(
         Returns:
             typing.Any: The result of the call
         """
-        data = self.inputs.model_dump() if IS_V2 else self.inputs.dict()
-        return await self.option.fn(**data)
+        data = self.inputs.model_dump() if pydantic_v2() else self.inputs.dict()
+        result = await self.option.fn(**data)
+        if store:
+            self.result = result
+        return result
 
 
 class ToolBuilder(object):
@@ -170,22 +205,25 @@ class ToolBuilder(object):
         self._args = ''
         self._tools = []
 
-    def update(self, index, name, args):        
+    def update(self, id, index, name, args, **kwargs):        
         
         if index != self._index:
             if self._index is not None:
                 result = ToolCall(
+                    tool_id=id,
                     option=self.tools[self._name],
                     args=json.loads(self._args)
                 )
                 self._tools.append(result)
+                return result
             self._index = index
             self._name = name
             self._args = args
-            return {
-                'name': self._name,
-                'args': self._args
-            }
+            return None
+            # return {
+            #     'name': self._name,
+            #     'args': self._args
+            # }
         self._args += args
         return None
 

@@ -34,8 +34,8 @@ class Msg(dict):
         super().__init__(
             role=role, _include_role=_include_role, type_=type_, meta=meta or {}, delta=delta or {}, **kwargs
         )
-        self._follow_up = _follow_up if _follow_up is not None else []
-        self._filtered = _filtered
+        self.follow_up = _follow_up if _follow_up is not None else []
+        self.filtered = _filtered
 
     @property
     def type(self) -> str:
@@ -96,47 +96,6 @@ class Msg(dict):
             )
         }
         return f'{self.role} {vals}'
-
-    @property
-    def follow_up(self) -> typing.List['Msg'] | None:
-        """Get the follow up message
-
-        Returns:
-            typing.List[Msg]: The follow up message
-        """
-        return [*self._follow_up]
-    
-    @follow_up.setter
-    def follow_up(self, messages: typing.List['Msg'] | None) -> Self:
-        """Set the follow up message
-
-        Args:
-            message (typing.Union[Msg, typing.List[Msg]]): The follow up message
-        """
-        if self._follow_up is None:
-            self._follow_up = []
-        else:
-            self._follow_up = messages
-        return messages
-
-    @property
-    def filtered(self) -> bool:
-        """Get the filtered status of the message
-
-        Returns:
-            bool: The filtered status
-        """
-        return self._filtered
-    
-    @filtered.setter
-    def filtered(self, val: bool) -> Self:
-        """Set the filtered status of the message
-
-        Args:
-            val (bool): The filtered status
-        """
-        self._filtered = val
-        return self
 
 
 class StreamMsg(Msg):
