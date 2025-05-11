@@ -190,7 +190,6 @@ class ToolBuilder(object):
         return None
 
 
-
 # def to_openai_tool(tool: ToolDef | list[ToolDef]) -> list[dict]:
 #     if not isinstance(tool, list):
 #         tool = [tool]

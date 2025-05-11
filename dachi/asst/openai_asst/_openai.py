@@ -12,9 +12,12 @@ installed = {pkg.key for pkg in pkg_resources.working_set}
 missing = required - installed
 
 # Local
-from ...msg import Msg, END_TOK, to_list_input
+from ...msg import (
+    Msg, END_TOK, to_list_input,
+    ToolDef, ToolBuilder, ToolCall
+)
 from .._ai import (
-    LLM, llm_aforward, llm_astream, llm_forward, llm_stream, ToolSet, ToolCall, ToolBuilder
+    LLM, llm_aforward, llm_astream, llm_forward, llm_stream
 )
 from ...msg._resp import RespConv, OutConv
 from ...utils import UNDEFINED, coalesce
@@ -26,6 +29,37 @@ import openai
 
 if len(missing) > 0:
     raise RuntimeError(f'To use this module openai must be installed.')
+
+
+def to_openai_tool(tool: ToolDef | list[ToolDef]) -> list[dict]:
+    """
+
+    Args:
+        tool (ToolDef | list[ToolDef]): 
+
+    Returns:
+        list[dict]: 
+    """
+    if not isinstance(tool, list):
+        tool = [tool]
+
+    tools = []
+    for t in tool:
+        schema = (
+            t.input_model.model_json_schema()
+            if IS_V2 else
+            t.input_model.schema()
+        )
+
+        tools.append({
+            "type": "function",
+            "function": {
+                "name": t.name,
+                "description": t.description,
+                "parameters": schema
+            }
+        })
+    return tools
 
 
 class TextConv(RespConv):
@@ -55,7 +89,13 @@ class TextConv(RespConv):
         )
         msg['content'] = delta_store['all_content']
     
-    def delta(self, resp, delta_store: typing.Dict, streamed: bool=False, is_last: bool=False):
+    def delta(
+        self, 
+        resp, 
+        delta_store: typing.Dict, 
+        streamed: bool=False, 
+        is_last: bool=False
+    ):
         """
         Processes a delta response and extracts text.
         Args:
@@ -237,7 +277,9 @@ class ToolConv(RespConv):
     specifically to extract and manage tool calls embedded within the responses.
     """
     def __init__(
-        self, tools: ToolSet, name: str='tools', 
+        self, 
+        tools: typing.Iterable[ToolDef], 
+        name: str='tools', 
         from_: str='response'
     ):
         """
@@ -246,25 +288,41 @@ class ToolConv(RespConv):
             tools (typing.Dict[str, ToolOption]): 
         """
         super().__init__(name, from_)
-        self.tools = tools
+        self.tools = list(tools)
 
     def prep(self):
-        
+        """
+
+        Returns:
+            : 
+        """
         return {
-            'tools': [tool.to_input() for tool in self.tools] if len(self.tools) != 0 else None
+            'tools': to_openai_tool(self.tools)
         }
 
     def delta(
-        self, resp, delta_store: typing.Dict, 
-        streamed: bool=False, is_last: bool=False
-    ):
+        self, 
+        resp, 
+        delta_store: typing.Dict, 
+        streamed: bool=False, 
+        is_last: bool=False
+    ) -> typing.Any:
+        """Convert the response to an output
+
+        Args:
+            resp : Update the tool call
+            delta_store (typing.Dict): The state of the conversion
+            streamed (bool, optional): Whether streamed or not. Defaults to False.
+            is_last (bool, optional): Whether it is the last item in the stream. Defaults to False.
+
+        Returns:
+            typing.Any
+        """
 
         if streamed and resp is END_TOK:
-            
             return self.delta_store['delta']['builder'].tools
 
         if streamed:        
-
             if resp.choices[0].delta.tool_calls is not None:
                 if 'tools' not in delta_store:
                     delta_store['tools'] = []
@@ -278,7 +336,9 @@ class ToolConv(RespConv):
                     delta_store, 'builder', ToolBuilder
                 )
 
-                builder = store.get_or_set(delta_store, 'builder', ToolBuilder)
+                builder = store.get_or_set(
+                    delta_store, 'builder', ToolBuilder
+                )
                 tool = builder.update(index, name, args)
                 delta_store['tool'] = tool
                 if tool is not None:
@@ -307,10 +367,9 @@ class LLM(LLM, ABC):
     """
     def __init__(
         self, 
-        tools: ToolSet=None,
+        tools: typing.Iterable[ToolDef]=None,
         json_output: bool | pydantic.BaseModel | typing.Dict=False,
         api_key: str=None,
-        #procs: typing.List[MsgProc]=None,
         **client_kwargs
     ):
         """
@@ -342,7 +401,7 @@ class LLM(LLM, ABC):
         self._aclient = openai.AsyncClient(api_key=api_key, **client_kwargs)
         
     def spawn(self, 
-        tools: ToolSet=UNDEFINED,
+        tools: typing.Iterable[ToolDef]=UNDEFINED,
         json_output: bool | pydantic.BaseModel | typing.Dict=UNDEFINED,
         procs: typing.List[RespConv]=UNDEFINED
     ):
@@ -366,7 +425,7 @@ class ChatCompletion(LLM, ABC):
     """
 
     def spawn(self, 
-        tools: ToolSet=UNDEFINED,
+        tools: typing.Iterable[ToolDef]=UNDEFINED,
         json_output: bool | pydantic.BaseModel | typing.Dict=UNDEFINED
     ):
         """
@@ -496,7 +555,6 @@ class ChatCompletion(LLM, ABC):
             yield r
 
 
-
 class ToolExecConv(OutConv):
     """Use for converting a tool from a response
     """
@@ -511,7 +569,13 @@ class ToolExecConv(OutConv):
         )
         self._name = name
     
-    def delta(self, resp, delta_store: typing.Dict, is_streamed: bool=False, is_last: bool=True) -> typing.Any:
+    def delta(
+        self, 
+        resp, 
+        delta_store: typing.Dict, 
+        is_streamed: bool=False, 
+        is_last: bool=True
+    ) -> typing.Any:
         """Read in the output
 
         Args:
@@ -530,4 +594,3 @@ class ToolExecConv(OutConv):
             return [r() for r in resp]
         
         return utils.UNDEFINED
-

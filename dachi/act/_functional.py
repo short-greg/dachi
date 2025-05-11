@@ -7,9 +7,7 @@ import time
 import uuid
 
 # local
-from ._core import (
-    TaskStatus, Task, State
-)
+from ._core import TaskStatus, Task, State
 from ..store._data import Context, ContextSpawner, SharedBase
 from ._core import TOSTATUS
 from ..store._data import Buffer
@@ -22,10 +20,10 @@ CALL_TASK = typing.Callable[[bool], TaskStatus]
 
 PARALLEL = typing.Callable[[typing.Iterable[Task], int, int, bool], TaskStatus]
 
+
 def reset_arg_ctx(*args, **kwargs):
     """Use to reset the context to the args and kwargs
     """
-
     for k, arg in itertools.chain(enumerate(args), kwargs.items()):
         if isinstance(arg, Task):
             arg.reset_status()
