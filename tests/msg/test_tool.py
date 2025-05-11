@@ -1,11 +1,7 @@
-from dachi import msg as Msg
 import pytest
-from dachi.proc import ToolDef
+from dachi.msg import ToolDef, make_tool_def
 from pydantic import BaseModel
-from typing import Callable, Any, Optional, Type
-from inspect import signature, Parameter
-from typing import get_type_hints, Dict
-from dachi.proc import make_tool_def
+from typing import Optional
 
 class MockInputModel(BaseModel):
     field: str

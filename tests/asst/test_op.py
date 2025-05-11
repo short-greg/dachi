@@ -1,6 +1,6 @@
 from .test_ai import DummyAIModel
 from dachi.asst import Op, Threaded
-from dachi.proc import ParsedOut, LineParser, NullOut, ToText
+from dachi.msg import ParsedOut, LineParser, NullOut, ToText
 import pytest
 
 lines = """hi

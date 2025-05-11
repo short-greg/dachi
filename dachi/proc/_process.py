@@ -18,7 +18,7 @@ import pydantic
 # local
 from ..base import Storable, Renderable 
 from ..utils import UNDEFINED
-from ..msg._render import render
+from ..inst._render import render
 from ..utils import (
     is_async_function,
     is_generator_function

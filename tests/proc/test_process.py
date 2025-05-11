@@ -7,7 +7,7 @@ from dachi.proc import _process
 from dachi.store import Param
 import numpy as np
 # TODO: remove
-from dachi.msg import Cue
+from dachi.inst import Cue
 import pytest
 
 

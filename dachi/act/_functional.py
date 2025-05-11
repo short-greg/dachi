@@ -700,6 +700,8 @@ def _f_task_wrapper(
         ctx['res'] = None
         status = TaskStatus.FAILURE
     ctx['thread_status'] = status
+    if callback is not None:
+        callback(ctx)
 
 
 def threaded_task(
@@ -787,8 +789,8 @@ def _streamf_task_wrapper(
         ctx['res'] = None
         status = TaskStatus.FAILURE
     ctx['thread_status'] = status
-    # if callback is not None:
-    #     callback(ctx)
+    if callback is not None:
+        callback(ctx)
 
 
 def streamed_task(

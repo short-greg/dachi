@@ -11,7 +11,8 @@ from collections import OrderedDict
 import pydantic
 
 # local
-from ..msg import render, struct_template, Msg
+from ..inst import render, struct_template
+from ._messages import Msg
 from ._msg import MsgProc
 from ..base import TemplateField, Templatable, ExampleMixin
 from ..utils import unescape_curly_braces

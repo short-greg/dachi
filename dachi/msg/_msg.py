@@ -3,8 +3,8 @@ from abc import ABC, abstractmethod
 import typing
 
 # local
-from ..msg import Msg, StreamMsg
-from . import Module, AsyncModule
+from . import Msg, StreamMsg
+from ..proc import Module, AsyncModule
 from .. import utils
 
 

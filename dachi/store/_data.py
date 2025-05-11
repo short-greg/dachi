@@ -2,7 +2,7 @@ import typing
 from functools import reduce
 from abc import ABC, abstractmethod
 from ..base import Storable
-from ..msg._render import render, Renderable
+from ..inst._render import render, Renderable
 from ..msg._messages import Msg
 from ..utils import UNDEFINED
 import pydantic

@@ -1,34 +1,23 @@
 # 1st party
 import typing
 import string
-
 import pydantic
 import roman
 import re
-
-# local
-from ._render import render
-
-S = typing.TypeVar('S', bound=pydantic.BaseModel)
-X = typing.Union[str]
-
-
-
-# 1st party
-import typing
 from abc import abstractmethod, ABC
 from typing import Self
-import inspect
-from functools import wraps
 
 # 3rd party
 import pydantic
 
 # local
+from ._render import render, render_multi
+from ._render import render
 from ..base import Trainable, Renderable
 from ..utils import is_primitive, str_formatter
 
-from ._render import render, render_multi
+S = typing.TypeVar('S', bound=pydantic.BaseModel)
+X = typing.Union[str]
 
 
 def generate_numbered_list(n, numbering_type='arabic') -> typing.List:
@@ -234,8 +223,6 @@ class Cue(
 ):
     """Specific cue for the model to use
     """
-    __store__ = "text"
-
     def __init__(
         self, text: str, name: str='', 
         out: typing.Optional[typing.Callable[[typing.Any], typing.Any]] = None
@@ -346,7 +333,6 @@ class Cue(
 
 
 Y = typing.Union[str, Cue]
-
 
 
 def validate_out(cues: typing.List[Y]) -> typing.Optional[typing.Callable[[typing.Any], typing.Any]]:

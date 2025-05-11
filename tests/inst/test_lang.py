@@ -1,5 +1,5 @@
 import pytest
-from dachi.msg import Term, Glossary
+from dachi.inst import Term, Glossary
 
 
 class TestTerm:

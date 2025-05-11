@@ -16,16 +16,16 @@ from ..proc._process import (
 )
 from ..store import Param
 from ..utils import primitives, str_formatter
-from ..proc._msg import ToMsg, ToText, FromMsg
+from ..msg import ToMsg, ToText, FromMsg
 from ._asst import (
     AsyncAssist, AsyncStreamAssist, 
     Assist, StreamAssist
 )
-from ..proc._out import (
+from ..msg import (
     OutConv, NullOut,
     PrimOut, PydanticOut,
 )
-from ..msg import (
+from ..inst import (
     Cue, validate_out,
     render,
     render_multi

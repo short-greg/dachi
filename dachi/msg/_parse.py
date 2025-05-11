@@ -10,7 +10,7 @@ from abc import abstractmethod
 from .. import store
 from .. import utils
 from collections import OrderedDict
-from . import Module
+from ..proc import Module
 
 
 class Parser(Module):

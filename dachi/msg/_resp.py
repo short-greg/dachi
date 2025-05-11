@@ -7,7 +7,7 @@ import typing
 import pydantic
 
 # local
-from ..msg._messages import Msg, StreamMsg
+from ._messages import Msg, StreamMsg
 from ._msg import MsgProc
 
 RESPONSE = 'resp'

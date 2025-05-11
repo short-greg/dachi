@@ -16,7 +16,7 @@ from ...msg import Msg, END_TOK, to_list_input
 from .._ai import (
     LLM, llm_aforward, llm_astream, llm_forward, llm_stream, ToolSet, ToolCall, ToolBuilder
 )
-from ...proc._resp import RespConv, OutConv
+from ...msg._resp import RespConv, OutConv
 from ...utils import UNDEFINED, coalesce
 from ... import store
 

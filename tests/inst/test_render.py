@@ -1,9 +1,9 @@
-from dachi.msg import _render
+from dachi.inst import _render
 from dachi.base import Renderable
 import typing
 import pytest
 from pydantic import BaseModel
-from dachi.msg import model_template
+from dachi.inst import model_template
 
 
 class NestedModel(BaseModel):
@@ -17,7 +17,7 @@ class DummyModel(BaseModel):
 
 
 class TestModelTemplate:
-
+    
     def test_model_template_with_simple_model(self):
         class SimpleModel(BaseModel):
             field: str

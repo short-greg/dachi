@@ -1,14 +1,12 @@
 import pytest
 from ..utils.test_core import SimpleStruct
-from dachi.proc import _out as _out
-from dachi.msg import model_to_text
-
-
-from dachi.msg import model_to_text, END_TOK, Msg, StreamMsg
-from dachi.proc import _out as text_proc
+from dachi.msg import _out as _out
+from dachi.inst import model_to_text
+from dachi.inst import model_to_text
+from dachi.msg import Msg, StreamMsg
+from dachi.msg import _out as text_proc
 from .._structs import SimpleStruct2
 from dachi import utils
-from dachi.proc import _parse
 from dachi.msg import Msg, StreamMsg
 import typing
 from dachi import utils

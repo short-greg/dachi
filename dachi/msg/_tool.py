@@ -1,27 +1,22 @@
 # 1st party
 import typing
 import json
-from dataclasses import dataclass
-from typing import Callable, Type, Any, Optional
-from typing import Any, Dict, get_type_hints
+from typing import (
+    Callable, Type, Optional,
+    Any, Dict, get_type_hints
+)
 from inspect import signature, Parameter
 import inspect
+
 # 3rd party
 import pydantic
-from pydantic import create_model
-from pydantic import BaseModel
-from ..proc import AsyncModule, Module
-from inspect import signature, Parameter
-from typing import Any, Dict, Callable, get_type_hints
 from pydantic import create_model, BaseModel
-import pydantic
 
+# locla
+from ..proc import AsyncModule, Module
 
 # local
-from ..utils import (
-    is_async_function,
-    is_generator_function,
-)
+from ..utils import is_async_function
 
 # 1) How can the tool be used by the LLM
 # 2) So I would simply pass the tool to the
@@ -165,6 +160,8 @@ class AsyncToolCall(
 
 
 class ToolBuilder(object):
+    """Use to build up a tool
+    """
 
     def __init__(self):
         

@@ -10,12 +10,12 @@ from ..msg._messages import (
     Msg, BaseDialog, StreamMsg,
     END_TOK, to_list_input
 )
-from ..proc._msg import MsgProc
+from ..msg._msg import MsgProc
 from ._asst import Assistant
 from ..utils import (
     coalesce, UNDEFINED,
 )
-from..proc._resp import RespConv
+from..msg._resp import RespConv
 
 
 S = typing.TypeVar('S', bound=pydantic.BaseModel)

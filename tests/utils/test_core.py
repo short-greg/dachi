@@ -1,4 +1,4 @@
-from dachi.msg import render, render_multi
+from dachi.inst import render, render_multi
 from pydantic import BaseModel
 from typing import Any, Iterator, Tuple
 from dachi.proc._process import Module

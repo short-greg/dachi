@@ -9,9 +9,9 @@ from ..msg._messages import (
     Msg, BaseDialog, ListDialog
 )
 from ._asst import Assistant
-from ..proc._msg import ToMsg, KeyGet, FromMsg
-from ..proc._out import OutConv
-from ..proc._out import conv_to_out
+from ..msg._msg import ToMsg, KeyGet, FromMsg
+from ..msg._out import OutConv
+from ..msg._out import conv_to_out
 from ..proc import (
     Module, AsyncModule, 
     StreamModule, AsyncStreamModule

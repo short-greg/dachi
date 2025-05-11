@@ -14,7 +14,7 @@ from ..proc import (
     Module, AsyncModule, 
     StreamModule, AsyncStreamModule
 )
-from ..proc._msg import MsgProc
+from ..msg._msg import MsgProc
 
 S = typing.TypeVar('S', bound=pydantic.BaseModel)
 
