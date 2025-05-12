@@ -1,4 +1,4 @@
-from dachi.msg._messages import Msg, StreamMsg
+from dachi.msg._messages import Msg
 from dachi.msg._msg import MsgProc
 
 from typing import Iterator
@@ -54,11 +54,11 @@ class DummyAIModel(
             cur_out += c
             is_last = i == len(self.target) - 1
             
-            msg = StreamMsg(
-                role='assistant', content=cur_out, meta={'content': c}, is_last=is_last
+            msg = Msg(
+                role='assistant', content=cur_out, meta={'content': c}
             )
             for p, delta_store in zip(self.proc, delta_stores):
-                p(msg, delta_store)
+                p(msg, delta_store, True, is_last)
             yield msg
         
     async def aforward(self, dialog, **kwarg_overrides):

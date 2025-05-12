@@ -54,7 +54,7 @@ class ToolDef(pydantic.BaseModel):
     return_type: Optional[Type[Any]] = None  # for future use
     version: Optional[str] = None            # optional metadata
     
-    def to_tool_call(self, *args, **kwargs):
+    def to_tool_call(self, *args, tool_id: str, **kwargs):
         sig = inspect.signature(self.fn)
         param_names = list(sig.parameters)
 
@@ -72,8 +72,16 @@ class ToolDef(pydantic.BaseModel):
         input_data = self.input_model(**bound_kwargs)
 
         if self.is_async():
-            return AsyncToolCall(option=self, inputs=input_data)
-        return ToolCall(option=self, inputs=input_data)
+            return AsyncToolCall(
+                tool_id=tool_id,
+                option=self, 
+                inputs=input_data
+            )
+        return ToolCall(
+            tool_id=tool_id,
+            option=self, 
+            inputs=input_data
+        )
 
     # convenience: tool_def(...)
     __call__ = to_tool_call

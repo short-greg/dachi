@@ -161,7 +161,7 @@ class TestToolCall:
 
         tool_def = make_tool_def(varargs_function)
 
-        tool_call = tool_def.to_tool_call(2, 3)
+        tool_call = tool_def.to_tool_call(2, 3, tool_id="x")
         assert tool_call() == 5
 
     def test_tool_call_with_keyword_args(self):
@@ -170,6 +170,5 @@ class TestToolCall:
 
         tool_def = make_tool_def(varargs_function)
 
-        tool_call = tool_def.to_tool_call(x=2, y=3)
+        tool_call = tool_def.to_tool_call(x=2, y=3, tool_id="x")
         assert tool_call() == 5
-

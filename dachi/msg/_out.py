@@ -12,8 +12,6 @@ import pydantic
 
 # local
 from ..inst import render, struct_template
-
-from ._tool import ToolCall, ToolOut
 from ._messages import Msg
 from ._msg import MsgProc
 from ..base import TemplateField, Templatable, ExampleMixin
@@ -44,7 +42,10 @@ class ReadError(Exception):
         return super().__str__()
     
     @staticmethod
-    def rethrow(original_exception, message="Read operation failed"):
+    def rethrow(
+        original_exception, 
+        message="Read operation failed"
+    ):
         """Utility method to raise a ReadError while preserving the original exception."""
         raise ReadError(message, original_exception) from original_exception
 
@@ -54,7 +55,7 @@ class OutConv(MsgProc, Templatable, ExampleMixin):
     """
     
     @abstractmethod
-    def example(self, data: typing.Any) -> str:
+    def render(self, data: typing.Any) -> str:
         """Output an example of the data
 
         Args:
@@ -129,7 +130,7 @@ class PrimOut(OutConv):
             )
         return self._out_cls(val)
 
-    def example(self, data: typing.Any) -> str:
+    def render(self, data: typing.Any) -> str:
         """Output an example of the data
 
         Args:
@@ -139,6 +140,19 @@ class PrimOut(OutConv):
             str: 
         """
         return str(data)
+    
+    def example(self) -> str:
+        if self._out_cls is int:
+            return self.render(1)
+        elif self._out_cls is bool:
+            return self.render(True)
+        elif self._out_cls is str:
+            return self.render("data")
+        elif self._out_cls is float:
+            return self.render(3.14)
+        raise RuntimeError(
+            f"Don't know how render for type {self._out_cls}"
+        ) 
 
     def template(self) -> str:
         """Output the template for the string
@@ -164,7 +178,7 @@ class PydanticOut(OutConv, typing.Generic[S]):
         super().__init__(name, from_)
         self._out_cls = out_cls
 
-    def example(self, data: typing.Any) -> str:
+    def render(self, data: typing.Any) -> str:
         """Output an example of the data
 
         Args:
@@ -235,6 +249,16 @@ class PydanticOut(OutConv, typing.Generic[S]):
             struct_template(self._out_cls), 
             escape_braces, self.template_renderer
         ) 
+
+    def example(self):
+        data = {
+            'x': 'data 1',
+            'y': 'data 2',
+            'z': 'data 3'
+        }
+        return self.render(
+            data
+        )
 
 
 class KVOut(OutConv):
@@ -307,7 +331,7 @@ class KVOut(OutConv):
             for key, value in key_descr.items()
         )
 
-    def example(self, data: typing.Any) -> str:
+    def render(self, data: typing.Any) -> str:
         """Output an example of the data
 
         Args:
@@ -319,6 +343,14 @@ class KVOut(OutConv):
         return '\n'.join(
             f'{k}{self.sep}{render(v)}' for k, v in data.items()
         )
+
+    def example(self):
+        data = {
+            'x': 'data 1',
+            'y': 'data 2',
+            'z': 'data 3'
+        }
+        return self.render(data)
 
 
 class IndexOut(OutConv):
@@ -371,7 +403,7 @@ class IndexOut(OutConv):
         
         return result
 
-    def example(self, data: typing.Any) -> str:
+    def render(self, data: typing.Any) -> str:
         """Output an example of the data
 
         Args:
@@ -411,6 +443,11 @@ class IndexOut(OutConv):
                 f'count{self.sep}{key_descr}',
             ]
         return '\n'.join(lines)
+    
+    def example(self):
+        
+        data = ["Data 1", "Data 2", "Data 3"]
+        return self.render(data)
 
 
 class JSONOut(OutConv):
@@ -418,13 +455,21 @@ class JSONOut(OutConv):
     """
 
     def __init__(
-        self, name, from_ = 'content', 
+        self, 
+        name, 
+        from_ = 'content', 
         key_descr: typing.Optional[typing.Dict] = None
     ):
         super().__init__(name, from_)
         self.key_descr = key_descr
 
-    def delta(self, resp, delta_store: typing.Dict, streamed: bool=False, is_last: bool=True) -> typing.Any:
+    def delta(
+        self,
+        resp, 
+        delta_store: typing.Dict, 
+        streamed: bool=False, 
+        is_last: bool=True
+    ) -> typing.Any:
         """Read in the output
 
         Args:
@@ -441,7 +486,6 @@ class JSONOut(OutConv):
         Returns:
             typing.Dict: The result - if it fails, will return an empty dict
         """
-        
         resp = self.coalesce_resp(resp)
         resp = store.acc(delta_store, 'val', resp)
 
@@ -454,7 +498,7 @@ class JSONOut(OutConv):
         except json.JSONDecodeError:
             return {}
 
-    def example(self, data: typing.Any) -> str:
+    def render(self, data: typing.Any) -> str:
         """Output an example of the data
 
         Args:
@@ -471,7 +515,19 @@ class JSONOut(OutConv):
         Returns:
             str: The template for the output
         """
-        return escape_curly_braces(self.key_descr)
+        return escape_curly_braces(
+            self.key_descr
+        )
+
+    def example(self) -> str:
+        
+        return json.dumps({
+            "key1": "value1",
+            "key2": 123,
+            "key3": True,
+            "key4": [1, 2, 3],
+            "key5": {"nestedKey": "nestedValue"}
+        }, indent=4)
 
 
 class ParsedOut(OutConv):
@@ -482,7 +538,7 @@ class ParsedOut(OutConv):
         super().__init__(name, from_)
         self._parser = parser
 
-    def example(self, data: typing.Any) -> str:
+    def render(self, data: typing.Any) -> str:
         """Output an example of the data
 
         Args:
@@ -509,20 +565,63 @@ class ParsedOut(OutConv):
 
     def template(self) -> str:
 
-        return ''
+        return self._parser.render(
+            ['<Template 1>', '<Template 2>']
+        )
+
+    def example(self):
+        
+        return self._parser.render(
+            ['Example 1', 'Example 2']
+        )
 
 
+class TupleOut(OutConv):
 
-class NullOut(OutConv):
-    """A Reader that does not change the data. 
-    So in most cases will simply output a string
-    """
-
-    def __init__(self, name, from_: str='content', parser: Parser=None):
+    def __init__(
+        self, 
+        convs: typing.List[OutConv], 
+        parser: Parser, name, from_: str='content'
+    ):
         super().__init__(name, from_)
-        self._parser = parser
+        self.convs = convs
+        self.parser = parser
 
-    def example(self, data: typing.Any) -> str:
+    def delta(
+        self, 
+        resp, 
+        delta_store, 
+        is_streamed = False, 
+        is_last = True
+    ):
+        parsed = store.sub_dict(delta_store, 'parsed')
+        i = store.get_or_set(delta_store, 'i', 0)
+        res = self.parser.forward(
+            resp, 
+            parsed, 
+            is_streamed,
+            is_last
+        )
+        if res is utils.UNDEFINED:
+            return utils.UNDEFINED
+
+        outs = []
+        if is_last and len(res) != len(self.convs[i:]):
+            raise RuntimeError(
+                "There are more out processors to retrieve than items."
+            )
+        
+        if len(res) > len(self.convs[i:]):
+            raise RuntimeError(
+                "There are more items to retrieve than out processors."
+            )
+        for res_i, conv in zip(res, self.convs[i:]):
+
+            outs.append(conv.delta(res_i, {}))
+            store.acc(delta_store, 'i', 1)
+        return outs
+        
+    def render(self, data) -> str:
         """Output an example of the data
 
         Args:
@@ -531,9 +630,105 @@ class NullOut(OutConv):
         Returns:
             str: 
         """
-        return str(data)
+        datas = [
+            conv.render(data_i) 
+            for data_i, conv in 
+            zip(data, self.convs)
+        ]
+        return self.parser.render(datas)
 
-    def delta(self, resp, delta_store: typing.Dict, streamed: bool=False, is_last: bool=False) -> typing.Any:
+    def template(self):
+        
+        templates = [conv.template() for conv in self.convs]
+        return self.parser.render(templates)
+
+    def example(self):
+        datas = [
+            conv.example(data_i) 
+            for data_i, conv in self.convs
+        ]
+        return self.parser.render(datas)
+
+
+class ListOut(OutConv):
+
+    def __init__(
+        self, 
+        conv: OutConv, 
+        parser: Parser, name, from_
+    ):
+        super().__init__(name, from_)
+        self.conv = conv
+        self.parser = parser
+
+    def delta(
+        self, 
+        resp, 
+        delta_store, 
+        is_streamed = False, 
+        is_last = True
+    ):
+        res = self.parser.forward(
+            resp, delta_store, is_streamed,
+            is_last
+        )
+        if res is utils.UNDEFINED:
+            return utils.UNDEFINED
+
+        return [self.conv.delta(
+            res_i, {}, False, True
+        ) for res_i in res]
+        
+    def render(self, data) -> str:
+        """Output an example of the data
+
+        Args:
+            data (typing.Any): 
+
+        Returns:
+            str: 
+        """
+        datas = [
+            conv.render(data_i) 
+            for data_i, conv in 
+            zip(data, self.convs)
+        ]
+        return self.parser.render(datas)
+
+    def template(self):
+        
+        templates = [conv.template() for conv in self.convs]
+        return self.parser.render(templates)
+
+    def example(self):
+        datas = [
+            conv.example(data_i) 
+            for data_i, conv in self.convs
+        ]
+        return self.parser.render(datas)
+
+
+class NullOut(OutConv):
+    """A Reader that does not change the data. 
+    So in most cases will simply output a string
+    """
+
+    def __init__(
+        self, 
+        name, 
+        from_: str='content', 
+        parser: Parser=None
+    ):
+        super().__init__(name, from_)
+        self._parser = parser
+
+    def delta(
+        self, 
+        resp, 
+        delta_store: typing.Dict, 
+        streamed: bool=False, 
+        is_last: bool=False
+    ) -> typing.Any:
         """Read in the output
 
         Args:
@@ -549,7 +744,21 @@ class NullOut(OutConv):
             )
         return resp
 
+    def render(self, data: typing.Any) -> str:
+        """Output an example of the data
+
+        Args:
+            data (typing.Any): 
+
+        Returns:
+            str: 
+        """
+        return str(data)
+    
     def template(self) -> str:
+        return ''
+    
+    def example(self):
         return ''
 
 
@@ -558,7 +767,13 @@ class CSVOut(OutConv):
     Dynamically parse CSV data, returning new rows as accumulated. 
     The header will be returned along with them if used.
     """
-    def __init__(self, name: str, from_: str ='content', delimiter: str = ',', use_header: bool = True):
+    def __init__(
+        self, 
+        name: str, 
+        from_: str ='content', 
+        delimiter: str = ',', 
+        use_header: bool = True
+    ):
         """
         Initializes the CSV parser with the specified delimiter and header usage.
         This class is designed to dynamically parse CSV data, returning new rows 
@@ -574,7 +789,13 @@ class CSVOut(OutConv):
         self._delimiter = delimiter
         self._use_header = use_header
 
-    def delta(self, resp, delta_store: typing.Dict, streamed: bool=False, is_last: bool=False) -> typing.List | None:
+    def delta(
+        self, 
+        resp, 
+        delta_store: typing.Dict, 
+        streamed: bool=False, 
+        is_last: bool=False
+    ) -> typing.List | None:
         """
         Parses CSV data incrementally using csv.reader.
         """
@@ -644,9 +865,13 @@ class CSVOut(OutConv):
         
         return output.getvalue()
 
-    def example(self, data):
-        return super().example(data)
-    
+    def example(self):
+        data = [
+            ["1", "2", "3"],
+            ["2", "3", "4"]
+        ]
+        return self.render(data)
+
     def template(self):
         return super().template()
 

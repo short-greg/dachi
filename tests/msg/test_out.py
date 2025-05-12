@@ -3,11 +3,10 @@ from ..utils.test_core import SimpleStruct
 from dachi.msg import _out as _out
 from dachi.inst import model_to_text
 from dachi.inst import model_to_text
-from dachi.msg import Msg, StreamMsg
+from dachi.msg import Msg
 from dachi.msg import _out as text_proc
 from .._structs import SimpleStruct2
 from dachi import utils
-from dachi.msg import Msg, StreamMsg
 import typing
 from dachi import utils
 
@@ -20,9 +19,9 @@ def asst_stream(data, convs) -> typing.Iterator:
     delta_store = {}
     for i, d in enumerate(data):
         is_last = i == len(data) - 1
-        msg = StreamMsg('assistant', meta={'content': d}, is_last=is_last)
+        msg = Msg('assistant', meta={'content': d})
         for conv in convs:
-            msg = conv(msg, delta_store)
+            msg = conv(msg, delta_store, True, is_last)
             yield msg
 
 
@@ -67,39 +66,22 @@ class TestPydanticConv(object):
             name='F1',
             out_cls=SimpleStruct
         )
-        msg1 = StreamMsg(
+        msg1 = Msg(
             role='user',
             meta={
                 'content': '{"x": "he'
             },
-            is_last=False
         )
-        msg2 = StreamMsg(
+        msg2 = Msg(
             role='user',
             meta={
                 'content': 'llo"}'
             },
-            is_last=True
         )
         delta_store = {}
-        out(msg1, delta_store=delta_store)
-        result = out(msg2, delta_store=delta_store)['meta']['F1']
+        out(msg1, delta_store, True, False)
+        result = out(msg2, delta_store, True, True)['meta']['F1']
         assert result.x == 'hello'
-
-    # def test_pydanticconv_handles_empty_data(self):
-    #     """Test that PydanticConv handles empty data gracefully."""
-    #     out = _out.PydanticOut(
-    #         name='F1',
-    #         out_cls=SimpleStruct
-    #     )
-    #     msg = Msg(
-    #         role='user',
-    #         meta={
-    #             'content': None
-    #         }
-    #     )
-    #     result = out(msg).m['F1']
-    #     assert result is utils.UNDEFINED
 
     def test_pydanticconv_template_contains_field(self):
         """Test that the template output contains the expected field."""
@@ -116,7 +98,7 @@ class TestPydanticConv(object):
             name='F1',
             out_cls=SimpleStruct
         )
-        example = out.example(SimpleStruct(x='example'))
+        example = out.render(SimpleStruct(x='example'))
         assert example == '{"x":"example"}'
 
     def test_pydanticconv_handles_partial_streamed_data(self):
@@ -125,23 +107,21 @@ class TestPydanticConv(object):
             name='F1',
             out_cls=SimpleStruct
         )
-        msg1 = StreamMsg(
+        msg1 = Msg(
             role='user',
             meta={
                 'content': '{"x": "exa'
-            },
-            is_last=False
+            }
         )
-        msg2 = StreamMsg(
+        msg2 = Msg(
             role='user',
             meta={
                 'content': 'mple"}'
-            },
-            is_last=True
+            }
         )
         delta_store = {}
-        out(msg1, delta_store=delta_store)
-        result = out(msg2, delta_store=delta_store)['meta']['F1']
+        out(msg1, delta_store, True, False)
+        result = out(msg2, delta_store, True, True)['meta']['F1']
         assert result.x == 'example'
 
 
@@ -171,21 +151,21 @@ class TestPydanticConv(object):
         )
         simple = SimpleStruct(x='hi')
         d = model_to_text(simple)
-        msg1 = StreamMsg(
+        msg1 = Msg(
             role='user',
             meta={
                 'content': d[:4],
-            }, is_last=False
+            }
         )
-        msg2 = StreamMsg(
+        msg2 = Msg(
             role='user',
             meta={
                 'content': d[4:],
-            }, is_last=True
+            }
         )
         delta = {}
-        out(msg1, delta_store=delta)
-        simple2 = out(msg2, delta_store=delta)['meta']['F1']
+        out(msg1, delta, True, False)
+        simple2 = out(msg2, delta, True, True)['meta']['F1']
         assert simple.x == simple2.x
     
     def test_out_template(self):
@@ -199,21 +179,6 @@ class TestPydanticConv(object):
 
 
 class TestPrimRead(object):
-
-    # def test_prim_read_handles_empty_data(self):
-    #     """Test that PrimConv handles empty data gracefully."""
-    #     out = _out.PrimOut(
-    #         name='F1',
-    #         out_cls=int,
-    #     )
-    #     msg = Msg(
-    #         role='user',
-    #         meta={
-    #             'content': []
-    #         }
-    #     )
-    #     result = out(msg)['meta']['F1']
-    #     assert result is utils.UNDEFINED
 
     def test_prim_read_handles_invalid_data(self):
         """Test that PrimConv raises an error for invalid data."""
@@ -251,23 +216,21 @@ class TestPrimRead(object):
             name='F1',
             out_cls=str,
         )
-        msg1 = StreamMsg(
+        msg1 = Msg(
             role='user',
             meta={
                 'content': 'Hel'
-            },
-            is_last=False
+            }
         )
-        msg2 = StreamMsg(
+        msg2 = Msg(
             role='user',
             meta={
                 'content': 'lo'
-            },
-            is_last=True
+            }
         )
         delta_store = {}
-        out(msg1, delta_store=delta_store)
-        result = out(msg2, delta_store=delta_store)['meta']['F1']
+        out(msg1, delta_store, True, False)
+        result = out(msg2, delta_store, True, True)['meta']['F1']
         assert result == 'Hello'
 
     def test_prim_read_handles_bool_case_insensitivity(self):
@@ -315,7 +278,7 @@ class TestPrimRead(object):
             name='F1',
             out_cls=int,
         )
-        example = out.example(123)
+        example = out.render(123)
         assert example == '123'
 
     def test_read_reads_in_data(self):
@@ -366,21 +329,21 @@ class TestPrimRead(object):
             out_cls=bool,
         )
 
-        msg1 = StreamMsg(
+        msg1 = Msg(
             role='user',
             meta={
                 'content': 'TR'
-            }, is_last=False
+            }
         )
-        msg2 = StreamMsg(
+        msg2 = Msg(
             role='user',
             meta={
                 'content': 'UE'
-            }, is_last=True
+            }
         )
         store = {}
-        out.forward(msg1, delta_store=store)
-        result = out.forward(msg2, delta_store=store).m['F1']
+        out.forward(msg1, store, True, False)
+        result = out.forward(msg2, store, True, True).m['F1']
         assert result is True
 
 
@@ -448,23 +411,21 @@ class TestKVConv(object):
                 'key2': 'description2'
             }
         )
-        msg1 = StreamMsg(
+        msg1 = Msg(
             role='user',
             meta={
                 'content': 'key1::val\nue1::2\n'
-            },
-            is_last=False
+            }
         )
-        msg2 = StreamMsg(
+        msg2 = Msg(
             role='user',
             meta={
                 'content': 'key2::value2'
-            },
-            is_last=True
+            }
         )
         delta_store = {}
-        out(msg1, delta_store=delta_store)
-        result = out(msg2, delta_store=delta_store).m['F1']
+        out(msg1, delta_store, True, False)
+        result = out(msg2, delta_store, True, True).m['F1']
         assert 'key1' not in result
         assert result['ue1'] == '2'
         assert result['key2'] == 'value2'
@@ -491,7 +452,7 @@ class TestKVConv(object):
                 'key2': 'description2'
             }
         )
-        example = out.example({'key1': 'example1', 'key2': 'example2'})
+        example = out.render({'key1': 'example1', 'key2': 'example2'})
         assert 'key1::example1' in example
         assert 'key2::example2' in example
 
@@ -600,14 +561,14 @@ class TestKVConv(object):
         delta_store = {}
         ress = {}
         for i, t in enumerate(k):
-            msg1 = StreamMsg(
+            is_last = i == len(k)-1
+            msg1 = Msg(
                 role='user',
                 meta={
                     'content': t
-                }, is_streamed=True,
-                is_last=i == len(k)-1
+                }
             )
-            res = out(msg1, delta_store).m['F1']
+            res = out(msg1, delta_store, True, is_last).m['F1']
             if res is not utils.UNDEFINED:
                 ress.update(res)
 
@@ -644,14 +605,13 @@ class TestNullOutConv(object):
     def test_nulloutconv_handles_streamed_data(self):
         """Test NullOutConv processes streamed data correctly."""
         out = text_proc.NullOut(name='F1')
-        msg1 = StreamMsg(
+        msg1 = Msg(
             role='user',
             meta={
                 'content': 'part1'
-            },
-            is_last=False
+            }
         )
-        msg2 = StreamMsg(
+        msg2 = Msg(
             role='user',
             meta={
                 'content': 'part2'
@@ -659,14 +619,14 @@ class TestNullOutConv(object):
             is_last=True
         )
         delta_store = {}
-        out(msg1, delta_store=delta_store)
-        result = out(msg2, delta_store=delta_store).m['F1']
+        out(msg1, delta_store, True, False)
+        result = out(msg2, delta_store, True, True).m['F1']
         assert result == 'part2'
 
     def test_nulloutconv_example_output(self):
         """Test NullOutConv generates the correct example output."""
         out = text_proc.NullOut(name='F1')
-        example = out.example(123)
+        example = out.render(123)
         assert example == '123'
 
     def test_nulloutconv_template_output(self):
@@ -678,23 +638,21 @@ class TestNullOutConv(object):
     def test_nulloutconv_handles_partial_streamed_data(self):
         """Test NullOutConv processes partial streamed data correctly."""
         out = text_proc.NullOut(name='F1')
-        msg1 = StreamMsg(
+        msg1 = Msg(
             role='user',
             meta={
                 'content': 'partial'
-            },
-            is_last=False
+            }
         )
-        msg2 = StreamMsg(
+        msg2 = Msg(
             role='user',
             meta={
                 'content': 'stream'
-            },
-            is_last=True
+            }
         )
         delta_store = {}
-        out(msg1, delta_store=delta_store)
-        result = out(msg2, delta_store=delta_store).m['F1']
+        out(msg1, delta_store, True, False)
+        result = out(msg2, delta_store, True, True).m['F1']
         assert result == 'stream'
 
     def test_nulloutconv_handles_large_data(self):
@@ -808,23 +766,21 @@ class TestIndexConv(object):
             name='F1',
             key_descr='the number of people'
         )
-        msg1 = StreamMsg(
+        msg1 = Msg(
             role='user',
             meta={
                 'content': '1::1\n'
-            },
-            is_last=False
+            }
         )
-        msg2 = StreamMsg(
+        msg2 = Msg(
             role='user',
             meta={
                 'content': '2::4'
-            },
-            is_last=True
+            }
         )
         delta_store = {}
-        out(msg1, delta_store=delta_store)
-        result = out(msg2, delta_store=delta_store).m['F1']
+        out(msg1, delta_store, True, False)
+        result = out(msg2, delta_store, True, True).m['F1']
         assert result[0] == '1'
         assert result[1] == '4'
 
@@ -892,7 +848,7 @@ class TestIndexConv(object):
             name='F1',
             key_descr='the number of people'
         )
-        example = out.example(['Alice', 'Bob'])
+        example = out.render(['Alice', 'Bob'])
         assert '0::Alice' in example
         assert '1::Bob' in example
 
@@ -903,16 +859,15 @@ class TestIndexConv(object):
             sep='::',
             key_descr='the number of people'
         )
-        msg1 = StreamMsg(
+        msg1 = Msg(
             role='user',
             meta={
                 'content': '1:1'
-            },
-            is_last=True
+            }
         )
         delta_store = {}
         with pytest.raises(RuntimeError):
-            out(msg1, delta_store=delta_store)
+            out(msg1, delta_store, True, True)
 
     def test_indexconv_handles_large_data(self):
         """Test IndexConv handles a large number of key-value pairs."""
@@ -975,14 +930,14 @@ class TestIndexConv(object):
         ress = []
         for i, t in enumerate(k):
 
-            msg1 = StreamMsg(
+            is_last = i == len(k) - 1
+            msg1 = Msg(
                 role='user',
                 meta={
                     'content': t
                 },
-                is_last=i == len(k) - 1
             )
-            cur = out(msg1, delta_store).m['F1']
+            cur = out(msg1, delta_store, True, is_last).m['F1']
             if cur is not utils.UNDEFINED:
                 ress.extend(cur)
         
@@ -1135,3 +1090,121 @@ class TestCSVParser(object):
                 res.extend(cur)
 
         assert len(res) == 3
+
+
+from dachi.msg import _parse
+
+class TestTupleOut(object):
+
+    def test_tupleout_handles_valid_data(self):
+        """Test TupleOut processes valid data correctly."""
+        kv_conv = text_proc.KVOut(
+            name='KV',
+            key_descr={'key1': 'description1', 'key2': 'description2'}
+        )
+        char_delim_parser = _parse.CharDelimParser(
+            sep=','
+        )
+        tuple_out = _out.TupleOut(
+            convs=[kv_conv],
+            parser=char_delim_parser,
+            name='out'
+        )
+        msg = Msg(
+            role='user',
+            meta={'content': 'key1::value1\nkey2::value2'}
+        )
+        result = tuple_out(msg).m['out']
+        assert result[0]['key1'] == 'value1'
+        assert result[0]['key2'] == 'value2'
+
+    def test_tupleout_handles_valid_data_with_two_convs(self):
+        """Test TupleOut processes valid data correctly."""
+        kv_conv = text_proc.KVOut(
+            name='KV',
+            key_descr={'key1': 'description1', 'key2': 'description2'}
+        )
+        char_delim_parser = _parse.CharDelimParser(
+            sep=','
+        )
+        tuple_out = _out.TupleOut(
+            convs=[kv_conv, kv_conv],
+            parser=char_delim_parser,
+            name='out'
+        )
+        msg = Msg(
+            role='user',
+            meta={'content': 'key1::value1\nkey2::value2,key3::value3\nkey4::value4'}
+        )
+        result = tuple_out(msg).m['out']
+        assert result[0]['key1'] == 'value1'
+        assert result[0]['key2'] == 'value2'
+        assert result[1]['key3'] == 'value3'
+        assert result[1]['key4'] == 'value4'
+
+    def test_tupleout_raises_error_if_insufficient_convs(self):
+        """Test TupleOut processes valid data correctly."""
+        kv_conv = text_proc.KVOut(
+            name='KV',
+            key_descr={'key1': 'description1', 'key2': 'description2'}
+        )
+        char_delim_parser = _parse.CharDelimParser(
+            sep=','
+        )
+        tuple_out = _out.TupleOut(
+            convs=[kv_conv],
+            parser=char_delim_parser,
+            name='out'
+        )
+        msg = Msg(
+            role='user',
+            meta={'content': 'key1::value1\nkey2::value2,key3::value3\nkey4::value4'}
+        )
+        with pytest.raises(RuntimeError):
+            tuple_out(msg).m['out']
+
+    def test_tupleout_raises_error_if_insufficient_keyvals(self):
+        """Test TupleOut processes valid data correctly."""
+        kv_conv = text_proc.KVOut(
+            name='KV',
+            key_descr={'key1': 'description1', 'key2': 'description2'}
+        )
+        char_delim_parser = _parse.CharDelimParser(
+            sep=','
+        )
+        tuple_out = _out.TupleOut(
+            convs=[kv_conv, kv_conv],
+            parser=char_delim_parser,
+            name='out'
+        )
+        msg = Msg(
+            role='user',
+            meta={'content': 'key1::value1\nkey2::value2'}
+        )
+        with pytest.raises(RuntimeError):
+            tuple_out(msg).m['out']
+
+    def test_tupleout_handles_empty_data(self):
+        """Test TupleOut handles empty data gracefully."""
+        kv_conv = text_proc.KVOut(
+            name='KV',
+            key_descr={'key1': 'description1', 'key2': 'description2'}
+        )
+        char_delim_parser = _parse.CharDelimParser(
+            sep=','
+        )
+        tuple_out = _out.TupleOut(
+            convs=[kv_conv, kv_conv],
+            parser=char_delim_parser,
+            name='out'
+        )
+        msg = Msg(
+            role='user',
+            meta={'content': ''}
+        )
+        result = tuple_out(
+            msg, 
+            is_streamed=True, 
+            is_last=False
+        ).m['out']
+        assert len(result) == 0

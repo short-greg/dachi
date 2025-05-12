@@ -98,26 +98,26 @@ class Msg(dict):
         return f'{self.role} {vals}'
 
 
-class StreamMsg(Msg):
-    """A message that is streamed
-    """
+# class StreamMsg(Msg):
+#     """A message that is streamed
+#     """
 
-    def __init__(
-        self, role: str, type_: str='data', 
-        meta: typing.Dict=None, delta: typing.Dict=None, 
-        _include_role: bool=True, is_last: bool=False, **kwargs
-    ):
-        """Create a Stream Msg
+#     def __init__(
+#         self, role: str, type_: str='data', 
+#         meta: typing.Dict=None, delta: typing.Dict=None, 
+#         _include_role: bool=True, is_last: bool=False, **kwargs
+#     ):
+#         """Create a Stream Msg
 
-        Args:
-            type_ (str, optional): The type of message. Defaults to 'data'.
-            meta (typing.Dict, optional): Any additional information not related to the message specifically. Defaults to None.
-            delta (typing.Dict, optional): The change in the message. Defaults to None.
-        """
-        super().__init__(
-            role=role, type_=type_, meta=meta or {}, delta=delta or {},_include_role=_include_role, **kwargs
-        )
-        self.is_last = is_last
+#         Args:
+#             type_ (str, optional): The type of message. Defaults to 'data'.
+#             meta (typing.Dict, optional): Any additional information not related to the message specifically. Defaults to None.
+#             delta (typing.Dict, optional): The change in the message. Defaults to None.
+#         """
+#         super().__init__(
+#             role=role, type_=type_, meta=meta or {}, delta=delta or {},_include_role=_include_role, **kwargs
+#         )
+#         self.is_last = is_last
 
 
 class BaseDialog(Renderable):

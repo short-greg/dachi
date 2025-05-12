@@ -7,7 +7,7 @@ import pydantic
 
 # local
 from ..msg._messages import (
-    Msg, BaseDialog, StreamMsg,
+    Msg, BaseDialog,
     END_TOK, to_list_input
 )
 from ..msg._msg import MsgProc
@@ -329,19 +329,19 @@ def llm_stream(
     for response in f(
         *args, **kwargs
     ):
-        msg = StreamMsg(role=_role)
+        msg = Msg(role=_role)
         msg['meta'][_response_name] = response
 
         for r, delta_store in zip(_proc, delta_stores):
-            msg = r(msg, delta_store)
+            msg = r(msg, delta_store, True, False)
         
         yield msg
     
-    msg = StreamMsg(role=_role, is_last=True)
+    msg = Msg(role=_role)
     msg['meta'][_response_name] = END_TOK
 
     for r, delta_store in zip(_proc, delta_stores):
-        msg = r(msg, delta_store)
+        msg = r(msg, delta_store, True, True)
 
     yield msg
 
@@ -373,16 +373,16 @@ async def llm_astream(
     async for response in await f(
         *args, **kwargs
     ):
-        msg = StreamMsg(role=_role)
+        msg = Msg(role=_role)
         msg['meta'][_response_name] = response
         for r, delta_store in zip(_resp_proc, delta_stores):
-            msg = r(msg, delta_store)
+            msg = r(msg, delta_store, True, False)
         
         yield msg
 
-    msg = StreamMsg(role=_role, is_last=True)
+    msg = Msg(role=_role)
     msg['meta'][_response_name] = END_TOK
     for r, delta_store in zip(_resp_proc, delta_stores):
-        msg = r(msg, delta_store)
+        msg = r(msg, delta_store, True, True)
 
     yield msg

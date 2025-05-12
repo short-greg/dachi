@@ -7,7 +7,7 @@ import typing
 import pydantic
 
 # local
-from ._messages import Msg, StreamMsg
+from ._messages import Msg
 from ._msg import MsgProc
 
 RESPONSE = 'resp'
@@ -31,24 +31,23 @@ class RespConv(MsgProc, ABC):
     ) -> Msg: 
         pass
 
-    def forward(self, msg: Msg, delta_store: typing.Dict=None):
+    def forward(
+        self, 
+        msg: Msg, 
+        delta_store: typing.Dict=None, 
+        is_streamed: bool=False, 
+        is_last: bool=True
+    ):
 
         if delta_store is None:
             delta_store = {}
         resp = msg['meta'][self._from[0]]
-
-        if isinstance(msg, StreamMsg):
-            streamed = True
-            is_last = msg.is_last
-        else:
-            streamed = False
-            is_last = True
         
         msg['meta'][self.name] = res = self.delta(
-            resp, delta_store, streamed, is_last
+            resp, delta_store, is_streamed, is_last
         )
 
-        self.post(msg, res, delta_store, streamed, is_last)
+        self.post(msg, res, delta_store, is_streamed, is_last)
         return msg
 
     def prep(self) -> typing.Dict:

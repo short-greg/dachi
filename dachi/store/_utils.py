@@ -78,3 +78,55 @@ def acc(
     if value is not UNDEFINED:
         d[key] = d[key] + value
     return d[key]
+
+
+def get_or_spawn(state: typing.Dict, child: str) -> typing.Dict:
+    """Get a child or spawn it if it does not exist
+
+    Args:
+        state (typing.Dict): The state
+        child (str): The name of the child
+
+    Returns:
+        typing.Dict: The dictionary for the child
+    """
+    if child not in state:
+        state[child] = {}
+    return state[child]
+
+
+# def get_or_set(state: typing.Dict, key: str, val: typing.Any) -> typing.Any:
+#     """Use to get or set a value in a state dict
+
+#     Args:
+#         state (typing.Dict): The state dict to update
+#         key (str): The key to update
+#         val (typing.Any): The value to add
+
+#     Returns:
+#         typing.Any: 
+#     """
+#     if key not in state:
+#         state[key] = val
+#     return state[key]
+
+
+def sub_dict(d: typing.Dict, key: str) -> typing.Dict:
+    """
+    Retrieve or initialize a nested dictionary within a given dictionary.
+    Args:
+        d (typing.Dict): The dictionary to operate on.
+        key (str): The key pointing to the nested dictionary.
+    Returns:
+        typing.Dict: The nested dictionary associated with the given key.
+    Raises:
+        ValueError: If the key exists but does not point to a dictionary.
+    """
+    if key in d:
+        if not isinstance(d[key], typing.Dict):
+            raise ValueError(
+                f'The field pointed to be {key} is not a dict.'
+            )
+    else:
+        d[key] = {}
+    return d[key]

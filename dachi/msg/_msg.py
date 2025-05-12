@@ -3,7 +3,7 @@ from abc import ABC, abstractmethod
 import typing
 
 # local
-from . import Msg, StreamMsg
+from . import Msg
 from ..proc import Module, AsyncModule
 from .. import utils
 
@@ -219,7 +219,8 @@ class MsgProc(Module, ABC):
             self._single = False
         self._from = from_
 
-    def post(self, msg: Msg, result, delta_store: typing.Dict, streamed: bool=False, is_last: bool=False):
+    def post(
+        self, msg: Msg, result, delta_store: typing.Dict, streamed: bool=False, is_last: bool=False):
         """This method is executed after completion.
         The default is to do nothing
         Args:
@@ -242,7 +243,13 @@ class MsgProc(Module, ABC):
         """
         pass
 
-    def forward(self, msg: Msg, delta_store: typing.Dict=None) -> Msg:
+    def forward(
+        self, 
+        msg: Msg, 
+        delta_store: typing.Dict=None,
+        is_streamed: bool=False,
+        is_last: bool=True
+    ) -> Msg:
         """Processes the message
 
         Args:
@@ -254,13 +261,6 @@ class MsgProc(Module, ABC):
         """
         delta_store = delta_store if delta_store is not None else {}
 
-        if isinstance(msg, StreamMsg):
-            streamed = True
-            is_last = msg.is_last
-        else:
-            streamed = False
-            is_last = True
-
         resp = [msg.m[r] for r in self._from]
         is_undefined = all(r is utils.UNDEFINED for r in resp)
         
@@ -271,13 +271,18 @@ class MsgProc(Module, ABC):
             msg.m[self.name] = utils.UNDEFINED
             return utils.UNDEFINED
         msg.m[self.name] = res = self.delta(
-            resp, delta_store, streamed, is_last
+            resp, delta_store, is_streamed, is_last
         )
-        self.post(msg, res, streamed, is_last)
+        self.post(msg, res, is_streamed, is_last)
         return msg
 
     @classmethod
-    def run(cls, msg: Msg, proc: typing.Union['MsgProc', None, typing.List['MsgProc']], delta_store: typing.List=None) -> 'Msg':
+    def run(
+        cls, 
+        msg: Msg, 
+        proc: typing.Union['MsgProc', None, typing.List['MsgProc']], 
+        delta_store: typing.List=None
+    ) -> 'Msg':
         if proc is None:
             return msg
         if isinstance(proc, MsgProc):
@@ -291,62 +296,76 @@ class MsgProc(Module, ABC):
             msg = p(msg, delta_store=delta_store_i)
         return msg
 
-
-class MsgProcSeq(Module, AsyncModule):
-    """A sequence of message converters
-    """
-
-    def __init__(self, procs: typing.List[MsgProc]):
-        """Sequence of message converters
-
-        Args:
-            procs (typing.List[MsgProc]): The processes to use in processing the message
-        """
-        super().__init__()
-        self.procs = procs
-
-    def forward(self, msg: Msg) -> Msg:
-        """Process the message on the sequence
-
-        Args:
-            msg (Msg): The message to process
-
-        Returns:
-            Msg: The processed message
-        """
-        for proc in self.procs:
-            msg = proc.forward(msg)
-        return msg
-    
-    async def forward(self, msg: Msg) -> Msg:
-        """Process the message on the sequence asynchronously
-
-        Args:
-            msg (Msg): The message to process
-
-        Returns:
-            Msg: The processed message
-        """
-        for proc in self.procs:
-            msg = await proc.aforward(msg)
-        return msg
-    
-    def __getitem__(self, key: str | int) -> MsgProc:
-        """Get a message converter by name
-
-        Args:
-            key (str): The name of the message converter
-
-        Returns:
-            MsgConv: The message converter
-        """
-        if isinstance(key, int):
-            return self.procs[key]
-        
-        proc = None
-        for proc in self.procs:
-            if proc.name == key:
-                return proc
-        raise KeyError(
-            f"Key {key} not found in {self.procs}"
+    def __call__(
+        self, 
+        msg: Msg, 
+        delta_store: typing.Dict=None, 
+        is_streamed: bool=False, 
+        is_last: bool=True
+    ):
+        return super().__call__(
+            msg, delta_store, is_streamed, is_last
         )
+
+
+# TODO: FIX Bug in this or remove
+
+# class MsgProcSeq(Module, AsyncModule):
+#     """A sequence of message converters
+#     """
+
+#     def __init__(self, procs: typing.List[MsgProc]):
+#         """Sequence of message converters
+
+#         Args:
+#             procs (typing.List[MsgProc]): The processes to use in processing the message
+#         """
+#         super().__init__()
+#         self.procs = procs
+
+#     def forward(self, msg: Msg, delta_store: typing.Dict, is_streamed: bool=False, is_last: bool=True) -> Msg:
+#         """Process the message on the sequence
+
+#         Args:
+#             msg (Msg): The message to process
+
+#         Returns:
+#             Msg: The processed message
+#         """
+        
+#         for proc in self.procs:
+#             msg = proc.forward(msg)
+#         return msg
+    
+#     async def forward(self, msg: Msg) -> Msg:
+#         """Process the message on the sequence asynchronously
+
+#         Args:
+#             msg (Msg): The message to process
+
+#         Returns:
+#             Msg: The processed message
+#         """
+#         for proc in self.procs:
+#             msg = await proc.aforward(msg)
+#         return msg
+    
+#     def __getitem__(self, key: str | int) -> MsgProc:
+#         """Get a message converter by name
+
+#         Args:
+#             key (str): The name of the message converter
+
+#         Returns:
+#             MsgConv: The message converter
+#         """
+#         if isinstance(key, int):
+#             return self.procs[key]
+        
+#         proc = None
+#         for proc in self.procs:
+#             if proc.name == key:
+#                 return proc
+#         raise KeyError(
+#             f"Key {key} not found in {self.procs}"
+#         )
