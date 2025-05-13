@@ -563,6 +563,7 @@ class StateMachine(Task):
         """
         if reset:
             self.reset_status()
+            self._cur_state = self.init_state
         if self._status.is_done:
             return self._status
         

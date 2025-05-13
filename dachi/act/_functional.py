@@ -839,3 +839,35 @@ def streamed_task(
             return TaskStatus.RUNNING
         return ctx['thread_status']
     return _f
+
+
+def count_limit(
+    count: int, 
+    ctx: Context, 
+    on_reached: TaskStatus.SUCCESS
+) -> typing.Callable:
+    """
+
+    Args:
+        count (int): The number to execute
+        ctx (Context): 
+        on_reached (TaskStatus.SUCCESS): The status to return when reached the count
+
+    Returns:
+        typing.Callable
+    """
+
+    ctx.i = 0
+    if not on_reached.is_done:
+        raise ValueError(
+            'On reached must be a finished status'
+        )
+
+    def _(reset: bool=False) -> TaskStatus:
+        if reset:
+            ctx.i = 0
+        ctx.i += 1
+        if ctx.i == count:
+            return on_reached
+        return TaskStatus.RUNNING
+    return _

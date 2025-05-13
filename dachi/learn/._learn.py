@@ -137,6 +137,10 @@ class Evaluation(pydantic.BaseModel):
         return str(self.val)
 
 
+class Hypothesis(pydantic.BaseModel):
+
+    
+
 class EvaluationBatch(pydantic.BaseModel):
     """
     A evaluation is a function that takes in a set of parameters and returns a value.

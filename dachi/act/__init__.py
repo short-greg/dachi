@@ -4,13 +4,17 @@ from ._core import (
     from_bool
 )
 from ._functional import (
-    parallel, aslongas, until, sequence,
-    action, not_, tick, condf, selector,
-    aslongasf, untilf, notf, parallelf,
-    selectorf, sequencef, fallbackf,
-    fallback, taskf, PARALLEL, 
+    parallel, aslongas, 
+    until, sequence,
+    action, not_, 
+    tick, condf, selector,
+    aslongasf, untilf, 
+    notf, parallelf,
+    selectorf, sequencef, 
+    fallbackf, fallback, 
+    taskf, PARALLEL, 
     threaded_task, streamed_task,
-    preempt_cond
+    preempt_cond, count_limit
 )
 from ._tasks import (
     Serial, 
@@ -47,3 +51,4 @@ from ._decorator_func import (
     fallbackfunc, fallbackmethod,  condmethod, taskmethod,
     parallelmethod,
 )
+from ._states import TaskState, BranchState
