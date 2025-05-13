@@ -50,7 +50,11 @@ class ReadError(Exception):
         raise ReadError(message, original_exception) from original_exception
 
 
-class OutConv(MsgProc, Templatable, ExampleMixin):
+class OutConv(
+    MsgProc, 
+    Templatable, 
+    ExampleMixin
+):
     """Use for converting an AI response into a primitive value
     """
     
@@ -581,7 +585,9 @@ class TupleOut(OutConv):
     def __init__(
         self, 
         convs: typing.List[OutConv], 
-        parser: Parser, name, from_: str='content'
+        parser: Parser, 
+        name='out', 
+        from_: str='content'
     ):
         super().__init__(name, from_)
         self.convs = convs
@@ -644,8 +650,8 @@ class TupleOut(OutConv):
 
     def example(self):
         datas = [
-            conv.example(data_i) 
-            for data_i, conv in self.convs
+            conv.example() 
+            for conv in self.convs
         ]
         return self.parser.render(datas)
 
@@ -655,7 +661,9 @@ class ListOut(OutConv):
     def __init__(
         self, 
         conv: OutConv, 
-        parser: Parser, name, from_
+        parser: Parser, 
+        name='out', 
+        from_='content'
     ):
         super().__init__(name, from_)
         self.conv = conv
@@ -697,13 +705,14 @@ class ListOut(OutConv):
 
     def template(self):
         
-        templates = [conv.template() for conv in self.convs]
+        templates = [
+            self.conv.template() for _ in range(3)]
         return self.parser.render(templates)
 
     def example(self):
         datas = [
-            conv.example(data_i) 
-            for data_i, conv in self.convs
+            self.conv.example() 
+            for _ in range(2)
         ]
         return self.parser.render(datas)
 

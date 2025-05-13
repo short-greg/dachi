@@ -1208,3 +1208,150 @@ class TestTupleOut(object):
             is_last=False
         ).m['out']
         assert len(result) == 0
+
+    def test_tupleout_creates_example(self):
+        """Test TupleOut handles empty data gracefully."""
+        kv_conv = text_proc.KVOut(
+            name='KV',
+            key_descr={'key1': 'description1', 'key2': 'description2'}
+        )
+        char_delim_parser = _parse.CharDelimParser(
+            sep=','
+        )
+        tuple_out = _out.TupleOut(
+            convs=[kv_conv, kv_conv],
+            parser=char_delim_parser,
+            name='out'
+        )
+        example = tuple_out.example()
+        assert 'x' in example
+        assert 'y' in example
+
+    def test_tupleout_creates_template(self):
+        """Test TupleOut handles empty data gracefully."""
+        kv_conv = text_proc.KVOut(
+            name='KV',
+            key_descr={'key1': 'description1', 'key2': 'description2'}
+        )
+        char_delim_parser = _parse.CharDelimParser(
+            sep=','
+        )
+        tuple_out = _out.TupleOut(
+            convs=[kv_conv, kv_conv],
+            parser=char_delim_parser,
+            name='out'
+        )
+        template = tuple_out.template()
+        assert 'x' in template
+        assert 'y' in template
+
+
+class TestTupleOut(object):
+
+    def test_tupleout_handles_valid_data(self):
+        """Test TupleOut processes valid data correctly."""
+        kv_conv = text_proc.KVOut(
+            name='KV',
+            key_descr={'key1': 'description1', 'key2': 'description2'}
+        )
+        char_delim_parser = _parse.CharDelimParser(
+            sep=','
+        )
+        tuple_out = _out.ListOut(
+            conv=kv_conv,
+            parser=char_delim_parser,
+            name='out'
+        )
+        msg = Msg(
+            role='user',
+            meta={'content': 'key1::value1\nkey2::value2'}
+        )
+        result = tuple_out(msg).m['out']
+        assert result[0]['key1'] == 'value1'
+        assert result[0]['key2'] == 'value2'
+
+    def test_listout_handles_valid_data_with_two_convs(self):
+        """Test TupleOut processes valid data correctly."""
+        kv_conv = text_proc.KVOut(
+            name='KV',
+            key_descr={'key1': 'description1', 'key2': 'description2'}
+        )
+        char_delim_parser = _parse.CharDelimParser(
+            sep=','
+        )
+        tuple_out = _out.ListOut(
+            conv=kv_conv,
+            parser=char_delim_parser,
+            name='out'
+        )
+        msg = Msg(
+            role='user',
+            meta={'content': 'key1::value1\nkey2::value2,key3::value3\nkey4::value4'}
+        )
+        result = tuple_out(msg).m['out']
+        assert result[0]['key1'] == 'value1'
+        assert result[0]['key2'] == 'value2'
+        assert result[1]['key3'] == 'value3'
+        assert result[1]['key4'] == 'value4'
+
+    def test_listout_handles_empty_data(self):
+        """Test TupleOut handles empty data gracefully."""
+        kv_conv = text_proc.KVOut(
+            name='KV',
+            key_descr={'key1': 'description1', 'key2': 'description2'}
+        )
+        char_delim_parser = _parse.CharDelimParser(
+            sep=','
+        )
+        list_out = _out.ListOut(
+            conv=kv_conv,
+            parser=char_delim_parser,
+            name='out'
+        )
+        msg = Msg(
+            role='user',
+            meta={'content': ''}
+        )
+        result = list_out(
+            msg, 
+            is_streamed=True, 
+            is_last=False
+        ).m['out']
+        assert len(result) == 0
+
+    def test_listout_creates_example(self):
+        """Test TupleOut handles empty data gracefully."""
+        kv_conv = text_proc.KVOut(
+            name='KV',
+            key_descr={'key1': 'description1', 'key2': 'description2'}
+        )
+        char_delim_parser = _parse.CharDelimParser(
+            sep=','
+        )
+        list_out = _out.ListOut(
+            conv=kv_conv,
+            parser=char_delim_parser,
+            name='out'
+        )
+        example = list_out.example()
+        print(example)
+        assert 'x' in example
+        assert 'y' in example
+
+    def test_listout_creates_template(self):
+        """Test TupleOut handles empty data gracefully."""
+        kv_conv = text_proc.KVOut(
+            name='KV',
+            key_descr={'key1': 'description1', 'key2': 'description2'}
+        )
+        char_delim_parser = _parse.CharDelimParser(
+            sep=','
+        )
+        list_out = _out.ListOut(
+            conv=kv_conv,
+            parser=char_delim_parser,
+            name='out'
+        )
+        template = list_out.template()
+        assert 'key1' in template
+        assert 'key2' in template
