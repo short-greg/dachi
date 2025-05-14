@@ -38,3 +38,4 @@ from ._graph import (
 from ._network import (
     Network, TAdapter
 )
+from ._optim import Optim

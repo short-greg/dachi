@@ -54,6 +54,8 @@ class LLM(Assistant):
         """
         super().__init__(role=role)
         self._kwargs = kwargs or {}
+        if isinstance(procs, MsgProc):
+            procs = [procs]
         self.procs = procs or []
         self._message_arg = message_arg
         self._base_aforwardf = aforwardf

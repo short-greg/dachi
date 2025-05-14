@@ -16,5 +16,6 @@ from ._utils import (
 )
 from ._param import (
     Param,
-    ParamSet
+    ParamSet,
+    update_params
 )

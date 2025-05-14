@@ -175,3 +175,31 @@ class ParamSet(object):
             if param.training:
                 data[param.name] = param.param_structure()
         return data
+
+
+# class ParamSet(object):
+
+#     def __init__(self, params: typing.Iterable[Param]):
+#         """
+
+#         Args:
+#             params (typing.Iterable[Param]): 
+#         """
+#         self._params = list(params)
+
+#     def __iter__(self) -> Param:
+
+#         for param in self._params:
+#             yield param
+
+
+def update_params(param_set: ParamSet, update: typing.List[typing.Dict]):
+    """_summary_
+
+    Args:
+        param_set (ParamSet): 
+        update (typing.List[typing.Dict]): 
+    """
+
+    for p, u in zip(param_set, update):
+        p.update(u)

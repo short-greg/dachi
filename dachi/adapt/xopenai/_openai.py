@@ -17,7 +17,7 @@ from ...msg import (
 )
 from ... import utils
 from ...inst import render
-from .._ai import (
+from ...asst._ai import (
     LLM, llm_aforward, llm_astream, llm_forward, llm_stream
 )
 from ...msg import RespConv, OutConv
