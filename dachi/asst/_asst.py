@@ -7,19 +7,16 @@ import typing
 import pydantic
 
 # local
-from ..msg._messages import (
-    Msg, BaseDialog
+from ..msg import (
+    Msg, BaseDialog, MsgProc
 )
 from ..proc import (
     Module, AsyncModule, 
     StreamModule, AsyncStreamModule
 )
-from ..msg._msg import MsgProc
 
 S = typing.TypeVar('S', bound=pydantic.BaseModel)
-
 # TODO: MOVE OUT OF HERE
-
 
 LLM_PROMPT = typing.Union[typing.Iterable[Msg], Msg]
 

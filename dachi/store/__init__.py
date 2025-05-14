@@ -3,7 +3,6 @@ from ._data import (
     Shared, SharedBase,
     Buffer, BufferIter, ContextSpawner, ContextWriter,
     ItemQueue, DictRetriever
-
 )
 from ._utils import (
     get_or_set,

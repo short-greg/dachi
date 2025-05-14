@@ -49,7 +49,7 @@ class IBase(ABC):
     """
 
     def __init__(
-        self, f, is_method: bool=False, out_conv: OutConv=None, llm_out: str='content', template: Templatable=None
+        self, f, is_method: bool=False, out_conv: OutConv=None, llm_out: str='content'
     ):
         """ Initializes the IBase instance.
         Args:
@@ -69,16 +69,16 @@ class IBase(ABC):
         if out_conv is None:
             if out_cls in primitives:
                 out_conv = PrimOut(
-                    name='out', from_='content',
+                    name='out', from_=llm_out,
                     out_cls=self.out_cls
                 )
             elif issubclass(out_cls, pydantic.BaseModel):
-                out_conv = PydanticOut(name='out', from_='content', out_cls=out_cls)
+                out_conv = PydanticOut(name='out', from_=llm_out, out_cls=out_cls)
             else:
-                out_conv = NullOut(name='out', from_='content')
+                out_conv = NullOut(name='out', from_=llm_out)
 
         self._out_conv: OutConv = out_conv
-        self._out = FromMsg(llm_out)
+        self._out = FromMsg('out')
 
     def _align_params(
         self, *args, **kwargs
@@ -208,8 +208,7 @@ class SigF(IBase):
         self, f, is_method = False, 
         doc: typing.Optional[str]=None,
         train: bool=False, out_conv: OutConv=None,
-        out: str='content',
-        template: Templatable=None
+        llm_out: str='content'
     ):
         """
         Args:
@@ -220,8 +219,7 @@ class SigF(IBase):
             out (OutConv, optional): The out to process the output. Defaults to None.
         """
         super().__init__(
-            f, is_method, out_conv, out,
-            template=template
+            f, is_method, out_conv, llm_out,
         )
         self._doc = doc or self._docstring
         cue = Cue(
@@ -420,7 +418,9 @@ class FuncDec(FuncDecBase, Module):
         res_msg = engine(
             [msg], **self._kwargs
         )
+        print(self._inst.out_conv)
         res_msg = self._inst.out_conv(res_msg)
+        print(res_msg.m)
         res, filtered = self._inst.from_msg.filter(res_msg)
 
         if filtered:
@@ -676,9 +676,8 @@ def instructfunc(
     to_async: bool=False,
     to_stream: bool=False,
     to_msg: ToMsg=None,
-    out: str='content',
-    template: Templatable=None,
-    **kwargs
+    llm_out: str='content',
+    kwargs: typing.Dict=None
 ):
     """Decorate a method with instructfunc
 
@@ -689,6 +688,7 @@ def instructfunc(
     Returns:
         typing.Callable[[function], SignatureFunc]
     """
+    kwargs = kwargs or {}
     def _(f):
 
         @wraps(f)
@@ -696,7 +696,7 @@ def instructfunc(
             return f(*args, **kwargs)
         
         inst = InstF(
-            f, is_method, out_conv, llm_out=out, template=template
+            f, is_method, out_conv, llm_out=llm_out
         )
 
         if not to_async and not to_stream:
@@ -728,9 +728,8 @@ def instructmethod(
     to_async: bool=False,
     to_stream: bool=False,
     to_msg: ToMsg=None,
-    out: str='content',
-    template: Templatable=None,
-    **kwargs
+    llm_out: str='content',
+    kwargs: typing.Dict=None
 ):
     """Decorate a method with instructfunc
 
@@ -743,9 +742,8 @@ def instructmethod(
     return instructfunc(
         engine, out_conv=out_conv, is_method=True, to_msg=to_msg, to_async=to_async, 
         to_stream=to_stream, 
-        out=out,
-        template=template,
-        **kwargs
+        llm_out=llm_out,
+        kwargs=kwargs
     )
 
 
@@ -758,9 +756,8 @@ def signaturefunc(
     to_async: bool=False,
     to_stream: bool=False,
     train: bool=False,
-    out: str='content',
-    template: Templatable=None,
-    **kwargs
+    llm_out: str='content',
+    kwargs: typing.Dict=None
 ):
     """Decorate a method with instructfunc
 
@@ -771,6 +768,7 @@ def signaturefunc(
     Returns:
         typing.Callable[[function], SignatureFunc]
     """
+    kwargs = kwargs or {}
     def _(f):
 
         @wraps(f)
@@ -780,8 +778,7 @@ def signaturefunc(
         inst = SigF(
             f, is_method, train=train, 
             doc=doc, out_conv=out_conv, 
-            out=out,
-            template=template
+            llm_out=llm_out,
         )
 
         if not to_async and not to_stream:
@@ -815,9 +812,8 @@ def signaturemethod(
     to_async: bool=False,
     to_stream: bool=False,
     train: bool=False,
-    out: str='content',
-    template: Templatable=None,
-    **kwargs
+    llm_out: str='content',
+    kwargs: typing.Dict=None
 ):
     """Decorate a method with SignatureFunc
 
@@ -833,9 +829,8 @@ def signaturemethod(
         engine, out_conv=out_conv, doc=doc, is_method=True,
         to_msg=to_msg, to_async=to_async, to_stream=to_stream,
         train=train,
-        out=out,
-        template=template,
-        **kwargs
+        llm_out=llm_out,
+        kwargs=kwargs
     )
 
 
