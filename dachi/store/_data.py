@@ -988,8 +988,10 @@ class Record(Renderable):
             items (typing.List[T]): The items to create the pairwise object from
         """
         data = self._data.copy()
-        data[kwargs.keys()] = list(kwargs.values())
-        return data
+        data = data.assign(**kwargs)
+        record = Record()
+        record._data = data
+        return record
     
     @property
     def df(self) -> pd.DataFrame:
@@ -999,6 +1001,14 @@ class Record(Renderable):
             pd.DataFrame: The dataframe for the pairwise object
         """
         return pd.DataFrame(self._items)
+    
+    def __getitem__(self, key: str):
+
+        return self._data[key]
+    
+    def __contains__(self, key: str) -> bool:
+
+        return key in self._data.columns.values
     
     def __len__(self) -> int:
         """Get the length of the pairwise object

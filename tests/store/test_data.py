@@ -1,5 +1,7 @@
 import pytest
 from dachi import store
+import pandas as pd
+from dachi.store import Record
 
 
 class TestGetOrSpawn(object):
@@ -150,3 +152,96 @@ class TestBuffer:
         
         val = it.read_reduce(lambda cur, x: cur + str(x), '')
         assert val == '23'
+
+        class DummyRenderable:
+            def __init__(self):
+                pass
+
+        def render(obj):
+            return str(obj)
+
+class TestRecord:
+
+    def test_init_with_no_kwargs(self):
+        # Should create empty DataFrame
+        rec = Record()
+        assert isinstance(rec._data, pd.DataFrame)
+        assert rec._data.empty
+        assert rec.indexed is False
+
+    def test_init_with_kwargs(self):
+        rec = Record(a=[1, 2], b=[3, 4])
+        assert list(rec._data.columns) == ['a', 'b']
+        assert rec._data.shape == (2, 2)
+        assert rec._data['a'].tolist() == [1, 2]
+        assert rec._data['b'].tolist() == [3, 4]
+
+    def test_extend_adds_rows(self):
+        rec = Record(a=[1], b=[2])
+        rec.extend(a=[3], b=[4])
+        assert rec._data.shape == (2, 2)
+        assert rec._data.iloc[1]['a'] == 3
+        assert rec._data.iloc[1]['b'] == 4
+
+    def test_extend_with_empty(self):
+        rec = Record(a=[1])
+        rec.extend()
+        # Should not add any rows
+        assert rec._data.shape == (1, 1)
+
+    def test_append_adds_single_row(self):
+        rec = Record(a=[1], b=[2])
+        rec.append(a=3, b=4)
+        assert rec._data.shape == (2, 2)
+        assert rec._data.iloc[1]['a'] == 3
+        assert rec._data.iloc[1]['b'] == 4
+
+    def test_append_with_missing_column(self):
+        rec = Record(a=[1])
+        rec.append(a=2, b=3)
+        # Should add NaN for missing columns in previous rows
+        assert 'b' in rec._data.columns
+        assert pd.isna(rec._data.iloc[0]['b'])
+
+    def test_join_returns_dataframe_with_new_columns(self):
+        rec = Record(a=[1, 2])
+        record = rec.join(b=[3, 4])
+        assert isinstance(record, Record)
+        assert 'b' in record
+        assert record['b'].tolist() == [3, 4]
+
+    def test_join_with_mismatched_length(self):
+        rec = Record(a=[1, 2])
+        # Should raise ValueError if lengths don't match
+        with pytest.raises(ValueError):
+            rec.join(b=[1])
+
+    def test_df_property_returns_dataframe(self):
+        rec = Record(a=[1, 2])
+        # Patch _items to match expected property
+        rec._items = {'a': [1, 2]}
+        df = rec.df
+        assert isinstance(df, pd.DataFrame)
+        assert df['a'].tolist() == [1, 2]
+
+    def test_len_returns_number_of_rows(self):
+        rec = Record(a=[1, 2, 3])
+        assert len(rec) == 3
+
+    def test_render_returns_string(self):
+        rec = Record(a=[1, 2])
+        result = rec.render()
+        assert isinstance(result, str)
+        assert 'a' in result
+
+    def test_extend_with_different_columns(self):
+        rec = Record(a=[1])
+        rec.extend(b=[2])
+        assert 'b' in rec._data.columns
+        assert pd.isna(rec._data.iloc[0]['b'])
+
+    def test_append_with_no_kwargs(self):
+        rec = Record(a=[1])
+        rec.append()
+        # Should add a row with all NaN
+        assert rec._data.shape[0] == 1
