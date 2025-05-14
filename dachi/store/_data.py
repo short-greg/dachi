@@ -1,15 +1,18 @@
+# 1st party
 import typing
+from dataclasses import dataclass
 from functools import reduce
 from abc import ABC, abstractmethod
-from ..base import Storable
-from ..inst._render import render, Renderable
-from ..msg._messages import Msg
+
+# 3rd party
+import pandas as pd
 from ..utils import UNDEFINED
 import pydantic
 import typing
 
-import pandas as pd
-from dataclasses import dataclass
+# local
+from ..base import Storable
+from ..inst._render import render, Renderable
 
 
 class SharedBase(Storable, Renderable, ABC):
@@ -751,56 +754,56 @@ class DictRetriever(SharedBase):
         return data
 
 
-class Comm(object):
-    """Use to have communication between two components 
-    (two agents etc)
-    """
-    def __init__(self):
-        """
-        """
-        self._processing = []
+# class Comm(object):
+#     """Use to have communication between two components 
+#     (two agents etc)
+#     """
+#     def __init__(self):
+#         """
+#         """
+#         self._processing = []
 
-    def post(self, message: Msg, callback: typing.Callable[[], Msg]=None):
-        """Post a message to be received
+#     def post(self, message: Msg, callback: typing.Callable[[], Msg]=None):
+#         """Post a message to be received
 
-        Args:
-            message (Msg): 
-            callback (optional): . Defaults to None.
-        """
-        self._processing.append((message, callback))
+#         Args:
+#             message (Msg): 
+#             callback (optional): . Defaults to None.
+#         """
+#         self._processing.append((message, callback))
 
-    def get(self) -> Msg:
-        """Get the current message to process
+#     def get(self) -> Msg:
+#         """Get the current message to process
 
-        Raises:
-            RuntimeError: 
+#         Raises:
+#             RuntimeError: 
 
-        Returns:
-            Msg: The message to process
-        """
-        if self.empty():
-            raise RuntimeError('No items to process')
-        return self._processing[0][0]
+#         Returns:
+#             Msg: The message to process
+#         """
+#         if self.empty():
+#             raise RuntimeError('No items to process')
+#         return self._processing[0][0]
     
-    def empty(self) -> bool:
-        """If nothing is being processed
+#     def empty(self) -> bool:
+#         """If nothing is being processed
 
-        Returns:
-            bool: Whether nothing is waiting for processing
-        """
-        return len(self._processing) == 0
+#         Returns:
+#             bool: Whether nothing is waiting for processing
+#         """
+#         return len(self._processing) == 0
 
-    def respond(self, with_message: Msg):
+#     def respond(self, with_message: Msg):
 
-        if self.empty():
-            raise RuntimeError(
-                'Cannot respond with a message '
-            )
+#         if self.empty():
+#             raise RuntimeError(
+#                 'Cannot respond with a message '
+#             )
         
-        callback = self._processing[0][1]
-        if callback is not None:
-            callback(with_message)
-        self._processing.pop(0)
+#         callback = self._processing[0][1]
+#         if callback is not None:
+#             callback(with_message)
+#         self._processing.pop(0)
 
 
 T = typing.TypeVar("T")

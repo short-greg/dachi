@@ -2,7 +2,7 @@ from ._data import (
     Context, ContextStorage, Blackboard,
     Shared, SharedBase,
     Buffer, BufferIter, ContextSpawner, ContextWriter,
-    Comm, ItemQueue, DictRetriever
+    ItemQueue, DictRetriever
 
 )
 from ._utils import (

@@ -20,7 +20,6 @@ from ._critique import (
     LikertItem,
     LikertScaleCriterion,
     CompoundCriterion,
-    
 )
 from ._lang import (
     Term, Glossary

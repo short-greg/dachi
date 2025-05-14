@@ -12,7 +12,6 @@ import pydantic
 
 # local
 from ._render import render, render_multi
-from ._render import render
 from ..base import Trainable, Renderable
 from ..utils import is_primitive, str_formatter
 

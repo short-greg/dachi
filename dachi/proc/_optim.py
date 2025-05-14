@@ -1,13 +1,7 @@
 import typing
 from abc import ABC, abstractmethod
-
-import pydantic
-
-from ..proc import Param
-from ..base import Renderable
-
 from ..inst import EvaluationBatch, Evaluation
-from ..store import ParamSet, update_params
+from ..store import ParamSet, Param, update_params
 
 
 class Optim(ABC):
