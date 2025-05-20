@@ -11,8 +11,8 @@ from typing import Self
 import pydantic
 
 # local
-from ._render import render, render_multi
-from ..base import Trainable, Renderable
+from ..core._render import render, render_multi
+from ..core import Trainable, Renderable
 from ..utils import is_primitive, str_formatter
 
 S = typing.TypeVar('S', bound=pydantic.BaseModel)

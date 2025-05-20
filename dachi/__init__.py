@@ -6,7 +6,7 @@ from . import act
 from . import asst
 from . import proc
 from . import utils
-from . import base
+from . import core
 from . import msg
 from . import inst
 from . import store

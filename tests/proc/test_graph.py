@@ -366,14 +366,14 @@ class TestStreamSrc:
     def test_stream_src_returns_streamer_instance(self):
         """Test that StreamSrc returns a Streamer instance."""
         k = g.Var('k')
-        src = g.StreamSrc(Append('s'), g.TArgs(k))
+        src = g.StreamSrc(Append('s'), g.NodeArgs(k))
         val = src()
         assert isinstance(val, g.Streamer)
 
     def test_stream_src_with_empty_args(self):
         """Test StreamSrc with empty arguments."""
         k = g.Var([])
-        src = g.StreamSrc(Append('s'), g.TArgs(k))
+        src = g.StreamSrc(Append('s'), g.NodeArgs(k))
         val = src()
         assert isinstance(val, g.Streamer)
 
@@ -381,7 +381,7 @@ class TestStreamSrc:
         """Test StreamSrc with an invalid module."""
         k = g.Var('k')
         with pytest.raises(AttributeError):
-            src = g.StreamSrc(None, g.TArgs(k))
+            src = g.StreamSrc(None, g.NodeArgs(k))
             src()
 
     def test_stream_src_with_none_args(self):
@@ -393,49 +393,49 @@ class TestStreamSrc:
     def test_stream_src_with_multiple_args(self):
         """Test StreamSrc with multiple arguments."""
         k1 = g.Var('k1')
-        src = g.StreamSrc(Append('s'), g.TArgs(k1))
+        src = g.StreamSrc(Append('s'), g.NodeArgs(k1))
         val = src()
         assert isinstance(val, g.Streamer)
 
     def test_stream_src_forward_with_empty_by(self):
         """Test forward method with an empty 'by' dictionary."""
         k = g.Var('k')
-        src = g.StreamSrc(Append('s'), g.TArgs(k))
+        src = g.StreamSrc(Append('s'), g.NodeArgs(k))
         streamer = src.forward(by={})
         assert isinstance(streamer, g.Streamer)
 
     def test_stream_src_forward_with_valid_by(self):
         """Test forward method with a valid 'by' dictionary."""
         k = g.Var('k')
-        src = g.StreamSrc(Append('s'), g.TArgs(k))
+        src = g.StreamSrc(Append('s'), g.NodeArgs(k))
         streamer = src.forward(by={k: 'test'})
         assert isinstance(streamer, g.Streamer)
 
     def test_stream_src_forward_with_invalid_by(self):
         """Test forward method with an invalid 'by' dictionary."""
         k = g.Var('k')
-        src = g.StreamSrc(Append('s'), g.TArgs(k))
+        src = g.StreamSrc(Append('s'), g.NodeArgs(k))
         with pytest.raises(TypeError):
             src.forward(by="invalid")
 
     def test_stream_src_call_with_empty_by(self):
         """Test __call__ method with an empty 'by' dictionary."""
         k = g.Var('k')
-        src = g.StreamSrc(Append('s'), g.TArgs(k))
+        src = g.StreamSrc(Append('s'), g.NodeArgs(k))
         streamer = src(by={})
         assert isinstance(streamer, g.Streamer)
 
     def test_stream_src_call_with_valid_by(self):
         """Test __call__ method with a valid 'by' dictionary."""
         k = g.Var('k')
-        src = g.StreamSrc(Append('s'), g.TArgs(k))
+        src = g.StreamSrc(Append('s'), g.NodeArgs(k))
         streamer = src(by={k: 'test'})
         assert isinstance(streamer, g.Streamer)
 
     def test_stream_src_incoming_yields_correct_values(self):
         """Test that incoming method yields correct values."""
         k = g.Var('k')
-        src = g.StreamSrc(Append('s'), g.TArgs(k))
+        src = g.StreamSrc(Append('s'), g.NodeArgs(k))
         incoming = list(src.incoming())
         assert len(incoming) == 1
         assert incoming[0] is k
@@ -443,21 +443,21 @@ class TestStreamSrc:
     def test_stream_src_with_large_input(self):
         """Test StreamSrc with a large input."""
         large_input = g.Var('x' * 10**6)
-        src = g.StreamSrc(Append('s'), g.TArgs(large_input))
+        src = g.StreamSrc(Append('s'), g.NodeArgs(large_input))
         val = src()
         assert isinstance(val, g.Streamer)
 
     def test_stream_src_with_callable_args(self):
         """Test StreamSrc with callable arguments."""
         k = g.Var(lambda: 'dynamic_value')
-        src = g.StreamSrc(Append('s'), g.TArgs(k))
+        src = g.StreamSrc(Append('s'), g.NodeArgs(k))
         val = src()
         assert isinstance(val, g.Streamer)
 
     def test_stream_src_with_mutable_args(self):
         """Test StreamSrc with mutable arguments."""
         mutable_arg = g.Var([1, 2, 3])
-        src = g.StreamSrc(Append('s'), g.TArgs(mutable_arg))
+        src = g.StreamSrc(Append('s'), g.NodeArgs(mutable_arg))
         val = src()
         assert isinstance(val, g.Streamer)
         mutable_arg().append(4)
@@ -470,13 +470,13 @@ class TestStreamSrc:
 
         k = g.Var('k')
         with pytest.raises(AttributeError):
-            src = g.StreamSrc(InvalidModule(), g.TArgs(k))
+            src = g.StreamSrc(InvalidModule(), g.NodeArgs(k))
             src()
 
     def test_stream_src_returns_a_streamer(self):
         k = g.Var('k')
         src = g.StreamSrc(
-            Append('s'), g.TArgs(k)
+            Append('s'), g.NodeArgs(k)
         )
         val = src()
         
@@ -485,7 +485,7 @@ class TestStreamSrc:
     def test_streamer_returns_value(self):
         k = g.Var('k')
         src = g.StreamSrc(
-            Append('s'), g.TArgs(k)
+            Append('s'), g.NodeArgs(k)
         )
         val = src()
         res = val()

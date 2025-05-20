@@ -1,6 +1,6 @@
 from abc import abstractmethod, ABC
 import pydantic
-from ..base import Renderable
+from ..core import Renderable
 
 
 class Description(pydantic.BaseModel, Renderable, ABC):

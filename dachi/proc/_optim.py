@@ -2,9 +2,9 @@ import typing
 from abc import ABC, abstractmethod
 from ..inst import EvaluationBatch, Evaluation
 from ..store import ParamSet, Param, update_params
+from ._process import Module
 
-
-class Optim(ABC):
+class Optim(Module):
     """
     An optimizer is a function that takes in a set of parameters and returns a value.
     The optimizer is used to update the parameters based on the evaluation.
@@ -27,7 +27,7 @@ class Optim(ABC):
         """
         pass
 
-    def step(self, evaluation: Evaluation | EvaluationBatch):
+    def forward(self, evaluation: Evaluation | EvaluationBatch):
         """
 
         Args:

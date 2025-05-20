@@ -11,8 +11,13 @@ import pydantic
 import typing
 
 # local
-from ..base import Storable
-from ..inst._render import render, Renderable
+from ..core import Storable
+from ..core._render import render, Renderable
+
+
+T = typing.TypeVar("T")
+K = bool | str | None | int | float
+
 
 
 class SharedBase(Storable, Renderable, ABC):
@@ -411,38 +416,19 @@ class Context(dict):
             self[key] = self[key] + value
         return self[key]
     
-    def __call__(self, key) -> 'ContextWriter':
-        """Create a ContextWriter to set the value for
-        a key in the context
+    # def __call__(self, key) -> 'ContextWriter':
+    #     """Create a ContextWriter to set the value for
+    #     a key in the context
 
-        Args:
-            key: The key to write to
+    #     Args:
+    #         key: The key to write to
 
-        Returns:
-            ContextWriter: The ContextWriter that writes
-            the value
-        """
+    #     Returns:
+    #         ContextWriter: The ContextWriter that writes
+    #         the value
+    #     """
 
-        return ContextWriter(self, key)
-
-
-class ContextWriter:
-    """Use to write to the context
-    """
-
-    def __init__(self, context: Context, key: str):
-        """_summary_
-
-        Args:
-            context (Context): _description_
-            key (str): _description_
-        """
-        self.context = context
-        self.key = key
-
-    def __call__(self, value):
-
-        self.context[self.key] = value
+    #     return ContextWriter(self, key)
 
 
 class ContextStorage(object):
@@ -521,6 +507,7 @@ class ContextStorage(object):
 # TODO: Change to a dataclass
 
 CALLBACK = typing.Callable[[typing.Any], typing.NoReturn]
+
 
 @dataclass
 class Blackboard(Storable):
@@ -754,62 +741,6 @@ class DictRetriever(SharedBase):
         return data
 
 
-# class Comm(object):
-#     """Use to have communication between two components 
-#     (two agents etc)
-#     """
-#     def __init__(self):
-#         """
-#         """
-#         self._processing = []
-
-#     def post(self, message: Msg, callback: typing.Callable[[], Msg]=None):
-#         """Post a message to be received
-
-#         Args:
-#             message (Msg): 
-#             callback (optional): . Defaults to None.
-#         """
-#         self._processing.append((message, callback))
-
-#     def get(self) -> Msg:
-#         """Get the current message to process
-
-#         Raises:
-#             RuntimeError: 
-
-#         Returns:
-#             Msg: The message to process
-#         """
-#         if self.empty():
-#             raise RuntimeError('No items to process')
-#         return self._processing[0][0]
-    
-#     def empty(self) -> bool:
-#         """If nothing is being processed
-
-#         Returns:
-#             bool: Whether nothing is waiting for processing
-#         """
-#         return len(self._processing) == 0
-
-#     def respond(self, with_message: Msg):
-
-#         if self.empty():
-#             raise RuntimeError(
-#                 'Cannot respond with a message '
-#             )
-        
-#         callback = self._processing[0][1]
-#         if callback is not None:
-#             callback(with_message)
-#         self._processing.pop(0)
-
-
-T = typing.TypeVar("T")
-K = bool | str | None | int | float
-
-
 class ItemQueue(pydantic.BaseModel, typing.Generic[T]):
     
     items: typing.Dict[K, typing.List[T]] = pydantic.Field(
@@ -967,7 +898,8 @@ class Record(Renderable):
             items (typing.List[T]): The items to create the pairwise object from
         """
         self._data = pd.concat(
-            [self._data, pd.DataFrame(kwargs)]
+            [self._data, pd.DataFrame(kwargs)],
+            ignore_index=True
         )
 
     def append(self, **kwargs) -> typing.Self:
@@ -978,7 +910,8 @@ class Record(Renderable):
         """
         kwargs = {k: [v] for k, v in kwargs.items()}
         self._data = pd.concat(
-            [self._data, pd.DataFrame(kwargs)]
+            [self._data, pd.DataFrame(kwargs)],
+            ignore_index=True
         )
     
     def join(self, **kwargs) -> 'Record':
@@ -992,6 +925,11 @@ class Record(Renderable):
         record = Record()
         record._data = data
         return record
+    
+    def clear(self):
+        """Reset the record
+        """
+        self._data = pd.DataFrame()
     
     @property
     def df(self) -> pd.DataFrame:
@@ -1007,7 +945,14 @@ class Record(Renderable):
         return self._data[key]
     
     def __contains__(self, key: str) -> bool:
+        """Check if the record has the column specified by key
 
+        Args:
+            key (str): The key to check
+
+        Returns:
+            bool: Whether contained
+        """
         return key in self._data.columns.values
     
     def __len__(self) -> int:
@@ -1025,3 +970,85 @@ class Record(Renderable):
             str: The rendered string
         """
         return render(self._data.to_dict(orient='records'))
+
+    def top(self, field: str, largest: bool=True):
+
+        if field not in self._data.columns:
+            raise KeyError(f"Field '{field}' not found in the dataframe.")
+
+        if largest:
+            idx = self._data[field].idxmax()
+        else:
+            idx = self._data[field].idxmin()
+
+        return self._data.loc[idx]
+
+# class ContextWriter:
+#     """Use to write to the context
+#     """
+
+#     def __init__(self, context: Context, key: str):
+#         """_summary_
+
+#         Args:
+#             context (Context): _description_
+#             key (str): _description_
+#         """
+#         self.context = context
+#         self.key = key
+
+#     def __call__(self, value):
+
+#         self.context[self.key] = value
+
+
+# class Comm(object):
+#     """Use to have communication between two components 
+#     (two agents etc)
+#     """
+#     def __init__(self):
+#         """
+#         """
+#         self._processing = []
+
+#     def post(self, message: Msg, callback: typing.Callable[[], Msg]=None):
+#         """Post a message to be received
+
+#         Args:
+#             message (Msg): 
+#             callback (optional): . Defaults to None.
+#         """
+#         self._processing.append((message, callback))
+
+#     def get(self) -> Msg:
+#         """Get the current message to process
+
+#         Raises:
+#             RuntimeError: 
+
+#         Returns:
+#             Msg: The message to process
+#         """
+#         if self.empty():
+#             raise RuntimeError('No items to process')
+#         return self._processing[0][0]
+    
+#     def empty(self) -> bool:
+#         """If nothing is being processed
+
+#         Returns:
+#             bool: Whether nothing is waiting for processing
+#         """
+#         return len(self._processing) == 0
+
+#     def respond(self, with_message: Msg):
+
+#         if self.empty():
+#             raise RuntimeError(
+#                 'Cannot respond with a message '
+#             )
+        
+#         callback = self._processing[0][1]
+#         if callback is not None:
+#             callback(with_message)
+#         self._processing.pop(0)

@@ -16,9 +16,9 @@ import numpy as np
 import pydantic
 
 # local
-from ..base import Storable, Renderable 
+from ..core import Storable, Renderable 
 from ..utils import UNDEFINED
-from ..inst._render import render
+from ..core._render import render
 from ..utils import (
     is_async_function,
     is_generator_function

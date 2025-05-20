@@ -2,7 +2,7 @@ import typing
 import typing
 
 import pydantic
-from ..base import Renderable
+from ..core import Renderable
 
 # Hypothesis
 # Prior

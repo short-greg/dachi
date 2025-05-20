@@ -97,7 +97,7 @@ class Network(object):
         return self._incoming[id(t)]
 
 
-class TAdapter(Module):
+class GraphAdapter(Module):
     """Define a Graph Node that wraps multiple other nodes
     """
 

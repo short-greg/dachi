@@ -3,7 +3,7 @@ import typing
 from typing import Any
 from dachi.store._param import Param, ParamSet
 import numpy as np
-from dachi.base import Trainable
+from dachi.core import Trainable
 
 
 class Value(Trainable):

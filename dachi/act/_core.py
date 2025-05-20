@@ -4,7 +4,7 @@ from abc import abstractmethod
 import typing
 
 # local
-from ..base import Storable
+from ..core import Storable
 # TODO: Add in Action (For GOAP)
 
 
@@ -188,12 +188,6 @@ class Task(Storable):
             TaskStatus: The status of the task after execution
         """
         return self.tick(reset)
-
-    def reset_status(self):
-        """Reset the terminal
-
-        """
-        self._status = TaskStatus.READY
     
     @property
     def status(self) -> TaskStatus:
@@ -213,6 +207,16 @@ class Task(Storable):
         """
         return self._id
     
+    def reset(self):
+
+        self._status = TaskStatus.READY
+
+    # def reset(self):
+    #     """Reset the terminal
+
+    #     """
+    #     self._status = TaskStatus.READY
+
     # def load_state_dict(self, state_dict: typing.Dict):
     #     """Load the state dict for the object
 

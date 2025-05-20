@@ -133,7 +133,7 @@ class T(object):
         )
 
 
-class Src(ABC):
+class Src(Module):
     """Base class for Src. Use to specify how the
     Transmission (T) was generated
     """
@@ -143,18 +143,19 @@ class Src(ABC):
         pass
 
     @abstractmethod
-    def forward(self, by: typing.Dict['T', typing.Any]=None) -> typing.Any:
+    def forward(
+        self, by: typing.Dict['T', typing.Any]=None) -> typing.Any:
         pass
 
-    def __call__(self, by: typing.Dict['T', typing.Any]=None) -> typing.Any:
-        return self.forward(by)
+    # def forward(self, by: typing.Dict['T', typing.Any]=None) -> typing.Any:
+    #     return self.forward(by)
 
 
 class StreamSrc(Src):
     """A source used for streaming inputs such
     as streaming from an LLM
     """
-    def __init__(self, module: 'Module', args: 'TArgs') -> None:
+    def __init__(self, module: 'Module', args: 'NodeArgs') -> None:
         """Create a Src which will handle the streaming of inputs
 
         Args:
@@ -203,7 +204,7 @@ class StreamSrc(Src):
         return self.forward(by)
 
 
-class TArgs(object):
+class NodeArgs(object):
     """
     """
 
@@ -269,7 +270,7 @@ class TArgs(object):
             if isinstance(a, Partial):
                 a = a.dx
             kwargs[k] = a
-        return TArgs(*args, **kwargs)
+        return NodeArgs(*args, **kwargs)
     
     @property
     def args(self) -> typing.List:
@@ -360,7 +361,7 @@ class TArgs(object):
             else:
                 kwargs[k] = arg
         
-        return TArgs(*args, **kwargs)
+        return NodeArgs(*args, **kwargs)
         
     def __call__(self, by: typing.Dict['T', typing.Any]=None) -> Self:
         return self.forward(by)
@@ -368,7 +369,7 @@ class TArgs(object):
 
 class ModSrc(Src):
 
-    def __init__(self, mod: 'Module', args: TArgs=None):
+    def __init__(self, mod: 'Module', args: NodeArgs=None):
         """Create a Src for the transmission output by a module
 
         Args:
@@ -379,8 +380,8 @@ class ModSrc(Src):
         self.mod = mod
         if args is None:
             args = tuple()
-        if not isinstance(args, TArgs):
-            args = TArgs(*args)
+        if not isinstance(args, NodeArgs):
+            args = NodeArgs(*args)
         self._args = args
 
     def incoming(self) -> typing.Iterator['T']:
@@ -416,7 +417,7 @@ class ModSrc(Src):
             Self: The ModSrc
         """
         return cls(
-            mod, TArgs(*args, **kwargs)
+            mod, NodeArgs(*args, **kwargs)
         )
 
 
@@ -581,7 +582,7 @@ def link(module: Module, *args, **kwargs) -> T:
         *args: The arguments to the module
         **kwargs: The keyword arguments to the module
     """
-    args = TArgs(*args, **kwargs)
+    args = NodeArgs(*args, **kwargs)
     if not args.is_undefined():
         partial = args.has_partial()
         args = args.eval()
@@ -606,7 +607,7 @@ def stream_link(module: 'StreamModule', *args, **kwargs) -> T:
     Returns:
         T: The Streamable transmission
     """
-    args = TArgs(*args, **kwargs)
+    args = NodeArgs(*args, **kwargs)
     
     if not args.is_undefined():
         args = args.eval()

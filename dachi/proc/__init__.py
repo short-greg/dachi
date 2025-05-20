@@ -30,12 +30,12 @@ from ._process import (
 )
 
 from ._graph import (
-    link, Src, StreamSrc, ModSrc, WaitSrc, Var, T, TArgs,
+    link, Src, StreamSrc, ModSrc, WaitSrc, Var, T, NodeArgs,
     stream_link, wait, stream, 
     IdxSrc,
 )
 
 from ._network import (
-    Network, TAdapter
+    Network, GraphAdapter
 )
 from ._optim import Optim

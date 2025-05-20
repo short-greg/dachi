@@ -14,7 +14,7 @@ import pydantic
 from ..inst import render, struct_template
 from ._messages import Msg
 from ._msg import MsgProc
-from ..base import TemplateField, Templatable, ExampleMixin
+from ..core import TemplateField, Templatable, ExampleMixin
 from ..utils import unescape_curly_braces
 from pydantic_core import PydanticUndefined
 from ..utils import (
@@ -657,6 +657,14 @@ class TupleOut(OutConv):
 
 
 class ListOut(OutConv):
+    """
+    ListOut is an output converter that transforms the output from a language model (LLM) into a list of objects.
+    It utilizes a provided OutConv instance to convert each item in the list and a Parser to parse and render the list structure.
+        conv (OutConv): The output converter used to process each item in the list.
+        parser (Parser): The parser responsible for handling the list structure and rendering.
+        name (str, optional): The name of the output converter. Defaults to 'out'.
+        from_ (str, optional): The source field for conversion. Defaults to 'content'.
+    """
 
     def __init__(
         self, 
@@ -665,6 +673,14 @@ class ListOut(OutConv):
         name='out', 
         from_='content'
     ):
+        """
+        Initializes the object with the given conversation handler, parser, name, and source attribute.
+        Args:
+            conv (OutConv): The converter to handle each objects in the list
+            parser (Parser): THe parser that converts the objects to a list
+            name (str, optional): The name of the field that gets output to. Defaults to 'out'.
+            from_ (str, optional): The name to retrieve the LLM output from. Defaults to 'content'.
+        """
         super().__init__(name, from_)
         self.conv = conv
         self.parser = parser

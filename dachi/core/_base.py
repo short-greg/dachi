@@ -2,6 +2,8 @@ from abc import ABC, abstractmethod
 import typing
 from uuid import uuid4
 
+import pydantic
+
 
 class Storable(ABC):
     """Object to serialize objects to make them easy to recover

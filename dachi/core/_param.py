@@ -1,20 +1,12 @@
-# 1st party
+from abc import ABC, abstractmethod
 import typing
-from typing import TypeVar
+from uuid import uuid4
 
-# 3rd party
-import numpy as np
-
-# local
-from ..core import Renderable, Storable, Trainable
-from ..core._render import render
+import pydantic
+from ._base import Renderable, Storable, Trainable
+from ._render import render
 
 
-T = TypeVar("T", bound=Trainable)
-
-
-# TODO: Make this store just a Pydantic BaseModel
-# rather than a cue.
 class Param(
     Renderable, 
     Storable
@@ -175,31 +167,3 @@ class ParamSet(object):
             if param.training:
                 data[param.name] = param.param_structure()
         return data
-
-
-# class ParamSet(object):
-
-#     def __init__(self, params: typing.Iterable[Param]):
-#         """
-
-#         Args:
-#             params (typing.Iterable[Param]): 
-#         """
-#         self._params = list(params)
-
-#     def __iter__(self) -> Param:
-
-#         for param in self._params:
-#             yield param
-
-
-def update_params(param_set: ParamSet, update: typing.List[typing.Dict]):
-    """_summary_
-
-    Args:
-        param_set (ParamSet): 
-        update (typing.List[typing.Dict]): 
-    """
-
-    for p, u in zip(param_set, update):
-        p.update(u)

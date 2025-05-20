@@ -9,7 +9,7 @@ from functools import wraps
 import pydantic
 
 # local
-from ..base import Templatable
+from ..core import Templatable
 from ..proc._process import (
     Module, AsyncModule, StreamModule, 
     AsyncStreamModule

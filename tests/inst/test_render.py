@@ -1,5 +1,5 @@
-from dachi.inst import _render
-from dachi.base import Renderable
+from dachi.core import _render
+from dachi.core import Renderable
 import typing
 import pytest
 from pydantic import BaseModel

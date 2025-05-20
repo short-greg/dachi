@@ -7,7 +7,7 @@ from ._data import (
     Buffer, 
     BufferIter, 
     ContextSpawner, 
-    ContextWriter,
+    # ContextWriter,
     ItemQueue, 
     DictRetriever,
     Record

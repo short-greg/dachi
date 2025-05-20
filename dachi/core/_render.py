@@ -1,6 +1,6 @@
 # 1st party
 import inspect
-from ..base import (
+from . import (
     Renderable, TemplateField,
 )
 from ..utils import escape_curly_braces, unescape_curly_braces, is_primitive

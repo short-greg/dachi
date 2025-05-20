@@ -4,7 +4,7 @@ from abc import abstractmethod
 from typing import Self
 
 # local
-from ..base._core import Renderable
+from ..core._core import Renderable
 
 class _Final:
     """A unique object to mark the end of a streaming response."""

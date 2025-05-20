@@ -188,6 +188,26 @@ class TestRecord:
         rec.extend()
         # Should not add any rows
         assert rec._data.shape == (1, 1)
+    
+    def test_extend_on_empty_record_adds_rows(self):
+        rec = Record()
+        rec.extend(a=[1, 2], b=[3, 4])
+        assert list(rec._data.columns) == ['a', 'b']
+        assert rec._data.shape == (2, 2)
+        assert rec._data['a'].tolist() == [1, 2]
+        assert rec._data['b'].tolist() == [3, 4]
+
+    def test_extend_on_empty_record_with_no_kwargs(self):
+        rec = Record()
+        rec.extend()
+        # Should remain empty
+        assert rec._data.empty
+
+    def test_extend_on_empty_record_with_partial_columns(self):
+        rec = Record()
+        rec.extend(a=[1, 2])
+        assert list(rec._data.columns) == ['a']
+        assert rec._data['a'].tolist() == [1, 2]
 
     def test_append_adds_single_row(self):
         rec = Record(a=[1], b=[2])
