@@ -12,10 +12,11 @@ import sys
 import importlib
 # 3rd party
 from pydantic import (
-    BaseModel, create_model, ConfigDict, PrivateAttr
+    BaseModel, create_model, ConfigDict, PrivateAttr, Field
 )
-from pydantic.generics import GenericModel
+# from pydantic.generics import GenericModel
 from pydantic_core import core_schema
+from pydantic.fields       import FieldInfo
 import pydantic
 
 # local
@@ -24,6 +25,15 @@ import typing as t
 
 # local
 from . import Renderable
+
+
+import inspect, typing, sys
+from typing import Any, Dict, Union, get_type_hints
+from uuid   import uuid4
+
+# from pydantic             import BaseModel, ConfigDict, Field, 
+# from pydantic_extra_types  import url          # just to show ext. types still work
+
 
 S = typing.TypeVar('S', bound=pydantic.BaseModel)
 
@@ -295,6 +305,30 @@ class BaseSpec(BaseModel):
 
         return runtime_cls(**kwargs)
 
+    # @classmethod
+    # def _find_class_by_kind(cls, kind: str) -> type['BaseProcess'] | None:
+    #     """
+    #     Resolve `kind` to an actual class *without* a central registry.
+
+    #     Strategy:
+    #     1. Check the module where the current concrete subclass lives.
+    #     2. Fallback: scan already-imported modules for a matching attribute.
+    #        (Keeps things simple while you iterate.)
+    #     """
+    #     # 1 — module-local lookup
+    #     mod = sys.modules.get(cls.__module__)
+    #     if mod and hasattr(mod, kind):
+    #         target = getattr(mod, kind)
+    #         if isinstance(target, type) and issubclass(target, BaseProcess):
+    #             return target
+
+    #     # 2 — best-effort global scan of loaded modules
+    #     for m in sys.modules.values():
+    #         if m and hasattr(m, kind):
+    #             target = getattr(m, kind)
+    #             if isinstance(target, type) and issubclass(target, BaseProcess):
+    #                 return target
+    #     return None
 
 class BaseItem(ABC, Renderable, Trainable):
 
@@ -314,6 +348,7 @@ class BaseItem(ABC, Renderable, Trainable):
     def to_spec(self) -> BaseSpec:
         pass
 
+    @abstractmethod
     def from_flat_spec(
         cls, 
         spec: BaseSpec, 
@@ -321,6 +356,7 @@ class BaseItem(ABC, Renderable, Trainable):
     ) -> typing.Self:
         pass
 
+    @abstractmethod
     def to_flat_spec(
         self, 
         context: 'BuildContext'=None
@@ -328,7 +364,7 @@ class BaseItem(ABC, Renderable, Trainable):
         pass
 
     @abstractmethod
-    def state_dict(self, only_trainable: bool=False) -> typing.Dict:
+    def state_dict(self, train_only: bool=False) -> typing.Dict:
         pass
 
     @abstractmethod
@@ -422,7 +458,7 @@ class Attr(
 
     def to_schema(cls) -> BaseSpec:
         pass
-
+    
     def to_spec(self):
         pass
 
@@ -528,10 +564,10 @@ class BaseProcess(BaseItem):
         if cls is BaseProcess:
             raise TypeError("BaseProcess is abstract")
         obj = super().__new__(cls)
-        spec_model = cls.to_schema()
+        # spec_model = cls.to_schema()
         bound = inspect.signature(cls.__init__).bind_partial(*args, **kwargs)
         bound.apply_defaults()
-        obj.__spec_obj__ = spec_model(**bound.arguments)
+        obj.__init_args__ = bound.arguments
         return obj
 
     def __init__(self) -> None:
@@ -570,6 +606,9 @@ class BaseProcess(BaseItem):
         )
         cls.__spec__ = model
         return model
+    
+    def __init_kwargs__(self) -> typing.Dict:
+        return self.__init_kwargs__
 
     # plain (structured) spec  --------------------------------------------- #
     def to_spec(self, id: str) -> BaseSpec:
@@ -578,45 +617,12 @@ class BaseProcess(BaseItem):
             self, id=id, style='structured'
         )
 
-        # data = {"style": self.spec_style,
-        #         "kind":  self.__class__.__qualname__}
-        
-        # # user fields
-        # for fld in self.__spec__.model_fields:
-        #     if fld in {"style", "kind", "id"}:
-        #         continue
-        #     val = getattr(self, fld)
-        #     data[fld] = val.to_spec() if isinstance(val, BaseItem) else val
-
-        # # id: caller supplied?  else use python object id
-        # supplied = getattr(self.__spec_obj__, "id", None)
-        # data["id"] = supplied if supplied and supplied != "unset" else str(id(self))
-
-        # return self.__spec__(**data)
-
     @classmethod
     def from_spec(cls, spec: BaseSpec | dict, *, ctx: BuildContext | None = None):
 
         return spec.to_runtime(
             ctx=ctx
         )
-        # cls.to_schema().to_runtime(
-            
-        # )
-
-        # # --- handle raw dict first ----------------------------------
-        # if isinstance(spec, dict):
-        #     target_kind = spec.get("kind")
-        #     if target_kind and target_kind != cls.__qualname__:
-        #         real_cls = cls._find_class_by_kind(target_kind) or cls
-        #         return real_cls.from_spec(spec, ctx=ctx)   # recurse to correct class
-
-        #     # strip extras then validate
-        #     model_fields = cls.to_schema().model_fields
-        #     spec = cls.to_schema()(
-        #         **{k: v for k, v in spec.items() if k in model_fields}
-        #     )
-
         # # (rest of the original from_spec stays identical)
         # # ------------------------------------------------------------------
         # sig = inspect.signature(cls.__init__)
@@ -635,24 +641,11 @@ class BaseProcess(BaseItem):
         #     kwargs[name] = val
         # return cls(**kwargs)
 
-    # ---------- flat spec -------------------------------------------------- #
     def to_flat_spec(self, ctx: BuildContext) -> BaseSpec:
         
         return self.to_schema().from_runtime(
             self, ctx=ctx, style='flat'
         )
-
-        # payload: dict[str, Any] = {"_type": self.__class__.__qualname__}
-        # for name in self.__spec__.model_fields:
-        #     val = getattr(self, name)
-        #     if isinstance(val, BaseItem):
-        #         ref = val.to_flat_spec(ctx)
-        #         payload[name] = ref
-        #     else:
-        #         payload[name] = val
-
-        # ctx.register(self, payload)           # may raise on cycles
-        # return ctx
 
     @classmethod
     def from_spec(cls, spec: BaseSpec, ctx: BuildContext):
@@ -661,16 +654,12 @@ class BaseProcess(BaseItem):
             ctx=ctx
         )
 
-        # payload = ctx.specs[id]
-        # return cls.from_spec(payload, ctx=ctx)
-
-    # ---------- dependency extraction ------------------------------------- #
     def dependencies(self) -> list[BaseSpec]:
         """
         Topologically-sorted list of *unique* specs required
         to build this process (child-before-parent).
         """
-        return self.to_schema().dependencies()
+        pass
 
     # ---------- trainable helpers (unchanged) ----------------------------- #
     def register_attr(self, name: str, val: Attr) -> None:
@@ -679,14 +668,14 @@ class BaseProcess(BaseItem):
 
     def state_dict(self, train_only: bool = False) -> Dict[str, Any]:
         return {
-            k: v.value for k, v in self._attrs.items() 
+            k: v.state_dict() for k, v in self._attrs.items() 
             if (train_only and isinstance(v, Param))
             or not train_only
         }
 
-    def load_state_dict(self, state: Dict[str, Any]) -> None:
-        for k, v in state.items():
-            self._attrs[k].value = v
+    def load_state_dict(self, state_dict: Dict[str, Any]) -> None:
+        for k, v in state_dict.items():
+            self._attrs[k].load_state_dict(v)
 
     def __init_subclass__(cls, **kw):
         super().__init_subclass__(**kw)
@@ -694,39 +683,6 @@ class BaseProcess(BaseItem):
             cls._validate_signature()
             cls.to_schema()
 
-    # @classmethod
-    # def _find_class_by_kind(cls, kind: str) -> type['BaseProcess'] | None:
-    #     """
-    #     Resolve `kind` to an actual class *without* a central registry.
-
-    #     Strategy:
-    #     1. Check the module where the current concrete subclass lives.
-    #     2. Fallback: scan already-imported modules for a matching attribute.
-    #        (Keeps things simple while you iterate.)
-    #     """
-    #     # 1 — module-local lookup
-    #     mod = sys.modules.get(cls.__module__)
-    #     if mod and hasattr(mod, kind):
-    #         target = getattr(mod, kind)
-    #         if isinstance(target, type) and issubclass(target, BaseProcess):
-    #             return target
-
-    #     # 2 — best-effort global scan of loaded modules
-    #     for m in sys.modules.values():
-    #         if m and hasattr(m, kind):
-    #             target = getattr(m, kind)
-    #             if isinstance(target, type) and issubclass(target, BaseProcess):
-    #                 return target
-    #     return None
-
-
-import inspect, typing, sys
-from typing import Any, Dict, Union, get_type_hints
-from uuid   import uuid4
-
-from pydantic             import BaseModel, ConfigDict, Field, create_model
-from pydantic.fields       import FieldInfo
-from pydantic_extra_types  import url          # just to show ext. types still work
 
 # from .core_items   import BaseItem, Attr, Param, Ref, BuildContext, BaseSpec   # ← import your shared primitives
 # from .core_helpers import validate_signature_no_vararg                        # utility used by BaseProcess
@@ -801,6 +757,13 @@ class BaseStruct(BaseModel, BaseItem):
             cls.__spec__ = cls._build_spec()
         return cls.__spec__
 
+    def init_kwargs(self) -> typing.Dict:
+        """
+        Return the kwargs to spawn a new object for this class.
+        This will return a dict of field names and their values.
+        """
+        return self.model_dump()
+
     # ------------------------------------------------------------------ #
     #  Sub-class hook: validate & lock attribute addition
     # ------------------------------------------------------------------ #
@@ -811,7 +774,7 @@ class BaseStruct(BaseModel, BaseItem):
             return
 
         # 1. signature hygiene
-        validate_signature_no_vararg(cls.__init__)
+        # validate_signature_no_vararg(cls.__init__)
 
         # 2. build spec unless user supplied one
         if getattr(cls, "__spec__", None) is None:
@@ -834,70 +797,78 @@ class BaseStruct(BaseModel, BaseItem):
     #  Spec serialisation helpers
     # ------------------------------------------------------------------ #
     def to_spec(self) -> BaseSpec:
-        data: dict[str, Any] = {
-            "id":    str(id(self)) if self.__spec__().id == "unset" else self.__spec__().id,
-            "kind":  self.__class__.__qualname__,
-            "style": "structured",
-        }
 
-        for name in self.to_schema().model_fields:
-            if name in data:
-                continue
-            val = getattr(self, name)
-            if isinstance(val, BaseItem):                 # recurse
-                val = val.to_spec()
-            data[name] = val
-        return self.__spec__(**data)
+        return self.to_schema().from_runtime(
+            self
+        )
+
+        # data: dict[str, Any] = {
+        #     "id":    str(id(self)) if self.__spec__().id == "unset" else self.__spec__().id,
+        #     "kind":  self.__class__.__qualname__,
+        #     "style": "structured",
+        # }
+
+        # for name in self.to_schema().model_fields:
+        #     if name in data:
+        #         continue
+        #     val = getattr(self, name)
+        #     if isinstance(val, BaseItem):                 # recurse
+        #         val = val.to_spec()
+        #     data[name] = val
+        # return self.__spec__(**data)
 
     @classmethod
-    def from_spec(cls, spec: BaseSpec | dict, *, ctx: BuildContext | None = None):
+    def from_spec(cls, spec: BaseSpec, *, ctx: BuildContext | None = None):
+
+        return spec.to_runtime(
+            ctx=ctx
+        )
+
         # raw dict → maybe dispatch by kind
-        if isinstance(spec, dict):
-            kind = spec.get("kind")
-            if kind and kind != cls.__qualname__:
-                #  module-scope lookup (no global registry)
-                module = sys.modules[cls.__module__]
-                real_cls = getattr(module, kind, cls)
-                return real_cls.from_spec(spec, ctx=ctx)
+        # if isinstance(spec, dict):
+        #     kind = spec.get("kind")
+        #     if kind and kind != cls.__qualname__:
+        #         #  module-scope lookup (no global registry)
+        #         module = sys.modules[cls.__module__]
+        #         real_cls = getattr(module, kind, cls)
+        #         return real_cls.from_spec(spec, ctx=ctx)
 
-            spec = cls.to_schema()(
-                **{k: v for k, v in spec.items() if k in cls.to_schema().model_fields}
-            )
+        #     spec = cls.to_schema()(
+        #         **{k: v for k, v in spec.items() if k in cls.to_schema().model_fields}
+        #     )
 
-        sig   = inspect.signature(cls.__init__)
-        kwargs: dict[str, Any] = {}
-        for name in list(sig.parameters)[1:]:
-            val = getattr(spec, name)
-            if isinstance(val, Ref):
-                if ctx is None:
-                    raise TypeError("Ref found but no BuildContext supplied")
-                val = ctx.resolve(val)
-                tgt_cls = get_type_hints(cls.__init__)[name]
-                val = tgt_cls.from_spec(val, ctx=ctx)
-            elif isinstance(val, BaseSpec):
-                tgt_cls = get_type_hints(cls.__init__)[name]
-                val = tgt_cls.from_spec(val, ctx=ctx)
-            kwargs[name] = val
-        return cls(**kwargs)
+        # sig   = inspect.signature(cls.__init__)
+        # kwargs: dict[str, Any] = {}
+        # for name in list(sig.parameters)[1:]:
+        #     val = getattr(spec, name)
+        #     if isinstance(val, Ref):
+        #         if ctx is None:
+        #             raise TypeError("Ref found but no BuildContext supplied")
+        #         val = ctx.resolve(val)
+        #         tgt_cls = get_type_hints(cls.__init__)[name]
+        #         val = tgt_cls.from_spec(val, ctx=ctx)
+        #     elif isinstance(val, BaseSpec):
+        #         tgt_cls = get_type_hints(cls.__init__)[name]
+        #         val = tgt_cls.from_spec(val, ctx=ctx)
+        #     kwargs[name] = val
+        # return cls(**kwargs)
 
     # ------------------------------------------------------------------ #
     #  Flat spec helpers (same algo as BaseProcess)
     # ------------------------------------------------------------------ #
-    def _to_flat_internal(self, ctx: BuildContext):
-        payload = {"_type": self.__class__.__qualname__}
-        for name in self.to_schema().model_fields:
-            if name in {"id", "kind", "style"}:
-                continue
-            val = getattr(self, name)
-            if isinstance(val, BaseItem):
-                val = val._to_flat_internal(ctx)
-            payload[name] = val
-        return ctx.register(self, payload)
+    # def _to_flat_internal(self, ctx: BuildContext):
+    #     payload = {"_type": self.__class__.__qualname__}
+    #     for name in self.to_schema().model_fields:
+    #         if name in {"id", "kind", "style"}:
+    #             continue
+    #         val = getattr(self, name)
+    #         if isinstance(val, BaseItem):
+    #             val = val._to_flat_internal(ctx)
+    #         payload[name] = val
+    #     return ctx.register(self, payload)
 
-    def to_flat_spec(self, ctx: BuildContext | None = None):
-        ctx = ctx or BuildContext()
-        self._to_flat_internal(ctx)
-        return ctx
+    def to_flat_spec(self, ctx: BuildContext) -> BaseSpec:
+        return self.to_schema().from_runtime(self, ctx=ctx, style='flat')
 
     # ------------------------------------------------------------------ #
     #  Params discovery + state helpers
@@ -909,20 +880,18 @@ class BaseStruct(BaseModel, BaseItem):
             elif isinstance(val, BaseStruct):
                 yield from val.parameters()
 
-    def state_dict(self):
-        return {f: p.value for f, p in self.__dict__.items() if isinstance(p, Param)}
+    def state_dict(self, train_only: bool=False):
+        return {
+            f: p.state_dict() for f, p in self._attrs.items() 
+            if train_only and isinstance(p, Param) or
+            not train_only
+        }
 
-    def load_state_dict(self, state: Dict[str, Any]):
-        for name, val in state.items():
+    def load_state_dict(self, state_dict: Dict[str, Any]):
+        for name, val in state_dict.items():
             attr = getattr(self, name, None)
-            if isinstance(attr, Param):
-                attr.value = val
-            else:
-                raise KeyError(f"{name} is not a Param on {self.__class__.__name__}")
-
-    # def trainable_dict(self) -> Dict[str, Any]:
-    #     return {k: v.value for k, v in self._params.items()}
-
+            if isinstance(attr, Attr):
+                attr.load_state_dict(val)
 
 # class StructLoadException(Exception):
 #     """Exception StructLoad
