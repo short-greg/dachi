@@ -158,7 +158,7 @@ FAILURE = TaskStatus.FAILURE
 RUNNING = TaskStatus.RUNNING
 
 
-class Task(Storable):
+class Task(BaseProcess):
     """The base class for a task in the behavior tree
     """
 
@@ -178,16 +178,20 @@ class Task(Storable):
         self._status = self.READY
 
     @abstractmethod    
-    def tick(self, reset: bool=False) -> TaskStatus:
+    def tick(self) -> TaskStatus:
         raise NotImplementedError
 
-    def __call__(self, reset: bool=False) -> TaskStatus:
+    @abstractmethod    
+    async def atick(self) -> TaskStatus:
+        raise NotImplementedError
+
+    def __call__(self) -> TaskStatus:
         """Execute the task
 
         Returns:
             TaskStatus: The status of the task after execution
         """
-        return self.tick(reset)
+        return self.tick()
     
     @property
     def status(self) -> TaskStatus:

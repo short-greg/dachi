@@ -71,27 +71,6 @@ class SequenceFunc(TaskFuncBase):
         self.f = f
         self._instance = instance
 
-    # def tick(self, *args, **kwargs):
-    #     """Get the task for the function
-
-    #     Args:
-    #         _ctx (Context, optional): An override for the context. Defaults to None.
-
-    #     Returns:
-    #         The task 
-    #     """
-    #     # This method will handle "task" and correctly bind to the instance
-
-    #     instance, args = self.get_instance(args)
-        
-        # ctx = _get(instance, self._ctx, ctx)  
-        # if instance is None:
-        #     return self.base_f(self.f, ctx, ctx, *args, **kwargs)
-        
-        # return self.base_f(
-        #     self.f, ctx, instance, ctx, *args, **kwargs)
-
-
     def __call__(self, *args, **kwargs):
         """Get the task from the function
 
@@ -141,26 +120,6 @@ class SelectorFunc(TaskFuncBase):
         """
         self.f = f
         self._instance = instance
-
-    # def tick(self, *args, **kwargs):
-    #     """Get the task for the function
-
-    #     Args:
-    #         _ctx (Context, optional): An override for the context. Defaults to None.
-
-    #     Returns:
-    #         The task 
-    #     """
-    #     # This method will handle "task" and correctly bind to the instance
-
-    #     instance, args = self.get_instance(args)
-        
-        # ctx = _get(instance, self._ctx, ctx)  
-        # if instance is None:
-        #     return self.base_f(self.f, ctx, ctx, *args, **kwargs)
-        
-        # return self.base_f(
-        #     self.f, ctx, instance, ctx, *args, **kwargs)
 
     def __call__(self, *args, **kwargs):
         """Get the task from the function
@@ -227,16 +186,6 @@ class StateMachineFunc(TaskFuncBase):
             partial(self.f, instance, *args, **kwargs)
         )
 
-        # if instance is None:
-        #     f = partial(
-        #         self.f, instance, ctx, *args, **kwargs)
-        # else:
-        #     f = partial(self.f, instance, ctx, *args, **kwargs)
-
-        # return F.statemachinef(
-        #     f, ctx, *args, init_state=self.init_state, **kwargs
-        # )
-
     def __get__(self, instance, owner):
         """_summary_
 
@@ -302,20 +251,6 @@ class ParallelFunc(TaskFuncBase):
             ), self.fails_on, self.succeeds_on,
             self.success_priority, self.preempt
         )
-        
-        # if instance is None:
-        #     return F.parallelf(
-        #         self.f, *args, succeeds_on=self.succeeds_on, 
-        #         fails_on=self.fails_on, success_priority=self.success_priority, preempt=self.preempt, **kwargs
-        #     )
-        
-        # return F.parallelf(
-        #     self.f, instance, *args, 
-        #     succeeds_on=self.succeeds_on, 
-        #     fails_on=self.fails_on, 
-        #     success_priority=self.success_priority, 
-        #     preempt=self.preempt, **kwargs
-        # )
 
     def __get__(self, instance, owner):
         """Add the task to the instance if not already there
@@ -366,12 +301,6 @@ class CondFunc(TaskFuncBase):
             )
         )
 
-        # if instance is None:
-        #     return F.condf(self.f, *args, **kwargs)
-        # return F.condf(
-        #     self.f, instance, *args, **kwargs
-        # )
-
     def __get__(self, instance, owner):
         """Add the task to the instance if not already there
         """
@@ -380,19 +309,6 @@ class CondFunc(TaskFuncBase):
         task = CondFunc(self.f, True, instance)
         instance.__dict__[self.f.__name__] = task
         return task
-
-
-# def _get_str(obj, key):
-#     """_summary_
-
-#     Args:
-#         obj : 
-#         key: 
-
-#     Returns:
-#         str: 
-#     """
-#     return get_member(obj, key) if isinstance(key, str) else key
             
 
 class ActionFunc(TaskFuncBase):
@@ -428,17 +344,6 @@ class ActionFunc(TaskFuncBase):
         return Action(
             partial(self.f, instance, *args, **kwargs), self._to_status, self._out
         )
-        # if instance is None:
-        #     out = self._out
-        #     to_status = self._to_status
-        #     return F.taskf(self.f, *args, out=out, to_status=to_status, **kwargs)
-        # else:
-        #     to_status = _get_str(instance, self._to_status)
-        #     out = _get_str(instance, self._out)
-        #     return F.taskf(
-        #         self.f, instance, 
-        #         *args, out=out, to_status=to_status, **kwargs
-        #     )
 
     def __get__(self, instance, owner):
         """Add the task to the instance if not already there
@@ -490,7 +395,6 @@ def selector():
     return _
 
 fallback = selector
-# fallbackmethod = selectormethod
 
 
 def parallel(
@@ -542,68 +446,3 @@ def action(out: SharedBase=None, to_status: F.TOSTATUS=None):
         t.__call__ = functools.wraps(f, t.__call__)
         return t
     return _
-
-
-
-# def sequencemethod():
-#     """Decorate a sequence method that yields tasks
-
-#     Args:
-#         ctx (Context): 
-
-#     Returns: The task
-#     """
-#     return sequencefunc(True)
-
-# def statemachinemethod():
-#     """Decorate a state machine method that yields tasks
-
-#     Args:
-#         ctx (Context): The context for the task
-
-#     Returns: the task
-#     """
-#     return statemachinefunc(True)
-
-# def parallelmethod(
-#     succeeds_on: int=-1, 
-#     fails_on: int=1, 
-#     success_priority: bool=True,
-#     preempt: bool=False
-# ):
-#     """Decorate a parallel method that yields tasks
-
-#     Args:
-#         succeeds_on (int, optional): Number required to succeed. Defaults to -1.
-#         fails_on (int, optional): Number required to fail. Defaults to 1.
-#         success_priority (bool, optional): Whether success prioritized over failure if equal. Defaults to True.
-#     """
-#     return parallelfunc(
-#         succeeds_on, fails_on, success_priority, preempt, True
-#     )
-
-# def condmethod():
-#     """Decorate a conditional method
-#     """
-#     return condfunc(True)
-
-# def taskmethod(out: SharedBase=None, to_status: F.TOSTATUS=None):
-#     """Decorate a general task method
-
-#     Args:
-#         out (SharedBase, optional): The processor for the result. Defaults to None.
-#         to_status (F.TOSTATUS, optional): The converter to change the result to a status. Defaults to None.
-#     """
-#     return taskfunc(
-#         out, to_status, True
-#     )
-
-# def selectormethod():
-#     """Decorate a selector method that yields tasks
-
-#     Args:
-#         ctx (Context): The context for the task
-
-#     Returns: the task
-#     """
-#     return selectorfunc(True)

@@ -4,32 +4,6 @@ from ._core import (
     Router, ROUTE, TOSTATUS, ToStatus, State,
     from_bool
 )
-# from ._functional import (
-#     parallel, 
-#     aslongas, 
-#     until, 
-#     sequence,
-#     action, 
-#     not_, 
-#     tick, 
-#     condf, 
-#     selector,
-#     aslongasf, 
-#     untilf, 
-#     notf, 
-#     parallelf,
-#     selectorf, 
-#     sequencef, 
-#     fallbackf, 
-#     fallback, 
-#     taskf, 
-#     PARALLEL, 
-#     threaded_task, 
-#     streamed_task,
-#     preempt_cond, 
-#     count_limit,
-#     waitcondf
-# )
 from ._tasks import (
     Serial, 
     Sequence, 
@@ -49,11 +23,6 @@ from ._tasks import (
     PreemptCond,
     WaitCondition
 )
-# from ._build import (
-#     build_composite, build_sequence,
-#     build_parallel, build_sango, build_select, build_fallback,
-#     build_decorate, build_not, build_unless, build_until
-# )
 from ._agent import (
     Agent, 
     AgentStatus,
