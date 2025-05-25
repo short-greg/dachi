@@ -176,11 +176,124 @@ def singleton(cls):
 
 
 class BaseSpec(BaseModel):
-    kind: str
-    id: str = pydantic.Field(default_factory=uuid4)
-    model_config = ConfigDict(extra="forbid")
+    """
+    A *specification* object decoupled from the runtime constructor.
+    • `from_runtime`  — runtime  → spec
+    • `to_runtime`    — spec     → runtime
+    • `dependencies`  — for flat specs, tells the build system which
+                        other specs must be built first (by `id` or key)
+    """
+
+    kind:  str
+    id:    str = Field(default_factory=lambda: str(uuid4()))
     style: Literal["flat", "structured"] = "structured"
 
+    # ------------------------------------------------------------------
+    #  Config
+    # ------------------------------------------------------------------
+    model_config = ConfigDict(extra="forbid")     # no stray keys
+
+    # ------------------------------------------------------------------
+    #  Dependency helper
+    # ------------------------------------------------------------------
+    @classmethod
+    def dependencies(cls) -> list[str]:
+        """
+        Return a list of *ids* (or any unique keys) this spec depends on.
+        Only relevant when `style == "flat"`.
+        Default implementation: scan fields; if value is a Ref add its
+        target_id; if value is list/tuple of Ref, add those too.
+        Override if you need something richer.
+        """
+        deps: list[str] = []
+        hints = get_type_hints(cls)
+        for name, typ in hints.items():
+            origin = typing.get_origin(typ) or typ
+            if isinstance(origin, type) and issubclass(origin, BaseItem):
+                deps.append(name)
+        return deps
+
+    # ------------------------------------------------------------------
+    #  Runtime ⇄ Spec conversion
+    # ------------------------------------------------------------------
+    @classmethod
+    def from_runtime(
+        cls,
+        runtime: 'BaseItem',
+        *,
+        ctx:   'BuildContext' | None = None,
+        style: str | None = None,
+    ) -> "BaseSpec":
+        """
+        Default 1-to-1 field extraction.
+        Custom specs can override to rename / convert fields.
+        """
+        name = str(id(runtime))
+        spec = ctx.load_spec(name)
+        if spec is not None:
+            return spec
+        kwargs = runtime.spawn_kwargs()
+        init_kwargs = {}
+        for k, v in kwargs.items():
+            if isinstance(v, BaseItem):
+                if style == 'flat' and ctx is None:
+                    raise RuntimeError(
+                        'BuildContext must not be none if using flat'
+                    )
+                elif ctx is not None:
+                    v = ctx.register_item(v)
+                else:
+                    v = v.to_spec()
+            init_kwargs[k] = v
+
+        return cls(
+            **init_kwargs,
+            kind  = runtime.__class__.__qualname__,
+            id    = name,
+            style = style or cls.style,
+        )
+
+    # NOTE: ctx is passed so a custom spec could resolve other specs first
+    def to_runtime(
+        self,
+        *,
+        ctx: 'BuildContext' | None = None,
+    ) -> 'BaseItem':
+        """
+        Default: parallel-field mapping back into runtime constructor.
+        Override to rename / add derived args.
+        """
+        kwargs = {}
+        # load the runtime_class from the "kind" registry
+        # Find the runtime class by matching the "kind" field with class names in the module
+        kind = self.kind
+        runtime_cls = None
+
+        # look up the kind
+        module = sys.modules.get(self.__module__)
+        if module:
+            for name, obj in vars(module).items():
+                if isinstance(obj, type) and obj.__qualname__ == kind:
+                    runtime_cls = obj
+                    break
+        if runtime_cls is None:
+            raise RuntimeError(f"Could not find class matching kind '{kind}' in module '{self.__module__}'")
+        
+        runtime_cls = ...
+        for k, v in self.model_dump(exclude=['kind', 'id', 'style']).items():
+
+            if isinstance(v, BaseSpec):
+                if self.style == 'flat':
+                    v = ctx.load_item(v.id)
+                    if v is None:
+                        raise RuntimeError(
+                            'Cannot load dependencies before '
+                        )
+                else:
+                    v = v.to_runtime(ctx=ctx)
+            kwargs[k] = v
+
+        return runtime_cls(**kwargs)
 
 
 class BaseItem(ABC, Renderable, Trainable):
@@ -235,30 +348,50 @@ class BuildContext:
     `.stack`   recursion stack for cycle detection
     """
     def __init__(self) -> None:
-        self.specs: list[dict] = []
-        self.obj2id: dict[Any, int] = {}
-        self.stack: list[int] = []          # dfs stack for cycle check
+        self.i = 0
+        self.specs: dict[str, BaseSpec] = {}
+        self.items: dict[str, BaseItem] = {}          # dfs stack for cycle check
+        self.refs: dict[str, int] = {}
 
-    # ---- helpers --------------------------------------------------------- #
-    def register(self, obj, payload: dict) -> 'Ref':
-        if obj in self.obj2id:              # already emitted
-            return Ref(id=len(self.specs), target_id=self.obj2id[obj])
+    def register_spec(self, spec: BaseSpec) -> 'Ref':
 
-        if obj in self.stack:
-            raise ValueError("Cyclic dependency detected")
+        if spec.id in self.specs:
+            return self.specs[spec.id]
+        
+        self.specs[spec.id] = spec
+        self.refs[spec.id] = Ref(
+            id=len(self.refs),
+            target_id=spec.id
+        )
+        return self.refs[spec.id]
+    
+    def load_spec(self, id: str) -> typing.Union['Ref', None]:
+        return self.refs.get(id)
 
-        idx = len(self.specs)
-        self.obj2id[obj] = idx
-        self.specs.append(payload)
-        return Ref(id=len(self.specs), target_id=idx)
+    def register_item(self, id: str, item: BaseItem) -> 'Ref':
 
-    def resolve(self, ref: 'Ref') -> dict:
+        if id in self.items:
+            return self.items[id]
+        
+        self.items[id] = item
+        self.refs[id] = Ref(
+            id=len(self.refs),
+            target_id=id
+        )
+        return self.refs[id]
+    
+    def load_item(self, id: str) -> typing.Union['Ref', None]:
+        return self.items.get(id)
+
+    def resolve_spec(self, ref: 'Ref') -> dict:
         return self.specs[ref.target_id]
 
+    def resolve_item(self, ref: 'Ref') -> dict:
+        return self.items[ref.target_id]
 
 
 class Ref(
-    BaseModel, typing.Generic[V]
+    BaseModel
 ):
     """Attr is used to specify state within a system that will be serialized
     that is not a part of the public interface.
@@ -439,102 +572,97 @@ class BaseProcess(BaseItem):
         return model
 
     # plain (structured) spec  --------------------------------------------- #
-    def to_spec(self) -> BaseSpec:
-        data = {"style": self.spec_style,
-                "kind":  self.__class__.__qualname__}
+    def to_spec(self, id: str) -> BaseSpec:
 
-        # user fields
-        for fld in self.__spec__.model_fields:
-            if fld in {"style", "kind", "id"}:
-                continue
-            val = getattr(self, fld)
-            data[fld] = val.to_spec() if isinstance(val, BaseItem) else val
+        return self.to_schema().from_runtime(
+            self, id=id, style='structured'
+        )
 
-        # id: caller supplied?  else use python object id
-        supplied = getattr(self.__spec_obj__, "id", None)
-        data["id"] = supplied if supplied and supplied != "unset" else str(id(self))
+        # data = {"style": self.spec_style,
+        #         "kind":  self.__class__.__qualname__}
+        
+        # # user fields
+        # for fld in self.__spec__.model_fields:
+        #     if fld in {"style", "kind", "id"}:
+        #         continue
+        #     val = getattr(self, fld)
+        #     data[fld] = val.to_spec() if isinstance(val, BaseItem) else val
 
-        return self.__spec__(**data)
+        # # id: caller supplied?  else use python object id
+        # supplied = getattr(self.__spec_obj__, "id", None)
+        # data["id"] = supplied if supplied and supplied != "unset" else str(id(self))
 
-    @classmethod
-    def _find_class_by_kind(cls, kind: str) -> type['BaseProcess'] | None:
-        """
-        Resolve `kind` to an actual class *without* a central registry.
-
-        Strategy:
-        1. Check the module where the current concrete subclass lives.
-        2. Fallback: scan already-imported modules for a matching attribute.
-           (Keeps things simple while you iterate.)
-        """
-        # 1 — module-local lookup
-        mod = sys.modules.get(cls.__module__)
-        if mod and hasattr(mod, kind):
-            target = getattr(mod, kind)
-            if isinstance(target, type) and issubclass(target, BaseProcess):
-                return target
-
-        # 2 — best-effort global scan of loaded modules
-        for m in sys.modules.values():
-            if m and hasattr(m, kind):
-                target = getattr(m, kind)
-                if isinstance(target, type) and issubclass(target, BaseProcess):
-                    return target
-        return None
+        # return self.__spec__(**data)
 
     @classmethod
     def from_spec(cls, spec: BaseSpec | dict, *, ctx: BuildContext | None = None):
-        # --- handle raw dict first ----------------------------------
-        if isinstance(spec, dict):
-            target_kind = spec.get("kind")
-            if target_kind and target_kind != cls.__qualname__:
-                real_cls = cls._find_class_by_kind(target_kind) or cls
-                return real_cls.from_spec(spec, ctx=ctx)   # recurse to correct class
 
-            # strip extras then validate
-            model_fields = cls.to_schema().model_fields
-            spec = cls.to_schema()(
-                **{k: v for k, v in spec.items() if k in model_fields}
-            )
+        return spec.to_runtime(
+            ctx=ctx
+        )
+        # cls.to_schema().to_runtime(
+            
+        # )
 
-        # (rest of the original from_spec stays identical)
-        # ------------------------------------------------------------------
-        sig = inspect.signature(cls.__init__)
-        kwargs = {}
-        for name in list(sig.parameters)[1:]:
-            val = getattr(spec, name)
-            if isinstance(val, Ref):
-                if ctx is None:
-                    raise TypeError("Ref found but no BuildContext supplied")
-                payload = ctx.resolve(val)
-                tgt_cls = get_type_hints(cls.__init__)[name]
-                val = tgt_cls.from_spec(payload, ctx=ctx)
-            elif isinstance(val, BaseSpec):
-                tgt_cls = get_type_hints(cls.__init__)[name]
-                val = tgt_cls.from_spec(val)
-            kwargs[name] = val
-        return cls(**kwargs)
+        # # --- handle raw dict first ----------------------------------
+        # if isinstance(spec, dict):
+        #     target_kind = spec.get("kind")
+        #     if target_kind and target_kind != cls.__qualname__:
+        #         real_cls = cls._find_class_by_kind(target_kind) or cls
+        #         return real_cls.from_spec(spec, ctx=ctx)   # recurse to correct class
+
+        #     # strip extras then validate
+        #     model_fields = cls.to_schema().model_fields
+        #     spec = cls.to_schema()(
+        #         **{k: v for k, v in spec.items() if k in model_fields}
+        #     )
+
+        # # (rest of the original from_spec stays identical)
+        # # ------------------------------------------------------------------
+        # sig = inspect.signature(cls.__init__)
+        # kwargs = {}
+        # for name in list(sig.parameters)[1:]:
+        #     val = getattr(spec, name)
+        #     if isinstance(val, Ref):
+        #         if ctx is None:
+        #             raise TypeError("Ref found but no BuildContext supplied")
+        #         payload = ctx.resolve(val)
+        #         tgt_cls = get_type_hints(cls.__init__)[name]
+        #         val = tgt_cls.from_spec(payload, ctx=ctx)
+        #     elif isinstance(val, BaseSpec):
+        #         tgt_cls = get_type_hints(cls.__init__)[name]
+        #         val = tgt_cls.from_spec(val)
+        #     kwargs[name] = val
+        # return cls(**kwargs)
 
     # ---------- flat spec -------------------------------------------------- #
-    def to_flat_spec(self, ctx: BuildContext | None = None) -> BuildContext:
-        if ctx is None:
-            ctx = BuildContext()
+    def to_flat_spec(self, ctx: BuildContext) -> BaseSpec:
+        
+        return self.to_schema().from_runtime(
+            self, ctx=ctx, style='flat'
+        )
 
-        payload: dict[str, Any] = {"_type": self.__class__.__qualname__}
-        for name in self.__spec__.model_fields:
-            val = getattr(self, name)
-            if isinstance(val, BaseItem):
-                ref = val.to_flat_spec(ctx)
-                payload[name] = ref
-            else:
-                payload[name] = val
+        # payload: dict[str, Any] = {"_type": self.__class__.__qualname__}
+        # for name in self.__spec__.model_fields:
+        #     val = getattr(self, name)
+        #     if isinstance(val, BaseItem):
+        #         ref = val.to_flat_spec(ctx)
+        #         payload[name] = ref
+        #     else:
+        #         payload[name] = val
 
-        ctx.register(self, payload)           # may raise on cycles
-        return ctx
+        # ctx.register(self, payload)           # may raise on cycles
+        # return ctx
 
     @classmethod
-    def from_flat_spec(cls, ctx: BuildContext, id: int):
-        payload = ctx.specs[id]
-        return cls.from_spec(payload, ctx=ctx)
+    def from_spec(cls, spec: BaseSpec, ctx: BuildContext):
+
+        return spec.to_runtime(
+            ctx=ctx
+        )
+
+        # payload = ctx.specs[id]
+        # return cls.from_spec(payload, ctx=ctx)
 
     # ---------- dependency extraction ------------------------------------- #
     def dependencies(self) -> list[BaseSpec]:
@@ -542,9 +670,7 @@ class BaseProcess(BaseItem):
         Topologically-sorted list of *unique* specs required
         to build this process (child-before-parent).
         """
-        ctx = self.to_flat_spec()
-        return [cls.from_spec(p)              # type: ignore
-                for p in ctx.specs]           # already in topo order
+        return self.to_schema().dependencies()
 
     # ---------- trainable helpers (unchanged) ----------------------------- #
     def register_attr(self, name: str, val: Attr) -> None:
@@ -552,7 +678,11 @@ class BaseProcess(BaseItem):
         setattr(self, name, val)
 
     def state_dict(self, train_only: bool = False) -> Dict[str, Any]:
-        return {k: v.value for k, v in self._attrs.items()}
+        return {
+            k: v.value for k, v in self._attrs.items() 
+            if (train_only and isinstance(v, Param))
+            or not train_only
+        }
 
     def load_state_dict(self, state: Dict[str, Any]) -> None:
         for k, v in state.items():
@@ -564,54 +694,231 @@ class BaseProcess(BaseItem):
             cls._validate_signature()
             cls.to_schema()
 
+    # @classmethod
+    # def _find_class_by_kind(cls, kind: str) -> type['BaseProcess'] | None:
+    #     """
+    #     Resolve `kind` to an actual class *without* a central registry.
 
-# --- BaseItem ---------------------------------------------------------
+    #     Strategy:
+    #     1. Check the module where the current concrete subclass lives.
+    #     2. Fallback: scan already-imported modules for a matching attribute.
+    #        (Keeps things simple while you iterate.)
+    #     """
+    #     # 1 — module-local lookup
+    #     mod = sys.modules.get(cls.__module__)
+    #     if mod and hasattr(mod, kind):
+    #         target = getattr(mod, kind)
+    #         if isinstance(target, type) and issubclass(target, BaseProcess):
+    #             return target
+
+    #     # 2 — best-effort global scan of loaded modules
+    #     for m in sys.modules.values():
+    #         if m and hasattr(m, kind):
+    #             target = getattr(m, kind)
+    #             if isinstance(target, type) and issubclass(target, BaseProcess):
+    #                 return target
+    #     return None
+
+
+import inspect, typing, sys
+from typing import Any, Dict, Union, get_type_hints
+from uuid   import uuid4
+
+from pydantic             import BaseModel, ConfigDict, Field, create_model
+from pydantic.fields       import FieldInfo
+from pydantic_extra_types  import url          # just to show ext. types still work
+
+# from .core_items   import BaseItem, Attr, Param, Ref, BuildContext, BaseSpec   # ← import your shared primitives
+# from .core_helpers import validate_signature_no_vararg                        # utility used by BaseProcess
+
+
+# --------------------------------------------------------------------------- #
+#  Helper: forbid adding brand-new fields after construction
+# --------------------------------------------------------------------------- #
+def _locked_setattr(self: "BaseStruct", name: str, value: Any):
+    if (
+        name not in self.__class__.model_fields  # not declared in schema
+        and name not in self.__dict__            # not an existing runtime attr
+    ):
+        raise AttributeError(
+            f"Cannot add new field '{name}' to frozen BaseStruct '{self.__class__.__name__}'"
+        )
+    object.__setattr__(self, name, value)
+
+
 class BaseStruct(BaseModel, BaseItem):
-    model_config = ConfigDict(extra="allow")           # accept attrs added later
-    _attr_names: set[str] = PrivateAttr(default_factory=set)
-    # _param_names: set[str] = PrivateAttr(default_factory=set)
+    """
+    Passive data holder.
 
+    * Runtime instance is a mutable Pydantic model **except** you cannot add
+      new attributes after __post_init__.
+    * A separate Spec model (cls.__spec__) is generated automatically unless
+      the user defines one manually.
+    """
+
+    # ------------------------------------------------------------------ #
+    #  Config
+    # ------------------------------------------------------------------ #
+    model_config = ConfigDict(extra="allow")   # runtime can keep private attrs
+
+    # ------------------------------------------------------------------ #
+    #  Spec generation
+    # ------------------------------------------------------------------ #
+    __spec__: type[BaseSpec] | None = None
+
+    @classmethod
+    def _build_spec(cls) -> type[BaseSpec]:
+        """Generate <StructName>Spec dynamically."""
+        sig   = inspect.signature(cls.__init__)
+        hints = get_type_hints(cls.__init__, include_extras=True)
+
+        # --- main fields ------------------------------------------------
+        fields: dict[str, tuple[Any, FieldInfo | Any]] = {}
+        for name, p in list(sig.parameters.items())[1:]:   # skip self
+            typ     = hints[name]
+            default = p.default if p.default is not p.empty else ...
+            origin  = typing.get_origin(typ) or typ
+            if isinstance(origin, type) and issubclass(origin, BaseItem):
+                typ = Union[origin, origin.to_schema(), Ref]    # mirror BaseProcess
+            fields[name] = (typ, default)
+
+        # --- meta fields ------------------------------------------------
+        fields["id"]    = (str, Field(default_factory=lambda: "unset"))
+        fields["kind"]  = (typing.Literal[cls.__qualname__], cls.__qualname__)
+        fields["style"] = (typing.Literal["structured", "flat"], "structured")
+
+        spec = create_model(
+            f"{cls.__name__}Spec",
+            __base__     = BaseSpec,
+            model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid"),
+            **fields,
+        )
+        return spec
+
+    @classmethod
+    def to_schema(cls) -> type[BaseSpec]:
+        if cls.__spec__ is None:
+            cls.__spec__ = cls._build_spec()
+        return cls.__spec__
+
+    # ------------------------------------------------------------------ #
+    #  Sub-class hook: validate & lock attribute addition
+    # ------------------------------------------------------------------ #
     def __init_subclass__(cls, **kw):
         super().__init_subclass__(**kw)
-        orig_setattr = cls.__setattr__
 
-        # TODO: Create Spec
-
-        def magic_setattr(self, name, value):
-            orig_setattr(self, name, value)            # real assignment
-            if isinstance(value, Attr):
-                self._attr_names.add(name)
-
-        cls.__setattr__ = magic_setattr
-
-    def __new__(cls, *args, **kwargs):
         if cls is BaseStruct:
-            raise TypeError("BaseItem is an abstract base and cannot be instantiated directly.")
-        return super().__new__(cls)
+            return
 
-    def model_post_init(self, __ctx):
+        # 1. signature hygiene
+        validate_signature_no_vararg(cls.__init__)
+
+        # 2. build spec unless user supplied one
+        if getattr(cls, "__spec__", None) is None:
+            cls.__spec__ = cls._build_spec()
+
+        # 3. forbid adding brand-new attributes after post-init
+        cls.__setattr__ = _locked_setattr
+
+    # ------------------------------------------------------------------ #
+    #  Construction & post-init hook
+    # ------------------------------------------------------------------ #
+    def model_post_init(self, __ctx: Any):
         hook = getattr(self, "__post_init__", None)
         if callable(hook):
             hook()
+        # lock further additions
+        object.__setattr__(self, "_locked", True)
 
-    def to_schema(cls) -> type[BaseSpec]:
-        # TODO: Create a BaseSpec
-        #  this is a pydantic.BaseModel
-        #
-        pass
-        # return cls.model_json_schema()
-
+    # ------------------------------------------------------------------ #
+    #  Spec serialisation helpers
+    # ------------------------------------------------------------------ #
     def to_spec(self) -> BaseSpec:
-        pass    
+        data: dict[str, Any] = {
+            "id":    str(id(self)) if self.__spec__().id == "unset" else self.__spec__().id,
+            "kind":  self.__class__.__qualname__,
+            "style": "structured",
+        }
 
-    def from_spec(cls, spec: BaseSpec):
-        pass
+        for name in self.to_schema().model_fields:
+            if name in data:
+                continue
+            val = getattr(self, name)
+            if isinstance(val, BaseItem):                 # recurse
+                val = val.to_spec()
+            data[name] = val
+        return self.__spec__(**data)
 
-    def parameters(self) -> typing.Iterator[Param]:
-        # TODO: loop over all "parameters"
-        pass
+    @classmethod
+    def from_spec(cls, spec: BaseSpec | dict, *, ctx: BuildContext | None = None):
+        # raw dict → maybe dispatch by kind
+        if isinstance(spec, dict):
+            kind = spec.get("kind")
+            if kind and kind != cls.__qualname__:
+                #  module-scope lookup (no global registry)
+                module = sys.modules[cls.__module__]
+                real_cls = getattr(module, kind, cls)
+                return real_cls.from_spec(spec, ctx=ctx)
 
+            spec = cls.to_schema()(
+                **{k: v for k, v in spec.items() if k in cls.to_schema().model_fields}
+            )
 
+        sig   = inspect.signature(cls.__init__)
+        kwargs: dict[str, Any] = {}
+        for name in list(sig.parameters)[1:]:
+            val = getattr(spec, name)
+            if isinstance(val, Ref):
+                if ctx is None:
+                    raise TypeError("Ref found but no BuildContext supplied")
+                val = ctx.resolve(val)
+                tgt_cls = get_type_hints(cls.__init__)[name]
+                val = tgt_cls.from_spec(val, ctx=ctx)
+            elif isinstance(val, BaseSpec):
+                tgt_cls = get_type_hints(cls.__init__)[name]
+                val = tgt_cls.from_spec(val, ctx=ctx)
+            kwargs[name] = val
+        return cls(**kwargs)
+
+    # ------------------------------------------------------------------ #
+    #  Flat spec helpers (same algo as BaseProcess)
+    # ------------------------------------------------------------------ #
+    def _to_flat_internal(self, ctx: BuildContext):
+        payload = {"_type": self.__class__.__qualname__}
+        for name in self.to_schema().model_fields:
+            if name in {"id", "kind", "style"}:
+                continue
+            val = getattr(self, name)
+            if isinstance(val, BaseItem):
+                val = val._to_flat_internal(ctx)
+            payload[name] = val
+        return ctx.register(self, payload)
+
+    def to_flat_spec(self, ctx: BuildContext | None = None):
+        ctx = ctx or BuildContext()
+        self._to_flat_internal(ctx)
+        return ctx
+
+    # ------------------------------------------------------------------ #
+    #  Params discovery + state helpers
+    # ------------------------------------------------------------------ #
+    def parameters(self):
+        for name, val in self.__dict__.items():
+            if isinstance(val, Param):
+                yield val
+            elif isinstance(val, BaseStruct):
+                yield from val.parameters()
+
+    def state_dict(self):
+        return {f: p.value for f, p in self.__dict__.items() if isinstance(p, Param)}
+
+    def load_state_dict(self, state: Dict[str, Any]):
+        for name, val in state.items():
+            attr = getattr(self, name, None)
+            if isinstance(attr, Param):
+                attr.value = val
+            else:
+                raise KeyError(f"{name} is not a Param on {self.__class__.__name__}")
 
     # def trainable_dict(self) -> Dict[str, Any]:
     #     return {k: v.value for k, v in self._params.items()}
