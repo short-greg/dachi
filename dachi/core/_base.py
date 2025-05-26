@@ -623,23 +623,6 @@ class BaseProcess(BaseItem):
         return spec.to_runtime(
             ctx=ctx
         )
-        # # (rest of the original from_spec stays identical)
-        # # ------------------------------------------------------------------
-        # sig = inspect.signature(cls.__init__)
-        # kwargs = {}
-        # for name in list(sig.parameters)[1:]:
-        #     val = getattr(spec, name)
-        #     if isinstance(val, Ref):
-        #         if ctx is None:
-        #             raise TypeError("Ref found but no BuildContext supplied")
-        #         payload = ctx.resolve(val)
-        #         tgt_cls = get_type_hints(cls.__init__)[name]
-        #         val = tgt_cls.from_spec(payload, ctx=ctx)
-        #     elif isinstance(val, BaseSpec):
-        #         tgt_cls = get_type_hints(cls.__init__)[name]
-        #         val = tgt_cls.from_spec(val)
-        #     kwargs[name] = val
-        # return cls(**kwargs)
 
     def to_flat_spec(self, ctx: BuildContext) -> BaseSpec:
         
@@ -659,7 +642,15 @@ class BaseProcess(BaseItem):
         Topologically-sorted list of *unique* specs required
         to build this process (child-before-parent).
         """
-        pass
+        # loop over all "arg" dependencies
+        dependencies = []
+        for k, v in self.__init_kwargs__.items():
+            # Check if the type hint for this kwarg is a BaseItem subclass
+            param_type = type(self.__init_kwargs__[k])
+            if isinstance(param_type, type) and issubclass(param_type, BaseItem):
+                dependencies.append(v)
+            # if isinstance(v, BaseItem):
+            #     dependencies.append(v)
 
     # ---------- trainable helpers (unchanged) ----------------------------- #
     def register_attr(self, name: str, val: Attr) -> None:
@@ -682,11 +673,6 @@ class BaseProcess(BaseItem):
         if cls is not BaseProcess:
             cls._validate_signature()
             cls.to_schema()
-
-
-# from .core_items   import BaseItem, Attr, Param, Ref, BuildContext, BaseSpec   # ← import your shared primitives
-# from .core_helpers import validate_signature_no_vararg                        # utility used by BaseProcess
-
 
 # --------------------------------------------------------------------------- #
 #  Helper: forbid adding brand-new fields after construction
@@ -824,48 +810,9 @@ class BaseStruct(BaseModel, BaseItem):
             ctx=ctx
         )
 
-        # raw dict → maybe dispatch by kind
-        # if isinstance(spec, dict):
-        #     kind = spec.get("kind")
-        #     if kind and kind != cls.__qualname__:
-        #         #  module-scope lookup (no global registry)
-        #         module = sys.modules[cls.__module__]
-        #         real_cls = getattr(module, kind, cls)
-        #         return real_cls.from_spec(spec, ctx=ctx)
-
-        #     spec = cls.to_schema()(
-        #         **{k: v for k, v in spec.items() if k in cls.to_schema().model_fields}
-        #     )
-
-        # sig   = inspect.signature(cls.__init__)
-        # kwargs: dict[str, Any] = {}
-        # for name in list(sig.parameters)[1:]:
-        #     val = getattr(spec, name)
-        #     if isinstance(val, Ref):
-        #         if ctx is None:
-        #             raise TypeError("Ref found but no BuildContext supplied")
-        #         val = ctx.resolve(val)
-        #         tgt_cls = get_type_hints(cls.__init__)[name]
-        #         val = tgt_cls.from_spec(val, ctx=ctx)
-        #     elif isinstance(val, BaseSpec):
-        #         tgt_cls = get_type_hints(cls.__init__)[name]
-        #         val = tgt_cls.from_spec(val, ctx=ctx)
-        #     kwargs[name] = val
-        # return cls(**kwargs)
-
     # ------------------------------------------------------------------ #
     #  Flat spec helpers (same algo as BaseProcess)
     # ------------------------------------------------------------------ #
-    # def _to_flat_internal(self, ctx: BuildContext):
-    #     payload = {"_type": self.__class__.__qualname__}
-    #     for name in self.to_schema().model_fields:
-    #         if name in {"id", "kind", "style"}:
-    #             continue
-    #         val = getattr(self, name)
-    #         if isinstance(val, BaseItem):
-    #             val = val._to_flat_internal(ctx)
-    #         payload[name] = val
-    #     return ctx.register(self, payload)
 
     def to_flat_spec(self, ctx: BuildContext) -> BaseSpec:
         return self.to_schema().from_runtime(self, ctx=ctx, style='flat')
