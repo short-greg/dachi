@@ -7,7 +7,7 @@ import numpy as np
 
 # local
 from ..core import Renderable, Storable, Trainable
-from ..core._render import render
+from ..core import render
 
 
 T = TypeVar("T", bound=Trainable)

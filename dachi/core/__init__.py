@@ -13,14 +13,7 @@ from ._base import (
     Renderable, 
     StructLoadException,
     TemplateField,
-    singleton
-)
-from ._structs import (
-    ItemDict,
-    ItemList,
-    ItemTuple
-)
-from ._render import (
+    singleton,
     model_from_text,
     model_template,
     model_to_text,
@@ -28,4 +21,9 @@ from ._render import (
     render,
     render_multi,
     is_renderable
+)
+from ._structs import (
+    ItemDict,
+    ItemList,
+    ItemTuple
 )

@@ -4,7 +4,7 @@ from abc import abstractmethod
 import typing
 
 # local
-from ..core import Storable
+from ..core import Storable, BaseProcess
 # TODO: Add in Action (For GOAP)
 
 

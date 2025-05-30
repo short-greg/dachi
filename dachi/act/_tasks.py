@@ -10,12 +10,12 @@ from ._core import Task, TaskStatus, State
 from ..core import Storable
 from contextlib import contextmanager
 
-from ..core import (
-    list_state_dict,
-    load_dict_state_dict,
-    load_list_state_dict,
-    dict_state_dict
-)
+# from ..core import (
+#     list_state_dict,
+#     load_dict_state_dict,
+#     load_list_state_dict,
+#     dict_state_dict
+# )
 
 
 class Root(Task):
@@ -84,18 +84,20 @@ class FTask(Task):
     
     def state_dict(self):
         """"Retrieve the state dict for the object"""
-        return {
-            'kwargs': dict_state_dict(self._kwargs),
-            'args': list_state_dict(self._args)
-        }
+        pass
+        # return {
+        #     'kwargs': dict_state_dict(self._kwargs),
+        #     'args': list_state_dict(self._args)
+        # }
     
     def load_state_dict(self, state_dict):
-        load_list_state_dict(
-            self._args, state_dict['args']
-        )
-        load_dict_state_dict(
-            self._kwargs, state_dict['kwargs']
-        )
+        pass
+        # load_list_state_dict(
+        #     self._args, state_dict['args']
+        # )
+        # load_dict_state_dict(
+        #     self._kwargs, state_dict['kwargs']
+        # )
 
 
 class Serial(Task):
@@ -123,13 +125,13 @@ class Serial(Task):
             state_dict (typing.Dict): The state dict
         """
         for k, v in self.__dict__.items():
-
-            if k == "tasks":
-                load_list_state_dict(v, state_dict[k])
-            elif isinstance(v, Storable):
-                v.load_state_dict(state_dict[k])
-            else:
-                self.__dict__[k] = state_dict[k]
+            pass
+            # if k == "tasks":
+            #     load_list_state_dict(v, state_dict[k])
+            # elif isinstance(v, Storable):
+            #     v.load_state_dict(state_dict[k])
+            # else:
+            #     self.__dict__[k] = state_dict[k]
         
     def state_dict(self) -> typing.Dict:
         """Retrieve the state dict for the object

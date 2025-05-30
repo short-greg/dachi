@@ -5,7 +5,7 @@ from ._core import STATE_CALL, TaskStatus
 import typing
 import functools
 from functools import partial
-from ..core import Task
+from ._core import Task, TOSTATUS
 from abc import abstractmethod
 from ._tasks import (
     Task, 
@@ -318,7 +318,7 @@ class ActionFunc(TaskFuncBase):
     def __init__(
         self, f, instance=None, 
         out: typing.Union[SharedBase, str]=None, 
-        to_status: F.TOSTATUS=None
+        to_status=None
     ):
         """A general decorator for a Task Function
 
@@ -431,7 +431,7 @@ def cond():
     return _
 
 
-def action(out: SharedBase=None, to_status: F.TOSTATUS=None):
+def action(out: SharedBase=None, to_status: TOSTATUS=None):
     """Decorate a general task function
 
     Args:

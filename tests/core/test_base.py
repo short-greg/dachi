@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 from typing import List
-from dachi.core._base2 import BaseItem  # Replace with actual import path
+from dachi.core._old_base2 import BaseItem  # Replace with actual import path
 
 
 class TestBaseItem:

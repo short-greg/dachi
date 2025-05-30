@@ -1,30 +1,24 @@
 # 1st party
 import typing
+from dataclasses import dataclass
 from abc import ABC, abstractmethod
 from typing import Dict, Literal
-from dataclasses import dataclass
-import json
 from uuid import uuid4
-import inspect, json
+import inspect
 from typing import Any, Dict, get_type_hints, Literal
-from enum import Enum
 import sys
-import importlib
 # 3rd party
 from pydantic import (
-    BaseModel, create_model, ConfigDict, PrivateAttr, Field
+    BaseModel, create_model, ConfigDict, Field
 )
 # from pydantic.generics import GenericModel
-from pydantic_core import core_schema
 from pydantic.fields       import FieldInfo
 import pydantic
 
-# local
-from ._render import render
-import typing as t
+from enum import Enum
 
 # local
-from . import Renderable
+import typing as t
 
 
 import inspect, typing, sys
@@ -38,12 +32,195 @@ from uuid   import uuid4
 S = typing.TypeVar('S', bound=pydantic.BaseModel)
 
 
+# 1st party
+import inspect
+from ..utils import escape_curly_braces, unescape_curly_braces, is_primitive
+import typing
+from typing import Self, get_type_hints
+import json
+
+# 3rd party
+import pydantic
+
+
+def model_template(model_cls: typing.Type[pydantic.BaseModel]) -> str:
+    """Get the template for a pydantic.BaseModel
+
+    Args:
+        model_cls (typing.Type[pydantic.BaseModel]): The model to retrieve for
+
+    Returns:
+        str: The model template string
+    """
+    template = {}
+    for name, field_type in get_type_hints(model_cls).items():
+        
+        if inspect.isclass(field_type) and issubclass(field_type, pydantic.BaseModel):
+            template[name] = model_template(field_type)
+        else:
+            template[name] = {
+                "is_required": model_cls.model_fields[name].is_required(),
+                "type": field_type
+            }
+    return template
+
+
+def model_to_text(model: pydantic.BaseModel, escape: bool=False) -> str:
+    """Dump the struct to a string
+
+    Returns:
+        str: The string
+    """
+    if escape:  
+        return escape_curly_braces(model.model_dump())
+    return model.model_dump_json()
+
+
+def model_from_text(model_cls: typing.Type[pydantic.BaseModel], data: str, escaped: bool=False) -> Self:
+    """Load the struct from a string
+
+    Args:
+        data (str): The data for the struct
+
+    Returns:
+        Self: The loaded struct
+    """
+    if escaped:
+        data = unescape_curly_braces(data)
+    return model_cls(**json.loads(data))
+
+
+def struct_template(model: pydantic.BaseModel) -> typing.Dict:
+    """Get the template for the Struct
+
+    Returns:
+        typing.Dict: The template 
+    """
+    template = {}
+    
+    base_template = model_template(model)
+    for field_name, field in model.model_fields.items():
+        field_type = field.annotation
+        if isinstance(field_type, type) and issubclass(field_type, pydantic.BaseModel):
+
+            template[field_name] = struct_template(field_type)
+        else:
+
+            if 'is_required' in base_template[field_name]:
+                is_required = base_template[field_name]['is_required']
+            else:
+                is_required = True
+            template[field_name] = TemplateField(
+                type_=field.annotation,
+                description=field.description,
+                default=field.default if field.default is not None else None,
+                is_required=is_required
+            )
+
+    return template
+
+
+def render(
+    x: typing.Any, escape_braces: bool=True, 
+    template_render: typing.Optional[typing.Callable[['TemplateField'], str]]=None
+) -> typing.Union[str, typing.List[str]]:
+    """Convert an input to text. Will use the text for a cue,
+    the render() method for a description and convert any other value to
+    text with str()
+
+    Args:
+        value (X): The input
+
+    Returns:
+        str: The resulting text
+    """
+    if isinstance(x, TemplateField):
+        if template_render is not None:
+            x = template_render(x)
+        else: 
+            x = x.render()
+
+    if isinstance(x, Renderable):
+        return x.render()
+
+    elif isinstance(x, pydantic.BaseModel):
+        return model_to_text(x, escape_braces)
+    elif is_primitive(x):
+        return str(x)
+    elif isinstance(x, typing.Dict):
+        items = {}
+        for k, v in x.items():
+            if isinstance(v, str):
+                v = f'"{v}"'
+            else:
+                v = render(v, escape_braces)
+            items[k] = v    
+        items = ', '.join(
+            f'"{k}": {v}' 
+            for k, v in items.items()
+        )
+
+        if escape_braces:
+            return f"{{{{{items}}}}}"
+        else:
+            return f'{{{items}}}'
+    elif isinstance(x, typing.List):
+
+        items = []
+        for v in x:
+            if isinstance(v, str):
+                v = f'"{v}"'
+            else:
+                v = render(v, escape_braces)
+            items.append(v)
+
+        return '[{}]'.format(', '.join(render(v) for v in items))
+    elif isinstance(x, Renderable):
+        return x.render()
+    return str(x)
+
+
+def is_renderable(obj: typing.Any) -> bool:
+    """Return whether an object is renderable
+
+    Args:
+        obj (typing.Any): The object to check
+
+    Returns:
+        bool: whether the object is renderable
+    """
+
+    return (
+        isinstance(obj, Renderable)
+        or is_primitive(obj)
+        or isinstance(obj, list)
+        or isinstance(obj, dict)
+        or isinstance(obj, pydantic.BaseModel)
+    )
+
+
+def render_multi(xs: typing.Iterable[typing.Any]) -> typing.List[str]:
+    """Convert an input to text. Will use the text for an cue,
+    the render() method for a description and convert any other value to
+    text with str()
+
+    Args:
+        value (X): The input
+
+    Returns:
+        str: The resulting text
+    """
+    return [
+        render(x) for x in xs
+    ]
+
+
 # --- wrappers ---------------------------------------------------------
 T = t.TypeVar("T")
 PRIMITIVE = str | int | float | bool
 V = t.TypeVar(
     "V", 
-    bound=t.Union[PRIMITIVE, pydantic.BaseModel, typing.Enum, 'BaseProcess']
+    bound=t.Union[PRIMITIVE, pydantic.BaseModel, Enum, 'BaseProcess']
 )
 
 # class _Wrapper(BaseModel, t.Generic[T]): value: T
@@ -231,7 +408,7 @@ class BaseSpec(BaseModel):
         cls,
         runtime: 'BaseItem',
         *,
-        ctx:   'BuildContext' | None = None,
+        ctx:   typing.Union['BuildContext', None] = None,
         style: str | None = None,
     ) -> "BaseSpec":
         """
@@ -267,7 +444,7 @@ class BaseSpec(BaseModel):
     def to_runtime(
         self,
         *,
-        ctx: 'BuildContext' | None = None,
+        ctx: typing.Union['BuildContext', None] = None,
     ) -> 'BaseItem':
         """
         Default: parallel-field mapping back into runtime constructor.
@@ -330,10 +507,10 @@ class BaseSpec(BaseModel):
     #                 return target
     #     return None
 
-class BaseItem(ABC, Renderable, Trainable):
+class BaseItem(Renderable, Trainable):
 
-    @abstractmethod
     @classmethod
+    @abstractmethod
     def to_schema(cls) -> BaseSpec:
         pass
 
@@ -579,7 +756,7 @@ class BaseProcess(BaseItem):
         if cls.__spec__ is not None:
             return cls.__spec__
 
-        cls._validate_signature()
+        # cls._validate_signature()
         sig   = inspect.signature(cls.__init__)
         hints = get_type_hints(cls.__init__, include_extras=True)
 
@@ -671,7 +848,7 @@ class BaseProcess(BaseItem):
     def __init_subclass__(cls, **kw):
         super().__init_subclass__(**kw)
         if cls is not BaseProcess:
-            cls._validate_signature()
+            # cls._validate_signature()
             cls.to_schema()
 
 # --------------------------------------------------------------------------- #
@@ -840,21 +1017,21 @@ class BaseStruct(BaseModel, BaseItem):
             if isinstance(attr, Attr):
                 attr.load_state_dict(val)
 
-# class StructLoadException(Exception):
-#     """Exception StructLoad
-#     """
+class StructLoadException(Exception):
+    """Exception StructLoad
+    """
 
-#     def __init__(
-#         self, message="Struct loading failed.", errors=None
-#     ):
-#         """Create a StructLoadException with a message
+    def __init__(
+        self, message="Struct loading failed.", errors=None
+    ):
+        """Create a StructLoadException with a message
 
-#         Args:
-#             message (str, optional): The message. Defaults to "Struct loading failed.".
-#             errors (optional): The errors. Defaults to None.
-#         """
-#         super().__init__(message)
-#         self.errors = errors
+        Args:
+            message (str, optional): The message. Defaults to "Struct loading failed.".
+            errors (optional): The errors. Defaults to None.
+        """
+        super().__init__(message)
+        self.errors = errors
 
 
 """
@@ -941,58 +1118,58 @@ TreeSpec
 #         pass
 
 
-# @dataclass
-# class TemplateField(Renderable):
-#     """Use for rendering a field in a BaseModel
-#     """
-#     type_: str
-#     description: str
-#     default: typing.Any = None
-#     is_required: bool = True
+@dataclass
+class TemplateField(Renderable):
+    """Use for rendering a field in a BaseModel
+    """
+    type_: str
+    description: str
+    default: typing.Any = None
+    is_required: bool = True
 
-#     def to_dict(self) -> typing.Dict:
-#         """Convert the template to a dict
+    def to_dict(self) -> typing.Dict:
+        """Convert the template to a dict
 
-#         Returns:
-#             typing.Dict: the template
-#         """
-#         return {
-#             'type': self.type_,
-#             'description': self.description,
-#             'default': self.default,
-#             'is_required': self.is_required
-#         }
+        Returns:
+            typing.Dict: the template
+        """
+        return {
+            'type': self.type_,
+            'description': self.description,
+            'default': self.default,
+            'is_required': self.is_required
+        }
     
-#     def render(self) -> str:
-#         """Convert the template to a string
+    def render(self) -> str:
+        """Convert the template to a string
 
-#         Returns:
-#             str: The string of the template.
-#         """
-#         return str(self.to_dict())
+        Returns:
+            str: The string of the template.
+        """
+        return str(self.to_dict())
 
 
-# class Storable(ABC):
-#     """Object to serialize objects to make them easy to recover
-#     """
+class Storable(ABC):
+    """Object to serialize objects to make them easy to recover
+    """
 
-#     @abstractmethod
-#     def load_state_dict(self, state_dict: typing.Dict):
-#         """Load the state dict for the object
+    @abstractmethod
+    def load_state_dict(self, state_dict: typing.Dict):
+        """Load the state dict for the object
 
-#         Args:
-#             state_dict (typing.Dict): The state dict
-#         """
-#         pass
+        Args:
+            state_dict (typing.Dict): The state dict
+        """
+        pass
         
-#     @abstractmethod
-#     def state_dict(self) -> typing.Dict:
-#         """Retrieve the state dict for the object
+    @abstractmethod
+    def state_dict(self) -> typing.Dict:
+        """Retrieve the state dict for the object
 
-#         Returns:
-#             typing.Dict: The state dict
-#         """
-#         pass
+        Returns:
+            typing.Dict: The state dict
+        """
+        pass
 
 
 # class Trainable(Storable):

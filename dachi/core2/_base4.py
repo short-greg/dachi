@@ -17,6 +17,7 @@ Usage::
     print(p.state_dict())
 """
 
+from dataclasses import InitVar
 import inspect
 import typing as t
 from uuid import uuid4
@@ -37,11 +38,11 @@ T = t.TypeVar("T")
 class ShareableItem(BaseModel, t.Generic[T]):
     """Lightweight, serialisable leaf object with a single ``val`` field."""
 
-    val: T
+    data: T
 
     class Config:
-        arbitrary_types_allowed = True  # allow torch tensors, numpy arrays, Path, …
-        frozen = True                   # hashable & immutable, good for caching
+        arbitrary_types_allowed = False  # allow torch tensors, numpy arrays, Path, …
+        frozen = False                   # hashable & immutable, good for caching
 
 
 class Param(ShareableItem[T]):
@@ -52,6 +53,7 @@ class Param(ShareableItem[T]):
 
 class State(ShareableItem[T]):
     """Mutable runtime state (e.g. counters, RNG seeds, rolling averages)."""
+    pass
 
 
 class Shared(ShareableItem[T]):
@@ -72,7 +74,7 @@ class BaseSpec(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid4()))
     style: t.Literal["structured"] = "structured"
 
-    model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
+    model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=False)
 
 
 # -----------------------------------------------------------
@@ -89,8 +91,7 @@ class BaseItem:
     __is_initvar__: t.ClassVar[dict[str, bool]]
 
     # per‑instance containers
-    _children: list["BaseItem"]
-    _init_vars: dict[str, t.Any]
+    # _children: list["BaseItem"]
 
     # ---------------------------------------------------
     # class construction hook
@@ -100,18 +101,19 @@ class BaseItem:
         super().__init_subclass__(**kwargs)
         if cls is BaseItem:
             return
-
         ann = t.get_type_hints(cls, include_extras=True)
         fields: list[tuple[str, t.Any, t.Any, bool]] = []
 
         for name, typ in ann.items():
             # skip private attrs and typing.ClassVar
-            if name.startswith("_") or t.get_origin(typ) is t.ClassVar:
+            if t.get_origin(typ) is t.ClassVar:
                 continue
             default = getattr(cls, name, inspect._empty)
-            is_init = t.get_origin(typ) is t.InitVar
+
+            # Detect InitVar from dataclasses, not typing
+            is_init = isinstance(typ, InitVar)
             if is_init:
-                typ = t.get_args(typ)[0]
+                typ = t.get_args(typ)[0] if t.get_origin(typ) is InitVar else t.Any
             fields.append((name, typ, default, is_init))
 
         cls.__item_fields__ = fields
@@ -119,12 +121,30 @@ class BaseItem:
 
         # build & cache pydantic spec model
         spec_fields: dict[str, tuple[t.Any, t.Any]] = {}
-        for n, typ, dflt, _ in fields:
-            origin = t.get_origin(typ) or typ
-            if isinstance(origin, type) and issubclass(origin, BaseItem):
-                typ = origin.schema()
-            spec_fields[n] = (typ, ... if dflt is inspect._empty else dflt)
 
+        print('=====')
+        for n, typ, dflt, _ in fields:
+            if isinstance(typ, type) and issubclass(typ, ShareableItem):
+                origin = typ.__base__ if typ is not ShareableItem else ShareableItem
+            else:
+                origin = typ
+                if isinstance(origin, type) and issubclass(origin, BaseItem):
+                    origin = origin.schema()  # recurse for nested BaseItems
+            # origin = t.get_origin(typ)
+            # if origin is None:
+            #     origin = getattr(typ, '__origin__', typ)
+            # else:
+            #     origin = typ
+
+            # if the field itself is a nested BaseItem, recurse to its schema
+            # if isinstance(origin, type) and issubclass(origin, BaseItem):
+            #     typ = origin.schema()
+            # else:
+            #     # strip Param[float] → Param, State[int] → State, etc.
+            #     typ = origin
+            #     print('Typ: ', typ)
+
+            spec_fields[n] = (typ, ... if dflt is inspect._empty else dflt)
         cls.__spec__ = create_model(
             f"{cls.__name__}Spec",
             __base__=BaseSpec,
@@ -164,6 +184,10 @@ class BaseItem:
         # optional post‑init
         if hasattr(self, "__post_init__"):
             self.__post_init__(**self._init_vars)
+        elif len(self._init_vars) > 0:
+            raise RuntimeError(
+                'InitVars have been defined but there is no __post_init__ defined.'
+            )
 
     # ---------------------------------------------------
     # schema & spec helpers
@@ -175,11 +199,11 @@ class BaseItem:
 
     def spec(self) -> BaseSpec:
         data: dict[str, t.Any] = {}
-        for name, is_init in self.__class__.__is_initvar__.items():
+        for n, is_init in self.__class__.__is_initvar__.items():
             if is_init:
-                data[name] = self._init_vars[name]
+                data[n] = self._init_vars[n]
             else:
-                v = getattr(self, name)
+                v = getattr(self, n)
                 if isinstance(v, BaseItem):
                     if getattr(v, "_spec_in_progress", False):
                         raise RuntimeError("Cycle detected in BaseItem hierarchy")
@@ -188,7 +212,9 @@ class BaseItem:
                         v = v.spec()
                     finally:
                         v._spec_in_progress = False
-                data[name] = v
+                elif isinstance(v, BaseModel):
+                    v = v.model_dump() 
+                data[n] = v
         return self.__class__.__spec__(kind=self.__class__.__qualname__, **data)
 
     # ---------------------------------------------------
@@ -218,10 +244,10 @@ class BaseItem:
                 p = f"{prefix}{n}"
                 if isinstance(v, Param):
                     if train:
-                        out[p] = v.val
+                        out[p] = v.data
                 elif isinstance(v, State):
                     if runtime:
-                        out[p] = v.val
+                        out[p] = v.data
                 elif isinstance(v, BaseItem) and recurse:
                     _collect(v, p + ".")
 
@@ -234,7 +260,8 @@ class BaseItem:
         def _assign(item: BaseItem, key: str, value: t.Any):
             tgt = getattr(item, key, None)
             if isinstance(tgt, (Param, State)):
-                tgt.val = value
+                print(value)
+                tgt.data = value
                 return True
             return False
 

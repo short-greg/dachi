@@ -12,7 +12,7 @@ import typing
 
 # local
 from ..core import Storable
-from ..core._render import render, Renderable
+from ..core import render, Renderable
 
 
 T = typing.TypeVar("T")

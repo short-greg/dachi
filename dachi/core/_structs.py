@@ -3,7 +3,6 @@ import typing
 from typing import Dict, Literal
 from uuid import uuid4
 # process_core.py
-from __future__ import annotations
 import inspect, json
 from typing import Any, Dict, Generic, List, TypeVar, get_type_hints, Literal
 from pydantic import BaseModel, create_model, ConfigDict
@@ -139,7 +138,7 @@ class ItemDict(BaseStruct, t.Generic[K, V]):
     def to_schema(cls):
         if not cls._items:
             raise ValueError("Cannot infer spec class from empty ItemTuple")
-        return tuple[item.to_spec_class() for item in self._items]
+        return tuple(item.to_spec_class() for item in cls._items)
 
     def state_dict(self):
         return {k: v.state_dict() for k, v in self._items.items()}
