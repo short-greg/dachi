@@ -17,6 +17,8 @@ Usage::
     print(p.state_dict())
 """
 
+import inspect
+from typing import Callable, Any, Dict, Optional, Union, List
 from dataclasses import InitVar
 import inspect
 import typing as t
@@ -27,7 +29,7 @@ try:  # 3.12+
 except ImportError:  # 3.8–3.11
     from typing_extensions import dataclass_transform
 
-from pydantic import BaseModel, Field, ConfigDict, create_model
+from pydantic import BaseModel, Field, ConfigDict, create_model, field_validator
 
 T = t.TypeVar("T")
 
@@ -44,6 +46,21 @@ class ShareableItem(BaseModel, t.Generic[T]):
         arbitrary_types_allowed = False  # allow torch tensors, numpy arrays, Path, …
         frozen = False                   # hashable & immutable, good for caching
 
+    # @field_validator("data")
+    # @classmethod
+    # def check_data_type(cls, v):
+    #     # Extract expected type T from __orig_bases__
+    #     expected_type = None
+    #     for base in cls.__orig_bases__:
+    #         if getattr(base, '__origin__', None) is ShareableItem:
+    #             expected_type = get_args(base)[0]
+    #             break
+    #     if expected_type and not isinstance(v, expected_type):
+    #         raise TypeError(f"Expected data of type {expected_type}, got {type(v)}")
+    #     return v
+
+    def __hash__(self):
+        return id(self) 
 
 class Param(ShareableItem[T]):
     """Trainable parameter; ``training`` may be toggled to freeze it."""
@@ -82,14 +99,14 @@ class BaseSpec(BaseModel):
 # -----------------------------------------------------------
 
 @dataclass_transform(kw_only_default=True, field_specifiers=(Field,))
-class BaseItem:
+class BaseModule:
     """Dataclass‑like runtime object without exec‑generated ``__init__``."""
 
     # populated by __init_subclass__
     __spec__: t.ClassVar[type[BaseSpec]]
     __item_fields__: t.ClassVar[list[tuple[str, t.Any, t.Any, bool]]]
     __is_initvar__: t.ClassVar[dict[str, bool]]
-
+    
     # per‑instance containers
     # _children: list["BaseItem"]
 
@@ -97,10 +114,9 @@ class BaseItem:
     # class construction hook
     # ---------------------------------------------------
 
-    def __init_subclass__(cls, **kwargs):
-        super().__init_subclass__(**kwargs)
-        if cls is BaseItem:
-            return
+    @classmethod
+    def __build_schema__(cls) -> None:
+
         ann = t.get_type_hints(cls, include_extras=True)
         fields: list[tuple[str, t.Any, t.Any, bool]] = []
 
@@ -122,27 +138,13 @@ class BaseItem:
         # build & cache pydantic spec model
         spec_fields: dict[str, tuple[t.Any, t.Any]] = {}
 
-        print('=====')
         for n, typ, dflt, _ in fields:
             if isinstance(typ, type) and issubclass(typ, ShareableItem):
                 origin = typ.__base__ if typ is not ShareableItem else ShareableItem
             else:
                 origin = typ
-                if isinstance(origin, type) and issubclass(origin, BaseItem):
+                if isinstance(origin, type) and issubclass(origin, BaseModule):
                     origin = origin.schema()  # recurse for nested BaseItems
-            # origin = t.get_origin(typ)
-            # if origin is None:
-            #     origin = getattr(typ, '__origin__', typ)
-            # else:
-            #     origin = typ
-
-            # if the field itself is a nested BaseItem, recurse to its schema
-            # if isinstance(origin, type) and issubclass(origin, BaseItem):
-            #     typ = origin.schema()
-            # else:
-            #     # strip Param[float] → Param, State[int] → State, etc.
-            #     typ = origin
-            #     print('Typ: ', typ)
 
             spec_fields[n] = (typ, ... if dflt is inspect._empty else dflt)
         cls.__spec__ = create_model(
@@ -152,6 +154,13 @@ class BaseItem:
             **spec_fields,
         )
 
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        if cls is BaseModule:
+            return
+        if not hasattr(cls, "__spec__"):
+            cls.__build_schema__()
+
     # ---------------------------------------------------
     # generic __init__
     # ---------------------------------------------------
@@ -159,6 +168,9 @@ class BaseItem:
     def __init__(self, **kwargs: t.Any):
         self._children = []
         self._init_vars = {}
+        self._parameters: dict[str, Param] = {}
+        self._states: dict[str, State] = {}
+        self._modules: dict[str, BaseModule] = {}
 
         for name, _typ, default, is_init in self.__class__.__item_fields__:
             if name in kwargs:
@@ -178,7 +190,7 @@ class BaseItem:
 
         # child registration
         for v in vars(self).values():
-            if isinstance(v, BaseItem):
+            if isinstance(v, BaseModule):
                 self._children.append(v)
 
         # optional post‑init
@@ -197,6 +209,78 @@ class BaseItem:
     def schema(cls) -> type[BaseSpec]:
         return cls.__spec__
 
+    # ---- sub-module traversal ----------------------------------------
+    def modules(self, *, recurse: bool = True):
+        """Yield **self** first, then all sub-items depth-first."""
+        yield self
+        if recurse:
+            for child in self._modules.values():
+                yield from child.modules(recurse=True)
+
+    def named_modules(self, *, recurse: bool = True, prefix: str = ""):
+        """Yield ``(dotted_name, module)`` pairs."""
+        yield prefix.rstrip("."), self
+        if recurse:
+            for name, child in self._modules.items():
+                child_prefix = f"{prefix}{name}."
+                yield from child.named_modules(recurse=True, prefix=child_prefix)
+
+    def named_parameters(
+        self, *, recurse: bool = True, train_only: bool | None = None, prefix: str = ""
+    ) -> t.Generator[tuple[str, Param]]:
+        for name, p in self._parameters.items():
+            if train_only is None or p.training is train_only:
+                yield f"{prefix}{name}", p
+        if recurse:
+            for cname, child in self._modules.items():
+                child_prefix = f"{prefix}{cname}."
+                yield from child.named_parameters(recurse=True, train_only=train_only, prefix=child_prefix)
+
+    def children(self):
+        """Immediate child modules (non-recursive)."""
+        return self._modules.values()
+
+    def named_states(self, *, recurse: bool = True, prefix: str = ""):
+        for name, s in self._states.items():
+            yield f"{prefix}{name}", s
+        if recurse:
+            for cname, child in self._modules.items():
+                child_prefix = f"{prefix}{cname}."
+                yield from child.named_states(recurse=True, prefix=child_prefix)
+
+    def apply(self, fn, *, filter_type: type | None = None):
+        """
+        Recursively apply *fn* to every registered object.
+
+        If *filter_type* is given, only objects satisfying
+        ``isinstance(obj, filter_type)`` are passed to *fn*.
+        """
+        targets = [self, *self._parameters.values(), *self._states.values()]
+        for obj in targets:
+            if filter_type is None or isinstance(obj, filter_type):
+                fn(obj)
+        for child in self._modules.values():
+            child.apply(fn, filter_type=filter_type)
+    def eval(self):
+        """Alias for ``train(False)``."""
+        return self.train(False)
+
+    def train(self, mode: bool = True):
+        """Recursively set ``Param.training`` for all parameters."""
+        for p in self._parameters.values():
+            p.training = mode
+        for child in self._modules.values():
+            child.train(mode)
+        return self               # for chaining
+
+    @property
+    def training(self) -> bool:
+        # True if ANY param is in training mode; False when all frozen
+        return any(p.training for p in self._parameters.values())
+
+    def named_children(self):
+        return self._modules.items()
+
     def spec(self) -> BaseSpec:
         data: dict[str, t.Any] = {}
         for n, is_init in self.__class__.__is_initvar__.items():
@@ -204,7 +288,7 @@ class BaseItem:
                 data[n] = self._init_vars[n]
             else:
                 v = getattr(self, n)
-                if isinstance(v, BaseItem):
+                if isinstance(v, BaseModule):
                     if getattr(v, "_spec_in_progress", False):
                         raise RuntimeError("Cycle detected in BaseItem hierarchy")
                     v._spec_in_progress = True
@@ -221,70 +305,231 @@ class BaseItem:
     # parameter & state traversal
     # ---------------------------------------------------
 
-    def _walk(self, recurse: bool):
-        yield self
+    def __setattr__(self, name, value):
+        if isinstance(value, Param):
+            self.register_parameter(name, value)
+        elif isinstance(value, State):
+            self.register_state(name, value)
+        elif isinstance(value, BaseModule):
+            self.register_module(name, value)
+        else:
+            super().__setattr__(name, value)
+
+    def register_parameter(self, name: str, param: Param):
+        self._parameters[name] = param
+        super().__setattr__(name, param)
+
+    def register_state(self, name: str, state: State):
+        self._states[name] = state
+        super().__setattr__(name, state)
+
+    def register_module(self, name: str, module: BaseModule):
+        self._modules[name] = module
+        super().__setattr__(name, module)
+
+    def parameters(self, *, recurse: bool = True, train_only: bool | None = None, _seen: t.Optional[set[int]] = None):
+        if _seen is None:
+            _seen = set()
+
+        for param in self._parameters.values():
+            if id(param) not in _seen:
+                if train_only is None or param.training is train_only:
+                    _seen.add(id(param))
+                    yield param
+
         if recurse:
-            for ch in self._children:
-                yield from ch._walk(True)
+            for child in self._modules.values():
+                yield from child.parameters(recurse=True, train_only=train_only, _seen=_seen)
 
-    def parameters(self, *, recurse: bool = True, train_only: bool | None = None):
-        seen = set()
-        for item in self._walk(recurse):
-            for v in vars(item).values():
-                if isinstance(v, Param) and id(v) not in seen:
-                    if train_only is None or v.training is train_only:
-                        seen.add(id(v))
-                        yield v
+    # def parameters(self, *, recurse: bool = True, train_only: bool | None = None):
+    #     seen = set()
 
-    def state_dict(self, *, recurse: bool = True, train: bool = True, runtime: bool = True) -> dict[str, t.Any]:
+    #     # Collect local parameters
+    #     for param in self._parameters.values():
+    #         if id(param) not in seen:
+    #             if train_only is None or param.training is train_only:
+    #                 seen.add(id(param))
+    #                 yield param
+
+    #     # Recurse into submodules
+    #     if recurse:
+    #         for child in self._modules.values():
+    #             yield from child.parameters(recurse=True, train_only=train_only)
+
+    def state_dict(
+        self,
+        *,
+        recurse: bool = True,
+        train: bool = True,
+        runtime: bool = True,
+    ) -> dict[str, t.Any]:
         out: dict[str, t.Any] = {}
 
-        def _collect(item: BaseItem, prefix: str):
-            for n, v in vars(item).items():
-                p = f"{prefix}{n}"
-                if isinstance(v, Param):
-                    if train:
-                        out[p] = v.data
-                elif isinstance(v, State):
-                    if runtime:
-                        out[p] = v.data
-                elif isinstance(v, BaseItem) and recurse:
-                    _collect(v, p + ".")
+        # Collect Params
+        if train:
+            for name, param in self._parameters.items():
+                out[name] = param.data
 
-        _collect(self, "")
+        # Collect States
+        if runtime:
+            for name, state in self._states.items():
+                out[name] = state.data
+
+        # Recurse into child BaseItems
+        if recurse:
+            for name, child in self._modules.items():
+                child_sd = child.state_dict(recurse=True, train=train, runtime=runtime)
+                for sub_name, value in child_sd.items():
+                    out[f"{name}.{sub_name}"] = value
+
         return out
 
-    def load_state_dict(self, sd: dict[str, t.Any], *, recurse: bool = True, strict: bool = True):
+    def state_keys(
+        self,
+        *,
+        recurse: bool = True,
+        train: bool = True,
+        runtime: bool = True
+    ) -> set[str]:
+        """
+        Returns a set of dotted keys representing the structure of the state_dict.
+        """
+        keys = set()
+
+        def _collect(obj: BaseModule, prefix: str):
+            for name, v in vars(obj).items():
+                path = f"{prefix}{name}"
+                if isinstance(v, Param) and train:
+                    keys.add(path)
+                elif isinstance(v, State) and runtime:
+                    keys.add(path)
+                elif isinstance(v, BaseModule) and recurse:
+                    _collect(v, path + ".")
+        _collect(self, "")
+        return keys
+
+    def load_state_dict(
+        self,
+        sd: dict[str, t.Any],
+        *,
+        recurse: bool = True,
+        train: bool = True,
+        runtime: bool = True,
+        strict: bool = True
+    ):
         found = set()
 
-        def _assign(item: BaseItem, key: str, value: t.Any):
-            tgt = getattr(item, key, None)
-            if isinstance(tgt, (Param, State)):
-                print(value)
-                tgt.data = value
-                return True
-            return False
+        # Load Params
+        if train:
+            for name, param in self._parameters.items():
+                if name in sd:
+                    param.data = sd[name]
+                    found.add(name)
 
+        # Load States
+        if runtime:
+            for name, state in self._states.items():
+                if name in sd:
+                    state.data = sd[name]
+                    found.add(name)
+
+        # Recurse into submodules
         if recurse:
-            # two‑pass: children first bucketed by head of dotted path
-            buckets: dict[BaseItem, dict[str, t.Any]] = {}
-            for k, v in sd.items():
-                if "." in k:
-                    head, rest = k.split(".", 1)
-                    child = getattr(self, head, None)
-                    if isinstance(child, BaseItem):
-                        buckets.setdefault(child, {})[rest] = v
-                        found.add(k)
-                        continue
-                if _assign(self, k, v):
-                    found.add(k)
-            for ch, sub in buckets.items():
-                ch.load_state_dict(sub, recurse=True, strict=strict)
-                found.update(f"{head}.{k}" for k in sub.keys())
-        else:
-            for k, v in sd.items():
-                if _assign(self, k, v):
-                    found.add(k)
+            for name, child in self._modules.items():
+                child_sd = {k[len(name)+1:]: v for k, v in sd.items() if k.startswith(f"{name}.")}
+                child.load_state_dict(child_sd, recurse=True, train=train, runtime=runtime, strict=False)
+                found.update(f"{name}.{k}" for k in child_sd.keys())
 
-        if strict and (missing := set(sd.keys()) - found):
-            raise KeyError(f"Keys not found in target object: {sorted(missing)}")
+        if strict:
+            expected_keys = self.state_keys(recurse=recurse, train=train, runtime=runtime)
+            passed_keys = set(sd.keys())
+            missing_keys = expected_keys - passed_keys
+            extra_keys = passed_keys - expected_keys
+
+            if missing_keys:
+                raise KeyError(f"Missing keys in load_state_dict: {sorted(missing_keys)}")
+            if extra_keys:
+                raise KeyError(f"Unexpected keys in load_state_dict: {sorted(extra_keys)}")
+
+
+class RegistryEntry:
+    def __init__(self,
+                 obj: Union[type, Callable],
+                 obj_type: str,
+                 tags: Dict[str, Any],
+                 package: str,
+                 description: Optional[str] = None):
+        self.obj = obj
+        self.type = obj_type
+        self.tags = tags
+        self.package = package
+        self.description = description
+
+
+class Registry:
+    def __init__(self):
+        self._entries: Dict[str, RegistryEntry] = {}
+
+    def register(self,
+                 name: Optional[str] = None,
+                 tags: Optional[Dict[str, Any]] = None,
+                 description: Optional[str] = None) -> Callable[[Union[type, Callable]], Union[type, Callable]]:
+        def decorator(obj: Union[type, Callable]) -> Union[type, Callable]:
+            key: str = name or obj.__name__
+            obj_type: str = "class" if inspect.isclass(obj) else "function"
+            module: str = obj.__module__
+
+            if key in self._entries:
+                print(f"Warning: Overwriting existing entry '{key}'")
+
+            self._entries[key] = RegistryEntry(
+                obj=obj,
+                obj_type=obj_type,
+                tags=tags or {},
+                package=module,
+                description=description
+            )
+            return obj
+        return decorator
+
+    def filter(self,
+               obj_type: Optional[str] = None,
+               tags: Optional[Dict[str, Any]] = None,
+               package: Optional[str] = None) -> Dict[str, RegistryEntry]:
+        results: Dict[str, RegistryEntry] = {}
+        for k, v in self._entries.items():
+            if obj_type and v.type != obj_type:
+                continue
+            if tags and not all(item in v.tags.items() for item in tags.items()):
+                continue
+            if package and v.package != package:
+                continue
+            results[k] = v
+        return results
+
+    def __getitem__(self, key: Union[str, List[str]]) -> Union[RegistryEntry, Dict[str, RegistryEntry]]:
+        if isinstance(key, list):
+            return {k: self._entries[k] for k in key if k in self._entries}
+        return self._entries[key]
+
+    def deregister(self, key: str) -> None:
+        if key in self._entries:
+            del self._entries[key]
+
+    def list_entries(self) -> List[str]:
+        return list(self._entries.keys())
+
+    def list_types(self) -> List[str]:
+        return list(set(v.type for v in self._entries.values()))
+
+    def list_packages(self) -> List[str]:
+        return list(set(v.package for v in self._entries.values()))
+
+    def list_tags(self) -> List[str]:
+        tags: set[str] = set()
+        for v in self._entries.values():
+            tags.update(v.tags.keys())
+        return list(tags)
+
+
+registry = Registry()

@@ -1,24 +1,24 @@
 import pytest
-from dachi.core2._base4 import BaseItem, Param, State, Shared, BaseSpec
+from dachi.core2._base4 import BaseModule, Param, State, Shared, BaseSpec
 from dataclasses import InitVar
 
 # ------------------------------------------------------------
 #  Helper process classes for tests
 # ------------------------------------------------------------
 
-class Leaf(BaseItem):
+class Leaf(BaseModule):
     value: int
 
-class WithParams(BaseItem):
+class WithParams(BaseModule):
     w: Param[float]
     s: State[int]
     name: str
 
-class Nested(BaseItem):
+class Nested(BaseModule):
     inner: WithParams
     extra: int = 5
 
-class InitVarProc(BaseItem):
+class InitVarProc(BaseModule):
     x: int
     y: InitVar[int]
 
@@ -71,7 +71,7 @@ def test_schema_cached():
 
 
 def test_shared_excluded_from_state():
-    class Proc(BaseItem):
+    class Proc(BaseModule):
         cfg: Shared[str]
         p: Param[int]
     pr = Proc(cfg=Shared(data="conf"), p=Param(data=10))
@@ -117,12 +117,12 @@ def test_load_state_strict_failure():
     wp = WithParams(w=Param(data=1.0), s=State(data=1), name="t")
     sd = {"w": 2.0, "missing": 9}
     with pytest.raises(KeyError):
-        wp.load_state_dict(sd, recurse=False)
+        wp.load_state_dict(sd, recurse=False, strict=True)
 
 
 def test_param_deduplication():
     shared_param = Param(data=3.0)
-    class Proc(BaseItem):
+    class Proc(BaseModule):
         a: Param[float]
         b: Param[float]
     pr = Proc(a=shared_param, b=shared_param)
@@ -165,7 +165,7 @@ def test_state_mutability():
 def test_load_state_non_param_target_error():
     wp = WithParams(w=Param(data=1.0), s=State(data=1), name="a")
     with pytest.raises(KeyError):
-        wp.load_state_dict({"name": "bad"}, recurse=False)
+        wp.load_state_dict({"name": "bad"}, recurse=False, strict=True)
 
 
 def test_frozen_param_not_filtered_from_state():
@@ -176,7 +176,7 @@ def test_frozen_param_not_filtered_from_state():
 # # -----  corner cases for InitVar default / override ----------
 
 def test_initvar_default_used():
-    class P(BaseItem):
+    class P(BaseModule):
         x: int
         y: InitVar[int] = 9
         def __post_init__(self, y):
@@ -196,7 +196,7 @@ def test_schema_kind_field():
 
 
 def test_spec_kind_matches_classname():
-    class WithParams(BaseItem):
+    class WithParams(BaseModule):
         w: Param[float]
         s: State[int]
         name: str
@@ -222,21 +222,230 @@ def test_load_state_in_child():
     assert wp2.w.data == 4.0 and wp2.s.data == 6
 
 
+def test_state_dict_flags_combination():
+    class A(BaseModule):
+        p: Param[float]
+        s: State[int]
+    a = A(p=Param(data=3.3), s=State(data=9))
+    sd = a.state_dict(train=False, runtime=False)
+    assert sd == {}
+
+def test_state_dict_nested_keys():
+    class Leaf(BaseModule):
+        p: Param[float]
+    class Root(BaseModule):
+        leaf: Leaf
+        b: Param[int]
+    r = Root(leaf=Leaf(p=Param(data=1.0)), b=Param(data=2))
+    sd = r.state_dict()
+    assert set(sd.keys()) == {"leaf.p", "b"}
+
+def test_state_dict_shared_exclusion():
+    class A(BaseModule):
+        sh: Shared[str]
+    a = A(sh=Shared(data="foo"))
+    sd = a.state_dict()
+    assert "sh" not in sd
+
+def test_state_dict_conflicting_keys():
+    class Child(BaseModule):
+        p: Param[float]
+    class Parent(BaseModule):
+        child1: Child
+        child2: Child
+    p = Parent(child1=Child(p=Param(data=1.0)), child2=Child(p=Param(data=2.0)))
+    sd = p.state_dict()
+    assert sd["child1.p"] == 1.0 and sd["child2.p"] == 2.0
+
+def test_state_dict_dynamic_addition():
+    class A(BaseModule):
+        x: int
+    a = A(x=5)
+    a.p = Param(data=7.7)
+    assert "p" in a.state_dict()
+
+
+def test_state_dict_empty_baseitem():
+    class Empty(BaseModule): pass
+    e = Empty()
+    assert e.state_dict() == {}
+
+def test_state_dict_no_recursion():
+    class Leaf(BaseModule):
+        p: Param[float]
+    class Root(BaseModule):
+        leaf: Leaf
+        b: Param[int]
+    r = Root(leaf=Leaf(p=Param(data=5)), b=Param(data=6))
+    sd = r.state_dict(recurse=False)
+    assert "b" in sd and not any(k.startswith("leaf.") for k in sd)
+
+def test_state_dict_complex_types():
+    p = Param(data=[1,2,3])
+    s = State(data={"k":"v"})
+    class A(BaseModule):
+        p: Param[list]
+        s: State[dict]
+    a = A(p=p, s=s)
+    sd = a.state_dict()
+    assert sd == {"p":[1,2,3], "s":{"k":"v"}}
+
+
+def test_load_state_dict_happy_path():
+    class A(BaseModule):
+        p: Param[float]
+        s: State[int]
+    a = A(p=Param(data=1.0), s=State(data=2))
+    a.load_state_dict({"p": 3.3, "s": 4})
+    assert a.p.data == 3.3 and a.s.data == 4
+
+def test_load_state_dict_missing_key_strict():
+    class A(BaseModule):
+        p: Param[float]
+    a = A(p=Param(data=1.0))
+    with pytest.raises(KeyError):
+        a.load_state_dict({}, strict=True)
+
+def test_load_state_dict_extra_key_strict():
+    class A(BaseModule):
+        p: Param[float]
+    a = A(p=Param(data=1.0))
+    with pytest.raises(KeyError):
+        a.load_state_dict({"p":1.0, "extra":5}, strict=True)
+
+def test_load_state_dict_partial_non_strict():
+    class A(BaseModule):
+        p: Param[float]
+        s: State[int]
+    a = A(p=Param(data=1.0), s=State(data=2))
+    a.load_state_dict({"p":5.0}, strict=False)
+    assert a.p.data == 5.0 and a.s.data == 2
+
+def test_load_state_dict_shared_protection():
+    class A(BaseModule):
+        sh: Shared[str]
+    a = A(sh=Shared(data="original"))
+    a.load_state_dict({"sh": "new"}, strict=False)
+    assert a.sh.data == "original"   # Shared field should not change
+
+def test_load_state_dict_nested():
+    class Leaf(BaseModule):
+        p: Param[float]
+    class Root(BaseModule):
+        leaf: Leaf
+    r = Root(leaf=Leaf(p=Param(data=1.0)))
+    r.load_state_dict({"leaf.p": 9.9})
+    assert r.leaf.p.data == 9.9
+
+def test_load_state_dict_recursion_false():
+    class Leaf(BaseModule):
+        p: Param[float]
+    class Root(BaseModule):
+        leaf: Leaf
+        b: Param[int]
+    r = Root(leaf=Leaf(p=Param(data=1.0)), b=Param(data=2))
+    r.load_state_dict({"b":5}, recurse=False)
+    assert r.b.data == 5 and r.leaf.p.data == 1.0
+
+def test_load_state_dict_empty():
+    class A(BaseModule):
+        p: Param[float]
+    a = A(p=Param(data=1.0))
+    a.load_state_dict({}, strict=False)
+    assert a.p.data == 1.0
+
+# def test_load_state_dict_type_mismatch():
+#     class A(BaseItem):
+#         p: Param[float]
+#     a = A(p=Param(data=1.0))
+#     with pytest.raises(Exception):
+#         a.load_state_dict({"p": "oops"}, strict=True)
+
+def test_load_state_dict_shared_ignore_even_if_present():
+    class A(BaseModule):
+        p: Param[float]
+        sh: Shared[str]
+    a = A(p=Param(data=1.0), sh=Shared(data="init"))
+    a.load_state_dict({"p":5.5, "sh":"should not overwrite"}, strict=False)
+    assert a.p.data == 5.5 and a.sh.data == "init"
+
+
 def test_parameters_train_only_true():
     p1 = Param(data=1.0, training=True)
     p2 = Param(data=2.0, training=False)
-    class P(BaseItem):
+    class P(BaseModule):
         a: Param[float]
         b: Param[float]
     pr = P(a=p1, b=p2)
     assert list(pr.parameters(train_only=True)) == [p1]
+
+
+def test_parameters_no_params():
+    class P(BaseModule):
+        x: int
+    p = P(x=5)
+    assert list(p.parameters()) == []
+
+def test_parameters_deduplication():
+    p = Param(data=1.0)
+    class P(BaseModule):
+        a: Param[float]
+        b: Param[float]
+    pr = P(a=p, b=p)
+    assert list(pr.parameters()) == [p]
+
+def test_parameters_nested():
+    class Leaf(BaseModule):
+        p: Param[float]
+    class Branch(BaseModule):
+        leaf: Leaf
+        b: Param[int]
+    pr = Branch(leaf=Leaf(p=Param(data=1.0)), b=Param(data=2))
+    ps = list(pr.parameters())
+    assert len(ps) == 2 and all(isinstance(p, Param) for p in ps)
+
+def test_parameters_recurse_false():
+    class Leaf(BaseModule):
+        p: Param[float]
+    class Branch(BaseModule):
+        leaf: Leaf
+        b: Param[int]
+    pr = Branch(leaf=Leaf(p=Param(data=1.0)), b=Param(data=2))
+    ps = list(pr.parameters(recurse=False))
+    assert len(ps) == 1 and isinstance(ps[0], Param)
+
+def test_parameters_dynamic_addition():
+    p = Param(data=3)
+    class P(BaseModule):
+        x: int
+    pr = P(x=1)
+    pr.new_p = p
+    assert p in list(pr.parameters())
+
+def test_parameters_ignore_nonparam():
+    class P(BaseModule):
+        a: Shared[str]
+        b: State[int]
+        c: int
+    pr = P(a=Shared(data="ref"), b=State(data=0), c=42)
+    assert list(pr.parameters()) == []
+
+def test_parameters_train_only_none():
+    p1 = Param(data=1.0, training=True)
+    p2 = Param(data=2.0, training=False)
+    class P(BaseModule):
+        a: Param[float]
+        b: Param[float]
+    pr = P(a=p1, b=p2)
+    ps = list(pr.parameters(train_only=None))
+    assert set(ps) == {p1, p2}
 
 # # ------ identity vs value equality for Shared ------------------
 
 def test_shared_identity_not_dedup():
     s1 = Shared(data="conf")
     s2 = Shared(data="conf")
-    class P(BaseItem):
+    class P(BaseModule):
         a: Shared[str]
         b: Shared[str]
     pr = P(a=s1, b=s2)
