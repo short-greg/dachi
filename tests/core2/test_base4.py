@@ -1,5 +1,6 @@
+import json
 import pytest
-from dachi.core2._base4 import BaseModule, Param, State, Shared, BaseSpec
+from dachi.core2._base4 import BaseModule, Param, State, Shared, BaseSpec, Checkpoint
 from dataclasses import InitVar
 
 # ------------------------------------------------------------
@@ -452,3 +453,174 @@ def test_shared_identity_not_dedup():
     # state_dict must still omit both
     assert pr.state_dict() == {}
 
+
+
+# ----------  Happy-path: basic save  ----------
+def test_checkpoint_save_module_creates_file(tmp_path):
+    """Positive • file is physically created and contains valid JSON."""
+    class Leaf(BaseModule):
+        w: Param[int]
+
+    leaf = Leaf(w=Param(1))
+    path = tmp_path / "leaf.json"
+
+    Checkpoint.save_module(leaf, path)
+    raw = path.read_text()
+
+    assert path.exists()          # file written
+    json.loads(raw)               # raises if not valid JSON
+
+
+# ----------  Happy-path: load → exact round-trip ----------
+def test_checkpoint_load_roundtrip(tmp_path):
+    """Positive • Checkpoint.load() reproduces the exact spec & state."""
+    class Leaf(BaseModule):
+        w: Param[int]
+
+    leaf = Leaf(w=Param(3))
+    path = tmp_path / "leaf.json"
+    Checkpoint.save_module(leaf, path)
+
+    ckpt = Checkpoint.load(path)
+
+    assert ckpt.state_dict == leaf.state_dict(recurse=True, train=True, runtime=True)
+    assert ckpt.spec.kind == leaf.spec().kind
+
+
+# ----------  Happy-path: load_module reconstructs model ----------
+def test_checkpoint_load_module_restores_state(tmp_path):
+    """Positive • load_module returns an equivalent, fully initialised module."""
+    class Leaf(BaseModule):
+        w: Param[int]
+
+    original = Leaf(w=Param(7))
+    path = tmp_path / "leaf.json"
+    Checkpoint.save_module(original, path)
+
+    rebuilt = Checkpoint.load_module(path)
+
+    assert isinstance(rebuilt, Leaf)
+    assert rebuilt.w.data == 7
+
+
+# ----------  Happy-path: shared ref-names deduplicated ----------
+def test_checkpoint_shared_objects_deduplicated(tmp_path):
+    """Positive • Same ref_name inside spec becomes the *same* object."""
+    class Inner(BaseModule):
+        val: Param[int]
+
+    shared_inner = Shared(ref_name="X", data=Inner(val=Param(5)))
+
+    class Outer(BaseModule):
+        a: Inner
+        b: Inner
+
+    model = Outer(a=shared_inner, b=shared_inner)
+    path = tmp_path / "outer.json"
+    Checkpoint.save_module(model, path)
+
+    ctx = BuildContext()
+    rebuilt = Checkpoint.load_module(path, context=ctx)
+
+    assert rebuilt.a is rebuilt.b            # identity dedup
+    assert rebuilt.a.val.data == 5
+
+
+# ----------  Error-path: missing file ----------
+def test_checkpoint_load_missing_file_raises(tmp_path):
+    """Negative • Loading a non-existent file should raise FileNotFoundError."""
+    with pytest.raises(FileNotFoundError):
+        Checkpoint.load(tmp_path / "nope.json")
+
+
+# ----------  Error-path: corrupt JSON ----------
+def test_checkpoint_load_corrupt_json_raises(tmp_path):
+    """Negative • Invalid JSON content raises ValueError (Pydantic)."""
+    bad_file = tmp_path / "bad.json"
+    bad_file.write_text("not json!")
+    with pytest.raises(ValueError):
+        Checkpoint.load(bad_file)
+python
+コピーする
+編集する
+# test_base4_misc.py
+# -------------------------------------------------
+# Small, focused tests for the remaining public helpers.
+# -------------------------------------------------
+import pytest
+from _base4 import Param, State, BaseModule
+
+
+# ----------  train()/eval() cascade ----------
+def test_eval_cascades_to_children():
+    """Positive • eval() sets training=False on every Param."""
+    class Leaf(BaseModule):
+        p: Param[int]
+
+    class Root(BaseModule):
+        l1: Leaf
+        l2: Leaf
+
+    root = Root(l1=Leaf(p=Param(1)), l2=Leaf(p=Param(2)))
+    root.eval()
+    assert all(not p.training for p in root.parameters(recurse=True, train=None))
+
+
+def test_train_cascades_to_children():
+    """Positive • train() resets training=True on every Param."""
+    class Leaf(BaseModule):
+        p: Param[int]
+
+    class Root(BaseModule):
+        l1: Leaf
+        l2: Leaf
+
+    root = Root(l1=Leaf(p=Param(1)), l2=Leaf(p=Param(2)))
+    root.eval()
+    root.train()                      # switch back
+    assert all(p.training for p in root.parameters(recurse=True, train=None))
+
+
+# ----------  apply() with filter_type ----------
+def test_apply_filters_by_type():
+    """Positive • apply() visits only objects of filter_type."""
+    calls = []
+
+    class Leaf(BaseModule):
+        w: Param[int]
+
+    root = Leaf(w=Param(0))
+
+    root.apply(lambda x: calls.append(type(x).__name__), filter_type=Param)
+    assert calls == ["Param"]
+
+
+# ----------  named_modules() dotted prefixes ----------
+def test_named_modules_keys_are_correct():
+    """Positive • named_modules() returns expected dotted names."""
+    class Leaf(BaseModule):
+        x: Param[int]
+
+    class Branch(BaseModule):
+        left: Leaf
+        right: Leaf
+
+    tree = Branch(left=Leaf(x=Param(1)), right=Leaf(x=Param(2)))
+    names = dict(tree.named_modules())
+
+    assert set(names.keys()) == {"", "left", "right"}
+
+
+# ----------  state_dict() recurse=False ----------
+def test_state_dict_nonrecurse_returns_empty():
+    """Edge • recurse=False on parent with only submodules returns empty dict."""
+    class Leaf(BaseModule):
+        s: State[int]
+
+    class Top(BaseModule):
+        child: Leaf
+
+    t = Top(child=Leaf(s=State(9)))
+    flat = t.state_dict(recurse=False, runtime=False, train=True)
+
+    assert flat == {}

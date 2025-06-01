@@ -17,12 +17,14 @@ Usage::
     print(p.state_dict())
 """
 
+from typing import Generic
 import inspect
 from typing import Callable, Any, Dict, Optional, Union, List
 from dataclasses import InitVar
 import inspect
 import typing as t
 from uuid import uuid4
+import warnings
 
 try:  # 3.12+
     from typing import dataclass_transform
@@ -82,6 +84,10 @@ class Shared(ShareableItem[T]):
     )
 
 
+class BuildContext:
+    def __init__(self):
+        self.shared: dict[str, Shared] = {}  # ref_name → Shared object
+
 # -----------------------------------------------------------
 # BaseSpec – schema node emitted by BaseItem.spec()
 # -----------------------------------------------------------
@@ -93,6 +99,12 @@ class BaseSpec(BaseModel):
 
     model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=False)
 
+    @classmethod
+    def load_cls(cls):
+        # Retrieve class from registry
+        if cls.kind not in registry.list_entries():
+            raise ValueError(f"Class kind '{cls.kind}' not registered in registry. Please register it.")
+        return registry[cls.kind].obj
 
 # -----------------------------------------------------------
 # BaseItem – runtime process node
@@ -261,6 +273,7 @@ class BaseModule:
                 fn(obj)
         for child in self._modules.values():
             child.apply(fn, filter_type=filter_type)
+
     def eval(self):
         """Alias for ``train(False)``."""
         return self.train(False)
@@ -281,8 +294,14 @@ class BaseModule:
     def named_children(self):
         return self._modules.items()
 
-    def spec(self) -> BaseSpec:
-        data: dict[str, t.Any] = {}
+    def spec(self, *, to_dict: bool = True) -> Union[BaseSpec, dict]:
+        """
+        Serialize the module to a spec (as BaseSpec or dict).
+        """
+        if self.__class__.__qualname__ not in registry.list_entries():
+            warnings.warn(f"Class {self.__class__.__qualname__} not registered in registry. "
+                      "Consider registering for deserialization.")
+        data: dict[str, Any] = {}
         for n, is_init in self.__class__.__is_initvar__.items():
             if is_init:
                 data[n] = self._init_vars[n]
@@ -290,20 +309,60 @@ class BaseModule:
                 v = getattr(self, n)
                 if isinstance(v, BaseModule):
                     if getattr(v, "_spec_in_progress", False):
-                        raise RuntimeError("Cycle detected in BaseItem hierarchy")
+                        raise RuntimeError("Cycle detected in BaseModule hierarchy")
                     v._spec_in_progress = True
                     try:
-                        v = v.spec()
+                        v = v.spec(to_dict=False)  # collect as BaseSpec
                     finally:
                         v._spec_in_progress = False
                 elif isinstance(v, BaseModel):
-                    v = v.model_dump() 
+                    v = v.model_dump()
                 data[n] = v
-        return self.__class__.__spec__(kind=self.__class__.__qualname__, **data)
-
+        spec_obj = self.__class__.__spec__(kind=self.__class__.__qualname__, **data)
+        return spec_obj.model_dump() if to_dict else spec_obj
     # ---------------------------------------------------
     # parameter & state traversal
     # ---------------------------------------------------
+
+    @classmethod
+    def from_spec(cls, spec: Union[BaseSpec, dict], context: Optional["BuildContext"] = None) -> "BaseModule":
+        """
+        Construct a module from spec (BaseSpec or dict).
+        If context is None, initialize a new BuildContext for Shared tracking.
+        """
+        context = context or BuildContext()  # ensure we always have a context
+
+        # Parse dict into BaseSpec if needed
+        if isinstance(spec, dict):
+            spec_obj = cls.__spec__.model_validate(spec)
+        else:
+            spec_obj = spec
+
+        kwargs = {}
+        for name, is_init in cls.__is_initvar__.items():
+            val = getattr(spec_obj, name)
+            if isinstance(val, dict) and "kind" in val:
+                # It's a nested module spec
+                sub_cls_entry = registry[val["kind"]]
+                sub_cls = sub_cls_entry.obj
+                val_obj = sub_cls.from_spec(val, context)
+            elif isinstance(val, dict) and "ref_name" in val:
+                # It's a Shared item
+                ref_name = val["ref_name"]
+                if ref_name in context.shared:
+                    val_obj = context.shared[ref_name]
+                else:
+                    val_obj = Shared(**val)
+                    context.shared[ref_name] = val_obj
+            else:
+                val_obj = val
+            if is_init:
+                kwargs[name] = val_obj
+            else:
+                kwargs[name] = val_obj
+
+        obj = cls(**kwargs)
+        return obj
 
     def __setattr__(self, name, value):
         if isinstance(value, Param):
@@ -341,20 +400,6 @@ class BaseModule:
             for child in self._modules.values():
                 yield from child.parameters(recurse=True, train_only=train_only, _seen=_seen)
 
-    # def parameters(self, *, recurse: bool = True, train_only: bool | None = None):
-    #     seen = set()
-
-    #     # Collect local parameters
-    #     for param in self._parameters.values():
-    #         if id(param) not in seen:
-    #             if train_only is None or param.training is train_only:
-    #                 seen.add(id(param))
-    #                 yield param
-
-    #     # Recurse into submodules
-    #     if recurse:
-    #         for child in self._modules.values():
-    #             yield from child.parameters(recurse=True, train_only=train_only)
 
     def state_dict(
         self,
@@ -466,7 +511,57 @@ class RegistryEntry:
         self.description = description
 
 
+M = t.TypeVar("M", bound=BaseModule)
+
+class Checkpoint(BaseModel, Generic[M]):
+    """Checkpoint for BaseModle objects, containing spec and state_dict."""
+    spec: BaseSpec = Field(
+        description="Specification of the object, including its kind and id."
+    )
+    state_dict: Dict[str, Any] = Field(
+        description="State dictionary containing parameters and states."
+    )
+
+    def save(self, path: str):
+        """Save the checkpoint to a file."""
+        with open(path, 'w') as f:
+            f.write(self.model_dump_json(indent=2))
+    
+    @classmethod
+    def load(cls, path: str) -> "Checkpoint":
+        """Load a checkpoint from a file."""
+        with open(path, 'r') as f:
+            data = f.read()
+        return cls.model_validate_json(data)
+
+    @classmethod  
+    def load_module(cls, path: str, context: Optional[BuildContext] = None) -> M:
+        """Reconstruct the BaseModule from the checkpoint."""
+        if context is None:
+            context = BuildContext()
+        obj = cls.load(path)
+        module_cls = obj.spec.load_cls()
+        module = module_cls.from_spec(obj.spec, context=context)
+        module.load_state_dict(obj.state_dict)
+        return module
+    
+    @classmethod
+    def save_module(self, module: BaseModule, path: str):
+        """Save the BaseModule as a checkpoint."""
+        spec = module.spec(to_dict=False)
+        state_dict = module.state_dict(recurse=True, train=True, runtime=True)
+        checkpoint = Checkpoint(
+            spec=spec,
+            state_dict=state_dict
+        )
+        checkpoint.save(path)
+
+
 class Registry:
+    """Registry for BaseModule classes and functions.
+    Allows registration, filtering, and retrieval of objects
+    by name, type, tags, and package.
+    """
     def __init__(self):
         self._entries: Dict[str, RegistryEntry] = {}
 

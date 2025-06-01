@@ -1,9 +1,12 @@
 from __future__ import annotations
 import typing as t
 from pydantic import BaseModel
-from ._base4 import BaseModule, Param, State, Shared, BaseSpec  # adjust import path
+from ._base4 import BaseModule, Param, State, Shared, BuildContext, BaseSpec, registry  # adjust import path
 
 from pydantic import BaseModel, Field, ConfigDict, create_model, field_validator
+
+from typing import Callable, Any, Dict, Optional, Union, List
+
 
 from pydantic import create_model, field_validator
 
@@ -21,7 +24,6 @@ class ModuleList(BaseModule, t.Generic[V_co]):
     # --------------------------------------------------
     def __init__(self, modules: t.Iterable[V_co]):
         modules = list(modules)
-        self._processes: dict[str, BaseModule] = {}  # registry for child processes
         self._parameters: dict[str, Param] = {}  # registry for parameters
         self._states: dict[str, State] = {}  # registry for states
         if not modules:
@@ -143,3 +145,33 @@ class ModuleList(BaseModule, t.Generic[V_co]):
         for child, child_sd in zip(self._module_list, sd):
             child.load_state_dict(child_sd, recurse=recurse,
                                   train=train, runtime=runtime, strict=strict)
+
+    @classmethod
+    def from_spec(cls, spec: Union[BaseSpec, dict], context: Optional["BuildContext"] = None) -> "ModuleList":
+        """
+        Deserialize a ModuleList from a spec (BaseSpec or dict).
+        Each module element is deserialized based on its `kind`.
+        """
+        context = context or BuildContext()  # ensure context exists
+
+        # Parse dict into spec if needed
+        if isinstance(spec, dict):
+            spec_obj = cls.__spec__.model_validate(spec)
+        else:
+            spec_obj = spec
+
+        modules = []
+        for module_spec in spec_obj.modules:
+            if isinstance(module_spec, dict):
+                kind = module_spec.get("kind")
+                if not kind:
+                    raise ValueError("Missing 'kind' in module spec")
+                mod_cls = registry[kind].obj
+                module = mod_cls.from_spec(module_spec, context)
+            else:
+                # If module_spec is already a BaseSpec, use its kind
+                mod_cls = registry[module_spec.kind].obj
+                module = mod_cls.from_spec(module_spec, context)
+            modules.append(module)
+
+        return cls(modules)
