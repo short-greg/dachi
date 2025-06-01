@@ -2,7 +2,7 @@ from __future__ import annotations
 import typing as t
 from pydantic import BaseModel
 from ._base4 import BaseModule, Param, State, Shared, BuildContext, BaseSpec, registry  # adjust import path
-
+from typing import TypeVar, Generic, Iterable, Iterator
 from pydantic import BaseModel, Field, ConfigDict, create_model, field_validator
 
 from typing import Callable, Any, Dict, Optional, Union, List
@@ -13,96 +13,96 @@ from pydantic import create_model, field_validator
 V_co = t.TypeVar("V_co", bound=BaseModule, covariant=True)
 
 
-class ModuleList(BaseModule, t.Generic[V_co]):
+T = TypeVar("T", bound=BaseModule)
+
+
+class ModuleList(BaseModule, Generic[T]):
+    """A *sequential* container for child *BaseModule* objects.
+
+    *   Preserves insertion order (iteration behaves like list).
+    *   Names for registered sub‑modules are **stable**; they never
+        change after insertion and are guaranteed unique for the life
+        of the object.
+    *   Supports ``append`` and ``__setitem__``.  Removal methods are
+        intentionally *not* implemented – the container is conceptually
+        *append‑only* (like PyTorch's ``nn.ModuleList``).
     """
-    A sequential container of BaseItem objects behaving like a Python list.
-    Each child is registered under a stringified index: `"0"`, `"1"`, …
-    """
 
-    # --------------------------------------------------
-    # constructor
-    # --------------------------------------------------
-    def __init__(self, modules: t.Iterable[V_co]):
-        modules = list(modules)
-        self._parameters: dict[str, Param] = {}  # registry for parameters
-        self._states: dict[str, State] = {}  # registry for states
-        if not modules:
-            raise ValueError("ItemList cannot be empty")
-        if not all(isinstance(i, BaseModule) for i in modules):
-            raise TypeError("All elements must be BaseItem instances.")
-        self._module_list: list[V_co] = []
-        self._modules: dict[str, V_co] = {}  # registry for child modules
-        for itm in modules:
-            self.append(itm)   # register each
+    # NOTE: we expose the internal list only for typing purposes; users
+    # should treat it as read‑only.
+    _module_list: List[T]
+    _next_idx: int  # monotonically‑increasing counter for unique names
 
-    # --------------------------------------------------
-    # python list interface
-    # --------------------------------------------------
-    def __getitem__(self, idx: int) -> V_co:
-        return self._module_list[idx]
+    # ------------------------------------------------------------------
+    # Construction helpers
+    # ------------------------------------------------------------------
+    def __init__(self, modules: Optional[Iterable[T]] = None):
+        super().__init__()
+        self._module_list = []
+        self._next_idx = 0
 
-    def __setitem__(self, idx: int, value: V_co):
-        if not isinstance(value, BaseModule):
-            raise TypeError("Item must be a BaseItem")
-        # deregister old
-        old_name = str(idx)
-        if old_name in self._module_dict():
-            del self._module_dict()[old_name]
-        # register new
-        self._module_list[idx] = value
-        self.register_module(old_name, value)
+        if modules is not None:
+            for m in modules:
+                self.append(m)
 
-    def __len__(self):
+    # ------------------------------------------------------------------
+    # Python list emulation (partial)
+    # ------------------------------------------------------------------
+    def __len__(self) -> int:  # Positive test: len reflects number added
         return len(self._module_list)
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[T]:  # Positive test: order preserved
         return iter(self._module_list)
 
-    def append(self, item: V_co):
-        if not isinstance(item, BaseModule):
-            raise TypeError("Item must be a BaseItem")
-        name = str(len(self._module_list))
-        self._module_list.append(item)
-        self.register_module(name, item)
+    def __getitem__(self, idx: int) -> T:  # Edge test: negative index ok
+        return self._module_list[idx]
 
-    # --------------------------------------------------
-    # helpers
-    # --------------------------------------------------
-    def _module_dict(self) -> dict[str, BaseModule]:
-        """Shortcut to the internal child registry."""
-        return self._modules   # already stored by index order
+    def __setitem__(self, idx: int, module: T):
+        if not isinstance(module, BaseModule):
+            raise TypeError("ModuleList elements must be BaseModule instances")
 
-    # --------------------------------------------------
-    # spec / schema
-    # --------------------------------------------------
-    @classmethod
-    def schema(cls) -> t.Type[BaseSpec]:
-        """
-        Return a *single* spec model describing this ModuleList.
-        The dynamic Pydantic model looks like:
-            class ModuleListSpec(BaseSpec):
-                modules: list[ElemSpec]
-        """
-        if getattr(cls, "__spec__", None) is not None:
-            return cls.__spec__
-
-        # Resolve element type
         try:
-            elem_type = cls.__orig_bases__[0].__args__[0]
-        except Exception:
-            raise TypeError("ModuleList must be parametrised, e.g. ModuleList[MyMod]")
+            old_child = self._module_list[idx]
+        except IndexError as e:  # Negative test: out‑of‑range
+            raise e
 
-        if not issubclass(elem_type, BaseModule):
-            raise TypeError("Element type must inherit from BaseModule")
+        name = str(idx)  # stable name equals list position of first insert
 
-        elem_spec_type = elem_type.schema()
+        # Unregister the old child (important for attr cleanliness)
+        if hasattr(self, name):
+            delattr(self, name)
+        self._modules.pop(name, None)
 
-        cls.__spec__ = create_model(  # directly create the dynamic model
-            f"{cls.__name__}Spec",
-            __base__=BaseSpec,
-            modules=(list[elem_spec_type], ...)
-        )
-        return cls.__spec__
+        # Replace in the underlying list and registry
+        self._module_list[idx] = module
+        self.register_module(name, module)
+
+    # public API – intentionally *append‑only*
+    def append(self, module: T):  # Positive & duplicate‑name bug fixed test
+        if not isinstance(module, BaseModule):
+            raise TypeError("ModuleList elements must be BaseModule instances")
+
+        name = str(self._next_idx)
+        self._next_idx += 1
+
+        self._module_list.append(module)
+        self.register_module(name, module)
+
+    # ------------------------------------------------------------------
+    # Spec / schema helpers – mostly defer to BaseModule but with clearer
+    # diagnostics when the generic parameter is missing.
+    # ------------------------------------------------------------------
+    @classmethod
+    def schema(cls) -> type[BaseSpec]:  # Negative test: raw class raises
+        try:
+            child_type = cls.__orig_bases__[0].__args__[0]
+        except (AttributeError, IndexError):
+            raise TypeError(
+                "ModuleList must be parametrised like ModuleList[MyModule] "
+                "to derive a schema"
+            ) from None
+        return child_type.schema().__class__  # type: ignore[attr-defined]
+
 
     @classmethod
     def __build_schema__(cls) -> None:

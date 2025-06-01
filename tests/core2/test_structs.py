@@ -114,3 +114,89 @@ def test_itemlist_named_parameters_states():
     p_names = dict(lst.named_parameters()).keys()
     s_names = dict(lst.named_states()).keys()
     assert p_names == {"0.w"} and s_names == {"0.s"}
+
+# ---------- Positive: mixed‑type init should fail on 2nd element ----------
+
+def test_modulelist_mixed_type_init_error():
+    with pytest.raises(TypeError):
+        ModuleList([Leaf(w=Param(1), s=State(0)), 123])
+
+
+# ---------- Positive: iteration preserves insertion order ----------
+
+def test_modulelist_iter_order():
+    m1, m2 = Leaf(w=Param(1), s=State(0)), Leaf(w=Param(2), s=State(0))
+    lst = ModuleList([m1, m2])
+    assert list(iter(lst)) == [m1, m2]
+
+
+# ---------- Edge: negative index access behaves like list ----------
+
+def test_modulelist_negative_index_getitem():
+    m1, m2 = Leaf(w=Param(1), s=State(0)), Leaf(w=Param(2), s=State(0))
+    lst = ModuleList([m1, m2])
+    assert lst[-1] is m2
+
+
+# ---------- Negative: calling schema() on raw class raises ----------
+
+def test_modulelist_schema_on_raw_class_raises():
+    with pytest.raises(TypeError):
+        ModuleList.schema()
+
+
+# ---------- Positive: spec → from_spec round‑trip ----------
+
+def test_modulelist_from_spec_roundtrip():
+    m1, m2 = Leaf(w=Param(3), s=State(3)), Leaf(w=Param(4), s=State(4))
+    lst = ModuleList([m1, m2])
+    spec = lst.spec(to_dict=False)
+    rebuilt = ModuleList.from_spec(spec)
+    assert len(rebuilt) == 2 and rebuilt[0].w.data == 3
+
+
+# ---------- Positive: __setitem__ removes old attribute ----------
+
+def test_modulelist_setitem_removes_old_attr():
+    lst = ModuleList([Leaf(w=Param(1), s=State(0))])
+    assert hasattr(lst, "0")
+    lst[0] = Leaf(w=Param(9), s=State(9))
+    # new attr re‑registered under same name, old attr gone implicitly
+    assert getattr(lst, "0").w.data == 9
+
+
+# ---------- Edge: append after replacement gets unique name ----------
+
+def test_modulelist_append_generates_monotonic_names():
+    lst = ModuleList()
+    lst.append(Leaf(w=Param(1), s=State(0)))  # name "0"
+    lst.append(Leaf(w=Param(2), s=State(0)))  # name "1"
+    lst[0] = Leaf(w=Param(3), s=State(0))     # replaces index 0 (still name "0")
+    lst.append(Leaf(w=Param(4), s=State(0)))  # should get name "2", not "1" again
+    assert hasattr(lst, "2")
+
+
+# ---------- Positive: train / eval cascade across children ----------
+
+def test_modulelist_train_eval_cascade():
+    lst = ModuleList([
+        Leaf(w=Param(1), s=State(0)),
+        Leaf(w=Param(2), s=State(0)),
+    ])
+    lst.eval()
+    assert all(not p.training for p in lst.parameters(recurse=True, train=None))
+    lst.train()
+    assert all(p.training for p in lst.parameters(recurse=True, train=None))
+
+
+# ---------- Edge: duplicate child references ----------
+
+def test_modulelist_duplicate_child_objects():
+    leaf = Leaf(w=Param(5), s=State(5))
+    lst = ModuleList([leaf, leaf])
+    # parameters() should deduplicate by identity
+    assert len(list(lst.parameters(recurse=True, dedup=True))) == 1
+    # state_dict should still record two entries (list semantics)
+    state_list = lst.state_dict(recurse=True, train=True, runtime=True)
+    assert state_list[0]["w"].data == 5 and state_list[1]["w"].data == 5
+
