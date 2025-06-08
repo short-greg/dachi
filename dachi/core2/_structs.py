@@ -62,7 +62,7 @@ class ModuleList(BaseModule, Generic[T]):
             raise TypeError("ModuleList elements must be BaseModule instances")
 
         try:
-            old_child = self._module_list[idx]
+            self._module_list[idx]
         except IndexError as e:  # Negative test: out‑of‑range
             raise e
 
@@ -74,6 +74,7 @@ class ModuleList(BaseModule, Generic[T]):
         self._modules.pop(name, None)
 
         # Replace in the underlying list and registry
+
         self._module_list[idx] = module
         self.register_module(name, module)
 
