@@ -73,47 +73,46 @@ class ShareableItem(t.Generic[J]):
 
     def __hash__(self):
         return id(self) 
-
-    # class Config:
-    #     arbitrary_types_allowed = False  # allow torch tensors, numpy arrays, Path, …
-    #     # validate_assignment = True
-    #     frozen = False                   # hashable & immutable, good for caching
-
-
-    # @field_validator("data", mode="before")
-    # @classmethod
-    # def _validate_and_hook(cls, val):
-    #     # Note: can't call instance method here, so do minimal checks
-    #     return val
-
-    # @field_validator("data", mode="after")
-    # def _post_update_hook(self) -> "ShareableItem":
-    #     # This runs only once model is instantiated or assigned
-    #     # But it's on self, so you can call methods
-    #     self.data = self.update_data_hook(self.data)
-    #     return self
     
+    def load(self, data) -> "ShareableItem[J]":
+        """
+        Rebuild a ShareableItem from a spec or dict.
+        """
+        if isinstance(self._data, BaseModel):
+            # If data is a BaseModel, use its model_validate method
+            self._data = self._data.model_validate(data)
+        else:
+            self._data = data
 
-    # @field_validator("data")
-    # @classmethod
-    # def check_data_type(cls, v):
-    #     # Extract expected type T from __orig_bases__
-    #     expected_type = None
-    #     for base in cls.__orig_bases__:
-    #         if getattr(base, '__origin__', None) is ShareableItem:
-    #             expected_type = get_args(base)[0]
-    #             break
-    #     if expected_type and not isinstance(v, expected_type):
-    #         raise TypeError(f"Expected data of type {expected_type}, got {type(v)}")
-    #     return v
+    def dump(self) -> dict:
+        """
+        Dump the ShareableItem to a dictionary.
+        """
+        if isinstance(self.data, BaseModel):
+            # If data is a BaseModel, use its model_dump method
+            data = self.data.model_dump()
+        else:
+            data = self.data
+        return data
+    
+    def schema(self) -> dict:
+        """
+        Serialise *this* ShareableItem → its spec counterpart.
+
+        If *to_dict* is True, returns a dict; otherwise returns a BaseModel.
+        """
+        if isinstance(self._data, BaseModel):
+            return self._data.model_json_schema()
+        else:
+            return {"type": type(self._data).__name__}
 
 
 class Param(ShareableItem[T]):
     """Trainable parameter; ``training`` may be toggled to freeze it."""
 
-    model_config = ConfigDict(
-        json_schema_extra=lambda s, h: {"properties": {"data": s["properties"]["data"]}}
-    )
+    # model_config = ConfigDict(
+    #     json_schema_extra=lambda s, h: {"properties": {"data": s["properties"]["data"]}}
+    # )
     def __init__(self, data):
         super().__init__(data)
         self._callbacks: list[Callable[[T]]] = []
@@ -131,7 +130,7 @@ class Param(ShareableItem[T]):
     def unregister_callback(self, callback: Callable[[T], None]) -> None:
         """Unregister a previously registered callback."""
         self._callbacks.remove(callback)
-    
+
 
 class State(ShareableItem[T]):
     """Mutable runtime state (e.g. counters, RNG seeds, rolling averages)."""
@@ -145,37 +144,6 @@ class Shared(ShareableItem[T]):
 
 BuildContext = dict
 
-# class BuildContext:
-
-#     def __init__(self):
-#         self.cache: dict[str, Any] = {}   # key -> object
-
-#     def get(self, key: str):
-#         return self.cache.get(key)
-
-#     def put(self, key: str, obj: Any):
-#         self.cache[key] = obj
-
-#     def __contains__(self, key: str) -> bool:
-#         return key in self.cache
-
-# -----------------------------------------------------------
-# BaseSpec – schema node emitted by BaseModule.spec()
-# -----------------------------------------------------------
-
-# class BaseSpec(BaseModel):
-#     kind: str
-#     id: str = Field(default_factory=lambda: str(uuid4()))
-#     style: t.Literal["structured"] = "structured"
-
-#     model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=False)
-
-#     def load_cls(cls):
-#         if not hasattr(cls, 'kind'):
-#             raise ValueError(f"Spec object of type {cls.__class__.__name__} is missing required 'kind' field. Spec: {cls.model_dump()}")
-#         if cls.kind not in registry.list_entries():
-#             raise ValueError(f"Class kind '{cls.kind}' not registered in registry. Please register it.")
-#         return registry[cls.kind].obj
 
 class BaseSpec(BaseModel):
     kind : str
@@ -280,47 +248,6 @@ class BaseModule:
             model_config   = ConfigDict(arbitrary_types_allowed=True),
             **spec_fields,
         )
-        
-
-    # @classmethod
-    # def __build_schema__(cls) -> None:
-
-    #     ann = t.get_type_hints(cls, include_extras=True)
-    #     fields: list[tuple[str, t.Any, t.Any, bool]] = []
-
-    #     for name, typ in ann.items():
-    #         # skip private attrs and typing.ClassVar
-    #         if t.get_origin(typ) is t.ClassVar:
-    #             continue
-    #         default = getattr(cls, name, inspect._empty)
-
-    #         # Detect InitVar from dataclasses, not typing
-    #         is_init = isinstance(typ, InitVar)
-    #         if is_init:
-    #             typ = t.get_args(typ)[0] if t.get_origin(typ) is InitVar else t.Any
-    #         fields.append((name, typ, default, is_init))
-
-    #     cls.__item_fields__ = fields
-    #     cls.__is_initvar__ = {n: is_init for n, *_, is_init in fields}
-
-    #     # build & cache pydantic spec model
-    #     spec_fields: dict[str, tuple[t.Any, t.Any]] = {}
-
-    #     for n, typ, dflt, _ in fields:
-    #         if isinstance(typ, type) and issubclass(typ, ShareableItem):
-    #             origin = typ.__base__ if typ is not ShareableItem else ShareableItem
-    #         else:
-    #             origin = typ
-    #             if isinstance(origin, type) and issubclass(origin, BaseModule):
-    #                 origin = origin.schema()  # recurse for nested BaseItems
-
-    #         spec_fields[n] = (typ, ... if dflt is inspect._empty else dflt)
-    #     cls.__spec__ = create_model(
-    #         f"{cls.__name__}Spec",
-    #         __base__=BaseSpec,
-    #         model_config=ConfigDict(arbitrary_types_allowed=True),
-    #         **spec_fields,
-    #     )
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
@@ -484,49 +411,6 @@ class BaseModule:
         )
         return spec_obj.model_dump() if to_dict else spec_obj
 
-    # ---------------------------------------------------
-    # parameter & state traversal
-    # ---------------------------------------------------
-
-    # @classmethod
-    # def from_spec(cls, spec: Union[BaseSpec, dict], context: Optional["BuildContext"] = None) -> "BaseModule":
-    #     """
-    #     Construct a module from spec (BaseSpec or dict).
-    #     If context is None, initialize a new BuildContext for Shared tracking.
-    #     """
-    #     context = context or BuildContext()  # ensure we always have a context
-    #     # Parse dict into BaseSpec if needed
-    #     if isinstance(spec, dict):
-    #         spec_obj = cls.__spec__.model_validate(spec)
-    #     else:
-    #         spec_obj = spec
-
-    #     kwargs = {}
-    #     for name, is_init in cls.__is_initvar__.items():
-    #         print('Spec: ', spec_obj, type(spec_obj))
-    #         val = getattr(spec_obj, name)
-    #         if isinstance(val, dict) and "kind" in val:
-    #             # It's a nested module spec
-    #             sub_cls_entry = registry[val["kind"]]
-    #             sub_cls = sub_cls_entry.obj
-    #             val_obj = sub_cls.from_spec(val, context)
-    #         elif isinstance(val, dict) and "ref_name" in val:
-    #             # It's a Shared item
-    #             ref_name = val["ref_name"]
-    #             if ref_name in context.shared:
-    #                 val_obj = context.shared[ref_name]
-    #             else:
-    #                 val_obj = Shared(**val)
-    #                 context.shared[ref_name] = val_obj
-    #         else:
-    #             val_obj = val
-    #         if is_init:
-    #             kwargs[name] = val_obj
-    #         else:
-    #             kwargs[name] = val_obj
-
-    #     obj = cls(**kwargs)
-    #     return obj
     @classmethod
     def from_spec(
         cls,
@@ -1065,10 +949,167 @@ class ParamSet(object):
         """
         Return the JSON schema for all parameters in the set.
         """
-        return {f"param_{i}": param.model_json_schema() for i, param in enumerate(self.params)}
+        return {f"param_{i}": param.schema() for i, param in enumerate(self.params)}
 
     def to_dict(self) -> dict:
         """
         Dump all parameters' data to a dictionary.
         """
-        return {f"param_{i}": param.model_dump() for i, param in enumerate(self.params)}
+        return {f"param_{i}": param.dump() for i, param in enumerate(self.params)}
+
+
+
+    ##  SHAREABLE ITEM
+    # class Config:
+    #     arbitrary_types_allowed = False  # allow torch tensors, numpy arrays, Path, …
+    #     # validate_assignment = True
+    #     frozen = False                   # hashable & immutable, good for caching
+
+
+    # @field_validator("data", mode="before")
+    # @classmethod
+    # def _validate_and_hook(cls, val):
+    #     # Note: can't call instance method here, so do minimal checks
+    #     return val
+
+    # @field_validator("data", mode="after")
+    # def _post_update_hook(self) -> "ShareableItem":
+    #     # This runs only once model is instantiated or assigned
+    #     # But it's on self, so you can call methods
+    #     self.data = self.update_data_hook(self.data)
+    #     return self
+    
+
+    # @field_validator("data")
+    # @classmethod
+    # def check_data_type(cls, v):
+    #     # Extract expected type T from __orig_bases__
+    #     expected_type = None
+    #     for base in cls.__orig_bases__:
+    #         if getattr(base, '__origin__', None) is ShareableItem:
+    #             expected_type = get_args(base)[0]
+    #             break
+    #     if expected_type and not isinstance(v, expected_type):
+    #         raise TypeError(f"Expected data of type {expected_type}, got {type(v)}")
+    #     return v
+
+
+    # ---------------------------------------------------
+    # parameter & state traversal
+    # ---------------------------------------------------
+    ## OLD FROM SPEC
+    # @classmethod
+    # def from_spec(cls, spec: Union[BaseSpec, dict], context: Optional["BuildContext"] = None) -> "BaseModule":
+    #     """
+    #     Construct a module from spec (BaseSpec or dict).
+    #     If context is None, initialize a new BuildContext for Shared tracking.
+    #     """
+    #     context = context or BuildContext()  # ensure we always have a context
+    #     # Parse dict into BaseSpec if needed
+    #     if isinstance(spec, dict):
+    #         spec_obj = cls.__spec__.model_validate(spec)
+    #     else:
+    #         spec_obj = spec
+
+    #     kwargs = {}
+    #     for name, is_init in cls.__is_initvar__.items():
+    #         print('Spec: ', spec_obj, type(spec_obj))
+    #         val = getattr(spec_obj, name)
+    #         if isinstance(val, dict) and "kind" in val:
+    #             # It's a nested module spec
+    #             sub_cls_entry = registry[val["kind"]]
+    #             sub_cls = sub_cls_entry.obj
+    #             val_obj = sub_cls.from_spec(val, context)
+    #         elif isinstance(val, dict) and "ref_name" in val:
+    #             # It's a Shared item
+    #             ref_name = val["ref_name"]
+    #             if ref_name in context.shared:
+    #                 val_obj = context.shared[ref_name]
+    #             else:
+    #                 val_obj = Shared(**val)
+    #                 context.shared[ref_name] = val_obj
+    #         else:
+    #             val_obj = val
+    #         if is_init:
+    #             kwargs[name] = val_obj
+    #         else:
+    #             kwargs[name] = val_obj
+
+    #     obj = cls(**kwargs)
+    #     return obj
+
+
+
+    ## OLD BUILD SCHEMA for BaseModule
+    # @classmethod
+    # def __build_schema__(cls) -> None:
+
+    #     ann = t.get_type_hints(cls, include_extras=True)
+    #     fields: list[tuple[str, t.Any, t.Any, bool]] = []
+
+    #     for name, typ in ann.items():
+    #         # skip private attrs and typing.ClassVar
+    #         if t.get_origin(typ) is t.ClassVar:
+    #             continue
+    #         default = getattr(cls, name, inspect._empty)
+
+    #         # Detect InitVar from dataclasses, not typing
+    #         is_init = isinstance(typ, InitVar)
+    #         if is_init:
+    #             typ = t.get_args(typ)[0] if t.get_origin(typ) is InitVar else t.Any
+    #         fields.append((name, typ, default, is_init))
+
+    #     cls.__item_fields__ = fields
+    #     cls.__is_initvar__ = {n: is_init for n, *_, is_init in fields}
+
+    #     # build & cache pydantic spec model
+    #     spec_fields: dict[str, tuple[t.Any, t.Any]] = {}
+
+    #     for n, typ, dflt, _ in fields:
+    #         if isinstance(typ, type) and issubclass(typ, ShareableItem):
+    #             origin = typ.__base__ if typ is not ShareableItem else ShareableItem
+    #         else:
+    #             origin = typ
+    #             if isinstance(origin, type) and issubclass(origin, BaseModule):
+    #                 origin = origin.schema()  # recurse for nested BaseItems
+
+    #         spec_fields[n] = (typ, ... if dflt is inspect._empty else dflt)
+    #     cls.__spec__ = create_model(
+    #         f"{cls.__name__}Spec",
+    #         __base__=BaseSpec,
+    #         model_config=ConfigDict(arbitrary_types_allowed=True),
+    #         **spec_fields,
+    #     )
+
+
+# class BuildContext:
+
+#     def __init__(self):
+#         self.cache: dict[str, Any] = {}   # key -> object
+
+#     def get(self, key: str):
+#         return self.cache.get(key)
+
+#     def put(self, key: str, obj: Any):
+#         self.cache[key] = obj
+
+#     def __contains__(self, key: str) -> bool:
+#         return key in self.cache
+
+# -----------------------------------------------------------
+# BaseSpec – schema node emitted by BaseModule.spec()
+# -----------------------------------------------------------
+
+# class BaseSpec(BaseModel):
+#     kind: str
+#     id: str = Field(default_factory=lambda: str(uuid4()))
+#     style: t.Literal["structured"] = "structured"
+
+#     model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=False)
+
+#     def load_cls(cls):
+#         if not hasattr(cls, 'kind'):
+#             raise ValueError(f"Spec object of type {cls.__class__.__name__} is missing required 'kind' field. Spec: {cls.model_dump()}")
+#         if cls.kind not in registry.list_entries():
+#             raise ValueError(f"Class kind '{cls.kind}' not registered in registry. Please register it.")
+#         return registry[cls.kind].obj
