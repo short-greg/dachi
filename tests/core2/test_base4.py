@@ -2,6 +2,22 @@ import json
 import pytest
 from dachi.core2._base4 import BaseModule, Param, State, Shared, BaseSpec, Checkpoint, BuildContext
 from dataclasses import InitVar
+from pydantic import ValidationError
+import types
+import warnings
+
+
+from dachi.core2._base4 import (
+    BaseModule,
+    Param,
+    State,
+    Shared,
+    BaseSpec,
+    registry,
+    BuildContext,
+    Checkpoint,
+)
+from pydantic import ValidationError
 
 import pytest
 # ------------------------------------------------------------
@@ -55,10 +71,118 @@ def test_nested_recursion():
     }
 
 
+def _make_tree():
+    class Leaf(BaseModule):
+        v: InitVar[int]
+        def __post_init__(self, v: int):
+            self.v = Param(data=v)
+    class Root(BaseModule):
+        left: Leaf
+        right: Leaf
+    return Root(left=Leaf(v=1), right=Leaf(v=2))
+
+
+def _make_dynamic_leaf(tag: str):
+    """Return a Leaf class whose *module* differs so the schema name must be unique."""
+    mod = types.ModuleType(f"tmp_mod_{tag}")
+
+    class Leaf(BaseModule):
+        w: InitVar[float]
+        def __post_init__(self, w: float):
+            self.w = Param(data=w)
+
+    Leaf.__name__ = "Leaf"
+    Leaf.__qualname__ = "Leaf"
+    Leaf.__module__ = mod.__name__
+    setattr(mod, "Leaf", Leaf)
+    import sys
+    sys.modules[mod.__name__] = mod
+    return Leaf
+
+
+def test_spec_class_name_collision_unique():
+    """Two Leaf classes in distinct modules must yield *different* Spec classes."""
+    LeafA = _make_dynamic_leaf("a")
+    LeafB = _make_dynamic_leaf("b")
+    assert LeafA.schema() is not LeafB.schema()
+    assert LeafA.schema().__name__ == LeafB.schema().__name__
+
+
+def test_initvar_without_post_init_raises():
+    with pytest.raises(RuntimeError):
+        class Bad(BaseModule):
+            x: InitVar[int]
+        Bad(x=1)
+
+# def test_eval_cascades_to_children():
+#     root = _make_tree()
+#     root.eval()
+#     assert all(not p.training for p in root.parameters())
+
+
+# def test_train_cascades_to_children():
+#     root = _make_tree()
+#     root.eval()
+#     root.train()
+#     assert all(p.training for p in root.parameters())
+
+
+def test_modules_depth_first_order():
+    class Leaf(BaseModule):
+        pass
+    class Branch(BaseModule):
+        left: Leaf
+        right: Leaf
+    tree = Branch(left=Leaf(), right=Leaf())
+    mods = list(tree.modules())
+    assert mods == [tree, tree.left, tree.right]
+
+
+def test_from_spec_missing_field_validation_error():
+    class Leaf(BaseModule):
+        w: InitVar[int]
+        def __post_init__(self, w: int):
+            self.w = Param(data=w)
+
+    spec = Leaf(w=1).spec(to_dict=True)
+    del spec["w"]
+    with pytest.raises(ValidationError):
+        Leaf.from_spec(spec)
+
+def test_nested_module_dedup_in_from_spec():
+    """Same Inner instance appears twice; loader must deduplicate."""
+    @registry()
+    class Inner(BaseModule):
+        v: InitVar[int]
+        def __post_init__(self, v):
+            self.v = Param(data=v)
+    shared = Inner(v=3)
+
+    @registry()
+    class Outer(BaseModule):
+        a: Inner
+        b: Inner
+
+    outer = Outer(a=shared, b=shared)
+    rebuilt = Outer.from_spec(outer.spec(), ctx=BuildContext())
+    assert rebuilt.a is rebuilt.b
+
+
 def test_state_dict_filters():
     wp = WithParams(w=Param(data=1.5), s=State(data=9), name="z")
     assert list(wp.parameters()) == [wp.w]
 
+
+def test_state_keys_match_state_dict():
+    class Proc(BaseModule):
+        p: InitVar[int]
+        s: InitVar[int]
+        def __post_init__(self, p: int, s: int):
+            self.p = Param(data=p)
+            self.s = State(data=s)
+
+    pr = Proc(p=5, s=9)
+    assert set(pr.state_dict().keys()) == pr.state_keys()
 
 def test_initvar_preserved_in_spec():
     p = InitVarProc(x=4, y=7)
@@ -93,9 +217,31 @@ def test_load_state_dict_roundtrip():
     wp2.load_state_dict(state_dict)
     assert wp2.w.data == 5.0 and wp2.s.data == 1
 
-# # # # ------------------------------------------------------------
-# # # #  Error / edge cases
-# # # # ------------------------------------------------------------
+def test_load_state_dict_extra_key_nested_strict():
+    class Leaf(BaseModule):
+        p: InitVar[int]
+        def __post_init__(self, p):
+            self.p = Param(data=p)
+    class Root(BaseModule):
+        leaf: Leaf
+    root = Root(leaf=Leaf(p=1))
+    with pytest.raises(KeyError):
+        root.load_state_dict({"leaf.q": 99}, strict=True)
+
+# TODO* Fix strict load
+# def test_load_state_dict_type_mismatch():
+#     class Leaf(BaseModule):
+#         p: InitVar[int]
+#         def __post_init__(self, p):
+#             self.p = Param(data=p)
+#     leaf = Leaf(p=1)
+#     with pytest.raises(Exception):
+#         leaf.load_state_dict({"p": "oops"}, strict=True)
+
+
+# # # # # ------------------------------------------------------------
+# # # # #  Error / edge cases
+# # # # # ------------------------------------------------------------
 
 def test_missing_required_kwarg():
     with pytest.raises(TypeError):
@@ -106,18 +252,18 @@ def test_unexpected_kwarg():
     with pytest.raises(TypeError):
         WithParams(w=1.0, s=0, name="foo", bogus=1)
 
-# # import typing as t
+# # # import typing as t
 
-# # # def test_cycle_detection():
-# # #     class A(BaseItem):
-# # #         ref: t.Union["B", None] = None  # type: ignore
-# # #     class B(BaseItem):
-# # #         ref: A | None = None
-# # #     a = A()
-# # #     b = B(ref=a)
-# # #     a.ref = b
-# # #     with pytest.raises(RuntimeError):
-# # #         a.spec()
+# # # # def test_cycle_detection():
+# # # #     class A(BaseItem):
+# # # #         ref: t.Union["B", None] = None  # type: ignore
+# # # #     class B(BaseItem):
+# # # #         ref: A | None = None
+# # # #     a = A()
+# # # #     b = B(ref=a)
+# # # #     a.ref = b
+# # # #     with pytest.raises(RuntimeError):
+# # # #         a.spec()
 
 
 def test_load_state_strict_failure():
@@ -153,20 +299,14 @@ def test_parameters_recurse_false():
     n = Nested(inner=wp)
     assert list(n.parameters(recurse=False)) == []
 
-# # # # # ------------------------------------------------------------
-# # # # #  Extra edge / negative tests (total >= 30 )
-# # # # # ------------------------------------------------------------
+# # # # # # ------------------------------------------------------------
+# # # # # #  Extra edge / negative tests (total >= 30 )
+# # # # # # ------------------------------------------------------------
 
 @pytest.mark.parametrize("val", [0, 1.2, "txt", [1, 2]])
 def test_param_accepts_any_val(val):
     p = Param(data=val)
     assert p.data == val
-
-
-# # # def test_shared_hashable():
-# # #     s1 = Shared(val="abc")
-# # #     s2 = Shared(val="abc")
-# # #     assert hash(s1) == hash(s2)
 
 
 def test_state_mutability():
@@ -186,7 +326,7 @@ def test_frozen_param_not_filtered_from_state():
     c = WithParams(w=3.3, s=0, name="n")
     assert "w" in c.state_dict(train=True)
 
-# # # # # -----  corner cases for InitVar default / override ----------
+# # # # # # -----  corner cases for InitVar default / override ----------
 
 def test_initvar_default_used():
     class P(BaseModule):
@@ -393,17 +533,19 @@ def test_load_state_dict_recursion_false():
 
 def test_load_state_dict_empty():
     class A(BaseModule):
-        p: Param[float]
-    a = A(p=Param(data=1.0))
+        p: InitVar[float]
+        def __post_init__(self, p: float):
+            self.p = Param(data=p)
+    a = A(p=1.0)
     a.load_state_dict({}, strict=False)
     assert a.p.data == 1.0
 
-# # # # # def test_load_state_dict_type_mismatch():
-# # # # #     class A(BaseItem):
-# # # # #         p: Param[float]
-# # # # #     a = A(p=Param(data=1.0))
-# # # # #     with pytest.raises(Exception):
-# # # # #         a.load_state_dict({"p": "oops"}, strict=True)
+# # # # # # def test_load_state_dict_type_mismatch():
+# # # # # #     class A(BaseItem):
+# # # # # #         p: Param[float]
+# # # # # #     a = A(p=Param(data=1.0))
+# # # # # #     with pytest.raises(Exception):
+# # # # # #         a.load_state_dict({"p": "oops"}, strict=True)
 
 def test_load_state_dict_shared_ignore_even_if_present():
     class A(BaseModule):
@@ -518,7 +660,7 @@ def test_parameters_train_only_none():
     assert ps[0].data == 1.0
     assert ps[1].data == 2.0
 
-# # # # # # ------ identity vs value equality for Shared ------------------
+# # # # # # # ------ identity vs value equality for Shared ------------------
 
 def test_shared_identity_not_dedup():
     s1 = "conf"
@@ -535,7 +677,7 @@ def test_shared_identity_not_dedup():
     assert pr.state_dict() == {}
 
 
-# # # # # ----------  Happy-path: basic save  ----------
+# # # # # # ----------  Happy-path: basic save  ----------
 def test_checkpoint_save_module_creates_file(tmp_path):
     """Positive • file is physically created and contains valid JSON."""
     class Leaf(BaseModule):
@@ -553,9 +695,9 @@ def test_checkpoint_save_module_creates_file(tmp_path):
     json.loads(raw)               # raises if not valid JSON
 
 
-from dachi.core2._base4 import registry, Checkpoint, BaseModule, Param
+# from dachi.core2._base4 import registry, Checkpoint, BaseModule, Param
 
-# # # # # ----------  Happy-path: load → exact round-trip ----------
+# # # # # # ----------  Happy-path: load → exact round-trip ----------
 def test_checkpoint_load_roundtrip(tmp_path):
     """Positive • Checkpoint.load() reproduces the exact spec & state."""
     @registry()
@@ -573,10 +715,43 @@ def test_checkpoint_load_roundtrip(tmp_path):
     assert ckpt.state_dict == leaf.state_dict(recurse=True, train=True, runtime=True)
     assert ckpt.spec.kind == leaf.spec().kind
 
+def test_checkpoint_param_dedup(tmp_path):
 
-# # from dachi.core2._base4 import registry, Checkpoint, BaseModule, Param
+    @registry()
+    class Leaf(BaseModule):
+        w: InitVar[int]
+        def __post_init__(self, w):
+            self.w = Param(data=w)
+    p = Param(data=42)
 
-# # # # # ----------  Happy-path: load_module reconstructs model ----------
+    @registry()
+    class Pair(BaseModule):
+        a: Leaf
+        b: Leaf
+    model = Pair(a=Leaf(w=42), b=Leaf(w=42))
+    path = tmp_path / "pair.json"
+    Checkpoint.save_module(model, path)
+    restored = Checkpoint.load_module(path)
+    assert restored.a.w.data == restored.b.w.data == 42
+
+
+def test_checkpoint_roundtrip(tmp_path):
+
+    @registry()
+    class Leaf(BaseModule):
+        w: InitVar[int]
+        def __post_init__(self, w):
+            self.w = Param(data=w)
+    leaf = Leaf(w=7)
+    path = tmp_path / "leaf.json"
+    Checkpoint.save_module(leaf, path)
+    rebuilt = Checkpoint.load_module(path)
+    assert isinstance(rebuilt, Leaf)
+    assert rebuilt.w.data == 7
+
+# # # from dachi.core2._base4 import registry, Checkpoint, BaseModule, Param
+
+# # # # # # ----------  Happy-path: load_module reconstructs model ----------
 def test_checkpoint_load_module_restores_state(tmp_path):
     """Positive • load_module returns an equivalent, fully initialised module."""
 
@@ -596,9 +771,9 @@ def test_checkpoint_load_module_restores_state(tmp_path):
     assert rebuilt.w.data == 7
 
 
-# # TODO: Consider whether to allow SharedModules
+# # # TODO: Consider whether to allow SharedModules
 
-# # # # # ----------  Happy-path: shared ref-names deduplicated ----------
+# # # # # # ----------  Happy-path: shared ref-names deduplicated ----------
 def test_checkpoint_shared_objects_deduplicated(tmp_path):
     """Positive • Same ref_name inside spec becomes the *same* object."""
     @registry()
@@ -622,18 +797,72 @@ def test_checkpoint_shared_objects_deduplicated(tmp_path):
     ctx = BuildContext()
     rebuilt = Checkpoint.load_module(path, ctx=ctx)
 
-    assert rebuilt.a is not rebuilt.b
+    assert rebuilt.a is rebuilt.b
     assert rebuilt.a.val.data == 5
 
 
-# # # # ----------  Error-path: missing file ----------
+
+# # ---------------------------------------------------------------------
+# # 1. Shareable leaves
+# # ---------------------------------------------------------------------
+def test_param_hash_identity_and_stability():
+    p1 = Param(data=1)
+    p2 = Param(data=1)
+    assert hash(p1) != hash(p2)
+    before = hash(p1)
+    p1.data += 1
+    after = hash(p1)
+    assert before == after     # identity-hash stays stable
+
+
+def test_param_hash_identity():
+    p1 = Param(data=5)
+    p2 = Param(data=5)
+    assert hash(p1) != hash(p2)
+    h = hash(p1)
+    p1.data += 1
+    assert hash(p1) == h
+
+
+def test_param_callback_runs():
+    hit = []
+    p = Param(data=0)
+    p.register_callback(lambda v: hit.append(v))
+    p.data = 9
+    assert hit == [9]
+
+@pytest.mark.parametrize(
+    "val",
+    [
+        123, 3.14, "hello", True, None,  # primitives
+        State(data=5),                   # Shareable inside Shareable
+        ["a", "b", "c"],                # homogeneous list
+        {"k": 1},                       # homogeneous dict
+    ],
+)
+def test_shareable_accepts_allowed_values(val):
+    s = Shared(data=val)
+    dumped = s.dump()
+    # round-trip keeps the value
+    s2 = Shared(data=None)
+    s2.load(dumped)
+    assert s2.data == val
+
+
+def test_shareable_rejects_forbidden():
+    class Foo: ...
+    with pytest.raises(TypeError):
+        Shared(value=Foo())
+
+
+# # # # # ----------  Error-path: missing file ----------
 def test_checkpoint_load_missing_file_raises(tmp_path):
     """Negative • Loading a non-existent file should raise FileNotFoundError."""
     with pytest.raises(FileNotFoundError):
         Checkpoint.load(tmp_path / "nope.json")
 
 
-# # ----------  Error-path: corrupt JSON ----------
+# # # ----------  Error-path: corrupt JSON ----------
 def test_checkpoint_load_corrupt_json_raises(tmp_path):
     """Negative • Invalid JSON content raises ValueError (Pydantic)."""
     bad_file = tmp_path / "bad.json"
@@ -641,9 +870,13 @@ def test_checkpoint_load_corrupt_json_raises(tmp_path):
     with pytest.raises(ValueError):
         Checkpoint.load(bad_file)
 
+def test_load_cls_unknown_kind():
+    class DummySpec(BaseSpec):
+        kind: str = "does.not.exist.Kind"
+    with pytest.raises(ValueError):
+        DummySpec.load_cls()
 
-
-# # # ----------  train()/eval() cascade ----------
+# # # # ----------  train()/eval() cascade ----------
 # def test_eval_cascades_to_children():
 #     """Positive • eval() sets training=False on every Param."""
 #     class Leaf(BaseModule):
@@ -662,22 +895,22 @@ def test_checkpoint_load_corrupt_json_raises(tmp_path):
 #     assert all(not p.training for p in root.parameters(recurse=True))
 
 
-# # def test_train_cascades_to_children():
-# #     """Positive • train() resets training=True on every Param."""
-# #     class Leaf(BaseModule):
-# #         p: Param[int]
+# # # def test_train_cascades_to_children():
+# # #     """Positive • train() resets training=True on every Param."""
+# # #     class Leaf(BaseModule):
+# # #         p: Param[int]
 
-# #     class Root(BaseModule):
-# #         l1: Leaf
-# #         l2: Leaf
+# # #     class Root(BaseModule):
+# # #         l1: Leaf
+# # #         l2: Leaf
 
-# #     root = Root(l1=Leaf(p=Param(1)), l2=Leaf(p=Param(2)))
-# #     root.eval()
-# #     root.train()                      # switch back
-# #     assert all(p.training for p in root.parameters(recurse=True, train=None))
+# # #     root = Root(l1=Leaf(p=Param(1)), l2=Leaf(p=Param(2)))
+# # #     root.eval()
+# # #     root.train()                      # switch back
+# # #     assert all(p.training for p in root.parameters(recurse=True, train=None))
 
 
-# # # ----------  apply() with filter_type ----------
+# # # # ----------  apply() with filter_type ----------
 def test_apply_filters_by_type():
     """Positive • apply() visits only objects of filter_type."""
     calls = []
@@ -697,7 +930,7 @@ def test_apply_filters_by_type():
     assert calls == ["Param"]
 
 
-# # # ----------  named_modules() dotted prefixes ----------
+# # # # ----------  named_modules() dotted prefixes ----------
 def test_named_modules_keys_are_correct():
     """Positive • named_modules() returns expected dotted names."""
     class Leaf(BaseModule):
@@ -716,7 +949,7 @@ def test_named_modules_keys_are_correct():
     assert set(names.keys()) == {"", "left", "right"}
 
 
-# # # ----------  state_dict() recurse=False ----------
+# # # # ----------  state_dict() recurse=False ----------
 def test_state_dict_nonrecurse_returns_empty():
     """Edge • recurse=False on parent with only submodules returns empty dict."""
     class Leaf(BaseModule):
@@ -733,9 +966,9 @@ def test_state_dict_nonrecurse_returns_empty():
     assert flat == {}
 
 
-# # # --------------------------------------------------------------------
-# # #  tests: Registry  &  BuildContext
-# # # --------------------------------------------------------------------
+# # # # --------------------------------------------------------------------
+# # # #  tests: Registry  &  BuildContext
+# # # # --------------------------------------------------------------------
 import inspect
 import pytest
 
@@ -743,16 +976,16 @@ from dachi.core2._base4 import (
     BaseModule, Param, Shared, BuildContext, registry, Registry
 )
 
-# # # --------------------------------------------------------------------
-# # #  ----  REGISTRY TESTS  --------------------------------------------
-# # # --------------------------------------------------------------------
+# # # # --------------------------------------------------------------------
+# # # #  ----  REGISTRY TESTS  --------------------------------------------
+# # # # --------------------------------------------------------------------
 
 def _fresh_registry() -> Registry:
     """Utility: isolated Registry instance so we don’t pollute global one."""
     return Registry()
 
 
-# # # ----------  Positive • class registration ----------
+# # # # ----------  Positive • class registration ----------
 def test_registry_register_class_positive():
     reg = _fresh_registry()
 
@@ -762,7 +995,7 @@ def test_registry_register_class_positive():
     assert entry.obj is Foo and entry.type == "class"
 
 
-# # # ----------  Positive • function registration ----------
+# # # # ----------  Positive • function registration ----------
 def test_registry_register_function_positive():
     reg = _fresh_registry()
 
@@ -772,7 +1005,7 @@ def test_registry_register_function_positive():
     assert callable(ent.obj) and ent.tags["role"] == "util"
 
 
-# # # ----------  Positive • list_entries / types / packages / tags ----------
+# # # # ----------  Positive • list_entries / types / packages / tags ----------
 def test_registry_lists_positive():
     reg = _fresh_registry()
 
@@ -784,7 +1017,7 @@ def test_registry_lists_positive():
     assert reg.list_tags() == ["k"]
 
 
-# # # ----------  Positive • filter by type & tags ----------
+# # # # ----------  Positive • filter by type & tags ----------
 def test_registry_filter_positive():
     reg = _fresh_registry()
 
@@ -796,7 +1029,7 @@ def test_registry_filter_positive():
     assert list(res) == [A.__qualname__] and res[A.__qualname__].obj is A
 
 
-# # # ----------  Edge • overwrite emits warning but keeps new obj ----------
+# # # # ----------  Edge • overwrite emits warning but keeps new obj ----------
 def test_registry_overwrite_edge(capsys):
     reg = _fresh_registry()
 
@@ -809,7 +1042,7 @@ def test_registry_overwrite_edge(capsys):
     assert reg["X"].obj is Second
 
 
-# # # ----------  Negative • deregister removes entry ----------
+# # # # ----------  Negative • deregister removes entry ----------
 def test_registry_deregister_negative():
     reg = _fresh_registry()
 
@@ -820,7 +1053,7 @@ def test_registry_deregister_negative():
         _ = reg["Gone"]
 
 
-# # # ----------  Positive • __getitem__ list variant ----------
+# # # # ----------  Positive • __getitem__ list variant ----------
 def test_registry_getitem_list_positive():
     reg = _fresh_registry()
 
@@ -832,12 +1065,12 @@ def test_registry_getitem_list_positive():
     assert set(subset.keys()) == {A.__qualname__, B.__qualname__}
 
 
-# # # --------------------------------------------------------------------
-# # #  ----  BUILD-CONTEXT TESTS  ----------------------------------------
-# # # --------------------------------------------------------------------
+# # # # --------------------------------------------------------------------
+# # # #  ----  BUILD-CONTEXT TESTS  ----------------------------------------
+# # # # --------------------------------------------------------------------
 
-# # # Helper classes registered into *global* registry, because BuildContext
-# # # relies on that for from_spec().
+# # # # Helper classes registered into *global* registry, because BuildContext
+# # # # relies on that for from_spec().
 @registry.register()
 class Leaf(BaseModule):
     payload: InitVar[str]
@@ -851,23 +1084,23 @@ class Pair(BaseModule):
     right: Leaf
 
 
-# TODO: Check if loading state dict as well will
-# result in it being shared
-# # # ----------  Positive • same ref_name deduplicated ----------
-# def test_buildcontext_shared_dedup_positive():
-#     # shared = Shared(data="cfg", ref_name="SAME")
-#     parent = Pair(left=Leaf(payload="cfg"), right=Leaf(payload="cfg"))
-#     parent.right.payload = parent.left.payload
-#     spec = parent.spec(to_dict=False)
+# # TODO: Check if loading state dict as well will
+# # result in it being shared
+# # # # ----------  Positive • same ref_name deduplicated ----------
+# # def test_buildcontext_shared_dedup_positive():
+# #     # shared = Shared(data="cfg", ref_name="SAME")
+# #     parent = Pair(left=Leaf(payload="cfg"), right=Leaf(payload="cfg"))
+# #     parent.right.payload = parent.left.payload
+# #     spec = parent.spec(to_dict=False)
 
-#     ctx = BuildContext()
-#     rebuilt = Pair.from_spec(spec, ctx=ctx)
+# #     ctx = BuildContext()
+# #     rebuilt = Pair.from_spec(spec, ctx=ctx)
 
-#     assert rebuilt.left.payload is rebuilt.right.payload          # identity check
-#     assert list(ctx.shared) == ["SAME"]                           # context stored once
+# #     assert rebuilt.left.payload is rebuilt.right.payload          # identity check
+# #     assert list(ctx.shared) == ["SAME"]                           # context stored once
 
 
-# # # ----------  Edge • different ref_names remain distinct ----------
+# # # # ----------  Edge • different ref_names remain distinct ----------
 def test_buildcontext_distinct_refs_edge():
     p = Pair(
         left=Leaf(payload="a"),
@@ -879,7 +1112,7 @@ def test_buildcontext_distinct_refs_edge():
     assert rebuilt.left.payload is not rebuilt.right.payload
 
 
-# # # ----------  Edge • ref_name None never deduplicated ----------
+# # # # ----------  Edge • ref_name None never deduplicated ----------
 def test_buildcontext_none_refname_edge():
     p = Pair(
         left=Leaf(payload="a"),        # ref_name = None
@@ -889,3 +1122,13 @@ def test_buildcontext_none_refname_edge():
     rebuilt = Pair.from_spec(spec, ctx=BuildContext())
 
     assert rebuilt.left.payload is not rebuilt.right.payload
+
+
+# def test_registry_overwrite_warning():
+#     with warnings.catch_warnings(record=True) as w:
+#         warnings.simplefilter("always")
+
+#         @registry(name="Foo")
+#         class Tmp2(BaseModule):
+#             pass
+#         assert any("already" in str(msg.message) for msg in w)

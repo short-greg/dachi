@@ -35,6 +35,7 @@ except ImportError:  # 3.8–3.11
 from pydantic import BaseModel, Field, ConfigDict, create_model, field_validator
 
 T = t.TypeVar("T")
+J = t.TypeVar("J", bound=t.Union[BaseModel, dict, str, int, float, bool])
 
 from typing import Generic, Union
 # -----------------------------------------------------------
@@ -46,8 +47,6 @@ def to_kind(cls):
     
     return cls.__qualname__
 
-
-J = t.TypeVar("J", bound=t.Union[BaseModel, dict, str, int, float, bool])
 
 class ShareableItem(t.Generic[J]):
     """Serializable leaf object with a ``data`` field."""
@@ -147,7 +146,9 @@ BuildContext = dict
 
 class BaseSpec(BaseModel):
     kind : str
-    id   : str = Field(default_factory=lambda: str(uuid4()))
+    id   : str = Field(
+        default_factory=lambda: str(uuid4())
+    )
     style: t.Literal['structured'] = 'structured'
 
     model_config = ConfigDict(extra='forbid', arbitrary_types_allowed=False)
@@ -180,12 +181,11 @@ class BaseModule:
 
     # populated by __init_subclass__
     __spec__: t.ClassVar[type[BaseSpec]]
+
+    __spec_hooks__: t.ClassVar[t.List[str]] = []
     __item_fields__: t.ClassVar[list[tuple[str, t.Any, t.Any, bool]]]
     __is_initvar__: t.ClassVar[dict[str, bool]]
-    training: bool = True  # True if any Param is in training mode; False when all frozen
-    
-    # per‑instance containers
-    # _children: list["BaseItem"]
+    training: bool = True  # True if any Module is in training mode; False when not
 
     # ---------------------------------------------------
     # class construction hook
@@ -203,22 +203,39 @@ class BaseModule:
         return f"{path}Spec"
     
     @classmethod
+    def __build_schema_hook__(
+        cls, 
+        name: str, 
+        type_: t.Any, 
+        default: t.Any
+    ) -> t.Any:
+        """
+        Hook for custom schema building logic.
+        This is called for each field in the class.
+        """
+        raise ValueError(
+            f"Unknown build schema hook name: {name}. "
+            "This should be implemented in the subclass."
+        )
+    
+    @classmethod
     def __build_schema__(cls) -> None:
         ann = t.get_type_hints(cls, include_extras=True)
         fields: list[tuple[str, t.Any, t.Any, bool]] = []
 
-        for name, typ in ann.items():
+        for name, type_ in ann.items():
             # Skip ClassVar or private
-            if t.get_origin(typ) is t.ClassVar:
+            if t.get_origin(type_) is t.ClassVar:
                 continue
 
+            # default = cls.__dict__.get(name, inspect._empty)
             default = getattr(cls, name, inspect._empty)
-            is_init = isinstance(typ, InitVar)
+            is_init = isinstance(type_, InitVar)
 
             if is_init:
-                typ = t.get_args(typ)[0] if t.get_origin(typ) is InitVar else t.Any
+                type_ = t.get_args(type_)[0] if t.get_origin(type_) is InitVar else t.Any
 
-            fields.append((name, typ, default, is_init))
+            fields.append((name, type_, default, is_init))
 
         cls.__item_fields__ = fields
         cls.__is_initvar__  = {
@@ -227,19 +244,56 @@ class BaseModule:
 
         # Now build the Pydantic model
         spec_fields: dict[str, tuple[t.Any, t.Any]] = {}
+        for name, typ, _raw_default, _ in fields:
+            # 1) fetch whatever MRO gives you
+            for base in cls.__mro__[1:]:  # skip cls itself
+                member = base.__dict__.get(name)
+                if member is None:
+                    continue
+                # only object‐level routines or properties cause trouble
+                if callable(member) or isinstance(member, property):
+                    raise RuntimeError(
+                        f"Field name {name!r} conflicts with inherited "
+                        f"{'method' if callable(member) else 'property'} "
+                        f"'{name}' on {base.__name__}; please rename the field."
+                    )
+            candidate = getattr(cls, name, inspect._empty)
 
-        for n, typ, dflt, _ in fields:
-            if isinstance(typ, type) and issubclass(typ, ShareableItem):
-                origin = typ.__base__ if typ is not ShareableItem else ShareableItem
+            # 2) only accept it if the class itself defined it,
+            #    and it really matches the candidate
+            own = cls.__dict__.get(name, inspect._empty)
+            if own is candidate:
+                default = own
+            else:
+                default = inspect._empty
+
+            # 3) dispatch to hook or normal mapping
+            if name in cls.__spec_hooks__:
+                origin = cls.__build_schema_hook__(name, typ, default)
             else:
                 origin = typ
                 if isinstance(origin, type) and issubclass(origin, BaseModule):
-                    origin = origin.schema()  # ← THIS is the only line I changed
+                    origin = origin.schema()
 
-            spec_fields[n] = (
+            spec_fields[name] = (
                 origin,
-                ... if dflt is inspect._empty else dflt
+                ... if default is inspect._empty else default
             )
+        # for name, type_, default, _ in fields:
+        #     if name in cls.__spec_hooks__:
+        #         origin = cls.__build_schema_hook__(name, type_, default)
+        #     else:
+        #         origin = type_
+        #         if (
+        #             isinstance(origin, type) 
+        #             and issubclass(origin, BaseModule)
+        #         ):
+        #             origin = origin.schema()
+
+        #     spec_fields[name] = (
+        #         origin,
+        #         ... if default is inspect._empty else default
+        #     )
 
         cls.__spec__ = create_model(
             f"{cls._spec_model_name()}",
@@ -261,7 +315,6 @@ class BaseModule:
     # ---------------------------------------------------
 
     def __init__(self, **kwargs: t.Any):
-        print('Initializing module')
         self._children = []
         self._init_vars = {}
         self._parameters: dict[str, Param] = {}
@@ -279,7 +332,6 @@ class BaseModule:
             if is_init:
                 self._init_vars[name] = val
             else:
-                print(f"Setting {name} to {val}")
                 setattr(self, name, val)
 
         if kwargs:
@@ -381,6 +433,39 @@ class BaseModule:
     def named_children(self):
         return self._modules.items()
 
+    def spec_hook(
+        self, *, 
+        name: str,
+        val: t.Any,
+        to_dict: bool = False,
+    ):
+        """
+        Serialise *this* runtime object → its spec counterpart.
+
+        Nested `BaseModule` instances are recursively converted.
+        `ModuleList` containers are converted element-wise.
+        """
+        raise ValueError(
+            f"Unknown from_spec_hook name: {name}. "
+            "This should be implemented in the subclass."
+        )
+
+    @classmethod
+    def from_spec_hook(
+        cls,
+        name: str,
+        val: t.Any,
+        ctx: "dict | None" = None,
+    ) -> t.Any:
+        """
+        Hook for the registry to call when a spec is encountered.
+        This is used to create a ModuleList from a spec.
+        """
+        raise ValueError(
+            f"Unknown from_spec_hook name: {name}. "
+            "This should be implemented in the subclass."
+        )
+
     def spec(
         self, *, 
         to_dict: bool = False
@@ -394,12 +479,26 @@ class BaseModule:
         data: dict[str, t.Any] = {}
 
         for name, is_init in self.__class__.__is_initvar__.items():
-            if is_init:                                # InitVars stored verbatim
-                data[name] = self._init_vars[name]
+            if is_init:
+                val = self._init_vars[name]
+                if name in self.__spec_hooks__:
+                    val = self.spec_hook(
+                        name=name,
+                        val=val,
+                        to_dict=to_dict
+                    )
+                data[name] = val
                 continue
 
             val = getattr(self, name)
-            if isinstance(val, BaseModule):
+            if name in self.__spec_hooks__:
+                # run custom spec hook if defined
+                data[name] = self.spec_hook(
+                    name=name,
+                    val=val,
+                    to_dict=to_dict
+                )
+            elif isinstance(val, BaseModule):
                 data[name] = val.spec(to_dict=False)
             
             else:
@@ -407,6 +506,7 @@ class BaseModule:
 
         spec_obj = self.__class__.__spec__(
             kind=self.__class__.__qualname__,
+            id=str(id(self)),
             **data
         )
         return spec_obj.model_dump() if to_dict else spec_obj
@@ -428,6 +528,7 @@ class BaseModule:
         ctx = ctx or {}
 
         # ---- 1) normalise input -----------------------------------------
+        
         if isinstance(spec, dict) and "kind" in spec:
             spec_obj: BaseSpec = cls.__spec__.model_validate(spec)
         else:                                       # already a BaseSpec
@@ -436,8 +537,8 @@ class BaseModule:
         # ---- 2) deduplication key ---------------------------------------
         if isinstance(spec_obj, BaseSpec):
             key = spec_obj.id                       # BaseModule path
-        elif isinstance(spec_obj, dict) and "ref_name" in spec_obj:
-            key = spec_obj["ref_name"]              # Shared / Param / State path
+        # elif isinstance(spec_obj, dict) and "ref_name" in spec_obj:
+        #     key = spec_obj["ref_name"]              # Shared / Param / State path
         else:
             key = None                              # primitives → no dedup
 
@@ -451,13 +552,33 @@ class BaseModule:
             val = getattr(spec_obj, name)
 
             cls_val = cls.__dict__.get(name)
-            if (isinstance(val, dict) and "kind" in val and cls_val is not None and issubclass(
-                cls_val, BaseModule)) or isinstance(val, BaseSpec):
+            if (
+                (isinstance(val, dict) 
+                 and "kind" in val 
+                 and cls_val is not None 
+                 and issubclass(
+                cls_val, BaseModule)) 
+                or isinstance(val, BaseSpec)
+                or name in cls.__spec_hooks__
+            ):
             #    pass
             # (a) Nested BaseModule spec  -----------------------------
             # if isinstance(val, (BaseSpec, dict)):
-                if val.id in ctx:
+                print(name)
+
+                if isinstance(val, BaseSpec) and val.id in ctx:
                     val = ctx.get(val.id)  # reuse existing module
+
+                elif name in cls.__spec_hooks__:
+                    # run custom spec hook if defined
+                    # id = val.id
+                    val = cls.from_spec_hook(
+                        name=name,
+                        val=val,
+                        ctx=ctx
+                    )
+                    print('Modules: ', val)
+                    # ctx[id] = val
                 elif isinstance(val, BaseSpec):
                     id = val.id
                     sub_cls = registry[val.kind].obj
@@ -471,22 +592,22 @@ class BaseModule:
                     ctx[id] = val
                 
                 # sub_cls = registry[val.kind if isinstance(val, BaseSpec) else val["kind"]].obj
-                val = val.from_spec(val, ctx)
+                # val = val.from_spec(val, ctx)
 
-            # (b) Shared / Param / State  -----------------------------
-            elif isinstance(val, dict) and "ref_name" in val:
-                shared_key = val["ref_name"]
-                if (hit := ctx.get(shared_key)) is None:
-                    # decide which runtime class to build
-                    if "data" in val and "training" in val:         # Param?
-                        hit = Param(**val)
-                    elif "data" in val and "frozen" in val:         # State?
-                        hit = State(**val)
-                    else:                                           # generic Shared
-                        hit = Shared(**val)
-                    ctx[shared_key] = hit
-                    # ctx.put(shared_key, hit)
-                val = hit
+            # # (b) Shared / Param / State  -----------------------------
+            # elif isinstance(val, dict) and "ref_name" in val:
+            #     shared_key = val["ref_name"]
+            #     if (hit := ctx.get(shared_key)) is None:
+            #         # decide which runtime class to build
+            #         if "data" in val and "training" in val:         # Param?
+            #             hit = Param(**val)
+            #         elif "data" in val and "frozen" in val:         # State?
+            #             hit = State(**val)
+            #         else:                                           # generic Shared
+            #             hit = Shared(**val)
+            #         ctx[shared_key] = hit
+            #         # ctx.put(shared_key, hit)
+            #     val = hit
 
             kwargs[name] = val
 
@@ -506,7 +627,6 @@ class BaseModule:
         elif isinstance(value, State):
             self.register_state(name, value)
         elif isinstance(value, BaseModule):
-            print('Registering module')
             self.register_module(name, value)
         else:
             super().__setattr__(name, value)
@@ -596,6 +716,11 @@ class BaseModule:
         runtime: bool = True,
         strict: bool = True
     ):
+        
+        if not isinstance(sd, dict):
+            raise TypeError(
+                f"StateDict must be of type dict not {type(sd)}"
+            )
         found = set()
 
         # Load Params
@@ -615,7 +740,6 @@ class BaseModule:
         # Recurse into submodules
         if recurse:
             for name, child in self._modules.items():
-                print(name, child)
                 child_sd = {k[len(name)+1:]: v for k, v in sd.items() if k.startswith(f"{name}.")}
                 child.load_state_dict(child_sd, recurse=True, train=train, runtime=runtime, strict=False)
                 found.update(f"{name}.{k}" for k in child_sd.keys())
@@ -728,7 +852,6 @@ class Checkpoint(Generic[M]):
         obj = cls.load(path)
         module_cls = obj.spec.load_cls()
         module = module_cls.from_spec(obj.spec, ctx=ctx)
-        print('Loaded module:', module)
         module.load_state_dict(obj.state_dict)
         return module
     
