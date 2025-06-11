@@ -216,3 +216,151 @@ def test_modulelist_duplicate_child_objects():
     print(list(state_list.keys()))
     assert state_list['0.w'] == 5 and state_list['1.w'] == 5
 
+
+
+import pytest
+from dachi.core2._structs import ModuleList
+from dachi.core2._base4 import BaseModule, Param, State, BuildContext, registry
+from dataclasses import InitVar
+
+# --- Helper Leaf class ---
+@registry()
+class Leaf2(BaseModule):
+    v: InitVar[int]
+    f: InitVar[int]
+
+    def __post_init__(self, v, f):
+        self.v = Param(data=v)
+        self.f = State(data=f)
+
+# --- Tests for ModuleList edge cases ---
+
+def test_post_init_empty_list():
+    # empty items => no error, len=0
+    ml = ModuleList(items=[])
+    assert len(ml) == 0
+    assert list(ml) == []
+
+
+def test_post_init_type_error():
+    # non-BaseModule element raises
+    with pytest.raises(TypeError):
+        ModuleList(items=["not a module"])
+
+
+def test_len_and_iter_and_getitem():
+    leaf1 = Leaf2(v=1,f=1)
+    leaf2 = Leaf2(v=2,f=2)
+    ml = ModuleList(items=[leaf1, leaf2])
+    assert len(ml) == 2
+    assert list(iter(ml)) == [leaf1, leaf2]
+    assert ml[0] is leaf1
+    assert ml[1] is leaf2
+
+
+def test_getitem_out_of_range():
+    ml = ModuleList(items=[])
+    with pytest.raises(IndexError):
+        _ = ml[0]
+
+
+def test_setitem_replacement_and_module_registration():
+    leaf1 = Leaf2(v=1,f=1)
+    leaf2 = Leaf2(v=2,f=2)
+    ml = ModuleList(items=[leaf1, leaf2])
+    leaf3 = Leaf2(v=3,f=3)
+    ml[1] = leaf3
+    assert ml[1] is leaf3
+    # ensure modules dict updated
+    assert ml._modules["1"] is leaf3
+    assert "1" in ml._modules and ml._modules["1"] is leaf3
+
+
+def test_setitem_type_error():
+    leaf = Leaf2(v=1,f=1)
+    ml = ModuleList(items=[leaf])
+    with pytest.raises(TypeError):
+        ml[0] = "oops"
+
+
+def test_append_and_registration():
+    ml = ModuleList(items=[])
+    leaf = Leaf2(v=5,f=5)
+    ml.append(leaf)
+    assert len(ml) == 1
+    assert ml._modules["0"] is leaf
+
+
+def test_append_type_error():
+    ml = ModuleList(items=[])
+    with pytest.raises(TypeError):
+        ml.append(123)
+
+
+def test_spec_and_from_spec_empty_and_dedup():
+    ml = ModuleList(items=[])
+    ctx = BuildContext()
+    spec1 = ml.spec(to_dict=False)
+    spec2 = ml.spec(to_dict=False)
+    # identical object returned
+    assert spec1 == spec2
+    # round-trip
+    ml2 = ModuleList.from_spec(spec1, ctx)
+    assert isinstance(ml2, ModuleList)
+    assert len(ml2) == 0
+
+    # duplicate underlying spec dedup
+    leaf = Leaf2(v=9,f=9)
+    ml3 = ModuleList(items=[leaf, leaf])
+    ctx2 = BuildContext()
+    spec3 = ml3.spec(to_dict=False)
+    ml3b = ModuleList.from_spec(spec3, ctx2)
+    assert ml3b._module_list[0] is ml3b._module_list[1]
+
+
+def test_state_dict_flags_and_load_state_dict():
+    leaf1 = Leaf2(v=1,f=10)
+    leaf2 = Leaf2(v=2,f=20)
+    ml = ModuleList(items=[leaf1, leaf2])
+    # full flags
+    sd_full = ml.state_dict(recurse=True, train=True, runtime=True)
+    assert isinstance(sd_full, dict) and len(sd_full) == 4
+    # train=False omits Param data
+    sd_no_train = ml.state_dict(train=False)
+    for d in sd_no_train:
+        assert "v" not in d
+    # runtime=False omits State data
+    sd_no_rt = ml.state_dict(runtime=False)
+    for d in sd_no_rt:
+        assert "f" not in d
+
+    # load_state_dict type error
+    with pytest.raises(KeyError):
+        ml.load_state_dict({})
+    # strict length mismatch
+    with pytest.raises(TypeError):
+        ml.load_state_dict([{}, {}], strict=True)
+    with pytest.raises(TypeError):
+        ml.load_state_dict({{}, {}}, strict=False)
+
+
+def test_parameters_and_named_modules():
+    leaf1 = Leaf2(v=1,f=1)
+    leaf2 = Leaf2(v=2,f=2)
+    ml = ModuleList(items=[leaf1, leaf2])
+    # parameters yields leaf1.v and leaf2.v
+    params = list(ml.parameters())
+    assert all(isinstance(p, Param) for p in params)
+    # named_modules includes self and children
+    names = [name for name, _ in ml.named_modules()]
+    assert names == ["", "0", "1"]
+
+
+def test_load_state_dict_non_strict_behavior():
+    leaf1 = Leaf2(v=1,f=1)
+    ml = ModuleList(items=[leaf1])
+    # shorter list non-strict OK
+    ml.load_state_dict({}, strict=False)
+    # longer list non-strict OK
+    ml.load_state_dict({"items": {"v":5}}, strict=False)
+

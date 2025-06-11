@@ -13,9 +13,7 @@ from uuid import uuid4
 from pydantic import create_model
 
 V_co = t.TypeVar("V_co", bound=BaseModule, covariant=True)
-
 V = t.TypeVar("V", bound=BaseModule)
-
 T = TypeVar("T", bound=BaseModule)
 
 class ModuleList(BaseModule, t.Generic[V]):
@@ -105,17 +103,23 @@ class ModuleList(BaseModule, t.Generic[V]):
         Hook for the registry to call when a spec is encountered.
         This is used to create a ModuleList from a spec.
         """
+        res = None
         if name == "items":
             if isinstance(val, list):
-                val = [
-                    registry[item.kind].obj.from_spec(item, ctx) 
-                    for item in val
-                ]
+                res = []
+                for item in val:
+                    cur_item = ctx.get(item.id)
+                    if cur_item is None:
+                        cur_item = registry[item.kind].obj.from_spec(item, ctx) 
+                        ctx[item.id] = cur_item
+                    res.append(cur_item)
+                
             else:
                 raise TypeError(f"Expected _items to be a list, got {type(val)}")
         else: 
             raise ValueError(f"Unknown spec hook name: {name}")
-        return val
+        print('val: ', res)
+        return res
 
     # @classmethod
     # def __build_schema__(cls) -> None:

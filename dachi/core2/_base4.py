@@ -223,6 +223,7 @@ class BaseModule:
         ann = t.get_type_hints(cls, include_extras=True)
         fields: list[tuple[str, t.Any, t.Any, bool]] = []
 
+        field_set = set()
         for name, type_ in ann.items():
             # Skip ClassVar or private
             if t.get_origin(type_) is t.ClassVar:
@@ -236,6 +237,13 @@ class BaseModule:
                 type_ = t.get_args(type_)[0] if t.get_origin(type_) is InitVar else t.Any
 
             fields.append((name, type_, default, is_init))
+            field_set.add(name)
+
+        if len(set(cls.__spec_hooks__).difference(field_set)) != 0:
+            raise ValueError(
+                f"SpecHooks contains fields not specified "
+                f"{cls.__spec_hooks__}"
+            )
 
         cls.__item_fields__ = fields
         cls.__is_initvar__  = {
