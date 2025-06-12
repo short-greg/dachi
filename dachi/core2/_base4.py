@@ -1,4 +1,5 @@
 from __future__ import annotations
+from abc import abstractmethod, ABC
 
 from pydantic import PrivateAttr
 """Drop‑in core definitions for process‑style objects and shareable leaves.
@@ -52,23 +53,48 @@ class ShareableItem(t.Generic[J]):
     """Serializable leaf object with a ``data`` field."""
 
     def __init__(self, data: J):
+        super().__init__()
+        expected_type = self._get_expected_type()
+        print(expected_type)
+        if (
+            expected_type is not None 
+            and not isinstance(data, expected_type)
+        ):
+            raise TypeError(f"Expected data of type {expected_type}, got {type(data)}")
         self._data = data
+        self._callbacks: list[Callable[[T]]] = []
+
+    def get(self) -> J:
+
+        return self._data
+    
+    def set(self, value: J):
+        expected_type = self._get_expected_type()
+        print(expected_type)
+        if (
+            expected_type is not None and not isinstance(value, expected_type)
+        ):
+            raise TypeError(f"Expected data of type {expected_type}, got {type(value)}")
+        self._data = value
+        self.update_data_hook(value)
+
 
     @property
     def data(self) -> J:
         """Get the data value."""
-        return self._data
+        return self.get()
 
     @data.setter
     def data(self, value: J):
         """Set the data value and trigger update hook."""
-        self._data = value
-        self.update_data_hook(value)
+        self.set(value)
+        return value
 
-    def update_data_hook(self, val: J):
+    def update_data_hook(self, val: T) -> T:
         # override for any hooks / logic here for data
         # e.g. log, trigger dirty flag, coerce type
-        pass
+        for callback in self._callbacks:
+            callback(val)
 
     def __hash__(self):
         return id(self) 
@@ -105,23 +131,6 @@ class ShareableItem(t.Generic[J]):
         else:
             return {"type": type(self._data).__name__}
 
-
-class Param(ShareableItem[T]):
-    """Trainable parameter; ``training`` may be toggled to freeze it."""
-
-    # model_config = ConfigDict(
-    #     json_schema_extra=lambda s, h: {"properties": {"data": s["properties"]["data"]}}
-    # )
-    def __init__(self, data):
-        super().__init__(data)
-        self._callbacks: list[Callable[[T]]] = []
-
-    def update_data_hook(self, val: T) -> T:
-        # override for any hooks / logic here for data
-        # e.g. log, trigger dirty flag, coerce type
-        for callback in self._callbacks:
-            callback(val)
-
     def register_callback(self, callback: Callable[[T], None]) -> None:
         """Register a callback to be called when the data is updated."""
         self._callbacks.append(callback)
@@ -130,18 +139,119 @@ class Param(ShareableItem[T]):
         """Unregister a previously registered callback."""
         self._callbacks.remove(callback)
 
+    def _get_expected_type(self):
+        """Resolve expected type from the immediate generic base (Param, State, Shared)."""
+        cls = self.__class__
+        for base in getattr(cls, "__orig_bases__", []):
+            origin = getattr(base, "__origin__", None)
+            if origin in {Param, State, Shared}:
+                return t.get_args(base)[0]
+        return None
 
-class State(ShareableItem[T]):
+
+class Param(ShareableItem[J]):
+    """Trainable parameter; ``training`` may be toggled to freeze it."""
+    
+    def __init__(self, data: J, fixed: bool=False):
+
+        super().__init__(data)
+        self._fixed = fixed
+
+    def set(self, value):
+        if self._fixed:
+            raise RuntimeError(
+                'Cannot set parameter that is fixed.'
+            )
+        value = super().set(value)
+
+    def is_fixed(self) -> bool:
+        return self._fixed
+    
+    def fix(self):
+
+        self._fixed = True
+
+    def unfix(self):
+
+        self._fixed = False
+
+
+    # model_config = ConfigDict(
+    #     json_schema_extra=lambda s, h: {"properties": {"data": s["properties"]["data"]}}
+    # )
+    # def __init__(self, data):
+    #     super().__init__(data)
+    #     self._callbacks: list[Callable[[T]]] = []
+
+
+class State(ShareableItem[J]):
     """Mutable runtime state (e.g. counters, RNG seeds, rolling averages)."""
     pass
 
 
-class Shared(ShareableItem[T]):
+class Shared(ShareableItem[J]):
     """Pointer‑like wrapper whose value should *not* enter ``state_dict``."""
     pass
 
 
 BuildContext = dict
+
+
+
+class Renderable(ABC):
+    """Mixin for classes that implement the render()
+    method. Render is used to determine how to represent an
+    object as a string to send to thte LLM
+    """
+
+    @abstractmethod
+    def render(self) -> str:
+        """Convert an object to a string representation for 
+        an llm
+
+        Returns:
+            str: the string representation of the object
+        """
+        pass
+
+
+class Trainable(ABC):
+    """
+    """
+
+    @abstractmethod
+    def parameters(self) -> t.Iterator['Param']:
+        pass
+
+
+class Templatable(ABC):
+    """A mixin to indicate that the class 
+    has a template function defined. Templates are
+    used by the LLM to determine how to output.
+    """
+
+    @abstractmethod
+    def template(self) -> str:
+        """Get the template 
+
+        Returns:
+            str: 
+        """
+        pass
+
+
+class ExampleMixin(ABC):
+    """A mixin to indicate that the class 
+    has an example function
+    """
+    @abstractmethod
+    def example(self) -> str:
+        """Get the template 
+
+        Returns:
+            str: 
+        """
+        pass
 
 
 class BaseSpec(BaseModel):
@@ -1056,16 +1166,20 @@ class AdaptModule(BaseModule, Generic[V]):
 
 class ParamSet(object):
 
-    params: t.List[Param] = Field(
-        default_factory=list,
-        description="List of parameters in the set."
-    )
+    # params: t.List[Param] = Field(
+    #     default_factory=list,
+    #     description="List of parameters in the set."
+    # )
+
+    def __init__(self, params: t.List[Param]=None):
+        
+        self.params = params or []
 
     @classmethod
     def build(cls, module: BaseModule) -> "ParamSet":
         """Build a ParamSet from a BaseModule, collecting all parameters."""
         params = list(
-            module.parameters(recurse=True, train_only=True)
+            module.parameters(recurse=True)
         )
         return cls(params=params)
 
@@ -1086,8 +1200,10 @@ class ParamSet(object):
         """
         Dump all parameters' data to a dictionary.
         """
-        return {f"param_{i}": param.dump() for i, param in enumerate(self.params)}
-
+        return {
+            f"param_{i}": param.dump() 
+            for i, param in enumerate(self.params)
+        }
 
 
     ##  SHAREABLE ITEM

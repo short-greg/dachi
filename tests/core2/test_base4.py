@@ -6,6 +6,10 @@ from pydantic import ValidationError
 import types
 import warnings
 
+import pytest
+from dachi.core2._base4 import Param, State, Shared, BaseModule
+from pydantic import BaseModel
+from dataclasses import InitVar
 
 from dachi.core2._base4 import (
     BaseModule,
@@ -1132,3 +1136,156 @@ def test_buildcontext_none_refname_edge():
 #         class Tmp2(BaseModule):
 #             pass
 #         assert any("already" in str(msg.message) for msg in w)
+
+
+################
+
+
+# ---------------------- I. Type Enforcement --------------------------
+
+def test_param_type_enforcement():
+    class TypedParam(Param[int]):
+        pass
+    with pytest.raises(TypeError):
+        TypedParam(data="not an int")
+
+
+def test_state_type_enforcement():
+    class TypedState(State[float]):
+        pass
+    with pytest.raises(TypeError):
+        TypedState(data="not a float")
+
+def test_shared_type_enforcement():
+    class TypedShared(Shared[bool]):
+        pass
+    with pytest.raises(TypeError):
+        TypedShared(data=123)
+
+# # ---------------------- III. Param Callback Removal -------------------
+
+def test_param_unregister_callback():
+    hits = []
+    def cb(v): hits.append(v)
+    p = Param(data=1)
+    p.register_callback(cb)
+    p.data = 2
+    p.unregister_callback(cb)
+    p.data = 3
+    assert hits == [2]
+
+# # ---------------------- V. Eval/Train Cascade --------------------------
+
+# # TODO: Figure out how to handle training on param
+# def test_eval_train_cascade():
+#     class Leaf(BaseModule):
+#         w: InitVar[int]
+#         def __post_init__(self, w):
+#             self.w = Param(data=w)
+
+#     class Root(BaseModule):
+#         a: Leaf
+#         b: Leaf
+
+#     r = Root(a=Leaf(w=1), b=Leaf(w=2))
+#     r.eval()
+#     assert all(not p.training for p in r.parameters())
+#     r.train()
+#     assert all(p.training for p in r.parameters())
+
+# # ---------------------- VI. Conflicting StateDict Keys ------------------
+
+def test_state_dict_conflicting_nested_keys():
+    class Child(BaseModule):
+        x: Param[int]
+    class Parent(BaseModule):
+        child: Child
+        child_x: Param[int]
+
+    c = Child(x=Param(data=1))
+    p = Parent(child=c, child_x=Param(data=2))
+    sd = p.state_dict()
+    assert "child.x" in sd and "child_x" in sd
+    assert sd["child.x"] == 1
+    assert sd["child_x"] == 2
+
+# # ---------------------- VIII. ParamSet Partial Update ------------------
+
+from dachi.core2._base4 import ParamSet
+
+def test_paramset_partial_update():
+    p1 = Param(data=1)
+    p2 = Param(data=2)
+    class Mod(BaseModule):
+        def __init__(self):
+            super().__init__()
+            self.p1 = p1
+            self.p2 = p2
+
+    mod = Mod()
+    ps = ParamSet.build(mod)
+    ps.update({"param_0": 100})
+    assert p1.data == 100 and p2.data == 2
+
+# # ---------------------- IX. Dynamic Param Addition ---------------------
+
+def test_dynamic_param_assignment_after_init():
+    class M(BaseModule):
+        x: int
+    m = M(x=0)
+    new_param = Param(data=42)
+    m.extra = new_param
+    assert new_param in list(m.parameters())
+
+def test_param_subclass_roundtrip():
+    class TypedParam(Param[int]):
+        pass
+
+    class Proc(BaseModule):
+        x: InitVar[int]
+
+        def __post_init__(self, x):
+            self.x = TypedParam(data=x)
+
+    m = Proc(x=123)
+    spec = m.spec(to_dict=False)
+    rebuilt = Proc.from_spec(spec)
+
+    assert isinstance(rebuilt.x, TypedParam)
+    assert rebuilt.x.data == 123
+
+
+def test_state_subclass_roundtrip():
+    class TypedState(State[str]):
+        pass
+
+    class Proc(BaseModule):
+        msg: InitVar[str]
+
+        def __post_init__(self, msg):
+            self.msg = TypedState(data=msg)
+
+    m = Proc(msg="hello")
+    spec = m.spec(to_dict=False)
+    rebuilt = Proc.from_spec(spec)
+
+    assert isinstance(rebuilt.msg, TypedState)
+    assert rebuilt.msg.data == "hello"
+
+
+def test_shared_subclass_roundtrip():
+    class TypedShared(Shared[float]):
+        pass
+
+    class Proc(BaseModule):
+        val: InitVar[float]
+
+        def __post_init__(self, val):
+            self.val = TypedShared(data=val)
+
+    m = Proc(val=3.14)
+    spec = m.spec(to_dict=False)
+    rebuilt = Proc.from_spec(spec)
+
+    assert isinstance(rebuilt.val, TypedShared)
+    assert rebuilt.val.data == 3.14
