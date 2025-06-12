@@ -1,12 +1,12 @@
 # test_itemlist.py
 import pytest
-from dachi.core2._base4 import BaseModule, Param, State, BaseSpec, registry
-from dachi.core2._structs import ModuleList
+from dachi.core._base import BaseModule, Param, State, BaseSpec, registry
+from dachi.core._structs import ModuleList
 from dataclasses import InitVar
 
 import pytest
-from dachi.core2._structs import ModuleList
-from dachi.core2._base4 import BaseModule, Param, State, BuildContext, registry
+from dachi.core._structs import ModuleList
+from dachi.core._base import BaseModule, Param, State, dict, registry
 from dataclasses import InitVar
 # ---------------------- helper child class -------------------------
 
@@ -301,7 +301,7 @@ class TestModuleList:
 
     def test_spec_and_from_spec_empty_and_dedup(self):
         ml = ModuleList(items=[])
-        ctx = BuildContext()
+        ctx = dict()
         spec1 = ml.spec(to_dict=False)
         spec2 = ml.spec(to_dict=False)
         # identical object returned
@@ -314,7 +314,7 @@ class TestModuleList:
         # duplicate underlying spec dedup
         leaf = Leaf2(v=9,f=9)
         ml3 = ModuleList(items=[leaf, leaf])
-        ctx2 = BuildContext()
+        ctx2 = dict()
         spec3 = ml3.spec(to_dict=False)
         ml3b = ModuleList.from_spec(spec3, ctx2)
         assert ml3b._module_list[0] is ml3b._module_list[1]
@@ -369,8 +369,8 @@ class TestModuleList:
 
 
 import pytest
-from dachi.core2._base4 import BaseModule, Param, State, BuildContext, BaseSpec, registry
-from dachi.core2._structs import ModuleDict
+from dachi.core._base import BaseModule, Param, State, dict, BaseSpec, registry
+from dachi.core._structs import ModuleDict
 from dataclasses import InitVar
 
 # @registry()
@@ -405,7 +405,7 @@ class TestModuleDict:
         shared = make_leaf(4.2)
         d1 = ModuleDict(items={"a": shared, "b": shared})
         spec = d1.spec(to_dict=False)
-        rebuilt = ModuleDict.from_spec(spec, ctx=BuildContext())
+        rebuilt = ModuleDict.from_spec(spec, ctx=dict())
         assert rebuilt["a"] is rebuilt["b"]
 
     def test_moduledict_from_spec_invalid_value_type(self):
@@ -479,7 +479,7 @@ class TestModuleDict:
     def test_moduledict_from_spec_roundtrip(self):
         d1 = ModuleDict(items={"a": make_leaf(3.3), "b": make_leaf(1.1)})
         spec = d1.spec(to_dict=False)
-        d2 = ModuleDict.from_spec(spec, ctx=BuildContext())
+        d2 = ModuleDict.from_spec(spec, ctx=dict())
         assert isinstance(d2, ModuleDict)
         assert d2["a"].w.data == 3.3
 

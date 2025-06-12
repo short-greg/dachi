@@ -1,150 +1,214 @@
-from abc import ABC, abstractmethod
-import typing
-from typing import Dict, Literal
-from uuid import uuid4
-# process_core.py
-import inspect, json
-from typing import Any, Dict, Generic, List, TypeVar, get_type_hints, Literal
-from pydantic import BaseModel, create_model, ConfigDict
-from pydantic.generics import GenericModel
-from pydantic_core import core_schema
-import pydantic
+from __future__ import annotations
+import typing as t
+from pydantic import BaseModel
+from ._base import BaseModule, Param, State, Shared, dict, BaseSpec, registry  # adjust import path
+from typing import TypeVar, Generic, Iterable, ClassVar, Iterator
+from pydantic import BaseModel, Field, ConfigDict, create_model, field_validator
 
-from ._base import BaseItem, BaseProcess, BaseStruct, BaseSpec
 
 import typing as t
+from dataclasses import InitVar
+from uuid import uuid4
 
-V = typing.TypeVar("V", bound=BaseItem | BaseProcess)
+from ._base import BaseModule, dict, registry, BaseSpec
 
-class ItemList(BaseItem, t.Generic[V]):
+from typing import Optional, Union, List, Iterator, Iterable
+from dataclasses import InitVar
 
-    _element_type: t.ClassVar[t.Type[BaseItem]] = None
+V_co = t.TypeVar("V_co", bound=BaseModule, covariant=True)
+V = t.TypeVar("V", bound=BaseModule)
+T = TypeVar("T", bound=BaseModule)
 
-    def __init__(self, items: t.List[V], element_type: t.Type[BaseItem] = None):
-        if not items and element_type is None:
-            raise ValueError("Cannot infer element type from empty list")
-        if element_type is None:
-            element_type = type(items[0])
-        self._element_type = element_type
-        if not all(isinstance(i, BaseItem) for i in items):
-            raise TypeError("All elements must be BaseItem instances.")
-        self._items = list(items)
+
+class ModuleList(BaseModule, t.Generic[V]):
+    """
+    A list-like container whose elements are themselves `BaseModule`
+    instances.  Works seamlessly with the new serialization / dedup rules.
+    """
+    __spec_hooks__: ClassVar[t.List[str]] = ["items"]
+    items: InitVar[list[V]]
+
+    def __post_init__(self, items: Optional[Iterable[T]] = None):
+        self._module_list = []
+
+        if items is not None:
+            for m in items:
+                self.append(m)
 
     @classmethod
-    def to_schema(cls) -> typing.Type[pydantic.BaseModel]:
-        if cls._element_type is None:
-            raise TypeError("Element type not set for ItemList")
-        return list[cls._element_type.to_spec_class()]
-    
-    def __getitem__(self, idx: int) -> V:
-        return self._items[idx]
+    def __build_schema_hook__(cls, name: str, type_: t.Any, default: t.Any):
+        if name != "items":
+            raise ValueError(f"No hook specified for {name}")
+        return list[BaseSpec]
+
+    def __len__(self) -> int:  # Positive test: len reflects number added
+        return len(self._module_list)
+
+    def __iter__(self) -> Iterator[T]:  # Positive test: order preserved
+        return iter(self._module_list)
+
+    def __getitem__(self, idx: int) -> T:  # Edge test: negative index ok
+        return self._module_list[idx]
 
     def __setitem__(self, idx: int, value: V):
-        if not isinstance(value, BaseItem):
-            raise TypeError("Item must be a BaseItem")
-        self._items[idx] = value
+        if not isinstance(value, BaseModule):
+            raise TypeError("ModuleList accepts only BaseModule instances")
+        if idx >= len(self):
+            raise IndexError(f"Index {idx} is out of bounds.")
+        # unregister old, register new
+        old_key = str(idx)
+        del self._modules[old_key]
+        self._module_list[idx] = value
+        self.register_module(old_key, value)
+
+    # public API – intentionally *append‑only*
+    def append(self, module: V):
+
+        if not isinstance(module, BaseModule):
+            raise TypeError("ModuleList accepts only BaseModule instances")
+        key = str(len(self._module_list))
+        self._module_list.append(module)
+        self.register_module(key, module)
+
+    def spec_hook(
+        self, *, 
+        name: str,
+        val: t.Any,
+        to_dict: bool = False,
+    ):
+        """
+        Serialise *this* runtime object → its spec counterpart.
+
+        Nested `BaseModule` instances are recursively converted.
+        `ModuleList` containers are converted element-wise.
+        """
+        if name == "items":
+            # Special case for _items, which is a list of modules
+            if isinstance(val, list):
+                val = [
+                    item.spec(to_dict=to_dict) 
+                    for item in self._module_list
+                ]
+            else:
+                raise TypeError(f"Expected _items to be a list, got {type(val)}")
+        else:
+            raise ValueError(f"Unknown spec hook name: {name}")
+        return val
+
+    @classmethod
+    def from_spec_hook(
+        cls,
+        name: str,
+        val: t.Any,
+        ctx: "dict | None" = None,
+    ) -> t.Any:
+        """
+        Hook for the registry to call when a spec is encountered.
+        This is used to create a ModuleList from a spec.
+        """
+        res = None
+        if name == "items":
+            if isinstance(val, list):
+                res = []
+                for item in val:
+                    cur_item = ctx.get(item.id)
+                    if cur_item is None:
+                        cur_item = registry[item.kind].obj.from_spec(item, ctx) 
+                        ctx[item.id] = cur_item
+                    res.append(cur_item)
+                
+            else:
+                raise TypeError(f"Expected _items to be a list, got {type(val)}")
+        else: 
+            raise ValueError(f"Unknown spec hook name: {name}")
+        return res
+
+
+class ModuleDict(BaseModule, t.Generic[V]):
+    """
+    A dict-like container whose values are themselves `BaseModule`
+    instances. Keys must be strings.
+    """
+
+    __spec_hooks__: ClassVar[t.List[str]] = ["items"]
+    items: InitVar[dict[str, V]]
+
+    def __post_init__(self, items: Optional[dict[str, V]] = None):
+        self._module_dict = {}
+
+        if items is not None:
+            for k, m in items.items():
+                self[k] = m
+
+    @classmethod
+    def __build_schema_hook__(cls, name: str, type_: t.Any, default: t.Any):
+        if name != "items":
+            raise ValueError(f"No hook specified for {name}")
+        return dict[str, BaseSpec]
+
+    def __getitem__(self, key: str) -> V:
+        return self._module_dict[key]
+
+    def __setitem__(self, key: str, val: V):
+        if not isinstance(key, str):
+            raise TypeError("Keys must be strings")
+        if not isinstance(val, BaseModule):
+            raise TypeError("Values must be BaseModule instances")
+        self._module_dict[key] = val
+        self.register_module(key, val)
 
     def __iter__(self):
-        return iter(self._items)
+        return iter(self._module_dict)
 
     def __len__(self):
-        return len(self._items)
-
-    def append(self, item: V):
-        if not isinstance(item, BaseItem):
-            raise TypeError("Item must be a BaseItem")
-        self._items.append(item)
-    
-    def to_spec(self) -> BaseSpec:
-        return [item.to_spec() for item in self._items]
-
-    def from_spec(cls, spec: BaseSpec):
-        pass
-        # return [item.to_spec_instance() for item in self._items]
-
-    def state_dict(self):
-        return [item.state_dict() for item in self._items]
-
-    def load_state_dict(self, state_list):
-        for item, state in zip(self._items, state_list):
-            item.load_state_dict(state)
-
-
-
-T = t.TypeVar("T", bound=BaseItem | BaseProcess)
-
-class ItemTuple(BaseStruct, t.Generic[T]):
-    def __init__(self, items: t.Tuple[T, ...]):
-        if not all(isinstance(i, BaseItem) for i in items):
-            raise TypeError("All elements of ItemTuple must be BaseItem instances.")
-        self._items: tuple[T, ...] = items
-
-    def __getitem__(self, idx: int) -> T:
-        return self._items[idx]
-
-    def __iter__(self):
-        return iter(self._items)
-
-    def __len__(self):
-        return len(self._items)
-
-    def to_spec(self) -> BaseSpec:
-        return [item.to_spec_instance() for item in self._items]
-
-    def state_dict(self):
-        return [item.state_dict() for item in self._items]
-
-    def load_state_dict(self, state_list):
-        for item, state in zip(self._items, state_list):
-            item.load_state_dict(state)
-
-
-K = t.TypeVar("K", bound=str)
-V = t.TypeVar("V", bound=BaseItem | BaseProcess)
-
-class ItemDict(BaseStruct, t.Generic[K, V]):
-    def __init__(self, items: t.Dict[K, V]):
-        if not all(isinstance(v, BaseItem) for v in items.values()):
-            raise TypeError("All values in ItemDict must be BaseItem instances.")
-        self._items: dict[K, V] = dict(items)
-
-    def __getitem__(self, key: K) -> V:
-        return self._items[key]
-
-    def __setitem__(self, key: K, value: V):
-        if not isinstance(value, BaseItem):
-            raise TypeError("Item must be a BaseItem")
-        self._items[key] = value
-
-    def __iter__(self):
-        return iter(self._items)
-
-    def __len__(self):
-        return len(self._items)
+        return len(self._module_dict)
 
     def keys(self):
-        return self._items.keys()
+        return self._module_dict.keys()
 
     def values(self):
-        return self._items.values()
+        return self._module_dict.values()
 
     def items(self):
-        return self._items.items()
+        return self._module_dict.items()
 
-    def to_spec(self) -> BaseSpec:
-        return {k: v.to_spec() for k, v in self._items.items()}
-    
+    def spec_hook(
+        self,
+        *,
+        name: str,
+        val: t.Any,
+        to_dict: bool = False,
+    ):
+        if name == "items":
+            return {
+                k: v.spec(to_dict=to_dict)
+                for k, v in self._module_dict.items()
+            }
+        raise ValueError(f"Unknown spec hook name: {name}")
+
     @classmethod
-    def to_schema(cls):
-        if not cls._items:
-            raise ValueError("Cannot infer spec class from empty ItemTuple")
-        return tuple(item.to_spec_class() for item in cls._items)
+    def from_spec_hook(
+        cls,
+        name: str,
+        val: t.Any,
+        ctx: "dict | None" = None,
+    ) -> dict[str, V]:
+        if name != "items":
+            raise ValueError(f"Unknown spec hook name: {name}")
+        if not isinstance(val, dict):
+            raise TypeError(f"Expected a dict for 'items', got {type(val)}")
 
-    def state_dict(self):
-        return {k: v.state_dict() for k, v in self._items.items()}
-
-    def load_state_dict(self, state_dict: dict[K, t.Any]):
-        for k, v in state_dict.items():
-            if k in self._items:
-                self._items[k].load_state_dict(v)
-
+        ctx = ctx or {}
+        out = {}
+        for k, v in val.items():
+            if isinstance(v, BaseSpec):
+                id_ = v.id
+                if id_ in ctx:
+                    out[k] = ctx[id_]
+                else:
+                    mod = registry[v.kind].obj.from_spec(v, ctx)
+                    ctx[id_] = mod
+                    out[k] = mod
+            else:
+                raise TypeError(f"Expected BaseSpec values in dict, got {type(v)}")
+        return out

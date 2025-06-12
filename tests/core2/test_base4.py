@@ -1,24 +1,24 @@
 import json
 import pytest
-from dachi.core2._base4 import BaseModule, Param, State, Shared, BaseSpec, Checkpoint, BuildContext
+from dachi.core._base import BaseModule, Param, State, Shared, BaseSpec, Checkpoint, dict
 from dataclasses import InitVar
 from pydantic import ValidationError
 import types
 import warnings
 
 import pytest
-from dachi.core2._base4 import Param, State, Shared, BaseModule
+from dachi.core._base import Param, State, Shared, BaseModule
 from pydantic import BaseModel
 from dataclasses import InitVar
 
-from dachi.core2._base4 import (
+from dachi.core._base import (
     BaseModule,
     Param,
     State,
     Shared,
     BaseSpec,
     registry,
-    BuildContext,
+    dict,
     Checkpoint,
 )
 from pydantic import ValidationError
@@ -168,7 +168,7 @@ def test_nested_module_dedup_in_from_spec():
         b: Inner
 
     outer = Outer(a=shared, b=shared)
-    rebuilt = Outer.from_spec(outer.spec(), ctx=BuildContext())
+    rebuilt = Outer.from_spec(outer.spec(), ctx=dict())
     assert rebuilt.a is rebuilt.b
 
 
@@ -798,7 +798,7 @@ def test_checkpoint_shared_objects_deduplicated(tmp_path):
     path = tmp_path / "outer.json"
     Checkpoint.save_module(model, path)
 
-    ctx = BuildContext()
+    ctx = dict()
     rebuilt = Checkpoint.load_module(path, ctx=ctx)
 
     assert rebuilt.a is rebuilt.b
@@ -976,8 +976,8 @@ def test_state_dict_nonrecurse_returns_empty():
 import inspect
 import pytest
 
-from dachi.core2._base4 import (
-    BaseModule, Param, Shared, BuildContext, registry, Registry
+from dachi.core._base import (
+    BaseModule, Param, Shared, dict, registry, Registry
 )
 
 # # # # --------------------------------------------------------------------
@@ -1111,7 +1111,7 @@ def test_buildcontext_distinct_refs_edge():
         right=Leaf(payload="y"),
     )
     spec = p.spec(to_dict=False)
-    rebuilt = Pair.from_spec(spec, ctx=BuildContext())
+    rebuilt = Pair.from_spec(spec, ctx=dict())
 
     assert rebuilt.left.payload is not rebuilt.right.payload
 
@@ -1123,7 +1123,7 @@ def test_buildcontext_none_refname_edge():
         right=Leaf(payload="a"),       # distinct instance
     )
     spec = p.spec(to_dict=False)
-    rebuilt = Pair.from_spec(spec, ctx=BuildContext())
+    rebuilt = Pair.from_spec(spec, ctx=dict())
 
     assert rebuilt.left.payload is not rebuilt.right.payload
 
@@ -1211,7 +1211,7 @@ def test_state_dict_conflicting_nested_keys():
 
 # # ---------------------- VIII. ParamSet Partial Update ------------------
 
-from dachi.core2._base4 import ParamSet
+from dachi.core._base import ParamSet
 
 def test_paramset_partial_update():
     p1 = Param(data=1)
