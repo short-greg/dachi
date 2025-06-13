@@ -7,7 +7,7 @@ import pydantic
 from ._base import Renderable
 
 # local
-from ..utils import is_primitive
+from ..utils import is_primitive, escape_curly_braces
 
 
 @dataclass
@@ -39,6 +39,17 @@ class TemplateField(Renderable):
             str: The string of the template.
         """
         return str(self.to_dict())
+
+
+def model_to_text(model: pydantic.BaseModel, escape: bool=False) -> str:
+    """Dump the struct to a string
+
+    Returns:
+        str: The string
+    """
+    if escape:  
+        return escape_curly_braces(model.model_dump())
+    return model.model_dump_json()
 
 
 def render(

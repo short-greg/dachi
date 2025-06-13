@@ -6,6 +6,9 @@ from typing import Self
 # local
 from ..core import Renderable
 
+from typing import Any, Dict, Optional, Union
+from pydantic import BaseModel, Field, PrivateAttr
+
 class _Final:
     """A unique object to mark the end of a streaming response."""
     def __repr__(self):
@@ -16,121 +19,79 @@ END_TOK = _Final()
 NULL_TOK = object()
 
 
-class Msg(dict):
-    """A Msg used for a dialog
-    """
-    def __init__(
-        self, role: str, type_: str='data', 
-        meta: typing.Dict=None, delta: typing.Dict=None, 
-        _include_role: bool=True, _follow_up: typing.List['Msg']=None, _filtered: bool=False, **kwargs
-    ):
-        """Create a Msg
+class Msg(BaseModel):
+
+    role: str
+    alias: Optional[str] = None
+    type: str = "data"
+    content: Union[str, Dict[str, Any], None] = None
+    meta: Dict[str, Union[str, int, float, bool, None, dict, list]] = Field(default_factory=dict)
+    filtered: bool = False
+
+    def apply(self, func):
+        return func(self)
+
+    def output(self, key: str = "tool_out", default=None) -> Any:
+        return self.meta.get(key, default)
+
+    def render(self) -> str:
+        return f"{self.alias or self.role}: {self.content}"
+
+    def to_input(self) -> Dict[str, Any]:
+        if self.filtered:
+            return {}
+        return {"role": self.role, "content": self.content}
+
+    class Config:
+        extra = "allow"
+
+
+class Response(pydantic.BaseModel):
+
+    msg: Msg
+    _data: typing.Dict = pydantic.PrivateAttr(
+        default_factory=list
+    )
+
+    def data(self, key: str) -> typing.Any:
+        """
 
         Args:
-            type_ (str, optional): The type of message. Defaults to 'data'.
-            meta (typing.Dict, optional): Any additional information not related to the message specifically. Defaults to None.
-            delta (typing.Dict, optional): The change in the message. Defaults to None.
-        """
-        super().__init__(
-            role=role, _include_role=_include_role, type_=type_, meta=meta or {}, delta=delta or {}, **kwargs
-        )
-        self.follow_up = _follow_up if _follow_up is not None else []
-        self.filtered = _filtered
-
-    @property
-    def type(self) -> str:
-        """Get the type of the message"""
-        return self['type_']
-    
-    def __getattr__(self, key) -> typing.Any:
-        """Get an attribute of the message"""
-        return self.__getitem__(key)
-    
-    def __setattr__(self, name, value):
-        """Set an attribute of the message"""
-        return self.__setitem__(name, value)
-    
-    def to_input(self) -> typing.Dict:
-        """Convert the message to a dictionary"""
-        exclude = {'meta', 'delta', '_include_role', 'type_'}
-        d = {k: v for k, v in self.items() if k not in exclude}
-        if self['_include_role'] is False:
-            del d['role']
-
-        return d
-    
-    def meta_(self, **kwargs) -> Self:
-        """Update the values of the meta table
+            key (str): 
 
         Returns:
-            Self: The message after update
+            typing.Any: 
         """
-        self['meta'].update(**kwargs)
+        return self._data[key]
+
+    def set_data(self, key: str, val) -> typing.Self:
+        """
+
+        Args:
+            key (str): 
+            val: 
+
+        Returns:
+            typing.Self: 
+        """
+        self._data[key] = val
         return self
-    
-    @property
-    def m(self) -> typing.Dict:
-        """Get the meta data from the message """
-        return self['meta']
 
-    def to_list_input(self) -> typing.List[typing.Dict]:
-        """Convert to an input appropriate for a list
-
-        Returns:
-            typing.List[typing.Dict]: The message converted to a list
-        """
-        if self.filtered:
-            return []
-        return [self.to_input()]
-    
-    def render(self) -> str:
-        """
-
-        Returns:
-            str: A string of the message
-        """
-        vals = {
-            key: val for key, val in self.items() if key not in (
-                'role', 'meta', '_include_role',
-                'delta', 'type_'
-            )
-        }
-        return f'{self.role} {vals}'
+    def get_tmp(self, key: str, default=None) -> Any:
+        return self._tmp.get(key, default)
 
 
-# class StreamMsg(Msg):
-#     """A message that is streamed
-#     """
-
-#     def __init__(
-#         self, role: str, type_: str='data', 
-#         meta: typing.Dict=None, delta: typing.Dict=None, 
-#         _include_role: bool=True, is_last: bool=False, **kwargs
-#     ):
-#         """Create a Stream Msg
-
-#         Args:
-#             type_ (str, optional): The type of message. Defaults to 'data'.
-#             meta (typing.Dict, optional): Any additional information not related to the message specifically. Defaults to None.
-#             delta (typing.Dict, optional): The change in the message. Defaults to None.
-#         """
-#         super().__init__(
-#             role=role, type_=type_, meta=meta or {}, delta=delta or {},_include_role=_include_role, **kwargs
-#         )
-#         self.is_last = is_last
+import pydantic
 
 
-class BaseDialog(Renderable):
+class BaseDialog(pydantic.BaseModel, Renderable):
     """A Dialog stores the interactions between the system/user and the assistant
     (i.e. the prompts and the responses)
     """
 
-    def __init__(
-        self, 
-        renderer: typing.Callable[[typing.List[Msg]], str] | None=None
-    ):
-        super().__init__()
-        self._renderer = renderer
+    renderer: typing.Callable[[typing.List[Msg]], str] = pydantic.PrivateAttr(
+        default_factory=list
+    )
 
     def __iter__(self) -> typing.Iterator[Msg]:
         """Iterate over each message in the dialog
@@ -307,18 +268,7 @@ class ListDialog(BaseDialog):
     """A Dialog that uses a list data structure.
     """
 
-    def __init__(
-        self, 
-        messages: typing.Iterable[Msg]=None,
-        renderer: typing.Callable[[typing.List[Msg]], str] = None
-    ):
-        """Create a dialog
-
-        Args:
-            messages: The messages
-        """
-        super().__init__(renderer)
-        self._messages = messages or []
+    messages: typing.List[Msg] = pydantic.Field(default_factory=list)
 
     def __iter__(self) -> typing.Iterator[Msg]:
         """Iterate over each message in the dialog
@@ -326,7 +276,7 @@ class ListDialog(BaseDialog):
         Yields:
             Iterator[typing.Iterator[Msg]]: Each message in the dialog
         """
-        for message in self._messages:
+        for message in self.messages:
             yield message
 
     def __getitem__(self, idx) -> Msg:
@@ -338,7 +288,7 @@ class ListDialog(BaseDialog):
         Returns:
             Msg: The message in the dialog
         """
-        return self._messages[idx]
+        return self.messages[idx]
 
     def __setitem__(self, idx, message) -> Self:
         """Set idx with a message
@@ -350,10 +300,10 @@ class ListDialog(BaseDialog):
         Returns:
             Dialog: The updated dialog
         """
-        if idx == len(self._messages):
-            self._messages.append(message)
+        if idx == len(self.messages):
+            self.messages.append(message)
         else:
-            self._messages[idx] = message
+            self.messages[idx] = message
         return self
 
     def clone(self) -> 'ListDialog':
@@ -364,7 +314,7 @@ class ListDialog(BaseDialog):
         """
         
         return ListDialog(
-            [*self._messages]
+            [*self.messages]
         )
 
     def pop(self, index: int, get_msg: bool=False) -> typing.Union['ListDialog', Msg]:
@@ -373,9 +323,9 @@ class ListDialog(BaseDialog):
         Args:
             index (int): The index to pop
         """
-        msg = self._messages.pop(index)
+        msg = self.messages.pop(index)
         if get_msg:
-            return self._messages, msg
+            return self.messages, msg
         return msg
 
     def remove(self, message: Msg):
@@ -384,7 +334,7 @@ class ListDialog(BaseDialog):
         Args:
             message (Msg): The message to remove
         """
-        self._messages.remove(message)
+        self.messages.remove(message)
 
     def extend(self, dialog: typing.Iterable[Msg]):
         """Extend the dialog with another dialog or a list of messages
@@ -395,7 +345,7 @@ class ListDialog(BaseDialog):
         if isinstance(dialog, BaseDialog):
             dialog = dialog.aslist()
         
-        self._messages.extend(dialog)
+        self.messages.extend(dialog)
         return self
 
     def __len__(self) -> int:
@@ -404,7 +354,7 @@ class ListDialog(BaseDialog):
         Returns:
             int: the number of turns in the dialog
         """
-        return len(self._messages)
+        return len(self.messages)
         
     def append(self, message: Msg) -> Self:
         """Add a message to the end of the dialog
@@ -416,7 +366,7 @@ class ListDialog(BaseDialog):
         Raises:
             ValueError: If the index is not correct
         """
-        self._messages.append(message)
+        self.messages.append(message)
         return self
 
     def insert(self, ind: int, message: Msg) -> Self:
@@ -430,7 +380,7 @@ class ListDialog(BaseDialog):
         Raises:
             ValueError: If the index is not correct
         """
-        self._messages.insert(ind, message)
+        self.messages.insert(ind, message)
         return self
     
     def replace(self, idx: int, message: Msg) -> 'BaseDialog':
@@ -444,26 +394,317 @@ class ListDialog(BaseDialog):
         Raises:
             ValueError: If the index is not correct
         """
-        self._messages[idx] = message
+        self.messages[idx] = message
         return self
 
 
-class DialogTurn(object):
+class DialogTurn(BaseModel):
+    """A node in a dialog tree."""
+
+    message: Msg
+    _parent: 'DialogTurn' | None = PrivateAttr(default=None)
+    _children: typing.List['DialogTurn'] = PrivateAttr(default_factory=list)
+
+    def root(self) -> 'DialogTurn':
+        node = self
+        while node._parent is not None:
+            node = node._parent
+        return node
+
+    def leaf(self) -> 'DialogTurn':
+        if not self._children:
+            return self
+        return self._children[0].leaf()
+
+    @property
+    def parent(self) -> 'DialogTurn' | None:
+        return self._parent
+
+    def children(self) -> typing.Iterator['DialogTurn']:
+        return iter(self._children)
+
+    def append(self, message: Msg) -> 'DialogTurn':
+        turn = DialogTurn(message=message)
+        turn._parent = self
+        self._children.append(turn)
+        return turn
+
+    def prepend(self, message: Msg) -> 'DialogTurn':
+        turn = DialogTurn(message=message)
+        turn._parent = self._parent
+        turn._children.append(self)
+        self._parent = turn
+        return turn
+
+    @property
+    def ancestors(self) -> typing.Iterator['DialogTurn']:
+        node = self
+        while node._parent is not None:
+            node = node._parent
+            yield node
+
+    def child(self, idx: int) -> 'DialogTurn':
+        return self._children[idx]
+
+    def sibling(self, idx: int) -> 'DialogTurn':
+        if self._parent is None:
+            if idx != 0:
+                raise ValueError("Root node has no siblings")
+            return self
+        return self._parent._children[idx]
+
+    def depth(self) -> int:
+        depth = 1
+        node = self
+        while node._parent is not None:
+            node = node._parent
+            depth += 1
+        return depth
+
+    def n_children(self) -> int:
+        return len(self._children)
+
+    def n_siblings(self) -> int:
+        return 1 if self._parent is None else len(self._parent._children)
+
+
+class TreeDialog(BaseDialog):
+    """Dialog with a tree structure."""
+
+    _root: DialogTurn | None = PrivateAttr(default=None)
+    _leaf: DialogTurn | None = PrivateAttr(default=None)
+    _indices: typing.List[int] = PrivateAttr(default_factory=list)
+    _counts: typing.List[int] = PrivateAttr(default_factory=list)
+
+    def update_leaf_path(self):
+        """Set self.leaf_path based on current _leaf location."""
+        path = []
+        node = self._leaf
+        while node and node._parent is not None:
+            parent = node._parent
+            idx = parent.children.index(node)
+            path.append(idx)
+            node = parent
+        self.leaf_path = path[::-1]  # Reverse to be root-to-leaf
+
+    def restore_leaf(self):
+        """Restore _leaf pointer after model_validate."""
+        node = self.root
+        for idx in self.leaf_path:
+            if node is None or idx >= len(node.children):
+                self._leaf = None
+                return
+            node = node.children[idx]
+        self._leaf = node
+
+    def model_post_init(self, __context):
+        if self.root:
+            self.root.model_post_init(__context)
+        self.restore_leaf()
+
+    def append(self, message: Msg) -> Self:
+        if self._leaf is None:
+            self._leaf = DialogTurn(message=message)
+            self._root = self._leaf
+        else:
+            self._leaf = self._leaf.append(message)
+        self._update()
+        return self
+
+    def insert(self, ind: int, message: Msg) -> Self:
+        if self._leaf is None:
+            if ind != 0:
+                raise ValueError("Insert index invalid for empty tree")
+            self._leaf = DialogTurn(message=message)
+            self._root = self._leaf
+        else:
+            turn = list(self._leaf.ancestors)[::-1][ind]
+            turn.prepend(message)
+        self._update()
+        return self
+
+    def __iter__(self) -> typing.Iterator[Msg]:
+        if not self._leaf:
+            return iter([])
+        return iter([*reversed([t.message for t in self._leaf.ancestors]), self._leaf.message])
+
+    def __getitem__(self, idx: int) -> Msg:
+        return list(self)[idx]
+
+    def __setitem__(self, idx: int, msg: Msg):
+        path = list(self._leaf.ancestors)[::-1] + [self._leaf]
+        path[idx].message = msg
+
+    def __len__(self) -> int:
+        return len(list(self))
+
+    def _update(self):
+        self._update_indices()
+        self._update_counts()
+
+    def _update_indices(self):
+        self._indices = []
+        if self._leaf is None:
+            return
+        path = list(self._leaf.ancestors)[::-1] + [self._leaf]
+        for i in range(len(path)-1):
+            idx = path[i]._children.index(path[i+1])
+            self._indices.append(idx)
+        self._indices.append(0)
+
+    def _update_counts(self):
+        self._counts = []
+        if self._leaf is None:
+            return
+        path = list(self._leaf.ancestors)[::-1] + [self._leaf]
+        for node in path:
+            self._counts.append(node.n_children())
+
+
+
+def exclude_messages(
+    dialog: BaseDialog, 
+    val: typing.Union[typing.Any, typing.Set], 
+    field='role'
+) -> ListDialog:
+    """Exclude messages from the dialog
+
+    Args:
+        dialog (BaseDialog): The dialog to filter
+        val (typing.Union[typing.Any, typing.Set]): The value to exclude based on
+        field (str, optional): The field to exclude basd on. Defaults to 'role'.
+
+    Returns:
+        ListDialog: The resulting dialog
+    """
+    if not isinstance(val, typing.Set):
+        val = {val}
+
+    return ListDialog(
+        [msg for msg in dialog if msg[field] not in val]
+    )
+
+            
+def include_messages(
+    dialog: BaseDialog, 
+    val: typing.Union[typing.Any, typing.Set], 
+    field='role'
+) -> ListDialog:
+    """Include messages in the resulting dialog
+
+    Args:
+        dialog (BaseDialog): The dialog to filter
+        val (typing.Union[typing.Any, typing.Set]): The value to exclude based on
+        field (str, optional): The field to exclude basd on. Defaults to 'role'.
+
+    Returns:
+        ListDialog: The resulting dialog
+    """
+    if not isinstance(val, typing.Set):
+        val = {val}
+
+    return ListDialog(
+        [msg for msg in dialog if msg[field] in val]
+    )
+
+
+def to_dialog(prompt: typing.Union[BaseDialog, Msg]) -> BaseDialog:
+    """Convert a prompt to a dialog
+
+    Args:
+        prompt (typing.Union[Dialog, Msg]): The prompt to convert
+    """
+    if isinstance(prompt, Msg):
+        prompt = ListDialog([prompt])
+
+    return prompt
+
+
+def to_list_input(msg: typing.List | typing.Tuple | BaseDialog | Msg) -> typing.List:
+
+    if not isinstance(msg, typing.List) and not isinstance(msg, typing.Tuple):
+        return msg.to_list_input()
+    return msg
+
+
+def exclude_role(
+    messages: typing.Iterable[Msg], 
+    *role: str
+) -> typing.List[Msg]:
+    """
+    Filter messages by excluding specified roles.
+    This function takes an iterable of messages and one or more role strings, returning
+    a new list containing only messages whose roles are not in the specified roles to exclude.
+    Args:
+        messages (typing.Iterable[Msg]): An iterable of message objects
+        *role (str): Variable number of role strings to exclude
+    Returns:
+        typing.List[Msg]: A list of messages excluding those with specified roles
+    Example:
+        >>> messages = [Msg(role="user", content="hi"), Msg(role="system", content="hello")]
+        >>> exclude_role(messages, "system")
+        [Msg(role="user", content="hi")]
+    """
+    exclude = set(role)
+    return [message for message in messages
+        if message.role not in exclude]
+
+
+def include_role(
+    messages: typing.Iterable[Msg],
+    *role: str
+) -> typing.List[Msg]:
+    """Filter the iterable of messages by a particular role
+
+    Args:
+        messages (typing.Iterable[Msg]): 
+
+    Returns:
+        typing.List[Msg]: 
+    """
+    include = set(role)
+    return [message for message in messages
+        if message.role in include]
+
+
+class FieldRenderer(object):
+
+    def __init__(self, field: str='content'):
+        """Renderer to render a specific field in the message
+
+        Args:
+            field (str, optional): The field name. Defaults to 'content'.
+        """
+        self.field = field
+
+    def __call__(self, msg: Msg | BaseDialog) -> str:
+        """Render a message
+
+        Args:
+            msg (Msg): The message to render
+
+        Returns:
+            str: The result
+        """
+        messages = to_list_input(msg)
+        return '\n'.join(
+            f'{msg['role']}: {msg[self.field]}'
+            for msg in messages
+        )
+
+
+class DialogTurn(pydantic.BaseModel):
     """A Dialog that uses a list data structure.
     """
-    # _message: Msg = pydantic.PrivateAttr()
-    # _parent: 'DialogTurn' = pydantic.PrivateAttr(default=None)
-    # _children: typing.List['DialogTurn'] = pydantic.PrivateAttr(default_factory=list)
 
-    def __init__(
-        self, message: Msg, 
-        parent: Msg=None, 
-        children: typing.List[Msg]=None
-    ):
-        super().__init__()
-        self.message = message
-        self._parent = parent
-        self._children = children or []
+    message: Msg
+    children: typing.Union[typing.List['DialogTurn']] = pydantic.Field(default_factory=list)
+    _parent: typing.Union['DialogTurn', None] = pydantic.PrivateAttr(default=None)
+
+    def model_post_init(self, __context):
+        for child in self.children:
+            child._parent = self
+            child.model_post_init(__context)
 
     def root(self) -> 'DialogTurn':
 
@@ -696,21 +937,13 @@ class DialogTurn(object):
 class TreeDialog(BaseDialog):
     """
     """
+    _leaf: DialogTurn | None = PrivateAttr(default_factory=None)
+    _indices: typing.List[int] = PrivateAttr(default_factory=None)
+    _counts: typing.List[int] = PrivateAttr(default_factory=None)
+    root: DialogTurn | None = None
 
-    def __init__(
-        self, 
-        renderer: typing.Callable[[typing.List[Msg]], str] | None=None
-    ):
-        """Create a dialog
-
-        Args:
-            messages: The messages
-        """
-        super().__init__(renderer)
-        self._leaf = None
-        self._indices = []
-        self._counts = []
-        self._root: DialogTurn | None = None
+    def model_post_init(self, __context) -> None:
+        # Runs after __init__ and validation
         self._update()
 
     def ancestor(self, count: int):
@@ -1039,132 +1272,105 @@ class TreeDialog(BaseDialog):
         self._update_indices()
 
 
-def exclude_messages(
-    dialog: BaseDialog, 
-    val: typing.Union[typing.Any, typing.Set], 
-    field='role'
-) -> ListDialog:
-    """Exclude messages from the dialog
+# class Msg(dict):
+#     """A Msg used for a dialog
+#     """
+#     def __init__(
+#         self, role: str, type_: str='data', 
+#         meta: typing.Dict=None, delta: typing.Dict=None, 
+#         _include_role: bool=True, _follow_up: typing.List['Msg']=None, _filtered: bool=False, **kwargs
+#     ):
+#         """Create a Msg
 
-    Args:
-        dialog (BaseDialog): The dialog to filter
-        val (typing.Union[typing.Any, typing.Set]): The value to exclude based on
-        field (str, optional): The field to exclude basd on. Defaults to 'role'.
+#         Args:
+#             type_ (str, optional): The type of message. Defaults to 'data'.
+#             meta (typing.Dict, optional): Any additional information not related to the message specifically. Defaults to None.
+#             delta (typing.Dict, optional): The change in the message. Defaults to None.
+#         """
+#         super().__init__(
+#             role=role, _include_role=_include_role, type_=type_, meta=meta or {}, delta=delta or {}, **kwargs
+#         )
+#         self.follow_up = _follow_up if _follow_up is not None else []
+#         self.filtered = _filtered
 
-    Returns:
-        ListDialog: The resulting dialog
-    """
-    if not isinstance(val, typing.Set):
-        val = {val}
+#     @property
+#     def type(self) -> str:
+#         """Get the type of the message"""
+#         return self['type_']
+    
+#     def __getattr__(self, key) -> typing.Any:
+#         """Get an attribute of the message"""
+#         return self.__getitem__(key)
+    
+#     def __setattr__(self, name, value):
+#         """Set an attribute of the message"""
+#         return self.__setitem__(name, value)
+    
+#     def to_input(self) -> typing.Dict:
+#         """Convert the message to a dictionary"""
+#         exclude = {'meta', 'delta', '_include_role', 'type_'}
+#         d = {k: v for k, v in self.items() if k not in exclude}
+#         if self['_include_role'] is False:
+#             del d['role']
 
-    return ListDialog(
-        [msg for msg in dialog if msg[field] not in val]
-    )
+#         return d
+    
+#     def meta_(self, **kwargs) -> Self:
+#         """Update the values of the meta table
 
-            
-def include_messages(
-    dialog: BaseDialog, 
-    val: typing.Union[typing.Any, typing.Set], 
-    field='role'
-) -> ListDialog:
-    """Include messages in the resulting dialog
+#         Returns:
+#             Self: The message after update
+#         """
+#         self['meta'].update(**kwargs)
+#         return self
+    
+#     @property
+#     def m(self) -> typing.Dict:
+#         """Get the meta data from the message """
+#         return self['meta']
 
-    Args:
-        dialog (BaseDialog): The dialog to filter
-        val (typing.Union[typing.Any, typing.Set]): The value to exclude based on
-        field (str, optional): The field to exclude basd on. Defaults to 'role'.
+#     def to_list_input(self) -> typing.List[typing.Dict]:
+#         """Convert to an input appropriate for a list
 
-    Returns:
-        ListDialog: The resulting dialog
-    """
-    if not isinstance(val, typing.Set):
-        val = {val}
+#         Returns:
+#             typing.List[typing.Dict]: The message converted to a list
+#         """
+#         if self.filtered:
+#             return []
+#         return [self.to_input()]
+    
+#     def render(self) -> str:
+#         """
 
-    return ListDialog(
-        [msg for msg in dialog if msg[field] in val]
-    )
-
-
-def to_dialog(prompt: typing.Union[BaseDialog, Msg]) -> BaseDialog:
-    """Convert a prompt to a dialog
-
-    Args:
-        prompt (typing.Union[Dialog, Msg]): The prompt to convert
-    """
-    if isinstance(prompt, Msg):
-        prompt = ListDialog([prompt])
-
-    return prompt
-
-
-def to_list_input(msg: typing.List | typing.Tuple | BaseDialog | Msg) -> typing.List:
-
-    if not isinstance(msg, typing.List) and not isinstance(msg, typing.Tuple):
-        return msg.to_list_input()
-    return msg
-
-
-def exclude_role(
-    messages: typing.Iterable[Msg], 
-    *role: str
-) -> typing.List[Msg]:
-    """
-    Filter messages by excluding specified roles.
-    This function takes an iterable of messages and one or more role strings, returning
-    a new list containing only messages whose roles are not in the specified roles to exclude.
-    Args:
-        messages (typing.Iterable[Msg]): An iterable of message objects
-        *role (str): Variable number of role strings to exclude
-    Returns:
-        typing.List[Msg]: A list of messages excluding those with specified roles
-    Example:
-        >>> messages = [Msg(role="user", content="hi"), Msg(role="system", content="hello")]
-        >>> exclude_role(messages, "system")
-        [Msg(role="user", content="hi")]
-    """
-    exclude = set(role)
-    return [message for message in messages
-        if message.role not in exclude]
+#         Returns:
+#             str: A string of the message
+#         """
+#         vals = {
+#             key: val for key, val in self.items() if key not in (
+#                 'role', 'meta', '_include_role',
+#                 'delta', 'type_'
+#             )
+#         }
+#         return f'{self.role} {vals}'
 
 
-def include_role(
-    messages: typing.Iterable[Msg],
-    *role: str
-) -> typing.List[Msg]:
-    """Filter the iterable of messages by a particular role
+# class StreamMsg(Msg):
+#     """A message that is streamed
+#     """
 
-    Args:
-        messages (typing.Iterable[Msg]): 
+#     def __init__(
+#         self, role: str, type_: str='data', 
+#         meta: typing.Dict=None, delta: typing.Dict=None, 
+#         _include_role: bool=True, is_last: bool=False, **kwargs
+#     ):
+#         """Create a Stream Msg
 
-    Returns:
-        typing.List[Msg]: 
-    """
-    include = set(role)
-    return [message for message in messages
-        if message.role in include]
-
-
-class FieldRenderer(object):
-
-    def __init__(self, field: str='content'):
-        """Renderer to render a specific field in the message
-
-        Args:
-            field (str, optional): The field name. Defaults to 'content'.
-        """
-        self.field = field
-
-    def __call__(self, msg: Msg | BaseDialog) -> str:
-        """Render a message
-
-        Args:
-            msg (Msg): The message to render
-
-        Returns:
-            str: The result
-        """
-        messages = to_list_input(msg)
-        return '\n'.join(
-            f'{msg['role']}: {msg[self.field]}'
-            for msg in messages
-        )
+#         Args:
+#             type_ (str, optional): The type of message. Defaults to 'data'.
+#             meta (typing.Dict, optional): Any additional information not related to the message specifically. Defaults to None.
+#             delta (typing.Dict, optional): The change in the message. Defaults to None.
+#         """
+#         super().__init__(
+#             role=role, type_=type_, meta=meta or {}, delta=delta or {},_include_role=_include_role, **kwargs
+#         )
+#         self.is_last = is_last

@@ -18,3 +18,9 @@ from ._base import (
     ParamSet
 
 )
+from ._render import (
+    TemplateField,
+    render,
+    is_renderable,
+    render_multi,
+)

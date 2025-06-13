@@ -1,16 +1,12 @@
 from __future__ import annotations
 from abc import abstractmethod, ABC
 
-from typing import Generic
+from typing import Generic, Callable, Any, Dict, Optional, Union, List
 import inspect
-from typing import Callable, Any, Dict, Optional, Union, List
 from dataclasses import InitVar
 import inspect
 import typing as t
 from uuid import uuid4
-import warnings
-from pydantic import PrivateAttr
-
 import json
 from dataclasses import dataclass
 
@@ -81,7 +77,6 @@ class ShareableItem(t.Generic[J]):
             raise TypeError(f"Expected data of type {expected_type}, got {type(value)}")
         self._data = value
         self.update_data_hook(value)
-
 
     @property
     def data(self) -> J:
