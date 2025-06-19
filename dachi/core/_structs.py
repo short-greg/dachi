@@ -212,3 +212,195 @@ class ModuleDict(BaseModule, t.Generic[V]):
             else:
                 raise TypeError(f"Expected BaseSpec values in dict, got {type(v)}")
         return out
+
+
+
+class SerialDict(BaseModule):
+    """
+    Dict-like container.
+
+    • Public runtime attribute  : **`storage`**   (actual data)
+    • Spec / constructor field : **`items`**
+
+      – `items` is an `InitVar[dict[str, Any]]`; it is written into
+        `self.storage` during `__post_init__`, and returned by
+        `spec_hook`.  Thus the external (spec) name remains *items*,
+        while internal logic uses *storage*.
+    """
+
+    # 1️⃣ Spec hook refers to *items*
+    __spec_hooks__: ClassVar[list[str]] = ["items"]
+
+    # constructor field
+    items: InitVar[dict[str, t.Any] | None] = None
+
+    # -------------------------------------------------- constructor
+    def __post_init__(self, items: dict[str, t.Any] | None):
+        # move InitVar ➜ storage  (only at first construction)
+        self._storage = {}
+        if items is not None:
+            self._storage.update(items)
+
+        # register child modules
+        for k, v in self._storage.items():
+            if not isinstance(k, str):
+                raise TypeError("SerialDict keys must be strings")
+            if isinstance(v, BaseModule):
+                self.register_module(k, v)
+
+    # -------------------------------------------------- mapping helpers
+    def __getitem__(self, k: str): return self._storage[k]
+    def __setitem__(self, k: str, v: t.Any):
+        if not isinstance(k, str):
+            raise TypeError("SerialDict keys must be strings")
+        if isinstance(v, BaseModule):
+            self.register_module(k, v)
+        elif k in self._modules:          # replacing a former module
+            del self._modules[k]
+        self._storage[k] = v
+
+    def __iter__(self): return iter(self._storage)
+    def __len__(self):  return len(self._storage)
+    def keys(self):     return self._storage.keys()
+    def values(self):   return self._storage.values()
+    def items(self):    return self._storage.items()
+
+    # -------------------------------------------------- schema hook
+    @classmethod
+    def __build_schema_hook__(
+        cls, name: str, typ: t.Any, default: t.Any
+    ):
+        if name != "items":
+            raise ValueError(f"No spec-hook for {name}")
+        return dict[str, t.Any]
+
+    # -------------------------------------------------- spec serialisation
+    def spec_hook(self, *, name: str, val: t.Any, to_dict: bool = False):
+        if name != "items":
+            raise ValueError
+        out: dict[str, t.Any] = {}
+        for k, v in self._storage.items():
+            if isinstance(v, BaseModule):
+                out[k] = v.spec(to_dict=to_dict)
+            elif isinstance(v, BaseModel) and to_dict:
+                out[k] = v.model_dump()
+            else:
+                out[k] = v
+        return out
+
+    # -------------------------------------------------- spec deserialisation
+    @classmethod
+    def from_spec_hook(cls, name: str, val: t.Any, ctx: dict | None = None):
+        if name != "items":
+            raise ValueError
+        if not isinstance(val, dict):
+            raise TypeError("'items' must be a dict")
+
+        ctx = ctx or {}
+        rebuilt: dict[str, t.Any] = {}
+        for k, v in val.items():
+            if isinstance(v, BaseSpec) or (isinstance(v, dict) and "kind" in v):
+                spec_obj = v if isinstance(v, BaseSpec) else \
+                           registry[v["kind"]].obj.schema().model_validate(v)
+                if spec_obj.id in ctx:
+                    rebuilt[k] = ctx[spec_obj.id]
+                else:
+                    mod_cls = registry[spec_obj.kind].obj
+                    rebuilt[k] = mod_cls.from_spec(spec_obj, ctx)
+                    ctx[spec_obj.id] = rebuilt[k]
+            else:
+                rebuilt[k] = v
+        return rebuilt
+
+
+# ---------------------------------------------------------------------
+# SerialTuple – ordered sequence container
+# ---------------------------------------------------------------------
+class SerialTuple(BaseModule):
+    """
+    An *ordered* container of heterogeneous, serialisable items.
+
+    • Accepts anything Pydantic can serialise **or** any `BaseModule`.
+    • Preserves insertion order.
+    • Round-trips through `.spec()` / `.from_spec()` just like ModuleList,
+      but without type restrictions on the stored values.
+    """
+
+    __spec_hooks__: ClassVar[list[str]] = ["items"]
+    items: InitVar[tuple[t.Any, ...] | list[t.Any]]
+
+    # -------------------------------------------------- runtime constructor
+    def __post_init__(self, items: tuple[t.Any, ...] | list[t.Any] | None = None):
+        self._storage: list[t.Any] = []
+        if items:
+            for item in items:
+                self.append(item)
+
+    # -------------------------------------------------- schema generation
+    @classmethod
+    def __build_schema_hook__(cls, name: str, typ: t.Any, default: t.Any):
+        if name != "items":
+            raise ValueError(f"No spec-hook for {name}")
+        # The list elements may be BaseSpec OR primitives, so we use Any
+        return list[t.Any]
+
+    # -------------------------------------------------- sequence helpers
+    def __len__(self):           return len(self._storage)
+    def __iter__(self):          return iter(self._storage)
+    def __getitem__(self, idx):  return self._storage[idx]
+
+    # Only mutation we expose is append – tuples are conceptually immutable
+    def append(self, value: t.Any):
+        if isinstance(value, BaseModule):
+            self.register_module(str(len(self._storage)), value)
+        self._storage.append(value)
+
+    # -------------------------------------------------- spec serialisation
+    def spec_hook(self, *, name: str, val: t.Any, to_dict: bool = False):
+        if name != "items":
+            raise ValueError(f"Unknown spec-hook name {name}")
+
+        out: list[t.Any] = []
+        for v in self._storage:
+            if isinstance(v, BaseModule):
+                out.append(v.spec(to_dict=to_dict))
+            elif isinstance(v, BaseModel) and to_dict:
+                out.append(v.model_dump())
+            else:
+                out.append(v)
+        return out
+
+    # -------------------------------------------------- spec deserialisation
+    @classmethod
+    def from_spec_hook(
+        cls,
+        name: str,
+        val: t.Any,
+        ctx: dict | None = None,
+    ) -> list[t.Any]:
+        if name != "items":
+            raise ValueError(f"Unknown spec-hook name {name}")
+        if not isinstance(val, list):
+            raise TypeError(f"'items' must be list[Any], got {type(val)}")
+
+        ctx = ctx or {}
+        out: list[t.Any] = []
+
+        for item in val:
+            # BaseModule spec?
+            if isinstance(item, BaseSpec) or (isinstance(item, dict) and "kind" in item):
+                spec_obj: BaseSpec = (
+                    item if isinstance(item, BaseSpec)
+                    else registry[item["kind"]].obj.schema().model_validate(item)
+                )
+                if spec_obj.id in ctx:
+                    out.append(ctx[spec_obj.id])
+                else:
+                    mod_cls = registry[spec_obj.kind].obj
+                    module_instance = mod_cls.from_spec(spec_obj, ctx)
+                    ctx[spec_obj.id] = module_instance
+                    out.append(module_instance)
+            else:
+                out.append(item)
+
+        return out

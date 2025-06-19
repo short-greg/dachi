@@ -162,4 +162,3 @@ class EvaluationBatch(pydantic.BaseModel):
             "evaluations": [e.render() for e in self.evaluations]
         })
 
-

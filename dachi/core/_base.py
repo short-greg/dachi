@@ -528,7 +528,7 @@ class BaseModule:
         for child in self._modules.values():
             child.apply(fn, filter_type=filter_type)
 
-    def eval(self):
+    def eval_args(self):
         """Alias for ``train(False)``."""
         return self.train(False)
 

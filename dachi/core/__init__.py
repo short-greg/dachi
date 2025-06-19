@@ -18,9 +18,25 @@ from ._base import (
     ParamSet
 
 )
+from ._structs import (
+    ModuleDict,
+    ModuleList,
+    SerialDict
+)
 from ._render import (
     TemplateField,
     render,
     is_renderable,
     render_multi,
+)
+from ._msg import (
+    Msg,
+    BaseDialog,
+    ListDialog,
+    TreeDialog,
+    DialogTurn,
+    Resp,
+    to_dialog,
+    to_input,
+    to_list_input,
 )
