@@ -23,6 +23,8 @@ S = typing.TypeVar('S', bound=pydantic.BaseModel)
 LLM_PROMPT = typing.Union[typing.Iterable[Msg], Msg]
 
 
+# TODO: Update Assistant / LLM
+
 # 1st party
 import typing
 from abc import ABC, abstractmethod

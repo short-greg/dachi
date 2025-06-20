@@ -9,10 +9,10 @@ from functools import wraps
 import pydantic
 
 # local
-from ..core import Templatable
-from ..proc._process import (
-    Module, AsyncModule, StreamModule, 
-    AsyncStreamModule
+from ..core import Templatable, BaseModule
+from ._process import (
+    Process, AsyncProcess, StreamProcess, 
+    AsyncStreamProcess
 )
 from ..store import Param
 from ..utils import primitives, str_formatter
@@ -42,42 +42,45 @@ S = typing.TypeVar('S')
 # TODO: MOVE OUT OF HERE
 
 
-
-class IBase(ABC):
+class IBase(pydantic.BaseModel):
     """
     This is the base class for wrapping an Instruction functor. It is used to create an instruction when called.
     """
 
-    def __init__(
-        self, f, is_method: bool=False, out_conv: OutConv=None, llm_out: str='content'
-    ):
+    f: typing.Callable
+    is_method: bool = False
+    out_conv: OutConv = None
+    llm_out: str = 'content'
+    _docstring: str = pydantic.PrivateAttr()
+    _name: str = pydantic.PrivateAttr()
+    _parameters: typing.List = pydantic.PrivateAttr()
+    _out: FromMsg = pydantic.PrivateAttr()
+
+    def model_post_init(self):
         """ Initializes the IBase instance.
         Args:
             f (Callable): The function to be wrapped as an instruction.
             is_method (bool, optional): Indicates if the function is a method. Defaults to False.
             out (OutConv, optional): The output converter that converts the output of the LLM into a more useful format. Defaults to None.
         """
-        self._f = f
-        self._is_method = is_method
-        self._docstring = f.__doc__
-        self._name = f.__name__
-        self._signature = str(inspect.signature(f))
-        self._parameters = inspect.signature(f).parameters
-        self._return_annotation = inspect.signature(f).return_annotation
+        self._docstring = self.f.__doc__
+        self._name = self.f.__name__
+        self._signature = str(inspect.signature(self.f))
+        self._parameters = inspect.signature(self.f).parameters
+        self._return_annotation = inspect.signature(self.f).return_annotation
 
         out_cls = self._return_annotation
         if out_conv is None:
             if out_cls in primitives:
                 out_conv = PrimOut(
-                    name='out', from_=llm_out,
+                    name='out', from_=self.llm_out,
                     out_cls=self.out_cls
                 )
             elif issubclass(out_cls, pydantic.BaseModel):
-                out_conv = PydanticOut(name='out', from_=llm_out, out_cls=out_cls)
+                out_conv = PydanticOut(name='out', from_=self.llm_out, out_cls=out_cls)
             else:
-                out_conv = NullOut(name='out', from_=llm_out)
+                out_conv = NullOut(name='out', from_=self.llm_out)
 
-        self._out_conv: OutConv = out_conv
         self._out = FromMsg('out')
 
     def _align_params(
@@ -124,7 +127,7 @@ class IBase(ABC):
         Returns:
             typing.Callable: The function wrapped
         """
-        return self._f
+        return self.f
 
     @property
     def is_method(self) -> typing.Callable:
@@ -181,10 +184,10 @@ class InstF(IBase):
         )
 
         if instance is not None:
-            return self._f(
+            return self.f(
                 instance, **params
             )
-        return self._f(
+        return self.f(
             **params
         )
 
@@ -204,11 +207,10 @@ class SigF(IBase):
     the signature
     """
 
-    def __init__(
-        self, f, is_method = False, 
-        doc: typing.Optional[str]=None,
-        train: bool=False, out_conv: OutConv=None,
-        llm_out: str='content'
+    train: bool = False
+
+    def model_post_init(
+        self
     ):
         """
         Args:
@@ -218,17 +220,15 @@ class SigF(IBase):
             train (bool, optional): Whether to train the instruction. Defaults to False.
             out (OutConv, optional): The out to process the output. Defaults to None.
         """
-        super().__init__(
-            f, is_method, out_conv, llm_out,
-        )
-        self._doc = doc or self._docstring
+        super().model_post_init()
+        self._doc = self._doc or self._docstring
         cue = Cue(
             text=self._doc
         )
         self._doc_param = Param(
             name=self._name,
             data=cue,
-            training=train
+            training=self.train
         )
         
     def __call__(self, instance, *args, **kwargs) -> str:
@@ -245,9 +245,9 @@ class SigF(IBase):
         )
 
         if instance is None:
-            cur_kwargs = self._f(**params) or {}
+            cur_kwargs = self.f(**params) or {}
         else:
-            cur_kwargs = self._f(
+            cur_kwargs = self.f(
                 instance, **params
             ) or {}
     
@@ -273,20 +273,13 @@ class SigF(IBase):
         return self._return_annotation
 
 
-class FuncDecBase:
+class FuncDecBase(BaseModule):
     """This is used to decorate an "instruct" function
     that will be used 
     """
 
-    def __init__(self, inst: IBase, instance=None):
-        """
-
-        Args:
-            inst (IBase): 
-            instance (_type_, optional): . Defaults to None.
-        """
-        self._inst = inst
-        self._instance = instance
+    inst: IBase
+    instance: typing.Any
 
     @abstractmethod
     def __call__(self, *args, **kwargs):
@@ -371,29 +364,25 @@ class FuncDecBase:
         )
 
 
-class FuncDec(FuncDecBase, Module):
+class FuncDec(FuncDecBase, Process):
     """
     A class that allows one to decorate a function with an "instruction" so that the function will be an LLM (Language Model) call.
     """
-    def __init__(
-        self, inst, engine: Assist, 
-        to_msg: ToMsg=None,
-        kwargs: typing.Dict=None,
-        instance=None
+
+    engine: Assist
+    to_msg: ToMsg | None = None
+    kwargs: typing.Dict | None = None
+    instance: typing.Any | None
+
+    def __post_init__(
+        self
     ):
         """
-
         Args:
-            inst: The 
-            engine (Assist): The engine to use 
-            to_msg (ToMsg, optional): Converts the input into a message. Defaults to None.
-            kwargs (typing.Dict, optional): The kwargs to send to the engine. Defaults to None.
-            instance (optional): The instance if it is a method. Defaults to None.
         """
-        super().__init__(inst, instance)
-        self._engine = engine
-        self._to_msg = to_msg or ToText()
-        self._kwargs = kwargs or {}
+        super().__post_init__()
+        self.to_msg = self.to_msg or ToText()
+        self.kwargs = self.kwargs or {}
 
     def forward(self, *args, **kwargs):
         """
@@ -446,30 +435,25 @@ class FuncDec(FuncDecBase, Module):
         return self.forward(*args, **kwargs)
 
 
-class AFuncDec(FuncDecBase, AsyncModule):
+class AFuncDec(FuncDecBase, AsyncProcess):
     """
     A class that allows one to decorate an async function with an "instruction" so that the function will be an LLM (Language Model) call.
     """
 
-    def __init__(
-        self, inst, engine: AsyncAssist, 
-        to_msg: ToMsg=None,
-        kwargs: typing.Dict=None,
-        instance=None
+    engine: AsyncAssist
+    to_msg: ToMsg | None = None
+    kwargs: typing.Dict | None = None
+    instance: typing.Any | None
+
+    def __post_init__(
+        self
     ):
         """
-
         Args:
-            inst: The Instruction class
-            engine (AsyncAssist): The engine to use for outputting
-            to_msg (ToMsg, optional): Use to convert to a message. Defaults to None.
-            kwargs (typing.Dict, optional): The key-word args. Defaults to None.
-            instance (optional): The instance to use . Defaults to None.
         """
-        super().__init__(inst, instance)
-        self._engine = engine
-        self._to_msg = to_msg or ToText()
-        self._kwargs = kwargs or {}
+        super().__post_init__()
+        self.to_msg = self.to_msg or ToText()
+        self.kwargs = self.kwargs or {}
 
     async def aforward(self, *args, **kwargs):
         """
@@ -528,21 +512,25 @@ class AFuncDec(FuncDecBase, AsyncModule):
         )
     
 
-class StreamDec(FuncDecBase, StreamModule):
+class StreamDec(FuncDecBase, StreamProcess):
     """
     A class that allows one to decorate a streaming function with an "instruction" so that the function will be an LLM (Language Model) call.
     """
 
-    def __init__(
-        self, inst: IBase, engine: StreamAssist, 
-        to_msg: ToMsg=None,
-        kwargs: typing.Dict=None,
-        instance=None
+    engine: StreamAssist
+    to_msg: ToMsg | None = None
+    kwargs: typing.Dict | None = None
+    instance: typing.Any | None
+
+    def __post_init__(
+        self
     ):
-        super().__init__(inst, instance)
-        self._engine = engine
-        self._to_msg = to_msg or ToText()
-        self._kwargs = kwargs or {}
+        """
+        Args:
+        """
+        super().__post_init__()
+        self.to_msg = self.to_msg or ToText()
+        self.kwargs = self.kwargs or {}
 
     def stream(self, *args, **kwargs):
         """
@@ -598,31 +586,25 @@ class StreamDec(FuncDecBase, StreamModule):
         yield from self.stream(*args, **kwargs)
 
 
-class AStreamDec(FuncDecBase, AsyncStreamModule):
+class AStreamDec(FuncDecBase, AsyncStreamProcess):
     """
     A class that allows one to decorate a asynchronous streaming function with an "instruction" so that the function will be an LLM (Language Model) call.
     """
 
-    def __init__(
-        self, inst, engine: AsyncStreamAssist, 
-        to_msg: ToMsg=None,
-        kwargs: typing.Dict=None,
-        instance=None
+    engine: AsyncStreamAssist
+    to_msg: ToMsg | None = None
+    kwargs: typing.Dict | None = None
+    instance: typing.Any | None
+
+    def __post_init__(
+        self
     ):
         """
-
         Args:
-            inst: The instruction to execute
-            engine (AsyncStreamAssist): The LLM engine to use in execution
-            to_msg (ToMsg, optional): The method to convert to a message. Defaults to None.
-            kwargs (typing.Dict, optional): The kwargs to send to the LLM. Defaults to None.
-            instance (optional): The instance for the function if a method. Defaults to None.
         """
-        super().__init__(inst, instance)
-        self._engine = engine
-        self._to_msg = to_msg or ToText()
-        self._kwargs = kwargs or {}
-
+        super().__post_init__()
+        self.to_msg = self.to_msg or ToText()
+        self.kwargs = self.kwargs or {}
     async def astream(self, *args, **kwargs):
         """
         Asynchronously streams the execution of an instruction by calling the LLM.

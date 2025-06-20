@@ -21,11 +21,11 @@ import typing
 
 # local
 from . import Msg
-from ..proc import Module, AsyncModule
+from ._process import Process
 from .. import utils
 
 
-class RespGet(Module):
+class RespGet(Process):
     """Retrieves from the message (not the meta in the message)"""
 
     @abstractmethod
@@ -35,14 +35,9 @@ class RespGet(Module):
 
 class KeyGet(RespGet):
     """Retrieves from the message (not the meta in the message)"""
-    def __init__(self, name: str, meta: bool=False):
-        """Use to retrieve from the base message dict.
 
-        Args:
-            name (str): The name of the message key to retrieve
-        """
-        self.name = name
-        self.meta = meta
+    name: str
+    meta: bool = False
 
     def forward(self, msg) -> typing.Any:
         """
@@ -60,13 +55,16 @@ class KeyGet(RespGet):
 
 class TupleGet(RespGet):
     """Retrieves from the message (not the meta in the message)"""
-    def __init__(self, keys: typing.Iterable):
+
+    _keys: typing.List[str]
+
+    def __post_init__(self, keys: typing.Iterable):
         """Use to retrieve from the base message dict.
 
         Args:
             name (str): The name of the message key to retrieve
         """
-        self._rets = [to_get(key) for key in keys]
+        self._rets = [to_get(key) for key in self._keys]
 
     def forward(self, msg):
         
@@ -101,29 +99,26 @@ def to_get(key: str) -> RespGet:
     raise ValueError(f'Could not convert {key} to a MsgRet')
 
 
-
-class RespProc(Module, ABC):
+class RespProc(Process, ABC):
     """Use a reader to read in data convert data retrieved from
     an LLM to a better format
     """
     last_val = ''
+    name: str
+    _from: str | typing.List[str]
 
-    def __init__(
-        self, name: str, from_: typing.Union[str, typing.List[str]]
-    ):
+    def __post_init__(self):
         """A module used to process a message
 
         Args:
             name (str): The name of the output
             from_ (typing.Union[str, typing.List[str]]): 
         """
-        self.name = name
-        if isinstance(from_, str):
-            from_ = [from_]
+        if isinstance(self._from, str):
+            self._from = [self._from]
             self._single = True
         else:
             self._single = False
-        self._from = from_
 
     def post(
         self, resp: Resp, result, delta_store: typing.Dict, streamed: bool=False, is_last: bool=False):
@@ -170,16 +165,16 @@ class RespProc(Module, ABC):
         """
         delta_store = delta_store if delta_store is not None else {}
 
-        resp = [resp.m[r] for r in self._from]
+        resp = [resp.data[r] for r in self._from]
         is_undefined = all(r is utils.UNDEFINED for r in resp)
         
         if self._single:
             resp = resp[0]
         
         if is_undefined:
-            resp.m[self.name] = utils.UNDEFINED
+            resp.data[self.name] = utils.UNDEFINED
             return utils.UNDEFINED
-        resp.m[self.name] = res = self.delta(
+        resp.data[self.name] = res = self.delta(
             resp, delta_store, is_streamed, is_last
         )
         self.post(resp, res, is_streamed, is_last)
@@ -217,15 +212,11 @@ class RespProc(Module, ABC):
         )
 
 
-
 class RespConv(RespProc, ABC):
     """Use to process the resoponse from an LLM
     """
-
     conv_env_tok = lambda : {'content': ''}
-
-    def __init__(self, name, from_: str='response'):
-        super().__init__(name, from_)
+    _from: str = 'response'
 
     @abstractmethod
     def delta(
@@ -243,9 +234,9 @@ class RespConv(RespProc, ABC):
 
         if delta_store is None:
             delta_store = {}
-        resp = resp['meta'][self._from[0]]
+        resp = resp.data[self._from[0]]
         
-        resp['meta'][self.name] = res = self.delta(
+        resp.data[self.name] = res = self.delta(
             resp, delta_store, is_streamed, is_last
         )
 

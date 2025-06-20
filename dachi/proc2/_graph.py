@@ -4,6 +4,7 @@ from abc import abstractmethod, ABC
 import typing
 import time
 from typing import Self
+import asyncio
 
 # local
 from ..utils import is_undefined
@@ -19,6 +20,8 @@ from ..utils import is_async_function
 
 from dataclasses import InitVar
 
+
+# TODO: Check if the value coming from incoming is undefined or waiting... 
 
 class BaseNode(AsyncProcess):
     """
@@ -200,17 +203,23 @@ class ProcNode(BaseNode):
 
         by = by or {}
         kwargs = {}
-        async for k, arg in self.args.items():
-            is_t = isinstance(arg, BaseNode)
-            if is_t and arg in by:
-                kwargs[k] = by[arg]
-            elif is_t and arg.val is not UNDEFINED:
-                kwargs[k] = arg.val
-            elif is_t:
-                kwargs[k] = await arg.aforward(by)
-                # raise ValueError(f'Arg {k} has not been defined')  
-            else:
-                kwargs[k] = arg
+        tasks = {}
+        with asyncio.TaskGroup() as tg:
+
+            for k, arg in self.args.items():
+                is_t = isinstance(arg, BaseNode)
+                if is_t and arg in by:
+                    kwargs[k] = by[arg]
+                elif is_t and arg.val is not UNDEFINED:
+                    kwargs[k] = arg.val
+                elif is_t:
+                    tasks[k] = tg.create_task(
+                        arg.aforward(by)
+                    )
+                else:
+                    kwargs[k] = arg
+        for k, task in tasks.items():
+            kwargs[k] = task.result()
         
         return SerialDict(kwargs)
 
@@ -279,7 +288,7 @@ class T(ProcNode):
         return val
 
 
-class S(BaseNode):
+class Stream(BaseNode):
     """...
     """
     src: StreamProcess | AsyncStreamProcess
@@ -365,28 +374,28 @@ def async_t(
     )
     
 
-def s(
+def stream(
     p: StreamProcess | AsyncStreamProcess, 
     _name: str=None, _annotation: str=None,
     **kwargs
-) -> S:
+) -> Stream:
 
     args = SerialDict(args, kwargs)
-    return S(
+    return Stream(
         src=p, args=args, name=_name,
         annotation=_annotation,
         is_async=False
     )
 
 
-def async_s(
+def async_stream(
     p: StreamProcess | AsyncStreamProcess, 
     _name: str=None, _annotation: str=None,
     **kwargs
-) -> S:
+) -> Stream:
 
     args = SerialDict(args, kwargs)
-    return S(
+    return Stream(
         src=p, args=args, name=_name,
         annotation=_annotation,
         is_async=True

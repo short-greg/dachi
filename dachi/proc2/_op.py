@@ -6,12 +6,13 @@ from typing import Self
 import pydantic
 # local
 from ..msg._messages import (
-    Msg, BaseDialog, ListDialog
+    Msg, BaseDialog
 )
 from ._ai import Assistant
 from ..msg._msg import ToMsg, KeyGet, FromMsg
 from ..msg._out import OutConv
 from ..msg._out import conv_to_out
+from ..core import ModuleDict
 from ..proc import (
     Module, AsyncModule, 
     StreamModule, AsyncStreamModule
@@ -49,9 +50,7 @@ class Op(Module, AsyncModule, StreamModule, AsyncStreamModule):
     filter_undefined: bool = True
     follow_up: bool = False
 
-    def __post_init__(
-        self
-    ):
+    def __post_init__(self):
         """
         Initializes the class to facilitate interaction with a language model assistant by
         adapting inputs and outputs.
@@ -293,8 +292,6 @@ class Op(Module, AsyncModule, StreamModule, AsyncStreamModule):
         )
 
 
-from ..core import ModuleDict
-
 class Threaded(
     Module, AsyncModule, StreamModule,
     AsyncStreamModule
@@ -327,7 +324,7 @@ class Threaded(
         """
         super().__post_init__()
         if not isinstance(self.out, FromMsg):
-            self.out = FromMsg(out)
+            self.out = FromMsg(self.out)
 
     def forward(
         self, 
