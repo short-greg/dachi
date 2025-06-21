@@ -1,18 +1,12 @@
 from __future__ import annotations
 import typing as t
 from pydantic import BaseModel
-from ._base import BaseModule, Param, State, Shared, dict, BaseSpec, registry  # adjust import path
-from typing import TypeVar, Generic, Iterable, ClassVar, Iterator
-from pydantic import BaseModel, Field, ConfigDict, create_model, field_validator
-
-
+from ._base import BaseModule, BaseSpec, registry 
+from typing import TypeVar, Iterable, ClassVar, Iterator
 import typing as t
 from dataclasses import InitVar
-from uuid import uuid4
 
-from ._base import BaseModule, dict, registry, BaseSpec
-
-from typing import Optional, Union, List, Iterator, Iterable
+from typing import Optional, Iterator, Iterable
 from dataclasses import InitVar
 
 V_co = t.TypeVar("V_co", bound=BaseModule, covariant=True)

@@ -3,11 +3,13 @@ import typing
 from abc import abstractmethod
 from typing import Self
 
+import pydantic
 # local
 from ..core import Renderable
 
 from typing import Any, Dict, Optional, Union
 from pydantic import BaseModel, Field, PrivateAttr
+import pydantic
 
 class _Final:
     """A unique object to mark the end of a streaming response."""
@@ -49,7 +51,7 @@ class Resp(pydantic.BaseModel):
 
     msg: Msg
     _data: typing.Dict = pydantic.PrivateAttr(
-        default_factory=list
+        default_factory=dict
     )
 
     def data(self, key: str) -> typing.Any:
@@ -80,16 +82,13 @@ class Resp(pydantic.BaseModel):
         return self._tmp.get(key, default)
 
 
-import pydantic
-
-
 class BaseDialog(pydantic.BaseModel, Renderable):
     """A Dialog stores the interactions between the system/user and the assistant
     (i.e. the prompts and the responses)
     """
 
-    renderer: typing.Callable[[typing.List[Msg]], str] = pydantic.PrivateAttr(
-        default_factory=list
+    _renderer: typing.Callable[[typing.List[Msg]], str] = pydantic.PrivateAttr(
+        default=None
     )
 
     def __iter__(self) -> typing.Iterator[Msg]:
@@ -126,7 +125,7 @@ class BaseDialog(pydantic.BaseModel, Renderable):
         pass
 
     @abstractmethod
-    def pop(self, index: int) -> Msg:
+    def pop(self, index: int=-1) -> Msg:
         """Remove a value from the dialog
 
         Args:
@@ -313,10 +312,10 @@ class ListDialog(BaseDialog):
         """
         
         return ListDialog(
-            [*self.messages]
+            messages=[*self.messages]
         )
 
-    def pop(self, index: int, get_msg: bool=False) -> typing.Union['ListDialog', Msg]:
+    def pop(self, index: int=-1, get_msg: bool=False) -> typing.Union['ListDialog', Msg]:
         """Remove a value from the dialog
 
         Args:
@@ -344,6 +343,13 @@ class ListDialog(BaseDialog):
         if isinstance(dialog, BaseDialog):
             dialog = dialog.aslist()
         
+        validated = True
+        for msg in dialog:
+            validated = validated and isinstance(msg, Msg)
+            if not validated:
+                raise ValueError(
+                    "List dialog must only consist of messages."
+                )
         self.messages.extend(dialog)
         return self
 
@@ -365,6 +371,10 @@ class ListDialog(BaseDialog):
         Raises:
             ValueError: If the index is not correct
         """
+        if not isinstance(message, Msg):
+            raise ValueError(
+                "List dialog must only consist of messages."
+            )
         self.messages.append(message)
         return self
 
@@ -395,170 +405,6 @@ class ListDialog(BaseDialog):
         """
         self.messages[idx] = message
         return self
-
-
-class DialogTurn(BaseModel):
-    """A node in a dialog tree."""
-
-    message: Msg
-    _parent: 'DialogTurn' | None = PrivateAttr(default=None)
-    _children: typing.List['DialogTurn'] = PrivateAttr(default_factory=list)
-
-    def root(self) -> 'DialogTurn':
-        node = self
-        while node._parent is not None:
-            node = node._parent
-        return node
-
-    def leaf(self) -> 'DialogTurn':
-        if not self._children:
-            return self
-        return self._children[0].leaf()
-
-    @property
-    def parent(self) -> 'DialogTurn' | None:
-        return self._parent
-
-    def children(self) -> typing.Iterator['DialogTurn']:
-        return iter(self._children)
-
-    def append(self, message: Msg) -> 'DialogTurn':
-        turn = DialogTurn(message=message)
-        turn._parent = self
-        self._children.append(turn)
-        return turn
-
-    def prepend(self, message: Msg) -> 'DialogTurn':
-        turn = DialogTurn(message=message)
-        turn._parent = self._parent
-        turn._children.append(self)
-        self._parent = turn
-        return turn
-
-    @property
-    def ancestors(self) -> typing.Iterator['DialogTurn']:
-        node = self
-        while node._parent is not None:
-            node = node._parent
-            yield node
-
-    def child(self, idx: int) -> 'DialogTurn':
-        return self._children[idx]
-
-    def sibling(self, idx: int) -> 'DialogTurn':
-        if self._parent is None:
-            if idx != 0:
-                raise ValueError("Root node has no siblings")
-            return self
-        return self._parent._children[idx]
-
-    def depth(self) -> int:
-        depth = 1
-        node = self
-        while node._parent is not None:
-            node = node._parent
-            depth += 1
-        return depth
-
-    def n_children(self) -> int:
-        return len(self._children)
-
-    def n_siblings(self) -> int:
-        return 1 if self._parent is None else len(self._parent._children)
-
-
-class TreeDialog(BaseDialog):
-    """Dialog with a tree structure."""
-
-    _root: DialogTurn | None = PrivateAttr(default=None)
-    _leaf: DialogTurn | None = PrivateAttr(default=None)
-    _indices: typing.List[int] = PrivateAttr(default_factory=list)
-    _counts: typing.List[int] = PrivateAttr(default_factory=list)
-
-    def update_leaf_path(self):
-        """Set self.leaf_path based on current _leaf location."""
-        path = []
-        node = self._leaf
-        while node and node._parent is not None:
-            parent = node._parent
-            idx = parent.children.index(node)
-            path.append(idx)
-            node = parent
-        self.leaf_path = path[::-1]  # Reverse to be root-to-leaf
-
-    def restore_leaf(self):
-        """Restore _leaf pointer after model_validate."""
-        node = self.root
-        for idx in self.leaf_path:
-            if node is None or idx >= len(node.children):
-                self._leaf = None
-                return
-            node = node.children[idx]
-        self._leaf = node
-
-    def model_post_init(self, __context):
-        if self.root:
-            self.root.model_post_init(__context)
-        self.restore_leaf()
-
-    def append(self, message: Msg) -> Self:
-        if self._leaf is None:
-            self._leaf = DialogTurn(message=message)
-            self._root = self._leaf
-        else:
-            self._leaf = self._leaf.append(message)
-        self._update()
-        return self
-
-    def insert(self, ind: int, message: Msg) -> Self:
-        if self._leaf is None:
-            if ind != 0:
-                raise ValueError("Insert index invalid for empty tree")
-            self._leaf = DialogTurn(message=message)
-            self._root = self._leaf
-        else:
-            turn = list(self._leaf.ancestors)[::-1][ind]
-            turn.prepend(message)
-        self._update()
-        return self
-
-    def __iter__(self) -> typing.Iterator[Msg]:
-        if not self._leaf:
-            return iter([])
-        return iter([*reversed([t.message for t in self._leaf.ancestors]), self._leaf.message])
-
-    def __getitem__(self, idx: int) -> Msg:
-        return list(self)[idx]
-
-    def __setitem__(self, idx: int, msg: Msg):
-        path = list(self._leaf.ancestors)[::-1] + [self._leaf]
-        path[idx].message = msg
-
-    def __len__(self) -> int:
-        return len(list(self))
-
-    def _update(self):
-        self._update_indices()
-        self._update_counts()
-
-    def _update_indices(self):
-        self._indices = []
-        if self._leaf is None:
-            return
-        path = list(self._leaf.ancestors)[::-1] + [self._leaf]
-        for i in range(len(path)-1):
-            idx = path[i]._children.index(path[i+1])
-            self._indices.append(idx)
-        self._indices.append(0)
-
-    def _update_counts(self):
-        self._counts = []
-        if self._leaf is None:
-            return
-        path = list(self._leaf.ancestors)[::-1] + [self._leaf]
-        for node in path:
-            self._counts.append(node.n_children())
-
 
 
 def exclude_messages(
@@ -718,9 +564,9 @@ class DialogTurn(pydantic.BaseModel):
         Returns:
             DialogTurn: The leaf node
         """
-        if len(self._children) == 0:
+        if len(self.children) == 0:
             return self
-        return self._children[0].leaf()
+        return self.children[0].leaf()
     
     @property
     def ancestors(self) -> typing.Iterator['DialogTurn']:
@@ -732,14 +578,6 @@ class DialogTurn(pydantic.BaseModel):
             turn = turn._parent
             yield turn
     
-    def children(self) -> typing.Iterator['DialogTurn']:
-        """get the children to the dialog turn
-
-        Returns:
-            typing.List['DialogTurn']: The children
-        """
-        return iter(self._children)
-    
     def prepend(self, message: 'Msg') -> 'DialogTurn':
         """
 
@@ -749,9 +587,12 @@ class DialogTurn(pydantic.BaseModel):
         Returns:
             DialogTurn: 
         """
-        turn = DialogTurn(message)
+        turn = DialogTurn(message=message)
         turn._parent = self._parent
-        turn._children.append(self)
+        if turn._parent is not None:
+            turn._parent.children.remove(self)
+            turn._parent.children.append(turn)
+        turn.children.append(self)
         self._parent = turn
         return turn
     
@@ -764,9 +605,9 @@ class DialogTurn(pydantic.BaseModel):
         Returns:
             DialogTurn: _description_
         """
-        turn = DialogTurn(message)
+        turn = DialogTurn(message=message)
         turn._parent = self
-        self._children.append(turn)
+        self.children.append(turn)
         return turn
 
     def ancestor(self, count: int) -> 'DialogTurn':
@@ -815,7 +656,7 @@ class DialogTurn(pydantic.BaseModel):
         Returns:
             DialogTurn: 
         """
-        return self._children[idx]
+        return self.children[idx]
     
     def find_val(self, message: Msg) -> typing.Optional['DialogTurn']:
         """Search through all children to find the message.
@@ -830,7 +671,7 @@ class DialogTurn(pydantic.BaseModel):
         if self.message == message:
             return self
 
-        for child in self._children:
+        for child in self.children:
             result = child.find_val(message)
 
         return result
@@ -848,7 +689,7 @@ class DialogTurn(pydantic.BaseModel):
         if self == turn:
             return self
 
-        for child in self._children:
+        for child in self.children:
             result = child.find(turn)
         return result
 
@@ -861,13 +702,24 @@ class DialogTurn(pydantic.BaseModel):
         Returns:
             DialogTurn: The pruned subtree.
         """
-        if idx < 0 or idx >= len(self._children):
+        if idx < 0 or idx >= len(self.children):
             raise IndexError("Index out of range for pruning.")
 
-        pruned_subtree = self._children.pop(idx)
+        pruned_subtree = self.children.pop(idx)
         pruned_subtree._parent = None
         return pruned_subtree
     
+    def index(self, turn: 'DialogTurn') -> int:
+
+        return self.children.index(turn)
+    
+    def my_index(self) -> int | None:
+
+        if self._parent is None:
+            return None
+        idx = self._parent.index(self)
+        return idx
+
     def sibling(self, idx: int) -> int:
         """
         Returns:
@@ -879,7 +731,17 @@ class DialogTurn(pydantic.BaseModel):
                     "There is no parent so must be 1."
                 )
             return self
-        return self._parent.child(idx)
+        my_idx = self.my_index()
+        if my_idx is None:
+            raise IndexError(
+                f'Requesting sibling but no parent.'
+            )
+        sib_idx = idx + my_idx
+        if sib_idx < 0:
+            raise IndexError(
+                f"{idx} is invalid sibling index"
+            )
+        return self._parent.child(sib_idx)
     
     def ancestor(self, count: int) -> 'DialogTurn':
         """
@@ -890,14 +752,16 @@ class DialogTurn(pydantic.BaseModel):
         Returns:
             DialogTurn: 
         """
+        if not isinstance(count, int):
+            raise TypeError(f"Count must be of type int not {type(count)}")
         turn = self
         i = 0
         while True:
             if i == count:
                 return turn
-            turn = self._parent
+            turn = turn._parent
             if turn is None:
-                raise ValueError(
+                raise IndexError(
                     f"Cannot ascend {count}."
                     f"Only {i} parents."
                 )
@@ -912,15 +776,13 @@ class DialogTurn(pydantic.BaseModel):
         """
         return self._parent
 
-    @property
     def n_children(self) -> int:
         """
         Returns:
             int: The number of children
         """
-        return len(self._children)
+        return len(self.children)
     
-    @property
     def n_siblings(self) -> int:
         """The number of siblings for the turn
 
@@ -936,21 +798,23 @@ class DialogTurn(pydantic.BaseModel):
 class TreeDialog(BaseDialog):
     """
     """
-    _leaf: DialogTurn | None = PrivateAttr(default_factory=None)
-    _indices: typing.List[int] = PrivateAttr(default_factory=None)
-    _counts: typing.List[int] = PrivateAttr(default_factory=None)
+    _leaf: DialogTurn | None = PrivateAttr(
+        default=None
+        )
+    _indices: typing.List[int] = PrivateAttr(default_factory=list)
+    _counts: typing.List[int] = PrivateAttr(default_factory=list)
     root: DialogTurn | None = None
 
     def model_post_init(self, __context) -> None:
         # Runs after __init__ and validation
         self._update()
 
-    def ancestor(self, count: int):
+    def rise(self, count: int):
         
         self._leaf = self._leaf.ancestor(count)
         self._update()
 
-    def child(self, idx: int):
+    def leaf_child(self, idx: int):
         """Descend 
 
         Args:
@@ -959,7 +823,7 @@ class TreeDialog(BaseDialog):
         self._leaf = self._leaf.child(idx)
         self._update()
 
-    def sibling(self, idx: int):
+    def leaf_sibling(self, idx: int):
         """Update the tree to use a sibling
 
         Args:
@@ -984,12 +848,15 @@ class TreeDialog(BaseDialog):
         
         indices = []
         turn = self._leaf
-        for ancestor in self._leaf.ancestors:
-            idx = ancestor._children.index(turn)
-            indices.append(idx)
-            turn = ancestor
-        indices.append(0)
-        self._indices = list(reversed(indices))
+        while turn.parent is not None:
+            idx = turn.my_index()
+            indices.insert(0, idx)
+            turn = turn.parent
+
+        indices.insert(
+            0, 0
+        )
+        self._indices = indices
 
     def _update_counts(self):
 
@@ -998,12 +865,16 @@ class TreeDialog(BaseDialog):
             return
         result = []
         for ancestor in self._leaf.ancestors:
-            result.append(
-                ancestor.n_children
+            result.insert(
+                0, ancestor.n_children()
             )
-        result.append(1)
+        result.insert(0, 1)
 
-        self._counts = list(reversed(result))
+        self._counts = result
+
+    @property
+    def leaf(self) -> DialogTurn | None:
+        return self._leaf
 
     def __iter__(self) -> typing.Iterator[Msg]:
         """Iterate over each message in the dialog
@@ -1033,12 +904,13 @@ class TreeDialog(BaseDialog):
 
         if len(self) == 0:
             return []
-        turns = []
-        ancestors = list(self._leaf.ancestors)
-        for turn in reversed(ancestors):
-            turns.append(turn)
+        turns = list(reversed(list(self._leaf.ancestors)))
         turns.append(self._leaf)
         return turns
+        # for turn in reversed(ancestors):
+        #     turns.append(turn)
+        # turns.append(self._leaf)
+        # return turns
 
     def __setitem__(self, idx, message) -> Self:
         """Set idx with a message
@@ -1058,7 +930,7 @@ class TreeDialog(BaseDialog):
         Returns:
             Dialog: A dialog cloned with shallow copying of the messages
         """
-        if self._root is None:
+        if self.root is None:
             return TreeDialog()
 
         # Perform a BFS to clone the tree
@@ -1069,15 +941,15 @@ class TreeDialog(BaseDialog):
         counts = deque()
         dialog = TreeDialog()
         
-        dialog.append(self._root.message)
-        turn = self._root
+        dialog.append(self.root.message)
+        turn = self.root
         count = 0
         counts.append(0)
         leaf = None
         if turn is self._leaf:
             leaf = dialog._leaf
         while True:
-            if turn.n_children > count:
+            if turn.n_children() > count:
                 turn = turn.child(count)
                 dialog.append(turn.message)
                 if turn is self._leaf:
@@ -1089,7 +961,7 @@ class TreeDialog(BaseDialog):
                 if turn is None:
                     break
                 count = counts.pop()
-                dialog.ancestor(1)
+                dialog.rise(1)
                 count += 1
 
         dialog._leaf = leaf
@@ -1097,7 +969,7 @@ class TreeDialog(BaseDialog):
         return dialog
 
     def pop(
-        self, idx: int, get_msg: bool=False
+        self, idx: int=-1, get_msg: bool=False
     ) -> 'TreeDialog':
         """Remove a value from the dialog
         Cannot remove the root node.
@@ -1108,25 +980,26 @@ class TreeDialog(BaseDialog):
             raise ValueError(
                 'Cannot remove root node in tree dialog.'
             )
+        
         ancestors = self._turn_list()
         target = ancestors[idx]
         
         parent = target._parent
-        for turn in target._children:
+        for turn in target.children:
             turn._parent = parent
             if parent is not None:
-                parent._children.append(turn)
+                parent.children.append(turn)
         
         if target._parent is not None:
-            target._parent._children.remove(target)
+            target._parent.children.remove(target)
         
         target._parent = None
-        target._children = []
+        target.children = []
         if self._leaf is target:
             if turn.parent is not None:
                 self._leaf = turn
-            elif len(turn._children) > 0:
-                self._leaf = turn._children[0]
+            elif len(turn.children) > 0:
+                self._leaf = turn.children[0]
             else:
                 self._leaf = None
         self._update()
@@ -1149,7 +1022,7 @@ class TreeDialog(BaseDialog):
             current = queue.pop(0)
             if current.message == message:
                 return current
-            queue.extend(current._children)
+            queue.extend(current.children)
         return None
 
     def remove(self, message: Msg):
@@ -1162,26 +1035,30 @@ class TreeDialog(BaseDialog):
         Args:
             message (Msg): The message to remove
         """
-        turn = self._root.find_val(message)
-        if turn is self._root:
+        turn = self.root.find_val(message)
+        if turn is self.root:
             raise ValueError(
                 'Cannot remove root node in tree dialog.'
             )
-        for child in turn._children:
+        if turn is None:
+            raise ValueError(
+                f'Message {message} does not exist so cannot remove.'
+            )
+        for child in turn.children:
             child.parent = turn.parent
             if turn.parent is not None:
                 turn.parent.append(child)
         if turn.parent is not None:
-            turn.parent._children.remove(turn)
+            turn.parent.children.remove(turn)
         if self._leaf is turn:
             if turn.parent is not None:
                 self._leaf = turn
-            elif len(turn._children) > 0:
-                self._leaf = turn._children[0]
+            elif len(turn.children) > 0:
+                self._leaf = turn.children[0]
             else:
                 self._leaf = None
-        turn.parent = None
-        turn._children.clear()
+        turn._parent = None
+        turn.children.clear()
         self._update()
         return self
 
@@ -1193,8 +1070,8 @@ class TreeDialog(BaseDialog):
         """
         for msg in dialog:
             if self._leaf is None:
-                self._leaf = DialogTurn(msg)
-                self._root = self._leaf
+                self._leaf = DialogTurn(message=msg)
+                self.root = self._leaf
             else:
                 self._leaf = self._leaf.append(msg)
         
@@ -1220,8 +1097,8 @@ class TreeDialog(BaseDialog):
         """
         
         if self._leaf is None:
-            self._leaf = DialogTurn(message)
-            self._root = self._leaf
+            self._leaf = DialogTurn(message=message)
+            self.root = self._leaf
         else:
             self._leaf = self._leaf.append(message)
         self._update()
@@ -1241,12 +1118,17 @@ class TreeDialog(BaseDialog):
         if self._leaf is None:
             if ind != 0:
                 raise RuntimeError()
-            self._leaf = DialogTurn(message)
-            self._root = self._leaf
+            self._leaf = DialogTurn(message=message)
+            self.root = self._leaf
         else:
-            ancestors = self._turn_list()
-            turn = ancestors[ind]
-            turn.prepend(message)
+            turn_list = self._turn_list()
+            turn = turn_list[ind]
+            if ind == len(turn_list):
+                self._leaf = self._leaf.append(message)
+            else:
+                inserted = turn.prepend(message)
+                if ind == 0:
+                    self.root = inserted
         self._update()
         return self
     
@@ -1269,3 +1151,168 @@ class TreeDialog(BaseDialog):
     def _update(self):
         self._update_counts()
         self._update_indices()
+
+
+# class DialogTurn(BaseModel):
+#     """A node in a dialog tree."""
+
+#     message: Msg
+#     _parent: typing.Union['DialogTurn', None] = PrivateAttr(default=None)
+#     _children: typing.List['DialogTurn'] = PrivateAttr(default_factory=list)
+
+#     def root(self) -> 'DialogTurn':
+#         node = self
+#         while node._parent is not None:
+#             node = node._parent
+#         return node
+
+#     def leaf(self) -> 'DialogTurn':
+#         if not self._children:
+#             return self
+#         return self._children[0].leaf()
+
+#     @property
+#     def parent(self) -> typing.Union['DialogTurn', None]:
+#         return self._parent
+
+#     def children(self) -> typing.Iterator['DialogTurn']:
+#         return iter(self._children)
+
+#     def append(self, message: Msg) -> 'DialogTurn':
+#         turn = DialogTurn(message=message)
+#         turn._parent = self
+#         self._children.append(turn)
+#         return turn
+
+#     def prepend(self, message: Msg) -> 'DialogTurn':
+#         turn = DialogTurn(message=message)
+#         turn._parent = self._parent
+#         turn._children.append(self)
+#         self._parent = turn
+#         return turn
+
+#     @property
+#     def ancestors(self) -> typing.Iterator['DialogTurn']:
+#         node = self
+#         while node._parent is not None:
+#             node = node._parent
+#             yield node
+
+#     def child(self, idx: int) -> 'DialogTurn':
+#         return self._children[idx]
+
+#     def sibling(self, idx: int) -> 'DialogTurn':
+#         if self._parent is None:
+#             if idx != 0:
+#                 raise ValueError("Root node has no siblings")
+#             return self
+#         return self._parent._children[idx]
+
+#     def depth(self) -> int:
+#         depth = 1
+#         node = self
+#         while node._parent is not None:
+#             node = node._parent
+#             depth += 1
+#         return depth
+
+#     def n_children(self) -> int:
+#         return len(self._children)
+
+#     def n_siblings(self) -> int:
+#         return 1 if self._parent is None else len(self._parent._children)
+
+
+# class TreeDialog(BaseDialog):
+#     """Dialog with a tree structure."""
+
+#     _root: DialogTurn | None = PrivateAttr(default=None)
+#     _leaf: DialogTurn | None = PrivateAttr(default=None)
+#     _indices: typing.List[int] = PrivateAttr(default_factory=list)
+#     _counts: typing.List[int] = PrivateAttr(default_factory=list)
+
+#     def update_leaf_path(self):
+#         """Set self.leaf_path based on current _leaf location."""
+#         path = []
+#         node = self._leaf
+#         while node and node._parent is not None:
+#             parent = node._parent
+#             idx = parent.children.index(node)
+#             path.append(idx)
+#             node = parent
+#         self.leaf_path = path[::-1]  # Reverse to be root-to-leaf
+
+#     def restore_leaf(self):
+#         """Restore _leaf pointer after model_validate."""
+#         node = self.root
+#         for idx in self.leaf_path:
+#             if node is None or idx >= len(node.children):
+#                 self._leaf = None
+#                 return
+#             node = node.children[idx]
+#         self._leaf = node
+
+#     def model_post_init(self, __context):
+#         if self.root:
+#             self.root.model_post_init(__context)
+#         self.restore_leaf()
+
+#     def append(self, message: Msg) -> Self:
+#         if self._leaf is None:
+#             self._leaf = DialogTurn(message=message)
+#             self._root = self._leaf
+#         else:
+#             self._leaf = self._leaf.append(message)
+#         self._update()
+#         return self
+
+#     def insert(self, ind: int, message: Msg) -> Self:
+#         if self._leaf is None:
+#             if ind != 0:
+#                 raise ValueError("Insert index invalid for empty tree")
+#             self._leaf = DialogTurn(message=message)
+#             self._root = self._leaf
+#         else:
+#             turn = list(self._leaf.ancestors)[::-1][ind]
+#             turn.prepend(message)
+#         self._update()
+#         return self
+
+#     def __iter__(self) -> typing.Iterator[Msg]:
+#         if not self._leaf:
+#             return iter([])
+#         return iter([*reversed([t.message for t in self._leaf.ancestors]), self._leaf.message])
+
+#     def __getitem__(self, idx: int) -> Msg:
+#         return list(self)[idx]
+
+#     def __setitem__(self, idx: int, msg: Msg):
+#         path = list(self._leaf.ancestors)[::-1] + [self._leaf]
+#         path[idx].message = msg
+
+#     def __len__(self) -> int:
+#         return len(list(self))
+
+#     def _update(self):
+#         self._update_indices()
+#         self._update_counts()
+
+#     def _update_indices(self):
+#         self._indices = []
+#         if self._leaf is None:
+#             return
+#         path = list(self._leaf.ancestors)[::-1] + [self._leaf]
+#         for i in range(len(path)-1):
+#             idx = path[i]._children.index(path[i+1])
+#             self._indices.append(idx)
+#         self._indices.append(0)
+
+#     def _update_counts(self):
+#         self._counts = []
+#         if self._leaf is None:
+#             return
+#         path = list(self._leaf.ancestors)[::-1] + [self._leaf]
+#         for node in path:
+#             self._counts.append(node.n_children())
+
+
