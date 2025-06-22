@@ -13,7 +13,7 @@ import pydantic
 from pydantic import create_model, BaseModel
 
 # locla
-from ..proc import AsyncModule, Module
+from ._process import AsyncProcess, Process
 
 # local
 from ..utils import is_async_function, pydantic_v2
@@ -135,7 +135,7 @@ def make_tool_defs(*tools) -> typing.List[ToolDef]:
 
 class ToolCall(
     pydantic.BaseModel,
-    Module
+    Process
 ):
     """A response from the LLM that a tool was called
     """
@@ -150,7 +150,7 @@ class ToolCall(
     option_text: str | None = None
 
     def forward(self, store: bool=False):
-        data = self.inputs.model_dump() if pydantic_v2() else self.inputs.dict()
+        data = self.inputs.model_dump() if pydantic_v2() else self.inputs.model_dump()
         # remaining keys are normal named parameters
         result = self.option.fn(**data)
         if store:
@@ -173,7 +173,7 @@ class ToolOut(
 
 class AsyncToolCall(
     pydantic.BaseModel,
-    AsyncModule
+    AsyncProcess
 ):
     """A response from the LLM that a tool was called
     """
