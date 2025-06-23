@@ -9,7 +9,7 @@ from functools import wraps
 import pydantic
 
 # local
-from ..core import Templatable, BaseModule
+from ..core import BaseModule
 from ._process import (
     Process, AsyncProcess, StreamProcess, 
     AsyncStreamProcess
@@ -30,11 +30,7 @@ from ..inst import (
     render,
     render_multi
 )
-
-
 X = typing.Union[str, Cue]
-
-
 Engine: typing.TypeAlias = Assist | AsyncAssist | StreamAssist | AsyncStreamAssist
 
 S = typing.TypeVar('S')
@@ -206,7 +202,6 @@ class SigF(IBase):
     dictionary of arguments that are inserted into
     the signature
     """
-
     train: bool = False
 
     def model_post_init(

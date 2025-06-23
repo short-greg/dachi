@@ -11,6 +11,7 @@ from typing import Any, Dict, Optional, Union
 from pydantic import BaseModel, Field, PrivateAttr
 import pydantic
 
+
 class _Final:
     """A unique object to mark the end of a streaming response."""
     def __repr__(self):
@@ -50,11 +51,19 @@ class Msg(BaseModel):
 class Resp(pydantic.BaseModel):
 
     msg: Msg
+    val: typing.Any = None
     _data: typing.Dict = pydantic.PrivateAttr(
         default_factory=dict
     )
+    _delta: typing.Dict = pydantic.PrivateAttr(
+        default_factory=dict
+    )
+    _out: typing.Dict = pydantic.PrivateAttr(
+        default_factory=dict
+    )
 
-    def data(self, key: str) -> typing.Any:
+    @property
+    def data(self) -> typing.Any:
         """
 
         Args:
@@ -63,23 +72,16 @@ class Resp(pydantic.BaseModel):
         Returns:
             typing.Any: 
         """
-        return self._data[key]
-
-    def set_data(self, key: str, val) -> typing.Self:
-        """
-
-        Args:
-            key (str): 
-            val: 
-
-        Returns:
-            typing.Self: 
-        """
-        self._data[key] = val
-        return self
-
-    def get_tmp(self, key: str, default=None) -> Any:
-        return self._tmp.get(key, default)
+        return self._data
+        
+    @property
+    def delta(self) -> typing.Dict:
+        return self._delta
+    
+    @property
+    def out(self) -> typing.Any:
+        return self._out
+    
 
 
 class BaseDialog(pydantic.BaseModel, Renderable):

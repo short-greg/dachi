@@ -590,3 +590,35 @@ class Func(Process):
         return self.f(
             *self.args, *args, **self.kwargs, **kwargs
         )
+
+
+class StreamSequence(StreamProcess):
+
+    pre: Process
+    mod: StreamProcess
+    post: Process
+
+    def forward(self, x: typing.Any) -> typing.Iterator:
+
+        x = self.pre(x)
+        for x_i in self.mod.stream(x):
+            yield self.post(x_i)
+
+
+class AsyncStreamSequence(AsyncStreamProcess):
+
+    pre: Process | AsyncProcess
+    mod: AsyncStreamProcess
+    post: Process | AsyncProcess
+
+    async def astream(self, x: typing.Any) -> typing.AsyncIterator:
+
+        if isinstance(self.pre, AsyncProcess):
+            x = await self.pre.aforward(x)
+        else:
+            x = self.pre(x)
+        async for x_i in self.mod.astream(x):
+            if isinstance(self.post, AsyncProcess):
+                yield await self.post.aforward(x_i)
+            else:
+                yield self.post(x_i)

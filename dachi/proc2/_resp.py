@@ -105,7 +105,7 @@ class RespProc(Process, ABC):
     """
     last_val = ''
     name: str
-    _from: str | typing.List[str]
+    from_: str | typing.List[str]
 
     def __post_init__(self):
         """A module used to process a message
@@ -114,8 +114,8 @@ class RespProc(Process, ABC):
             name (str): The name of the output
             from_ (typing.Union[str, typing.List[str]]): 
         """
-        if isinstance(self._from, str):
-            self._from = [self._from]
+        if isinstance(self.from_, str):
+            self.from_ = [self.from_]
             self._single = True
         else:
             self._single = False
@@ -165,7 +165,7 @@ class RespProc(Process, ABC):
         """
         delta_store = delta_store if delta_store is not None else {}
 
-        resp = [resp.data[r] for r in self._from]
+        resp = [resp.data[r] for r in self.from_]
         is_undefined = all(r is utils.UNDEFINED for r in resp)
         
         if self._single:
@@ -216,7 +216,7 @@ class RespConv(RespProc, ABC):
     """Use to process the resoponse from an LLM
     """
     conv_env_tok = lambda : {'content': ''}
-    _from: str = 'response'
+    from_: str = 'response'
 
     @abstractmethod
     def delta(
@@ -234,7 +234,7 @@ class RespConv(RespProc, ABC):
 
         if delta_store is None:
             delta_store = {}
-        resp = resp.data[self._from[0]]
+        resp = resp.data[self.from_[0]]
         
         resp.data[self.name] = res = self.delta(
             resp, delta_store, is_streamed, is_last
