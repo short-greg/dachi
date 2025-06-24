@@ -1,5 +1,5 @@
 import typing
-from ..utils import UNDEFINED
+from ._utils import UNDEFINED
 
 
 def get_or_set(d: typing.Dict, key, value) -> typing.Any:
@@ -18,6 +18,27 @@ def get_or_set(d: typing.Dict, key, value) -> typing.Any:
         return d[key]
     d[key] = value
     return value
+
+
+def sub_dict(d: typing.Dict, key: str) -> typing.Dict:
+    """
+    Retrieve or initialize a nested dictionary within a given dictionary.
+    Args:
+        d (typing.Dict): The dictionary to operate on.
+        key (str): The key pointing to the nested dictionary.
+    Returns:
+        typing.Dict: The nested dictionary associated with the given key.
+    Raises:
+        ValueError: If the key exists but does not point to a dictionary.
+    """
+    if key in d:
+        if not isinstance(d[key], typing.Dict):
+            raise ValueError(
+                f'The field pointed to be {key} is not a dict.'
+            )
+    else:
+        d[key] = {}
+    return d[key]
 
 
 def get_or_setf(d: typing.Dict, key, f: typing.Callable[[], typing.Any]) -> typing.Any:
@@ -93,40 +114,3 @@ def get_or_spawn(state: typing.Dict, child: str) -> typing.Dict:
     if child not in state:
         state[child] = {}
     return state[child]
-
-
-# def get_or_set(state: typing.Dict, key: str, val: typing.Any) -> typing.Any:
-#     """Use to get or set a value in a state dict
-
-#     Args:
-#         state (typing.Dict): The state dict to update
-#         key (str): The key to update
-#         val (typing.Any): The value to add
-
-#     Returns:
-#         typing.Any: 
-#     """
-#     if key not in state:
-#         state[key] = val
-#     return state[key]
-
-
-def sub_dict(d: typing.Dict, key: str) -> typing.Dict:
-    """
-    Retrieve or initialize a nested dictionary within a given dictionary.
-    Args:
-        d (typing.Dict): The dictionary to operate on.
-        key (str): The key pointing to the nested dictionary.
-    Returns:
-        typing.Dict: The nested dictionary associated with the given key.
-    Raises:
-        ValueError: If the key exists but does not point to a dictionary.
-    """
-    if key in d:
-        if not isinstance(d[key], typing.Dict):
-            raise ValueError(
-                f'The field pointed to be {key} is not a dict.'
-            )
-    else:
-        d[key] = {}
-    return d[key]

@@ -11,177 +11,13 @@ import pydantic
 import typing
 
 # local
-from ..core import Storable
+from . import Storable
 from ..core import render, Renderable
 
 
 T = typing.TypeVar("T")
 K = bool | str | None | int | float
 
-
-
-class SharedBase(Storable, Renderable, ABC):
-    """Allows for shared data between tasks
-    """
-    @abstractmethod
-    def register(self, callback) -> bool:
-        """Register a callback to call on data updates
-
-        Args:
-            callback (function): The callback to register
-
-        Returns:
-            bool: True the callback was registered, False if already registered
-        """
-        pass
-
-    @abstractmethod
-    def unregister(self, callback) -> bool:
-        """Unregister a callback to call on data updates
-
-        Args:
-            callback (function): The callback to unregister
-
-        Returns:
-            bool: True if the callback was removed, False if callback was not registered
-        """
-        pass
-
-    @property
-    @abstractmethod
-    def data(self) -> typing.Any:
-        """Get the data shared
-
-        Returns:
-            typing.Any: The shared data
-        """
-        return self._data
-
-    @data.setter
-    @abstractmethod
-    def data(self, data) -> typing.Any:
-        """Update the data
-
-        Args:
-            data: The data to share
-
-        Returns:
-            typing.Any: The value for the data
-        """
-        pass
-
-    @abstractmethod
-    def get(self) -> typing.Any:
-        pass
-    
-    @abstractmethod
-    def set(self, value) -> typing.Any:
-        pass
-
-    def render(self) -> str:
-        return render(self.get())
-
-
-class Shared(SharedBase):
-    """Allows for shared data between tasks
-    """
-
-    def __init__(
-        self, data: typing.Any=None, 
-        default: typing.Any=None,
-        callbacks: typing.List[typing.Callable[[typing.Any], None]]=None
-    ):
-        """Create shard data
-
-        Args:
-            data (typing.Any, optional): The data. Defaults to None.
-            default (typing.Any, optional): The default value of the shared. When resetting, will go back to this. Defaults to None.
-            callbacks (typing.List[typing.Callable[[typing.Any], None]], optional): The callbacks to call on update. Defaults to None.
-        """
-        super().__init__()
-        self._default = default
-        self._data = data if data is not None else default
-        self._callbacks = callbacks or []
-
-    def register(self, callback) -> bool:
-        """Register a callback to call on data updates
-
-        Args:
-            callback (function): The callback to register
-
-        Returns:
-            bool: True the callback was registered, False if already registered
-        """
-        if callback in self._callbacks:
-            return False
-        
-        self._callbacks.append(callback)
-        return True
-
-    def unregister(self, callback) -> bool:
-        """Unregister a callback to call on data updates
-
-        Args:
-            callback (function): The callback to unregister
-
-        Returns:
-            bool: True if the callback was removed, False if callback was not registered
-        """
-
-        if callback not in self._callbacks:
-            return False
-        
-        self._callbacks.remove(callback)
-        return True
-
-    @property
-    def data(self) -> typing.Any:
-        """Get the data shared
-
-        Returns:
-            typing.Any: The shared data
-        """
-        return self._data
-
-    @data.setter
-    def data(self, data) -> typing.Any:
-        """Update the data
-
-        Args:
-            data: The data to share
-
-        Returns:
-            typing.Any: The value for the data
-        """
-        self._data = data
-        for callback in self._callbacks:
-            callback(data)
-        return data
-
-    def get(self) -> typing.Any:
-        """Get the value
-
-        Returns:
-            typing.Any: 
-        """
-        return self._data
-    
-    def set(self, value) -> typing.Any:
-        """Set the shared value
-
-        Args:
-            value : Set the shared value
-
-        Returns:
-            typing.Any: The value the shared value was set to
-        """
-        self.data = value
-        return value
-    
-    def reset(self):
-        """Reset the shared value back to the default value
-        """
-        self.data = self._default
 
 
 class Buffer(Storable):
@@ -415,20 +251,6 @@ class Context(dict):
         if value is not UNDEFINED:
             self[key] = self[key] + value
         return self[key]
-    
-    # def __call__(self, key) -> 'ContextWriter':
-    #     """Create a ContextWriter to set the value for
-    #     a key in the context
-
-    #     Args:
-    #         key: The key to write to
-
-    #     Returns:
-    #         ContextWriter: The ContextWriter that writes
-    #         the value
-    #     """
-
-    #     return ContextWriter(self, key)
 
 
 class ContextStorage(object):
@@ -983,6 +805,83 @@ class Record(Renderable):
 
         return self._data.loc[idx]
 
+
+    # def __call__(self, key) -> 'ContextWriter':
+    #     """Create a ContextWriter to set the value for
+    #     a key in the context
+
+    #     Args:
+    #         key: The key to write to
+
+    #     Returns:
+    #         ContextWriter: The ContextWriter that writes
+    #         the value
+    #     """
+
+    #     return ContextWriter(self, key)
+
+# class SharedBase(Storable, Renderable, ABC):
+#     """Allows for shared data between tasks
+#     """
+#     @abstractmethod
+#     def register(self, callback) -> bool:
+#         """Register a callback to call on data updates
+
+#         Args:
+#             callback (function): The callback to register
+
+#         Returns:
+#             bool: True the callback was registered, False if already registered
+#         """
+#         pass
+
+#     @abstractmethod
+#     def unregister(self, callback) -> bool:
+#         """Unregister a callback to call on data updates
+
+#         Args:
+#             callback (function): The callback to unregister
+
+#         Returns:
+#             bool: True if the callback was removed, False if callback was not registered
+#         """
+#         pass
+
+#     @property
+#     @abstractmethod
+#     def data(self) -> typing.Any:
+#         """Get the data shared
+
+#         Returns:
+#             typing.Any: The shared data
+#         """
+#         return self._data
+
+#     @data.setter
+#     @abstractmethod
+#     def data(self, data) -> typing.Any:
+#         """Update the data
+
+#         Args:
+#             data: The data to share
+
+#         Returns:
+#             typing.Any: The value for the data
+#         """
+#         pass
+
+#     @abstractmethod
+#     def get(self) -> typing.Any:
+#         pass
+    
+#     @abstractmethod
+#     def set(self, value) -> typing.Any:
+#         pass
+
+#     def render(self) -> str:
+#         return render(self.get())
+
+
 # class ContextWriter:
 #     """Use to write to the context
 #     """
@@ -1052,3 +951,107 @@ class Record(Renderable):
 #         if callback is not None:
 #             callback(with_message)
 #         self._processing.pop(0)
+
+
+
+# class Shared(SharedBase):
+#     """Allows for shared data between tasks
+#     """
+
+#     def __init__(
+#         self, data: typing.Any=None, 
+#         default: typing.Any=None,
+#         callbacks: typing.List[typing.Callable[[typing.Any], None]]=None
+#     ):
+#         """Create shard data
+
+#         Args:
+#             data (typing.Any, optional): The data. Defaults to None.
+#             default (typing.Any, optional): The default value of the shared. When resetting, will go back to this. Defaults to None.
+#             callbacks (typing.List[typing.Callable[[typing.Any], None]], optional): The callbacks to call on update. Defaults to None.
+#         """
+#         super().__init__()
+#         self._default = default
+#         self._data = data if data is not None else default
+#         self._callbacks = callbacks or []
+
+#     def register(self, callback) -> bool:
+#         """Register a callback to call on data updates
+
+#         Args:
+#             callback (function): The callback to register
+
+#         Returns:
+#             bool: True the callback was registered, False if already registered
+#         """
+#         if callback in self._callbacks:
+#             return False
+        
+#         self._callbacks.append(callback)
+#         return True
+
+#     def unregister(self, callback) -> bool:
+#         """Unregister a callback to call on data updates
+
+#         Args:
+#             callback (function): The callback to unregister
+
+#         Returns:
+#             bool: True if the callback was removed, False if callback was not registered
+#         """
+
+#         if callback not in self._callbacks:
+#             return False
+        
+#         self._callbacks.remove(callback)
+#         return True
+
+#     @property
+#     def data(self) -> typing.Any:
+#         """Get the data shared
+
+#         Returns:
+#             typing.Any: The shared data
+#         """
+#         return self._data
+
+#     @data.setter
+#     def data(self, data) -> typing.Any:
+#         """Update the data
+
+#         Args:
+#             data: The data to share
+
+#         Returns:
+#             typing.Any: The value for the data
+#         """
+#         self._data = data
+#         for callback in self._callbacks:
+#             callback(data)
+#         return data
+
+#     def get(self) -> typing.Any:
+#         """Get the value
+
+#         Returns:
+#             typing.Any: 
+#         """
+#         return self._data
+    
+#     def set(self, value) -> typing.Any:
+#         """Set the shared value
+
+#         Args:
+#             value : Set the shared value
+
+#         Returns:
+#             typing.Any: The value the shared value was set to
+#         """
+#         self.data = value
+#         return value
+    
+#     def reset(self):
+#         """Reset the shared value back to the default value
+#         """
+#         self.data = self._default
+

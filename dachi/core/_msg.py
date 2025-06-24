@@ -1155,6 +1155,10 @@ class TreeDialog(BaseDialog):
         self._update_indices()
 
 
+Y = typing.Union[str, Cue]
+
+
+
 # class DialogTurn(BaseModel):
 #     """A node in a dialog tree."""
 

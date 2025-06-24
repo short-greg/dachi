@@ -2,35 +2,37 @@
 # 1st party
 import typing
 from typing import Self
+
 # 3rd party
 import pydantic
+
 # local
-from ..msg._messages import (
+from ..core import (
     Msg, BaseDialog
 )
 from ._ai import Assistant
-from ..msg._msg import ToMsg, KeyGet, FromMsg
-from ..msg._out import OutConv
-from ..msg._out import conv_to_out
+from ._out import OutConv, conv_to_out
+from ._resp import FromResp
 from ..core import ModuleDict
-from ..proc import (
-    Module, AsyncModule, 
-    StreamModule, AsyncStreamModule
+from ._msg import ToMsg
+from ._process import (
+    Process, AsyncProcess, 
+    StreamProcess, AsyncStreamProcess
 )
 from ..utils import (
     coalesce, UNDEFINED
 )
-from .. import utils
-
 
 S = typing.TypeVar('S', bound=pydantic.BaseModel)
 
+
+# TODO: Decide
 
 LLM_PROMPT = typing.Union[typing.Iterable[Msg], Msg]
 LLM_RESPONSE = typing.Tuple[Msg, typing.Any]
 
 
-class Op(Module, AsyncModule, StreamModule, AsyncStreamModule):
+class Op(Process, AsyncProcess, StreamProcess, AsyncStreamProcess):
     """
     A class that facilitates the process of converting input into a message, 
     interacting with a language model (assistant), and transforming the 
@@ -46,7 +48,7 @@ class Op(Module, AsyncModule, StreamModule, AsyncStreamModule):
     """
     assistant: Assistant
     to_msg: ToMsg
-    out: FromMsg
+    out: FromResp
     filter_undefined: bool = True
     follow_up: bool = False
 
@@ -60,8 +62,8 @@ class Op(Module, AsyncModule, StreamModule, AsyncStreamModule):
         handled after processing.
         """
         super().__post_init__()
-        if not isinstance(self.out, FromMsg):
-            self.out = FromMsg(self.out)
+        if not isinstance(self.out, FromResp):
+            self.out = FromResp(self.out)
 
     def forward(
         self, *args,  
@@ -263,7 +265,8 @@ class Op(Module, AsyncModule, StreamModule, AsyncStreamModule):
         self, 
         to_msg: ToMsg=UNDEFINED, 
         assistant: Assistant=UNDEFINED, 
-        out: str | KeyGet | typing.List[str | KeyGet]=UNDEFINED, filter_undefined: bool=UNDEFINED
+        out: str | typing.List[str]=UNDEFINED, 
+        filter_undefined: bool=UNDEFINED
     ):
         """
         Spawns a new `Op` instance based on the updated arguments.
@@ -293,8 +296,8 @@ class Op(Module, AsyncModule, StreamModule, AsyncStreamModule):
 
 
 class Threaded(
-    Module, AsyncModule, StreamModule,
-    AsyncStreamModule
+    Process, AsyncProcess, StreamProcess,
+    AsyncStreamProcess
 ):
     """A Threaded Op. Use to keep the Op 
     """
@@ -302,14 +305,12 @@ class Threaded(
     assistant: Assistant
     router: ModuleDict
     to_msg: ToMsg
-    out: FromMsg
+    out: FromResp
     dialog: BaseDialog
     filter_undefined: bool = True
     follow_up: bool = False
 
-    def __init__(
-        self, 
-    ):
+    def __post_init__(self):
         """
         Initializes the class to facilitate interaction with a language model assistant by
         adapting inputs and outputs.
@@ -323,8 +324,8 @@ class Threaded(
         handled after processing.
         """
         super().__post_init__()
-        if not isinstance(self.out, FromMsg):
-            self.out = FromMsg(self.out)
+        if not isinstance(self.out, FromResp):
+            self.out = FromResp(self.out)
 
     def forward(
         self, 
@@ -513,7 +514,7 @@ class Threaded(
         )
 
     def spawn(
-        self, to_msg: ToMsg=UNDEFINED, assistant: Assistant=UNDEFINED, router: typing.Dict[str, ToMsg]=UNDEFINED, dialog: BaseDialog=UNDEFINED, out: str | KeyGet | typing.List[str | KeyGet]=UNDEFINED, filter_undefined: bool=UNDEFINED
+        self, to_msg: ToMsg=UNDEFINED, assistant: Assistant=UNDEFINED, router: typing.Dict[str, ToMsg]=UNDEFINED, dialog: BaseDialog=UNDEFINED, out: str | typing.List[str]=UNDEFINED, filter_undefined: bool=UNDEFINED
     ):
         """
         Spawns a new `Op` instance based on the updated arguments.

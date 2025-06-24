@@ -16,26 +16,122 @@ from ._process import (
 )
 from ..store import Param
 from ..utils import primitives, str_formatter
-from ..msg import ToMsg, ToText, FromMsg
-from ._ai import (
-    AsyncAssist, AsyncStreamAssist, 
-    Assist, StreamAssist
-)
-from ..msg import (
+from ._resp import ToMsg, ToText, FromMsg
+
+from ._msg import (
     OutConv, NullOut,
     PrimOut, PydanticOut,
 )
-from ..inst import (
-    Cue, validate_out,
-    render,
-    render_multi
-)
-X = typing.Union[str, Cue]
-Engine: typing.TypeAlias = Assist | AsyncAssist | StreamAssist | AsyncStreamAssist
+# X = typing.Union[str, Cue]
+Engine: typing.TypeAlias = Process | AsyncProcess | StreamProcess | AsyncStreamProcess
+from ..core import Renderable
 
 S = typing.TypeVar('S')
-
 # TODO: MOVE OUT OF HERE
+from ..utils import is_primitive
+
+
+class Cue(
+    pydantic.BaseModel, Renderable
+):
+    """Specific cue for the model to use
+    """
+
+    text: str
+    out: Process | None = None
+    name: str = ''
+
+    def i(self) -> Self:
+        return self
+
+    @pydantic.field_validator('text', mode='before')
+    def convert_renderable_to_string(cls, v):
+        if isinstance(v, Renderable):
+            return v.render()
+        if is_primitive(v):
+            return str(v)
+        return v
+
+    def render(self) -> str:
+        """Render the cue
+
+        Returns:
+            str: The text for the cue 
+        """
+        return self.text
+
+    def read(self, data: str) -> typing.Any:
+        """Read the data
+
+        Args:
+            data (str): The data to read
+
+        Raises:
+            RuntimeError: If the cue does not have a out
+
+        Returns:
+            S: The result of the read process
+        """
+        if self._out is None:
+            return data
+        
+        return self._out(data)
+
+    @property
+    def fixed_data(self):
+        return {"out"}
+
+    def update_param_dict(self, data: typing.Dict) -> bool:
+        """Update the text for the parameter
+        If not in "training" mode will not update
+
+        Args:
+            text (str): The text to update with
+        
+        Returns:
+            True if updated and Fals if not (not in training mode)
+        """
+        if self.training:
+            # excluded = self.data.dict_excluded()
+            # data.update(
+            #     excluded
+            # )
+
+            self.text = data[self.name]
+            return True
+        return False
+
+    def param_dict(self):
+        """Update the text for the parameter
+        If not in "training" mode will not update
+
+        Args:
+            text (str): The text to update with
+        
+        Returns:
+            True if updated and Fals if not (not in training mode)
+        """
+        if self.training:
+            return {self._name: self.text}
+        return {}
+
+    def data_schema(self) -> typing.Dict:
+        """Get the structure of the object
+
+        Returns:
+            typing.Dict: The structure of the object
+        """
+        return {
+            "title": self.name,
+            "type": "object",
+            "properties": {
+                "text": {
+                    "title": "Text",
+                    "type": "string"
+                }
+            },
+            "required": ["text"]
+        }
 
 
 class IBase(pydantic.BaseModel):
@@ -363,9 +459,7 @@ class FuncDec(FuncDecBase, Process):
     """
     A class that allows one to decorate a function with an "instruction" so that the function will be an LLM (Language Model) call.
     """
-
-    engine: Assist
-    to_msg: ToMsg | None = None
+    engine: Process
     kwargs: typing.Dict | None = None
     instance: typing.Any | None
 
@@ -376,7 +470,6 @@ class FuncDec(FuncDecBase, Process):
         Args:
         """
         super().__post_init__()
-        self.to_msg = self.to_msg or ToText()
         self.kwargs = self.kwargs or {}
 
     def forward(self, *args, **kwargs):
@@ -396,15 +489,14 @@ class FuncDec(FuncDecBase, Process):
         cue = self._inst(
             instance, *args, **kwargs
         )
-        msg = self._to_msg(cue.text)
+        # msg = self._to_msg(cue.text)
         engine = self.get_engine(instance)
 
         res_msg = engine(
-            [msg], **self._kwargs
+            cue.text, **self._kwargs
         )
         print(self._inst.out_conv)
         res_msg = self._inst.out_conv(res_msg)
-        print(res_msg.m)
         res, filtered = self._inst.from_msg.filter(res_msg)
 
         if filtered:
@@ -435,8 +527,7 @@ class AFuncDec(FuncDecBase, AsyncProcess):
     A class that allows one to decorate an async function with an "instruction" so that the function will be an LLM (Language Model) call.
     """
 
-    engine: AsyncAssist
-    to_msg: ToMsg | None = None
+    engine: AsyncProcess
     kwargs: typing.Dict | None = None
     instance: typing.Any | None
 
@@ -447,7 +538,6 @@ class AFuncDec(FuncDecBase, AsyncProcess):
         Args:
         """
         super().__post_init__()
-        self.to_msg = self.to_msg or ToText()
         self.kwargs = self.kwargs or {}
 
     async def aforward(self, *args, **kwargs):
@@ -467,10 +557,9 @@ class AFuncDec(FuncDecBase, AsyncProcess):
         cue = self._inst(
             instance, *args, **kwargs
         )
-        msg = self._to_msg(cue.text)
         engine = self.get_engine(instance)
         res_msg = await engine.aforward(
-            [msg], **self._kwargs
+            cue.text, **self._kwargs
         )
         res_msg = self._inst.out_conv(res_msg)
         res, filtered = self._inst.from_msg.filter(res_msg)
@@ -511,9 +600,7 @@ class StreamDec(FuncDecBase, StreamProcess):
     """
     A class that allows one to decorate a streaming function with an "instruction" so that the function will be an LLM (Language Model) call.
     """
-
-    engine: StreamAssist
-    to_msg: ToMsg | None = None
+    engine: StreamProcess
     kwargs: typing.Dict | None = None
     instance: typing.Any | None
 
@@ -524,7 +611,6 @@ class StreamDec(FuncDecBase, StreamProcess):
         Args:
         """
         super().__post_init__()
-        self.to_msg = self.to_msg or ToText()
         self.kwargs = self.kwargs or {}
 
     def stream(self, *args, **kwargs):
@@ -545,10 +631,9 @@ class StreamDec(FuncDecBase, StreamProcess):
             instance
         )
 
-        for resp_msg in engine.stream(
+        for resp in engine.stream(
             [msg], **self._kwargs
         ):
-            resp = self._inst.out_conv(resp_msg)
             resp, filtered = self._inst.from_msg.filter(resp)
             if filtered:
                 yield None
@@ -586,7 +671,7 @@ class AStreamDec(FuncDecBase, AsyncStreamProcess):
     A class that allows one to decorate a asynchronous streaming function with an "instruction" so that the function will be an LLM (Language Model) call.
     """
 
-    engine: AsyncStreamAssist
+    engine: AsyncStreamProcess
     to_msg: ToMsg | None = None
     kwargs: typing.Dict | None = None
     instance: typing.Any | None
@@ -647,13 +732,11 @@ class AStreamDec(FuncDecBase, AsyncStreamProcess):
 
 
 def instructfunc(
-    engine: Engine=None,
-    out_conv: OutConv=None,
+    engine: Engine=None, 
     is_method: bool=False,
     to_async: bool=False,
     to_stream: bool=False,
-    to_msg: ToMsg=None,
-    llm_out: str='content',
+    out: typing.Tuple[str] | str = 'content',
     kwargs: typing.Dict=None
 ):
     """Decorate a method with instructfunc
@@ -673,26 +756,26 @@ def instructfunc(
             return f(*args, **kwargs)
         
         inst = InstF(
-            f, is_method, out_conv, llm_out=llm_out
+            f, is_method, out=out
         )
 
         if not to_async and not to_stream:
             return FuncDec(
-                inst, engine, to_msg,
+                inst, engine,
                 kwargs=kwargs
             )
         if not to_stream:
             return AFuncDec(
-                inst, engine, to_msg,
+                inst, engine,
                 kwargs=kwargs
             )
         if not to_async:
             return StreamDec(
-                inst, engine, to_msg,
+                inst, engine, 
                 kwargs=kwargs
             )
         return AStreamDec(
-            inst, engine, to_msg,
+            inst, engine, 
                 kwargs=kwargs
         )
 
@@ -700,12 +783,10 @@ def instructfunc(
 
 
 def instructmethod(
-    engine: Engine=None,
-    out_conv: OutConv=None,
+    engine: Engine=None, 
     to_async: bool=False,
     to_stream: bool=False,
-    to_msg: ToMsg=None,
-    llm_out: str='content',
+    out: typing.Tuple[str] | str = 'content',
     kwargs: typing.Dict=None
 ):
     """Decorate a method with instructfunc
@@ -717,23 +798,21 @@ def instructmethod(
         typing.Callable[[function], SignatureFunc]
     """
     return instructfunc(
-        engine, out_conv=out_conv, is_method=True, to_msg=to_msg, to_async=to_async, 
+        engine, is_method=True, to_async=to_async, 
         to_stream=to_stream, 
-        llm_out=llm_out,
+        llm_out=out,
         kwargs=kwargs
     )
 
 
 def signaturefunc(
-    engine: Engine=None,
-    out_conv: OutConv=None,
-    to_msg: ToMsg=None,
+    engine: Engine=None, 
     doc: typing.Union[str, typing.Callable[[], str]]=None,
     is_method: bool=False,
     to_async: bool=False,
     to_stream: bool=False,
     train: bool=False,
-    llm_out: str='content',
+    out: typing.Tuple[str] | str = 'content',
     kwargs: typing.Dict=None
 ):
     """Decorate a method with instructfunc
@@ -754,27 +833,26 @@ def signaturefunc(
         
         inst = SigF(
             f, is_method, train=train, 
-            doc=doc, out_conv=out_conv, 
-            llm_out=llm_out,
+            doc=doc, out=out,
         )
 
         if not to_async and not to_stream:
             return FuncDec(
-                inst, engine, to_msg,
+                inst, engine,
                 kwargs=kwargs
             )
         if not to_stream:
             return AFuncDec(
-                inst, engine, to_msg,
+                inst, engine,
                 kwargs=kwargs
             )
         if not to_async:
             return StreamDec(
-                inst, engine, to_msg,
+                inst, engine,
                 kwargs=kwargs
             )
         return AStreamDec(
-            inst, engine, to_msg,
+            inst, engine,
             kwargs=kwargs
         )
 
@@ -783,13 +861,11 @@ def signaturefunc(
 
 def signaturemethod(
     engine: Engine=None, 
-    out_conv: OutConv=None,
-    to_msg: ToMsg=None,
     doc: typing.Union[str, typing.Callable[[], str]]=None,
     to_async: bool=False,
     to_stream: bool=False,
     train: bool=False,
-    llm_out: str='content',
+    out: typing.Tuple[str] | str = 'content',
     kwargs: typing.Dict=None
 ):
     """Decorate a method with SignatureFunc
@@ -803,33 +879,9 @@ def signaturemethod(
         typing.Callable[[function], SignatureFunc]
     """
     return signaturefunc(
-        engine, out_conv=out_conv, doc=doc, is_method=True,
-        to_msg=to_msg, to_async=to_async, to_stream=to_stream,
+        engine, doc=doc, is_method=True,
+        to_async=to_async, to_stream=to_stream,
         train=train,
-        llm_out=llm_out,
+        out=out,
         kwargs=kwargs
     )
-
-
-def inst(x: typing.Union[typing.Iterable[X], X], cue: X) -> Cue:
-    """Execute an operation on a cue
-
-    Args:
-        x (typing.Union[typing.Iterable[X], X]): The input
-        cue (X): The cue for the operation
-
-    Returns:
-        Cue: The resulting cue
-    """
-    if not isinstance(x, typing.Iterable):
-        x = [x]
-
-    out = validate_out([*x, cue])
-    resources = ', '.join(render_multi(x))
-    # resources = ', '.join(x_i.name for x_i in x)
-    text = f'Do: {render(cue)} --- With Inputs: {resources}'
-    return Cue(
-        text=text, out=out
-    )
-
-

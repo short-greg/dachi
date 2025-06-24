@@ -129,6 +129,7 @@ def generic_class(t: typing.TypeVar, idx: int=0) -> typing.Type:
     """
     return t.__orig_class__.__args__[idx]
 
+
 def is_nested_model(
     pydantic_model_cls: typing.Type[pydantic.BaseModel]
 ) -> bool:

@@ -25,79 +25,6 @@ from ._process import Process
 from .. import utils
 
 
-class RespGet(Process):
-    """Retrieves from the message (not the meta in the message)"""
-
-    @abstractmethod
-    def forward(self, msg: Msg) -> typing.Any:
-        pass
-
-
-class KeyGet(RespGet):
-    """Retrieves from the message (not the meta in the message)"""
-
-    name: str
-    meta: bool = False
-
-    def forward(self, msg) -> typing.Any:
-        """
-
-        Args:
-            msg: Do a direct retrieval from the message
-
-        Returns:
-            typing.Any: The value referenced by key
-        """
-        if self.meta:
-            return msg.m[self.name]
-        return msg[self.name]
-
-
-class TupleGet(RespGet):
-    """Retrieves from the message (not the meta in the message)"""
-
-    _keys: typing.List[str]
-
-    def __post_init__(self, keys: typing.Iterable):
-        """Use to retrieve from the base message dict.
-
-        Args:
-            name (str): The name of the message key to retrieve
-        """
-        self._rets = [to_get(key) for key in self._keys]
-
-    def forward(self, msg):
-        
-        return tuple(
-            ret(msg)
-            for ret in self._rets
-        )
-
-
-def to_get(key: str) -> RespGet:
-    """Retrieve a value
-
-    Args:
-        key (str): The key to get
-
-    Raises:
-        ValueError: 
-
-    Returns:
-        MsgGet: The getter
-    """
-    if isinstance(key, KeyGet):
-        return key
-    elif isinstance(key, str):
-        return KeyGet(key, True)
-    elif isinstance(key, typing.Iterable):
-        return TupleGet(key)
-    
-    elif isinstance(key, RespGet):
-        return key
-    
-    raise ValueError(f'Could not convert {key} to a MsgRet')
-
 
 class RespProc(Process, ABC):
     """Use a reader to read in data convert data retrieved from
@@ -245,3 +172,95 @@ class RespConv(RespProc, ABC):
 
     def prep(self) -> typing.Dict:
         return {}
+
+
+class FromResp(Process):
+
+    keys: typing.List[str]
+    to_tuple: bool = True
+
+    def forward(self, resp: Resp) -> typing.List[typing.Any] | typing.Dict[str, typing.Any]:
+
+        if self.to_tuple:
+            return tuple(
+                resp.out[key] for key in self.keys
+            )
+        return {
+            key: resp.out[key]
+            for key in self.keys
+        }
+
+
+
+# class RespGet(Process):
+#     """Retrieves from the message (not the meta in the message)"""
+
+#     @abstractmethod
+#     def forward(self, msg: Msg) -> typing.Any:
+#         pass
+
+
+# class KeyGet(RespGet):
+#     """Retrieves from the message (not the meta in the message)"""
+
+#     name: str
+#     meta: bool = False
+
+#     def forward(self, msg) -> typing.Any:
+#         """
+
+#         Args:
+#             msg: Do a direct retrieval from the message
+
+#         Returns:
+#             typing.Any: The value referenced by key
+#         """
+#         if self.meta:
+#             return msg.m[self.name]
+#         return msg[self.name]
+
+
+# class TupleGet(RespGet):
+#     """Retrieves from the message (not the meta in the message)"""
+
+#     _keys: typing.List[str]
+
+#     def __post_init__(self, keys: typing.Iterable):
+#         """Use to retrieve from the base message dict.
+
+#         Args:
+#             name (str): The name of the message key to retrieve
+#         """
+#         self._rets = [to_get(key) for key in self._keys]
+
+#     def forward(self, msg):
+        
+#         return tuple(
+#             ret(msg)
+#             for ret in self._rets
+#         )
+
+
+# def to_get(key: str) -> RespGet:
+#     """Retrieve a value
+
+#     Args:
+#         key (str): The key to get
+
+#     Raises:
+#         ValueError: 
+
+#     Returns:
+#         MsgGet: The getter
+#     """
+#     if isinstance(key, KeyGet):
+#         return key
+#     elif isinstance(key, str):
+#         return KeyGet(key, True)
+#     elif isinstance(key, typing.Iterable):
+#         return TupleGet(key)
+    
+#     elif isinstance(key, RespGet):
+#         return key
+    
+#     raise ValueError(f'Could not convert {key} to a MsgRet')

@@ -1,20 +1,20 @@
 import json
 import pytest
-from dachi.core._base import BaseModule, Param, State, Shared, BaseSpec, Checkpoint, dict
+from dachi.core._base import BaseModule, Param, Attr, Shared, BaseSpec, Checkpoint, dict
 from dataclasses import InitVar
 from pydantic import ValidationError
 import types
 import warnings
 
 import pytest
-from dachi.core._base import Param, State, Shared, BaseModule
+from dachi.core._base import Param, Attr, Shared, BaseModule
 from pydantic import BaseModel
 from dataclasses import InitVar
 
 from dachi.core._base import (
     BaseModule,
     Param,
-    State,
+    Attr,
     Shared,
     BaseSpec,
     registry,
@@ -38,7 +38,7 @@ class WithParams(BaseModule):
 
     def __post_init__(self, w: float, s: int):
         self.w = Param(data=w)
-        self.s = State(data=s)
+        self.s = Attr(data=s)
 
 
 class Nested(BaseModule):
@@ -50,7 +50,7 @@ class InitVarProc(BaseModule):
     y: InitVar[int]
 
     def __post_init__(self, y):
-        self.buffer = State(data=y)
+        self.buffer = Attr(data=y)
 
 # ------------------------------------------------------------
 #  Positive path tests
@@ -173,7 +173,7 @@ def test_nested_module_dedup_in_from_spec():
 
 
 def test_state_dict_filters():
-    wp = WithParams(w=Param(data=1.5), s=State(data=9), name="z")
+    wp = WithParams(w=Param(data=1.5), s=Attr(data=9), name="z")
     assert list(wp.parameters()) == [wp.w]
 
 
@@ -183,7 +183,7 @@ def test_state_keys_match_state_dict():
         s: InitVar[int]
         def __post_init__(self, p: int, s: int):
             self.p = Param(data=p)
-            self.s = State(data=s)
+            self.s = Attr(data=s)
 
     pr = Proc(p=5, s=9)
     assert set(pr.state_dict().keys()) == pr.state_keys()
@@ -314,7 +314,7 @@ def test_param_accepts_any_val(val):
 
 
 def test_state_mutability():
-    st = State(data=5)
+    st = Attr(data=5)
     st.data += 1
     assert st.data == 6
 
@@ -337,7 +337,7 @@ def test_initvar_default_used():
         x: int
         y: InitVar[int] = 9
         def __post_init__(self, y):
-            self.buf = State(data=y)
+            self.buf = Attr(data=y)
     p = P(x=1)
     assert p._init_vars["y"] == 9 and p.buf.data == 9
 
@@ -355,19 +355,19 @@ def test_schema_kind_field():
 def test_spec_kind_matches_classname():
     class WithParams(BaseModule):
         w: Param[float]
-        s: State[int]
+        s: Attr[int]
         name: str
-    wp = WithParams(w=Param(data=1.0), s=State(data=1), name="k")
+    wp = WithParams(w=Param(data=1.0), s=Attr(data=1), name="k")
     assert wp.spec(to_dict=False).kind.endswith("WithParams")
 
 
 def test_state_dict_train_flag():
-    wp = WithParams(w=Param(data=2.2), s=State(data=0), name="m")
+    wp = WithParams(w=Param(data=2.2), s=Attr(data=0), name="m")
     assert "w" not in wp.state_dict(train=False)
 
 
 def test_state_dict_runtime_flag():
-    wp = WithParams(w=Param(data=1.0), s=State(data=5), name="r")
+    wp = WithParams(w=Param(data=1.0), s=Attr(data=5), name="r")
     assert "s" not in wp.state_dict(runtime=False)
 
 
@@ -386,7 +386,7 @@ def test_state_dict_flags_combination():
 
         def __post_init__(self, p: float, s: int):
             self.p = Param(data=p)
-            self.s = State(data=s)
+            self.s = Attr(data=s)
 
     a = A(p=3.3, s=9)
     sd = a.state_dict(train=False, runtime=False)
@@ -463,10 +463,10 @@ def test_state_dict_no_recursion():
 
 def test_state_dict_complex_types():
     p = Param(data=[1,2,3])
-    s = State(data={"k":"v"})
+    s = Attr(data={"k":"v"})
     class A(BaseModule):
         p: Param[list]
-        s: State[dict]
+        s: Attr[dict]
     a = A(p=p, s=s)
     sd = a.state_dict()
     assert sd == {"p":[1,2,3], "s":{"k":"v"}}
@@ -475,8 +475,8 @@ def test_state_dict_complex_types():
 def test_load_state_dict_happy_path():
     class A(BaseModule):
         p: Param[float]
-        s: State[int]
-    a = A(p=Param(data=1.0), s=State(data=2))
+        s: Attr[int]
+    a = A(p=Param(data=1.0), s=Attr(data=2))
     a.load_state_dict({"p": 3.3, "s": 4})
     assert a.p.data == 3.3 and a.s.data == 4
 
@@ -500,8 +500,8 @@ def test_load_state_dict_extra_key_strict():
 def test_load_state_dict_partial_non_strict():
     class A(BaseModule):
         p: Param[float]
-        s: State[int]
-    a = A(p=Param(data=1.0), s=State(data=2))
+        s: Attr[int]
+    a = A(p=Param(data=1.0), s=Attr(data=2))
     a.load_state_dict({"p":5.0}, strict=False)
     assert a.p.data == 5.0 and a.s.data == 2
 
@@ -643,7 +643,7 @@ def test_parameters_ignore_nonparam():
         c: int
         def __post_init__(self, a: str, b: int):
             self.a = Shared(data=a)
-            self.b = State(data=b)
+            self.b = Attr(data=b)
 
     pr = P(a="ref", b=9, c=42)
     assert list(pr.parameters()) == []
@@ -839,7 +839,7 @@ def test_param_callback_runs():
     "val",
     [
         123, 3.14, "hello", True, None,  # primitives
-        State(data=5),                   # Shareable inside Shareable
+        Attr(data=5),                   # Shareable inside Shareable
         ["a", "b", "c"],                # homogeneous list
         {"k": 1},                       # homogeneous dict
     ],
@@ -959,7 +959,7 @@ def test_state_dict_nonrecurse_returns_empty():
     class Leaf(BaseModule):
         s: InitVar[int]
         def __post_init__(self, s: int):
-            self.s = State(data=s)
+            self.s = Attr(data=s)
 
     class Top(BaseModule):
         child: Leaf
@@ -1151,7 +1151,7 @@ def test_param_type_enforcement():
 
 
 def test_state_type_enforcement():
-    class TypedState(State[float]):
+    class TypedState(Attr[float]):
         pass
     with pytest.raises(TypeError):
         TypedState(data="not a float")
@@ -1256,7 +1256,7 @@ def test_param_subclass_roundtrip():
 
 
 def test_state_subclass_roundtrip():
-    class TypedState(State[str]):
+    class TypedState(Attr[str]):
         pass
 
     class Proc(BaseModule):

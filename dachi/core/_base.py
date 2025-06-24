@@ -143,7 +143,7 @@ class ShareableItem(t.Generic[J]):
         cls = self.__class__
         for base in getattr(cls, "__orig_bases__", []):
             origin = getattr(base, "__origin__", None)
-            if origin in {Param, State, Shared}:
+            if origin in {Param, Attr, Shared}:
                 return t.get_args(base)[0]
         return None
 
@@ -183,7 +183,7 @@ class Param(ShareableItem[J]):
     #     self._callbacks: list[Callable[[T]]] = []
 
 
-class State(ShareableItem[J]):
+class Attr(ShareableItem[J]):
     """Mutable runtime state (e.g. counters, RNG seeds, rolling averages)."""
     pass
 
@@ -432,7 +432,7 @@ class BaseModule:
         self._children = []
         self._init_vars = {}
         self._parameters: dict[str, Param] = {}
-        self._states: dict[str, State] = {}
+        self._states: dict[str, Attr] = {}
         self._modules: dict[str, BaseModule] = {}
 
         for name, _typ, default, is_init in self.__class__.__item_fields__:
@@ -720,7 +720,7 @@ class BaseModule:
     def __setattr__(self, name, value):
         if isinstance(value, Param):
             self.register_parameter(name, value)
-        elif isinstance(value, State):
+        elif isinstance(value, Attr):
             self.register_state(name, value)
         elif isinstance(value, BaseModule):
             self.register_module(name, value)
@@ -731,7 +731,7 @@ class BaseModule:
         self._parameters[name] = param
         super().__setattr__(name, param)
 
-    def register_state(self, name: str, state: State):
+    def register_state(self, name: str, state: Attr):
         self._states[name] = state
         super().__setattr__(name, state)
 
@@ -796,7 +796,7 @@ class BaseModule:
                 path = f"{prefix}{name}"
                 if isinstance(v, Param) and train:
                     keys.add(path)
-                elif isinstance(v, State) and runtime:
+                elif isinstance(v, Attr) and runtime:
                     keys.add(path)
                 elif isinstance(v, BaseModule) and recurse:
                     _collect(v, path + ".")

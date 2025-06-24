@@ -1,12 +1,12 @@
 # test_itemlist.py
 import pytest
-from dachi.core._base import BaseModule, Param, State, BaseSpec, registry
+from dachi.core._base import BaseModule, Param, Attr, BaseSpec, registry
 from dachi.core._structs import ModuleList
 from dataclasses import InitVar
 
 import pytest
 from dachi.core._structs import ModuleList
-from dachi.core._base import BaseModule, Param, State, dict, registry
+from dachi.core._base import BaseModule, Param, Attr, dict, registry
 from dataclasses import InitVar
 # ---------------------- helper child class -------------------------
 
@@ -18,7 +18,7 @@ class Leaf(BaseModule):
     def __post_init__(self, w: float, s: int):
 
         self.w = Param(w)
-        self.s = State(s)
+        self.s = Attr(s)
 
 # --- Helper Leaf class ---
 @registry()
@@ -28,7 +28,7 @@ class Leaf2(BaseModule):
 
     def __post_init__(self, v, f):
         self.v = Param(data=v)
-        self.f = State(data=f)
+        self.f = Attr(data=f)
 
 
 def make_leaf(val=1.0, step=0):
@@ -189,7 +189,7 @@ class TestModuleList:
 
     def test_modulelist_setitem_removes_old_attr(self):
         lst = ModuleList(
-            items=[Leaf(w=Param(1), s=State(0))]
+            items=[Leaf(w=Param(1), s=Attr(0))]
         )
         assert hasattr(lst, "0")
         lst[0] = Leaf(w=9, s=9)
@@ -369,7 +369,7 @@ class TestModuleList:
 
 
 import pytest
-from dachi.core._base import BaseModule, Param, State, dict, BaseSpec, registry
+from dachi.core._base import BaseModule, Param, Attr, dict, BaseSpec, registry
 from dachi.core._structs import ModuleDict
 from dataclasses import InitVar
 

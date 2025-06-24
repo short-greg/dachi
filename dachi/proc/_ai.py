@@ -1,6 +1,5 @@
 # 1st party
 import typing
-from abc import ABC, abstractmethod
 
 # 3rd party
 import pydantic
@@ -10,9 +9,7 @@ from ..core import (
     Msg, END_TOK, Resp
 )
 from ._resp import RespProc
-from ..msg import (
-    Msg
-)
+from ._msg import Msg
 from ._process import AsyncProcess
 from ._resp import RespConv
 

@@ -14,6 +14,25 @@ V = t.TypeVar("V", bound=BaseModule)
 T = TypeVar("T", bound=BaseModule)
 
 
+
+# 1st party
+import typing
+from dataclasses import dataclass
+from functools import reduce
+from abc import ABC, abstractmethod
+
+# 3rd party
+import pandas as pd
+from ..utils import UNDEFINED
+import pydantic
+import typing
+
+# local
+from ..core import Storable
+from ..core import render, Renderable
+
+
+
 class ModuleList(BaseModule, t.Generic[V]):
     """
     A list-like container whose elements are themselves `BaseModule`
@@ -398,3 +417,155 @@ class SerialTuple(BaseModule):
                 out.append(item)
 
         return out
+
+
+
+# class Context(dict):
+#     """Use to store state
+#     """
+#     def get_or_set(self, key, value):
+#         """Get or set a value in the context
+
+#         Args:
+#             key : The key for the value to set
+#             value : The value to set if not already set
+
+#         Returns:
+#             Any: the value specified by key
+#         """
+#         if key not in self:
+#             self[key] = value
+#             return value
+        
+#         return self[key]
+
+#     def get_or_setf(self, key, f: typing.Callable[[], typing.Any]) -> typing.Any:
+#         """Adds a value to the dictionary if not already
+#         set.
+
+#         Args:
+#             d (typing.Dict): The dictionary
+#             key: The key
+#             f: The function to call to get the value
+
+#         Returns:
+#             typing.Any: The value specified by dictionary key
+#         """
+#         if key in self:
+#             return self[key]
+#         self[key] = f()
+#         return self[key]
+
+#     def call_or_set(self, key, value, f: typing.Callable[[typing.Any, typing.Any], typing.Any]) -> typing.Any:
+#         """Adds a value to the dictionary if not already
+#         set.
+
+#         Args:
+#             d (typing.Dict): The dictionary
+#             key: The key
+#             f: The function to call to get the value
+
+#         Returns:
+#             typing.Any: The value specified by dictionary key
+#         """
+#         if key not in self:
+#             self[key] = value
+#             return value
+#         self[key] = f(self[key], value)
+#         return self[key]
+
+#     def acc(
+#         self, key, value, init_val: str=''
+#     ) -> typing.Any:
+#         """Adds a value to the dictionary if not already
+#         set.
+
+#         Args:
+#             d (typing.Dict): The dictionary
+#             key: The key
+#             f: The function to call to get the value
+
+#         Returns:
+#             typing.Any: The value specified by dictionary key
+#         """
+
+#         if key not in self:
+#             self[key] = init_val
+        
+#         if value is not UNDEFINED:
+#             self[key] = self[key] + value
+#         return self[key]
+
+
+# class ContextStorage(object):
+#     """Use to manage context storage such as spawning new
+#     contexts.
+#     """
+
+#     def __init__(self):
+#         """Create the context storage
+#         """
+#         object.__setattr__(self, '_data', {})
+#         self._data: typing.Dict
+
+#     @property
+#     def contexts(self) -> typing.Dict[str, Context]:
+#         """Retrieve all contexts
+
+#         Returns:
+#             typing.Dict[str, Context]: All contexts
+#         """
+#         return {**self._data}
+    
+#     def clear(self):
+#         """Clear the entire context storage
+#         """
+#         self._data = {}
+
+#     def reset(self):
+#         """Clear the entire context storage
+#         """
+#         self.clear()
+    
+#     def remove(self, key):
+#         """Remove a context
+
+#         Args:
+#             key: The name of the context to remove
+#         """
+#         del self._data[key]
+    
+#     def add(self, key) -> 'Context':
+#         """Add context to the storage
+
+#         Args:
+#             key : The name of the context 
+
+#         Returns:
+#             Context: The spawned context
+#         """
+#         if key not in self._data:
+#             d = Context()
+#             self._data[key] = d
+        
+#         return self._data[key]
+
+#     def __getattr__(self, key) -> 'Context':
+#         """Retrieve the context
+
+#         Args:
+#             key Retrieve the context
+
+#         Returns:
+#             Context: The created context
+#         """
+#         if key not in self._data:
+#             d = Context()
+#             self._data[key] = d
+        
+#         return self._data[key]
+    
+#     def reset(self):
+#         """Reset the context storage
+#         """
+#         self._data.clear()

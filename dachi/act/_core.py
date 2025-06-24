@@ -1,11 +1,13 @@
 # 1st party
 from enum import Enum
 from abc import abstractmethod
-import typing
+import typing as t
 
 # local
-from ..core import Storable, BaseProcess
+from ..core import Attr, BaseModule
+from ..proc import Process
 # TODO: Add in Action (For GOAP)
+from abc import ABC
 
 
 class TaskStatus(Enum):
@@ -158,34 +160,28 @@ FAILURE = TaskStatus.FAILURE
 RUNNING = TaskStatus.RUNNING
 
 
-class Task(BaseProcess):
+class Task(BaseModule):
     """The base class for a task in the behavior tree
     """
+    SUCCESS: t.ClassVar[TaskStatus] = TaskStatus.SUCCESS
+    FAILURE: t.ClassVar[TaskStatus] = TaskStatus.FAILURE
+    READY: t.ClassVar[TaskStatus] = TaskStatus.READY
+    RUNNING: t.ClassVar[TaskStatus] = TaskStatus.RUNNING
 
-    # _status: TaskStatus = pydantic.PrivateAttr(default=TaskStatus.READY)
-
-    SUCCESS: TaskStatus = TaskStatus.SUCCESS
-    FAILURE: TaskStatus = TaskStatus.FAILURE
-    READY: TaskStatus = TaskStatus.READY
-    RUNNING: TaskStatus = TaskStatus.RUNNING
-
-    def __init__(self):
+    def __post_init__(self):
         """Initialize the task
         """
-
-        super().__init__()
-
-        self._status = self.READY
+        super().__post_init__()
+        self._status = Attr[TaskStatus](val=self.READY)
 
     @abstractmethod    
-    def tick(self) -> TaskStatus:
+    async def tick(self) -> TaskStatus:
         raise NotImplementedError
 
-    @abstractmethod    
-    async def atick(self) -> TaskStatus:
+    def sync_tick(self) -> TaskStatus:
         raise NotImplementedError
 
-    def __call__(self) -> TaskStatus:
+    async def __call__(self) -> TaskStatus:
         """Execute the task
 
         Returns:
@@ -200,7 +196,7 @@ class Task(BaseProcess):
         Returns:
             TaskStatus: 
         """
-        return self._status
+        return self._status.data
 
     @property
     def id(self):
@@ -213,29 +209,10 @@ class Task(BaseProcess):
     
     def reset(self):
 
-        self._status = TaskStatus.READY
-
-    # def reset(self):
-    #     """Reset the terminal
-
-    #     """
-    #     self._status = TaskStatus.READY
-
-    # def load_state_dict(self, state_dict: typing.Dict):
-    #     """Load the state dict for the object
-
-    #     Args:
-    #         state_dict (typing.Dict): The state dict
-    #     """
-    #     all_items = {**self.__dict__}
-    #     for k, v in all_items.items():
-    #         if isinstance(v, Storable):
-    #             self.__dict__[k] = v.load_state_dict(state_dict[k])
-    #         else:
-    #             self.__dict__[k] = state_dict[k]
+        self._status.set(TaskStatus.READY)
 
 
-class ToStatus(object):
+class ToStatus(Process):
     """Use to convert a value to a status
     """
 
@@ -252,7 +229,7 @@ class ToStatus(object):
         pass
 
 
-TOSTATUS = ToStatus | typing.Callable[[typing.Any], TaskStatus]
+TOSTATUS = ToStatus | t.Callable[[t.Any], TaskStatus]
 
 
 def from_bool(status: bool) -> TaskStatus:
@@ -267,31 +244,31 @@ def from_bool(status: bool) -> TaskStatus:
     return TaskStatus.from_bool(status)
 
 
-class State(Storable):
+class State(BaseModule):
     """Use State creating a state machine
     """
     @abstractmethod
-    def update(self, reset: bool=False) -> typing.Union['State', TaskStatus]:
+    async def update(self) -> t.Union['State', TaskStatus]:
         """Update the 
 
         Returns: bool
-            typing.Union['State', TaskStatus]: The new State/Status
+            t.Union['State', TaskStatus]: The new State/Status
         """
         pass
 
-    def __call__(self, reset: bool=False):
+    async def __call__(self, reset: bool=False):
         return self.update(reset)
 
 
-STATE_CALL = State | typing.Callable[[], State | TaskStatus]
+STATE_CALL = State | t.Callable[[], State | TaskStatus]
 
-
-class Router(object):
+class Router(Process, ABC):
     """Use to route a value to a Task
     """
+
     @abstractmethod
-    def __call__(self, val) -> TaskStatus | State:
+    def forward(self, val) -> TaskStatus | State:
         pass
 
 
-ROUTE = Router | typing.Callable[[typing.Any], TaskStatus | State]
+ROUTE = Router | t.Callable[[t.Any], TaskStatus | State]

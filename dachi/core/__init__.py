@@ -2,7 +2,7 @@ from ._base import (
     to_kind,
     ShareableItem,
     Param,
-    State,
+    Attr,
     Shared,
     Renderable,
     Trainable,
