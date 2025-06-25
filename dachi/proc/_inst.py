@@ -14,7 +14,7 @@ from ._process import (
     Process, AsyncProcess, StreamProcess, 
     AsyncStreamProcess
 )
-from ..store import Param
+from ..core import Param
 from ..utils import primitives, str_formatter
 from ._resp import ToMsg, ToText, FromMsg
 
@@ -31,110 +31,7 @@ S = typing.TypeVar('S')
 from ..utils import is_primitive
 
 
-class Cue(
-    pydantic.BaseModel, Renderable
-):
-    """Specific cue for the model to use
-    """
-
-    text: str
-    out: Process | None = None
-    name: str = ''
-
-    def i(self) -> Self:
-        return self
-
-    @pydantic.field_validator('text', mode='before')
-    def convert_renderable_to_string(cls, v):
-        if isinstance(v, Renderable):
-            return v.render()
-        if is_primitive(v):
-            return str(v)
-        return v
-
-    def render(self) -> str:
-        """Render the cue
-
-        Returns:
-            str: The text for the cue 
-        """
-        return self.text
-
-    def read(self, data: str) -> typing.Any:
-        """Read the data
-
-        Args:
-            data (str): The data to read
-
-        Raises:
-            RuntimeError: If the cue does not have a out
-
-        Returns:
-            S: The result of the read process
-        """
-        if self._out is None:
-            return data
-        
-        return self._out(data)
-
-    @property
-    def fixed_data(self):
-        return {"out"}
-
-    def update_param_dict(self, data: typing.Dict) -> bool:
-        """Update the text for the parameter
-        If not in "training" mode will not update
-
-        Args:
-            text (str): The text to update with
-        
-        Returns:
-            True if updated and Fals if not (not in training mode)
-        """
-        if self.training:
-            # excluded = self.data.dict_excluded()
-            # data.update(
-            #     excluded
-            # )
-
-            self.text = data[self.name]
-            return True
-        return False
-
-    def param_dict(self):
-        """Update the text for the parameter
-        If not in "training" mode will not update
-
-        Args:
-            text (str): The text to update with
-        
-        Returns:
-            True if updated and Fals if not (not in training mode)
-        """
-        if self.training:
-            return {self._name: self.text}
-        return {}
-
-    def data_schema(self) -> typing.Dict:
-        """Get the structure of the object
-
-        Returns:
-            typing.Dict: The structure of the object
-        """
-        return {
-            "title": self.name,
-            "type": "object",
-            "properties": {
-                "text": {
-                    "title": "Text",
-                    "type": "string"
-                }
-            },
-            "required": ["text"]
-        }
-
-
-class IBase(pydantic.BaseModel):
+class IBase(BaseModule):
     """
     This is the base class for wrapping an Instruction functor. It is used to create an instruction when called.
     """
@@ -143,12 +40,8 @@ class IBase(pydantic.BaseModel):
     is_method: bool = False
     out_conv: OutConv = None
     llm_out: str = 'content'
-    _docstring: str = pydantic.PrivateAttr()
-    _name: str = pydantic.PrivateAttr()
-    _parameters: typing.List = pydantic.PrivateAttr()
-    _out: FromMsg = pydantic.PrivateAttr()
 
-    def model_post_init(self):
+    def __post_init__(self):
         """ Initializes the IBase instance.
         Args:
             f (Callable): The function to be wrapped as an instruction.
@@ -230,11 +123,11 @@ class IBase(pydantic.BaseModel):
         return self._is_method
     
     @abstractmethod
-    def __call__(self, *args, **kwds) -> Cue:
+    def __call__(self, *args, **kwds) -> typing.Any:
         """
 
         Returns:
-            Cue: The cue produced by the 
+            typing.Any: The instructions for the LLM
         """
         pass
 
@@ -262,7 +155,7 @@ class InstF(IBase):
     InstF is a functor class that returns a Cue when called. The function it wraps must return the cue
     """
 
-    def __call__(self, instance, *args, **kwargs) -> Cue:
+    def __call__(self, instance, *args, **kwargs) -> str:
         """
 
         Args:
@@ -313,12 +206,9 @@ class SigF(IBase):
         """
         super().model_post_init()
         self._doc = self._doc or self._docstring
-        cue = Cue(
-            text=self._doc
-        )
-        self._doc_param = Param(
+        self._doc_param = Param[str](
             name=self._name,
-            data=cue,
+            data=self._doc,
             training=self.train
         )
         
@@ -348,11 +238,13 @@ class SigF(IBase):
         if "{TEMPLATE}" in doc:
             kwargs['TEMPLATE'] = self.template()
 
-        cue = Cue(
-            text=str_formatter(
+        # cue = Cue(
+        #     text=str_formatter(
+        #         doc, required=False, **kwargs
+        # ), name=self._name)
+        return str_formatter(
                 doc, required=False, **kwargs
-        ), name=self._name)
-        return cue
+        )
 
     @property
     def out_cls(self) -> typing.Type:
@@ -389,7 +281,7 @@ class FuncDecBase(BaseModule):
         Returns:
             object: The instance if a method is decorated or None
         """
-        if self._inst.is_method:
+        if self.inst.is_method:
             if self._instance is not None:
                 return self._instance, args
             
@@ -419,10 +311,10 @@ class FuncDecBase(BaseModule):
         Returns:
             SignatureMethod
         """
-        if self._inst.name not in instance.__dict__:
-            instance.__dict__[self._inst.name] = self.spawn(instance=instance)
+        if self.inst.name not in instance.__dict__:
+            instance.__dict__[self.inst.name] = self.spawn(instance=instance)
     
-        return instance.__dict__[self._inst.name]
+        return instance.__dict__[self.inst.name]
     
     def spawn(self, instance=None) -> Self:
         """
@@ -434,11 +326,11 @@ class FuncDecBase(BaseModule):
         """
         
         return self.__class__(
-            inst=self._inst, 
+            inst=self.inst, 
             instance=instance
         )
 
-    def i(self, *args, **kwargs) -> Cue:
+    def i(self, *args, **kwargs) -> str:
         """
         Creates a Cue for the function decorator.
         This method retrieves an instance and processes the provided arguments
@@ -450,7 +342,7 @@ class FuncDecBase(BaseModule):
             Cue: A Cue object created for the function decorator.
         """
         instance, args = self.get_instance(args)
-        return self._inst(
+        return self.inst(
             instance, *args, **kwargs
         )
 
@@ -486,18 +378,18 @@ class FuncDec(FuncDecBase, Process):
         """
         
         instance, args = self.get_instance(args)
-        cue = self._inst(
+        cue = self.inst(
             instance, *args, **kwargs
         )
         # msg = self._to_msg(cue.text)
         engine = self.get_engine(instance)
 
         res_msg = engine(
-            cue.text, **self._kwargs
+            cue, **self._kwargs
         )
-        print(self._inst.out_conv)
-        res_msg = self._inst.out_conv(res_msg)
-        res, filtered = self._inst.from_msg.filter(res_msg)
+        print(self.inst.out_conv)
+        res_msg = self.inst.out_conv(res_msg)
+        res, filtered = self.inst.from_msg.filter(res_msg)
 
         if filtered:
             return None
@@ -513,7 +405,7 @@ class FuncDec(FuncDecBase, Process):
             Self: A new instance of the current class with updated attributes.
         """
         return self.__class__(
-            inst=self._inst, 
+            inst=self.inst, 
             engine=self._engine, instance=instance,
             to_msg=self._to_msg, kwargs=self._kwargs
         )
@@ -554,15 +446,15 @@ class AFuncDec(FuncDecBase, AsyncProcess):
             The result read from the engine's response.
         """
         instance, args = self.get_instance(args)
-        cue = self._inst(
+        cue = self.inst(
             instance, *args, **kwargs
         )
         engine = self.get_engine(instance)
         res_msg = await engine.aforward(
             cue.text, **self._kwargs
         )
-        res_msg = self._inst.out_conv(res_msg)
-        res, filtered = self._inst.from_msg.filter(res_msg)
+        res_msg = self.inst.out_conv(res_msg)
+        res, filtered = self.inst.from_msg.filter(res_msg)
         if filtered:
             return None
         return res
@@ -590,7 +482,7 @@ class AFuncDec(FuncDecBase, AsyncProcess):
         """
         
         return self.__class__(
-            inst=self._inst,
+            inst=self.inst,
             engine=self._engine, instance=instance,
             to_msg=self._to_msg, kwargs=self._kwargs
         )
@@ -623,10 +515,10 @@ class StreamDec(FuncDecBase, StreamProcess):
             The delta of the response from the LLM engine.
         """
         instance, args = self.get_instance(args)
-        cue = self._inst(
+        cue = self.inst(
             instance, *args, **kwargs
         )
-        msg = self._to_msg(cue.text)
+        msg = self._to_msg(cue)
         engine = self.get_engine(
             instance
         )
@@ -634,7 +526,7 @@ class StreamDec(FuncDecBase, StreamProcess):
         for resp in engine.stream(
             [msg], **self._kwargs
         ):
-            resp, filtered = self._inst.from_msg.filter(resp)
+            resp, filtered = self.inst.from_msg.filter(resp)
             if filtered:
                 yield None
             yield resp
@@ -649,7 +541,7 @@ class StreamDec(FuncDecBase, StreamProcess):
             Self: A new instance of the class.
         """
         return self.__class__(
-            inst=self._inst, 
+            inst=self.inst, 
             engine=self._engine, instance=instance,
             kwargs=self._kwargs
         )
@@ -685,6 +577,7 @@ class AStreamDec(FuncDecBase, AsyncStreamProcess):
         super().__post_init__()
         self.to_msg = self.to_msg or ToText()
         self.kwargs = self.kwargs or {}
+
     async def astream(self, *args, **kwargs):
         """
         Asynchronously streams the execution of an instruction by calling the LLM.
@@ -695,10 +588,10 @@ class AStreamDec(FuncDecBase, AsyncStreamProcess):
             The delta of the response from the LLM engine.
         """
         instance, args = self.get_instance(args)
-        cue = self._inst(
+        cue = self.inst(
             instance, *args, **kwargs
         )
-        msg = self._to_msg(cue.text)
+        msg = self._to_msg(cue)
 
         engine = self.get_engine(
             instance
@@ -707,8 +600,8 @@ class AStreamDec(FuncDecBase, AsyncStreamProcess):
         async for resp_msg in engine.astream(
             [msg], **self._kwargs
         ):
-            resp = self._inst.out_conv(resp_msg)
-            resp, filtered = self._inst.from_msg.filter(resp)
+            resp = self.inst.out_conv(resp_msg)
+            resp, filtered = self.inst.from_msg.filter(resp)
 
             if filtered:
                 yield None
@@ -717,7 +610,7 @@ class AStreamDec(FuncDecBase, AsyncStreamProcess):
     def spawn(self, instance=None) -> Self:
         
         return self.__class__(
-            inst=self._inst, 
+            inst=self.inst, 
             engine=self._engine, instance=instance,
             to_msg=self._to_msg,
             kwargs=self._kwargs
@@ -885,3 +778,4 @@ def signaturemethod(
         out=out,
         kwargs=kwargs
     )
+
