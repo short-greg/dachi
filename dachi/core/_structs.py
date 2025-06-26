@@ -1,35 +1,22 @@
 from __future__ import annotations
+
+# 1st party
 import typing as t
+from typing import TypeVar, Iterable, ClassVar, Iterator, Optional
+
+# 2nd Party
 from pydantic import BaseModel
-from ._base import BaseModule, BaseSpec, registry 
-from typing import TypeVar, Iterable, ClassVar, Iterator
 import typing as t
 from dataclasses import InitVar
 
-from typing import Optional, Iterator, Iterable
 from dataclasses import InitVar
+
+# Local
+from ._base import BaseModule, BaseSpec, registry 
 
 V_co = t.TypeVar("V_co", bound=BaseModule, covariant=True)
 V = t.TypeVar("V", bound=BaseModule)
 T = TypeVar("T", bound=BaseModule)
-
-
-# 1st party
-import typing
-from dataclasses import dataclass
-from functools import reduce
-from abc import ABC, abstractmethod
-
-# 3rd party
-import pandas as pd
-from ..utils import UNDEFINED
-import pydantic
-import typing
-
-# local
-from ..core import Storable
-from ..core import render, Renderable
-
 
 
 class ModuleList(BaseModule, t.Generic[V]):

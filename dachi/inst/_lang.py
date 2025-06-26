@@ -1,7 +1,6 @@
 # 1st party
 import typing
 from typing import Self
-import typing
 
 from ..core import Renderable
 
