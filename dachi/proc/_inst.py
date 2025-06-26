@@ -5,6 +5,8 @@ from typing import Self
 import inspect
 from functools import wraps
 
+from dataclasses import InitVar
+
 # 3rd party
 import pydantic
 
@@ -16,19 +18,15 @@ from ._process import (
 )
 from ..core import Param
 from ..utils import primitives, str_formatter
-from ._resp import ToMsg, ToText, FromMsg
-
-from ._msg import (
-    OutConv, NullOut,
+from ._msg import FromMsg
+from ._out import (
+    ToOut, NullOut,
     PrimOut, PydanticOut,
 )
-# X = typing.Union[str, Cue]
 Engine: typing.TypeAlias = Process | AsyncProcess | StreamProcess | AsyncStreamProcess
-from ..core import Renderable
 
 S = typing.TypeVar('S')
 # TODO: MOVE OUT OF HERE
-from ..utils import is_primitive
 
 
 class IBase(BaseModule):
@@ -38,7 +36,7 @@ class IBase(BaseModule):
 
     f: typing.Callable
     is_method: bool = False
-    out_conv: OutConv = None
+    out_conv: ToOut = None
     llm_out: str = 'content'
 
     def __post_init__(self):
@@ -142,7 +140,7 @@ class IBase(BaseModule):
         pass
 
     @property
-    def out_conv(self) -> OutConv:
+    def out_conv(self) -> ToOut:
         return self._out_conv
     
     @property
@@ -238,10 +236,6 @@ class SigF(IBase):
         if "{TEMPLATE}" in doc:
             kwargs['TEMPLATE'] = self.template()
 
-        # cue = Cue(
-        #     text=str_formatter(
-        #         doc, required=False, **kwargs
-        # ), name=self._name)
         return str_formatter(
                 doc, required=False, **kwargs
         )
@@ -256,13 +250,21 @@ class SigF(IBase):
         return self._return_annotation
 
 
-class FuncDecBase(BaseModule):
+class FuncDecBase(object):
     """This is used to decorate an "instruct" function
     that will be used 
     """
 
-    inst: IBase
-    instance: typing.Any
+    def __init__(
+        self, 
+        inst: IBase, 
+        instance=None,
+        kwargs: typing.Dict=None
+    ):
+        super().__init__()
+        self.instance = instance
+        self.inst = inst
+        self.kwargs = kwargs
 
     @abstractmethod
     def __call__(self, *args, **kwargs):
@@ -351,18 +353,18 @@ class FuncDec(FuncDecBase, Process):
     """
     A class that allows one to decorate a function with an "instruction" so that the function will be an LLM (Language Model) call.
     """
-    engine: Process
-    kwargs: typing.Dict | None = None
-    instance: typing.Any | None
-
-    def __post_init__(
-        self
+    
+    def __init__(
+        self, 
+        engine: Process,
+        inst: IBase, 
+        instance=None,
+        kwargs: typing.Dict=None
     ):
-        """
-        Args:
-        """
-        super().__post_init__()
-        self.kwargs = self.kwargs or {}
+        self.engine = engine
+        super().__init__(
+            inst, instance, kwargs
+        )
 
     def forward(self, *args, **kwargs):
         """
@@ -419,18 +421,17 @@ class AFuncDec(FuncDecBase, AsyncProcess):
     A class that allows one to decorate an async function with an "instruction" so that the function will be an LLM (Language Model) call.
     """
 
-    engine: AsyncProcess
-    kwargs: typing.Dict | None = None
-    instance: typing.Any | None
-
-    def __post_init__(
-        self
+    def __init__(
+        self, 
+        engine: AsyncProcess,
+        inst: IBase, 
+        instance=None,
+        kwargs: typing.Dict=None
     ):
-        """
-        Args:
-        """
-        super().__post_init__()
-        self.kwargs = self.kwargs or {}
+        self.engine = engine
+        super().__init__(
+            inst, instance, kwargs
+        )
 
     async def aforward(self, *args, **kwargs):
         """
@@ -492,18 +493,18 @@ class StreamDec(FuncDecBase, StreamProcess):
     """
     A class that allows one to decorate a streaming function with an "instruction" so that the function will be an LLM (Language Model) call.
     """
-    engine: StreamProcess
-    kwargs: typing.Dict | None = None
-    instance: typing.Any | None
 
-    def __post_init__(
-        self
+    def __init__(
+        self, 
+        engine: StreamProcess,
+        inst: IBase, 
+        instance=None,
+        kwargs: typing.Dict=None
     ):
-        """
-        Args:
-        """
-        super().__post_init__()
-        self.kwargs = self.kwargs or {}
+        self.engine = engine
+        super().__init__(
+            inst, instance, kwargs
+        )
 
     def stream(self, *args, **kwargs):
         """
@@ -563,20 +564,17 @@ class AStreamDec(FuncDecBase, AsyncStreamProcess):
     A class that allows one to decorate a asynchronous streaming function with an "instruction" so that the function will be an LLM (Language Model) call.
     """
 
-    engine: AsyncStreamProcess
-    to_msg: ToMsg | None = None
-    kwargs: typing.Dict | None = None
-    instance: typing.Any | None
-
-    def __post_init__(
-        self
+    def __init__(
+        self, 
+        engine: AsyncStreamProcess,
+        inst: IBase, 
+        instance=None,
+        kwargs: typing.Dict=None
     ):
-        """
-        Args:
-        """
-        super().__post_init__()
-        self.to_msg = self.to_msg or ToText()
-        self.kwargs = self.kwargs or {}
+        self.engine = engine
+        super().__init__(
+            inst, instance, kwargs
+        )
 
     async def astream(self, *args, **kwargs):
         """
@@ -671,7 +669,6 @@ def instructfunc(
             inst, engine, 
                 kwargs=kwargs
         )
-
     return _
 
 

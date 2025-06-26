@@ -14,7 +14,6 @@ V = t.TypeVar("V", bound=BaseModule)
 T = TypeVar("T", bound=BaseModule)
 
 
-
 # 1st party
 import typing
 from dataclasses import dataclass

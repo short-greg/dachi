@@ -2,6 +2,7 @@
 # 1st party
 import typing
 from dataclasses import dataclass
+
 # 3rd party
 import pydantic
 from ._base import Renderable

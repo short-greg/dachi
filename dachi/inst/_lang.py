@@ -3,7 +3,7 @@ import typing
 from typing import Self
 import typing
 
-from ..core._core import Renderable
+from ..core import Renderable
 
 # 3rd party
 import pydantic

@@ -1,3 +1,5 @@
+from dataclasses import InitVar
+from typing import ClassVar
 from ._base import (
     to_kind,
     ShareableItem,
@@ -21,7 +23,8 @@ from ._base import (
 from ._structs import (
     ModuleDict,
     ModuleList,
-    SerialDict
+    SerialDict,
+    SerialTuple
 )
 from ._render import (
     TemplateField,
@@ -29,14 +32,10 @@ from ._render import (
     is_renderable,
     render_multi,
 )
-from ._msg import (
-    Msg,
-    BaseDialog,
-    ListDialog,
-    TreeDialog,
-    DialogTurn,
-    Resp,
-    to_dialog,
-    to_input,
-    to_list_input,
+from ._render import (
+    TemplateField,
+    model_to_text,
+    render,
+    render_multi,
+    is_renderable
 )

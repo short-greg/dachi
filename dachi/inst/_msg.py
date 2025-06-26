@@ -2,14 +2,16 @@
 import typing
 from abc import abstractmethod
 from typing import Self
+from typing import Any, Dict, Optional, Union
 
+# 3rd party
+from pydantic import BaseModel, PrivateAttr
 import pydantic
+
 # local
 from ..core import Renderable
-
-from typing import Any, Dict, Optional, Union
-from pydantic import BaseModel, Field, PrivateAttr
-import pydantic
+from ._tool import ToolCall, AsyncToolCall
+from ..core._structs import ModuleList
 
 
 class _Final:
@@ -22,12 +24,21 @@ NULL_TOK = object()
 
 
 class Msg(BaseModel):
+    """
+    """
 
     role: str
     alias: Optional[str] = None
     type: str = "data"
     content: Union[str, Dict[str, Any], None] = None
     filtered: bool = False
+    tools: ModuleList[ToolCall | AsyncToolCall] | None = None
+
+    def __post_init__(self):
+        self.tools = (
+            self.tools 
+            or ModuleList[ToolCall | AsyncToolCall]([])
+        )
 
     def apply(self, func):
         return func(self)
@@ -51,6 +62,7 @@ class Resp(pydantic.BaseModel):
 
     msg: Msg
     val: typing.Any = None
+    follow_up: typing.List[Msg] = None
     _data: typing.Dict = pydantic.PrivateAttr(
         default_factory=dict
     )
@@ -60,6 +72,11 @@ class Resp(pydantic.BaseModel):
     _out: typing.Dict = pydantic.PrivateAttr(
         default_factory=dict
     )
+
+    def __post_init__(self):
+
+        if self.follow_up is None:
+            self.follow_up = []
 
     @property
     def data(self) -> typing.Any:
@@ -80,7 +97,6 @@ class Resp(pydantic.BaseModel):
     @property
     def out(self) -> typing.Any:
         return self._out
-    
 
 
 class BaseDialog(pydantic.BaseModel, Renderable):
@@ -153,10 +169,14 @@ class BaseDialog(pydantic.BaseModel, Renderable):
         Raises:
             ValueError: If the index is not correct
         """
-        return self.insert(message=message, ind=None)
+        return self.insert(
+            message=message, ind=None
+        )
 
     @abstractmethod
-    def replace(self, message: Msg, ind: int) -> 'BaseDialog':
+    def replace(
+        self, message: Msg, ind: int
+    ) -> 'BaseDialog':
         """Add a message to the dialog
 
         Args:
@@ -248,7 +268,9 @@ class BaseDialog(pydantic.BaseModel, Renderable):
         pass
 
     
-def to_input(inp: typing.Union[typing.Iterable[Msg], Msg]) -> typing.Union[typing.List[Msg], Msg]:
+def to_input(
+    inp: typing.Union[typing.Iterable[Msg], Msg]
+    ) -> typing.Union[typing.List[Msg], Msg]:
     """Convert a list of messages or a single message to an input
 
     Args:
@@ -466,7 +488,9 @@ def to_dialog(prompt: typing.Union[BaseDialog, Msg]) -> BaseDialog:
     return prompt
 
 
-def to_list_input(msg: typing.List | typing.Tuple | BaseDialog | Msg) -> typing.List:
+def to_list_input(
+    msg: typing.List | typing.Tuple | BaseDialog | Msg
+) -> typing.List:
 
     if not isinstance(msg, typing.List) and not isinstance(msg, typing.Tuple):
         return msg.to_list_input()
@@ -908,10 +932,6 @@ class TreeDialog(BaseDialog):
         turns = list(reversed(list(self._leaf.ancestors)))
         turns.append(self._leaf)
         return turns
-        # for turn in reversed(ancestors):
-        #     turns.append(turn)
-        # turns.append(self._leaf)
-        # return turns
 
     def __setitem__(self, idx, message) -> Self:
         """Set idx with a message
@@ -1096,7 +1116,6 @@ class TreeDialog(BaseDialog):
         Raises:
             ValueError: If the index is not correct
         """
-        
         if self._leaf is None:
             self._leaf = DialogTurn(message=message)
             self.root = self._leaf

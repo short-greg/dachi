@@ -14,3 +14,10 @@ from ._process import (
     async_process_map,
     async_reduce,
 )
+from ._ai import (
+    llm_aforward,
+    llm_astream,
+    LLM_PROMPT,
+    llm_forward,
+    llm_stream
+)

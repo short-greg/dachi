@@ -12,14 +12,15 @@ import pydantic
 from pydantic_core import PydanticUndefined
 
 # local
-from ._msg import MsgProc
+from ._msg import RespProc
 from ..core import (
     TemplateField, Templatable, ExampleMixin, ModuleList,
-    render, struct_template, Msg
+    render, struct_template, Msg,
+    Resp
 )
 from ..utils import unescape_curly_braces, escape_curly_braces
 from ._parse import LineParser, Parser
-from .. import store
+# from .. import store
 from .. import utils
 
 S = typing.TypeVar('S', bound=pydantic.BaseModel)
@@ -48,8 +49,8 @@ class ReadError(Exception):
         raise ReadError(message, original_exception) from original_exception
 
 
-class OutConv(
-    MsgProc, 
+class ToOut(
+    RespProc, 
     Templatable, 
     ExampleMixin
 ):
@@ -93,13 +94,52 @@ class OutConv(
         
         return resp
 
+    def forward(
+        self, 
+        resp: Resp, 
+        delta_store: typing.Dict=None,
+        is_streamed: bool=False,
+        is_last: bool=True
+    ) -> Msg:
+        """Processes the message
 
-class PrimOut(OutConv):
+        Args:
+            msg (Msg): The message to process
+            delta_store (typing.Dict, optional): The delta store. Defaults to None.
+
+        Returns:
+            Msg: The processed message
+        """
+        delta_store = delta_store if delta_store is not None else {}
+
+        resp = [resp.data[r] for r in self.from_]
+        is_undefined = all(
+            r is utils.UNDEFINED for r in resp
+        )
+        
+        if self._single:
+            resp = resp[0]
+        
+        if is_undefined:
+            resp.out[self.name] = utils.UNDEFINED
+            return utils.UNDEFINED
+        resp.out[self.name] = res = self.delta(
+            resp, delta_store, is_streamed, is_last
+        )
+        self.post(
+            resp, 
+            res, 
+            is_streamed, 
+            is_last
+        )
+        return resp
+
+
+class PrimOut(ToOut):
     """Use for converting an AI response into a primitive value
     """
 
     out_cls: str
-
     prim_map: typing.ClassVar[typing.Dict[str, typing.Callable]] = {
         'str': str,
         'int': int,
@@ -107,7 +147,13 @@ class PrimOut(OutConv):
         'bool': bool
     }
 
-    def delta(self, resp, delta_store: typing.Dict, is_streamed: bool=False, is_last: bool=True) -> typing.Any:
+    def delta(
+        self, 
+        resp, 
+        delta_store: typing.Dict, 
+        is_streamed: bool=False, 
+        is_last: bool=True
+    ) -> typing.Any:
         """Read in the output
 
         Args:
@@ -119,7 +165,7 @@ class PrimOut(OutConv):
         if resp is None or resp is utils.UNDEFINED:
             resp = ''
 
-        val = store.acc(delta_store, 'val', resp)
+        val = utils.acc(delta_store, 'val', resp)
 
         if not is_last:
             return utils.UNDEFINED
@@ -163,13 +209,10 @@ class PrimOut(OutConv):
         return f'<{self._out_cls.__name__}>'
 
 
-class PydanticOut(OutConv):
+class PydanticOut(ToOut):
     """Use for converting an AI response into a Pydantic BaseModel
     """
-
     out_cls: typing.Type[pydantic.BaseModel]
-    # name: str
-    # from_: str = 'content'
 
     def render(self, data: typing.Any) -> str:
         """Output an example of the data
@@ -183,11 +226,12 @@ class PydanticOut(OutConv):
         return data.model_dump_json()
 
     def delta(
-        self, resp, 
+        self, 
+        resp, 
         delta_store: typing.Dict, 
         is_streamed: bool=False, 
         is_last: bool=True
-    ) -> Msg:
+    ) -> typing.Any:
     # def __call__(self, message: str) -> typing.Any:
         """Read in the output
 
@@ -199,7 +243,7 @@ class PydanticOut(OutConv):
         """
         if resp is None or resp is utils.UNDEFINED:
             resp = ''
-        val = store.acc(delta_store, 'val', resp)
+        val = utils.acc(delta_store, 'val', resp)
 
         if not is_last:
             return utils.UNDEFINED
@@ -254,12 +298,9 @@ class PydanticOut(OutConv):
         )
 
 
-class KVOut(OutConv):
+class KVOut(ToOut):
     """Create a Reader of a list of key values
     """
-
-    # name: str
-    # from_: str = 'content'
     sep: str = '::'
     key_descr: typing.Type[pydantic.BaseModel] | None = None
 
@@ -270,7 +311,11 @@ class KVOut(OutConv):
         self.line_parser = LineParser()
 
     def delta(
-        self, resp, delta_store: typing.Dict, is_streamed: bool=False, is_last: bool=True
+        self, 
+        resp, 
+        delta_store: typing.Dict, 
+        is_streamed: bool=False, 
+        is_last: bool=True
     ) -> typing.Any:
         """Read in the output
 
@@ -281,7 +326,7 @@ class KVOut(OutConv):
             typing.Any: The output of the reader
         """
         resp = self.coalesce_resp(resp)
-        line_store = store.get_or_set(delta_store, 'lines', {})
+        line_store = utils.get_or_set(delta_store, 'lines', {})
         res = self.line_parser(resp, line_store, is_streamed, is_last)
 
         if res is utils.UNDEFINED or res is None:
@@ -348,12 +393,9 @@ class KVOut(OutConv):
         return self.render(data)
 
 
-class IndexOut(OutConv):
+class IndexOut(ToOut):
     """Create a Reader of a list of key values
     """
-
-    # name: str
-    # from_: str = 'content'
     sep: str = '::'
     key_descr: typing.Type[pydantic.BaseModel] | typing.Dict | None = None
 
@@ -373,7 +415,9 @@ class IndexOut(OutConv):
             typing.Any: The output of the reader
         """
         resp = self.coalesce_resp(resp)
-        line_store = store.get_or_set(delta_store, 'lines', {})
+        line_store = utils.get_or_set(
+            delta_store, 'lines', {}
+        )
         resp = self.line_parser(resp, line_store, is_streamed, is_last)
         if resp is utils.UNDEFINED or resp is None:
             return utils.UNDEFINED
@@ -444,7 +488,7 @@ class IndexOut(OutConv):
         return self.render(data)
 
 
-class JSONOut(OutConv):
+class JSONOut(ToOut):
     """Use to read from a JSON
     """
     
@@ -474,7 +518,7 @@ class JSONOut(OutConv):
             typing.Dict: The result - if it fails, will return an empty dict
         """
         resp = self.coalesce_resp(resp)
-        resp = store.acc(delta_store, 'val', resp)
+        resp = utils.acc(delta_store, 'val', resp)
 
         if not is_last:
             return utils.UNDEFINED
@@ -517,7 +561,7 @@ class JSONOut(OutConv):
         }, indent=4)
 
 
-class ParsedOut(OutConv):
+class ParsedOut(ToOut):
     """A Reader that does not change the data. 
     So in most cases will simply output a string
     """
@@ -535,7 +579,13 @@ class ParsedOut(OutConv):
         """
         return str(data)
 
-    def delta(self, resp, delta_store: typing.Dict, streamed: bool=False, is_last: bool=False) -> typing.Any:
+    def delta(
+        self, 
+        resp, 
+        delta_store: typing.Dict, 
+        streamed: bool=False, 
+        is_last: bool=False
+    ) -> typing.Any:
         """Read in the output
 
         Args:
@@ -544,7 +594,7 @@ class ParsedOut(OutConv):
         Returns:
             typing.Any: The output of the reader
         """
-        return self._parser.forward(
+        return self._parser(
             resp, delta_store, streamed=streamed,
             is_last=is_last
         )
@@ -562,9 +612,9 @@ class ParsedOut(OutConv):
         )
 
 
-class TupleOut(OutConv):
+class TupleOut(ToOut):
 
-    convs: ModuleList[OutConv]
+    convs: ModuleList[ToOut]
     parser: Parser
 
     def delta(
@@ -573,9 +623,9 @@ class TupleOut(OutConv):
         delta_store, 
         is_streamed = False, 
         is_last = True
-    ):
-        parsed = store.sub_dict(delta_store, 'parsed')
-        i = store.get_or_set(delta_store, 'i', 0)
+    ) -> typing.Any:
+        parsed = utils.sub_dict(delta_store, 'parsed')
+        i = utils.get_or_set(delta_store, 'i', 0)
         res = self.parser.forward(
             resp, 
             parsed, 
@@ -598,7 +648,7 @@ class TupleOut(OutConv):
         for res_i, conv in zip(res, self.convs[i:]):
 
             outs.append(conv.delta(res_i, {}))
-            store.acc(delta_store, 'i', 1)
+            utils.acc(delta_store, 'i', 1)
         return outs
         
     def render(self, data) -> str:
@@ -630,7 +680,7 @@ class TupleOut(OutConv):
         return self.parser.render(datas)
 
 
-class ListOut(OutConv):
+class ListOut(ToOut):
     """
     ListOut is an output converter that transforms the output from a language model (LLM) into a list of objects.
     It utilizes a provided OutConv instance to convert each item in the list and a Parser to parse and render the list structure.
@@ -640,7 +690,7 @@ class ListOut(OutConv):
         from_ (str, optional): The source field for conversion. Defaults to 'content'.
     """
 
-    conv: OutConv
+    conv: ToOut
     parser: Parser
 
     def delta(
@@ -649,7 +699,7 @@ class ListOut(OutConv):
         delta_store, 
         is_streamed = False, 
         is_last = True
-    ):
+    ) -> typing.Any:
         res = self.parser.forward(
             resp, delta_store, is_streamed,
             is_last
@@ -691,7 +741,7 @@ class ListOut(OutConv):
         return self.parser.render(datas)
 
 
-class NullOut(OutConv):
+class NullOut(ToOut):
     """A Reader that does not change the data. 
     So in most cases will simply output a string
     """
@@ -738,12 +788,11 @@ class NullOut(OutConv):
         return ''
 
 
-class CSVOut(OutConv):
+class CSVOut(ToOut):
     """
     Dynamically parse CSV data, returning new rows as accumulated. 
     The header will be returned along with them if used.
     """
-
     delimiter: str = ',', 
     use_header: bool = True
 
@@ -759,9 +808,9 @@ class CSVOut(OutConv):
         """
         # resp = self.handle_null(resp, '')
 
-        val = store.acc(delta_store, 'val', resp, '')
-        row = store.get_or_set(delta_store, 'row', 0)
-        header = store.get_or_set(
+        val = utils.acc(delta_store, 'val', resp, '')
+        row = utils.get_or_set(delta_store, 'row', 0)
+        header = utils.get_or_set(
             delta_store, 'header', None
         )
         # Process accumulated data using csv.reader
@@ -789,10 +838,10 @@ class CSVOut(OutConv):
             and delta_store['header'] is None
         ):
             delta_store['header'] = new_rows.pop(0)
-            store.acc(delta_store, 'row', 1)
+            utils.acc(delta_store, 'row', 1)
 
         header = delta_store['header']
-        store.acc(delta_store, 'row', len(new_rows))
+        utils.acc(delta_store, 'row', len(new_rows))
         if len(new_rows) == 0:
             return utils.UNDEFINED
         
@@ -838,7 +887,7 @@ def conv_to_out(
     out, 
     name: str='out', 
     from_: str='content'
-) -> OutConv:
+) -> ToOut:
     """
 
     Args:
@@ -852,7 +901,7 @@ def conv_to_out(
     Returns:
         OutConv: 
     """
-    if isinstance(out, OutConv):
+    if isinstance(out, ToOut):
         return out
     
     if out is bool:

@@ -20,4 +20,23 @@ from ._f_utils import (
     get_return_type, get_iterator_type,
     get_function_info
 )
-
+from ._store import (
+    get_or_set,
+    get_or_setf,
+    get_or_spawn,
+    acc,
+    sub_dict,
+    call_or_set,
+    
+)
+from ._str import (
+    generate_numbered_list,
+    parse_function_spec,
+    Styling,
+    style_formatter,
+    numbered,
+    bullet,
+    bold,
+    italic,
+    DEFAULT_STYLE
+)

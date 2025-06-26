@@ -184,6 +184,7 @@ def italic(x: X) -> str:
     """
     return f'*{render(x)}*'
 
+
 DEFAULT_STYLE = {
     "bold": bold,
     "italic": italic,

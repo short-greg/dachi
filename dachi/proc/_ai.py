@@ -8,10 +8,9 @@ import pydantic
 from ..core import (
     Msg, END_TOK, Resp
 )
-from ._resp import RespProc
 from ._msg import Msg
 from ._process import AsyncProcess
-from ._resp import RespConv
+from ._msg import RespConv, RespProc
 
 # TODO: MOVE OUT OF HERE
 LLM_PROMPT = typing.Union[typing.Iterable[Msg], Msg]
@@ -63,8 +62,8 @@ def llm_forward(
     )
     resp.data = result
     for r in _proc:
-        msg = r(resp)
-    return msg
+        resp = r(resp)
+    return resp
 
 
 async def llm_aforward(
@@ -96,11 +95,11 @@ async def llm_aforward(
     resp.data = result
     for r in _proc:
         if isinstance(_proc, AsyncProcess):
-            msg = await r.aforward(resp)
+            resp = await r.aforward(resp)
         else:
-            msg = r(resp)
+            resp = r(resp)
 
-    return msg
+    return resp
 
 
 def llm_stream(
@@ -147,7 +146,7 @@ def llm_stream(
 
         resp = r(resp, True, True)
 
-    yield msg
+    yield resp
 
 
 async def llm_astream(
@@ -184,12 +183,12 @@ async def llm_astream(
 
         for r in _proc:
             if isinstance(_proc, AsyncProcess):
-                msg = await r(resp, True, False)
+                resp = await r(resp, True, False)
             else:
-                msg = r(resp, True, False)
+                resp = r(resp, True, False)
 
         prev_message = msg
-        yield msg
+        yield resp
     
     msg = Msg(role=_role)
     if prev_message is not None:
@@ -200,4 +199,4 @@ async def llm_astream(
 
         resp = r(resp, True, True)
 
-    yield msg
+    yield resp

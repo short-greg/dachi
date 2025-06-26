@@ -13,7 +13,7 @@ import pydantic
 from pydantic import create_model, BaseModel
 
 # locla
-from ._process import AsyncProcess, Process
+from ..core._base import BaseModule
 
 # local
 from ..utils import is_async_function, pydantic_v2
@@ -135,7 +135,7 @@ def make_tool_defs(*tools) -> typing.List[ToolDef]:
 
 class ToolCall(
     pydantic.BaseModel,
-    Process
+    BaseModule
 ):
     """A response from the LLM that a tool was called
     """
@@ -149,7 +149,7 @@ class ToolCall(
     result: typing.Any = None
     option_text: str | None = None
 
-    def forward(self, store: bool=False):
+    def __call__(self, store: bool=False):
         data = self.inputs.model_dump() if pydantic_v2() else self.inputs.model_dump()
         # remaining keys are normal named parameters
         result = self.option.fn(**data)
@@ -173,7 +173,7 @@ class ToolOut(
 
 class AsyncToolCall(
     pydantic.BaseModel,
-    AsyncProcess
+    BaseModule
 ):
     """A response from the LLM that a tool was called
     """
@@ -186,7 +186,7 @@ class AsyncToolCall(
     result: typing.Any = None
     option_text: str | None = None
 
-    async def aforward(self, store: bool=False) -> typing.Any:
+    async def __call__(self, store: bool=False) -> typing.Any:
         """Call the tool 
 
         Raises:
@@ -205,15 +205,26 @@ class AsyncToolCall(
 class ToolBuilder(object):
     """Use to build up a tool
     """
-
     def __init__(self):
-        
+        """
+        """
         self._index = None
         self._name = ''
         self._args = ''
         self._tools = []
 
-    def update(self, id, index, name, args, **kwargs):        
+    def update(self, id, index, name, args, **kwargs) -> 'ToolCall':        
+        """
+
+        Args:
+            id : The id of the 
+            index : 
+            name : 
+            args : 
+
+        Returns:
+            ToolCall: 
+        """
         
         if index != self._index:
             if self._index is not None:

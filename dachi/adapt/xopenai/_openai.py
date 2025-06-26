@@ -4,6 +4,8 @@ import pkg_resources
 import typing
 import json
 import pydantic
+from dataclasses import InitVar
+import openai
 
 # 3rd party
 required = {'openai'}
@@ -11,22 +13,28 @@ installed = {pkg.key for pkg in pkg_resources.working_set}
 missing = required - installed
 
 # Local
-from ...msg import (
+from ...core import (
     Msg, END_TOK, to_list_input,
-    ToolDef, ToolBuilder, ToolCall
+    ToolDef, ToolBuilder, ToolCall, Resp,
+    BaseModule
 )
 from ... import utils
 from ...inst import render
-from ...asst._ai import (
-    LLM, llm_aforward, llm_astream, llm_forward, llm_stream
+from ...proc import (
+    llm_aforward, llm_astream, llm_forward, llm_stream
 )
-from ...msg import RespConv, OutConv
+
+from ...core import ModuleList
+
+# from ...asst._ai import (
+#     LLM, 
+# )
+from ...proc import RespConv, OutConv
 from ...utils import UNDEFINED, coalesce
 from ... import store
 
 # TODO: add utility for this
 
-import openai
 
 if len(missing) > 0:
     raise RuntimeError(f'To use this module openai must be installed.')
@@ -77,7 +85,7 @@ class TextConv(RespConv):
 
     def post(
         self, 
-        msg, 
+        resp: Resp, 
         result, 
         delta_store, 
         streamed = False, 
@@ -92,11 +100,11 @@ class TextConv(RespConv):
             streamed (bool, optional): whether streamed or not. Defaults to False.
             is_last (bool, optional): the last. Defaults to False.
         """
-        content = '' if msg.m['content'] in (None, UNDEFINED) else msg.m['content']
+        content = '' if resp.data['content'] in (None, UNDEFINED) else resp.data['content']
         store.acc(
             delta_store, 'all_content', content
         )
-        msg['content'] = delta_store['all_content']
+        resp.msg.content = delta_store['all_content']
     
     def delta(
         self, 
@@ -136,29 +144,28 @@ class StructConv(RespConv):
     """
     OpenAITextProc is a class that processes an OpenAI response and extracts text outputs from it.
     """
-    def __init__(
-        self, 
-        struct: pydantic.BaseModel | typing.Dict=None, name: str='content', 
-        from_: str='response'
-    ):
-        super().__init__(name, from_)
-        self._struct = struct
+    struct: pydantic.BaseModel | typing.Dict = None
+    name: str = 'content'
+    from_: str = 'response'
 
     def post(
         self, 
-        msg, 
+        resp: Resp, 
         result, 
         delta_store, 
         streamed = False, 
         is_last = False
     ):
         if is_last:
-            msg['content'] = delta_store['content']
-        msg['content'] = ''
+            resp.msg.content = delta_store['content']
+        resp.msg.content = ''
 
     def delta(
-        self, resp, delta_store: typing.Dict, 
-        streamed: bool=False, is_last: bool=False
+        self, 
+        resp, 
+        delta_store: typing.Dict, 
+        streamed: bool=False, 
+        is_last: bool=False
     ):
         """
         Processes a delta response and extracts text.
@@ -192,18 +199,18 @@ class StructConv(RespConv):
             typing.Dict: 
         """
         if isinstance(
-            self._struct, 
+            self.struct, 
             typing.Dict
         ):
             return {'response_format': {
                 "type": "json_schema",
-                "json_schema": self._struct
+                "json_schema": self.struct
             }}
         elif isinstance(
-            self._struct, pydantic.BaseModel
+            self.struct, pydantic.BaseModel
         ):
             return {
-                'response_format': self._struct
+                'response_format': self.struct
             }
         return {
             'response_format': "json_object"
@@ -214,12 +221,12 @@ class StructConv(RespConv):
 
 class StructStreamConv(StructConv):
 
-    def __init__(self, struct = None, name = 'content', from_ = 'response'):
-        super().__init__(struct, name, from_)
-    
     def delta(
-        self, resp, delta_store: typing.Dict, 
-        streamed: bool=False, is_last: bool=False
+        self, 
+        resp: Resp, 
+        delta_store: typing.Dict, 
+        streamed: bool=False, 
+        is_last: bool=False
     ):
         """
         Processes a delta response and extracts text.
@@ -247,17 +254,13 @@ class StructStreamConv(StructConv):
 class ParsedConv(StructConv):
     """For use with the "parse" API
     """
-
-    def __init__(
-        self, 
-        struct: typing.Type[pydantic.BaseModel] = None, 
-        name = 'content', from_ = 'response'
-    ):
-        super().__init__(struct=struct, name=name, from_=from_)
     
     def delta(
-        self, resp, delta_store: typing.Dict, 
-        streamed: bool=False, is_last: bool=False
+        self, 
+        resp, 
+        delta_store: typing.Dict, 
+        streamed: bool=False, 
+        is_last: bool=False
     ):
         """
         Processes a delta response and extracts text.
@@ -268,15 +271,10 @@ class ParsedConv(StructConv):
         Returns:
             tuple: A tuple containing the updated msg dictionary and the extracted delta content.
         """
-        # if (message.refusal):
-        #     raise RuntimeError(
-        #         f"Refusal: {message.refusal}"
-        #     )
-        # return message.parsed
         if not is_last:
             return UNDEFINED
         print(resp.choices[0].message.content)
-        delta_store["content"] = self._struct.model_validate_json(
+        delta_store["content"] = self.struct.model_validate_json(
             resp.choices[0].message.content
         )
         return delta_store["content"]
@@ -287,8 +285,8 @@ class ParsedConv(StructConv):
             "response_format": {
                 "type": "json_schema",
                 "json_schema": {
-                    "name": self._struct.__name__,  # or a custom string identifier
-                    "schema": self._struct.model_json_schema()
+                    "name": self.struct.__name__,  # or a custom string identifier
+                    "schema": self.struct.model_json_schema()
                 }
             }
         }
@@ -300,23 +298,17 @@ class ToolConv(RespConv):
     This class extends the RespProc class and is designed to handle responses from OpenAI's language model,
     specifically to extract and manage tool calls embedded within the responses.
     """
-    def __init__(
-        self, 
-        tools: typing.Iterable[ToolDef], 
-        name: str='tools', 
-        from_: str='response',
-        run_call: bool=False
-    ):
-        """
-        Args:
-            tools (typing.Dict[str, ToolOption]): 
-        """
-        super().__init__(name, from_)
+    tools: InitVar[typing.List[ToolDef]]
+    name: str='tools', 
+    from_: str='response',
+    run_call: bool=False
+
+    def __post_init__(self, tools: typing.List[ToolDef]):
+
         self.tools = {
             tool.name: tool
             for tool in tools
         }
-        self.run_call = run_call
 
     def prep(self):
         """
@@ -331,7 +323,7 @@ class ToolConv(RespConv):
     
     def post(
         self, 
-        msg: Msg, 
+        resp: Resp, 
         result, 
         delta_store, 
         streamed = False, 
@@ -339,14 +331,14 @@ class ToolConv(RespConv):
     ):
         if len(delta_store['tools']) != 0 and self.run_call: 
             
-            msg['tool_calls'] = [
+            resp.data['tool_calls'] = [
                 tc.model_dump() if hasattr(tc, "model_dump") else tc.to_dict()
                 for tc in    
                 delta_store['tool_calls']
             ]
 
             for tool in delta_store['tools']:
-                msg.follow_up.append(Msg(
+                resp.follow_up.append(Msg(
                     role="tool",
                     content=render(tool.result),
                     tool_call_id=tool.tool_id,
@@ -433,17 +425,19 @@ class ToolConv(RespConv):
                 return tools
                 
         return []
-    
 
-class LLM(LLM, ABC):
+
+class LLM(BaseModule, ABC):
     """An adapter for the OpenAILLM
     """
-    def __init__(
-        self, 
-        tools: typing.Iterable[ToolDef]=None,
-        json_output: bool | pydantic.BaseModel | typing.Dict=False,
-        api_key: str=None,
-        **client_kwargs
+
+    tools: typing.List[ToolDef] | None = None
+    json_output: bool | pydantic.BaseModel | typing.Dict = False
+    api_key: InitVar[str | None] = None
+    client_kwargs: InitVar[typing.Dict | None] = None
+
+    def __post_init__(
+        self, api_key, client_kwargs
     ):
         """
         Args:
@@ -453,21 +447,16 @@ class LLM(LLM, ABC):
             client_kwargs (typing.Dict, optional): . Defaults to None.
         """
         super().__init__()
-        convs = []
-        if json_output is False:
-            convs.append(TextConv())
-        elif isinstance(json_output, pydantic.BaseModel):
-            convs.append(ParsedConv(json_output))
+        self.convs = ModuleList([])
+        if self.json_output is False:
+            self.convs.append(TextConv())
+        elif isinstance(self.json_output, pydantic.BaseModel):
+            self.convs.append(ParsedConv(self.json_output))
         else:
-            convs.append(StructConv(json_output))
-        if tools is not None:
-            convs.append(ToolConv(tools))
-        super().__init__(
-            procs=convs, 
-        )
-        self._client_kwargs = client_kwargs
-        self._tools = tools
-        self._json_output = json_output
+            self.convs.append(StructConv(self.json_output))
+        if self.tools is not None:
+            self.convs.append(ToolConv(self.tools))
+        super().__init__()
         self._client = openai.Client(
             api_key=api_key, **client_kwargs
         )
@@ -480,16 +469,18 @@ class LLM(LLM, ABC):
         json_output: bool | pydantic.BaseModel | typing.Dict=UNDEFINED,
         procs: typing.List[RespConv]=UNDEFINED
     ):
-        tools = coalesce(
-            tools, self._tools
-        )
-        procs = coalesce(
-            procs, self.procs
-        )
-        json_output = coalesce(json_output, self._json_output)
-        return LLM(
-            tools, json, 
-        )
+        # TODO: Implement
+        pass
+        # tools = coalesce(
+        #     tools, self._tools
+        # )
+        # procs = coalesce(
+        #     procs, self.procs
+        # )
+        # json_output = coalesce(json_output, self._json_output)
+        # return LLM(
+        #     tools, json, 
+        # )
 
 
 class ChatCompletion(LLM, ABC):
@@ -498,7 +489,8 @@ class ChatCompletion(LLM, ABC):
     interacting with the API, including synchronous and asynchronous message forwarding, 
     streaming, and spawning new instances with modified configurations.
     """
-    def spawn(self, 
+    def spawn(
+        self, 
         tools: typing.Iterable[ToolDef]=UNDEFINED,
         json_output: bool | pydantic.BaseModel | typing.Dict=UNDEFINED
     ):
@@ -521,7 +513,11 @@ class ChatCompletion(LLM, ABC):
             tools, json
         )
     
-    def forward(self, msg, **kwargs)-> typing.Tuple[Msg, typing.Any]:
+    def forward(
+        self, 
+        msg, 
+        **kwargs
+    )-> typing.Tuple[Msg, typing.Any]:
         """
         Processes a message by forwarding it to the language model (LLM) and returns the response.
         Args:
@@ -547,7 +543,11 @@ class ChatCompletion(LLM, ABC):
             **kwargs
         )
 
-    async def aforward(self, msg, **kwargs) -> typing.Tuple[Msg, typing.Any]:
+    async def aforward(
+        self, 
+        msg, 
+        **kwargs
+    ) -> typing.Tuple[Msg, typing.Any]:
         """
         Processes a message by asynchronously forwarding it to the language model (LLM) and returns the response.
         Args:
@@ -573,7 +573,11 @@ class ChatCompletion(LLM, ABC):
             **kwargs
         )
 
-    def stream(self, msg, **kwargs) -> typing.Iterator[typing.Tuple[Msg, typing.Any]]:
+    def stream(
+        self, 
+        msg, 
+        **kwargs
+    ) -> typing.Iterator[typing.Tuple[Msg, typing.Any]]:
         """
         Processes a message by streaming it to the language model (LLM) and returns the response.
         Args:
@@ -601,7 +605,12 @@ class ChatCompletion(LLM, ABC):
         ):
             yield r
     
-    async def astream(self, msg, *args, **kwargs) -> typing.AsyncIterator[typing.Tuple[Msg, typing.Any]]:
+    async def astream(
+        self, 
+        msg, 
+        *args, 
+        **kwargs
+    ) -> typing.AsyncIterator[typing.Tuple[Msg, typing.Any]]:
         """
         Processes a message by streaming it to the language model (LLM) and returns the response.
         Args:
@@ -632,16 +641,6 @@ class ChatCompletion(LLM, ABC):
 class ToolExecConv(OutConv):
     """Use for converting a tool from a response
     """
-    def __init__(self, name: str, from_: str='content'):
-        """Create a reader for Primitive values
-
-        Args:
-            out (typing.Type): The type of data
-        """
-        super().__init__(
-            name=name, from_=from_
-        )
-        self._name = name
     
     def delta(
         self, 

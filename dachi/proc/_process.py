@@ -2,9 +2,10 @@
 from abc import ABC, abstractmethod
 import asyncio
 import typing
-from typing import Any
 import itertools
 import asyncio
+from typing import Any
+import dataclasses
 
 # 3rd party
 import pydantic
@@ -15,8 +16,6 @@ from ..utils import (
     is_async_function,
     is_generator_function
 )
-import dataclasses
-
 
 S = typing.TypeVar('S', bound=pydantic.BaseModel)
 
@@ -46,7 +45,11 @@ class AsyncProcess(BaseModule):
     """Base class for Modules
     """
     @abstractmethod
-    async def aforward(self, *args, **kwargs) -> typing.Any:
+    async def aforward(
+        self, 
+        *args, 
+        **kwargs
+    ) -> typing.Any:
         """Execute the module
 
         Returns:
@@ -83,7 +86,8 @@ class AsyncStreamProcess(BaseModule):
 
 
 def forward(
-    f: typing.Union[Process, typing.Callable], *args, **kwargs
+    f: typing.Union[Process, typing.Callable], 
+    *args, **kwargs
 ) -> typing.Any:
     """
     Calls the forward method on the module or the function that has been passed in.
@@ -109,7 +113,8 @@ def forward(
 
 
 async def aforward(
-    f: typing.Union[Process, typing.Callable], *args, **kwargs
+    f: typing.Union[Process, typing.Callable], 
+    *args, **kwargs
 ) -> typing.Any:
     """
     Asynchronously calls the appropriate forward method or function.
@@ -190,7 +195,6 @@ async def astream(f: typing.Union[AsyncStreamProcess, typing.Callable], *args, *
         NotImplementedError: If an async function or async generator function is passed.
         RuntimeError: If the input does not match any supported type.
     """
-    
     if isinstance(f, AsyncStreamProcess):
         async for v in await f.astream(*args, **kwargs):
             yield v
@@ -328,7 +332,6 @@ class AsyncFunc(AsyncProcess):
         return await self.f(
             *self.args, *args, **self.kwargs, **kwargs
         )
-
 
 
 class AsyncParallel(Process):
@@ -471,7 +474,9 @@ async def async_process_map(
     )
 
 
-def multiprocess(*f: Process | typing.Callable) -> typing.Tuple[typing.Any]:
+def multiprocess(
+    *f: Process | typing.Callable
+) -> typing.Tuple[typing.Any]:
     """Helper function to run asynchronous processes
 
     Returns:
@@ -482,7 +487,9 @@ def multiprocess(*f: Process | typing.Callable) -> typing.Tuple[typing.Any]:
     )
 
 
-async def async_multiprocess(*f: AsyncProcess | typing.Callable) -> typing.Tuple[typing.Any]:
+async def async_multiprocess(
+    *f: AsyncProcess | typing.Callable
+) -> typing.Tuple[typing.Any]:
     """Helper function to run asynchronous processes
 
     Returns:
@@ -533,7 +540,10 @@ def reduce(
 
 
 async def async_reduce(
-    mod: AsyncProcess | typing.Callable, *args, init_mod: AsyncProcess | typing.Callable=None, init_val=None, **kwargs
+    mod: AsyncProcess | typing.Callable, 
+    *args, 
+    init_mod: AsyncProcess | typing.Callable=None, init_val=None, 
+    **kwargs
 ) -> typing.Any:
     """Reduce the args passed in with a module
 

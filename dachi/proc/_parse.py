@@ -14,11 +14,17 @@ from ..proc import Module
 
 
 class Parser(Module):
-    """Base class for parsers. It converts the input text
+    """Base class for parsers. 
+    It converts the input text
     into a list of objects
     """
-
-    def forward(self, resp, delta_store: typing.Dict, streamed: bool=False, is_last: bool=True) -> typing.List | None:
+    def forward(
+        self, 
+        resp, 
+        delta_store: typing.Dict, 
+        streamed: bool=False, 
+        is_last: bool=True
+    ) -> typing.List | None:
         pass
 
     @abstractmethod
@@ -118,7 +124,11 @@ class CharDelimParser(Parser):
     sep: str = ','
 
     def forward(
-        self, resp, delta_store: typing.Dict=None, streamed: bool=False, is_last: bool=True
+        self, 
+        resp, 
+        delta_store: typing.Dict=None, 
+        streamed: bool=False, 
+        is_last: bool=True
     ) -> typing.List | None:
         
         delta_store = delta_store if delta_store is not None else {}
@@ -164,7 +174,11 @@ class LineParser(Parser):
     """
 
     def forward(
-        self, resp, delta_store: typing.Dict=None, streamed: bool=False, is_last: bool=True
+        self, 
+        resp, 
+        delta_store: typing.Dict=None, 
+        streamed: bool=False, 
+        is_last: bool=True
     ) -> typing.List:
         """
 
@@ -253,8 +267,12 @@ class CSVCellParser(Parser):
         resp = resp or ''
         val = store.acc(delta_store, 'val', resp)
         cur_row = store.get_or_set(delta_store, 'row', 0)
-        header = store.get_or_set(delta_store, 'header', None)
-        data = store.get_or_set(delta_store, 'data', None)
+        header = store.get_or_set(
+            delta_store, 'header', None
+        )
+        data = store.get_or_set(
+            delta_store, 'data', None
+        )
         cur_col = store.get_or_set(delta_store, 'col', 0)
 
         rows = list(csv.reader(io.StringIO(delta_store['val']), delimiter=self._delimiter))

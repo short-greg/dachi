@@ -7,17 +7,14 @@ from typing import Self
 import asyncio
 
 # local
-from ..utils import is_undefined
-from ..utils import UNDEFINED, WAITING
+from ..utils import (
+    is_undefined, UNDEFINED, WAITING,
+    is_async_function
+)
 from ._process import Process, AsyncProcess
-from ..core import BaseModule
-from ..core import SerialDict
+from ..core import BaseModule, SerialDict
 
-from ._process import Partial
-from ._process import StreamProcess, AsyncStreamProcess
-
-from ..utils import is_async_function
-
+from ._process import Partial, StreamProcess, AsyncStreamProcess
 from dataclasses import InitVar
 
 
