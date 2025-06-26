@@ -39,3 +39,14 @@ from ._render import (
     render_multi,
     is_renderable
 )
+from ._str import (
+    generate_numbered_list,
+    parse_function_spec,
+    Styling,
+    style_formatter,
+    numbered,
+    bullet,
+    bold,
+    italic,
+    DEFAULT_STYLE
+)

@@ -29,14 +29,3 @@ from ._store import (
     call_or_set,
     
 )
-from ._str import (
-    generate_numbered_list,
-    parse_function_spec,
-    Styling,
-    style_formatter,
-    numbered,
-    bullet,
-    bold,
-    italic,
-    DEFAULT_STYLE
-)

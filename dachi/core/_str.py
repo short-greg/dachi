@@ -8,9 +8,7 @@ import re
 import pydantic
 
 # local
-from ..core._render import render, render_multi
-from ..core import Trainable, Renderable
-from ..utils import is_primitive, str_formatter
+from ._render import render
 
 S = typing.TypeVar('S', bound=pydantic.BaseModel)
 X = typing.Union[str]

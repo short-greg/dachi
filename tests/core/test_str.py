@@ -1,7 +1,7 @@
 
-from dachi.inst._instruct import style_formatter, bullet
+from dachi.core import style_formatter, bullet
 import pytest
-from dachi.inst._instruct import generate_numbered_list, numbered
+from dachi.core import generate_numbered_list, numbered
 
 
 class TestGenerateNumberedList:

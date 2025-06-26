@@ -42,7 +42,10 @@ class TemplateField(Renderable):
         return str(self.to_dict())
 
 
-def model_to_text(model: pydantic.BaseModel, escape: bool=False) -> str:
+def model_to_text(
+    model: pydantic.BaseModel, 
+    escape: bool=False
+) -> str:
     """Dump the struct to a string
 
     Returns:
@@ -132,7 +135,9 @@ def is_renderable(obj: typing.Any) -> bool:
     )
 
 
-def render_multi(xs: typing.Iterable[typing.Any]) -> typing.List[str]:
+def render_multi(
+    xs: typing.Iterable[typing.Any]
+) -> typing.List[str]:
     """Convert an input to text. Will use the text for an cue,
     the render() method for a description and convert any other value to
     text with str()
