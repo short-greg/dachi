@@ -264,7 +264,6 @@ class SerialDict(BaseModule):
     def values(self):   return self._storage.values()
     def items(self):    return self._storage.items()
 
-    # -------------------------------------------------- schema hook
     @classmethod
     def __build_schema_hook__(
         cls, name: str, typ: t.Any, default: t.Any
@@ -273,7 +272,6 @@ class SerialDict(BaseModule):
             raise ValueError(f"No spec-hook for {name}")
         return dict[str, t.Any]
 
-    # -------------------------------------------------- spec serialisation
     def spec_hook(self, *, name: str, val: t.Any, to_dict: bool = False):
         if name != "items":
             raise ValueError
@@ -287,7 +285,6 @@ class SerialDict(BaseModule):
                 out[k] = v
         return out
 
-    # -------------------------------------------------- spec deserialisation
     @classmethod
     def from_spec_hook(cls, name: str, val: t.Any, ctx: dict | None = None):
         if name != "items":
@@ -335,7 +332,6 @@ class SerialTuple(BaseModule):
             for item in items:
                 self.append(item)
 
-    # -------------------------------------------------- schema generation
     @classmethod
     def __build_schema_hook__(cls, name: str, typ: t.Any, default: t.Any):
         if name != "items":
@@ -343,7 +339,6 @@ class SerialTuple(BaseModule):
         # The list elements may be BaseSpec OR primitives, so we use Any
         return list[t.Any]
 
-    # -------------------------------------------------- sequence helpers
     def __len__(self):           return len(self._storage)
     def __iter__(self):          return iter(self._storage)
     def __getitem__(self, idx):  return self._storage[idx]

@@ -13,7 +13,7 @@ import pydantic
 from pydantic import create_model, BaseModel
 
 # locla
-from ..core._base import BaseModule
+from ._base import BaseModule
 
 # local
 from ..utils import is_async_function, pydantic_v2
@@ -133,10 +133,7 @@ def make_tool_defs(*tools) -> typing.List[ToolDef]:
     )
 
 
-class ToolCall(
-    pydantic.BaseModel,
-    BaseModule
-):
+class ToolCall(pydantic.BaseModel):
     """A response from the LLM that a tool was called
     """
     tool_id: str
@@ -158,9 +155,7 @@ class ToolCall(
         return result
 
 
-class ToolOut(
-    pydantic.BaseModel
-):
+class ToolOut(pydantic.BaseModel):
     """A response from the LLM that a tool was called
     """
     option: ToolDef = pydantic.Field(
@@ -171,10 +166,7 @@ class ToolOut(
     )
 
 
-class AsyncToolCall(
-    pydantic.BaseModel,
-    BaseModule
-):
+class AsyncToolCall(pydantic.BaseModel):
     """A response from the LLM that a tool was called
     """
     option: ToolDef = pydantic.Field(

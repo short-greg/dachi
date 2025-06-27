@@ -3,17 +3,14 @@ from pydantic import ValidationError
 
 # The module under test is assumed to be import‑able as `_msg` standing next to the
 # project root.  Adjust the import as needed for your repo layout.
-from dachi.core import Msg, Resp, ListDialog, DialogTurn, TreeDialog
+from dachi.inst import Msg, Resp, ListDialog, DialogTurn, TreeDialog
 
 
 import pytest
 from pydantic import ValidationError
 
 
-# ---------------------------------------------------------------------------
 # Helpers
-# ---------------------------------------------------------------------------
-
 def _sample_msg(**overrides):
     """Return a minimal valid `Msg`, applying any keyword overrides."""
     base = {"role": "user", "content": "hello"}
@@ -21,13 +18,10 @@ def _sample_msg(**overrides):
     return Msg(**base)
 
 
-# ---------------------------------------------------------------------------
 # Tests for Msg
-# ---------------------------------------------------------------------------
 
 class TestMsg:
-    # --------------------------- constructor ---------------------------
-
+    # constructor 
     @pytest.mark.parametrize(
         "field,value",
         [

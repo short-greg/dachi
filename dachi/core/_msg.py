@@ -9,9 +9,9 @@ from pydantic import BaseModel, PrivateAttr
 import pydantic
 
 # local
-from ..core import Renderable
+from . import Renderable
 from ._tool import ToolCall, AsyncToolCall
-from ..core._structs import ModuleList
+from ._structs import ModuleList
 
 
 class _Final:
@@ -32,12 +32,12 @@ class Msg(BaseModel):
     type: str = "data"
     content: Union[str, Dict[str, Any], None] = None
     filtered: bool = False
-    tools: ModuleList[ToolCall | AsyncToolCall] | None = None
+    tools: typing.List[ToolCall] | typing.List[AsyncToolCall] | None = None
 
     def __post_init__(self):
         self.tools = (
             self.tools 
-            or ModuleList[ToolCall | AsyncToolCall]([])
+            or typing.List[ToolCall | AsyncToolCall]([])
         )
 
     def apply(self, func):

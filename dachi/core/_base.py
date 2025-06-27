@@ -277,10 +277,8 @@ class BaseSpec(BaseModel):
             raise ValueError(f"Class kind '{kind}' not registered in registry.")
         return registry[kind].obj
 
-# -----------------------------------------------------------
-# BaseModule – runtime process node
-# -----------------------------------------------------------
 
+# BaseModule – runtime process node
 @dataclass_transform(kw_only_default=True, field_specifiers=(Field,))
 class BaseModule:
     """Dataclass‑like runtime object without exec‑generated ``__init__``."""
@@ -1057,7 +1055,7 @@ class AdaptModule(BaseModule, Generic[V]):
             self.adapted.from_spec(adapted, ctx=None)
         )
 
-    # -------------- traversal overrides -----------------------------
+    # traversal overrides 
     def parameters(self, *, recurse=True, _seen=None) -> t.Iterator[Param]:
         if _seen is None:
             _seen = set()
