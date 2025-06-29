@@ -1,15 +1,13 @@
 import json
 import pytest
-from dachi.core._base import BaseModule, Param, Attr, Shared, BaseSpec, Checkpoint, dict
+import types
+
 from dataclasses import InitVar
 from pydantic import ValidationError
-import types
-import warnings
-
-import pytest
-from dachi.core._base import Param, Attr, Shared, BaseModule
 from pydantic import BaseModel
-from dataclasses import InitVar
+
+
+from dachi.core._base import Param, Attr, Shared, BaseModule, BaseModule, Param, Attr, Shared, BaseSpec, Checkpoint
 
 from dachi.core._base import (
     BaseModule,
@@ -18,10 +16,16 @@ from dachi.core._base import (
     Shared,
     BaseSpec,
     registry,
-    dict,
     Checkpoint,
 )
 from pydantic import ValidationError
+from dachi.core._base import ParamSet
+import inspect
+import pytest
+
+from dachi.core._base import (
+    BaseModule, Param, Shared, registry, Registry
+)
 
 import pytest
 # ------------------------------------------------------------
@@ -970,20 +974,6 @@ def test_state_dict_nonrecurse_returns_empty():
     assert flat == {}
 
 
-# # # # --------------------------------------------------------------------
-# # # #  tests: Registry  &  BuildContext
-# # # # --------------------------------------------------------------------
-import inspect
-import pytest
-
-from dachi.core._base import (
-    BaseModule, Param, Shared, dict, registry, Registry
-)
-
-# # # # --------------------------------------------------------------------
-# # # #  ----  REGISTRY TESTS  --------------------------------------------
-# # # # --------------------------------------------------------------------
-
 def _fresh_registry() -> Registry:
     """Utility: isolated Registry instance so we don’t pollute global one."""
     return Registry()
@@ -1104,7 +1094,6 @@ class Pair(BaseModule):
 # #     assert list(ctx.shared) == ["SAME"]                           # context stored once
 
 
-# # # # ----------  Edge • different ref_names remain distinct ----------
 def test_buildcontext_distinct_refs_edge():
     p = Pair(
         left=Leaf(payload="a"),
@@ -1116,7 +1105,6 @@ def test_buildcontext_distinct_refs_edge():
     assert rebuilt.left.payload is not rebuilt.right.payload
 
 
-# # # # ----------  Edge • ref_name None never deduplicated ----------
 def test_buildcontext_none_refname_edge():
     p = Pair(
         left=Leaf(payload="a"),        # ref_name = None
@@ -1128,20 +1116,20 @@ def test_buildcontext_none_refname_edge():
     assert rebuilt.left.payload is not rebuilt.right.payload
 
 
-# def test_registry_overwrite_warning():
-#     with warnings.catch_warnings(record=True) as w:
-#         warnings.simplefilter("always")
+# # def test_registry_overwrite_warning():
+# #     with warnings.catch_warnings(record=True) as w:
+# #         warnings.simplefilter("always")
 
-#         @registry(name="Foo")
-#         class Tmp2(BaseModule):
-#             pass
-#         assert any("already" in str(msg.message) for msg in w)
-
-
-################
+# #         @registry(name="Foo")
+# #         class Tmp2(BaseModule):
+# #             pass
+# #         assert any("already" in str(msg.message) for msg in w)
 
 
-# ---------------------- I. Type Enforcement --------------------------
+# ################
+
+
+# # ---------------------- I. Type Enforcement --------------------------
 
 def test_param_type_enforcement():
     class TypedParam(Param[int]):
@@ -1162,7 +1150,7 @@ def test_shared_type_enforcement():
     with pytest.raises(TypeError):
         TypedShared(data=123)
 
-# # ---------------------- III. Param Callback Removal -------------------
+# # # ---------------------- III. Param Callback Removal -------------------
 
 def test_param_unregister_callback():
     hits = []
@@ -1174,26 +1162,26 @@ def test_param_unregister_callback():
     p.data = 3
     assert hits == [2]
 
-# # ---------------------- V. Eval/Train Cascade --------------------------
+# # # ---------------------- V. Eval/Train Cascade --------------------------
 
-# # TODO: Figure out how to handle training on param
-# def test_eval_train_cascade():
-#     class Leaf(BaseModule):
-#         w: InitVar[int]
-#         def __post_init__(self, w):
-#             self.w = Param(data=w)
+# # # TODO: Figure out how to handle training on param
+# # def test_eval_train_cascade():
+# #     class Leaf(BaseModule):
+# #         w: InitVar[int]
+# #         def __post_init__(self, w):
+# #             self.w = Param(data=w)
 
-#     class Root(BaseModule):
-#         a: Leaf
-#         b: Leaf
+# #     class Root(BaseModule):
+# #         a: Leaf
+# #         b: Leaf
 
-#     r = Root(a=Leaf(w=1), b=Leaf(w=2))
-#     r.eval()
-#     assert all(not p.training for p in r.parameters())
-#     r.train()
-#     assert all(p.training for p in r.parameters())
+# #     r = Root(a=Leaf(w=1), b=Leaf(w=2))
+# #     r.eval()
+# #     assert all(not p.training for p in r.parameters())
+# #     r.train()
+# #     assert all(p.training for p in r.parameters())
 
-# # ---------------------- VI. Conflicting StateDict Keys ------------------
+# # # ---------------------- VI. Conflicting StateDict Keys ------------------
 
 def test_state_dict_conflicting_nested_keys():
     class Child(BaseModule):
@@ -1209,9 +1197,9 @@ def test_state_dict_conflicting_nested_keys():
     assert sd["child.x"] == 1
     assert sd["child_x"] == 2
 
-# # ---------------------- VIII. ParamSet Partial Update ------------------
+# # # ---------------------- VIII. ParamSet Partial Update ------------------
 
-from dachi.core._base import ParamSet
+
 
 def test_paramset_partial_update():
     p1 = Param(data=1)
@@ -1227,7 +1215,7 @@ def test_paramset_partial_update():
     ps.update({"param_0": 100})
     assert p1.data == 100 and p2.data == 2
 
-# # ---------------------- IX. Dynamic Param Addition ---------------------
+# # # ---------------------- IX. Dynamic Param Addition ---------------------
 
 def test_dynamic_param_assignment_after_init():
     class M(BaseModule):

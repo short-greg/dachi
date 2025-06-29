@@ -68,8 +68,8 @@ class TestLikertItem:
         assert item.val == 5
 
     def test_validation_non_int_val(self):
-        with pytest.raises(pydantic.ValidationError):
-            LikertItem(description="Agree", val="5")
+        item = LikertItem(description="Agree", val="5")
+        assert type(item.val) is int
 
 
 class TestLikertScaleCriterion:

@@ -66,7 +66,7 @@ class TestT:
         module = p.AsyncParallel(
             Append('x')
         )
-        src = g.ModSrc.create(module, p.B(['hi']))
+        src = g.ModSrc.create(module, p.Chunk(['hi']))
         res = src()
         assert res == ['hix']
     
@@ -75,7 +75,7 @@ class TestT:
             Append('x'),
             Append('y')
         ])
-        src = g.ModSrc.create(module, p.B(['hi', 'hi']))
+        src = g.ModSrc.create(module, p.Chunk(['hi', 'hi']))
         res = src()
         assert res == ['hix', 'hiy']
 

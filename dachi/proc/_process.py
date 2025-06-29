@@ -216,7 +216,7 @@ async def astream(f: typing.Union[AsyncStreamProcess, typing.Callable], *args, *
 
 
 # TDOO: Doesn't serialize
-class I(object):
+class Recur(object):
     """Use to mark data that should not be batched when calling the map functions
     """
     
@@ -240,7 +240,7 @@ class I(object):
             yield self.data
 
 
-class B(object):
+class Chunk(object):
     """Use to mark data for batching
     """
     def __init__(
@@ -267,7 +267,7 @@ class B(object):
     @classmethod
     def m(
         cls, *data: typing.Iterable, n: int=None
-    ) -> typing.Tuple['B']:
+    ) -> typing.Tuple['Chunk']:
         """Wrap multiple data through Ps
 
         data: The data to wrap in P
@@ -277,7 +277,7 @@ class B(object):
             typing.Tuple[P]: The resulting ps
         """
         return tuple(
-            B(d, n) for d in data
+            Chunk(d, n) for d in data
         )
     
     @property
@@ -384,7 +384,7 @@ def process_loop(
     if isinstance(processes, ModuleList):
         sz = len(processes)
     for arg in itertools.chain(args, kwargs.values()):
-        if isinstance(arg, B):
+        if isinstance(arg, Chunk):
             if sz is None:
                 sz = arg.n
             elif arg.n != sz:
@@ -394,11 +394,11 @@ def process_loop(
         raise ValueError('None of the inputs can be parallelized')
     
     if not isinstance(processes, ModuleList):
-        processes = I(processes, sz)
+        processes = Recur(processes, sz)
 
     kwarg_names = list(kwargs.keys())
-    kwarg_vals = [I(v, sz) if not isinstance(v, B) else v for v in kwargs.values()]
-    args = [I(v, sz) if not isinstance(v, B) else v for v in args]
+    kwarg_vals = [Recur(v, sz) if not isinstance(v, Chunk) else v for v in kwargs.values()]
+    args = [Recur(v, sz) if not isinstance(v, Chunk) else v for v in args]
     
     for vs in zip(processes, *args, *kwarg_vals):
         m = vs[0]

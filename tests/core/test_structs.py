@@ -1,17 +1,14 @@
 # test_itemlist.py
 import pytest
-from dachi.core._base import BaseModule, Param, Attr, BaseSpec, registry
-from dachi.core._structs import ModuleList
 from dataclasses import InitVar
 
-import pytest
-from dachi.core._structs import ModuleList
-from dachi.core._base import BaseModule, Param, Attr, dict, registry
-from dataclasses import InitVar
-# ---------------------- helper child class -------------------------
+# local
+from dachi.core._base import BaseModule, Param, Attr, BaseSpec, registry
+from dachi.core._structs import ModuleList, ModuleDict
+
 
 @registry.register()
-class Leaf(BaseModule):
+class Leaf3(BaseModule):
     w: InitVar[float]
     s: InitVar[int]
 
@@ -22,7 +19,7 @@ class Leaf(BaseModule):
 
 # --- Helper Leaf class ---
 @registry()
-class Leaf2(BaseModule):
+class Leaf4(BaseModule):
     v: InitVar[int]
     f: InitVar[int]
 
@@ -32,11 +29,10 @@ class Leaf2(BaseModule):
 
 
 def make_leaf(val=1.0, step=0):
-    return Leaf(w=val, s=step)
+    return Leaf3(w=val, s=step)
 
 
 class TestModuleList:
-# ------------------------ __init__ tests ---------------------------
     def test_itemlist_init_happy(self):
         lst = ModuleList(items=[make_leaf(), make_leaf()])
         assert len(lst) == 2
@@ -55,7 +51,6 @@ class TestModuleList:
         with pytest.raises(TypeError):
             ModuleList(items=[42])             # not BaseProcess
 
-    # # # ------------------------ append tests -----------------------------
     def test_itemlist_append(self):
         lst = ModuleList(items=[make_leaf()])
         new_leaf = make_leaf(2.0)
@@ -69,7 +64,6 @@ class TestModuleList:
         with pytest.raises(TypeError):
             lst.append(123)
 
-    # # # ------------------------ setitem tests ----------------------------
     def test_itemlist_setitem(self):
         lst = ModuleList(items=[make_leaf(), make_leaf()])
         repl = make_leaf(9.9)
@@ -87,7 +81,6 @@ class TestModuleList:
         with pytest.raises(IndexError):
             lst[5] = make_leaf()
 
-    # # # ------------------------ spec / schema ----------------------------
     def test_itemlist_spec_roundtrip(self):
         lst = ModuleList(items=[make_leaf(3.3)])
         spec = lst.spec()
@@ -95,7 +88,6 @@ class TestModuleList:
         assert isinstance(spec, BaseSpec)
         assert spec.items[0].w == 3.3
 
-    # # ------------------------ state_dict --------------------------------
     def test_itemlist_state_dict_flags(self):
         l1 = make_leaf(1.0, 10)
         l2 = make_leaf(2.0, 20)
@@ -111,7 +103,6 @@ class TestModuleList:
         lst2.load_state_dict(sd, strict=True)
         assert lst2.state_dict() == sd
 
-    # # ------------------------ load_state_dict ---------------------------
     def test_itemlist_load_state_dict_strict_len_mismatch(self):
         lst = ModuleList(items=[make_leaf()])
         with pytest.raises(KeyError):
@@ -130,8 +121,8 @@ class TestModuleList:
 
     # # ------------------------ parameters dedup --------------------------
     def test_itemlist_parameters_dedup(self):
-        leaf1 = Leaf(w=7, s=0)
-        leaf2 = Leaf(w=7, s=1)
+        leaf1 = Leaf3(w=7, s=0)
+        leaf2 = Leaf3(w=7, s=1)
         leaf2.w = leaf1.w
         lst = ModuleList(items=[leaf1, leaf2])
         params = list(lst.parameters())
@@ -148,13 +139,11 @@ class TestModuleList:
 
     def test_modulelist_mixed_type_init_error(self):
         with pytest.raises(TypeError):
-            ModuleList(items=[Leaf(w=1, s=0), 123])
+            ModuleList(items=[Leaf3(w=1, s=0), 123])
 
-
-    # # ---------- Positive: iteration preserves insertion order ----------
 
     def test_modulelist_iter_order(self):
-        m1, m2 = Leaf(w=1, s=0), Leaf(w=2, s=0)
+        m1, m2 = Leaf3(w=1, s=0), Leaf3(w=2, s=0)
         lst = ModuleList(items=[m1, m2])
         assert list(iter(lst)) == [m1, m2]
 
@@ -162,8 +151,8 @@ class TestModuleList:
     # # ---------- Edge: negative index access behaves like list ----------
 
     def test_modulelist_negative_index_getitem(self):
-        m1, m2 = Leaf(
-            w=1, s=0), Leaf(w=2, s=0)
+        m1, m2 = Leaf3(
+            w=1, s=0), Leaf3(w=2, s=0)
         lst = ModuleList(items=[m1, m2])
         assert lst[-1] is m2
 
@@ -178,7 +167,7 @@ class TestModuleList:
     # # ---------- Positive: spec → from_spec round‑trip ----------
 
     def test_modulelist_from_spec_roundtrip(self):
-        m1, m2 = Leaf(w=3, s=3), Leaf(w=4, s=4)
+        m1, m2 = Leaf3(w=3, s=3), Leaf3(w=4, s=4)
         lst = ModuleList(items=[m1, m2])
         spec = lst.spec(to_dict=False)
         rebuilt = ModuleList.from_spec(spec)
@@ -189,10 +178,10 @@ class TestModuleList:
 
     def test_modulelist_setitem_removes_old_attr(self):
         lst = ModuleList(
-            items=[Leaf(w=Param(1), s=Attr(0))]
+            items=[Leaf3(w=Param(1), s=Attr(0))]
         )
         assert hasattr(lst, "0")
-        lst[0] = Leaf(w=9, s=9)
+        lst[0] = Leaf3(w=9, s=9)
         # new attr re‑registered under same name, old attr gone implicitly
         assert getattr(lst, "0").w.data == 9
 
@@ -201,10 +190,10 @@ class TestModuleList:
 
     def test_modulelist_append_generates_monotonic_names(self):
         lst = ModuleList(items=[])
-        lst.append(Leaf(w=1, s=0))  # name "0"
-        lst.append(Leaf(w=1, s=0))  # name "1"
-        lst[0] = Leaf(w=3, s=0)     # replaces index 0 (still name "0")
-        lst.append(Leaf(w=4, s=0))  # should get name "2", not "1" again
+        lst.append(Leaf3(w=1, s=0))  # name "0"
+        lst.append(Leaf3(w=1, s=0))  # name "1"
+        lst[0] = Leaf3(w=3, s=0)     # replaces index 0 (still name "0")
+        lst.append(Leaf3(w=4, s=0))  # should get name "2", not "1" again
         assert hasattr(lst, "2")
 
 
@@ -221,10 +210,8 @@ class TestModuleList:
     #     assert all(p.training for p in lst.parameters(recurse=True, train=None))
 
 
-    # # ---------- Edge: duplicate child references ----------
-
     def test_modulelist_duplicate_child_objects(self):
-        leaf = Leaf(w=5, s=5)
+        leaf = Leaf3(w=5, s=5)
         lst = ModuleList(items=[leaf, leaf])
         # parameters() should deduplicate by identity
         assert len(list(lst.parameters(recurse=True))) == 1
@@ -251,8 +238,8 @@ class TestModuleList:
 
 
     def test_len_and_iter_and_getitem(self):
-        leaf1 = Leaf2(v=1,f=1)
-        leaf2 = Leaf2(v=2,f=2)
+        leaf1 = Leaf4(v=1,f=1)
+        leaf2 = Leaf4(v=2,f=2)
         ml = ModuleList(items=[leaf1, leaf2])
         assert len(ml) == 2
         assert list(iter(ml)) == [leaf1, leaf2]
@@ -267,10 +254,10 @@ class TestModuleList:
 
 
     def test_setitem_replacement_and_module_registration(self):
-        leaf1 = Leaf2(v=1,f=1)
-        leaf2 = Leaf2(v=2,f=2)
+        leaf1 = Leaf4(v=1,f=1)
+        leaf2 = Leaf4(v=2,f=2)
         ml = ModuleList(items=[leaf1, leaf2])
-        leaf3 = Leaf2(v=3,f=3)
+        leaf3 = Leaf4(v=3,f=3)
         ml[1] = leaf3
         assert ml[1] is leaf3
         # ensure modules dict updated
@@ -279,7 +266,7 @@ class TestModuleList:
 
 
     def test_setitem_type_error(self):
-        leaf = Leaf2(v=1,f=1)
+        leaf = Leaf4(v=1,f=1)
         ml = ModuleList(items=[leaf])
         with pytest.raises(TypeError):
             ml[0] = "oops"
@@ -287,7 +274,7 @@ class TestModuleList:
 
     def test_append_and_registration(self):
         ml = ModuleList(items=[])
-        leaf = Leaf2(v=5,f=5)
+        leaf = Leaf4(v=5,f=5)
         ml.append(leaf)
         assert len(ml) == 1
         assert ml._modules["0"] is leaf
@@ -312,7 +299,7 @@ class TestModuleList:
         assert len(ml2) == 0
 
         # duplicate underlying spec dedup
-        leaf = Leaf2(v=9,f=9)
+        leaf = Leaf4(v=9,f=9)
         ml3 = ModuleList(items=[leaf, leaf])
         ctx2 = dict()
         spec3 = ml3.spec(to_dict=False)
@@ -321,8 +308,8 @@ class TestModuleList:
 
 
     def test_state_dict_flags_and_load_state_dict(self):
-        leaf1 = Leaf2(v=1,f=10)
-        leaf2 = Leaf2(v=2,f=20)
+        leaf1 = Leaf4(v=1,f=10)
+        leaf2 = Leaf4(v=2,f=20)
         ml = ModuleList(items=[leaf1, leaf2])
         # full flags
         sd_full = ml.state_dict(recurse=True, train=True, runtime=True)
@@ -347,8 +334,8 @@ class TestModuleList:
 
 
     def test_parameters_and_named_modules(self):
-        leaf1 = Leaf2(v=1,f=1)
-        leaf2 = Leaf2(v=2,f=2)
+        leaf1 = Leaf4(v=1,f=1)
+        leaf2 = Leaf4(v=2,f=2)
         ml = ModuleList(items=[leaf1, leaf2])
         # parameters yields leaf1.v and leaf2.v
         params = list(ml.parameters())
@@ -359,7 +346,7 @@ class TestModuleList:
 
 
     def test_load_state_dict_non_strict_behavior(self):
-        leaf1 = Leaf2(v=1,f=1)
+        leaf1 = Leaf4(v=1,f=1)
         ml = ModuleList(items=[leaf1])
         # shorter list non-strict OK
         ml.load_state_dict({}, strict=False)
@@ -367,11 +354,6 @@ class TestModuleList:
         ml.load_state_dict({"items": {"v":5}}, strict=False)
 
 
-
-import pytest
-from dachi.core._base import BaseModule, Param, Attr, dict, BaseSpec, registry
-from dachi.core._structs import ModuleDict
-from dataclasses import InitVar
 
 # @registry()
 # class Leaf(BaseModule):

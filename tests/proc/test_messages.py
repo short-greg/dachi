@@ -1,4 +1,4 @@
-from dachi.msg import _messages as M
+from dachi.core import _msg as M
 from dachi import proc as P
 
 
