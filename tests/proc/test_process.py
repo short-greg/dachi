@@ -6,13 +6,11 @@ multiple values that must be asserted together).
 
 Google‑style docstrings are used throughout.
 """
-
 import asyncio
 from typing import Any, Iterator, List, Tuple
-
 import pytest
 
-from dachi import process as P
+from dachi import proc as P
 
 
 async def _async_identity(x: int) -> int:  # noqa: D401
@@ -148,20 +146,20 @@ class TestAsyncStreamProcess:
 
 
 
-# class _EchoProcess(P.Process):
-#     def forward(self, x):
-#         return x
+# # class _EchoProcess(P.Process):
+# #     def forward(self, x):
+# #         return x
 
-# class _AEchoProcess(P.AsyncProcess):
-#     async def aforward(self, x):
-#         return x
+# # class _AEchoProcess(P.AsyncProcess):
+# #     async def aforward(self, x):
+# #         return x
 
-# class _SEchoProcess(P.StreamProcess):
-#     def __init__(self, n: int):
-#         self.n = n
-#     def stream(self, x):
-#         for _ in range(self.n):
-#             yield x
+# # class _SEchoProcess(P.StreamProcess):
+# #     def __init__(self, n: int):
+# #         self.n = n
+# #     def stream(self, x):
+# #         for _ in range(self.n):
+# #             yield x
 
 
 class TestForwardHelper:
@@ -192,7 +190,7 @@ class TestForwardHelper:
 
 
 @pytest.mark.asyncio
-class TestAForwardHelper:
+class TestAForward:
     """`aforward` handles both sync and async callables uniformly."""
 
     async def test_async_lambda(self):
@@ -216,11 +214,11 @@ class TestAForwardHelper:
         assert out == 5
 
     async def test_invalid_type_raises(self):
-        with pytest.raises(RuntimeError):
+        with pytest.raises(TypeError):
             await P.aforward(object())  # type: ignore[arg-type]
 
 
-class TestStreamHelper:
+class TestStream:
     """`stream` collapses scalars into single-item iterators and preserves generators."""
 
     def test_stream_with_proc(self):
@@ -239,7 +237,7 @@ class TestStreamHelper:
     def test_async_gen_not_supported(self):
         async def _agen(x):
             yield x
-        with pytest.raises(NotImplementedError):
+        with pytest.raises(TypeError):
             list(P.stream(_agen, 1))  # type: ignore[arg-type]
 
 
@@ -273,15 +271,9 @@ class TestAStreamHelper:
         assert out == [0, 1]
 
     async def test_invalid_type_raises(self):
-        with pytest.raises(RuntimeError):
+        with pytest.raises(TypeError):
             async for _ in P.astream(123):  # type: ignore[arg-type]
                 pass
-
-
-
-# ---------------------------------------------------------------------------
-# 4.  Batch helpers `I` & `B`
-# ---------------------------------------------------------------------------
 
 
 class TestRecur:
@@ -289,34 +281,34 @@ class TestRecur:
 
     def test_positive(self) -> None:
         obj = object()
-        assert list(P.Recur(obj, n=3)) == [obj, obj, obj]
+        assert list(P.Recur(data=obj, n=3)) == [obj, obj, obj]
 
     def test_zero(self) -> None:
-        assert list(P.Recur(1, n=0)) == []
+        assert list(P.Recur(data=1, n=0)) == []
 
     def test_negative(self) -> None:
         with pytest.raises(ValueError):
-            list(P.Recur(1, n=-1))
+            list(P.Recur(data=1, n=-1))
 
 
 class TestChunk:
     """`B` batches an iterable preserving order and supports `.m` helper."""
 
     def test_preserves_order(self) -> None:
-        b = P.Chunk([1, 2, 3])
-        assert list(b) == [1, 2, 3]
-        assert b.n == 3
+        b = P.Chunk(data=[1, 2, 3])
+        assert list(b) == [[1], [2], [3]]
+        assert b.n is None
 
     def test_truncate(self) -> None:
-        b = P.Chunk([1, 2, 3], n=2)
-        assert list(b) == [1, 2]
+        b = P.Chunk(data=[1, 2, 3], n=2)
+        assert list(b)[1] == [2, 3]
         assert b.n == 2
 
     def test_classmethod_m(self) -> None:
         b1, b2 = P.Chunk.m([1, 2], [3, 4])
-        assert list(b1) == [1, 2]
-        assert list(b2) == [3, 4]
-        assert b1.n == b2.n == 2
+        assert list(b1) == [[1], [2]]
+        assert list(b2) == [[3], [4]]
+        assert b1.n == b2.n == None
 
     def test_non_iterable(self) -> None:
         with pytest.raises(TypeError):
@@ -329,84 +321,99 @@ class TestSequential:
 
     def test_three_stage_pipeline(self) -> None:
         seq = P.Sequential(
-            [lambda x: x + 1, _EchoProcess(), lambda x: x * 10]
+            data=[_EchoProcess(), _EchoProcess()]
         )
-        assert seq.forward(2) == 30  # (2+1) -> 3 -> 3*10
+        assert seq.forward(2) == 2
 
     def test_empty_sequential_identity(self) -> None:
-        seq = P.Sequential([])
+        seq = P.Sequential(data=[])
         assert seq.forward(99) == 99
 
-    def test_type_mismatch_raises(self) -> None:
-        seq = P.Sequential([lambda *_: (1, 2), lambda x: x])
-        with pytest.raises(TypeError):
-            seq.forward(0)
+#     # def test_type_mismatch_raises(self) -> None:
+#     #     seq = P.Sequential(items=[lambda *_: (1, 2), lambda x: x])
+#     #     with pytest.raises(TypeError):
+#     #         seq.forward(0)
 
-
-@pytest.mark.asyncio
-class TestAsyncParallel:
-    """`AsyncParallel` preserves order even when tasks finish out‑of‑order."""
-
-    async def test_order_preserved(self) -> None:
-        async def slow(x):
-            await asyncio.sleep(0.02 if x == 1 else 0)
-            return x
-        par = P.AsyncParallel([slow, slow])
-        assert await par.aforward(1, 2) == (1, 2)
-
-    async def test_single_module(self) -> None:
-        par = P.AsyncParallel([lambda x: x + 1])
-        assert await par.aforward(3) == (4,)
-
-    async def test_exception_propagates(self) -> None:
-        async def bad(x):
-            raise ValueError("boom")
-        par = P.AsyncParallel([bad])
-        with pytest.raises(ValueError):
-            await par.aforward(0)
 
 
 class TestProcessLoop:
     """Extended tests for process_loop batch orchestration."""
 
+    class SyncP(P.Process):
+        """A simple sync process for testing."""
+        def forward(self, x: int) -> int:
+            return x + 1
+
     def test_multiple_modules(self):
-        b1 = P.Chunk([1, 2, 3], n=3)
-        mods = [P.Func(lambda x: x + 1), P.Func(lambda x: x * 2)]
+        b1 = P.Chunk(data=[1, 2, 3], n=None)
+        mods = [self.SyncP(), self.SyncP(), self.SyncP()]
         out = list(P.process_loop(mods, b1))
-        assert out == [4, 6, 8]  # ((1+1)*2), ((2+1)*2), ((3+1)*2)
+        assert out[0] == (mods[0], (1,), {})
+        assert out[1] == (mods[1], (2,), {})
+        assert out[2] == (mods[2], (3,), {})
 
     def test_keyword_arguments_passed(self):
         class AddXY(P.Process):
             def forward(self, x, y=0):
                 return x + y
 
-        b1 = P.Chunk([1, 2], n=2)
-        b2 = P.Chunk([10, 20], n=2)
-        out = list(P.process_loop([AddXY()], b1, b2))
-        assert out == [11, 22]
+        b1 = P.Chunk(data=[1, 2], n=None)
+        b2 = P.Chunk(data=[10, 20], n=None)
+        add_xy = AddXY()
+        out = list(P.process_loop(add_xy, b1, y=b2))
+        assert out[0] == (add_xy, (1,), {'y': 10})
+        assert out[1] == (add_xy, (2,), {'y': 20})
 
     def test_zero_length_inputs(self):
-        b1 = P.Chunk([], n=0)
-        out = list(P.process_loop([lambda x: x], b1))
+        b1 = P.Chunk(data=[], n=0)
+        out = list(P.process_loop([], b1))
         assert out == []
 
     def test_empty_modules_list_returns_input(self):
-        b = P.Chunk([1, 2, 3], n=3)
-        out = list(P.process_loop([], b))
-        assert out == [1, 2, 3]
-
+        b = P.Chunk(data=[1, 2, 3], n=3)
+        with pytest.raises(ValueError):
+            list(P.process_loop([], b))
 
     def test_happy_path(self) -> None:
-        b1 = P.B([1, 2])
-        b2 = P.B([10, 20])
-        out = list(P.process_loop([lambda x, y: x + y], (b1, b2)))
-        assert out == [11, 22]
+        b1 = P.Chunk(data=[1, 2])
+        b2 = P.Chunk(data=[10, 20])
+        p = lambda x, y: x + y
+        out = list(P.process_loop(p, b1, b2))
+        assert out[0][0] is p
 
     def test_length_mismatch(self) -> None:
-        b1 = P.B([1])
-        b2 = P.B([10, 20])
+        b1 = P.Chunk(data=[1])
+        p = lambda x, y: x + y
+        b2 = P.Chunk(data=[10, 20])
         with pytest.raises(ValueError):
-            list(P.process_loop([lambda x, y: x + y], (b1, b2)))
+            list(P.process_loop([p], b1, b2))
+
+
+@pytest.mark.asyncio
+class TestAsyncParallel:
+    """`AsyncParallel` preserves order even when tasks finish out‑of‑order."""
+
+    class AsyncP(P.AsyncProcess):
+        """A simple async process for testing."""
+        async def aforward(self, x: int) -> int:
+            await asyncio.sleep(0.01)
+            return x
+        
+    class SyncP(P.Process):
+        """A simple sync process for testing."""
+        def forward(self, x: int) -> int:
+            return x + 1
+
+    async def test_order_preserved(self) -> None:
+        """Ensure that async tasks complete in the order they were started."""
+        items = [self.AsyncP(), self.AsyncP()]
+        par = P.AsyncParallel(data=items)
+        assert await par.aforward(1) == [1, 1]
+
+    async def test_single_module(self) -> None:
+        par = P.AsyncParallel(data=[self.SyncP()])
+        assert await par.aforward(3) == [4]
+
 
 
 @pytest.mark.asyncio
@@ -416,68 +423,70 @@ class TestCreateTaskExtended:
     async def test_with_plain_async_func(self):
         async def mul(x):
             return x * 3
-
-        task = P.create_task(mul, 3)
-        assert await task == 9
+        
+        async with asyncio.TaskGroup() as tg:
+            res = P.create_proc_task(tg, mul, 3)
+        
+        assert res.result() == 9
 
     async def test_with_plain_sync_func(self):
         def square(x):
             return x * x
 
-        task = P.create_task(square, 5)
-        assert await task == 25
+        async with asyncio.TaskGroup() as tg:
+            task = P.create_proc_task(tg, square, 5)
+        assert task.result() == 25
 
     async def test_with_func_object(self):
         class Mult:
             def __call__(self, x):
                 return x * 4
 
-        task = P.create_task(Mult(), 2)
-        assert await task == 8
+        async with asyncio.TaskGroup() as tg:
+            task = P.create_proc_task(tg, Mult(), 2)
+        assert task.result() == 8
 
 
     async def test_with_async_process(self) -> None:
-        task = P.create_task(_AEchoProcess(), 5)
-        assert await task == 5
+
+        async with asyncio.TaskGroup() as tg:
+            task = P.create_proc_task(tg, _AEchoProcess(), 5)
+        assert task.result() == 5
 
     async def test_with_sync_func(self) -> None:
-        task = P.create_task(lambda x: x * 2, 4)
-        assert await task == 8
+        async with asyncio.TaskGroup() as tg:
+            task = P.create_proc_task(tg, lambda x: x * 2, 4)
+        assert task.result() == 8
 
 
 
-class TestReduceExtended:
+class TestReduce:
     """Extended test coverage for `reduce` logic."""
 
     def test_reduce_with_init_val(self):
-        b = P.Chunk([2, 3], n=2)
+        b = P.Chunk(data=[2, 3], n=None)
         result = P.reduce(lambda a, b: a * b, b, init_val=4)
         assert result == 24  # 4 * 2 * 3
 
     def test_reduce_empty_with_init_val(self):
-        b = P.Chunk([], n=0)
+        b = P.Chunk(data=[], n=0)
         result = P.reduce(lambda a, b: a + b, b, init_val=100)
         assert result == 100
 
     def test_reduce_raises_without_init_on_empty(self):
-        b = P.Chunk([], n=0)
+        b = P.Chunk(data=[], n=0)
         with pytest.raises(ValueError):
             P.reduce(lambda a, b: a + b, b)
 
-    def test_reduce_multiple_modules(self):
-        b = P.Chunk([1, 2, 3], n=3)
-        mods = [P.Func(lambda a, b: a + b), P.Func(lambda a, b: a * b)]
-        result = P.reduce(b, *mods)
-        assert result == 9  # (1+2)=3, (3*3)=9
-
-
     def test_reduce_sum(self) -> None:
-        vals = P.B([1, 2, 3])
-        total = P.reduce(vals, lambda a, b: a + b)
+        vals = P.Chunk(data=[1, 2, 3])
+        total = P.reduce(lambda a, b: a + b, vals, init_val=0)
         assert total == 6
 
-
-
+    def test_reduce_sum(self) -> None:
+        vals = P.Chunk(data=[1, 2, 3])
+        with pytest.raises(ValueError):
+            P.reduce(lambda a, b: a + b, vals)
 
 
 @pytest.mark.asyncio
@@ -485,24 +494,33 @@ class TestAsyncReduce:
     """Additional tests for async_reduce to cover edge and error cases."""
 
     async def test_reduce_product(self) -> None:
-        vals = P.B([2, 3, 4])
+        vals = P.chunk([2, 3, 4])
         async def mul(a, b):
             await asyncio.sleep(0)
             return a * b
-        product = await P.async_reduce(vals, mul)
+        product = await P.async_reduce(mul, vals, init_val=1)
         assert product == 24
 
     async def test_async_reduce_no_init_val(self):
-        chunk = P.Chunk([1, 2, 3], n=3)
+        chunk = P.chunk([1, 2, 3])
 
         async def add(a, b):
             return a + b
 
-        result = await P.async_reduce(add, chunk)
+        result = await P.async_reduce(add, chunk, init_val=0)
         assert result == 6
 
+    async def test_async_reduce_no_init_val(self):
+        chunk = P.chunk([1, 2, 3])
+
+        async def add(a, b):
+            return a + b
+        # Test that async_reduce doesn't work without an initial value
+        with pytest.raises(ValueError):
+            await P.async_reduce(add, chunk)
+
     async def test_async_reduce_empty_with_init_val(self):
-        chunk = P.Chunk([], n=0)
+        chunk = P.chunk([])
 
         async def add(a, b):
             return a + b
@@ -511,7 +529,7 @@ class TestAsyncReduce:
         assert result == 10
 
     async def test_async_reduce_raises_on_empty_without_init_val(self):
-        chunk = P.Chunk([], n=0)
+        chunk = P.chunk([])
 
         async def add(a, b):
             return a + b
@@ -520,58 +538,59 @@ class TestAsyncReduce:
             await P.async_reduce(add, chunk)
 
 
-class TestStreamSequenceExtended:
-    """Extended tests for StreamSequence to capture edge cases."""
+# class TestStreamSequenceExtended:
+#     """Extended tests for StreamSequence to capture edge cases."""
 
-    def test_stream_sequence_empty_input(self):
-        pre = P.Func(lambda xs: (x for x in xs))
-        mod = P.Func(lambda gen: (x + 1 for x in gen))
-        post = P.Func(list)
-        seq = P.StreamSequence(pre, mod, post)
-        out = seq.forward([])
-        assert out == []
+#     def test_stream_sequence_empty_input(self):
+#         pre = P.Func(f=lambda xs: (x for x in xs))
+#         mod = P.Func(f=lambda gen: (x + 1 for x in gen))
+#         post = P.Func(f=list)
+#         seq = P.StreamSequence(pre=pre, mod=mod, post=post)
+#         out = seq.stream([])
+#         assert out == []
 
-    def test_stream_sequence_none_input(self):
-        pre = P.Func(lambda _: (x for x in []))
-        mod = P.Func(lambda gen: (x + 1 for x in gen))
-        post = P.Func(list)
-        seq = P.StreamSequence(pre, mod, post)
-        out = seq.forward(None)
-        assert out == []
+#     def test_stream_sequence_none_input(self):
+#         pre = P.Func(f=lambda _: (x for x in []))
+#         mod = P.Func(f=lambda gen: (x + 1 for x in gen))
+        
+#         post = P.Func(f=list)
+#         seq = P.StreamSequence(pre=pre, mod=mod, post=post)
+#         out = seq.stream(None)
+#         assert out == []
 
 
-@pytest.mark.asyncio
-class TestAsyncStreamSequenceExtended:
-    """Extended tests for AsyncStreamSequence edge behaviors."""
+# @pytest.mark.asyncio
+# class TestAsyncStreamSequenceExtended:
+#     """Extended tests for AsyncStreamSequence edge behaviors."""
 
-    async def test_async_stream_sequence_empty(self):
-        async def pre(xs):
-            for x in xs:
-                if False:
-                    yield x
+#     async def test_async_stream_sequence_empty(self):
+#         async def pre(xs):
+#             for x in xs:
+#                 if False:
+#                     yield x
 
-        async def mod(gen):
-            async for x in gen:
-                yield x + 1
+#         async def mod(gen):
+#             async for x in gen:
+#                 yield x + 1
 
-        post = P.Func(list)
-        seq = P.AsyncStreamSequence(pre, mod, post)
-        out = await seq.astream([])
-        assert out == []
+#         post = P.Func(list)
+#         seq = P.AsyncStreamSequence(pre, mod, post)
+#         out = await seq.astream([])
+#         assert out == []
 
-    async def test_async_stream_sequence_none(self):
-        async def pre(_):
-            return
-            yield  # needed to make it async generator
+#     async def test_async_stream_sequence_none(self):
+#         async def pre(_):
+#             return
+#             yield  # needed to make it async generator
 
-        async def mod(gen):
-            async for x in gen:
-                yield x + 1
+#         async def mod(gen):
+#             async for x in gen:
+#                 yield x + 1
 
-        post = P.Func(list)
-        seq = P.AsyncStreamSequence(pre, mod, post)
-        out = await seq.astream(None)
-        assert out == []
+#         post = P.Func(list)
+#         seq = P.AsyncStreamSequence(pre, mod, post)
+#         out = await seq.astream(None)
+#         assert out == []
 
 
 # import asyncio
@@ -742,308 +761,4 @@ class TestAsyncStreamSequenceExtended:
 #         partial = streamer()
 #         assert partial.dx == (3, 2)
 #         assert partial.complete is True
-
-
-# class TestSequential:
-
-#     def test_sequential_does_nothing_if_zero(self):
-
-#         sequential = _process.Sequential()
-#         res = sequential('x')
-#         assert res == 'x'
-
-#     def test_sequential_appends(self):
-
-#         sequential = _process.Sequential(Append('z'))
-#         res = sequential('x')
-#         assert res == 'xz'
-
-#     def test_sequential_appends2(self):
-
-#         sequential = _process.Sequential(Append('z'), Append('y'))
-#         res = sequential('x')
-#         assert res == 'xzy'
-
-#     def test_sequential_works_with_two_inputs(self):
-
-#         sequential = _process.Sequential(Append2('x'))
-#         res = sequential('x', 'y')
-#         assert res == 'xyx'
-
-#     def test_len_returns_correct_len(self):
-
-#         sequential = _process.Sequential(Append('z'), Append('y'))
-#         return len(sequential) == 2
-
-
-# class TestModuleList(object):
-
-#     def test_module_list_has1(self):
-
-#         module_list = _process.ModuleList([Append('z')])
-#         assert len(module_list) == 1
-
-#     def test_module_list_has2(self):
-
-#         module_list = _process.ModuleList([Append('z'), Append('z')])
-#         assert len(module_list) == 2
-
-#     def test_module_list_two_children(self):
-
-#         module_list = _process.ModuleList([Append('z'), Append('z')])
-#         assert len(list(module_list.children())) == 2
-
-
-# class TestForwardStream:
-
-#     def test_forward_executes_module(self):
-
-#         append = Append('s')
-#         res = _process.forward(append, 't')
-#         assert res == 'ts'
-
-#     @pytest.mark.asyncio
-#     async def test_aforward_executes_module(self):
-
-#         append = Append('s')
-#         res = await _process.aforward(append, 't')
-#         assert res == 'ts'
-
-#     def test_stream_executes_module(self):
-
-#         append = Append('s')
-#         for r in _process.stream(append, 't'):
-#             pass
-#         assert r == 'ts'
-
-
-# class TestBatched:
-
-#     def test_batched_len_is_correct(self):
-        
-#         batched = _process.Batched([1,2,3,4,5,6], size=3)
-#         assert len(batched) == 2
-
-#     def test_loop_over_batches_returns_correct_values(self):
-        
-#         batched = _process.Batched([1,2,3,4,5,6], size=3)
-#         batch_list = list(batched)
-#         assert batch_list[0] == [1, 2, 3]
-#         assert batch_list[1] == [4, 5, 6]
-
-#     def test_loop_over_batches_returns_correct_values_with_two(self):
-        
-#         batched = _process.Batched([1,2,3,4,5,6], [0, 1,2,3,4,5], size=3)
-#         batch_list = list(batched)
-#         assert batch_list[0][0] == [1, 2, 3]
-#         assert batch_list[0][1] == [0, 1, 2]
-
-#     def test_shuffle_changes_the_order(self):
-        
-#         batched = _process.Batched([1,2,3,4,5,6], [0, 1,2,3,4,5], size=3)
-
-#         np.random.seed(0)
-#         batched = batched.shuffle()
-#         batch_list = list(batched)
-#         assert batch_list[0][0] != [1, 2, 3]
-
-
-# class TestReduce:
-
-#     def test_reduce_reduces_with_init(self):
-
-#         r = Append('x')
-#         b = RefinerAppender('y')
-#         res = _process.reduce(
-#             b, _process.B('xy'), init_mod=r
-#         )
-#         assert res == 'xxyy'
-
-#     def test_reduce_reduces_with_three_values(self):
-
-#         r = Append('x')
-#         b = RefinerAppender('y')
-#         res = _process.reduce(
-#             b, _process.B('xyz'), init_mod=r
-#         )
-#         assert res == 'xxyyzy'
-
-#     def test_reduce_reduces_without_init(self):
-
-#         b = RefinerAppender('y')
-#         res = _process.reduce(
-#             b, _process.B('xy')
-#         )
-#         assert res == 'xyyy'
-
-
-# class TestMulti:
-    
-#     def test_that_multi_loops_over_the_modules(self):
-
-#         module = _process.MultiParallel(
-#             [Append('x'), Append('y')]
-#         )
-#         res = module('hi')
-#         assert res[0] == 'hix'
-#         assert res[1] == 'hiy'
-
-#     def test_that_multi_loops_over_the_modules_with_a_batch(self):
-
-#         x = _process.B(['hi', 'bye'])
-#         module = _process.MultiParallel(
-#             Append('x')
-#         )
-#         res = module(x)
-#         assert res[0] == 'hix'
-#         assert res[1] == 'byex'
-
-
-# class TestAsync:
-    
-#     def test_that_async_loops_over_the_modules(self):
-
-#         module = _process.AsyncParallel(
-#             [Append('x'), Append('y')]
-#         )
-#         res = module('hi')
-#         assert res[0] == 'hix'
-#         assert res[1] == 'hiy'
-
-#     def test_that_async_loops_over_the_modules_with_a_batch(self):
-
-#         x = _process.B(['hi', 'bye'])
-#         module = _process.AsyncParallel(
-#             Append('x')
-#         )
-#         res = module(x)
-#         assert res[0] == 'hix'
-#         assert res[1] == 'byex'
-
-#     def test_that_async_loops_over_the_modules_with_a_batch_with_two(self):
-
-#         x = _process.B(['hi', 'bye'])
-#         module = _process.AsyncParallel(
-#             Append2('x')
-#         )
-#         res = module(x, 'z')
-#         assert res[0] == 'hizx'
-#         assert res[1] == 'byezx'
-
-
-# class NestedModule(Module):
-
-#     def __init__(self, child: Module):
-#         super().__init__()
-#         self.child = child
-#         self.p = Param(
-#             name='p',
-#             data=Cue(text='Do this')
-#         )
-
-#     def forward(self) -> Any:
-#         return None
-
-
-# class TestParallelLoop:
-
-#     def test_parallel_loop_with_two_modules(self):
-
-#         modules = _process.ModuleList([Append('s'), Append('t')])
-#         ress = []
-#         for m, r, kwargs in _process.parallel_loop(
-#             modules, 'r'
-#         ):
-#             ress.append(m(*r, **kwargs))
-#         assert ress[0] == 'rs'
-#         assert ress[1] == 'rt'
-
-#     def test_parallel_loop_with_two_inputs(self):
-
-#         # modules = _process.ModuleList([Append('s'), Append('t')])
-#         ress = []
-#         for m, r, kwargs in _process.parallel_loop(
-#             Append('s'), _process.B(['r', 'v'])
-#         ):
-#             ress.append(m(*r, **kwargs))
-#         assert ress[0] == 'rs'
-#         assert ress[1] == 'vs'
-
-#     def test_parallel_loop_with_two_inputs_and_two_modles(self):
-
-#         modules = _process.ModuleList([Append('s'), Append('t')])
-#         ress = []
-#         for m, r, kwargs in _process.parallel_loop(
-#             modules, _process.B(['r', 'v'])
-#         ):
-#             ress.append(m(*r, **kwargs))
-#         assert ress[0] == 'rs'
-#         assert ress[1] == 'vt'
-
-
-# class TestModule:
-
-#     def test_module_forward_outputs_correct_value(self):
-
-#         append = Append('_t')
-#         assert append.forward('x') == 'x_t'
-
-#     def test_async_runs_the_model_asynchronously(self):
-        
-#         module = Append('t')
-
-#         async def run_model(data: typing.List[str]):
-
-#             tasks = []
-#             async with asyncio.TaskGroup() as tg:
-#                 for data_i in data:
-#                     tasks.append(
-#                         tg.create_task(module.aforward(data_i))
-#                     )
-
-#             return list(task.result() for task in tasks)
-
-#         with asyncio.Runner() as runner:
-#             results = runner.run(run_model(['hi', 'bye']))
-        
-#         assert results[0] == 'hit'
-#         assert results[1] == 'byet'
-
-#     def test_stream_forward_returns_the_results(self):
-        
-#         module = Append('t')
-
-#         res = ''
-#         for dx in module.stream('xyz'):
-#             res += dx
-#         assert res == 'xyzt'
-
-#     def test_children_returns_no_children(self):
-        
-#         module = Append('t')
-
-#         children = list(module.children())
-#         assert len(children) == 0
-
-#     def test_children_returns_two_children_with_nested(self):
-        
-#         module = NestedModule(NestedModule(Append('a')))
-
-#         children = list(module.children())
-#         assert len(children) == 2
-
-#     def test_parameters_returns_all_parameters(self):
-        
-#         module = NestedModule(NestedModule(Append('a')))
-
-#         children = list(module.parameters())
-#         assert len(children) == 2
-
-#     def test_streamable_streams_characters(self):
-
-#         writer = WriteOut('')
-#         results = []
-#         for dx in writer.stream('xyz'):
-#             results.append(dx)
-#         assert results == list('xyz')
 

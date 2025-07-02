@@ -1,11 +1,11 @@
 # 1st party
 from abc import ABC, abstractmethod
-import asyncio
 import typing
-import itertools
-import asyncio
 from typing import Any
+import asyncio
+import itertools
 import dataclasses
+import numpy as np
 
 # 3rd party
 import pydantic
@@ -14,13 +14,17 @@ import pydantic
 from ..core import BaseModule, ModuleList
 from ..utils import (
     is_async_function,
-    is_generator_function
+    is_generator_function,
+    is_async_generator_function,
+    is_iterator,
+    is_async_iterator
+
 )
 
 S = typing.TypeVar('S', bound=pydantic.BaseModel)
 
 
-class Process(BaseModule):
+class Process(BaseModule, ABC):
     """Base class for Modules
     """
     @abstractmethod
@@ -41,7 +45,7 @@ class Process(BaseModule):
         return self.forward(*args, **kwargs)
 
 
-class AsyncProcess(BaseModule):
+class AsyncProcess(BaseModule, ABC):
     """Base class for Modules
     """
     @abstractmethod
@@ -58,7 +62,7 @@ class AsyncProcess(BaseModule):
         pass
 
 
-class StreamProcess(BaseModule):
+class StreamProcess(BaseModule, ABC):
     """Base class for Modules
     """   
     
@@ -72,7 +76,7 @@ class StreamProcess(BaseModule):
         pass
 
 
-class AsyncStreamProcess(BaseModule):
+class AsyncStreamProcess(BaseModule, ABC):
     """Base class for Modules
     """   
     
@@ -129,13 +133,22 @@ async def aforward(
     typing.Any: The result of the forward method or function call, which can be
     synchronous or asynchronous, and can handle generator functions.
     """
+    
     if isinstance(f, AsyncProcess):
         return await f.aforward(*args, **kwargs)
     if isinstance(f, Process):
         return f.forward(*args, **kwargs)
     if not is_async_function(f) and not is_generator_function(f):
+        if not isinstance(f, typing.Callable):
+            raise TypeError(
+                f"Object {object} is not callable"
+            )
         return f(*args, **kwargs)
     if is_async_function(f) and not is_generator_function(f):
+        if not isinstance(f, typing.Callable):
+            raise TypeError(
+                f"Object {object} is not callable"
+            )
         return await f(*args, **kwargs)
     # if not is_async_function(f) and is_generator_function(f):
     #     return [v for v in f(*args, **kwargs)]
@@ -166,17 +179,19 @@ def stream(f: typing.Union[StreamProcess, typing.Callable], *args, **kwargs) -> 
     if isinstance(f, StreamProcess):
         for v in f.stream(*args, **kwargs):
             yield v
+    elif (is_async_function(f) and is_generator_function(f)) or is_async_generator_function(f):
+        raise TypeError(
+            'Cannot execute an async streaming function from a streaming function')
     elif not is_async_function(f) and is_generator_function(f):
         for v in f(*args, **kwargs):
             yield v
-    elif is_async_function(f) and is_generator_function(f):
-        raise NotImplementedError('Cannot execute an async streaming function from a streaming function')
     elif is_async_function(f) and not is_generator_function(f):
-        raise NotImplementedError('Cannot stream with async function')
+        raise TypeError('Cannot stream with async function')
     elif not is_async_function(f) and not is_generator_function(f):
-        yield f(*args, **kwargs)
+        res = f(*args, **kwargs)
+        yield res
     else:
-        raise RuntimeError()
+        raise TypeError()
 
 
 async def astream(f: typing.Union[AsyncStreamProcess, typing.Callable], *args, **kwargs) -> typing.Any:
@@ -202,33 +217,50 @@ async def astream(f: typing.Union[AsyncStreamProcess, typing.Callable], *args, *
     elif isinstance(f, StreamProcess):
         for v in f.stream(*args, **kwargs):
             yield v
-    elif is_async_function(f) and is_generator_function(f):
-        async for v in await f(*args, **kwargs):
+    elif (is_async_function(f) and is_generator_function(f)) or is_async_generator_function(f):
+        async for v in f(*args, **kwargs):
             yield v
-    elif not is_async_function(f) and is_generator_function(f):
+    elif is_generator_function(f):
+
         for v in f(*args, **kwargs):
             yield v
-    elif is_async_function(f) and not is_generator_function(f):
+
+    elif is_iterator(f):
+        for v in f:
+            yield v
+
+    elif is_async_iterator(f):
+        async for v in f:
+            yield v
+
+    elif is_async_function(f):
         yield await f(*args, **kwargs)
-    elif not is_async_function(f) and not is_generator_function(f):
+    else:
         yield f(*args, **kwargs)
-    else: raise RuntimeError()
 
 
 # TDOO: Doesn't serialize
-class Recur(object):
+class Recur(pydantic.BaseModel):
     """Use to mark data that should not be batched when calling the map functions
     """
-    
-    def __init__(self, data, n: int):
-        """Create an I object
+    data: typing.Any
+    n: int
 
-        Args:
-            data: 
-            n (int): The number of times to loop
-        """
-        self.data = data
-        self.n = n
+    @pydantic.field_validator('n')
+    def check_positive(cls, v):
+        if v < 0:
+            raise ValueError('n must be greater than 0')
+        return v
+    
+    # def __init__(self, data, n: int):
+    #     """Create an I object
+
+    #     Args:
+    #         data: 
+    #         n (int): The number of times to loop
+    #     """
+    #     self.data = data
+    #     self.n = n
 
     def __iter__(self) -> typing.Iterator[typing.Any]:
         """Iterate over the object (n times)
@@ -240,29 +272,59 @@ class Recur(object):
             yield self.data
 
 
-class Chunk(object):
+class Chunk(pydantic.BaseModel):
     """Use to mark data for batching
     """
-    def __init__(
-        self, data: typing.Iterable, n: int=None
-    ):
-        """Create a P object that will loop over the data
 
-        Args:
-            data (typing.Iterable): The data to loop over
-            n (int, optional): The number of items to loop over. Defaults to None.
-        """
-        self.data = data
-        self._n = n or len(data)
+    data: typing.List
+    n: int | None = None
+    shuffle: bool = False
 
-    def __iter__(self) -> typing.Iterator:
+    def __iter__(self) -> typing.Iterator[typing.List]:
         """
 
         Yields:
             typing.Any: Get each value in the  
         """
-        for d_i in self.data:
-            yield d_i
+        n = self.n
+        # if (
+        #     isinstance(self.data, typing.Iterable) 
+        #     and not isinstance(self.data, np.ndarray)
+        # ):
+        #     data = np.array(list(self.data))
+        # else:
+        data = np.array(self.data)
+        count = n if n is not None else len(data)
+        if self.shuffle:
+            order = np.random.permutation(len(data))
+        else:
+            order = np.arange(0, len(data))
+        
+        chunk_size = len(data) // count
+        cur = 0
+        for d_i in range(count):
+            if d_i == (count - 1):
+                if n is None:
+                    yield data[order[cur]]
+                else:
+                    yield data[order[cur:]].tolist()
+            else:
+                if n is None:
+                    yield data[order[cur]]
+                else:
+                    yield data[order[cur:cur+chunk_size]].tolist()
+            cur = cur + chunk_size
+
+    @property
+    def sz(self) -> int:
+        """Get the size of the chunk
+
+        Returns:
+            int: The size of the chunk
+        """
+        if self.n is not None:
+            return self.n
+        return len(list(self.data))
 
     @classmethod
     def m(
@@ -277,20 +339,51 @@ class Chunk(object):
             typing.Tuple[P]: The resulting ps
         """
         return tuple(
-            Chunk(d, n) for d in data
+            Chunk(data=d, n=n) for d in data
         )
-    
-    @property
-    def n(self) -> int:
-        """Get the number of iterations
 
-        Returns:
-            int: The number of iterations in the loop
-        """
-        return self._n
+    # @property
+    # def n(self) -> int:
+    #     """Get the number of iterations
+
+    #     Returns:
+    #         int: The number of iterations in the loop
+    #     """
+    #     return self._n
+
+def chunk(
+    *data: typing.List, n: int=None
+) -> typing.Tuple[Chunk] | Chunk:
+    """Wrap multiple data through Ps
+    data: The data to wrap in P
+    n: The number of batches to have
+    Returns:
+        typing.Tuple[Chunk]: The resulting ps
+    """
+    if len(data) == 1:
+        return Chunk(data=data[0], n=n)
+    return tuple(
+        Chunk(data=d, n=n) for d in data
+    )
 
 
-class Sequential(ModuleList[Process]):
+def recur(
+    *data: typing.Any, n: int
+) -> typing.Tuple[Recur] | Recur:
+    """Wrap multiple data through Ps
+    data: The data to wrap in P
+    n: The number of iterations to have
+    Returns:
+        typing.Tuple[Recur]: The resulting ps
+    """
+    if len(data) == 1:
+        return Recur(data=data[0], n=n)
+    return tuple(
+        Recur(data=d, n=n) for d in data
+    )
+
+
+class Sequential(ModuleList):
     """
     Sequential class wraps multiple modules into a sequential list of modules that will be executed one after the other.
     Methods:
@@ -312,7 +405,7 @@ class Sequential(ModuleList[Process]):
             x = x[0]
 
         first = True
-        for module in self._modules:
+        for module in self:
             if first and multi:
                 x = module(*x)
             else:
@@ -334,7 +427,9 @@ class AsyncFunc(AsyncProcess):
         )
 
 
-class AsyncParallel(Process):
+class AsyncParallel(
+    ModuleList, AsyncProcess
+):
     """A type of Parallel module that makes use of 
     Python's Async
     """
@@ -350,11 +445,18 @@ class AsyncParallel(Process):
         tasks = []
         async with asyncio.TaskGroup() as tg:
             for module, cur_args, cur_kwargs in process_loop(
-                self._modules, *args, **kwargs
+                self.module_list, *args, **kwargs
             ):
-                tasks.append(tg.create_task(
-                    module.aforward(*cur_args, **cur_kwargs)
-                ))
+                if isinstance(module, AsyncProcess):
+                    tasks.append(tg.create_task(
+                        module.aforward(*cur_args, **cur_kwargs)
+                    ))
+                elif isinstance(module, Process):
+                    tasks.append(tg.create_task(
+                        asyncio.to_thread(
+                            module.forward, *cur_args, **cur_kwargs
+                        )
+                    ))
 
         return list(
             t.result() for t in tasks
@@ -362,7 +464,7 @@ class AsyncParallel(Process):
 
 
 def process_loop(
-    processes: typing.Union[typing.List[BaseModule], ModuleList, Process, None], *args, **kwargs
+    processes: typing.List | None, *args, **kwargs
 ) -> typing.Iterator[
     typing.Tuple[Process, typing.List, typing.Dict]
 ]:
@@ -377,28 +479,49 @@ def process_loop(
     Yields:
         Iterator[typing.Iterator[ typing.Tuple[Module, typing.List, typing.Dict] ]]: 
     """
-    if isinstance(processes, typing.List):
-        processes = ModuleList(processes)
+    # if isinstance(processes, typing.List):
+    #     processes = ModuleList(items=processes)
 
     sz = None
-    if isinstance(processes, ModuleList):
+    parallizable = False
+    print('sz', sz)
+    if isinstance(processes, list):
+
         sz = len(processes)
-    for arg in itertools.chain(args, kwargs.values()):
-        if isinstance(arg, Chunk):
-            if sz is None:
-                sz = arg.n
-            elif arg.n != sz:
-                raise ValueError()
+        parallizable = True
     
-    if sz is None:
+    for arg in itertools.chain(args, kwargs.values()):
+        print(arg)
+        if isinstance(arg, Chunk):
+            parallizable = True
+            if sz is None:
+                sz = arg.sz
+            elif arg.sz != sz:
+                raise ValueError(
+                    'All inputs must have the same number '
+                    'of items to parallelize'
+                )
+            print(2, sz)
+        elif isinstance(arg, Recur):
+            parallizable = True
+    
+    if not parallizable:
         raise ValueError('None of the inputs can be parallelized')
     
-    if not isinstance(processes, ModuleList):
-        processes = Recur(processes, sz)
+    if not isinstance(processes, list):
+        processes = Recur(data=processes, n=sz)
 
     kwarg_names = list(kwargs.keys())
-    kwarg_vals = [Recur(v, sz) if not isinstance(v, Chunk) else v for v in kwargs.values()]
-    args = [Recur(v, sz) if not isinstance(v, Chunk) else v for v in args]
+    kwarg_vals = [
+        Recur(data=v, n=sz) 
+        if not isinstance(v, Chunk) 
+        else v for v in kwargs.values()
+    ]
+    args = [
+        Recur(data=v, n=sz) 
+        if not isinstance(v, Chunk) else v 
+        for v in args
+    ]
     
     for vs in zip(processes, *args, *kwarg_vals):
         m = vs[0]
@@ -407,7 +530,10 @@ def process_loop(
         yield m, args, dict(zip(kwarg_names, kwargs))
 
 
-def create_task(
+from functools import partial
+
+
+def create_proc_task(
     tg: asyncio.TaskGroup,
     f: AsyncProcess | Process | typing.Callable,
     *args, 
@@ -415,19 +541,18 @@ def create_task(
 ) -> typing.Any:
 
     if isinstance(f, AsyncProcess):
-        return tg.create_task(f.aforward, *args, **kwargs)
+        
+        return tg.create_task(f.aforward(*args, **kwargs))
     elif isinstance(f, Process):
         return tg.create_task(
-            asyncio.to_thread(f.forward, *args, **kwargs))
+            asyncio.to_thread(partial(f.forward, *args, **kwargs)))
     elif is_async_function(f):
-        return tg.create_task(f, *args, **kwargs)
-    return tg.create_task(
-        tg.create_task(asyncio.to_thread(f, *args, *kwargs))
-    )
+        return tg.create_task(f(*args, **kwargs))
+    return tg.create_task(asyncio.to_thread(partial(f, *args, *kwargs)))
 
 
 def process_map(
-    f: Process | typing.Callable, 
+    f: Process | AsyncProcess | typing.Callable, 
     *args, **kwargs
 ) -> typing.Tuple[typing.Any]:
     """Helper function to run async_map
@@ -466,7 +591,7 @@ async def async_process_map(
             else:
                 tasks.append(tg.create_task(cur_f, *a, **kv))
             tasks.append(
-                create_task(tg, cur_f, *a, **kv)
+                create_proc_task(tg, cur_f, *a, **kv)
             )
 
     return tuple(
@@ -525,18 +650,48 @@ def reduce(
     """
     results = []
 
+    if init_val is not None:
+        results.append(init_val)
+    
     for _, cur_args, cur_kwargs in process_loop(None, *args, **kwargs):
 
         if len(results) == 0 and init_mod is not None and init_val is None:
             results.append(init_mod(*cur_args, **cur_kwargs))
         elif len(results) == 0 and init_mod is not None:
             results.append(init_mod(init_val, *cur_args, **cur_kwargs))
-        elif len(results) == 0:
-            # print(init_val, cur_args, cur_kwargs)
-            results.append(mod(init_val, *cur_args, **cur_kwargs))
         else:
+            if len(results) == 0:
+                raise ValueError(
+                    'No initial value or initial module provided. '
+                    'Please provide an initial value or module to reduce the data.'
+                )
             results.append(mod(results[-1], *cur_args, **cur_kwargs))
+    if len(results) == 0:
+        raise ValueError(
+            'No results were produced from the reduction. '
+            'Check that the input data is correct.'
+        )
     return results[-1]
+
+async def _execute_reduce_mod(mod, *args, **kwargs):
+    """Execute the reduction module with the given args and kwargs
+
+    Args:
+        mod (AsyncProcess | Process): The module to execute
+        *args: The arguments to pass to the module
+        **kwargs: The keyword arguments to pass to the module
+    Returns:
+        typing.Any: The result of the module execution
+    """
+    print(mod)
+    if isinstance(mod, AsyncProcess):
+        return await mod.aforward(*args, **kwargs)
+    elif isinstance(mod, Process):
+        return mod.forward(*args, **kwargs)
+    elif is_async_function(mod):
+        return await mod(*args, **kwargs)
+    else:
+        return mod(*args, **kwargs)
 
 
 async def async_reduce(
@@ -556,23 +711,33 @@ async def async_reduce(
         The result of the reduction
     """
     results = []
-    if isinstance(init_mod, AsyncProcess):
-        init_mod = init_mod.aforward
-    if isinstance(mod, AsyncProcess):
-        mod = mod.aforward
 
+    if init_val is not None:
+        results.append(init_val)
     for _, cur_args, cur_kwargs in process_loop(None, *args, **kwargs):
 
         if len(results) == 0 and init_mod is not None and init_val is None:
-
-            results.append(await init_mod(*cur_args, **cur_kwargs))
+            results.append(
+                await _execute_reduce_mod(
+                    init_mod, *cur_args, **cur_kwargs))
         elif len(results) == 0 and init_mod is not None:
-            results.append(await init_mod(init_val, *cur_args, **cur_kwargs))
-        elif len(results) == 0:
-            # print(init_val, cur_args, cur_kwargs)
-            results.append(await mod(init_val, *cur_args, **cur_kwargs))
+            results.append(await _execute_reduce_mod(
+                init_mod, init_val, *cur_args, **cur_kwargs)
+            )
         else:
-            results.append(await mod(results[-1], *cur_args, **cur_kwargs))
+            if len(results) == 0:
+                raise ValueError(
+                    'No initial value or initial module provided. '
+                    'Please provide an initial value or module to reduce the data.'
+                )
+            results.append(await _execute_reduce_mod(
+                mod, results[-1], *cur_args, **cur_kwargs
+            ))
+    if len(results) == 0:
+        raise ValueError(
+            'No results were produced from the reduction. '
+            'Check that the input data is correct.'
+        )
     return results[-1]
 
 
@@ -589,8 +754,15 @@ class Func(Process):
     """A function wrapper
     """
     f: typing.Callable
-    args: typing.List[typing.Any]
-    kwargs: typing.Dict[str, typing.Any]
+    args: typing.List[typing.Any] = None
+    kwargs: typing.Dict[str, typing.Any] = None
+
+    def __post_init__(self):
+
+        if self.args is None:
+            self.args = []
+        if self.kwargs is None:
+            self.kwargs = {}
 
     def forward(self, *args, **kwargs):
 
@@ -605,7 +777,7 @@ class StreamSequence(StreamProcess):
     mod: StreamProcess
     post: Process
 
-    def forward(self, x: typing.Any) -> typing.Iterator:
+    def stream(self, x: typing.Any) -> typing.Iterator:
 
         x = self.pre(x)
         for x_i in self.mod.stream(x):

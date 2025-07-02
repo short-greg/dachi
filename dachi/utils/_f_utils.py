@@ -17,7 +17,22 @@ def get_return_type(func) -> Any:
 
 def is_generator_function(func) -> bool:
     """Check if a function is a generator."""
-    return inspect.isgeneratorfunction(func)
+    return inspect.isasyncgenfunction(func) or inspect.isgeneratorfunction(func)
+
+
+def is_iterator(func) -> bool:
+    """Check if a function is a generator."""
+    return isinstance(func, typing.Iterator)
+
+
+def is_async_iterator(func) -> bool:
+    """Check if a function is a generator."""
+    return isinstance(func, typing.AsyncIterator)
+
+
+def is_async_generator_function(func) -> bool:
+    """Check if a function is a generator."""
+    return inspect.isasyncgenfunction(func)
 
 
 def get_iterator_type(func) -> Any:

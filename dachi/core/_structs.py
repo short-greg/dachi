@@ -24,8 +24,8 @@ class ModuleList(BaseModule, t.Generic[V]):
     A list-like container whose elements are themselves `BaseModule`
     instances.  Works seamlessly with the new serialization / dedup rules.
     """
-    __spec_hooks__: ClassVar[t.List[str]] = ["items"]
-    items: InitVar[list[V]]
+    __spec_hooks__: ClassVar[t.List[str]] = ["data"]
+    data: InitVar[list[V]]
 
     def __post_init__(self, items: Optional[Iterable[T]] = None):
         self._module_list = []
@@ -35,8 +35,10 @@ class ModuleList(BaseModule, t.Generic[V]):
                 self.append(m)
 
     @classmethod
-    def __build_schema_hook__(cls, name: str, type_: t.Any, default: t.Any):
-        if name != "items":
+    def __build_schema_hook__(
+        cls, name: str, type_: t.Any, default: t.Any
+    ):
+        if name != "data":
             raise ValueError(f"No hook specified for {name}")
         return list[BaseSpec]
 
@@ -81,7 +83,7 @@ class ModuleList(BaseModule, t.Generic[V]):
         Nested `BaseModule` instances are recursively converted.
         `ModuleList` containers are converted element-wise.
         """
-        if name == "items":
+        if name == "data":
             # Special case for _items, which is a list of modules
             if isinstance(val, list):
                 val = [
@@ -106,7 +108,7 @@ class ModuleList(BaseModule, t.Generic[V]):
         This is used to create a ModuleList from a spec.
         """
         res = None
-        if name == "items":
+        if name == "data":
             if isinstance(val, list):
                 res = []
                 for item in val:
@@ -121,6 +123,14 @@ class ModuleList(BaseModule, t.Generic[V]):
         else: 
             raise ValueError(f"Unknown spec hook name: {name}")
         return res
+    
+    @property
+    def module_list(self) -> list[V]:
+        """
+        Expose the internal list of modules.
+        This is useful for iterating over the modules directly.
+        """
+        return [*self._module_list]
 
 
 class ModuleDict(BaseModule, t.Generic[V]):
@@ -129,19 +139,19 @@ class ModuleDict(BaseModule, t.Generic[V]):
     instances. Keys must be strings.
     """
 
-    __spec_hooks__: ClassVar[t.List[str]] = ["items"]
-    items: InitVar[dict[str, V]]
+    __spec_hooks__: ClassVar[t.List[str]] = ["data"]
+    data: InitVar[dict[str, V]]
 
-    def __post_init__(self, items: Optional[dict[str, V]] = None):
+    def __post_init__(self, data: Optional[dict[str, V]] = None):
         self._module_dict = {}
 
-        if items is not None:
-            for k, m in items.items():
+        if data is not None:
+            for k, m in data.items():
                 self[k] = m
 
     @classmethod
     def __build_schema_hook__(cls, name: str, type_: t.Any, default: t.Any):
-        if name != "items":
+        if name != "data":
             raise ValueError(f"No hook specified for {name}")
         return dict[str, BaseSpec]
 
@@ -168,7 +178,7 @@ class ModuleDict(BaseModule, t.Generic[V]):
     def values(self):
         return self._module_dict.values()
 
-    def items(self):
+    def data(self):
         return self._module_dict.items()
 
     def spec_hook(
@@ -178,7 +188,7 @@ class ModuleDict(BaseModule, t.Generic[V]):
         val: t.Any,
         to_dict: bool = False,
     ):
-        if name == "items":
+        if name == "data":
             return {
                 k: v.spec(to_dict=to_dict)
                 for k, v in self._module_dict.items()
@@ -192,7 +202,7 @@ class ModuleDict(BaseModule, t.Generic[V]):
         val: t.Any,
         ctx: "dict | None" = None,
     ) -> dict[str, V]:
-        if name != "items":
+        if name != "data":
             raise ValueError(f"Unknown spec hook name: {name}")
         if not isinstance(val, dict):
             raise TypeError(f"Expected a dict for 'items', got {type(val)}")
@@ -213,7 +223,6 @@ class ModuleDict(BaseModule, t.Generic[V]):
         return out
 
 
-
 class SerialDict(BaseModule):
     """
     Dict-like container.
@@ -227,27 +236,22 @@ class SerialDict(BaseModule):
         while internal logic uses *storage*.
     """
 
-    # 1️⃣ Spec hook refers to *items*
-    __spec_hooks__: ClassVar[list[str]] = ["items"]
+    # Spec hook refers to *items*
+    __spec_hooks__: ClassVar[list[str]] = ["data"]
+    data: InitVar[dict[str, t.Any] | None] = None
 
-    # constructor field
-    items: InitVar[dict[str, t.Any] | None] = None
-
-    # -------------------------------------------------- constructor
-    def __post_init__(self, items: dict[str, t.Any] | None):
-        # move InitVar ➜ storage  (only at first construction)
+    def __post_init__(self, data: dict[str, t.Any] | None):
         self._storage = {}
-        if items is not None:
-            self._storage.update(items)
+        if data is not None:
+            self._storage.update(data)
 
-        # register child modules
         for k, v in self._storage.items():
             if not isinstance(k, str):
                 raise TypeError("SerialDict keys must be strings")
             if isinstance(v, BaseModule):
                 self.register_module(k, v)
 
-    # -------------------------------------------------- mapping helpers
+    # mapping helpers
     def __getitem__(self, k: str): return self._storage[k]
     def __setitem__(self, k: str, v: t.Any):
         if not isinstance(k, str):
@@ -268,12 +272,12 @@ class SerialDict(BaseModule):
     def __build_schema_hook__(
         cls, name: str, typ: t.Any, default: t.Any
     ):
-        if name != "items":
+        if name != "data":
             raise ValueError(f"No spec-hook for {name}")
         return dict[str, t.Any]
 
     def spec_hook(self, *, name: str, val: t.Any, to_dict: bool = False):
-        if name != "items":
+        if name != "data":
             raise ValueError
         out: dict[str, t.Any] = {}
         for k, v in self._storage.items():
@@ -287,7 +291,7 @@ class SerialDict(BaseModule):
 
     @classmethod
     def from_spec_hook(cls, name: str, val: t.Any, ctx: dict | None = None):
-        if name != "items":
+        if name != "data":
             raise ValueError
         if not isinstance(val, dict):
             raise TypeError("'items' must be a dict")
@@ -309,9 +313,7 @@ class SerialDict(BaseModule):
         return rebuilt
 
 
-# ---------------------------------------------------------------------
 # SerialTuple – ordered sequence container
-# ---------------------------------------------------------------------
 class SerialTuple(BaseModule):
     """
     An *ordered* container of heterogeneous, serialisable items.
@@ -322,19 +324,19 @@ class SerialTuple(BaseModule):
       but without type restrictions on the stored values.
     """
 
-    __spec_hooks__: ClassVar[list[str]] = ["items"]
-    items: InitVar[tuple[t.Any, ...] | list[t.Any]]
+    __spec_hooks__: ClassVar[list[str]] = ["data"]
+    data: InitVar[tuple[t.Any, ...] | list[t.Any]]
 
     # -------------------------------------------------- runtime constructor
-    def __post_init__(self, items: tuple[t.Any, ...] | list[t.Any] | None = None):
+    def __post_init__(self, data: tuple[t.Any, ...] | list[t.Any] | None = None):
         self._storage: list[t.Any] = []
-        if items:
-            for item in items:
+        if data:
+            for item in data:
                 self.append(item)
 
     @classmethod
     def __build_schema_hook__(cls, name: str, typ: t.Any, default: t.Any):
-        if name != "items":
+        if name != "data":
             raise ValueError(f"No spec-hook for {name}")
         # The list elements may be BaseSpec OR primitives, so we use Any
         return list[t.Any]
@@ -349,9 +351,9 @@ class SerialTuple(BaseModule):
             self.register_module(str(len(self._storage)), value)
         self._storage.append(value)
 
-    # -------------------------------------------------- spec serialisation
+    # spec serialisation
     def spec_hook(self, *, name: str, val: t.Any, to_dict: bool = False):
-        if name != "items":
+        if name != "data":
             raise ValueError(f"Unknown spec-hook name {name}")
 
         out: list[t.Any] = []
@@ -364,7 +366,7 @@ class SerialTuple(BaseModule):
                 out.append(v)
         return out
 
-    # -------------------------------------------------- spec deserialisation
+    # spec deserialisation
     @classmethod
     def from_spec_hook(
         cls,
@@ -372,10 +374,10 @@ class SerialTuple(BaseModule):
         val: t.Any,
         ctx: dict | None = None,
     ) -> list[t.Any]:
-        if name != "items":
+        if name != "data":
             raise ValueError(f"Unknown spec-hook name {name}")
         if not isinstance(val, list):
-            raise TypeError(f"'items' must be list[Any], got {type(val)}")
+            raise TypeError(f"'data' must be list[Any], got {type(val)}")
 
         ctx = ctx or {}
         out: list[t.Any] = []

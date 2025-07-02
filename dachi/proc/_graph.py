@@ -13,9 +13,7 @@ from ..utils import (
 )
 from ._process import Process, AsyncProcess
 from ..core import BaseModule, SerialDict
-
 from ._process import Partial, StreamProcess, AsyncStreamProcess
-from dataclasses import InitVar
 
 
 # TODO: Check if the value coming from incoming is undefined or waiting... 
@@ -24,7 +22,7 @@ class BaseNode(AsyncProcess):
     """
     """
 
-    name: str | None
+    name: str | None = None
     val: typing.Any = UNDEFINED
     annotation: str | None = None
     
@@ -45,20 +43,12 @@ class BaseNode(AsyncProcess):
             self.annotation = annotation
         return self
 
-    @property
-    def val(self) -> typing.Any:
-        """
-        Returns:
-            typing.Any: The value for the transmission
-        """
-        return self._val
-
     def is_undefined(self) -> bool:
         """
         Returns:
             bool: Whether the transmission is Undefineed (WAITING or UNDEFINED)
         """
-        return is_undefined(self._val)
+        return is_undefined(self.val)
 
     def __getitem__(self, idx: int) -> 'BaseNode':
         """
@@ -69,13 +59,15 @@ class BaseNode(AsyncProcess):
             T: A transmission indexed.
         """
         # TODO: Add multi-indices
-        if is_undefined(self._val):
+        if is_undefined(self.val):
             return T(
-                self._val, Idx(self, idx)
+                val=self.val, src=Idx(idx=idx),
+                args=SerialDict()
             )
 
         return T(
-            self._val[idx], Idx(self, idx)
+            val=self.val[idx], src=Idx(idx=idx), 
+            args=SerialDict()
         )
     
     def detach(self) -> typing.Self:
@@ -85,7 +77,7 @@ class BaseNode(AsyncProcess):
             T: The detached T
         """
         return T(
-            self._val, None
+            val=self.val, src=None, args=SerialDict()
         )
     
     async def aforward(
@@ -94,7 +86,8 @@ class BaseNode(AsyncProcess):
         pass
 
     def incoming(self) -> typing.Iterator['BaseNode']:
-        pass
+        if False:
+            yield None
 
 
 class Var(BaseNode):
@@ -115,25 +108,21 @@ class Var(BaseNode):
             typing.Any: The value returned by the probe
         """
         by = by or {}
-        if not is_undefined(self._val):
-            return self._val
 
         if (
             self in by 
             # and not isinstance(by[self], Streamer) 
             and not isinstance(by[self], Partial)
         ):
-            return by[self]
-    
-        if self._src is not None:
-            for incoming in self._src.incoming():
-                incoming.probe(by)
-            val = by[self] = self.src(by)
-            # if isinstance(val, Streamer):
-            #     val = val()
-            return val
+            res = by[self]
         
-        raise RuntimeError('Val has not been defined and no source for T')
+        elif not is_undefined(self.val):
+            res = self.val
+        
+        else: raise RuntimeError('Val hasnot been defined for Var')
+
+        by[self] = res
+        return res
     
     def incoming(self) -> typing.Iterator[typing.Tuple[str, 'BaseNode']]:
         
@@ -143,6 +132,8 @@ class Var(BaseNode):
 
 
 class ProcNode(BaseNode):
+    """    A node that wraps a process and its arguments
+    """
 
     args: SerialDict
 
@@ -152,13 +143,13 @@ class ProcNode(BaseNode):
             T: All of the arguments connected to another
             transmission
         """
-        for k, arg in self._kwargs:
+        for k, arg in self.args.data():
             if isinstance(arg, BaseNode):
                 yield k, arg
 
     def has_partial(self) -> bool:
 
-        for k, a in self._kwargs.items():
+        for k, a in self.args.data():
             if isinstance(a, T):
                 a = a.val
             if (isinstance(a, Partial) and not a.complete):
@@ -173,17 +164,17 @@ class ProcNode(BaseNode):
         Returns:
             Self: Evaluate the 
         """
-        if self._undefined:
+        if self.is_undefined():
             return None
         kwargs = {}
         
-        for k, a in self.args.items():
-            if isinstance(a, 'BaseNode'):
+        for k, a in self.args.data():
+            if isinstance(a, BaseNode):
                 a = a.val
             elif isinstance(a, Partial):
                 a = a.dx
             kwargs[k] = a
-        return SerialDict(items=kwargs)
+        return SerialDict(data=kwargs)
 
     # Have to evaluate the kwargs    
     async def get_incoming(
@@ -194,9 +185,9 @@ class ProcNode(BaseNode):
         by = by or {}
         kwargs = {}
         tasks = {}
-        with asyncio.TaskGroup() as tg:
+        async with asyncio.TaskGroup() as tg:
 
-            for k, arg in self.args.items():
+            for k, arg in self.args.data():
                 is_t = isinstance(arg, BaseNode)
                 if is_t and arg in by:
                     kwargs[k] = by[arg]
@@ -211,14 +202,14 @@ class ProcNode(BaseNode):
         for k, task in tasks.items():
             kwargs[k] = task.result()
         
-        return SerialDict(kwargs)
+        return SerialDict(data=kwargs)
 
     def has_partial(self) -> bool:
 
-        for k, a in self._kwargs.items():
+        for k, a in self.args.data():
             if isinstance(a, T):
                 a = a.val
-            if (isinstance(a, Partial) and not a.complete):
+            if isinstance(a, Partial) and not a.complete:
                 return True
         return False
 
@@ -228,7 +219,7 @@ class ProcNode(BaseNode):
             T: All of the arguments connected to another
             transmission
         """
-        for k, arg in self._kwargs:
+        for k, arg in self.args.data():
             if isinstance(arg, BaseNode):
                 yield arg
 
@@ -239,46 +230,70 @@ class T(ProcNode):
     src: Process | AsyncProcess
     is_async: bool = False
 
-    def __post_init__(self, args: SerialDict):
-
-        self._args = args
-            
-    async def aforward(
-        self, by: typing.Dict['BaseNode', typing.Any]=None
-    ) -> typing.Any:
-        """Probe the graph using the values specified in by
-
-        Args:
-            by (typing.Dict[&#39;T&#39;, typing.Any]): The inputs to the network
-
-        Raises:
-            RuntimeError: If the value is undefined
-
-        Returns:
-            typing.Any: The value returned by the probe
-        """
+    async def aforward(self, by: dict['BaseNode', typing.Any] | None = None) -> typing.Any:
+        """Evaluate this node (memoised)."""
         by = by or {}
-        if not is_undefined(self._val):
-            return self._val
 
+        # ❶ already in probe-dict?
         if self in by:
             return by[self]
-            
-        args, kwargs = self.args(by)
-        
-        if self._is_async:
-            val = by[self] = await self.src(*args, **kwargs)
+
+        # ❷ cached from previous run?
+        if not self.is_undefined():
+            return self.val                       # ← uses .val
+
+        # ❸ gather upstream arguments
+        kw_serial = await self.get_incoming(by)   # SerialDict
+        kwargs = dict(kw_serial.items())          # plain dict for call-site
+
+        # ❹ call wrapped process (sync / async)
+        if self.is_async:
+            self.val = by[self] = await self.src(**kwargs)
         else:
-            val = by[self] = self.src(*args, **kwargs)    
+            self.val = by[self] = self.src(**kwargs)
 
-        if val is UNDEFINED:
-            raise RuntimeError(
-                'Val has not been defined and no source for T'
-            )
-        return val
+        # ❺ sanity-check
+        if self.val is UNDEFINED:
+            raise RuntimeError("Source returned UNDEFINED")
+
+        return self.val
+
+    # async def aforward(
+    #     self, by: typing.Dict['BaseNode', typing.Any]=None
+    # ) -> typing.Any:
+    #     """Probe the graph using the values specified in by
+
+    #     Args:
+    #         by (typing.Dict[&#39;T&#39;, typing.Any]): The inputs to the network
+
+    #     Raises:
+    #         RuntimeError: If the value is undefined
+
+    #     Returns:
+    #         typing.Any: The value returned by the probe
+    #     """
+    #     by = by or {}
+    #     if not is_undefined(self.val):
+    #         return self.val
+
+    #     if self in by:
+    #         return by[self]
+            
+    #     args, kwargs = self.args(by)
+        
+    #     if self._is_async:
+    #         val = by[self] = await self.src(*args, **kwargs)
+    #     else:
+    #         val = by[self] = self.src(*args, **kwargs)    
+
+    #     if val is UNDEFINED:
+    #         raise RuntimeError(
+    #             'Val has not been defined and no source for T'
+    #         )
+    #     return val
 
 
-class Stream(BaseNode):
+class Stream(ProcNode):
     """...
     """
     src: StreamProcess | AsyncStreamProcess
@@ -307,8 +322,8 @@ class Stream(BaseNode):
             typing.Any: The value returned by the probe
         """
         by = by or {}
-        if not is_undefined(self._val):
-            return self._val
+        if not is_undefined(self.val):
+            return self.val
         
         if self._stream is None:
 
@@ -325,17 +340,17 @@ class Stream(BaseNode):
             else:
                 self._dx = next(self._stream)
             self._full.append(self._dx)
-            self._val = by[self] = Partial(
+            self.val = by[self] = Partial(
                 dx=self._dx, complete=False, prev=self._prev,
                 full=self._full
             )
         except StopIteration:
-            self._val = by[self] = Partial(
+            self.val = by[self] = Partial(
                 dx=None, complete=True,
                 prev=self._dx, full=self._full
             )
 
-        return self._val
+        return self.val
 
 
 def t(
@@ -344,7 +359,7 @@ def t(
     **kwargs, 
 ) -> T:
 
-    args = SerialDict(kwargs)
+    args = SerialDict(data=kwargs)
     return T(
         src=p, args=args, name=_name, annotation=_annotation,
         is_async=False
@@ -357,7 +372,7 @@ def async_t(
     **kwargs, 
 ) -> T:
 
-    args = SerialDict(kwargs)
+    args = SerialDict(data=kwargs)
     return T(
         src=p, args=args, name=_name, annotation=_annotation,
         is_async=True

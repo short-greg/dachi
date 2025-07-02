@@ -17,7 +17,7 @@ from ._base import (
     Checkpoint,
     registry,
     AdaptModule,
-    ParamSet
+    ParamSet,
 
 )
 from ._structs import (
@@ -45,6 +45,8 @@ from ._msg import (
     to_dialog,
     to_input,
     to_list_input,
+    END_TOK,
+    NULL_TOK
 )
 from ._render import (
     TemplateField,

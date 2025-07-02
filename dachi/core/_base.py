@@ -278,6 +278,21 @@ class BaseSpec(BaseModel):
         return registry[kind].obj
 
 
+def get_class_annotations(cls: type) -> dict[str, type]:
+    """Safely get annotations with fallback to __annotations__"""
+    try:
+        hints = t.get_type_hints(cls)
+    except Exception as e:
+        # Log or handle if needed
+        hints = {}
+
+    raw = getattr(cls, '__annotations__', {})
+    for k, v in raw.items():
+        if k not in hints:
+            hints[k] = v  # fallback type, maybe str or ForwardRef
+    return hints
+
+
 # BaseModule – runtime process node
 @dataclass_transform(kw_only_default=True, field_specifiers=(Field,))
 class BaseModule:
@@ -290,6 +305,7 @@ class BaseModule:
     __item_fields__: t.ClassVar[list[tuple[str, t.Any, t.Any, bool]]]
     __is_initvar__: t.ClassVar[dict[str, bool]]
     training: bool = True  # True if any Module is in training mode; False when not
+
 
     # ---------------------------------------------------
     # class construction hook
@@ -324,109 +340,83 @@ class BaseModule:
     
     @classmethod
     def __build_schema__(cls) -> None:
-        ann = t.get_type_hints(cls, include_extras=True)
-        fields: list[tuple[str, t.Any, t.Any, bool]] = []
+        """
+        Collect fields from *all* ancestors, then merge/override with annotations
+        found on *cls* itself.  When an InitVar is later replaced by a method or
+        property of the same name, we treat that as ‘no default supplied’ rather
+        than letting the callable leak into runtime initialisation.
+        """
+        # 1⃣  inherited fields --------------------------------------------------
+        parent_fields: dict[str, tuple[t.Any, t.Any, bool]] = {}
+        for base in cls.__mro__[1:]:
+            if hasattr(base, "__item_fields__"):
+                for n, typ, dflt, is_init in base.__item_fields__:
+                    parent_fields.setdefault(n, (typ, dflt, is_init))
 
-        field_set = set()
-        for name, type_ in ann.items():
-            # Skip ClassVar or private
-            if t.get_origin(type_) is t.ClassVar:
+        # 2⃣  this class’ annotations ------------------------------------------
+        ann = t.get_type_hints(cls, include_extras=True)
+        for name, typ in ann.items():
+            if t.get_origin(typ) is t.ClassVar:
                 continue
 
-            # default = cls.__dict__.get(name, inspect._empty)
-            default = getattr(cls, name, inspect._empty)
-            is_init = isinstance(type_, InitVar)
+            dflt  = getattr(cls, name, inspect._empty)
+            is_iv = isinstance(typ, InitVar)
 
-            if is_init:
-                type_ = t.get_args(type_)[0] if t.get_origin(type_) is InitVar else t.Any
+            # --- neutralise InitVar shadowed by a later method/property --------
+            if is_iv and (
+                inspect.isfunction(dflt) or isinstance(dflt, property)
+            ):
+                # A callable of the same name replaced the field; treat as if the
+                # user supplied *no* default.  We fall back to None so that
+                # __init__ accepts a missing keyword and __post_init__ can decide
+                # what to do.
+                dflt = None
 
-            fields.append((name, type_, default, is_init))
-            field_set.add(name)
+            if is_iv:
+                typ = (
+                    t.get_args(typ)[0]
+                    if t.get_origin(typ) is InitVar else t.Any
+                )
 
-        if len(set(cls.__spec_hooks__).difference(field_set)) != 0:
-            raise ValueError(
-                f"SpecHooks contains fields not specified "
-                f"{cls.__spec_hooks__}"
-            )
+            parent_fields[name] = (typ, dflt, is_iv)
 
-        cls.__item_fields__ = fields
-        cls.__is_initvar__  = {
-            n: is_init for n, *_, is_init in fields
-        }
+        # 3⃣  write back to canonical structures -------------------------------
+        cls.__item_fields__ = [
+            (n, *parent_fields[n]) for n in parent_fields
+        ]
+        cls.__is_initvar__ = {n: iv for n, (_, _, iv) in parent_fields.items()}
 
-        # Now build the Pydantic model
+        # 4⃣  build / rebuild the pydantic spec --------------------------------
         spec_fields: dict[str, tuple[t.Any, t.Any]] = {}
-        for name, typ, _raw_default, _ in fields:
-            # 1) fetch whatever MRO gives you
-            for base in cls.__mro__[1:]:  # skip cls itself
-                member = base.__dict__.get(name)
-                if member is None:
-                    continue
-                # only object‐level routines or properties cause trouble
-                if callable(member) or isinstance(member, property):
-                    raise RuntimeError(
-                        f"Field name {name!r} conflicts with inherited "
-                        f"{'method' if callable(member) else 'property'} "
-                        f"'{name}' on {base.__name__}; please rename the field."
-                    )
-            candidate = getattr(cls, name, inspect._empty)
-
-            # 2) only accept it if the class itself defined it,
-            #    and it really matches the candidate
-            own = cls.__dict__.get(name, inspect._empty)
-            if own is candidate:
-                default = own
-            else:
-                default = inspect._empty
-
-            # 3) dispatch to hook or normal mapping
-            if name in cls.__spec_hooks__:
-                origin = cls.__build_schema_hook__(name, typ, default)
-            else:
-                origin = typ
-                if isinstance(origin, type) and issubclass(origin, BaseModule):
-                    origin = origin.schema()
-
-            spec_fields[name] = (
-                origin,
-                ... if default is inspect._empty else default
+        for n, typ, dflt, _ in cls.__item_fields__:
+            origin = (
+                cls.__build_schema_hook__(n, typ, dflt)
+                if n in cls.__spec_hooks__
+                else (
+                    typ.schema()
+                    if isinstance(typ, type) and issubclass(typ, BaseModule)
+                    else typ
+                )
             )
-        # for name, type_, default, _ in fields:
-        #     if name in cls.__spec_hooks__:
-        #         origin = cls.__build_schema_hook__(name, type_, default)
-        #     else:
-        #         origin = type_
-        #         if (
-        #             isinstance(origin, type) 
-        #             and issubclass(origin, BaseModule)
-        #         ):
-        #             origin = origin.schema()
-
-        #     spec_fields[name] = (
-        #         origin,
-        #         ... if default is inspect._empty else default
-        #     )
+            spec_fields[n] = (origin, ... if dflt is inspect._empty else dflt)
 
         cls.__spec__ = create_model(
             f"{cls._spec_model_name()}",
             __base__       = BaseSpec,
-            kind = (t.Literal[cls.__qualname__], cls.__qualname__),
+            kind           = (t.Literal[cls.__qualname__], cls.__qualname__),
             model_config   = ConfigDict(arbitrary_types_allowed=True),
             **spec_fields,
         )
 
-    def __init_subclass__(cls, **kwargs):
-        super().__init_subclass__(**kwargs)
+    def __init_subclass__(cls, **__kwd):
+        super(cls).__init_subclass__(**__kwd)
         if cls is BaseModule:
             return
-        if not hasattr(cls, "__spec__"):
+        
+        if '__spec__' not in cls.__dict__:
             cls.__build_schema__()
 
-    # ---------------------------------------------------
-    # generic __init__
-    # ---------------------------------------------------
-
-    def __init__(self, **kwargs: t.Any):
+    def __init__(self, **__kwd: t.Any):
         self._children = []
         self._init_vars = {}
         self._parameters: dict[str, Param] = {}
@@ -434,8 +424,8 @@ class BaseModule:
         self._modules: dict[str, BaseModule] = {}
 
         for name, _typ, default, is_init in self.__class__.__item_fields__:
-            if name in kwargs:
-                val = kwargs.pop(name)
+            if name in __kwd:
+                val = __kwd.pop(name)
             elif default is not inspect._empty:
                 val = default
             else:
@@ -446,15 +436,16 @@ class BaseModule:
             else:
                 setattr(self, name, val)
 
-        if kwargs:
-            raise TypeError(f"Unexpected keyword arguments: {', '.join(kwargs)}")
+        if __kwd:
+            raise TypeError(
+                f"Unexpected keyword arguments: {', '.join(__kwd)}"
+            )
 
         # child registration
         for v in vars(self).values():
             if isinstance(v, BaseModule):
                 self._children.append(v)
 
-        # optional post‑init
         if hasattr(self, "__post_init__"):
             self.__post_init__(**self._init_vars)
         elif len(self._init_vars) > 0:
@@ -462,10 +453,7 @@ class BaseModule:
                 'InitVars have been defined but there is no __post_init__ defined.'
             )
 
-    # ---------------------------------------------------
     # schema & spec helpers
-    # ---------------------------------------------------
-
     @classmethod
     def schema(cls) -> type[BaseSpec]:
         return cls.__spec__
@@ -1146,3 +1134,141 @@ class ParamSet(object):
             f"param_{i}": param.dump() 
             for i, param in enumerate(self.params)
         }
+
+
+
+    # @classmethod
+    # def __build_schema__(cls) -> None:
+    #     """Collect fields from *all* ancestors, then merge/override
+    #     with annotations found on *cls* itself."""
+    #     # 1⃣  ── start with inherited fields  ───────────────────────────────
+    #     parent_fields: dict[str, tuple[t.Any, t.Any, bool]] = {}
+    #     for base in cls.__mro__[1:]:
+    #         if hasattr(base, "__item_fields__"):
+    #             for n, typ, dflt, is_init in base.__item_fields__:
+    #                 parent_fields.setdefault(n, (typ, dflt, is_init))
+
+    #     # 2⃣  ── apply this class’ own annotations  ─────────────────────────
+    #     ann = t.get_type_hints(cls, include_extras=True)
+    #     for name, typ in ann.items():
+    #         if t.get_origin(typ) is t.ClassVar:
+    #             continue
+    #         dflt  = getattr(cls, name, inspect._empty)
+    #         is_iv = isinstance(typ, InitVar)
+    #         if is_iv:
+    #             typ = t.get_args(typ)[0] if t.get_origin(typ) is InitVar else t.Any
+    #         parent_fields[name] = (typ, dflt, is_iv)
+
+    #     # 3⃣  ── write back to the canonical structures  ────────────────────
+    #     cls.__item_fields__ = [
+    #         (n, *parent_fields[n]) for n in parent_fields
+    #     ]
+    #     cls.__is_initvar__ = {n: iv for n, (_, _, iv) in parent_fields.items()}
+
+    #     # 4⃣  ── now build (or rebuild) the pydantic spec  ──────────────────
+    #     spec_fields: dict[str, tuple[t.Any, t.Any]] = {}
+    #     for n, typ, dflt, _ in cls.__item_fields__:
+    #         origin = cls.__build_schema_hook__(n, typ, dflt) if n in cls.__spec_hooks__ \
+    #                 else (typ.schema() if isinstance(typ, type) and issubclass(typ, BaseModule) else typ)
+    #         spec_fields[n] = (origin, ... if dflt is inspect._empty else dflt)
+
+    #     cls.__spec__ = create_model(
+    #         cls._spec_model_name(),  # new “kind” every time
+    #         __base__       = BaseSpec,
+    #         kind           = (t.Literal[cls.__qualname__], cls.__qualname__),
+    #         model_config   = ConfigDict(arbitrary_types_allowed=True),
+    #         **spec_fields,
+    #     )
+
+    # @classmethod
+    # def __build_schema__(cls) -> None:
+    #     ann = get_class_annotations(cls) #, include_extras=True)
+    #     fields: list[tuple[str, t.Any, t.Any, bool]] = []
+
+    #     field_set = set()
+    #     for name, type_ in ann.items():
+    #         # Skip ClassVar or private
+    #         if t.get_origin(type_) is t.ClassVar:
+    #             continue
+
+    #         # default = cls.__dict__.get(name, inspect._empty)
+    #         default = getattr(cls, name, inspect._empty)
+    #         is_init = isinstance(type_, InitVar)
+
+    #         if is_init:
+    #             type_ = t.get_args(type_)[0] if t.get_origin(type_) is InitVar else t.Any
+
+    #         fields.append((name, type_, default, is_init))
+    #         field_set.add(name)
+
+    #     if len(set(cls.__spec_hooks__).difference(field_set)) != 0:
+    #         raise ValueError(
+    #             f"SpecHooks contains fields not specified "
+    #             f"{cls.__spec_hooks__}"
+    #         )
+
+    #     cls.__item_fields__ = fields
+    #     cls.__is_initvar__  = {
+    #         n: is_init for n, *_, is_init in fields
+    #     }
+
+    #     # Now build the Pydantic model
+    #     spec_fields: dict[str, tuple[t.Any, t.Any]] = {}
+    #     for name, typ, _raw_default, _ in fields:
+    #         # 1) fetch whatever MRO gives you
+    #         for base in cls.__mro__[1:]:  # skip cls itself
+    #             member = base.__dict__.get(name)
+    #             if member is None:
+    #                 continue
+    #             # only object‐level routines or properties cause trouble
+    #             if callable(member) or isinstance(member, property):
+    #                 raise RuntimeError(
+    #                     f"Field name {name!r} conflicts with inherited "
+    #                     f"{'method' if callable(member) else 'property'} "
+    #                     f"'{name}' on {base.__name__}; please rename the field."
+    #                 )
+    #         candidate = getattr(cls, name, inspect._empty)
+
+    #         # 2) only accept it if the class itself defined it,
+    #         #    and it really matches the candidate
+    #         own = cls.__dict__.get(name, inspect._empty)
+    #         if own is candidate:
+    #             default = own
+    #         else:
+    #             default = inspect._empty
+
+    #         # 3) dispatch to hook or normal mapping
+    #         if name in cls.__spec_hooks__:
+    #             origin = cls.__build_schema_hook__(name, typ, default)
+    #         else:
+    #             origin = typ
+    #             if isinstance(origin, type) and issubclass(origin, BaseModule):
+    #                 origin = origin.schema()
+
+    #         spec_fields[name] = (
+    #             origin,
+    #             ... if default is inspect._empty else default
+    #         )
+    #     # for name, type_, default, _ in fields:
+    #     #     if name in cls.__spec_hooks__:
+    #     #         origin = cls.__build_schema_hook__(name, type_, default)
+    #     #     else:
+    #     #         origin = type_
+    #     #         if (
+    #     #             isinstance(origin, type) 
+    #     #             and issubclass(origin, BaseModule)
+    #     #         ):
+    #     #             origin = origin.schema()
+
+    #     #     spec_fields[name] = (
+    #     #         origin,
+    #     #         ... if default is inspect._empty else default
+    #     #     )
+
+    #     cls.__spec__ = create_model(
+    #         f"{cls._spec_model_name()}",
+    #         __base__       = BaseSpec,
+    #         kind = (t.Literal[cls.__qualname__], cls.__qualname__),
+    #         model_config   = ConfigDict(arbitrary_types_allowed=True),
+    #         **spec_fields,
+    #     )
