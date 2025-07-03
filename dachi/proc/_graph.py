@@ -6,13 +6,15 @@ import time
 from typing import Self
 import asyncio
 
+# 3rd party
+import pydantic
+
 # local
 from ..utils import (
-    is_undefined, UNDEFINED, WAITING,
-    is_async_function
+    is_undefined, UNDEFINED, WAITING
 )
 from ._process import Process, AsyncProcess
-from ..core import BaseModule, SerialDict
+from ..core import SerialDict
 from ._process import Partial, StreamProcess, AsyncStreamProcess
 
 
@@ -107,8 +109,7 @@ class Var(BaseNode):
         Returns:
             typing.Any: The value returned by the probe
         """
-        by = by or {}
-
+        by = by if by is not None else {}
         if (
             self in by 
             # and not isinstance(by[self], Streamer) 
@@ -143,13 +144,13 @@ class ProcNode(BaseNode):
             T: All of the arguments connected to another
             transmission
         """
-        for k, arg in self.args.data():
+        for k, arg in self.args.items():
             if isinstance(arg, BaseNode):
                 yield k, arg
 
     def has_partial(self) -> bool:
 
-        for k, a in self.args.data():
+        for k, a in self.args.items():
             if isinstance(a, T):
                 a = a.val
             if (isinstance(a, Partial) and not a.complete):
@@ -164,11 +165,9 @@ class ProcNode(BaseNode):
         Returns:
             Self: Evaluate the 
         """
-        if self.is_undefined():
-            return None
         kwargs = {}
         
-        for k, a in self.args.data():
+        for k, a in self.args.items():
             if isinstance(a, BaseNode):
                 a = a.val
             elif isinstance(a, Partial):
@@ -180,14 +179,14 @@ class ProcNode(BaseNode):
     async def get_incoming(
         self, 
         by: typing.Dict['T', typing.Any]=None
-    ) -> Self:
+    ) -> typing.Dict[str, typing.Any]:
 
-        by = by or {}
+        by = by if by is not None else {}
         kwargs = {}
         tasks = {}
         async with asyncio.TaskGroup() as tg:
 
-            for k, arg in self.args.data():
+            for k, arg in self.args.items():
                 is_t = isinstance(arg, BaseNode)
                 if is_t and arg in by:
                     kwargs[k] = by[arg]
@@ -206,7 +205,7 @@ class ProcNode(BaseNode):
 
     def has_partial(self) -> bool:
 
-        for k, a in self.args.data():
+        for k, a in self.args.items():
             if isinstance(a, T):
                 a = a.val
             if isinstance(a, Partial) and not a.complete:
@@ -219,7 +218,7 @@ class ProcNode(BaseNode):
             T: All of the arguments connected to another
             transmission
         """
-        for k, arg in self.args.data():
+        for k, arg in self.args.items():
             if isinstance(arg, BaseNode):
                 yield arg
 
@@ -230,33 +229,32 @@ class T(ProcNode):
     src: Process | AsyncProcess
     is_async: bool = False
 
-    async def aforward(self, by: dict['BaseNode', typing.Any] | None = None) -> typing.Any:
+    async def aforward(
+        self, 
+        by: dict['BaseNode', typing.Any] | None = None
+    ) -> typing.Any:
         """Evaluate this node (memoised)."""
-        by = by or {}
+        by = by if by is not None else {}
 
-        # ❶ already in probe-dict?
         if self in by:
             return by[self]
 
-        # ❷ cached from previous run?
         if not self.is_undefined():
-            return self.val                       # ← uses .val
+            return self.val                       
 
-        # ❸ gather upstream arguments
         kw_serial = await self.get_incoming(by)   # SerialDict
-        kwargs = dict(kw_serial.items())          # plain dict for call-site
+        kwargs = dict(kw_serial.items())   
 
-        # ❹ call wrapped process (sync / async)
         if self.is_async:
-            self.val = by[self] = await self.src(**kwargs)
+            val = by[self] = await self.src(**kwargs)
         else:
-            self.val = by[self] = self.src(**kwargs)
+            val = by[self] = self.src(**kwargs)
+            print('Setting by[self]', by[self], self)
 
-        # ❺ sanity-check
-        if self.val is UNDEFINED:
+        if val is UNDEFINED:
             raise RuntimeError("Source returned UNDEFINED")
 
-        return self.val
+        return val
 
     # async def aforward(
     #     self, by: typing.Dict['BaseNode', typing.Any]=None
@@ -292,6 +290,23 @@ class T(ProcNode):
     #         )
     #     return val
 
+from dataclasses import dataclass, field
+
+
+@dataclass
+class Streamer:
+    """A Streamer is a wrapper around an iterator that allows for partial
+    results to be collected and returned as a single value.
+    """
+
+    stream: typing.Iterator | typing.AsyncIterator
+    partial: Partial = field(
+        default_factory=Partial
+    )
+
+    def __hash__(self):
+        return hash(self.stream)
+
 
 class Stream(ProcNode):
     """...
@@ -302,11 +317,8 @@ class Stream(ProcNode):
 
     def __post_init__(self):
 
-        self._is_async = is_async_function(self.src)
-        self._stream = None
-        self._prev = None
-        self._full = []
-            
+        self._is_async = isinstance(self.src, AsyncStreamProcess)
+
     async def aforward(
         self, by: typing.Dict['BaseNode', typing.Any]=None
     ) -> typing.Any:
@@ -321,36 +333,41 @@ class Stream(ProcNode):
         Returns:
             typing.Any: The value returned by the probe
         """
-        by = by or {}
+        by = by if by is not None else {}
         if not is_undefined(self.val):
             return self.val
         
-        if self._stream is None:
+        streamer = by.get(self)
 
-            args, kwargs = self.args(by)
-        
+        if streamer is None:
+
+            kwargs = await self.get_incoming(by)
+
             if self._is_async:
-                self._stream = aiter(self.src(*args, **kwargs))
+                stream = aiter(self.src.astream(**kwargs))
             else:
-                self._stream = iter(self.src(*args, **kwargs))
+                stream = iter(self.src.stream(**kwargs))
+
+            streamer = Streamer(
+                stream=stream
+            )
+            by[streamer] = streamer
 
         try:
             if self._is_async:
-                self._dx = await anext(self._stream)
+                streamer.partial.dx = await anext(streamer.stream)
             else:
-                self._dx = next(self._stream)
-            self._full.append(self._dx)
-            self.val = by[self] = Partial(
-                dx=self._dx, complete=False, prev=self._prev,
-                full=self._full
-            )
+                streamer.partial.dx = next(streamer.stream)
+            streamer.partial.full.append(streamer.partial.dx)
+            val = by[self] = streamer.partial.clone()
         except StopIteration:
-            self.val = by[self] = Partial(
-                dx=None, complete=True,
-                prev=self._dx, full=self._full
-            )
-
-        return self.val
+            streamer.partial.complete = True
+            val = by[self] = streamer.partial.clone()
+        except StopAsyncIteration:
+            streamer.partial.complete = True
+            val = by[self] = streamer.partial.clone()
+            
+        return val
 
 
 def t(
@@ -385,7 +402,7 @@ def stream(
     **kwargs
 ) -> Stream:
 
-    args = SerialDict(args, kwargs)
+    args = SerialDict(data=kwargs)
     return Stream(
         src=p, args=args, name=_name,
         annotation=_annotation,
@@ -399,7 +416,7 @@ def async_stream(
     **kwargs
 ) -> Stream:
 
-    args = SerialDict(args, kwargs)
+    args = SerialDict(data=kwargs)
     return Stream(
         src=p, args=args, name=_name,
         annotation=_annotation,

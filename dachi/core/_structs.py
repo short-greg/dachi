@@ -27,11 +27,11 @@ class ModuleList(BaseModule, t.Generic[V]):
     __spec_hooks__: ClassVar[t.List[str]] = ["data"]
     data: InitVar[list[V]]
 
-    def __post_init__(self, items: Optional[Iterable[T]] = None):
+    def __post_init__(self, data: Optional[Iterable[T]] = None):
         self._module_list = []
 
-        if items is not None:
-            for m in items:
+        if data is not None:
+            for m in data:
                 self.append(m)
 
     @classmethod

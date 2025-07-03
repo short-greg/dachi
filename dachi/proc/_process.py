@@ -749,6 +749,16 @@ class Partial(pydantic.BaseModel):
     prev: typing.Any = None
     full: typing.List = dataclasses.field(default_factory=list)
 
+    def clone(self) -> 'Partial':
+        """Clone the partial object
+
+        Returns:
+            Partial: The cloned partial object
+        """
+        return Partial(
+            dx=self.dx, complete=self.complete, prev=self.prev, full=self.full.copy()
+        )
+
 
 class Func(Process):
     """A function wrapper
