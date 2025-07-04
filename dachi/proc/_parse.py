@@ -62,7 +62,7 @@ class CSVRowParser(Parser):
         # csv_data = io.StringIO(delta_store['val'])
 
         rows = list(
-            csv.reader(io.StringIO(val), delimiter=self._delimiter)
+            csv.reader(io.StringIO(val), delimiter=self.delimiter)
         )
         new_rows = []
         for i, row in enumerate(rows[row:]):  # Only return new rows
@@ -78,7 +78,7 @@ class CSVRowParser(Parser):
             return utils.UNDEFINED
 
         if (
-            self._use_header is True 
+            self.use_header is True 
             and delta_store['header'] is None
         ):
             delta_store['header'] = new_rows.pop(0)
@@ -89,7 +89,7 @@ class CSVRowParser(Parser):
         if len(new_rows) == 0:
             return utils.UNDEFINED
         
-        if self._use_header:
+        if self.use_header:
             return [OrderedDict(zip(header, row)) for row in new_rows]
         return new_rows
 
@@ -103,9 +103,9 @@ class CSVRowParser(Parser):
             str: the rendered CSV
         """
         output = io.StringIO()
-        writer = csv.writer(output, delimiter=self._delimiter)
+        writer = csv.writer(output, delimiter=self.delimiter)
         
-        if self._use_header:
+        if self.use_header:
             header = [key for key, _ in data[0]]
             writer.writerow(header)
             for row in data:
@@ -196,7 +196,8 @@ class LineParser(Parser):
 
         if is_last and len(lines) == 0:
             return []
-
+        final_ch = delta_store.get('val', '')[-1] if delta_store.get('val', '') else ''
+        buffered_lines = []
         for i, line in enumerate(lines):
 
             if not line:
@@ -205,24 +206,49 @@ class LineParser(Parser):
             if line.endswith("\\"):
                 buffer.append(line[:-1])
             else:
+
                 buffer.append(line)
-                logical_line = "\n".join(buffer)
-                result.append(logical_line)
+                buffered_lines.append(buffer)
+                # logical_line = "".join(buffer)
+                # logical_line = "\n".join(buffer)
+                # result.append(logical_line)
                 buffer = []
 
-        if buffer:
-            result.append("\n".join(buffer))
-        if not is_last and len(result) > 0:
-            delta_store['val'] = result[-1]
-            if resp[-1] == '\n':
-                delta_store['val'] += '\n'
-            result = result[:-1]
-        elif is_last:
-            delta_store['val'] = ''
-        if len(result) == 0:
+        if not is_last and len(buffered_lines) > 0:
+            if final_ch == '\n':
+                buffered_lines[-1].append('\n')
+            delta_store['val'] = ''.join(buffered_lines[-1])
+            buffered_lines.pop(-1)
+
+        if len(buffered_lines) == 0:
             return utils.UNDEFINED
 
-        return result
+        return [
+            ''.join(line)
+            for line in buffered_lines
+        ]
+
+        # if is_last and buffer:
+        #     print("last and buffer")
+        #     trailing = delta_store.pop("val", "")
+        #     if trailing:
+        #         buffer.append(trailing)
+        #     result.append("".join(buffer))
+        #     buffer.clear()
+
+        # if buffer:
+        #    result.append("\n".join(buffer))
+        # if not is_last and len(result) > 0:
+        #     delta_store['val'] = result[-1]
+        #     if resp[-1] == '\n':
+        #         delta_store['val'] += '\n'
+        #     result = result[:-1]
+        # elif is_last:
+        #     delta_store['val'] = ''
+        # if len(result) == 0:
+        #     return utils.UNDEFINED
+
+        # return result
 
     def render(self, data) -> str:
         """Render the data
@@ -271,7 +297,7 @@ class CSVCellParser(Parser):
         )
         cur_col = utils.get_or_set(delta_store, 'col', 0)
 
-        rows = list(csv.reader(io.StringIO(delta_store['val']), delimiter=self._delimiter))
+        rows = list(csv.reader(io.StringIO(delta_store['val']), delimiter=self.delimiter))
         cells = []
 
         new_rows = []
@@ -285,11 +311,11 @@ class CSVCellParser(Parser):
         ):
             return utils.UNDEFINED
 
-        if self._use_header and header is None:
+        if self.use_header and header is None:
             delta_store['row'] = 1
             delta_store['header'] = header = new_rows.pop(0)
             sub_val = 0
-        elif self._use_header:
+        elif self.use_header:
             sub_val = 1
             
         if len(new_rows) == 0 or (len(new_rows) == 1 and not is_last):
@@ -305,7 +331,7 @@ class CSVCellParser(Parser):
             row = row[cur_col:] if i == 0 else row
             
             for j, cell in enumerate(row):
-                if self._use_header:
+                if self.use_header:
                     cells.append((cur_row + i - sub_val, header[j], cell))
                 else:
                     cells.append((cur_row + i, cell))
@@ -321,9 +347,9 @@ class CSVCellParser(Parser):
     def render(self, data) -> str:
         
         output = io.StringIO()
-        writer = csv.writer(output, delimiter=self._delimiter)
+        writer = csv.writer(output, delimiter=self.delimiter)
 
-        if self._use_header:
+        if self.use_header:
             # Extract the header from the first row of data
             header = [cell[1] for cell in data if cell[0] == 0]
             writer.writerow(header)
