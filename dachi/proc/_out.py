@@ -1,8 +1,8 @@
 # 1st party
-import typing
-import json
 import inspect
+import typing
 from abc import abstractmethod
+import json
 import csv
 import io
 from collections import OrderedDict
@@ -12,15 +12,15 @@ import pydantic
 from pydantic_core import PydanticUndefined
 
 # local
-from ._msg import RespProc
+from ._resp import RespProc
 from ..core import (
-    TemplateField, Templatable, ExampleMixin, ModuleList,
-    render, struct_template, Msg,
-    Resp
+    TemplateField, Templatable, 
+    ExampleMixin, ModuleList,
+    render, 
+    Msg, Resp, struct_template
 )
 from ..utils import unescape_curly_braces, escape_curly_braces
 from ._parse import LineParser, Parser
-# from .. import store
 from .. import utils
 
 S = typing.TypeVar('S', bound=pydantic.BaseModel)
@@ -97,7 +97,6 @@ class ToOut(
     def forward(
         self, 
         resp: Resp, 
-        delta_store: typing.Dict=None,
         is_streamed: bool=False,
         is_last: bool=True
     ) -> Msg:
@@ -110,25 +109,28 @@ class ToOut(
         Returns:
             Msg: The processed message
         """
-        delta_store = delta_store if delta_store is not None else {}
+        delta_store = utils.get_or_set(
+            resp.delta, self.name, {}
+        )
 
-        resp = [resp.data[r] for r in self.from_]
+        rs = [resp.data[r] for r in self.from_]
         is_undefined = all(
             r is utils.UNDEFINED for r in resp
         )
         
         if self._single:
-            resp = resp[0]
+            rs = rs[0]
         
         if is_undefined:
             resp.out[self.name] = utils.UNDEFINED
             return utils.UNDEFINED
         resp.out[self.name] = res = self.delta(
-            resp, delta_store, is_streamed, is_last
+            rs, delta_store, is_streamed, is_last
         )
         self.post(
             resp, 
             res, 
+            delta_store,
             is_streamed, 
             is_last
         )
@@ -170,7 +172,7 @@ class PrimOut(ToOut):
         if not is_last:
             return utils.UNDEFINED
         
-        if self._out_cls == 'bool':
+        if self.out_cls == 'bool':
             return (
                 val.lower() in ('true', 'y', 'yes', '1', 't')
             )
@@ -188,16 +190,16 @@ class PrimOut(ToOut):
         return str(data)
     
     def example(self) -> str:
-        if self._out_cls == 'int':
+        if self.out_cls == 'int':
             return self.render(1)
-        elif self._out_cls == 'bool':
+        elif self.out_cls == 'bool':
             return self.render(True)
-        elif self._out_cls == 'str':
+        elif self.out_cls == 'str':
             return self.render("data")
-        elif self._out_cls == 'float':
+        elif self.out_cls == 'float':
             return self.render(3.14)
         raise RuntimeError(
-            f"Don't know how render for type {self._out_cls}"
+            f"Don't know how render for type {self.out_cls}"
         ) 
 
     def template(self) -> str:
@@ -206,7 +208,7 @@ class PrimOut(ToOut):
         Returns:
             str: The template for the data
         """
-        return f'<{self._out_cls.__name__}>'
+        return f'<{self.out_cls.__name__}>'
 
 
 class PydanticOut(ToOut):
@@ -244,7 +246,7 @@ class PydanticOut(ToOut):
         if resp is None or resp is utils.UNDEFINED:
             resp = ''
         val = utils.acc(delta_store, 'val', resp)
-
+        
         if not is_last:
             return utils.UNDEFINED
         
@@ -255,7 +257,7 @@ class PydanticOut(ToOut):
             raise ReadError(
                 f'Could not read in {message} as a JSON', e
             )
-        return self._out_cls(**data)
+        return self.out_cls(**data)
 
     def template_renderer(self, template: TemplateField) -> str:
         """Render the template for the BaseModel
@@ -283,7 +285,7 @@ class PydanticOut(ToOut):
             str: Escape the braces
         """
         return render(
-            struct_template(self._out_cls), 
+            struct_template(self.out_cls), 
             escape_braces, self.template_renderer
         ) 
 
@@ -335,7 +337,6 @@ class KVOut(ToOut):
         result = {}
         for line in res:
             try:
-
                 key, value = line.split(self.sep)
                 result[key] = value
             except ValueError as e:
@@ -397,7 +398,12 @@ class IndexOut(ToOut):
     """Create a Reader of a list of key values
     """
     sep: str = '::'
-    key_descr: typing.Type[pydantic.BaseModel] | typing.Dict | None = None
+    key_descr: str = ''
+    key_type: typing.Type[pydantic.BaseModel] | typing.Dict | None = None
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.line_parser = LineParser()
 
     def delta(
         self, 
@@ -461,7 +467,7 @@ class IndexOut(ToOut):
             str: The template
         """
         key_descr = (
-            'The value for the key.' if self.key_descr is None else self.key_descr
+            'The value for the key.' if self.key_type is None else self.key_descr
         )
         
         if self.key_type is not None:
@@ -614,7 +620,7 @@ class ParsedOut(ToOut):
 
 class TupleOut(ToOut):
 
-    convs: ModuleList[ToOut]
+    convs: ModuleList
     parser: Parser
 
     def delta(
@@ -721,9 +727,9 @@ class ListOut(ToOut):
             str: 
         """
         datas = [
-            conv.render(data_i) 
-            for data_i, conv in 
-            zip(data, self.convs)
+            self.conv.render(data_i) 
+            for data_i in 
+            data
         ]
         return self.parser.render(datas)
 
@@ -741,7 +747,7 @@ class ListOut(ToOut):
         return self.parser.render(datas)
 
 
-class NullOut(ToOut):
+class ParseOut(ToOut):
     """A Reader that does not change the data. 
     So in most cases will simply output a string
     """
@@ -763,8 +769,8 @@ class NullOut(ToOut):
         Returns:
             typing.Any: The output of the reader
         """
-        if self._parser is not None:
-            return self._parser.forward(
+        if self.parser is not None:
+            return self.parser.forward(
                 resp, delta_store, streamed=streamed,
                 is_last=is_last
             )
@@ -793,7 +799,7 @@ class CSVOut(ToOut):
     Dynamically parse CSV data, returning new rows as accumulated. 
     The header will be returned along with them if used.
     """
-    delimiter: str = ',', 
+    delimiter: str = ','
     use_header: bool = True
 
     def delta(
@@ -817,7 +823,7 @@ class CSVOut(ToOut):
         # csv_data = io.StringIO(delta_store['val'])
 
         rows = list(
-            csv.reader(io.StringIO(val), delimiter=self._delimiter)
+            csv.reader(io.StringIO(val), delimiter=self.delimiter)
         )
         new_rows = []
         for i, row in enumerate(rows[row:]):  
@@ -834,7 +840,7 @@ class CSVOut(ToOut):
             return utils.UNDEFINED
 
         if (
-            self._use_header is True 
+            self.use_header is True 
             and delta_store['header'] is None
         ):
             delta_store['header'] = new_rows.pop(0)
@@ -845,7 +851,7 @@ class CSVOut(ToOut):
         if len(new_rows) == 0:
             return utils.UNDEFINED
         
-        if self._use_header:
+        if self.use_header:
             return [OrderedDict(zip(header, row)) for row in new_rows]
         return new_rows
 
@@ -859,7 +865,7 @@ class CSVOut(ToOut):
             str: the rendered CSV
         """
         output = io.StringIO()
-        writer = csv.writer(output, delimiter=self._delimiter)
+        writer = csv.writer(output, delimiter=self.delimiter)
         
         if self._use_header:
             header = [key for key, _ in data[0]]

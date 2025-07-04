@@ -223,3 +223,4 @@ class Args:
 
 def pydantic_v2():
     return int(pydantic.__version__.split(".")[0]) >= 2
+

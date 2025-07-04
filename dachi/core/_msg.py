@@ -62,7 +62,9 @@ class Resp(pydantic.BaseModel):
 
     msg: Msg
     val: typing.Any = None
-    follow_up: typing.List[Msg] = None
+    follow_up: typing.List[Msg] | None = pydantic.Field(
+        default=list
+    )
     _data: typing.Dict = pydantic.PrivateAttr(
         default_factory=dict
     )
@@ -72,11 +74,6 @@ class Resp(pydantic.BaseModel):
     _out: typing.Dict = pydantic.PrivateAttr(
         default_factory=dict
     )
-
-    def __post_init__(self):
-
-        if self.follow_up is None:
-            self.follow_up = []
 
     @property
     def data(self) -> typing.Any:
@@ -95,8 +92,29 @@ class Resp(pydantic.BaseModel):
         return self._delta
     
     @property
-    def out(self) -> typing.Any:
+    def out(self) -> typing.Dict:
         return self._out
+    
+    def spawn(self, msg: Msg, data: typing.Dict=None, follow_up: bool=None) -> 'Resp':
+        """Spawn a new response with the same delta and out but a different message and data
+
+        Args:
+            msg (Msg): The message to spawn
+
+        Returns:
+            Resp: A new response with the same data but a different message
+        """
+        data = data if data is not None else {}
+        resp = Resp(
+            msg=msg,
+            val=self.val,
+            follow_up=follow_up,
+        )
+        resp.data.update(data)
+        resp.delta.update(self._delta)
+        resp.out.update(self._out)
+        return resp
+
 
 
 class BaseDialog(pydantic.BaseModel, Renderable):

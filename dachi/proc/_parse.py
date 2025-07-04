@@ -7,13 +7,12 @@ from abc import abstractmethod
 # 3rd party
 
 # local
-from .. import store
 from .. import utils
 from collections import OrderedDict
-from ..proc import Module
+from dachi.proc import Process
 
 
-class Parser(Module):
+class Parser(Process):
     """Base class for parsers. 
     It converts the input text
     into a list of objects
@@ -54,9 +53,9 @@ class CSVRowParser(Parser):
         # resp = self.handle_null(resp, '')
         delta_store = delta_store if delta_store is not None else {}
 
-        val = store.acc(delta_store, 'val', resp, '')
-        row = store.get_or_set(delta_store, 'row', 0)
-        header = store.get_or_set(
+        val = utils.acc(delta_store, 'val', resp, '')
+        row = utils.get_or_set(delta_store, 'row', 0)
+        header = utils.get_or_set(
             delta_store, 'header', None
         )
         # Process accumulated data using csv.reader
@@ -83,10 +82,10 @@ class CSVRowParser(Parser):
             and delta_store['header'] is None
         ):
             delta_store['header'] = new_rows.pop(0)
-            store.acc(delta_store, 'row', 1)
+            utils.acc(delta_store, 'row', 1)
 
         header = delta_store['header']
-        store.acc(delta_store, 'row', len(new_rows))
+        utils.acc(delta_store, 'row', len(new_rows))
         if len(new_rows) == 0:
             return utils.UNDEFINED
         
@@ -134,8 +133,7 @@ class CharDelimParser(Parser):
         delta_store = delta_store if delta_store is not None else {}
         # resp = self.handle_null(resp, '')
         resp = resp or ''
-        val = store.acc(delta_store, 'val', resp)
-        print(val)
+        val = utils.acc(delta_store, 'val', resp)
         res = val.split(self.sep)
         return_val = utils.UNDEFINED
         
@@ -152,7 +150,6 @@ class CharDelimParser(Parser):
                 return_val = res[:-1]
                 delta_store['val'] = res[-1]
                 
-        print(return_val)
         return return_val
 
     def render(self, data) -> str:
@@ -192,7 +189,7 @@ class LineParser(Parser):
         """ 
         delta_store = delta_store if delta_store is not None else {}
         resp = resp or ''
-        store.acc(delta_store, 'val', resp)
+        utils.acc(delta_store, 'val', resp)
         lines = delta_store['val'].splitlines()
         result = []
         buffer = []
@@ -261,19 +258,18 @@ class CSVCellParser(Parser):
         """
         
         # resp = self.handle_null(resp, '')
-        # print('Resp: ', resp)
 
         delta_store = delta_store if delta_store is not None else {}
         resp = resp or ''
-        val = store.acc(delta_store, 'val', resp)
-        cur_row = store.get_or_set(delta_store, 'row', 0)
-        header = store.get_or_set(
+        val = utils.acc(delta_store, 'val', resp)
+        cur_row = utils.get_or_set(delta_store, 'row', 0)
+        header = utils.get_or_set(
             delta_store, 'header', None
         )
-        data = store.get_or_set(
+        data = utils.get_or_set(
             delta_store, 'data', None
         )
-        cur_col = store.get_or_set(delta_store, 'col', 0)
+        cur_col = utils.get_or_set(delta_store, 'col', 0)
 
         rows = list(csv.reader(io.StringIO(delta_store['val']), delimiter=self._delimiter))
         cells = []
@@ -315,8 +311,8 @@ class CSVCellParser(Parser):
                     cells.append((cur_row + i, cell))
         if not is_last and len(cells) > 0:
             cells.pop(-1)
-        store.acc(delta_store, 'col', j)
-        store.acc(delta_store, 'row', i)
+        utils.acc(delta_store, 'col', j)
+        utils.acc(delta_store, 'row', i)
         
         if len(cells) == 0:
             return utils.UNDEFINED

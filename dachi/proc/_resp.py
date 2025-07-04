@@ -5,7 +5,6 @@ import typing
 
 # local
 from ..core import Msg, Resp
-from .. import store
 from ._process import Process
 from .. import utils
 
@@ -85,6 +84,10 @@ class RespProc(Process, ABC):
         Returns:
             Msg: The processed message
         """
+
+        delta_store = utils.get_or_set(
+            resp.delta, self.name, {}
+        )
         r = [resp.data[r] for r in self._from]
         is_undefined = all(r is utils.UNDEFINED for r in r)
         
@@ -95,13 +98,13 @@ class RespProc(Process, ABC):
             r.data[self.name] = utils.UNDEFINED
             return utils.UNDEFINED
         
-        delta_store = store.get_or_set(
-            r.delta, self.name, {}
-        )
+        # delta_store = utils.get_or_set(
+        #     r.delta, self.name, {}
+        # )
         r.data[self.name] = res = self.delta(
             r, delta_store, is_streamed, is_last
         )
-        self.post(r, res, is_streamed, is_last)
+        self.post(r, res, delta_store, is_streamed, is_last)
         return r
 
     @classmethod
@@ -247,12 +250,11 @@ class RespProc(Process, ABC):
     def __call__(
         self, 
         resp: Resp, 
-        delta_store: typing.Dict=None, 
         is_streamed: bool=False, 
         is_last: bool=True
     ):
         return super().__call__(
-            resp, delta_store, is_streamed, is_last
+            resp, is_streamed, is_last
         )
 
 

@@ -62,5 +62,6 @@ from ._render import (
     bullet,
     bold,
     italic,
-    DEFAULT_STYLE
+    DEFAULT_STYLE,
+    struct_template
 )

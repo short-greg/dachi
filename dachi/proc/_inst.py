@@ -20,7 +20,7 @@ from ..core import Param
 from ..utils import primitives, str_formatter
 from ._msg import FromMsg
 from ._out import (
-    ToOut, NullOut,
+    ToOut, ParseOut,
     PrimOut, PydanticOut,
 )
 Engine: typing.TypeAlias = Process | AsyncProcess | StreamProcess | AsyncStreamProcess
@@ -62,7 +62,7 @@ class IBase(BaseModule):
             elif issubclass(out_cls, pydantic.BaseModel):
                 out_conv = PydanticOut(name='out', from_=self.llm_out, out_cls=out_cls)
             else:
-                out_conv = NullOut(name='out', from_=self.llm_out)
+                out_conv = ParseOut(name='out', from_=self.llm_out)
 
         self._out = FromMsg('out')
 

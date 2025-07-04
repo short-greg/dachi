@@ -19,7 +19,7 @@ V = t.TypeVar("V", bound=BaseModule)
 T = TypeVar("T", bound=BaseModule)
 
 
-class ModuleList(BaseModule, t.Generic[V]):
+class ModuleList(BaseModule): # t.Generic[V]
     """
     A list-like container whose elements are themselves `BaseModule`
     instances.  Works seamlessly with the new serialization / dedup rules.

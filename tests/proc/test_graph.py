@@ -1,27 +1,16 @@
 
 import asyncio
 import pytest
-from dachi.proc import _process as p
-from dachi.utils import WAITING, UNDEFINED
-from dachi.proc import _process as P
-from dachi.proc import _graph as G
-
-import asyncio
-from typing import AsyncIterator, Iterator, List
-import pytest
-
-from dachi import proc as P
-from dachi.proc._graph import Stream                      # SUT
-from dachi.core import SerialDict                         # helper container
-from dachi.utils import UNDEFINED                         # sentinel
-
-
-import types
-import pytest
+from typing import AsyncIterator, Iterator
 from typing import Iterator, AsyncIterator
 
 from dachi.proc import _graph as G
 from dachi.core import SerialDict
+from dachi.utils import WAITING, UNDEFINED
+from dachi.proc import _process as P
+from dachi.proc._graph import Stream 
+from dachi.utils import UNDEFINED 
+
 
 class MyProcess:
 
@@ -151,44 +140,6 @@ class TestBaseNode:
         assert await node.aforward() is 123
 
 
-import pytest
-
-from dachi.proc import _graph as G
-
-# -------------------------------------------------
-# Local helper stubs
-# -------------------------------------------------
-class _StubIncoming:
-    """Mimics an upstream node whose *probe* method will be invoked by Var."""
-    def __init__(self):
-        self.probed = False
-
-    def probe(self, by: dict):  # signature is irrelevant, only side‑effect matters
-        self.probed = True
-
-
-class _StubSrc:
-    """Callable object that acts as the *source* for a Var instance.
-
-    It returns a predetermined *ret* value and exposes an *incoming()* iterator
-    over arbitrary stub nodes so that we can verify *probe* propagation.
-    """
-
-    def __init__(self, ret, incoming_nodes=None):
-        self._ret = ret
-        self._incoming_nodes = incoming_nodes or []
-
-    # ------------------------------------------------------------------
-    # Public protocol expected by Var.aforward
-    # ------------------------------------------------------------------
-    def incoming(self):
-        for n in self._incoming_nodes:
-            yield n
-
-    def __call__(self, by):
-        return self._ret
-
-
 # -------------------------------------------------
 # Auto‑applied fixtures
 # -------------------------------------------------
@@ -288,12 +239,6 @@ class TestVar:
         assert len(incoming) == 0
 
 
-
-
-# tests/proc/test_t.py
-import asyncio
-import pytest
-
 from dachi.proc._graph import (
     t,             # sync-task factory
     async_t,       # async-task factory
@@ -301,11 +246,6 @@ from dachi.proc._graph import (
     UNDEFINED,     # sentinel for “no value yet”
     T
 )
-
-# ---------------------------------------------------------------------------
-# Minimal dummy “processes” to drive T
-# ---------------------------------------------------------------------------
-
 class _SyncProc:
     """Callable that mimics a synchronous Process."""
     def __init__(self, value):
@@ -332,9 +272,6 @@ class _AsyncProc:
         await asyncio.sleep(0)          # prove we’re really async
         return self.value
 
-# ---------------------------------------------------------------------------
-# Tests for the concrete task-node `T`
-# ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
 class TestT:
@@ -661,11 +598,6 @@ class TestAsyncStream:
         assert first == second
 
 
-
-# ---------------------------------------------------------------------------
-# ProcNode helper methods
-# ---------------------------------------------------------------------------
-
 @pytest.mark.asyncio
 class TestProcNodeHelpers:
     """Covers has_partial(), eval_args() and get_incoming()."""
@@ -703,9 +635,6 @@ class TestProcNodeHelpers:
         incoming = await node.get_incoming({v2: 42})
         assert dict(incoming.items()) == {"a": 1, "b": 42}
 
-# # ---------------------------------------------------------------------------
-# # WaitProcess
-# # ---------------------------------------------------------------------------
 
 class TestWaitProcess:
     """incoming() and forward() semantics."""
@@ -792,4 +721,3 @@ class TestFactoryHelpers:
         ast = G.async_stream
         node = ast(_AsyncRangeStream(0))
         assert isinstance(node, G.Stream) and node.is_async is True
-
