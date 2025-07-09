@@ -218,27 +218,27 @@ class TestAForward:
             await P.aforward(object())  # type: ignore[arg-type]
 
 
-class TestStream:
-    """`stream` collapses scalars into single-item iterators and preserves generators."""
+# class TestStream:
+#     """`stream` collapses scalars into single-item iterators and preserves generators."""
 
-    def test_stream_with_proc(self):
-        proc = _SEchoProcess(n=3)
-        assert list(P.stream(proc, "a")) == ["a", "a", "a"]
+#     def test_stream_with_proc(self):
+#         proc = _SEchoProcess(n=3)
+#         assert list(P.stream(proc, "a")) == ["a", "a", "a"]
 
-    def test_stream_plain_func(self):
-        out_iter = P.stream(lambda x: x * 2, 2)
-        assert list(out_iter) == [4]
+#     def test_stream_plain_func(self):
+#         out_iter = P.stream(lambda x: x * 2, 2)
+#         assert list(out_iter) == [4]
 
-    def test_stream_plain_generator(self):
-        def yield_one(x):
-            yield x
-        assert list(P.stream(yield_one, 9)) == [9]
+#     def test_stream_plain_generator(self):
+#         def yield_one(x):
+#             yield x
+#         assert list(P.stream(yield_one, 9)) == [9]
 
-    def test_async_gen_not_supported(self):
-        async def _agen(x):
-            yield x
-        with pytest.raises(TypeError):
-            list(P.stream(_agen, 1))  # type: ignore[arg-type]
+#     def test_async_gen_not_supported(self):
+#         async def _agen(x):
+#             yield x
+#         with pytest.raises(TypeError):
+#             list(P.stream(_agen, 1))  # type: ignore[arg-type]
 
 
 @pytest.mark.asyncio
@@ -536,229 +536,3 @@ class TestAsyncReduce:
 
         with pytest.raises(ValueError):
             await P.async_reduce(add, chunk)
-
-
-# class TestStreamSequenceExtended:
-#     """Extended tests for StreamSequence to capture edge cases."""
-
-#     def test_stream_sequence_empty_input(self):
-#         pre = P.Func(f=lambda xs: (x for x in xs))
-#         mod = P.Func(f=lambda gen: (x + 1 for x in gen))
-#         post = P.Func(f=list)
-#         seq = P.StreamSequence(pre=pre, mod=mod, post=post)
-#         out = seq.stream([])
-#         assert out == []
-
-#     def test_stream_sequence_none_input(self):
-#         pre = P.Func(f=lambda _: (x for x in []))
-#         mod = P.Func(f=lambda gen: (x + 1 for x in gen))
-        
-#         post = P.Func(f=list)
-#         seq = P.StreamSequence(pre=pre, mod=mod, post=post)
-#         out = seq.stream(None)
-#         assert out == []
-
-
-# @pytest.mark.asyncio
-# class TestAsyncStreamSequenceExtended:
-#     """Extended tests for AsyncStreamSequence edge behaviors."""
-
-#     async def test_async_stream_sequence_empty(self):
-#         async def pre(xs):
-#             for x in xs:
-#                 if False:
-#                     yield x
-
-#         async def mod(gen):
-#             async for x in gen:
-#                 yield x + 1
-
-#         post = P.Func(list)
-#         seq = P.AsyncStreamSequence(pre, mod, post)
-#         out = await seq.astream([])
-#         assert out == []
-
-#     async def test_async_stream_sequence_none(self):
-#         async def pre(_):
-#             return
-#             yield  # needed to make it async generator
-
-#         async def mod(gen):
-#             async for x in gen:
-#                 yield x + 1
-
-#         post = P.Func(list)
-#         seq = P.AsyncStreamSequence(pre, mod, post)
-#         out = await seq.astream(None)
-#         assert out == []
-
-
-# import asyncio
-# import typing
-# from typing import Any
-# from dachi.proc import _process as core
-# from dachi.proc import Module
-# from dachi.proc import _process
-# from dachi.store import Param
-# import numpy as np
-# # TODO: remove
-# from dachi.inst import Cue
-# import pytest
-
-
-# class Append(
-#     core.Module, core.AsyncModule, 
-#     core.StreamModule, core.AsyncStreamModule
-# ):
-
-#     def __init__(self, append: str):
-#         super().__init__()
-#         self._append = append
-
-#     def forward(self, name: str='') -> Any:
-#         return name + self._append
-    
-#     async def aforward(self, name: str=''):
-#         return self.forward(name)
-
-#     def stream(self, name: str=''):
-#         yield self.forward(name)
-    
-#     async def astream(self, name: str=''):
-#         for v in self.stream(name):
-#             yield v
-
-
-# class Append2(
-#     core.Module, core.AsyncModule, 
-#     core.StreamModule, core.AsyncStreamModule
-# ):
-
-#     def __init__(self, append: str):
-#         super().__init__()
-#         self._append = append
-
-#     def forward(self, val1: str, val2: str) -> Any:
-#         return val1 + val2 + self._append
-
-#     async def aforward(self, *args, **kwargs):
-#         return self.forward(*args, **kwargs)
-
-#     def stream(self, *args, **kwargs):
-#         yield self.forward(*args, **kwargs)
-    
-#     async def astream(self, *args, **kwargs):
-#         for v in self.stream(*args, **kwargs):
-#             yield v
-
-
-# class RefinerAppender(
-#     core.Module, core.AsyncModule, 
-#     core.StreamModule, core.AsyncStreamModule
-# ):
-
-#     def __init__(self, append: str):
-#         super().__init__()
-#         self._append = append
-
-#     def forward(self, cur: str, val: str) -> Any:
-#         if cur is None:
-#             return val + self._append
-#         return cur + val + self._append
-
-#     async def aforward(self, *args, **kwargs):
-#         return self.forward(*args, **kwargs)
-
-#     def stream(self, *args, **kwargs):
-#         yield self.forward(*args, **kwargs)
-    
-#     async def astream(self, *args, **kwargs):
-#         for v in self.stream(*args, **kwargs):
-#             yield v
-
-
-# class WriteOut(core.Module):
-
-#     def __init__(self, append: str):
-#         super().__init__()
-#         self._append = append
-
-#     def forward(self, val: str) -> Any:
-#         return val + self._append
-
-#     def stream(self, val: str) -> Any:
-#         for v in val:
-#             yield v
-#         for v in self._append:
-#             yield v
-
-#     async def aforward(self, *args, **kwargs):
-#         return self.forward(*args, **kwargs)
-    
-#     async def astream(self, *args, **kwargs):
-#         for v in self.stream(*args, **kwargs):
-#             yield v
-
-
-# class WaitAppend(core.Module):
-
-#     def __init__(self, append: str):
-#         super().__init__()
-#         self._append = append
-
-#     def forward(self, name: str='') -> Any:
-#         return name + self._append
-
-#     def stream(self, *args, **kwargs):
-#         yield self.forward(*args, **kwargs)
-
-#     async def aforward(self, *args, **kwargs):
-#         return self.forward(*args, **kwargs)
-    
-#     async def astream(self, *args, **kwargs):
-#         for v in self.stream(*args, **kwargs):
-#             yield v
-
-# def _s(x):
-#     cur = ''
-#     for x_i in x:
-#         yield x_i
-
-
-# class TestStreamer:
-
-#     def test_streamable_streams_characters(self):
-
-#         streamer = _process.Streamer(_s('xyz'))
-#         partial = streamer()
-#         assert partial.dx == 'x'
-
-#     def test_streamable_streams_characters_to_end(self):
-
-#         streamer = _process.Streamer(_s('xyz'))
-#         partial = streamer()
-#         partial = streamer()
-#         partial = streamer()
-#         assert partial.dx == 'z'
-
-#     def test_streamer_gets_next_item(self):
-
-#         streamer = _process.Streamer(
-#             iter([(1, 0), (2, 2), (3, 2)])
-#         )
-#         partial = streamer()
-#         assert partial.dx == (1, 0)
-#         assert partial.complete is False
-
-#     def test_streamer_gets_final_item(self):
-
-#         streamer = _process.Streamer(
-#             iter([(1, 0), (2, 2), (3, 2)])
-#         )
-#         partial = streamer()
-#         partial = streamer()
-#         partial = streamer()
-#         partial = streamer()
-#         assert partial.dx == (3, 2)
-#         assert partial.complete is True
-

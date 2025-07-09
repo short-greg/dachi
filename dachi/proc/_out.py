@@ -113,7 +113,11 @@ class ToOut(
             resp.delta, self.name, {}
         )
 
-        rs = [resp.data[r] for r in self.from_]
+        if isinstance(self.from_, str):
+            from_ = [self.from_]
+        else:
+            from_ = self.from_
+        rs = [resp.data[r] for r in from_]
         is_undefined = all(
             r is utils.UNDEFINED for r in resp
         )
@@ -135,6 +139,54 @@ class ToOut(
             is_last
         )
         return resp
+
+
+class StrOut(ToOut):
+    """Use for converting an AI response into a primitive value
+    """
+
+    def delta(
+        self, 
+        resp, 
+        delta_store: typing.Dict, 
+        is_streamed: bool=False, 
+        is_last: bool=True
+    ) -> typing.Any:
+        """Read in the output
+
+        Args:
+            message (str): The message to read
+
+        Returns:
+            typing.Any: The output of the reader
+        """
+        if resp is None or resp is utils.UNDEFINED:
+            resp = ''
+
+        utils.acc(delta_store, 'val', resp)
+        return resp
+
+    def render(self, data: typing.Any) -> str:
+        """Output an example of the data
+
+        Args:
+            data (typing.Any): 
+
+        Returns:
+            str: 
+        """
+        return str(data)
+    
+    def example(self) -> str:
+        return self.render("data")
+
+    def template(self) -> str:
+        """Output the template for the string
+
+        Returns:
+            str: The template for the data
+        """
+        return f'<string>'
 
 
 class PrimOut(ToOut):
@@ -172,6 +224,9 @@ class PrimOut(ToOut):
         if not is_last:
             return utils.UNDEFINED
         
+        if isinstance(self.out_cls, typing.Type):
+            return self.out_cls(val)
+
         if self.out_cls == 'bool':
             return (
                 val.lower() in ('true', 'y', 'yes', '1', 't')
@@ -913,7 +968,7 @@ def conv_to_out(
     if out is bool:
         return PrimOut('bool', name, from_)
     if out is str:
-        return PrimOut('str', name, from_)
+        return StrOut(name, from_)
     if out is int:
         return PrimOut('int', name, from_)
     if out is float:

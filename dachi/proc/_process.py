@@ -251,16 +251,6 @@ class Recur(pydantic.BaseModel):
         if v < 0:
             raise ValueError('n must be greater than 0')
         return v
-    
-    # def __init__(self, data, n: int):
-    #     """Create an I object
-
-    #     Args:
-    #         data: 
-    #         n (int): The number of times to loop
-    #     """
-    #     self.data = data
-    #     self.n = n
 
     def __iter__(self) -> typing.Iterator[typing.Any]:
         """Iterate over the object (n times)
@@ -412,6 +402,7 @@ class Sequential(ModuleList):
                 x = module(x)
             first = False
         return x
+
 
 class AsyncFunc(AsyncProcess):
     """A function wrapper
@@ -761,7 +752,7 @@ class Partial(pydantic.BaseModel):
 
 
 class Func(Process):
-    """A function wrapper
+    """
     """
     f: typing.Callable
     args: typing.List[typing.Any] = None

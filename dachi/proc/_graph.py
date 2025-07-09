@@ -5,6 +5,7 @@ import typing
 import time
 from typing import Self
 import asyncio
+from dataclasses import dataclass, field
 
 # 3rd party
 import pydantic
@@ -289,8 +290,6 @@ class T(ProcNode):
     #             'Val has not been defined and no source for T'
     #         )
     #     return val
-
-from dataclasses import dataclass, field
 
 
 @dataclass

@@ -1,7 +1,7 @@
-from dachi.inst import render, render_multi
+from dachi.core import render, render_multi
 from pydantic import BaseModel
 from typing import Any, Iterator, Tuple
-from dachi.proc._process import Module
+from dachi.proc._process import Process
 
 
 class SimpleStruct(BaseModel):
@@ -20,7 +20,7 @@ class NestedStruct(BaseModel):
     simple: SimpleStruct
 
 
-class WriteOut(Module):
+class WriteOut(Process):
 
     def forward(self, x: str) -> str:
 
@@ -68,7 +68,7 @@ class TestRenderMulti:
         assert '4' in rendered[1]
 
 
-class Append(Module):
+class Append(Process):
 
     def __init__(self, append: str):
         super().__init__()

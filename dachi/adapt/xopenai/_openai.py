@@ -75,13 +75,7 @@ class TextConv(RespConv):
     """
     OpenAITextProc is a class that processes an OpenAI response and extracts text outputs from it.
     """
-
-    def __init__(
-        self, 
-        name: str='content', 
-        from_ = 'response'
-    ):
-        super().__init__(name, from_)
+    name: str = 'content'
 
     def post(
         self, 
@@ -100,11 +94,13 @@ class TextConv(RespConv):
             streamed (bool, optional): whether streamed or not. Defaults to False.
             is_last (bool, optional): the last. Defaults to False.
         """
-        content = '' if resp.data['content'] in (None, UNDEFINED) else resp.data['content']
+        content = '' if resp.val['content'] in (
+            None, UNDEFINED
+        ) else resp.val['content']
         store.acc(
             delta_store, 'all_content', content
         )
-        resp.msg.content = delta_store['all_content']
+        resp.msg['content'] = delta_store['all_content']
     
     def delta(
         self, 

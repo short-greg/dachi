@@ -1,11 +1,9 @@
 # 1st party
 import typing
-from abc import abstractmethod, ABC
+from abc import abstractmethod
 from typing import Self
 import inspect
 from functools import wraps
-
-from dataclasses import InitVar
 
 # 3rd party
 import pydantic
@@ -16,12 +14,13 @@ from ._process import (
     Process, AsyncProcess, StreamProcess, 
     AsyncStreamProcess
 )
-from ..core import Param
+from ..core import Param, END_TOK
 from ..utils import primitives, str_formatter
-from ._msg import FromMsg
+from ._resp import FromResp
+from ._msg import ToMsg
 from ._out import (
     ToOut, ParseOut,
-    PrimOut, PydanticOut,
+    PrimOut, PydanticOut, StrOut
 )
 Engine: typing.TypeAlias = Process | AsyncProcess | StreamProcess | AsyncStreamProcess
 
@@ -33,11 +32,10 @@ class IBase(BaseModule):
     """
     This is the base class for wrapping an Instruction functor. It is used to create an instruction when called.
     """
-
     f: typing.Callable
     is_method: bool = False
     out_conv: ToOut = None
-    llm_out: str = 'content'
+    llm_out: str | typing.Tuple[str] = 'content'
 
     def __post_init__(self):
         """ Initializes the IBase instance.
@@ -49,22 +47,31 @@ class IBase(BaseModule):
         self._docstring = self.f.__doc__
         self._name = self.f.__name__
         self._signature = str(inspect.signature(self.f))
-        self._parameters = inspect.signature(self.f).parameters
+        self._sig_params = inspect.signature(self.f).parameters
         self._return_annotation = inspect.signature(self.f).return_annotation
 
         out_cls = self._return_annotation
-        if out_conv is None:
-            if out_cls in primitives:
-                out_conv = PrimOut(
+        if self.out_conv is None:
+            if out_cls is str:
+                self.out_conv = StrOut(
+                    name='out', from_=self.llm_out,
+                )
+
+            elif out_cls in primitives:
+                self.out_conv = PrimOut(
                     name='out', from_=self.llm_out,
                     out_cls=self.out_cls
                 )
             elif issubclass(out_cls, pydantic.BaseModel):
-                out_conv = PydanticOut(name='out', from_=self.llm_out, out_cls=out_cls)
+                self.out_conv = PydanticOut(
+                    name='out', 
+                    from_=self.llm_out, 
+                    out_cls=out_cls
+                )
             else:
-                out_conv = ParseOut(name='out', from_=self.llm_out)
+                self.out_conv = ParseOut(name='out', from_=self.llm_out)
 
-        self._out = FromMsg('out')
+        self._out = FromResp(keys='out')
 
     def _align_params(
         self, *args, **kwargs
@@ -73,15 +80,15 @@ class IBase(BaseModule):
         Returns:
             typing.Dict: Get the parameters
         """
-        param_values = list(self._parameters.values())
-        if self._is_method:
+        param_values = list(self._sig_params.values())
+        if self.is_method:
             param_values = param_values[1:]
         values = {}
         for value, param in zip(args, param_values):
             values[param.name] = value
         
         for k, value in kwargs.items():
-            param = self._parameters[k]
+            param = self._sig_params[k]
             values[param.name] = value
             
         return values
@@ -103,22 +110,6 @@ class IBase(BaseModule):
             str: The name of the instruction
         """
         return self._name
-
-    @property
-    def f(self) -> typing.Callable:
-        """
-        Returns:
-            typing.Callable: The function wrapped
-        """
-        return self.f
-
-    @property
-    def is_method(self) -> typing.Callable:
-        """
-        Returns:
-            typing.Callable: Whether the function wrapped is a method or a regular function
-        """
-        return self._is_method
     
     @abstractmethod
     def __call__(self, *args, **kwds) -> typing.Any:
@@ -138,13 +129,9 @@ class IBase(BaseModule):
             typing.Type: 
         """
         pass
-
-    @property
-    def out_conv(self) -> ToOut:
-        return self._out_conv
     
     @property
-    def from_msg(self) -> FromMsg:
+    def from_resp(self) -> FromResp:
         return self._out
 
 
@@ -190,10 +177,9 @@ class SigF(IBase):
     the signature
     """
     train: bool = False
+    doc: str = ''
 
-    def model_post_init(
-        self
-    ):
+    def __post_init__(self):
         """
         Args:
             f (_type_): The function to wrap
@@ -202,12 +188,11 @@ class SigF(IBase):
             train (bool, optional): Whether to train the instruction. Defaults to False.
             out (OutConv, optional): The out to process the output. Defaults to None.
         """
-        super().model_post_init()
-        self._doc = self._doc or self._docstring
+        super().__post_init__()
+        self.doc = self.doc or self._docstring
         self._doc_param = Param[str](
-            name=self._name,
-            data=self._doc,
-            training=self.train
+            data=self.doc,
+            fixed=not self.train
         )
         
     def __call__(self, instance, *args, **kwargs) -> str:
@@ -232,7 +217,8 @@ class SigF(IBase):
     
         kwargs = {**kwargs, **cur_kwargs}
         kwargs.update(params)
-        doc = self._doc_param.render()
+        # TODO: Update this to use rendering
+        doc = self._doc_param.data
         if "{TEMPLATE}" in doc:
             kwargs['TEMPLATE'] = self.template()
 
@@ -257,13 +243,17 @@ class FuncDecBase(object):
 
     def __init__(
         self, 
+        engine,
         inst: IBase, 
+        to_msg: ToMsg=None,
         instance=None,
         kwargs: typing.Dict=None
     ):
         super().__init__()
+        self.engine = engine
         self.instance = instance
         self.inst = inst
+        self.to_msg = to_msg if to_msg is not None else (lambda x: x)
         self.kwargs = kwargs
 
     @abstractmethod
@@ -284,8 +274,8 @@ class FuncDecBase(object):
             object: The instance if a method is decorated or None
         """
         if self.inst.is_method:
-            if self._instance is not None:
-                return self._instance, args
+            if self.instance is not None:
+                return self.instance, args
             
             return args[0], args[1:]
         return None, args
@@ -299,9 +289,9 @@ class FuncDecBase(object):
         Returns:
             The engine
         """
-        if isinstance(self._engine, str):
-            return object.__getattribute__(instance, self._engine)
-        return self._engine
+        if isinstance(self.engine, str):
+            return object.__getattribute__(instance, self.engine)
+        return self.engine
 
     def __get__(self, instance, owner):
         """Set the instance on the SignatureMethod
@@ -349,7 +339,7 @@ class FuncDecBase(object):
         )
 
 
-class FuncDec(FuncDecBase, Process):
+class FuncDec(FuncDecBase):
     """
     A class that allows one to decorate a function with an "instruction" so that the function will be an LLM (Language Model) call.
     """
@@ -358,12 +348,12 @@ class FuncDec(FuncDecBase, Process):
         self, 
         engine: Process,
         inst: IBase, 
+        to_msg: ToMsg=None,
         instance=None,
         kwargs: typing.Dict=None
     ):
-        self.engine = engine
         super().__init__(
-            inst, instance, kwargs
+            engine, inst, to_msg, instance, kwargs
         )
 
     def forward(self, *args, **kwargs):
@@ -383,19 +373,14 @@ class FuncDec(FuncDecBase, Process):
         cue = self.inst(
             instance, *args, **kwargs
         )
-        # msg = self._to_msg(cue.text)
+        msg = self.to_msg(cue)
         engine = self.get_engine(instance)
 
         res_msg = engine(
-            cue, **self._kwargs
+            msg, **self.kwargs
         )
-        print(self.inst.out_conv)
         res_msg = self.inst.out_conv(res_msg)
-        res, filtered = self.inst.from_msg.filter(res_msg)
-
-        if filtered:
-            return None
-        return res
+        return self.inst.from_resp(res_msg)
 
     def spawn(self, instance=None) -> Self:
         """
@@ -408,15 +393,15 @@ class FuncDec(FuncDecBase, Process):
         """
         return self.__class__(
             inst=self.inst, 
-            engine=self._engine, instance=instance,
-            to_msg=self._to_msg, kwargs=self._kwargs
+            engine=self.engine, instance=instance,
+            to_msg=self.to_msg, kwargs=self.kwargs
         )
     
     def __call__(self, *args, **kwargs):
         return self.forward(*args, **kwargs)
 
 
-class AFuncDec(FuncDecBase, AsyncProcess):
+class AFuncDec(FuncDecBase):
     """
     A class that allows one to decorate an async function with an "instruction" so that the function will be an LLM (Language Model) call.
     """
@@ -425,12 +410,12 @@ class AFuncDec(FuncDecBase, AsyncProcess):
         self, 
         engine: AsyncProcess,
         inst: IBase, 
+        to_msg: ToMsg=None,
         instance=None,
         kwargs: typing.Dict=None
     ):
-        self.engine = engine
         super().__init__(
-            inst, instance, kwargs
+            engine, inst, instance, kwargs
         )
 
     async def aforward(self, *args, **kwargs):
@@ -452,13 +437,10 @@ class AFuncDec(FuncDecBase, AsyncProcess):
         )
         engine = self.get_engine(instance)
         res_msg = await engine.aforward(
-            cue.text, **self._kwargs
+            cue.text, **self.kwargs
         )
         res_msg = self.inst.out_conv(res_msg)
-        res, filtered = self.inst.from_msg.filter(res_msg)
-        if filtered:
-            return None
-        return res
+        return self.inst.from_resp(res_msg)
     
     async def __call__(self, *args, **kwargs):
         """
@@ -484,8 +466,8 @@ class AFuncDec(FuncDecBase, AsyncProcess):
         
         return self.__class__(
             inst=self.inst,
-            engine=self._engine, instance=instance,
-            to_msg=self._to_msg, kwargs=self._kwargs
+            engine=self.engine, instance=instance,
+            to_msg=self.to_msg, kwargs=self.kwargs
         )
     
 
@@ -498,12 +480,12 @@ class StreamDec(FuncDecBase, StreamProcess):
         self, 
         engine: StreamProcess,
         inst: IBase, 
+        to_msg: ToMsg=None,
         instance=None,
         kwargs: typing.Dict=None
     ):
-        self.engine = engine
         super().__init__(
-            inst, instance, kwargs
+            engine, inst, to_msg, instance, kwargs
         )
 
     def stream(self, *args, **kwargs):
@@ -519,18 +501,16 @@ class StreamDec(FuncDecBase, StreamProcess):
         cue = self.inst(
             instance, *args, **kwargs
         )
-        msg = self._to_msg(cue)
+        msg = self.to_msg(cue)
         engine = self.get_engine(
             instance
         )
 
         for resp in engine.stream(
-            [msg], **self._kwargs
-        ):
-            resp, filtered = self.inst.from_msg.filter(resp)
-            if filtered:
-                yield None
-            yield resp
+            msg, **self.kwargs
+        ):  
+            resp = self.inst.out_conv(resp, True, resp.data['response'] == END_TOK)
+            yield self.inst.from_resp(resp)
 
     def spawn(self, instance=None) -> Self:
         """
@@ -543,8 +523,8 @@ class StreamDec(FuncDecBase, StreamProcess):
         """
         return self.__class__(
             inst=self.inst, 
-            engine=self._engine, instance=instance,
-            kwargs=self._kwargs
+            engine=self.engine, instance=instance,
+            kwargs=self.kwargs
         )
     
     def __call__(self, *args, **kwargs):
@@ -568,12 +548,12 @@ class AStreamDec(FuncDecBase, AsyncStreamProcess):
         self, 
         engine: AsyncStreamProcess,
         inst: IBase, 
+        to_msg: ToMsg=None,
         instance=None,
         kwargs: typing.Dict=None
     ):
-        self.engine = engine
         super().__init__(
-            inst, instance, kwargs
+            engine, inst, to_msg, instance, kwargs
         )
 
     async def astream(self, *args, **kwargs):
@@ -589,29 +569,25 @@ class AStreamDec(FuncDecBase, AsyncStreamProcess):
         cue = self.inst(
             instance, *args, **kwargs
         )
-        msg = self._to_msg(cue)
+        msg = self.to_msg(cue)
 
         engine = self.get_engine(
             instance
         )
 
         async for resp_msg in engine.astream(
-            [msg], **self._kwargs
+            msg, **self.kwargs
         ):
-            resp = self.inst.out_conv(resp_msg)
-            resp, filtered = self.inst.from_msg.filter(resp)
-
-            if filtered:
-                yield None
-            yield resp
+            resp = self.inst.out_conv(resp, True, resp.data['response'] == END_TOK)
+            yield self.inst.from_resp(resp)
 
     def spawn(self, instance=None) -> Self:
         
         return self.__class__(
             inst=self.inst, 
-            engine=self._engine, instance=instance,
-            to_msg=self._to_msg,
-            kwargs=self._kwargs
+            engine=self.engine, instance=instance,
+            to_msg=self.to_msg,
+            kwargs=self.kwargs
         )
 
     async def __call__(self, *args, **kwargs):
@@ -647,27 +623,27 @@ def instructfunc(
             return f(*args, **kwargs)
         
         inst = InstF(
-            f, is_method, out=out
+            f, is_method, llm_out=out
         )
 
         if not to_async and not to_stream:
             return FuncDec(
-                inst, engine,
+                engine, inst,
                 kwargs=kwargs
             )
         if not to_stream:
             return AFuncDec(
-                inst, engine,
+                engine, inst,
                 kwargs=kwargs
             )
         if not to_async:
             return StreamDec(
-                inst, engine, 
+                engine, inst, 
                 kwargs=kwargs
             )
         return AStreamDec(
-            inst, engine, 
-                kwargs=kwargs
+            engine, inst, 
+            kwargs=kwargs
         )
     return _
 
@@ -722,27 +698,27 @@ def signaturefunc(
             return f(*args, **kwargs)
         
         inst = SigF(
-            f, is_method, train=train, 
-            doc=doc, out=out,
+            f=f, is_method=is_method, train=train, 
+            doc=doc, llm_out=out,
         )
 
         if not to_async and not to_stream:
             return FuncDec(
-                inst, engine,
+                engine, inst,
                 kwargs=kwargs
             )
         if not to_stream:
             return AFuncDec(
-                inst, engine,
+                engine, inst,
                 kwargs=kwargs
             )
         if not to_async:
             return StreamDec(
-                inst, engine,
+                engine, inst,
                 kwargs=kwargs
             )
         return AStreamDec(
-            inst, engine,
+            engine, inst,
             kwargs=kwargs
         )
 

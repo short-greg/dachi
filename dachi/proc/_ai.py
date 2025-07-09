@@ -8,16 +8,15 @@ import pydantic
 from ..core import (
     Msg, END_TOK, Resp
 )
-from ._msg import Msg
+from dachi.core._msg import Msg
 from ._process import AsyncProcess
-from ._msg import RespConv, RespProc
+from ._resp import RespProc, RESPONSE_FIELD
 
 # TODO: MOVE OUT OF HERE
-LLM_PROMPT = typing.Union[typing.Iterable[Msg], Msg]
 S = typing.TypeVar('S', bound=pydantic.BaseModel)
 
 # TODO: Update Assistant / LLM
-LLM_PROMPT = typing.Union[typing.Iterable[Msg], Msg]
+LLM_PROMPT: typing.TypeAlias = typing.Union[typing.Iterable[Msg], Msg]
 S = typing.TypeVar('S', bound=pydantic.BaseModel)
 # TODO: MOVE OUT OF HERE
 
@@ -29,7 +28,7 @@ def _prepare(proc, kwargs):
     elif proc is None:
         proc = []
     for r in proc:
-        if isinstance(proc, RespConv):
+        if isinstance(proc, RespProc):
             kwargs.update(r.prep())
     return proc
 
@@ -60,7 +59,8 @@ def llm_forward(
     resp = Resp(
         msg=Msg(role=_role)
     )
-    resp.data = result
+
+    resp.data[RESPONSE_FIELD] = result
     for r in _proc:
         resp = r(resp)
     return resp
@@ -89,10 +89,11 @@ async def llm_aforward(
     result = await f(
         *args, **kwargs
     )
+
     resp = Resp(
         msg=Msg(role=_role)
     )
-    resp.data = result
+    resp.data[RESPONSE_FIELD] = result
     for r in _proc:
         if isinstance(_proc, AsyncProcess):
             resp = await r.aforward(resp)
@@ -122,6 +123,7 @@ def llm_stream(
     """
     _proc = _prepare(_proc, kwargs)
     prev_message: Msg | None = None
+    resp = None
     for response in f(
         *args, **kwargs
     ):
@@ -129,8 +131,13 @@ def llm_stream(
         if prev_message is not None:
             msg.delta = prev_message.delta
 
-        resp = Resp(msg=msg)
-        resp.data = response
+        if resp is None:
+            resp = Resp(msg=msg)
+        else:
+            resp = resp.spawn(
+                msg=msg
+            )
+        resp.data[RESPONSE_FIELD] = response
 
         for r in _proc:
             msg = r(resp, True, False)
@@ -140,7 +147,7 @@ def llm_stream(
     msg = Msg(role=_role)
     if prev_message is not None:
         msg.delta = prev_message.delta
-    resp.data = END_TOK
+    resp.data[RESPONSE_FIELD] = END_TOK
 
     for r in _proc:
 
@@ -171,6 +178,7 @@ async def llm_astream(
     """
     _proc = _prepare(_proc, kwargs)
     prev_message: Msg | None = None
+    resp = None
     async for response in await f(
         *args, **kwargs
     ):
@@ -178,8 +186,14 @@ async def llm_astream(
         if prev_message is not None:
             msg.delta = prev_message.delta
 
-        resp = Resp(msg=msg)
-        resp.data = response
+        if resp is None:
+            resp = Resp(msg=msg)
+        else:
+            resp = resp.spawn(
+                msg=msg
+            )
+
+        resp.data[RESPONSE_FIELD] = response
 
         for r in _proc:
             if isinstance(_proc, AsyncProcess):
@@ -193,7 +207,7 @@ async def llm_astream(
     msg = Msg(role=_role)
     if prev_message is not None:
         msg.delta = prev_message.delta
-    resp.data = END_TOK
+    resp.data[RESPONSE_FIELD] = END_TOK
 
     for r in _proc:
 

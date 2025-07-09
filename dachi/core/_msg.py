@@ -60,7 +60,7 @@ class Msg(BaseModel):
 
 class Resp(pydantic.BaseModel):
 
-    msg: Msg
+    msg: Msg | None = None
     val: typing.Any = None
     follow_up: typing.List[Msg] | None = pydantic.Field(
         default=list
@@ -114,7 +114,6 @@ class Resp(pydantic.BaseModel):
         resp.delta.update(self._delta)
         resp.out.update(self._out)
         return resp
-
 
 
 class BaseDialog(pydantic.BaseModel, Renderable):

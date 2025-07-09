@@ -330,4 +330,3 @@ class TestLineParser:
         assert len(lines) == 2
         assert lines[0] == "t: yxy"
         assert lines[1] == "z: e"
-

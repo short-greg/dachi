@@ -714,6 +714,7 @@ class BaseModule:
             super().__setattr__(name, value)
 
     def register_parameter(self, name: str, param: Param):
+        print(self._parameters)
         self._parameters[name] = param
         super().__setattr__(name, param)
 
