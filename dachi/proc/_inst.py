@@ -623,7 +623,7 @@ def instructfunc(
             return f(*args, **kwargs)
         
         inst = InstF(
-            f, is_method, llm_out=out
+            f=f, is_method=is_method, llm_out=out
         )
 
         if not to_async and not to_stream:
@@ -665,8 +665,8 @@ def instructmethod(
     """
     return instructfunc(
         engine, is_method=True, to_async=to_async, 
-        to_stream=to_stream, 
-        llm_out=out,
+        to_stream=to_stream,
+        out=out,
         kwargs=kwargs
     )
 
