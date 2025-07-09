@@ -318,8 +318,10 @@ class ActionFunc(TaskFuncBase):
 
     f: typing.Callable
     instance: typing.Any
-    out: SharedBase | str
     to_status: typing.Callable | None = None
+
+    def __post_init__(self):
+        self.out: SharedBase = None
 
     async def __call__(self, *args, **kwargs):
         """Get the "task" for the function
@@ -339,7 +341,7 @@ class ActionFunc(TaskFuncBase):
         if id(self.f) in instance.__dict__:
             return instance.__dict__[id(self.f)]
         
-        task = Action(
+        task = ActionFunc(
             self.f, True, instance, 
             self.out, self.to_status
         )

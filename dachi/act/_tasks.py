@@ -7,9 +7,8 @@ import threading
 
 # local
 from ._core import Task, TaskStatus, State
-from ..core import Storable, BaseModule, Attr, ModuleList
+from ..core import Attr, ModuleList
 from contextlib import contextmanager
-
 
 
 class Root(Task):
@@ -53,7 +52,7 @@ class FTask(Task):
         super().__post_init__()
         self._cur = Attr(data=None)
 
-    def tick(self) -> TaskStatus:
+    async def tick(self) -> TaskStatus:
         """Execute the task
 
         Returns:
@@ -72,10 +71,10 @@ class Serial(Task):
     """A task consisting of other tasks executed one 
     after the other
     """
-    tasks: ModuleList[Task] | None = None
+    tasks: ModuleList = None
 
     def __post_init__(
-        self, 
+        self
     ):
         """
 
@@ -83,30 +82,38 @@ class Serial(Task):
             tasks (typing.List[Task], optional): The tasks. Defaults to None.
             context (Context, optional): . Defaults to None.
         """
-        super().__init__()
-        self._idx = Attr[int](data=0)
+        super().__post_init__()
+        if self.tasks is None:
+            self.tasks = ModuleList(data=[])
+        elif isinstance(self.tasks, typing.List):
+            self.tasks = ModuleList(data=self.tasks)
+        if self.tasks is not None and not isinstance(self.tasks, ModuleList):
+            raise ValueError(
+                f"Tasks must be of type ModuleList not {type(self.tasks)}"
+            )
+        self._idx = Attr(data=0)
 
 
 class Sequence(Serial):
     """Create a sequence of tasks to execute
     """
 
-    def tick(self) -> TaskStatus:
+    async def tick(self) -> TaskStatus:
         """Update the task
 
         Returns:
             TaskStatus: The status
         """
-        
         if self.status.is_done:
             return self.status
         
-        status = self._tasks[self._idx]()
+        status = await self.tasks[self._idx.data]()
+        print('Status: ', status)
         if status == TaskStatus.FAILURE:
             self._status.set(TaskStatus.FAILURE)
         elif status == TaskStatus.SUCCESS:
-            self._idx += 1
-            if self._idx >= len(self._tasks):
+            self._idx.data += 1
+            if self._idx.data >= len(self.tasks):
                 self._status.set(TaskStatus.SUCCESS)
             else:
                 self._status.set(TaskStatus.RUNNING)
@@ -120,8 +127,7 @@ class Sequence(Serial):
             if isinstance(task, Task):
                 task.reset()
 
-        self._idx = 0
-
+        self._idx.data = 0
 
 # TODO: Decide how to handle this
 
@@ -133,7 +139,7 @@ class Threaded(Task):
         super().__post_init__()
         self._t = None
 
-    def tick(self):
+    async def tick(self):
         if self._t is None:
             self._t = threading.Thread(
                 target=self.task,
@@ -168,12 +174,12 @@ class Selector(Serial):
         if self.status.is_done:
             return self.status
         
-        status = await self._tasks[self._idx]()
+        status = await self.tasks[self._idx.data]()
         if status == TaskStatus.SUCCESS:
             self._status.set(TaskStatus.SUCCESS)
         elif status == TaskStatus.FAILURE:
-            self._idx += 1
-            if self._idx >= len(self._tasks):
+            self._idx.data += 1
+            if self._idx.data >= len(self.tasks):
                 self._status.set(TaskStatus.FAILURE)
             else:
                 self._status.set(TaskStatus.RUNNING)
@@ -195,7 +201,7 @@ class Parallel(Task):
     """A composite task for running multiple tasks in parallel
     """
 
-    tasks: ModuleList[Task]
+    tasks: ModuleList
     fails_on: int=1
     succeeds_on: int=-1
     success_priority: bool = True
@@ -370,7 +376,8 @@ class Action(Task):
         """
         if self.status.is_done:
             return self.status
-        self._status.set(await self.act())
+        status = await self.act()
+        self._status.set(status)
         return self.status
 
 
@@ -450,7 +457,7 @@ class Decorator(Task):
         if self.status.is_done:
             return self.status
 
-        self._status.set(self.decorate(
+        self._status.set(await self.decorate(
             await self.task()
         ))
         return self.status
@@ -697,7 +704,7 @@ class PreemptCond(Task):
     of other tasks
     """
 
-    conds: ModuleList[Condition]
+    conds: ModuleList
     task: Task
 
     async def tick(self) -> TaskStatus:

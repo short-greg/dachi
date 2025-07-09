@@ -172,7 +172,7 @@ class Task(BaseModule):
         """Initialize the task
         """
         super().__post_init__()
-        self._status = Attr[TaskStatus](val=self.READY)
+        self._status = Attr(data=self.READY)
 
     @abstractmethod    
     async def tick(self) -> TaskStatus:
@@ -187,7 +187,7 @@ class Task(BaseModule):
         Returns:
             TaskStatus: The status of the task after execution
         """
-        return self.tick()
+        return await self.tick()
     
     @property
     def status(self) -> TaskStatus:

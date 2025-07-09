@@ -306,10 +306,10 @@ class BaseModule:
     __is_initvar__: t.ClassVar[dict[str, bool]]
     training: bool = True  # True if any Module is in training mode; False when not
 
-
-    # ---------------------------------------------------
-    # class construction hook
-    # ---------------------------------------------------
+    
+    def __post_init__(self):
+        pass
+    
     @classmethod
     def _spec_model_name(cls: type) -> str:
         """
