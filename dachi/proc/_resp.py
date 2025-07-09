@@ -199,9 +199,8 @@ class FromResp(Process):
         self, 
         resp: Resp
     ) -> typing.List[typing.Any] | typing.Dict[str, typing.Any]:
-        print('Retrieving ', self.keys, resp.out)
         if not self.as_dict:
-            if not isinstance(self.keys, typing.Tuple):
+            if isinstance(self.keys, str):
                 return resp.out[self.keys]
             return tuple(
                 resp.out[key] 
@@ -210,6 +209,8 @@ class FromResp(Process):
     
         if isinstance(self.keys, str):
             keys = [self.keys]
+        else:
+            keys = self.keys
         return {
             key: resp.out[key]
             for key in keys

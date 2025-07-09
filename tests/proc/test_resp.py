@@ -139,13 +139,14 @@ class TestRespConv:
 
 # FromResp utility
 class TestFromResp:
+
     def test_fromresp_tuple(self):
         resp = Resp(msg=Msg(role="assistant"))
         resp.out.update(
             {"a": "A", "b": "B"}
         )
 
-        fr = _resp.FromResp(keys=["a", "b"], as_dict=True)
+        fr = _resp.FromResp(keys=["a", "b"], as_dict=False)
         assert fr(resp) == ("A", "B")
 
     def test_fromresp_dict(self):
@@ -154,5 +155,5 @@ class TestFromResp:
             {"a": "A", "b": "B"}
         )
 
-        fr = _resp.FromResp(keys=["a", "b"], as_dict=False)
+        fr = _resp.FromResp(keys=["a", "b"], as_dict=True)
         assert fr(resp) == {"a": "A", "b": "B"}

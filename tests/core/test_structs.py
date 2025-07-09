@@ -86,7 +86,7 @@ class TestModuleList:
         spec = lst.spec()
 
         assert isinstance(spec, BaseSpec)
-        assert spec.items[0].w == 3.3
+        assert spec.data[0].w == 3.3
 
     def test_itemlist_state_dict_flags(self):
         l1 = make_leaf(1.0, 10)
@@ -395,7 +395,7 @@ class TestModuleDict:
         class DummySpec(BaseSpec):
             kind: str = "invalid.kind"
         with pytest.raises(TypeError):
-            ModuleDict.from_spec_hook("items", {"x": "not_a_spec"}, ctx={})
+            ModuleDict.from_spec_hook("data", {"x": "not_a_spec"}, ctx={})
 
     def test_moduledict_spec_hook_invalid_name(self):
         d = ModuleDict(data={})
@@ -456,7 +456,7 @@ class TestModuleDict:
         d = ModuleDict(data={"a": make_leaf(3.3)})
         spec = d.spec()
         assert isinstance(spec, BaseSpec)
-        assert spec.items["a"].w == 3.3
+        assert spec.data["a"].w == 3.3
 
     def test_moduledict_from_spec_roundtrip(self):
         d1 = ModuleDict(data={"a": make_leaf(3.3), "b": make_leaf(1.1)})
