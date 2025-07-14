@@ -1,5 +1,5 @@
 from ._data import (
-    Description, Ref   
+    Description, Ref, Record
 )
 from ._critique import (
     Evaluation,

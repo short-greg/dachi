@@ -1,5 +1,5 @@
 from dachi import utils
-from dachi.inst import model_to_text, struct_template
+from dachi.core import model_to_text, struct_template
 from pydantic import BaseModel
 import pytest
 
@@ -155,3 +155,35 @@ class TestGetMember(object):
             x, 'z.y'
         ) == 2
 
+
+class TestGetOrSpawn(object):
+
+    def test_get_or_spawn_doesnt_spawn_new_state(self):
+
+        state = {'child': {}}
+        target = state['child']
+        child = utils.get_or_spawn(state, 'child')
+        assert child is target
+
+    def test_get_or_spawn_spawns_new_state(self):
+
+        state = {'child': {}}
+        target = state['child']
+        child = utils.get_or_spawn(state, 'other')
+        assert not child is target
+
+
+class TestGetOrSet(object):
+
+    def test_get_or_set_doesnt_set_new_value(self):
+
+        state = {'val': 2}
+        target = state['val']
+        child = utils.get_or_set(state, 'val', 3)
+        assert child is target
+
+    def test_get_or_spawn_sets_a_new_value(self):
+
+        state = {}
+        child = utils.get_or_set(state, 'val', 3)
+        assert child == 3

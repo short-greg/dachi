@@ -310,7 +310,6 @@ class BaseModule:
     __is_initvar__: t.ClassVar[dict[str, bool]]
     training: bool = True  # True if any Module is in training mode; False when not
 
-    
     def __post_init__(self):
         pass
     
@@ -451,6 +450,18 @@ class BaseModule:
                 self._children.append(v)
 
         if hasattr(self, "__post_init__"):
+            # Check if __post_init__ accepts all InitVars before calling
+
+            # TODO: Consider whether
+            # to move this to __init_subclass__
+            sig = inspect.signature(self.__post_init__)
+            accepted_params = set(sig.parameters.keys())
+            unexpected = set(self._init_vars.keys()) - accepted_params
+            if unexpected:
+                raise RuntimeError(
+                    f"__post_init__ does not accept InitVars passed in: {unexpected}. "
+                    f"Accepted parameters: {accepted_params}. InitVars: {self._init_vars}"
+                )
             self.__post_init__(**self._init_vars)
         elif len(self._init_vars) > 0:
             raise RuntimeError(

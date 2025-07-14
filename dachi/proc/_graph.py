@@ -1,23 +1,18 @@
 
 # 1st party
-from abc import abstractmethod, ABC
 import typing
-import time
 from typing import Self
 import asyncio
-from dataclasses import dataclass, field
-
-# 3rd party
-import pydantic
+from dataclasses import dataclass
 
 # local
 from ..utils import (
-    is_undefined, UNDEFINED, WAITING
+    is_undefined, UNDEFINED
 )
 from ._process import Process, AsyncProcess
 from ..core import SerialDict
-from ._process import Partial, StreamProcess, AsyncStreamProcess
-
+from dachi.core import ModuleDict, Attr
+from dataclasses import dataclass
 
 # TODO: Check if the value coming from incoming is undefined or waiting... 
 
@@ -114,7 +109,7 @@ class Var(BaseNode):
         if (
             self in by 
             # and not isinstance(by[self], Streamer) 
-            and not isinstance(by[self], Partial)
+            # and not isinstance(by[self], Partial)
         ):
             res = by[self]
         
@@ -133,11 +128,39 @@ class Var(BaseNode):
         return
 
 
-class ProcNode(BaseNode):
-    """    A node that wraps a process and its arguments
+class T(BaseNode):
+    """...
     """
-
     args: SerialDict
+    src: Process | AsyncProcess
+    is_async: bool = False
+
+    async def aforward(
+        self, 
+        by: dict['BaseNode', typing.Any] | None = None
+    ) -> typing.Any:
+        """Evaluate this node (memoised)."""
+        by = by if by is not None else {}
+
+        if self in by:
+            return by[self]
+
+        if not self.is_undefined():
+            return self.val                       
+
+        kw_serial = await self.get_incoming(by)   # SerialDict
+        kwargs = dict(kw_serial.items())   
+
+        if self.is_async:
+            val = by[self] = await self.src(**kwargs)
+        else:
+            val = by[self] = self.src(**kwargs)
+            print('Setting by[self]', by[self], self)
+
+        if val is UNDEFINED:
+            raise RuntimeError("Source returned UNDEFINED")
+
+        return val
 
     def incoming(self) -> typing.Iterator[typing.Tuple[str, 'BaseNode']]:
         """
@@ -149,14 +172,14 @@ class ProcNode(BaseNode):
             if isinstance(arg, BaseNode):
                 yield k, arg
 
-    def has_partial(self) -> bool:
+    # def has_partial(self) -> bool:
 
-        for k, a in self.args.items():
-            if isinstance(a, T):
-                a = a.val
-            if (isinstance(a, Partial) and not a.complete):
-                return True
-        return False
+    #     for k, a in self.args.items():
+    #         if isinstance(a, T):
+    #             a = a.val
+    #         if (isinstance(a, Partial) and not a.complete):
+    #             return True
+    #     return False
 
     def eval_args(self) -> SerialDict:
         """Evaluate the current arguments
@@ -171,8 +194,8 @@ class ProcNode(BaseNode):
         for k, a in self.args.items():
             if isinstance(a, BaseNode):
                 a = a.val
-            elif isinstance(a, Partial):
-                a = a.dx
+            # elif isinstance(a, Partial):
+            #     a = a.dx
             kwargs[k] = a
         return SerialDict(data=kwargs)
 
@@ -209,8 +232,8 @@ class ProcNode(BaseNode):
         for k, a in self.args.items():
             if isinstance(a, T):
                 a = a.val
-            if isinstance(a, Partial) and not a.complete:
-                return True
+            # if isinstance(a, Partial) and not a.complete:
+            #     return True
         return False
 
     def incoming(self) -> typing.Iterator['T']:
@@ -222,40 +245,6 @@ class ProcNode(BaseNode):
         for k, arg in self.args.items():
             if isinstance(arg, BaseNode):
                 yield arg
-
-
-class T(ProcNode):
-    """...
-    """
-    src: Process | AsyncProcess
-    is_async: bool = False
-
-    async def aforward(
-        self, 
-        by: dict['BaseNode', typing.Any] | None = None
-    ) -> typing.Any:
-        """Evaluate this node (memoised)."""
-        by = by if by is not None else {}
-
-        if self in by:
-            return by[self]
-
-        if not self.is_undefined():
-            return self.val                       
-
-        kw_serial = await self.get_incoming(by)   # SerialDict
-        kwargs = dict(kw_serial.items())   
-
-        if self.is_async:
-            val = by[self] = await self.src(**kwargs)
-        else:
-            val = by[self] = self.src(**kwargs)
-            print('Setting by[self]', by[self], self)
-
-        if val is UNDEFINED:
-            raise RuntimeError("Source returned UNDEFINED")
-
-        return val
 
     # async def aforward(
     #     self, by: typing.Dict['BaseNode', typing.Any]=None
@@ -292,83 +281,6 @@ class T(ProcNode):
     #     return val
 
 
-@dataclass
-class Streamer:
-    """A Streamer is a wrapper around an iterator that allows for partial
-    results to be collected and returned as a single value.
-    """
-
-    stream: typing.Iterator | typing.AsyncIterator
-    partial: Partial = field(
-        default_factory=Partial
-    )
-
-    def __hash__(self):
-        return hash(self.stream)
-
-
-class Stream(ProcNode):
-    """...
-    """
-    src: StreamProcess | AsyncStreamProcess
-    args: SerialDict
-    is_async: bool = False
-
-    def __post_init__(self):
-
-        self._is_async = isinstance(self.src, AsyncStreamProcess)
-
-    async def aforward(
-        self, by: typing.Dict['BaseNode', typing.Any]=None
-    ) -> typing.Any:
-        """Probe the graph using the values specified in by
-
-        Args:
-            by (typing.Dict[&#39;T&#39;, typing.Any]): The inputs to the network
-
-        Raises:
-            RuntimeError: If the value is undefined
-
-        Returns:
-            typing.Any: The value returned by the probe
-        """
-        by = by if by is not None else {}
-        if not is_undefined(self.val):
-            return self.val
-        
-        streamer = by.get(self)
-
-        if streamer is None:
-
-            kwargs = await self.get_incoming(by)
-
-            if self._is_async:
-                stream = aiter(self.src.astream(**kwargs))
-            else:
-                stream = iter(self.src.stream(**kwargs))
-
-            streamer = Streamer(
-                stream=stream
-            )
-            by[streamer] = streamer
-
-        try:
-            if self._is_async:
-                streamer.partial.dx = await anext(streamer.stream)
-            else:
-                streamer.partial.dx = next(streamer.stream)
-            streamer.partial.full.append(streamer.partial.dx)
-            val = by[self] = streamer.partial.clone()
-        except StopIteration:
-            streamer.partial.complete = True
-            val = by[self] = streamer.partial.clone()
-        except StopAsyncIteration:
-            streamer.partial.complete = True
-            val = by[self] = streamer.partial.clone()
-            
-        return val
-
-
 def t(
     p: Process, 
     _name: str=None, _annotation: str=None,
@@ -391,34 +303,6 @@ def async_t(
     args = SerialDict(data=kwargs)
     return T(
         src=p, args=args, name=_name, annotation=_annotation,
-        is_async=True
-    )
-    
-
-def stream(
-    p: StreamProcess | AsyncStreamProcess, 
-    _name: str=None, _annotation: str=None,
-    **kwargs
-) -> Stream:
-
-    args = SerialDict(data=kwargs)
-    return Stream(
-        src=p, args=args, name=_name,
-        annotation=_annotation,
-        is_async=False
-    )
-
-
-def async_stream(
-    p: StreamProcess | AsyncStreamProcess, 
-    _name: str=None, _annotation: str=None,
-    **kwargs
-) -> Stream:
-
-    args = SerialDict(data=kwargs)
-    return Stream(
-        src=p, args=args, name=_name,
-        annotation=_annotation,
         is_async=True
     )
 
@@ -457,45 +341,6 @@ class Idx(Process):
         return val[self.idx]
 
 
-class WaitProcess(Process):
-    """Indicates to wait until completed
-    """
-    def __init__(
-        self, incoming: T, 
-        agg: typing.Callable[[typing.Any], typing.Any]=None
-    ):
-        """Create a Src to wait for the incoming transmission
-
-        Args:
-            incoming (T): The incoming transmission
-        """
-        super().__init__()
-        self._incoming = incoming
-        self._agg = agg or (lambda x: x)
-
-    def incoming(self) -> typing.Iterator['T']:
-        """
-        Yields:
-            T: The incoming Transmission
-        """
-        yield self._incoming
-
-    def forward(self, val=None) -> typing.Any:
-        """
-        Args:
-            by (typing.Dict[T, typing.Any]): The input to the network
-
-        Returns:
-            typing.Any: The output of the Src
-        """
-        if isinstance(val, Partial) and not val.complete:
-            return WAITING
-        
-        return self._agg(val.full)
-
-
-from dachi.core import ModuleDict, Attr
-from dataclasses import dataclass
 
 @dataclass
 class RefT:
@@ -507,7 +352,7 @@ class DAG(AsyncProcess):
     def __post_init__(self):
 
         # can be a "var"
-        self._nodes = ModuleDict[StreamProcess | AsyncStreamProcess | Process | AsyncProcess](data={})
+        self._nodes = ModuleDict[Process | AsyncProcess](data={})
         self._args = Attr[typing.Dict[str, t.Dict[str, RefT | t.Dict[str, t.Any]]]](data={})
 
     async def _sub(self, name: str, by: typing.Dict):
@@ -517,21 +362,21 @@ class DAG(AsyncProcess):
 
         if name in by:
             cur = by[name]
-            if isinstance(cur, Streamer):
-                try:
-                    dx = next(cur.stream)
-                    part = cur.partial.clone()
-                    part.full.append(dx)
-                    part.dx = dx
-                    part.complete = False
-                except StopIteration:
-                    part = cur.partial.clone()
-                    part.dx = None
-                    part.complete = True
-                except StopAsyncIteration:
-                    part = cur.partial.clone()
-                    part.dx = None
-                    part.complete = True
+            # if isinstance(cur, Streamer):
+            #     try:
+            #         dx = next(cur.stream)
+            #         part = cur.partial.clone()
+            #         part.full.append(dx)
+            #         part.dx = dx
+            #         part.complete = False
+            #     except StopIteration:
+            #         part = cur.partial.clone()
+            #         part.dx = None
+            #         part.complete = True
+            #     except StopAsyncIteration:
+            #         part = cur.partial.clone()
+            #         part.dx = None
+            #         part.complete = True
             return cur
 
         kwargs = {}
@@ -554,14 +399,156 @@ class DAG(AsyncProcess):
             res = node(**kwargs)
         elif isinstance(node, AsyncProcess):
             res = await node.aforward(**kwargs)
+        by[name] = res
         return res
 
-    async def aforward(self, by: typing.Dict):
+    async def aforward(self, by: typing.Dict=None):
         
+        by = by if by is not None else {}
         # 1) get the outputs
         return tuple(
             await self._sub(out, by) for out in self._outputs
         )
 
 
+# def stream(
+#     p: StreamProcess | AsyncStreamProcess, 
+#     _name: str=None, _annotation: str=None,
+#     **kwargs
+# ) -> Stream:
 
+#     args = SerialDict(data=kwargs)
+#     return Stream(
+#         src=p, args=args, name=_name,
+#         annotation=_annotation,
+#         is_async=False
+#     )
+
+
+# def async_stream(
+#     p: StreamProcess | AsyncStreamProcess, 
+#     _name: str=None, _annotation: str=None,
+#     **kwargs
+# ) -> Stream:
+
+#     args = SerialDict(data=kwargs)
+#     return Stream(
+#         src=p, args=args, name=_name,
+#         annotation=_annotation,
+#         is_async=True
+#     )
+
+
+# @dataclass
+# class Streamer:
+#     """A Streamer is a wrapper around an iterator that allows for partial
+#     results to be collected and returned as a single value.
+#     """
+
+#     stream: typing.Iterator | typing.AsyncIterator
+#     partial: Partial = field(
+#         default_factory=Partial
+#     )
+
+#     def __hash__(self):
+#         return hash(self.stream)
+
+
+
+# class Stream(ProcNode):
+#     """...
+#     """
+#     src: StreamProcess | AsyncStreamProcess
+#     args: SerialDict
+#     is_async: bool = False
+
+#     def __post_init__(self):
+
+#         self._is_async = isinstance(self.src, AsyncStreamProcess)
+
+#     async def aforward(
+#         self, by: typing.Dict['BaseNode', typing.Any]=None
+#     ) -> typing.Any:
+#         """Probe the graph using the values specified in by
+
+#         Args:
+#             by (typing.Dict[&#39;T&#39;, typing.Any]): The inputs to the network
+
+#         Raises:
+#             RuntimeError: If the value is undefined
+
+#         Returns:
+#             typing.Any: The value returned by the probe
+#         """
+#         by = by if by is not None else {}
+#         if not is_undefined(self.val):
+#             return self.val
+        
+#         streamer = by.get(self)
+
+#         if streamer is None:
+
+#             kwargs = await self.get_incoming(by)
+
+#             if self._is_async:
+#                 stream = aiter(self.src.astream(**kwargs))
+#             else:
+#                 stream = iter(self.src.stream(**kwargs))
+
+#             streamer = Streamer(
+#                 stream=stream
+#             )
+#             by[streamer] = streamer
+
+#         try:
+#             if self._is_async:
+#                 streamer.partial.dx = await anext(streamer.stream)
+#             else:
+#                 streamer.partial.dx = next(streamer.stream)
+#             streamer.partial.full.append(streamer.partial.dx)
+#             val = by[self] = streamer.partial.clone()
+#         except StopIteration:
+#             streamer.partial.complete = True
+#             val = by[self] = streamer.partial.clone()
+#         except StopAsyncIteration:
+#             streamer.partial.complete = True
+#             val = by[self] = streamer.partial.clone()
+            
+#         return val
+
+
+# class WaitProcess(Process):
+#     """Indicates to wait until completed
+#     """
+#     def __init__(
+#         self, incoming: T, 
+#         agg: typing.Callable[[typing.Any], typing.Any]=None
+#     ):
+#         """Create a Src to wait for the incoming transmission
+
+#         Args:
+#             incoming (T): The incoming transmission
+#         """
+#         super().__init__()
+#         self._incoming = incoming
+#         self._agg = agg or (lambda x: x)
+
+#     def incoming(self) -> typing.Iterator['T']:
+#         """
+#         Yields:
+#             T: The incoming Transmission
+#         """
+#         yield self._incoming
+
+#     def forward(self, val=None) -> typing.Any:
+#         """
+#         Args:
+#             by (typing.Dict[T, typing.Any]): The input to the network
+
+#         Returns:
+#             typing.Any: The output of the Src
+#         """
+#         if isinstance(val, Partial) and not val.complete:
+#             return WAITING
+        
+#         return self._agg(val.full)

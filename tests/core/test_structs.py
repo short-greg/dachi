@@ -119,7 +119,7 @@ class TestModuleList:
         with pytest.raises(TypeError):
             lst.load_state_dict("not a list", strict=False)
 
-    # # ------------------------ parameters dedup --------------------------
+#     # # ------------------------ parameters dedup --------------------------
     def test_itemlist_parameters_dedup(self):
         leaf1 = Leaf3(w=7, s=0)
         leaf2 = Leaf3(w=7, s=1)
@@ -128,14 +128,14 @@ class TestModuleList:
         params = list(lst.parameters())
         assert params[0] == leaf2.w   # deduplicated by id
 
-    # # ------------------------ named_parameters / named_states ----------
+#     # # ------------------------ named_parameters / named_states ----------
     def test_itemlist_named_parameters_states(self):
         lst = ModuleList(data=[make_leaf()])
         p_names = dict(lst.named_parameters()).keys()
         s_names = dict(lst.named_states()).keys()
         assert p_names == {"0.w"} and s_names == {"0.s"}
 
-    # # ---------- Positive: mixed‑type init should fail on 2nd element ----------
+#     # # ---------- Positive: mixed‑type init should fail on 2nd element ----------
 
     def test_modulelist_mixed_type_init_error(self):
         with pytest.raises(TypeError):
@@ -148,7 +148,7 @@ class TestModuleList:
         assert list(iter(lst)) == [m1, m2]
 
 
-    # # ---------- Edge: negative index access behaves like list ----------
+#     # # ---------- Edge: negative index access behaves like list ----------
 
     def test_modulelist_negative_index_getitem(self):
         m1, m2 = Leaf3(
@@ -164,7 +164,7 @@ class TestModuleList:
         assert issubclass(schema, BaseSpec)
 
 
-    # # ---------- Positive: spec → from_spec round‑trip ----------
+#     # # ---------- Positive: spec → from_spec round‑trip ----------
 
     def test_modulelist_from_spec_roundtrip(self):
         m1, m2 = Leaf3(w=3, s=3), Leaf3(w=4, s=4)
@@ -174,7 +174,7 @@ class TestModuleList:
         assert len(rebuilt) == 2 and rebuilt[0].w.data == 3
 
 
-    # # ---------- Positive: __setitem__ removes old attribute ----------
+#     # # ---------- Positive: __setitem__ removes old attribute ----------
 
     def test_modulelist_setitem_removes_old_attr(self):
         lst = ModuleList(
@@ -186,7 +186,7 @@ class TestModuleList:
         assert getattr(lst, "0").w.data == 9
 
 
-    # # ---------- Edge: append after replacement gets unique name ----------
+#     # # ---------- Edge: append after replacement gets unique name ----------
 
     def test_modulelist_append_generates_monotonic_names(self):
         lst = ModuleList(data=[])
@@ -197,17 +197,17 @@ class TestModuleList:
         assert hasattr(lst, "2")
 
 
-    # # ---------- Positive: train / eval cascade across children ----------
+#     # # ---------- Positive: train / eval cascade across children ----------
 
-    # def test_modulelist_train_eval_cascade():
-    #     lst = ModuleList([
-    #         Leaf(w=1, s=0),
-    #         Leaf(w=2, s=0),
-    #     ])
-    #     lst.eval()
-    #     assert all(not p.training for p in lst.parameters(recurse=True, train=None))
-    #     lst.train()
-    #     assert all(p.training for p in lst.parameters(recurse=True, train=None))
+#     # def test_modulelist_train_eval_cascade():
+#     #     lst = ModuleList([
+#     #         Leaf(w=1, s=0),
+#     #         Leaf(w=2, s=0),
+#     #     ])
+#     #     lst.eval()
+#     #     assert all(not p.training for p in lst.parameters(recurse=True, train=None))
+#     #     lst.train()
+#     #     assert all(p.training for p in lst.parameters(recurse=True, train=None))
 
 
     def test_modulelist_duplicate_child_objects(self):
@@ -222,7 +222,7 @@ class TestModuleList:
 
 
 
-    # --- Tests for ModuleList edge cases ---
+#     # --- Tests for ModuleList edge cases ---
 
     def test_post_init_empty_list(self):
         # empty items => no error, len=0
@@ -355,16 +355,16 @@ class TestModuleList:
 
 
 
-# @registry()
-# class Leaf(BaseModule):
-#     w: InitVar[float]
-#     s: InitVar[int]
-#     def __post_init__(self, w: float, s: int):
-#         self.w = Param(w)
-#         self.s = State(s)
+# # @registry()
+# # class Leaf(BaseModule):
+# #     w: InitVar[float]
+# #     s: InitVar[int]
+# #     def __post_init__(self, w: float, s: int):
+# #         self.w = Param(w)
+# #         self.s = State(s)
 
-# def make_leaf(val=1.0, step=0):
-#     return Leaf(w=val, s=step)
+# # def make_leaf(val=1.0, step=0):
+# #     return Leaf(w=val, s=step)
 
 class TestModuleDict:
 

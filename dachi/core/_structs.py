@@ -19,7 +19,7 @@ V = t.TypeVar("V", bound=BaseModule)
 T = TypeVar("T", bound=BaseModule)
 
 
-class ModuleList(BaseModule): # t.Generic[V]
+class ModuleList(BaseModule, t.Generic[V]): # t.Generic[V]
     """
     A list-like container whose elements are themselves `BaseModule`
     instances.  Works seamlessly with the new serialization / dedup rules.
@@ -138,11 +138,12 @@ class ModuleDict(BaseModule, t.Generic[V]):
     A dict-like container whose values are themselves `BaseModule`
     instances. Keys must be strings.
     """
-
     __spec_hooks__: ClassVar[t.List[str]] = ["data"]
     data: InitVar[dict[str, V]]
 
     def __post_init__(self, data: Optional[dict[str, V]] = None):
+        
+        super().__post_init__()
         self._module_dict = {}
 
         if data is not None:
@@ -164,7 +165,7 @@ class ModuleDict(BaseModule, t.Generic[V]):
         if not isinstance(val, BaseModule):
             raise TypeError("Values must be BaseModule instances")
         self._module_dict[key] = val
-        if isinstance(key, BaseModule):
+        if isinstance(val, BaseModule):
             self.register_module(key, val)
 
     def __iter__(self):
@@ -178,7 +179,6 @@ class ModuleDict(BaseModule, t.Generic[V]):
         if isinstance(self._module_dict[name], BaseModule):
             del self._modules[name]
         del self._module_dict[name]
-        
 
     def keys(self):
         return self._module_dict.keys()

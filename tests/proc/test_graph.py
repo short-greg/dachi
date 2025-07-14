@@ -1,14 +1,8 @@
 
 import asyncio
 import pytest
-from typing import AsyncIterator, Iterator
-from typing import Iterator, AsyncIterator
-
 from dachi.proc import _graph as G
 from dachi.core import SerialDict
-from dachi.utils import WAITING, UNDEFINED
-from dachi.proc import _process as P
-from dachi.proc._graph import Stream 
 from dachi.utils import UNDEFINED 
 
 
@@ -35,28 +29,6 @@ class _DummyNode(G.BaseNode):
     #### Graph hook
     def incoming(self):  # pragma: no cover – not used in these tests
         return iter(())
-
-
-# @pytest.fixture(autouse=True)
-# def _patch_graph_stubs(monkeypatch):
-#     """Monkey‑patch :class:`~dachi.proc._graph.T` and :class:`~dachi.proc._graph.Idx`
-#     with trivial stand‑ins so that tests for ``__getitem__`` / ``detach`` can
-#     focus on *BaseNode* behaviour in isolation without having to satisfy the
-#     full constructor signatures of the real classes.
-#     """
-
-#     class _StubIdx:
-#         def __init__(self, node, idx):
-#             self.node = node
-#             self.idx = idx
-
-#     class _StubT:
-#         def __init__(self, val, src):
-#             self.val = val
-#             self.src = src
-
-#     monkeypatch.setattr(G, "Idx", _StubIdx, raising=True)
-#     monkeypatch.setattr(G, "T", _StubT, raising=True)
 
 
 class TestBaseNode:
@@ -92,11 +64,6 @@ class TestBaseNode:
         node.label(annotation="baz")  # only annotation changes
         assert node.name == "foo"
         assert node.annotation == "baz"
-
-    def test_is_undefined_true_for_WAITING(self):
-        """``WAITING`` sentinel also counts as undefined."""
-        node = _DummyNode(val=G.WAITING)
-        assert node.is_undefined() is True
 
     def test_is_undefined_false_for_regular_value(self):
         """Concrete values should flip *is_undefined* to *False*."""
@@ -478,152 +445,32 @@ class TestIdx:
         assert idx.forward(data) == idx.index(data)
 
 
-
-class _RangeStream(P.StreamProcess):
-    """Yield the numbers 0‥(stop-1)."""
-
-    def __init__(self, stop: int):
-        self._stop = stop
-
-    def stream(self) -> Iterator[int]:                    # noqa: D401
-        for i in range(self._stop):
-            yield i
-
-
-class _AsyncRangeStream(P.AsyncStreamProcess):
-    """Async variant of `_RangeStream`."""
-
-    def __init__(self, stop: int):
-        self._stop = stop
-
-    async def astream(self) -> AsyncIterator[int]:        # noqa: D401
-        for i in range(self._stop):
-            yield i
-            await asyncio.sleep(0)                        # co-operative step
-
-
-class _BadStream(P.StreamProcess):
-    """Returns a scalar instead of an iterator – should break."""
-
-    def stream(self) -> int:                              # type: ignore[override]
-        return 123                                        # not iterable
-
-
-@pytest.mark.asyncio
-class TestStream:
-    """
-    Sync `Stream.aforward` yields `Partial` objects with correct flags and
-    memoises results.
-    """
-
-    async def test_first_item_partial_fields(self):
-        stream = Stream(
-            src=_RangeStream(2),
-            args=SerialDict(data={}),
-            is_async=False
-        )
-        part = await stream.aforward()
-        assert part.dx == 0
-        assert part.complete is False
-        assert part.prev is None
-        assert part.full == [0]
-
-    async def test_second_call_returns_cached_partial(self):
-        stream = Stream(
-            src=_RangeStream(2),
-            args=SerialDict(data={}),
-            is_async=False
-        )
-        first = await stream.aforward()
-        second = await stream.aforward()
-        assert first == second                                  # cached
-        assert second.full == [0]                               # unchanged
-
-    async def test_zero_length_stream_is_immediately_complete(self):
-        stream = Stream(
-            src=_RangeStream(0),
-            args=SerialDict(data={}),
-            is_async=False
-        )
-        part = await stream.aforward()
-        assert part.complete is True
-        assert part.dx is None
-        assert part.prev is None
-        assert part.full == []
-
-    async def test_bad_stream_raises_type_error(self):
-        stream = Stream(
-            src=_BadStream(),
-            args=SerialDict(data={}),
-            is_async=False
-        )
-        with pytest.raises(TypeError):
-            await stream.aforward()
-
-
-@pytest.mark.asyncio
-class TestAsyncStream:
-    """
-    Async variant behaves identically when driven by an `AsyncStreamProcess`.
-    """
-
-    async def test_async_first_item(self):
-        stream = Stream(
-            src=_AsyncRangeStream(3),
-            args=SerialDict(data={}),
-            is_async=True
-        )
-        part = await stream.aforward()
-        assert part.dx == 0
-        assert part.complete is False
-
-    async def test_async_immediate_complete(self):
-        stream = Stream(
-            src=_AsyncRangeStream(0),
-            args=SerialDict(data={}),
-            is_async=True
-        )
-        part = await stream.aforward()
-        assert part.complete is True
-        assert part.full == []
-
-    async def test_async_cached_partial(self):
-        stream = Stream(
-            src=_AsyncRangeStream(1),
-            args=SerialDict(data={}),
-            is_async=True
-        )
-        first = await stream.aforward()
-        second = await stream.aforward()
-        assert first == second
-
-
 @pytest.mark.asyncio
 class TestProcNodeHelpers:
     """Covers has_partial(), eval_args() and get_incoming()."""
 
-    async def test_has_partial_flags_incomplete(self):
-        part = G.Partial(dx=1, complete=False)
-        node = G.T(src=lambda **_: 0,
-                   args=SerialDict(data={"p": part}),
-                   is_async=False)
-        assert node.has_partial() is True
+    # async def test_has_partial_flags_incomplete(self):
+    #     part = G.Partial(dx=1, complete=False)
+    #     node = G.T(src=lambda **_: 0,
+    #                args=SerialDict(data={"p": part}),
+    #                is_async=False)
+    #     assert node.has_partial() is True
 
-    async def test_has_partial_ignores_completed(self):
-        done = G.Partial(dx=1, complete=True, full=[1])
-        node = G.T(src=lambda **_: 0,
-                   args=SerialDict(data={"p": done}),
-                   is_async=False)
-        assert node.has_partial() is False
+    # async def test_has_partial_ignores_completed(self):
+    #     done = G.Partial(dx=1, complete=True, full=[1])
+    #     node = G.T(src=lambda **_: 0,
+    #                args=SerialDict(data={"p": done}),
+    #                is_async=False)
+    #     assert node.has_partial() is False
 
-    async def test_eval_args_returns_concrete_values(self):
-        v = G.Var(); v.val = 5
-        part = G.Partial(dx=7, complete=False)
-        node = G.T(src=lambda **_: 0,
-                   args=SerialDict(data={"v": v, "p": part, "k": 9}),
-                   is_async=False)
-        out = node.eval_args()
-        assert dict(out.items()) == {"v": 5, "p": 7, "k": 9}
+    # async def test_eval_args_returns_concrete_values(self):
+    #     v = G.Var(); v.val = 5
+    #     part = G.Partial(dx=7, complete=False)
+    #     node = G.T(src=lambda **_: 0,
+    #                args=SerialDict(data={"v": v, "p": part, "k": 9}),
+    #                is_async=False)
+    #     out = node.eval_args()
+    #     assert dict(out.items()) == {"v": 5, "p": 7, "k": 9}
 
     async def test_get_incoming_mixes_cached_and_probe(self):
         v1 = G.Var(); v1.val = 1          # cached
@@ -635,62 +482,6 @@ class TestProcNodeHelpers:
         incoming = await node.get_incoming({v2: 42})
         assert dict(incoming.items()) == {"a": 1, "b": 42}
 
-
-class TestWaitProcess:
-    """incoming() and forward() semantics."""
-
-    def _partial(self, complete: bool):
-        return G.Partial(dx='x', complete=complete, full=['a', 'b'])
-
-    def test_incoming_yields_single_node(self):
-        t = G.Var(); wp = G.WaitProcess(t)
-        assert list(wp.incoming()) == [t]
-
-    def test_forward_waiting_on_incomplete(self):
-        wp = G.WaitProcess(G.Var())
-        assert wp.forward(self._partial(False)) is WAITING
-
-    def test_forward_returns_full_on_complete(self):
-        wp = G.WaitProcess(G.Var(), agg=list)
-        out = wp.forward(self._partial(True))
-        assert out == ['a', 'b']
-
-    def test_forward_with_custom_agg(self):
-        wp = G.WaitProcess(G.Var(), agg="".join)
-        out = wp.forward(self._partial(True))
-        assert out == "ab"
-
-# # ---------------------------------------------------------------------------
-# # Streamer hash behaviour
-# # ---------------------------------------------------------------------------
-
-class TestStreamerHash:
-    """Streamer must be usable as a dict key."""
-
-    def test_same_iter_same_hash(self):
-        it = iter([1])
-        s1, s2 = G.Streamer(stream=it), G.Streamer(stream=it)
-        assert hash(s1) == hash(s2)
-
-    def test_different_iter_diff_hash(self):
-        assert hash(G.Streamer(stream=iter([1]))) != hash(G.Streamer(stream=iter([1])))
-
-# # ---------------------------------------------------------------------------
-# # Stream.__post_init__ async flag
-# # ---------------------------------------------------------------------------
-
-class TestStreamPostInit:
-    def test_sync_src_sets_flag_false(self):
-        st = G.Stream(src=_RangeStream(1),
-                      args=SerialDict(data={}),
-                      is_async=False)
-        assert st._is_async is False
-
-    def test_async_src_sets_flag_true(self):
-        st = G.Stream(src=_AsyncRangeStream(1),
-                      args=SerialDict(data={}),
-                      is_async=True)
-        assert st._is_async is True
 
 # # ---------------------------------------------------------------------------
 # # Factory helpers (t / async_t / stream / async_stream)
@@ -712,12 +503,213 @@ class TestFactoryHelpers:
         node = G.async_t(_async_fn, x=1)
         assert isinstance(node, G.T) and node.is_async is True
 
-    def test_stream_creates_sync_stream(self):
-        st = G.stream                               # factory under test
-        node = st(_RangeStream(0))
-        assert isinstance(node, G.Stream) and node.is_async is False
+#     def test_stream_creates_sync_stream(self):
+#         st = G.stream                               # factory under test
+#         node = st(_RangeStream(0))
+#         assert isinstance(node, G.Stream) and node.is_async is False
 
-    def test_async_stream_creates_async_stream(self):
-        ast = G.async_stream
-        node = ast(_AsyncRangeStream(0))
-        assert isinstance(node, G.Stream) and node.is_async is True
+#     def test_async_stream_creates_async_stream(self):
+#         ast = G.async_stream
+#         node = ast(_AsyncRangeStream(0))
+#         assert isinstance(node, G.Stream) and node.is_async is True
+
+
+
+# # # ---------------------------------------------------------------------------
+# # # Streamer hash behaviour
+# # # ---------------------------------------------------------------------------
+
+# class TestStreamerHash:
+#     """Streamer must be usable as a dict key."""
+
+#     def test_same_iter_same_hash(self):
+#         it = iter([1])
+#         s1, s2 = G.Streamer(stream=it), G.Streamer(stream=it)
+#         assert hash(s1) == hash(s2)
+
+#     def test_different_iter_diff_hash(self):
+#         assert hash(G.Streamer(stream=iter([1]))) != hash(G.Streamer(stream=iter([1])))
+
+
+
+# class _RangeStream(P.StreamProcess):
+#     """Yield the numbers 0‥(stop-1)."""
+
+#     def __init__(self, stop: int):
+#         self._stop = stop
+
+#     def stream(self) -> Iterator[int]:                    # noqa: D401
+#         for i in range(self._stop):
+#             yield i
+
+
+# class _AsyncRangeStream(P.AsyncStreamProcess):
+#     """Async variant of `_RangeStream`."""
+
+#     def __init__(self, stop: int):
+#         self._stop = stop
+
+#     async def astream(self) -> AsyncIterator[int]:        # noqa: D401
+#         for i in range(self._stop):
+#             yield i
+#             await asyncio.sleep(0)                        # co-operative step
+
+
+# class _BadStream(P.StreamProcess):
+#     """Returns a scalar instead of an iterator – should break."""
+
+#     def stream(self) -> int:                              # type: ignore[override]
+#         return 123                                        # not iterable
+
+
+# @pytest.mark.asyncio
+# class TestStream:
+#     """
+#     Sync `Stream.aforward` yields `Partial` objects with correct flags and
+#     memoises results.
+#     """
+
+#     async def test_first_item_partial_fields(self):
+#         stream = Stream(
+#             src=_RangeStream(2),
+#             args=SerialDict(data={}),
+#             is_async=False
+#         )
+#         part = await stream.aforward()
+#         assert part.dx == 0
+#         assert part.complete is False
+#         assert part.prev is None
+#         assert part.full == [0]
+
+#     async def test_second_call_returns_cached_partial(self):
+#         stream = Stream(
+#             src=_RangeStream(2),
+#             args=SerialDict(data={}),
+#             is_async=False
+#         )
+#         first = await stream.aforward()
+#         second = await stream.aforward()
+#         assert first == second                                  # cached
+#         assert second.full == [0]                               # unchanged
+
+#     async def test_zero_length_stream_is_immediately_complete(self):
+#         stream = Stream(
+#             src=_RangeStream(0),
+#             args=SerialDict(data={}),
+#             is_async=False
+#         )
+#         part = await stream.aforward()
+#         assert part.complete is True
+#         assert part.dx is None
+#         assert part.prev is None
+#         assert part.full == []
+
+#     async def test_bad_stream_raises_type_error(self):
+#         stream = Stream(
+#             src=_BadStream(),
+#             args=SerialDict(data={}),
+#             is_async=False
+#         )
+#         with pytest.raises(TypeError):
+#             await stream.aforward()
+
+# @pytest.fixture(autouse=True)
+# def _patch_graph_stubs(monkeypatch):
+#     """Monkey‑patch :class:`~dachi.proc._graph.T` and :class:`~dachi.proc._graph.Idx`
+#     with trivial stand‑ins so that tests for ``__getitem__`` / ``detach`` can
+#     focus on *BaseNode* behaviour in isolation without having to satisfy the
+#     full constructor signatures of the real classes.
+#     """
+
+#     class _StubIdx:
+#         def __init__(self, node, idx):
+#             self.node = node
+#             self.idx = idx
+
+#     class _StubT:
+#         def __init__(self, val, src):
+#             self.val = val
+#             self.src = src
+
+#     monkeypatch.setattr(G, "Idx", _StubIdx, raising=True)
+#     monkeypatch.setattr(G, "T", _StubT, raising=True)
+
+
+# @pytest.mark.asyncio
+# class TestAsyncStream:
+#     """
+#     Async variant behaves identically when driven by an `AsyncStreamProcess`.
+#     """
+
+#     async def test_async_first_item(self):
+#         stream = Stream(
+#             src=_AsyncRangeStream(3),
+#             args=SerialDict(data={}),
+#             is_async=True
+#         )
+#         part = await stream.aforward()
+#         assert part.dx == 0
+#         assert part.complete is False
+
+#     async def test_async_immediate_complete(self):
+#         stream = Stream(
+#             src=_AsyncRangeStream(0),
+#             args=SerialDict(data={}),
+#             is_async=True
+#         )
+#         part = await stream.aforward()
+#         assert part.complete is True
+#         assert part.full == []
+
+#     async def test_async_cached_partial(self):
+#         stream = Stream(
+#             src=_AsyncRangeStream(1),
+#             args=SerialDict(data={}),
+#             is_async=True
+#         )
+#         first = await stream.aforward()
+#         second = await stream.aforward()
+#         assert first == second
+
+
+# # # ---------------------------------------------------------------------------
+# # # Stream.__post_init__ async flag
+# # # ---------------------------------------------------------------------------
+
+# class TestStreamPostInit:
+#     def test_sync_src_sets_flag_false(self):
+#         st = G.Stream(src=_RangeStream(1),
+#                       args=SerialDict(data={}),
+#                       is_async=False)
+#         assert st._is_async is False
+
+#     def test_async_src_sets_flag_true(self):
+#         st = G.Stream(src=_AsyncRangeStream(1),
+#                       args=SerialDict(data={}),
+#                       is_async=True)
+#         assert st._is_async is True
+
+
+# class TestWaitProcess:
+#     """incoming() and forward() semantics."""
+
+#     def _partial(self, complete: bool):
+#         return G.Partial(dx='x', complete=complete, full=['a', 'b'])
+
+#     def test_incoming_yields_single_node(self):
+#         t = G.Var(); wp = G.WaitProcess(t)
+#         assert list(wp.incoming()) == [t]
+
+#     def test_forward_waiting_on_incomplete(self):
+#         wp = G.WaitProcess(G.Var())
+#         assert wp.forward(self._partial(False)) is WAITING
+
+#     def test_forward_returns_full_on_complete(self):
+#         wp = G.WaitProcess(G.Var(), agg=list)
+#         out = wp.forward(self._partial(True))
+#         assert out == ['a', 'b']
+
+#     def test_forward_with_custom_agg(self):
+#         wp = G.WaitProcess(G.Var(), agg="".join)
+#         out = wp.forward(self._partial(True))
+#         assert out == "ab"

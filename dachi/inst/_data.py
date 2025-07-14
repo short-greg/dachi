@@ -1,9 +1,13 @@
 from abc import abstractmethod, ABC
 import pydantic
-from ..core import Renderable
+import typing as t
+import pandas as pd
+from dachi.core import Renderable, render
 
 
-class Description(pydantic.BaseModel, Renderable, ABC):
+class Description(
+    pydantic.BaseModel, Renderable, ABC
+):
     """Provide context in the prompt template
     """
     name: str = pydantic.Field(description='The name of the description.')
