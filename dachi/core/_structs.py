@@ -164,13 +164,21 @@ class ModuleDict(BaseModule, t.Generic[V]):
         if not isinstance(val, BaseModule):
             raise TypeError("Values must be BaseModule instances")
         self._module_dict[key] = val
-        self.register_module(key, val)
+        if isinstance(key, BaseModule):
+            self.register_module(key, val)
 
     def __iter__(self):
         return iter(self._module_dict)
 
     def __len__(self):
         return len(self._module_dict)
+    
+    def __delattr__(self, name):
+        
+        if isinstance(self._module_dict[name], BaseModule):
+            del self._modules[name]
+        del self._module_dict[name]
+        
 
     def keys(self):
         return self._module_dict.keys()

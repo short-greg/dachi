@@ -3,15 +3,16 @@ from abc import abstractmethod
 import typing
 import time
 import random
+import asyncio
 import threading
 
 # local
 from ._core import Task, TaskStatus, State
-from ..core import Attr, ModuleList
 from contextlib import contextmanager
+from dachi.core import ModuleDict, Attr, ModuleList
 
 
-class Root(Task):
+class BT(Task):
     """The root task for a behavior tree
     """
 
@@ -31,47 +32,12 @@ class Root(Task):
         super().reset()
         self.root.reset()
 
-# how to handle this?
-
-class FTask(Task):
-
-    f: typing.Callable[[], typing.Callable]
-    args: typing.List[typing.Any]
-    kwargs: typing.Dict[str, typing.Any]
-
-    def __post_init__(
-        self
-    ):
-        """Create a task based on a function
-
-        Args:
-            f (typing.Callable[[], typing.Callable]): The function to execute
-            *args: The arguments to pass to the function
-            **kwargs: The keyword arguments to pass to the function
-        """
-        super().__post_init__()
-        self._cur = Attr(data=None)
-
-    async def tick(self) -> TaskStatus:
-        """Execute the task
-
-        Returns:
-            TaskStatus: The status of the task
-        """
-    
-        if self._cur is None:
-            self._cur = self._f(
-                *self._args, **self._kwargs
-            )
-
-        return self._cur()
-    
 
 class Serial(Task):
     """A task consisting of other tasks executed one 
     after the other
     """
-    tasks: ModuleList = None
+    tasks: ModuleList | None = None
 
     def __post_init__(
         self
@@ -91,7 +57,7 @@ class Serial(Task):
             raise ValueError(
                 f"Tasks must be of type ModuleList not {type(self.tasks)}"
             )
-        self._idx = Attr(data=0)
+        self._idx = Attr[int](data=0)
 
 
 class Sequence(Serial):
@@ -108,7 +74,6 @@ class Sequence(Serial):
             return self.status
         
         status = await self.tasks[self._idx.data]()
-        print('Status: ', status)
         if status == TaskStatus.FAILURE:
             self._status.set(TaskStatus.FAILURE)
         elif status == TaskStatus.SUCCESS:
@@ -131,24 +96,6 @@ class Sequence(Serial):
 
 # TODO: Decide how to handle this
 
-class Threaded(Task):
-
-    task: Task
-
-    def __post_init__(self):
-        super().__post_init__()
-        self._t = None
-
-    async def tick(self):
-        if self._t is None:
-            self._t = threading.Thread(
-                target=self.task,
-                args=()
-            )
-        if self._t.is_alive():
-            return TaskStatus.WAITING
-        self._t = None
-        return self.task.status
 
 
 class Selector(Serial):
@@ -214,12 +161,12 @@ class Parallel(Task):
             ValueError: If the number of fails or succeeds is less than 0
         """
         if (
-            self._fails_on + self._succeeds_on - 1
+            self.fails_on + self.succeeds_on - 1
         ) > len(self.tasks):
             raise ValueError(
                 'The number of tasks required to succeed or fail is greater than the number of tasks'
             )
-        if self._fails_on <= 0 or self._succeeds_on <= 0:
+        if self.fails_on <= 0 or self.succeeds_on <= 0:
             raise ValueError(
                 'The number of fails or succeeds '
                 'must be greater than 0'
@@ -231,119 +178,133 @@ class Parallel(Task):
         Returns:
             TaskStatus: The status
         """
-        statuses = []
+        tasks = []
         failures = 0
         successes = 0
-        for task in self.tasks:
-            if task.status.is_done:
-                statuses.append(task.status)
-            else:
-                statuses.append(await task())
-            if statuses[-1] == TaskStatus.SUCCESS:
-                successes += 1
-            elif statuses[-1] == TaskStatus.FAILURE:
-                failures += 1
-        
+        async with asyncio.TaskGroup() as tg:
+            
+            for task in self.tasks:
+                if task.status.is_done:
+                    tasks.append(task.status)
+                else:
+                    tasks.append(
+                        tg.create_task(
+                            task()
+                        )
+                    )
+        statuses = [
+            task if isinstance(
+                task, TaskStatus
+            ) else task.result()
+            for task in tasks
+        ]
+        failures = sum(
+            1 if status.failure else 0 for status in statuses
+        )
+        successes = sum(
+            1 if status.success else 0 for status in statuses
+        )
+
         if not self.preempt and (
             failures + successes
         ) < len(statuses):
             self._status.set(TaskStatus.RUNNING)
         elif (
-            successes >= self._succeeds_on and
-            failures >= self._fails_on
+            successes >= self.succeeds_on and
+            failures >= self.fails_on
         ):
             self._status.set(TaskStatus.from_bool(
-                self._success_priority
+                self.success_priority
             ))
-        elif successes >= self._succeeds_on:
-            self._status = TaskStatus.SUCCESS
+        elif successes >= self.succeeds_on:
+            self._status.set(TaskStatus.SUCCESS)
         
-        elif failures >= self._fails_on:
+        elif failures >= self.fails_on:
             self._status.set(TaskStatus.FAILURE)
         else:
             self._status.set(TaskStatus.RUNNING)
         return self.status
 
-    @property
-    def fails_on(self) -> int:
-        """
-        Returns:
-            int: The number of failures required to fail
-        """
-        return self._fails_on
+    # @property
+    # def fails_on(self) -> int:
+    #     """
+    #     Returns:
+    #         int: The number of failures required to fail
+    #     """
+    #     return self._fails_on
 
-    @fails_on.setter
-    def fails_on(self, val) -> int:
-        """Set the number of failures required to fail
+    # @fails_on.setter
+    # def fails_on(self, val) -> int:
+    #     """Set the number of failures required to fail
 
-        Args:
-            val: The number of failures required to fail
+    #     Args:
+    #         val: The number of failures required to fail
 
-        Returns:
-            int: The number of failures required to fail 
-        """
-        if val < 0:
-            val = (
-                len(self.tasks) + val + 1
-            )
-        self._fails_on = val
-        if val + self._fails_on > len(self.tasks):
-            raise ValueError(
-                f''
-            )
-        return val
+    #     Returns:
+    #         int: The number of failures required to fail 
+    #     """
+    #     if val < 0:
+    #         val = (
+    #             len(self.tasks) + val + 1
+    #         )
+    #     self._fails_on = val
+    #     if val + self._fails_on > len(self.tasks):
+    #         raise ValueError(
+    #             f''
+    #         )
+    #     return val
 
-    @property
-    def succeeds_on(self) -> int:
-        """Get the number required for success
+    # @property
+    # def succeeds_on(self) -> int:
+    #     """Get the number required for success
 
-        Returns:
-            int: The number of successes to succeed
-        """
-        return self._succeeds_on        
+    #     Returns:
+    #         int: The number of successes to succeed
+    #     """
+    #     return self.succeeds_on        
     
-    @succeeds_on.setter
-    def succeeds_on(self, val) -> int:
-        """Set the number required for success
+    # @succeeds_on.setter
+    # def succeeds_on(self, val) -> int:
+    #     """Set the number required for success
 
-        Args:
-            succeeds_on: the number required for success
+    #     Args:
+    #         succeeds_on: the number required for success
 
-        Returns:
-            int: The number of successes to succeed
-        """
-        if val < 0:
-            val = (
-                len(self.tasks) + self._succeeds_on + 1
-            )
-        if val + self._fails_on > len(self.tasks):
-            raise ValueError(
-                f''
-            )
-        self._succeeds_on = val
-        return val
+    #     Returns:
+    #         int: The number of successes to succeed
+    #     """
+    #     if val < 0:
+    #         val = (
+    #             len(self.tasks) + self.succeeds_on + 1
+    #         )
+    #     if val + self._fails_on > len(self.tasks):
+    #         raise ValueError(
+    #             f''
+    #         )
+    #     self.succeeds_on = val
+    #     return val
     
-    @property
-    def success_priority(self) -> bool:
-        """Get the number required for success
+    # @property
+    # def success_priority(self) -> bool:
+    #     """Get the number required for success
 
-        Returns:
-            int: The number of successes to succeed
-        """
-        return self._success_priority        
+    #     Returns:
+    #         int: The number of successes to succeed
+    #     """
+    #     return self._success_priority        
     
-    @success_priority.setter
-    def success_priority(self, val: bool) -> int:
-        """Set the number required for success
+    # @success_priority.setter
+    # def success_priority(self, val: bool) -> int:
+    #     """Set the number required for success
 
-        Args:
-            succeeds_on: the number required for success
+    #     Args:
+    #         succeeds_on: the number required for success
 
-        Returns:
-            int: The number of successes to succeed
-        """
-        self._success_priority = val
-        return val
+    #     Returns:
+    #         int: The number of successes to succeed
+    #     """
+    #     self._success_priority = val
+    #     return val
 
     def reset(self):
         super().reset()
@@ -439,6 +400,8 @@ class WaitCondition(Task):
 
 class Decorator(Task):
 
+    task: Task
+
     @abstractmethod
     async def decorate(self, status: TaskStatus, reset: bool=False) -> bool:
         pass
@@ -467,7 +430,6 @@ class Until(Decorator):
     """Loop until a condition is met
     """
 
-    task: Task
     target_status: TaskStatus = TaskStatus.SUCCESS
 
     async def decorate(
@@ -492,7 +454,6 @@ class Until(Decorator):
 class AsLongAs(Decorator):
     """Loop while a condition is met
     """
-    task: Task
     target_status: TaskStatus = TaskStatus.SUCCESS
 
     async def decorate(
@@ -557,32 +518,71 @@ async def run_task(
         yield status
 
 
-# TODO: Update
+
+def statefunc(func):
+    """Decorator to mark a function as a state for StateMachine."""
+    func._is_state = True
+    return func
+
 
 class StateMachine(Task):
     """StateMachine is a task composed of multiple tasks in a directed graph
     """
 
-    init_state: State
-
     def __post_init__(self):
-        self._cur_state = self.init_state
+        super().__post_init__()
+        self._states: ModuleDict = ModuleDict(data={})
+        END_STATUS = typing.Literal[TaskStatus.SUCCESS | TaskStatus.FAILURE]
+        self._transitions = Attr[typing.Dict[
+            str, typing.Dict[str | END_STATUS, str | END_STATUS]
+        ]](data={})
+        self._init_state = Attr[str | END_STATUS | None](data=None)
+        self._cur_state = Attr[str | END_STATUS | None](data=None)
+        self.__states__ = {
+            name: method
+            for name, method in self.__cls__.__dict__.items()
+            if callable(method) and getattr(method, "_is_state", False)
+        }
     
     async def tick(self) -> TaskStatus:
         """Update the state machine
         """
         if self.status.is_done:
             return self.status
+
+        if self._cur_state is None:
+            self._cur_state = self._init_state
+
+        if self._cur_state is None:
+            return TaskStatus.SUCCESS
         
-        self._cur_state = self._cur_state()
-        if (
-            self._cur_state == TaskStatus.FAILURE 
-            or self._cur_state == TaskStatus.SUCCESS
-        ):
-            self._status = self._cur_state
+        if self._cur_state in {TaskStatus.SUCCESS, TaskStatus.FAILURE}:
+            return self._cur_state
+        
+        state = self._states[self._cur_state]
+        if isinstance(state, str):
+            res = await self.__states__[state]()
         else:
-            self._status = TaskStatus.RUNNING
-        return self.status
+            res = await state.update()
+        if res == TaskStatus.RUNNING:
+            self._status.set(
+                TaskStatus.RUNNING
+            )
+            return res
+        
+        new_state = self._transitions[self._cur_state][res]
+        self._cur_state.set(new_state)
+
+        if self._cur_state in {TaskStatus.SUCCESS, TaskStatus.FAILURE}:
+            self._status.set(
+                self._cur_state
+            )
+            return self._cur_state
+        
+        self._status.set(
+            TaskStatus.RUNNING
+        )
+        return TaskStatus.RUNNING
 
     def reset(self):
         """Reset the state machine
@@ -780,3 +780,63 @@ class CountLimit(Action):
     def reset(self):
         super().__init__()
         self._i.set(0)
+
+
+class Threaded(Task):
+
+    task: Task
+
+    def __post_init__(self):
+        super().__post_init__()
+        self._t = None
+
+    async def tick(self):
+        if self._t is None:
+            self._t = threading.Thread(
+                target=self.task,
+                args=()
+            )
+        if self._t.is_alive():
+            return TaskStatus.WAITING
+        self._t = None
+        return self.task.status
+
+
+# how to handle this?
+
+# class FTask(Task):
+
+#     f: typing.Callable[[], typing.Callable]
+#     args: typing.List[typing.Any]
+#     kwargs: typing.Dict[str, typing.Any]
+
+#     def __post_init__(
+#         self
+#     ):
+#         """Create a task based on a function
+
+#         Args:
+#             f (typing.Callable[[], typing.Callable]): The function to execute
+#             *args: The arguments to pass to the function
+#             **kwargs: The keyword arguments to pass to the function
+#         """
+#         super().__post_init__()
+#         self._cur = Attr()
+
+#     async def tick(self) -> TaskStatus:
+#         """Execute the task
+
+#         Returns:
+#             TaskStatus: The status of the task
+#         """
+
+#         if self.status.is_done:
+#             return self.status
+    
+#         self._cur.set(self.f(
+#             *self.args, 
+#             **self.kwargs
+#         ))
+
+#         return TaskStatus.SUCCESS # self._cur.get()
+    

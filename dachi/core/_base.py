@@ -52,7 +52,7 @@ def to_kind(cls):
 class ShareableItem(t.Generic[J]):
     """Serializable leaf object with a ``data`` field."""
 
-    def __init__(self, data: J):
+    def __init__(self, data: J | None=None):
         super().__init__()
         expected_type = self._get_expected_type()
         print(expected_type)
@@ -64,11 +64,11 @@ class ShareableItem(t.Generic[J]):
         self._data = data
         self._callbacks: list[Callable[[T]]] = []
 
-    def get(self) -> J:
+    def get(self) -> J | None:
 
         return self._data
     
-    def set(self, value: J):
+    def set(self, value: J | None):
         expected_type = self._get_expected_type()
         print(expected_type)
         if (
@@ -78,8 +78,12 @@ class ShareableItem(t.Generic[J]):
         self._data = value
         self.update_data_hook(value)
 
+    def empty(self) -> bool:
+
+        return self.data is None
+
     @property
-    def data(self) -> J:
+    def data(self) -> J | None:
         """Get the data value."""
         return self.get()
 

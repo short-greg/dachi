@@ -246,18 +246,22 @@ def from_bool(status: bool) -> TaskStatus:
 
 class State(BaseModule):
     """Use State creating a state machine
+    SubClasses must return a literal 
+            string or type TaskStatus
     """
     @abstractmethod
-    async def update(self) -> t.Union['State', TaskStatus]:
-        """Update the 
+    async def update(self) -> None:
+        """Update the state
 
-        Returns: bool
-            t.Union['State', TaskStatus]: The new State/Status
+        Returns:
+            # SubClasses must return a literal 
+            of type TaskStatus or 
+            None
         """
         pass
 
     async def __call__(self, reset: bool=False):
-        return self.update(reset)
+        return await self.update(reset)
 
 
 STATE_CALL = State | t.Callable[[], State | TaskStatus]

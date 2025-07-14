@@ -3,6 +3,9 @@ import typing
 from typing import Iterator, AsyncIterator
 from typing import Any, get_type_hints
 
+import ast
+import inspect
+
 
 def is_async_function(func) -> bool:
     """Check if a function is asynchronous."""
@@ -50,7 +53,7 @@ def get_iterator_type(func) -> Any:
 
 
 def get_function_info(func: Any) -> typing.Dict:
-    """_summary_
+    """
 
     Args:
         func (Any): 
@@ -88,3 +91,21 @@ def get_function_info(func: Any) -> typing.Dict:
         "parameters": parameters,
         "return_type": return_type
     }
+
+
+def get_literal_return_values(func):
+    """
+    Retrieve all possible literal return values from a function/method.
+    Raises ValueError if any return is not a literal.
+    """
+    source = inspect.getsource(func)
+    tree = ast.parse(source)
+    literals = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Return):
+            value = node.value
+            if isinstance(value, ast.Constant):
+                literals.add(value.value)
+            else:
+                raise ValueError("Non-literal return detected")
+    return literals

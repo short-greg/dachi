@@ -494,6 +494,74 @@ class WaitProcess(Process):
         return self._agg(val.full)
 
 
-class DAG(Process):
+from dachi.core import ModuleDict, Attr
+from dataclasses import dataclass
 
-    pass
+@dataclass
+class RefT:
+    name: str
+
+
+class DAG(AsyncProcess):
+
+    def __post_init__(self):
+
+        # can be a "var"
+        self._nodes = ModuleDict[StreamProcess | AsyncStreamProcess | Process | AsyncProcess](data={})
+        self._args = Attr[typing.Dict[str, t.Dict[str, RefT | t.Dict[str, t.Any]]]](data={})
+
+    async def _sub(self, name: str, by: typing.Dict):
+
+        node = self._nodes[name]
+        args = self._args[name]
+
+        if name in by:
+            cur = by[name]
+            if isinstance(cur, Streamer):
+                try:
+                    dx = next(cur.stream)
+                    part = cur.partial.clone()
+                    part.full.append(dx)
+                    part.dx = dx
+                    part.complete = False
+                except StopIteration:
+                    part = cur.partial.clone()
+                    part.dx = None
+                    part.complete = True
+                except StopAsyncIteration:
+                    part = cur.partial.clone()
+                    part.dx = None
+                    part.complete = True
+            return cur
+
+        kwargs = {}
+
+        async with asyncio.TaskGroup() as tg:
+            for key, arg in args.items():
+                if isinstance(arg, RefT):
+                    # check
+                    kwargs[key] = tg.create_task(
+                        self._sub(arg.name, by)
+                    )
+                else:
+                    kwargs[key] = arg
+
+        kwargs = {
+            k: v if not isinstance(v, asyncio.Task) else v.result()
+            for k, v in kwargs.items()
+        }
+        if isinstance(node, Process):
+            res = node(**kwargs)
+        elif isinstance(node, AsyncProcess):
+            res = await node.aforward(**kwargs)
+        return res
+
+    async def aforward(self, by: typing.Dict):
+        
+        # 1) get the outputs
+        return tuple(
+            await self._sub(out, by) for out in self._outputs
+        )
+
+
+

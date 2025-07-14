@@ -238,288 +238,264 @@ class TestUntil:
 
 
 
-# from dachi.act import _tasks as behavior
-# from dachi.act._core import TaskStatus
+import types
+import random
+import pytest
+
+from dachi.act import _tasks as behavior
+from dachi.act._core import TaskStatus
+from dachi.core import ModuleList
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+class ImmediateAction(behavior.Action):
+    """A task that immediately returns a fixed *status*."""
+
+    status_val: InitVar[TaskStatus]
+
+    def __post_init__(self, status_val: TaskStatus):
+        super().__post_init__()
+        self._status.data = status_val
+
+    async def act(self) -> TaskStatus:  # noqa: D401
+        return self._status.data
 
 
-# class ATask(behavior.Action):
+@pytest.mark.asyncio
+class TestRoot:
+    async def test_root_without_child(self):
+        assert await behavior.BT().tick() is TaskStatus.SUCCESS
 
-#     def __init__(self, x: int=1):
+    async def test_root_delegates(self):
+        r = behavior.BT(root=ImmediateAction(status_val=TaskStatus.FAILURE))
+        assert await r.tick() is TaskStatus.FAILURE
+
+    async def test_root_reset_propagates(self):
+        child = ImmediateAction(status_val=TaskStatus.SUCCESS)
+        r = behavior.BT(root=child)
+        await r.tick(); r.reset()
+        assert child.status is TaskStatus.READY
+
+
+# @pytest.mark.asyncio
+# class TestFTask:
+#     async def test_ftask_factory_called_once(self):
+#         counter = {"n": 0}
+
+#         def factory(a, b=None):
+#             counter["n"] += 1
+#             return lambda: TaskStatus.SUCCESS
+
+#         task = behavior.FTask(
+#             f=factory, args=[1], 
+#             kwargs={"b": 2}
+#         )
+#         await task.tick(); 
+#         await task.tick()
+#         assert counter["n"] == 1
+
+#     async def test_ftask_returns_inner_status(self):
+#         task = behavior.FTask(f=lambda: (lambda: TaskStatus.FAILURE), args=[], kwargs={})
+#         assert await task.tick() is TaskStatus.FAILURE
+
+
+#     async def test_ftask_passes_args(self):
+#         captured = {}
+
+#         def factory(x, *, y):
+#             captured["x"], captured["y"] = x, y
+#             return lambda: TaskStatus.SUCCESS
+
+#         task = behavior.FTask(f=factory, args=[10], kwargs={"y": 20})
+#         await task.tick()
+#         assert captured == {"x": 10, "y": 20}
+
+
+class TestSerialValidation:
+    def test_list_to_modulelist(self):
+        serial = behavior.Serial(tasks=[ImmediateAction(status_val=TaskStatus.SUCCESS)])
+        assert isinstance(serial.tasks, ModuleList)
+
+    def test_defaults_to_empty(self):
+        assert len(behavior.Serial().tasks) == 0
+
+    def test_invalid_tasks_type(self):
+        with pytest.raises(ValueError):
+            behavior.Serial(tasks=123)
+
+
+@pytest.mark.asyncio
+class TestParallel:
+    async def test_all_success(self):
+        par = behavior.Parallel(tasks=[ImmediateAction(status_val=TaskStatus.SUCCESS) for _ in range(3)], succeeds_on=-1, fails_on=1)
+        assert await par.tick() is TaskStatus.SUCCESS
+
+    async def test_failure_threshold(self):
+        par = behavior.Parallel(tasks=[ImmediateAction(status_val=TaskStatus.FAILURE), ImmediateAction(status_val=TaskStatus.RUNNING)], fails_on=1, succeeds_on=2)
+        assert await par.tick() is TaskStatus.RUNNING
+
+    async def test_running_until_quorum(self):
+        tasks = [ImmediateAction(status_val=TaskStatus.SUCCESS), ImmediateAction(status_val=TaskStatus.FAILURE), ImmediateAction(status_val=TaskStatus.RUNNING)]
+        par = behavior.Parallel(tasks=tasks, fails_on=2, succeeds_on=2)
+        assert await par.tick() is TaskStatus.RUNNING
+
+    async def test_fails_on_1_failure(self):
+        tasks = [ImmediateAction(status_val=TaskStatus.SUCCESS), ImmediateAction(status_val=TaskStatus.FAILURE)]
+        par = behavior.Parallel(tasks=tasks, fails_on=1, succeeds_on=2)
+        assert await par.tick() is TaskStatus.FAILURE
+
+    # async def test_reset_propagates(self):
+    #     inner = SequenceAction([TaskStatus.RUNNING, TaskStatus.SUCCESS])
+    #     par = behavior.Parallel(tasks=[inner], fails_on=1, succeeds_on=1)
+    #     await par.tick(); par.reset()
+    #     assert inner.status is TaskStatus.READY
+
+
+@pytest.mark.asyncio
+class TestNotDecorator:
+    async def test_invert_success(self):
+        assert await behavior.Not(task=ImmediateAction(status_val=TaskStatus.SUCCESS)).tick() is TaskStatus.FAILURE
+
+    async def test_invert_failure(self):
+        assert await behavior.Not(task=ImmediateAction(status_val=TaskStatus.FAILURE)).tick() is TaskStatus.SUCCESS
+
+
+# @pytest.mark.asyncio
+# class TestRunTask:
+#     async def test_run_task_yields(self):
+#         act = SequenceAction([TaskStatus.RUNNING, TaskStatus.SUCCESS])
+#         collected = [s async for s in behavior.run_task(act, interval=None)]
+#         assert collected == [TaskStatus.RUNNING, TaskStatus.SUCCESS]
+#         assert act.status is TaskStatus.SUCCESS
+
+
+@pytest.mark.asyncio
+class TestStateMachine:
+    
+    async def test_success_path(self):
+
+        def state_b():
+            return TaskStatus.SUCCESS
+        def state_a():
+            return state_b
+        sm = behavior.StateMachine(init_state=state_a)
+        assert await sm.tick() is TaskStatus.RUNNING
+        assert await sm.tick() is TaskStatus.SUCCESS
+
+#     async def test_immediate_failure(self):
+#         sm = behavior.StateMachine(init_state=lambda: TaskStatus.FAILURE)
+#         assert await sm.tick() is TaskStatus.FAILURE
+
+#     async def test_reset(self):
+#         sm = behavior.StateMachine(init_state=lambda: TaskStatus.SUCCESS)
+#         await sm.tick(); sm.reset()
+#         assert sm.status is TaskStatus.READY
+
+
+# @pytest.mark.asyncio
+# class TestTimers:
+#     async def test_fixed_timer(self, monkeypatch):
+#         start = 0.0; monkeypatch.setattr(behavior.time, "time", lambda: start)
+#         timer = behavior.FixedTimer(seconds=5)
+#         assert await timer.tick() is TaskStatus.RUNNING
+#         monkeypatch.setattr(behavior.time, "time", lambda: start + 6)
+#         assert await timer.tick() is TaskStatus.SUCCESS
+
+#     async def test_random_timer(self, monkeypatch):
+#         monkeypatch.setattr(behavior.random, "random", lambda: 0.5)  # deterministic
+#         t0 = 100.0; monkeypatch.setattr(behavior.time, "time", lambda: t0)
+#         rt = behavior.RandomTimer(seconds_lower=2, seconds_upper=4)
+#         assert await rt.tick() is TaskStatus.RUNNING
+#         monkeypatch.setattr(behavior.time, "time", lambda: t0 + 3.5)
+#         assert await rt.tick() is TaskStatus.SUCCESS
+
+
+
+# # ---------------------------------------------------------------------------
+# # 14. Loop context‑manager utilities ----------------------------------------
+# # ---------------------------------------------------------------------------
+
+# @pytest.mark.asyncio
+# class TestLoopUtilities:
+#     async def test_loop_aslongas_async_context_invalid(self):
+#         cm = behavior.loop_aslongas(ImmediateAction(status=TaskStatus.SUCCESS), TaskStatus.SUCCESS)
+#         with pytest.raises(TypeError):
+#             async with cm:  # function is not a valid async context‑manager
+#                 pass
+
+#     async def test_loop_until_async_context_invalid(self):
+#         cm = behavior.loop_until(ImmediateAction(status=TaskStatus.SUCCESS), TaskStatus.SUCCESS)
+#         with pytest.raises(TypeError):
+#             async with cm:
+#                 pass
+
+# # ---------------------------------------------------------------------------
+# # 15. WaitCondition ----------------------------------------------------------
+# # ---------------------------------------------------------------------------
+
+# class ToggleWait(behavior.WaitCondition):
+#     """Returns WAITING on first tick, SUCCESS on second."""
+
+#     def __init__(self):
 #         super().__init__()
-#         self.x = x
+#         self._first = True
 
-#     def act(self, reset: bool=False):
-#         return TaskStatus.SUCCESS
-
-
-# class SetStorageAction(behavior.Action):
-
-#     def __init__(self, value: int=4):
-#         super().__init__()
-#         self.value = value
-
-#     def act(self, reset: bool=False) -> TaskStatus:
-
-#         if self.value < 0:
-#             return TaskStatus.FAILURE
-
-#         return TaskStatus.SUCCESS
-
-
-# class SampleCondition(behavior.Condition):
-
-#     def __init__(self, x: int=1):
-#         super().__init__()
-#         self.x = x
-
-#     def condition(self, reset: bool=False) -> bool:
-
-#         if self.x < 0:
+#     async def condition(self):
+#         if self._first:
+#             self._first = False
 #             return False
 #         return True
 
+# @pytest.mark.asyncio
+# class TestWaitCondition:
+#     async def test_wait_condition_wait_then_success(self):
+#         cond = ToggleWait()
+#         assert await cond.tick() is TaskStatus.WAITING
+#         assert await cond.tick() is TaskStatus.SUCCESS
+
+# # ---------------------------------------------------------------------------
+# # 16. CountLimit -------------------------------------------------------------
+# # ---------------------------------------------------------------------------
+
+# @pytest.mark.asyncio
+# class TestCountLimit:
+#     async def test_runs_until_count_then_success(self):
+#         cl = behavior.CountLimit(count=3)
+#         assert await cl.tick() is TaskStatus.RUNNING
+#         assert await cl.tick() is TaskStatus.RUNNING
+#         assert await cl.tick() is TaskStatus.SUCCESS
+
+#     async def test_countlimit_reset(self):
+#         cl = behavior.CountLimit(count=2)
+#         await cl.tick(); await cl.tick()
+#         cl.reset()
+#         assert cl.status is TaskStatus.READY
+#         assert await cl.tick() is TaskStatus.RUNNING
+
+# # ---------------------------------------------------------------------------
+# # 17. PreemptCond ------------------------------------------------------------
+# # ---------------------------------------------------------------------------
+
+# class AlwaysTrueCond(behavior.Condition):
+#     async def condition(self):
+#         return True
+
+# class AlwaysFalseCond(behavior.Condition):
+#     async def condition(self):
+#         return False
+
+# @pytest.mark.asyncio
+# class TestPreemptCond:
+#     async def test_preemptcond_failure_when_false(self):
+#         main = ImmediateAction(status=TaskStatus.SUCCESS)
+#         pc = behavior.PreemptCond(conds=[AlwaysFalseCond()], task=main)
+#         assert await pc.tick() is TaskStatus.FAILURE
+#         assert main.status is TaskStatus.READY  # main skipped
+
+#     async def test_preemptcond_propagates_task_success(self):
+#         main = ImmediateAction(status=TaskStatus.SUCCESS)
+#         pc = behavior.PreemptCond(conds=[AlwaysTrueCond()], task=main)
+#         assert await pc.tick() is TaskStatus.SUCCESS
 
-# class SetStorageActionCounter(behavior.Action):
-
-#     __store__ = ["value"]
-
-#     def __init__(self, value: int=4):
-#         super().__init__()
-#         self.value = value
-#         self._count = 0
-
-#     def act(self, reset: bool=False):
-
-#         if self.value == 0:
-#             return TaskStatus.FAILURE
-#         self._count += 1
-#         if self._count == 2:
-#             return TaskStatus.SUCCESS
-#         if self._count < 0:
-#             return TaskStatus.FAILURE
-#         return TaskStatus.RUNNING
-
-
-# class TestAction:
-
-#     def test_storage_action_count_is_1(self):
-#         action = SetStorageAction(value=1)
-#         assert action.tick() == TaskStatus.SUCCESS
-
-#     def test_store_action_returns_fail_if_fail(self):
-
-#         action = SetStorageAction(value=-1)
-#         assert action.tick() == TaskStatus.FAILURE
-
-#     def test_running_after_one_tick(self):
-
-#         action = SetStorageActionCounter(value=1)
-#         assert action.tick() == TaskStatus.RUNNING
-
-#     def test_success_after_two_tick(self):
-
-#         action = SetStorageActionCounter(value=2)
-#         action.tick()
-#         assert action.tick() == TaskStatus.SUCCESS
-
-#     def test_ready_after_reset(self):
-
-#         action = SetStorageActionCounter(value=2)
-#         action.tick()
-#         action.reset_status()
-#         assert action.status == TaskStatus.READY
-
-#     def test_load_state_dict_sets_state(self):
-
-#         action = SetStorageActionCounter(value=3)
-#         action2 = SetStorageActionCounter(value=2)
-#         action.tick()
-#         action2.load_state_dict(action.state_dict())
-#         assert action2.value == 3
-
-
-# class TestSequence:
-
-#     def test_sequence_is_running_when_started(self):
-
-#         action1 = SetStorageAction(value=1)
-#         action2 = SetStorageAction(value=2)
-#         sequence = behavior.Sequence(
-#             tasks=[action1, action2]
-#         )
-        
-#         assert sequence.tick() == TaskStatus.RUNNING
-
-#     def test_sequence_is_success_when_finished(self):
-
-#         action1 = SetStorageAction(value=1)
-#         action2 = SetStorageAction(value=2)
-#         sequence = behavior.Sequence(
-#             tasks=[action1, action2]
-#         )
-#         sequence.tick()
-#         assert sequence.tick() == TaskStatus.SUCCESS
-
-#     def test_sequence_is_failure_less_than_zero(self):
-
-#         action1 = SetStorageAction(value=1)
-#         action2 = SetStorageAction(value=-1)
-#         sequence = behavior.Sequence(
-#             tasks=[action1, action2]
-#         )
-#         sequence.tick()
-#         assert sequence.tick() == TaskStatus.FAILURE
-
-#     def test_sequence_is_ready_when_reset(self):
-
-#         action1 = SetStorageAction(value=1)
-#         action2 = SetStorageAction(value=-1)
-#         sequence = behavior.Sequence(
-#             tasks=[action1, action2]
-#         )
-#         sequence.tick()
-#         sequence.tick()
-#         sequence.reset_status()
-#         assert sequence.status == TaskStatus.READY
-
-#     def test_sequence_finished_after_three_ticks(self):
-
-#         action1 = SetStorageAction(value=2)
-#         action2 = SetStorageActionCounter(value=3)
-#         sequence = behavior.Sequence(
-#             tasks=[action1, action2]
-#         )
-#         sequence.tick()
-#         sequence.tick()
-        
-#         assert sequence.tick() == TaskStatus.SUCCESS
-
-
-# class TestCondition:
-
-#     def test_condition_returns_success(self):
-
-#         condition = SampleCondition(x=1)
-#         assert condition.tick() == TaskStatus.SUCCESS
-
-#     def test_condition_returns_failure(self):
-
-#         condition = SampleCondition(x=-1)
-#         assert condition.tick() == TaskStatus.FAILURE
-
-#     def test_condition_status_is_success(self):
-
-#         condition = SampleCondition(x=-1)
-#         condition.tick()
-#         assert condition.status == TaskStatus.FAILURE
-
-#     def test_condition_status_is_ready_after_reset(self):
-
-#         condition = SampleCondition(x=-1)
-#         condition.tick()
-#         condition.reset_status()
-#         assert condition.status == TaskStatus.READY
-
-
-# class TestFallback:
-
-#     def test_fallback_is_successful_after_one_tick(self):
-
-#         action1 = SetStorageAction(value=1)
-#         action2 = SetStorageAction()
-#         fallback = behavior.Selector(
-#             tasks=[action1, action2]
-#         )
-        
-#         assert fallback.tick() == TaskStatus.SUCCESS
-    
-#     def test_fallback_is_successful_after_two_ticks(self):
-
-#         action1 = SetStorageAction(value=-1)
-#         action2 = SetStorageAction(value=1)
-#         fallback = behavior.Selector(
-#             tasks=[action1, action2]
-#         )
-#         fallback.tick()
-#         assert fallback.tick() == TaskStatus.SUCCESS
-    
-#     def test_fallback_fails_after_two_ticks(self):
-
-#         action1 = SetStorageAction(value=-1)
-#         action2 = SetStorageAction(value=-1)
-#         fallback = behavior.Selector(
-#             tasks=[action1, action2]
-#         )
-#         fallback.tick()
-#         assert fallback.tick() == TaskStatus.FAILURE
-
-#     def test_fallback_running_after_one_tick(self):
-
-#         action1 = SetStorageAction(value=-1)
-#         action2 = SetStorageAction(value=-1)
-#         fallback = behavior.Selector(
-#             tasks=[action1, action2]
-#         )
-        
-#         assert fallback.tick() == TaskStatus.RUNNING
-    
-#     def test_fallback_ready_after_reset(self):
-
-#         action1 = SetStorageAction(value=-1)
-#         action2 = SetStorageAction(value=-1)
-#         fallback = behavior.Selector(
-#             tasks=[action1, action2]
-#         )
-#         fallback.tick()
-#         fallback.reset_status()
-#         assert fallback.status == TaskStatus.READY
-
-
-# class TestAsLongAs:
-
-#     def test_while_fails_if_failure(self):
-
-#         action1 = SetStorageActionCounter(
-#             value=0
-#         )
-#         action1._count = -1
-#         while_ = behavior.AsLongAs(
-#             task=action1, target_status=TaskStatus.FAILURE
-#         )
-
-#         while_.tick()
-#         action1.value = 1
-#         assert while_.status == TaskStatus.RUNNING
-
-#     def test_aslongas_fails_if_failure_after_two(self):
-
-#         action1 = SetStorageActionCounter(value=1)
-#         action1._count = 1
-#         action1.value = 4
-#         aslongas = behavior.AsLongAs(task=action1)
-
-#         aslongas.tick()
-#         action1.value = 0
-
-#         assert aslongas.tick() == TaskStatus.FAILURE
-
-
-# class TestUntil:
-
-#     def test_until_successful_if_success(self):
-
-#         action1 = SetStorageActionCounter(value=1)
-#         action1._count = 1
-#         until_ = behavior.Until(task=action1)
-
-#         assert until_.tick() == TaskStatus.SUCCESS
-
-#     def test_until_successful_if_success_after_two(self):
-
-#         action1 = SetStorageActionCounter(value=0)
-#         action1._count = 1
-#         until_ = behavior.Until(task=action1)
-#         until_.tick()
-#         action1.value = 1
-
-#         assert until_.tick() == TaskStatus.SUCCESS
