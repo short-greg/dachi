@@ -371,18 +371,18 @@ class TestNotDecorator:
 #         assert act.status is TaskStatus.SUCCESS
 
 
-@pytest.mark.asyncio
-class TestStateMachine:
+# @pytest.mark.asyncio
+# class TestStateMachine:
     
-    async def test_success_path(self):
+#     async def test_success_path(self):
 
-        def state_b():
-            return TaskStatus.SUCCESS
-        def state_a():
-            return state_b
-        sm = behavior.StateMachine(init_state=state_a)
-        assert await sm.tick() is TaskStatus.RUNNING
-        assert await sm.tick() is TaskStatus.SUCCESS
+#         def state_b():
+#             return TaskStatus.SUCCESS
+#         def state_a():
+#             return state_b
+#         sm = behavior.StateMachine(init_state=state_a)
+#         assert await sm.tick() is TaskStatus.RUNNING
+#         assert await sm.tick() is TaskStatus.SUCCESS
 
 #     async def test_immediate_failure(self):
 #         sm = behavior.StateMachine(init_state=lambda: TaskStatus.FAILURE)

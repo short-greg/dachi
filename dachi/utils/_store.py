@@ -271,4 +271,3 @@ class BufferIter(pydantic.BaseModel):
         return map(
             f, data
         )
-
