@@ -11,7 +11,7 @@ from ..utils import (
 )
 from ._process import Process, AsyncProcess
 from ..core import SerialDict
-from dachi.core import ModuleDict, Attr
+from dachi.core import ModuleDict, Attr, RestrictedSchemaMixin, BaseModule
 from dataclasses import dataclass
 
 # TODO: Check if the value coming from incoming is undefined or waiting... 
@@ -362,21 +362,6 @@ class DAG(AsyncProcess):
 
         if name in by:
             cur = by[name]
-            # if isinstance(cur, Streamer):
-            #     try:
-            #         dx = next(cur.stream)
-            #         part = cur.partial.clone()
-            #         part.full.append(dx)
-            #         part.dx = dx
-            #         part.complete = False
-            #     except StopIteration:
-            #         part = cur.partial.clone()
-            #         part.dx = None
-            #         part.complete = True
-            #     except StopAsyncIteration:
-            #         part = cur.partial.clone()
-            #         part.dx = None
-            #         part.complete = True
             return cur
 
         kwargs = {}
@@ -410,6 +395,14 @@ class DAG(AsyncProcess):
             await self._sub(out, by) for out in self._outputs
         )
 
+    @classmethod
+    def schema(
+        cls,
+        mapping: typing.Mapping[type[BaseModule], typing.Iterable[type[BaseModule]]] | None = None,
+    ):
+        if mapping is None:
+            return super().schema()
+        return cls._restricted_schema(mapping)
 
 # def stream(
 #     p: StreamProcess | AsyncStreamProcess, 

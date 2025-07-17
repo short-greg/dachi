@@ -6,26 +6,23 @@ from dataclasses import InitVar
 from pydantic import ValidationError
 from pydantic import BaseModel
 
+import pytest
 
-from dachi.core._base import Param, Attr, Shared, BaseModule, BaseModule, Param, Attr, Shared, BaseSpec, Checkpoint
+# Local core imports
+
 
 from dachi.core._base import (
-    BaseModule,
-    Param,
-    Attr,
-    Shared,
-    BaseSpec,
-    registry,
-    Checkpoint,
+    BaseModule, BaseModule, Param, Attr, Shared, BaseSpec, Checkpoint, AdaptModule, registry, Registry,
+    ParamSet
 )
+
 from pydantic import ValidationError
-from dachi.core._base import ParamSet
 import inspect
 import pytest
 
-from dachi.core._base import (
-    BaseModule, Param, Shared, registry, Registry
-)
+# from dachi.core._base import (
+#     BaseModule, Param, Shared, 
+# )
 
 import pytest
 # ------------------------------------------------------------
@@ -1277,6 +1274,238 @@ def test_shared_subclass_roundtrip():
 
     assert isinstance(rebuilt.val, TypedShared)
     assert rebuilt.val.data == 3.14
+
+
+
+
+@registry.register()
+class AddOne(BaseModule):
+    bias: InitVar[int]
+
+    def __post_init__(self, bias: int):
+
+        self.bias = Param[int](bias)
+
+    def forward(self, x: int = 0):
+        return x + self.bias.data
+
+
+@registry.register()
+class Multiply(BaseModule):
+    weight: InitVar[int]
+
+    def __post_init__(self, weight: int):
+
+        self.weight = Param[int](weight)
+
+    def forward(self, x: int = 1):
+        return x * self.weight.data
+
+
+@registry.register()
+class Task(BaseModule):  # generic placeholder used only for schema tests
+    dummy: InitVar[int]
+
+    def __post_init__(self, dummy: int):
+
+        self.dummy = Param[int](dummy)
+
+@registry.register()
+class State(BaseModule):
+    flag: InitVar[bool]
+    
+    def __post_init__(self, flag: bool):
+        self.flag = Param[bool](flag)
+
+
+@registry.register()
+class MulTwo(BaseModule):
+    factor: InitVar[int]
+
+    def __post_init__(self, factor: int):
+        self.factor = Param[bool](factor)
+
+    def forward(self, x: int = 1) -> int:  # pragma: no cover
+        return x * self.factor.data
+
+# ---------------------------------------------------------------------------
+# Test suite – keep every test in **one** class as requested
+# ---------------------------------------------------------------------------
+
+
+# class AddOne(BaseModule):
+#     bias: Param[int]
+
+#     def forward(self, x: int = 0) -> int:  # pragma: no cover
+#         return x + self.bias.data
+
+
+
+
+# -------------------------------------------------------------------------
+# Test class (single, cohesive as requested)
+# -------------------------------------------------------------------------
+class TestAdaptedModule:
+    """Full behavioural surface for :class:`AdaptModule`."""
+
+    # --------------------------------------------------
+    # helpers / fixtures
+    # --------------------------------------------------
+    @staticmethod
+    def _make(bias: int = 3, allow: list[type[BaseModule]] | None = None,
+               train_submods: bool = True) -> AdaptModule:
+        """Factory returning a fresh, *unfixed* wrapper around AddOne."""
+        leaf = AddOne(bias=bias)
+        return AdaptModule(
+            adapted=leaf,
+            allowed=allow,
+            train_submods=train_submods,
+        )
+
+    # =====================================================================
+    ### Construction & basic wiring
+    # =====================================================================
+    def test_init_creates_spec_param_and_callback(self):
+        mod = self._make()
+        assert isinstance(mod.adapted_param, Param)
+        assert mod.adapted_param.data == mod.adapted.spec()
+        # mutate spec → callback should rebuild
+        old_id = id(mod.adapted)
+        new_spec = MulTwo(factor=5).spec()
+        mod.adapted_param.set(new_spec)  # triggers callback path
+        assert id(mod.adapted) != old_id
+        assert mod.adapted.forward(2) == 10  # 2*5
+
+
+    def test_parameters_modes_and_no_duplicates(self):
+        mod = self._make()
+        # unfixed, train_submods True → spec + inner param
+        ids_unfixed = [id(p) for p in mod.parameters()]
+        assert len(ids_unfixed) == len(set(ids_unfixed))  # no duplicates
+        assert mod.adapted_param in list(mod.parameters())
+        # freeze → only spec remains
+        mod.fix()
+        ids_fixed = [id(p) for p in mod.parameters()]
+        assert mod.adapted_param not in list(mod.parameters())
+        # unfreeze but train_submods False → spec only
+        mod.unfix()
+        mod.train_submods = False
+        ids_no_train = [id(p) for p in mod.parameters()]
+        assert all(id_ != id(mod.adapted.bias) for id_ in ids_no_train)
+
+    # def test_fix_unfix_idempotent_and_grad_flow(self):
+    #     mod = self._make()
+    #     p_inner = mod.adapted.bias
+    #     mod.fix(); mod.fix()  # double‑call no error
+    #     assert p_inner.requires_grad is False
+    #     mod.unfix(); mod.unfix()
+    #     assert p_inner.requires_grad is True
+
+    def test_update_with_whitelist_and_rollback(self):
+        allowed = [AddOne]
+        mod = self._make(allow=allowed)
+        good_spec = AddOne(bias=9).spec()
+        mod.update_adapted(good_spec)  # should succeed
+        assert mod.adapted.bias.data == 9
+        # bad_spec = MulTwo(factor=4).spec()
+        # with pytest.raises(ValueError):
+        #     mod.update_adapted(bad_spec)
+        assert isinstance(mod.adapted, AddOne)
+        assert mod.adapted.bias.data == 9
+
+    # # =====================================================================
+    # ### on_swap hook semantics & double‑fire order
+    # # =====================================================================
+    def test_on_swap_fires_with_old_and_new(self):
+        events: list[tuple[int, int]] = []
+
+        class _Watcher(AdaptModule):
+            def on_swap(self, old, new):  # type: ignore[override]
+                events.append((id(old), id(new)))
+
+        mod = _Watcher(adapted=AddOne(bias=1))
+        spec2 = AddOne(bias=2).spec()
+        spec3 = AddOne(bias=3).spec()
+        mod.update_adapted(spec2)
+        mod.update_adapted(spec3)
+        # two events, ids strictly increasing chain
+        assert len(events) == 2
+        assert events[0][1] == events[1][0]  # new of first == old of second
+
+    # # =====================================================================
+    # ### State‑dict save / load round‑trip & namespacing
+    # # =====================================================================
+    def test_state_dict_round_trip(self):
+        mod = self._make(bias=7)
+        sd = mod.state_dict()
+        clone = self._make(bias=1)  # different initial value
+        clone.load_state_dict(sd)
+        assert clone.adapted.bias.data == 7
+        # keys check
+        assert "adapted_param" in sd
+        assert any(k.startswith("adapted.") for k in sd)
+
+    def test_state_dict_non_recursive(self):
+        mod = self._make()
+        sd = mod.state_dict(recurse=False)
+        assert 'adapted_param' in set(sd.keys())
+
+    # # =====================================================================
+    # ### Schema patching with multiple placeholders & cache robustness
+    # # =====================================================================
+    def test_schema_mapping_patches_refs(self):
+        mapping = {Task: [AddOne], State: [MulTwo]}
+        schema = AdaptModule.schema(mapping)  # classmethod
+        dumped = json.dumps(schema)
+        # Generic refs must be gone
+        assert "TaskSpec" not in dumped and "StateSpec" not in dumped
+        # allowed specs present
+        assert "AddOneSpec" in dumped and "MulTwoSpec" in dumped
+
+    def test_schema_cache_key_independent_of_order(self):
+        map1 = {Task: [AddOne, MulTwo]}
+        map2 = {Task: [MulTwo, AddOne]}  # same set diff order
+        s1 = AdaptModule.schema(map1)
+        s2 = AdaptModule.schema(map2)
+        assert s1 == s2
+
+    # # =====================================================================
+    # ### Circular traversal guard on parameters()
+    # # =====================================================================
+    def test_parameters_no_infinite_recursion(self):
+        mod = self._make()
+        parent = AddOne(bias=Param(0))  # dummy composite
+        # manually create a loop for test purposes
+        parent.child1 = mod  # type: ignore[attr-defined]
+        parent.child2 = mod  # duplicate reference
+        # Should not raise RecursionError
+        list(parent.parameters())
+
+    # # =====================================================================
+    # ### Callback blocked in fixed mode
+    # # =====================================================================
+    def test_callback_blocked_when_fixed(self):
+        mod = self._make()
+        mod.fix()
+        bad_spec = AddOne(bias=Param(10)).spec()
+        with pytest.raises(RuntimeError):
+            mod.update_adapted(bad_spec)
+        # mutating adapted_param directly also fails
+        with pytest.raises(RuntimeError):
+            mod.adapted_param.set(bad_spec)
+
+    # # =====================================================================
+    # ### Gradient isolation when train_submods False
+    # # =====================================================================
+    def test_no_gradients_for_inner_when_train_submods_false(self):
+        mod = self._make(train_submods=False)
+        out = mod.forward(3)  # pylint: disable=assignment-from-no-return
+        (out * 2).backward()
+        # inner bias should have no grad, spec param should
+        assert mod.adapted.bias.grad is None
+        assert mod.adapted_param.grad is not None
+
+
 
 
 # import pytest

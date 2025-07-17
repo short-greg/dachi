@@ -18,6 +18,7 @@ from ._base import (
     registry,
     AdaptModule,
     ParamSet,
+    RestrictedSchemaMixin
 
 )
 from ._structs import (

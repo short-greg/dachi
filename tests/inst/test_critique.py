@@ -4,12 +4,8 @@ This suite covers validation, rendering and conversion helpers for the
 Criterion / Evaluation family.  All tests are black‑box and keep one
 assertion per test (except when logically inseparable).
 """
-
-import typing
-
 import pytest
 import pydantic
-
 from dachi.inst._critique import (
     Criterion,
     CompoundCriterion,

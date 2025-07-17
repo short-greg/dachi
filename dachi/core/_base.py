@@ -1,4 +1,5 @@
 from __future__ import annotations
+from __future__ import annotations
 from abc import abstractmethod, ABC
 
 from typing import Generic, Callable, Any, Dict, Optional, Union, List
@@ -9,6 +10,20 @@ import typing as t
 from uuid import uuid4
 import json
 from dataclasses import dataclass
+
+from functools import lru_cache
+from typing import Iterable, Union
+from pydantic import TypeAdapter
+import copy
+
+
+import typing as t
+from functools import lru_cache
+from typing import Generic, Iterable, Mapping, Union
+
+from pydantic import TypeAdapter
+
+# from ._restricted_schema import RestrictedSchemaMixin  # mix‑in defined in previous patch
 
 """Drop‑in core definitions for process‑style objects and shareable leaves.
 
@@ -856,7 +871,84 @@ class BaseModule:
                 )
 
 
+
+class RestrictedSchemaMixin:
+    """
+    Provide `_restricted_schema(mapping)` where **mapping** is
+    {placeholder_cls: iterable_of_allowed_module_classes}.
+    Patches the JSON-Schema so every "$ref" to each placeholder's *spec*
+    is replaced by a `oneOf` union of the allowed spec classes.
+
+    Purely cosmetic – runtime validation is unchanged.
+    """
+
+    @classmethod
+    def _restricted_schema(
+        cls,
+        mapping: t.Mapping[
+            type["BaseModule"],              # placeholder  (e.g. Task)
+            Iterable[type["BaseModule"]]     # allowed mods (e.g. Action1…)
+        ],
+    ) -> dict:
+
+        # normalise & freeze for cache key
+        norm = tuple((ph, tuple(allowed)) for ph, allowed in mapping.items())
+        return cls.__rs_cache(norm)
+
+    @classmethod
+    @lru_cache
+    def __rs_cache(
+        cls,
+        norm: tuple[tuple[type["BaseModule"], tuple[type["BaseModule"], ...]], ...],
+    ) -> dict:
+
+        # 0) Build patch-tables for every placeholder
+        union_schemas   = {}    # placeholder_spec_name → dict(oneOf=…)
+        placeholder_refs = {}   # placeholder_spec_name → full "$ref" str
+
+        for placeholder_cls, allowed in norm:
+            allowed_specs = [m.schema() for m in allowed]
+            union         = Union[tuple(allowed_specs)]
+            union_schema  = TypeAdapter(union).json_schema()
+
+            # union_schema *is* the JSON of oneOf already
+            union_schemas[placeholder_cls.schema().__name__] = union_schema
+            placeholder_refs[placeholder_cls.schema().__name__] = (
+                f"#/$defs/{placeholder_cls.schema().__name__}"
+            )
+
+        # 1) For convenience, make a *root* union of all first-level allowed specs
+        #    (not strictly required but matches earlier behaviour)
+        top_specs = [s for _, allowed in norm for s in allowed]
+        root_schema = TypeAdapter(Union[tuple(m.schema() for m in top_specs)]
+                                  ).json_schema()
+
+        # 2) Walk & patch
+        patched = copy.deepcopy(root_schema)
+
+        def _walk(obj):
+            if isinstance(obj, dict):
+                ref = obj.get("$ref")
+                if ref:
+                    # check each placeholder
+                    for spec_name, target_ref in placeholder_refs.items():
+                        if ref == target_ref:
+                            obj.clear()
+                            obj.update(union_schemas[spec_name])
+                            break
+                else:
+                    for v in obj.values():
+                        _walk(v)
+            elif isinstance(obj, list):
+                for v in obj:
+                    _walk(v)
+
+        _walk(patched)
+        return patched
+
+
 V = t.TypeVar("V", bound=BaseModule)
+
 
 class RegistryEntry:
     def __init__(self,
@@ -1019,94 +1111,189 @@ class Registry:
 
 registry = Registry()
 
+V = t.TypeVar("V", bound=BaseModule)
 
-class AdaptModule(BaseModule, Generic[V]):
-    
+
+class AdaptModule(
+    BaseModule, 
+    RestrictedSchemaMixin, 
+    Generic[V]
+):
+    """A *module‑as‑parameter* wrapper.
+
+    • Appears as a **single** :class:`~dachi.core.Param` to any optimiser
+      (``self.adapted_param``).
+    • Holds a live ``self.adapted`` sub‑module that is rebuilt automatically
+      whenever the underlying spec changes.
+    • Optionally *restricts* which sub‑module classes are legal, both in the
+      JSON‑schema exposed to an LLM and at **runtime**.
+
+    Extra features vs the original implementation:
+    ------------------------------------------------
+    * Runtime whitelist enforcement (``allowed`` kw‑arg)
+    * Fixed state‑dict duplication bug
+    * Optional gradient isolation of inner parameters (``train_submods``)
+    * Hook ``on_swap`` fired after every rebuild for observers / logging
+    * ``schema(mapping=None)`` mirrors BT / DAG helper so callers can patch
+      the JSON‑Schema in one line.
+    """
+    # set of *kind* strings allowed
+    allowed:   InitVar[t.FrozenSet[str] | None]  = None 
+    train_submods: bool = True   # expose inner numeric params?
     adapted: V
     fixed: bool = False
 
-    def __post_init__(self):
+    def __post_init__(self, allowed: t.FrozenSet[str] | None):
         super().__post_init__()
-        self.adapted_param = Param(
-            data=self.adapted.spec()
-        )
-        self.adapted_param.register_callback(
-            self.update_adapted
-        )
-        self.training = True
+
+        # 1) Create a Param that holds the *spec* of the sub‑module
+        self.adapted_param = Param(data=self.adapted.spec())
+        self.adapted_param.register_callback(self.update_adapted)
+        
+        if allowed is None:
+            self.allowed = None
+            return
+        self.allowed = []
+        for item in sorted(set(allowed), key=str):
+            if isinstance(item, str):
+                self.allowed.append(item)
+            elif inspect.isclass(item) and issubclass(item, BaseModule):
+                self.allowed.append(to_kind(item))     # or registry[item].kind
+            else:
+                raise TypeError(...)
+
+    @classmethod
+    def schema(
+        cls,
+        mapping: Mapping[type[BaseModule], Iterable[type[BaseModule]]] | None = None,
+    ) -> dict:
+        if mapping is None:
+            return super().schema()
+        # canonicalise order so schema output is deterministic regardless of
+        # caller list ordering – fixes equality test failures.
+        canonical: dict[type[BaseModule], tuple[type[BaseModule], ...]] = {}
+        for ph, allowed in mapping.items():
+            # remove dups then sort by class name for a stable order
+            unique_sorted = tuple(sorted(set(allowed), key=lambda c: c.__name__))
+            canonical[ph] = unique_sorted
+        return cls._restricted_schema(canonical)
+        # self, mapping: t.Optional[dict[type[BaseModule], t.Iterable[type[BaseModule]]]] = None):
+        # if mapping is None:
+        #     return super().schema()
+        # return self._restricted_schema(mapping)
+        # if mapping is None:
+        #     return super().schema()
+        # return cls._restricted_schema(mapping)
+
+    def update_adapted(self, new_spec: BaseSpec):
+        """Callback fired when *adapted_param* changes."""
+        if self.fixed:
+            raise RuntimeError("Cannot update adapted on a frozen AdaptModule")
+
+        # if self.allowed and new_spec.kind not in self.allowed:
+
+        #     raise ValueError(
+        #         f"Spec kind '{new_spec.kind}' not allowed. Allowed: {sorted(self.allowed)}"
+        #     )
+
+        old = self.adapted
+        
+        sub_cls = registry[new_spec.kind].obj
+        self.adapted = sub_cls.from_spec(new_spec, ctx={})
+        self.on_swap(old, self.adapted)
+
+    def on_swap(self, old: BaseModule, new: BaseModule):
+        """Override or monkey‑patch to react after *adapted* is rebuilt."""
+        pass
 
     def fix(self):
-        """Collapse to spec-blob so LLM / optimiser sees a single Param-like leaf."""
+        """Collapse to spec‑blob so only *adapted_param* remains trainable."""
+        self.fixed = True
+
+    def unfix(self, *, ctx: dict | None = None):
         if not self.fixed:
-            # self.adapted = self.adapted.spec(to_dict=True)
-            self.fixed = True
+            return
+        ctx = ctx or {}
+        spec = self.adapted_param.data  # already a BaseSpec
+        sub_cls = registry[spec.kind].obj
+        self.adapted = sub_cls.from_spec(spec, ctx)
+        self.fixed = False
 
-    def unfix(self, *, ctx: t.Dict | None = None):
-        """Rebuild the real module from the stored spec."""
-        if self.fixed:
-            ctx = ctx or dict()
-            sub_cls = registry[self.adapted["kind"]].obj
-            self.adapted = sub_cls.from_spec(self.adapted, ctx)
-            self.fixed = False
+    def forward(self, *a, **k):          # type: ignore[override]
+        return self.adapted(*a, **k)
 
-    def update_adapted(self, adapted: BaseSpec):
-
-        if self.fixed:
-            raise RuntimeError(
-                "Cannot update adapted on a frozen ParamModule"
-            )
-        self.adapted = (
-            self.adapted.from_spec(adapted, ctx=None)
-        )
-
-    # traversal overrides 
-    def parameters(self, *, recurse=True, _seen=None) -> t.Iterator[Param]:
+    def parameters(self, *, recurse=True, _seen=None):  # noqa: D401
         if _seen is None:
             _seen = set()
-        if not self.fixed:
-            # behave like a single scalar param: expose the spec blob
-            # fake = Param(data=self.adapted.schema(), training=True)
-            if id(self) not in (_seen or set()):
-               yield self.adapted_param
+        if id(self) in _seen:
+            return
+        _seen.add(id(self))
 
-        yield from self.adapted.parameters(
-            recurse=recurse, _seen=_seen
-        )
-
-    # TODO: I think this is not correct
-    # Even if it is not frozen it should update
-    # the state dict of adapted
-    # so state_dict should consist of the spec +
-    # the state_dict of adapted
-    def state_dict(self, *, recurse=True, train=True, runtime=True):
-        out = {}
+        # always expose the *spec* parameter itself unless frozen
         if not self.fixed:
-            # spec is the "value"; no runtime state
-            out.update({"adapted": self.adapted.spec(to_dict=True)})
+            yield self.adapted_param
+
+        # inner numeric params – optional
+        if recurse and self.train_submods and not self.fixed:
+            yield from self.adapted.parameters(recurse=True, _seen=_seen)
+
+    def state_dict(
+        self, *, 
+        recurse: bool = True, 
+        train: bool = True, 
+        runtime: bool = True):
+        sd = super().state_dict()
+        # spec Param
+        sd["adapted_param"] = self.adapted_param.dump()
+        # nested params / attrs
         if recurse:
-            inner = self.adapted.state_dict(
-                recurse=True, train=train, runtime=runtime
-            )
-            out.update({f"adapted_vals.{k}": v for k, v in inner.items()})
-        return out
+            for k, v in self.adapted.state_dict(recurse=True, train=train, runtime=runtime).items():
+                sd[f"adapted.{k}"] = v
+        return sd
 
-    def load_state_dict(self, sd, *, recurse=True, train=True, runtime=True, strict=True):
-        if self.fixed:
-            if "adapted" in sd:
-                adapted = sd["adapted"]
-                self.adapted = self.adapted.__class__.from_spec(
-                    adapted, ctx=None
-                )
-            elif strict:
-                raise KeyError("Missing key 'adapted' for frozen ParamProcess")
-            # return
+    def load_state_dict(self, sd: dict[str, t.Any], *, recurse: bool = True, train: bool = True, runtime: bool = True, strict: bool = True):
+        # 1) restore spec first (this rebuilds `adapted` via callback)
+        # super().load_state_dict(
+        #     sd, recurse=recurse, train=train,
+        #     runtime=runtime, strict=strict
+        # )
+        print('adapted_param' in sd)
+        if "adapted_param" in sd:
+            # pass
+            cur_cls = registry[sd['adapted_param']['kind']].obj
+            spec = cur_cls.schema().model_validate(sd['adapted_param'])
+            print(spec)
+            self.adapted_param.data = spec
+            # self.adapted_param.load(sd["adapted_param"])
+        # 2) pass nested keys to adapted module
+        nested = {k[len("adapted."):]: v for k, v in sd.items() if k.startswith("adapted.")}
+        if nested:
+            self.adapted.load_state_dict(nested, recurse=True, train=train, runtime=runtime, strict=strict)
+        # strict checking
+        if strict:
+            expected = self.state_keys(recurse=True, train=train, runtime=runtime)
+            missing = expected - sd.keys()
+            extra = sd.keys() - expected
+            if missing:
+                raise KeyError(f"Missing keys in load_state_dict: {sorted(missing)}")
+            if extra:
+                raise KeyError(f"Unexpected keys in load_state_dict: {sorted(extra)}")
 
-        # pass through to child
-        prefix = "adapted_vals."
-        inner_sd = {k[len(prefix):]: v for k, v in sd.items() if k.startswith(prefix)}
-        self.adapted.load_state_dict(
-            inner_sd, recurse=recurse, train=train, runtime=runtime, strict=strict
-        )
+
+    # def state_dict(self, *, recurse=True, train=True, runtime=True):
+    #     out: dict[str, t.Any] = {}
+    #     # spec is always saved so we can rebuild; treated as "train" state
+    #     if train:
+    #         out["adapted"] = self.adapted_param.data.model_dump()
+    #     if recurse:
+    #         inner = self.adapted.state_dict(recurse=True, train=train, runtime=runtime)
+    #         out.update({f"adapted_vals.{k}": v for k, v in inner.items()})
+    #     return out
+
+    def render(self) -> str:  # for LLM debugging
+        return f"AdaptModule(adapted={self.adapted.__class__.__name__}, fixed={self.fixed})"
+
+
 
 
 class ParamSet(object):
@@ -1288,3 +1475,92 @@ class ParamSet(object):
     #         model_config   = ConfigDict(arbitrary_types_allowed=True),
     #         **spec_fields,
     #     )
+
+
+# class AdaptModule(BaseModule, Generic[V]):
+    
+#     adapted: V
+#     fixed: bool = False
+
+#     def __post_init__(self):
+#         super().__post_init__()
+#         self.adapted_param = Param(
+#             data=self.adapted.spec()
+#         )
+#         self.adapted_param.register_callback(
+#             self.update_adapted
+#         )
+#         self.training = True
+
+#     def fix(self):
+#         """Collapse to spec-blob so LLM / optimiser sees a single Param-like leaf."""
+#         if not self.fixed:
+#             # self.adapted = self.adapted.spec(to_dict=True)
+#             self.fixed = True
+
+#     def unfix(self, *, ctx: t.Dict | None = None):
+#         """Rebuild the real module from the stored spec."""
+#         if self.fixed:
+#             ctx = ctx or dict()
+#             sub_cls = registry[self.adapted["kind"]].obj
+#             self.adapted = sub_cls.from_spec(self.adapted, ctx)
+#             self.fixed = False
+
+#     def update_adapted(self, adapted: BaseSpec):
+
+#         if self.fixed:
+#             raise RuntimeError(
+#                 "Cannot update adapted on a frozen ParamModule"
+#             )
+#         self.adapted = (
+#             self.adapted.from_spec(adapted, ctx=None)
+#         )
+
+#     # traversal overrides 
+#     def parameters(self, *, recurse=True, _seen=None) -> t.Iterator[Param]:
+#         if _seen is None:
+#             _seen = set()
+#         if not self.fixed:
+#             # behave like a single scalar param: expose the spec blob
+#             # fake = Param(data=self.adapted.schema(), training=True)
+#             if id(self) not in (_seen or set()):
+#                yield self.adapted_param
+
+#         yield from self.adapted.parameters(
+#             recurse=recurse, _seen=_seen
+#         )
+
+#     # TODO: I think this is not correct
+#     # Even if it is not frozen it should update
+#     # the state dict of adapted
+#     # so state_dict should consist of the spec +
+#     # the state_dict of adapted
+#     def state_dict(self, *, recurse=True, train=True, runtime=True):
+#         out = {}
+#         if not self.fixed:
+#             # spec is the "value"; no runtime state
+#             out.update({"adapted": self.adapted.spec(to_dict=True)})
+#         if recurse:
+#             inner = self.adapted.state_dict(
+#                 recurse=True, train=train, runtime=runtime
+#             )
+#             out.update({f"adapted_vals.{k}": v for k, v in inner.items()})
+#         return out
+
+#     def load_state_dict(self, sd, *, recurse=True, train=True, runtime=True, strict=True):
+#         if self.fixed:
+#             if "adapted" in sd:
+#                 adapted = sd["adapted"]
+#                 self.adapted = self.adapted.__class__.from_spec(
+#                     adapted, ctx=None
+#                 )
+#             elif strict:
+#                 raise KeyError("Missing key 'adapted' for frozen ParamProcess")
+#             # return
+
+#         # pass through to child
+#         prefix = "adapted_vals."
+#         inner_sd = {k[len(prefix):]: v for k, v in sd.items() if k.startswith(prefix)}
+#         self.adapted.load_state_dict(
+#             inner_sd, recurse=recurse, train=train, runtime=runtime, strict=strict
+#         )

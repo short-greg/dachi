@@ -5,14 +5,16 @@ import time
 import random
 import asyncio
 import threading
+from typing import Iterable
 
 # local
+from dachi.core import BaseModule, RestrictedSchemaMixin
 from ._core import Task, TaskStatus, State
 from contextlib import contextmanager
 from dachi.core import ModuleDict, Attr, ModuleList
 
 
-class BT(Task):
+class BT(Task, RestrictedSchemaMixin):
     """The root task for a behavior tree
     """
 
@@ -31,6 +33,15 @@ class BT(Task):
     def reset(self):
         super().reset()
         self.root.reset()
+
+    @classmethod
+    def schema(
+        cls,
+        mapping: typing.Mapping[type[BaseModule], Iterable[type[BaseModule]]] | None = None,
+    ):
+        if mapping is None:
+            return super().schema()
+        return cls._restricted_schema(mapping)
 
 
 class Serial(Task):
@@ -93,9 +104,7 @@ class Sequence(Serial):
                 task.reset()
 
         self._idx.data = 0
-
 # TODO: Decide how to handle this
-
 
 
 class Selector(Serial):
@@ -518,12 +527,13 @@ async def run_task(
         yield status
 
 
-
 def statefunc(func):
     """Decorator to mark a function as a state for StateMachine."""
     func._is_state = True
     return func
 
+# TODO: How to handle "statefuncs" 
+# I think it p
 
 class StateMachine(Task):
     """StateMachine is a task composed of multiple tasks in a directed graph
@@ -590,13 +600,21 @@ class StateMachine(Task):
         super().reset()
         self._cur_state = self.init_state
 
+    @classmethod
+    def schema(
+        cls,
+        mapping: typing.Mapping[type[BaseModule], Iterable[type[BaseModule]]] | None = None,
+    ):
+        if mapping is None:
+            return super().schema()
+        return cls._restricted_schema(mapping)
+
 
 class FixedTimer(Action):
     """A timer that will "succeed" at a fixed interval
     """
     # seconds: float
     # _start: typing.Optional[float] = pydantic.PrivateAttr(default=None)
-
     seconds: float
 
     def __post_init__(self):
