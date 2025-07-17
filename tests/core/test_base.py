@@ -1505,7 +1505,69 @@ class TestAdaptedModule:
         assert mod.adapted.bias.grad is None
         assert mod.adapted_param.grad is not None
 
+from dachi.core._base import registry
+registry.register()(AddOne)
+registry.register()(MulTwo)
 
+
+class TestAdaptedModule:
+    """Full behavioural surface for :class:`AdaptModule` (extended).
+    Missing gaps from the earlier suite are now covered.
+    """
+
+    # --------------------------------------------------
+    # helpers / fixtures
+    # --------------------------------------------------
+    @staticmethod
+    def _make(bias: int = 3, allow: list[type[BaseModule]] | None = None,
+               train_submods: bool = True) -> AdaptModule:
+        """Factory returning a fresh, *unfixed* wrapper around AddOne."""
+        leaf = AddOne(bias=bias)
+        return AdaptModule(
+            adapted=leaf,
+            allowed=allow,
+            train_submods=train_submods,
+        )
+
+    # =====================================================================
+    ### NEW TESTS – coverage gaps
+    # =====================================================================
+    def test_rebuild_on_hyperparam_change(self):
+        mod = self._make(bias=1)
+        id_before = id(mod.adapted)
+        # same class, different hyper‑param
+        mod.update_adapted(AddOne(bias=99).spec())
+        assert id(mod.adapted) != id_before
+        assert mod.adapted.bias.data == 99
+
+    def test_load_state_dict_missing_key_strict_raises(self):
+        mod = self._make(bias=4)
+        sd = mod.state_dict()
+        sd.pop("adapted_param")  # remove critical key
+        clone = self._make(bias=0)
+        with pytest.raises(KeyError):
+            clone.load_state_dict(sd, strict=True)
+
+    def test_load_state_dict_extra_key_strict_raises(self):
+        mod = self._make(bias=5)
+        sd = mod.state_dict()
+        sd["unexpected"] = 123
+        clone = self._make(bias=0)
+        with pytest.raises(KeyError):
+            clone.load_state_dict(sd, strict=True)
+
+    def test_whitelist_mixed_types_dedup(self):
+        # duplicates across string & class should collapse silently
+        allowed = [AddOne, "AddOne", AddOne]
+
+        mod = self._make(allow=allowed)
+        # whitelist set should have length 1 internally
+        assert len(mod.allowed) == 1
+
+    def test_schema_size_under_threshold(self):
+        many = [AddOne] * 150  # duplicates collapse, but still sizable
+        schema = AdaptModule.schema({Task: many})
+        assert len(json.dumps(schema)) < 200_000  # 200 KB guard
 
 
 # import pytest

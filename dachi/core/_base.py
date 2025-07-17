@@ -1,9 +1,7 @@
 from __future__ import annotations
-from __future__ import annotations
 from abc import abstractmethod, ABC
 
 from typing import Generic, Callable, Any, Dict, Optional, Union, List
-import inspect
 from dataclasses import InitVar
 import inspect
 import typing as t
@@ -12,14 +10,16 @@ import json
 from dataclasses import dataclass
 
 from functools import lru_cache
-from typing import Iterable, Union
+from typing import Iterable, Union, Mapping
 from pydantic import TypeAdapter
 import copy
+
+from dachi.utils import resolve_name
 
 
 import typing as t
 from functools import lru_cache
-from typing import Generic, Iterable, Mapping, Union
+from typing import Generic, Iterable, Union
 
 from pydantic import TypeAdapter
 
@@ -1108,9 +1108,7 @@ class Registry:
             description=description
         )
 
-
 registry = Registry()
-
 V = t.TypeVar("V", bound=BaseModule)
 
 
@@ -1153,14 +1151,31 @@ class AdaptModule(
         if allowed is None:
             self.allowed = None
             return
-        self.allowed = []
+        allowed_set = set()
+        
         for item in sorted(set(allowed), key=str):
-            if isinstance(item, str):
-                self.allowed.append(item)
-            elif inspect.isclass(item) and issubclass(item, BaseModule):
-                self.allowed.append(to_kind(item))     # or registry[item].kind
+            if inspect.isclass(item) and issubclass(item, BaseModule):
+                allowed_set.add(to_kind(item))                      # fully-qualified
+            elif isinstance(item, str):
+                obj = resolve_name(item, namespace={**globals(), **locals()}, search_sys_modules=True)
+                if not (inspect.isclass(obj) and issubclass(obj, BaseModule)):
+                    raise TypeError(
+                        f"'{item}' is not a BaseModule subclass"
+                    )
+                allowed_set.add(to_kind(obj))
             else:
-                raise TypeError(...)
+                raise TypeError(f"Invalid entry {item!r}")
+        self.allowed = list(allowed_set)
+
+
+        # for item in sorted(set(allowed), key=str):
+        #     if isinstance(item, str):
+        #         print(item)
+        #         self.allowed.add(item)
+        #     elif inspect.isclass(item) and issubclass(item, BaseModule):
+        #         self.allowed.add(to_kind(item))     # or registry[item].kind
+        #     else:
+        #         raise TypeError(...)
 
     @classmethod
     def schema(
@@ -1257,7 +1272,6 @@ class AdaptModule(
         #     sd, recurse=recurse, train=train,
         #     runtime=runtime, strict=strict
         # )
-        print('adapted_param' in sd)
         if "adapted_param" in sd:
             # pass
             cur_cls = registry[sd['adapted_param']['kind']].obj
@@ -1292,8 +1306,6 @@ class AdaptModule(
 
     def render(self) -> str:  # for LLM debugging
         return f"AdaptModule(adapted={self.adapted.__class__.__name__}, fixed={self.fixed})"
-
-
 
 
 class ParamSet(object):
@@ -1337,7 +1349,6 @@ class ParamSet(object):
             f"param_{i}": param.dump() 
             for i, param in enumerate(self.params)
         }
-
 
 
     # @classmethod
