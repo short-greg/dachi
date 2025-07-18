@@ -191,7 +191,6 @@ class LineParser(Parser):
         resp = resp or ''
         utils.acc(delta_store, 'val', resp)
         lines = delta_store['val'].splitlines()
-        result = []
         buffer = []
 
         if is_last and len(lines) == 0:
@@ -227,28 +226,6 @@ class LineParser(Parser):
             ''.join(line)
             for line in buffered_lines
         ]
-
-        # if is_last and buffer:
-        #     print("last and buffer")
-        #     trailing = delta_store.pop("val", "")
-        #     if trailing:
-        #         buffer.append(trailing)
-        #     result.append("".join(buffer))
-        #     buffer.clear()
-
-        # if buffer:
-        #    result.append("\n".join(buffer))
-        # if not is_last and len(result) > 0:
-        #     delta_store['val'] = result[-1]
-        #     if resp[-1] == '\n':
-        #         delta_store['val'] += '\n'
-        #     result = result[:-1]
-        # elif is_last:
-        #     delta_store['val'] = ''
-        # if len(result) == 0:
-        #     return utils.UNDEFINED
-
-        # return result
 
     def render(self, data) -> str:
         """Render the data

@@ -83,15 +83,14 @@ class ShareableItem(t.Generic[J]):
 
         return self._data
     
-    def set(self, value: J | None):
+    def set(self, data: J | None):
         expected_type = self._get_expected_type()
-        print(expected_type)
         if (
-            expected_type is not None and not isinstance(value, expected_type)
+            expected_type is not None and not isinstance(data, expected_type)
         ):
-            raise TypeError(f"Expected data of type {expected_type}, got {type(value)}")
-        self._data = value
-        self.update_data_hook(value)
+            raise TypeError(f"Expected data of type {expected_type}, got {type(data)}")
+        self._data = data
+        self.update_data_hook(data)
 
     def empty(self) -> bool:
 
@@ -100,7 +99,7 @@ class ShareableItem(t.Generic[J]):
     @property
     def data(self) -> J | None:
         """Get the data value."""
-        return self.get()
+        return self._data
 
     @data.setter
     def data(self, value: J):
@@ -175,12 +174,12 @@ class Param(ShareableItem[J]):
         super().__init__(data)
         self._fixed = fixed
 
-    def set(self, value):
+    def set(self, data):
         if self._fixed:
             raise RuntimeError(
                 'Cannot set parameter that is fixed.'
             )
-        value = super().set(value)
+        data = super().set(data)
 
     def is_fixed(self) -> bool:
         return self._fixed
@@ -210,7 +209,6 @@ class Attr(ShareableItem[J]):
 class Shared(ShareableItem[J]):
     """Pointer‑like wrapper whose value should *not* enter ``state_dict``."""
     pass
-
 
 
 class Renderable(ABC):
@@ -270,6 +268,7 @@ class ExampleMixin(ABC):
 
 
 class BaseSpec(BaseModel):
+
     kind : str
     id   : str = Field(
         default_factory=lambda: str(uuid4())
@@ -312,14 +311,12 @@ def get_class_annotations(cls: type) -> dict[str, type]:
     return hints
 
 
-# BaseModule – runtime process node
 @dataclass_transform(kw_only_default=True, field_specifiers=(Field,))
 class BaseModule:
     """Dataclass‑like runtime object without exec‑generated ``__init__``."""
 
     # populated by __init_subclass__
     __spec__: t.ClassVar[type[BaseSpec]]
-
     __spec_hooks__: t.ClassVar[t.List[str]] = []
     __item_fields__: t.ClassVar[list[tuple[str, t.Any, t.Any, bool]]]
     __is_initvar__: t.ClassVar[dict[str, bool]]
@@ -694,7 +691,6 @@ class BaseModule:
             #    pass
             # (a) Nested BaseModule spec  -----------------------------
             # if isinstance(val, (BaseSpec, dict)):
-                print(name)
 
                 if isinstance(val, BaseSpec) and val.id in ctx:
                     val = ctx.get(val.id)  # reuse existing module
@@ -707,7 +703,6 @@ class BaseModule:
                         val=val,
                         ctx=ctx
                     )
-                    print('Modules: ', val)
                     # ctx[id] = val
                 elif isinstance(val, BaseSpec):
                     id = val.id
@@ -744,7 +739,6 @@ class BaseModule:
             super().__setattr__(name, value)
 
     def register_parameter(self, name: str, param: Param):
-        print(self._parameters)
         self._parameters[name] = param
         super().__setattr__(name, param)
 
@@ -1136,20 +1130,28 @@ class AdaptModule(
       the JSON‑Schema in one line.
     """
     # set of *kind* strings allowed
-    allowed:   InitVar[t.FrozenSet[str] | None]  = None 
-    train_submods: bool = True   # expose inner numeric params?
-    adapted: V
-    fixed: bool = False
+    # allowed:   InitVar[t.FrozenSet[str] | None]  = None 
+    # train_submods: bool = True   # expose inner numeric params?
+    # adapted: V
+    # fixed: bool = False
 
-    def __post_init__(self, allowed: t.FrozenSet[str] | None):
+    def __post_init__(self):
         super().__post_init__()
+        self._allowed = list()
+        self._adapted_param = Param(data=None)
+        self._adapted = None
+        self._adapted_param.register_callback(self.update_adapted)
+        self.train_submods = True
+        self.fixed = False
 
-        # 1) Create a Param that holds the *spec* of the sub‑module
-        self.adapted_param = Param(data=self.adapted.spec())
-        self.adapted_param.register_callback(self.update_adapted)
-        
+    @property
+    def allowed(self) -> t.List:
+        return [*self._allowed]
+
+    @allowed.setter
+    def allowed(self, allowed: t.List):
         if allowed is None:
-            self.allowed = None
+            self._allowed = None
             return
         allowed_set = set()
         
@@ -1165,8 +1167,22 @@ class AdaptModule(
                 allowed_set.add(to_kind(obj))
             else:
                 raise TypeError(f"Invalid entry {item!r}")
-        self.allowed = list(allowed_set)
+        self._allowed = list(allowed_set)
 
+    @property
+    def adapted(self) -> BaseModule:
+        return self._adapted
+
+    @adapted.setter
+    def adapted(self, val: V):
+        adapted = self._adapted
+        # 1) Create a Param that holds the *spec* of the sub‑module
+        if val is not None:
+            self._adapted_param.set(data=val.spec())
+        else:
+            self._adapted_param.set(data=None)
+        if adapted is not None:
+            self.on_swap(adapted, val)
 
         # for item in sorted(set(allowed), key=str):
         #     if isinstance(item, str):
@@ -1176,6 +1192,10 @@ class AdaptModule(
         #         self.allowed.add(to_kind(item))     # or registry[item].kind
         #     else:
         #         raise TypeError(...)
+
+    @property
+    def adapted_param(self) -> Param:
+        return self._adapted_param
 
     @classmethod
     def schema(
@@ -1211,11 +1231,11 @@ class AdaptModule(
         #         f"Spec kind '{new_spec.kind}' not allowed. Allowed: {sorted(self.allowed)}"
         #     )
 
-        old = self.adapted
+        old = self._adapted
         
         sub_cls = registry[new_spec.kind].obj
-        self.adapted = sub_cls.from_spec(new_spec, ctx={})
-        self.on_swap(old, self.adapted)
+        self._adapted = sub_cls.from_spec(new_spec, ctx={})
+        self.on_swap(old, self._adapted)
 
     def on_swap(self, old: BaseModule, new: BaseModule):
         """Override or monkey‑patch to react after *adapted* is rebuilt."""
@@ -1231,7 +1251,7 @@ class AdaptModule(
         ctx = ctx or {}
         spec = self.adapted_param.data  # already a BaseSpec
         sub_cls = registry[spec.kind].obj
-        self.adapted = sub_cls.from_spec(spec, ctx)
+        self._adapted = sub_cls.from_spec(spec, ctx)
         self.fixed = False
 
     def forward(self, *a, **k):          # type: ignore[override]
@@ -1257,13 +1277,15 @@ class AdaptModule(
         recurse: bool = True, 
         train: bool = True, 
         runtime: bool = True):
-        sd = super().state_dict()
+        sd = {}
+        # sd = super().state_dict()
         # spec Param
-        sd["adapted_param"] = self.adapted_param.dump()
         # nested params / attrs
         if recurse:
-            for k, v in self.adapted.state_dict(recurse=True, train=train, runtime=runtime).items():
-                sd[f"adapted.{k}"] = v
+            for k, v in self._adapted.state_dict(recurse=True, train=train, runtime=runtime).items():
+                sd[f"_adapted.{k}"] = v
+        sd["_adapted_param"] = self.adapted_param.dump()
+        print(list(sd.keys()))
         return sd
 
     def load_state_dict(self, sd: dict[str, t.Any], *, recurse: bool = True, train: bool = True, runtime: bool = True, strict: bool = True):
@@ -1272,15 +1294,15 @@ class AdaptModule(
         #     sd, recurse=recurse, train=train,
         #     runtime=runtime, strict=strict
         # )
-        if "adapted_param" in sd:
+        if "_adapted_param" in sd:
             # pass
-            cur_cls = registry[sd['adapted_param']['kind']].obj
-            spec = cur_cls.schema().model_validate(sd['adapted_param'])
+            cur_cls = registry[sd['_adapted_param']['kind']].obj
+            spec = cur_cls.schema().model_validate(sd['_adapted_param'])
             print(spec)
-            self.adapted_param.data = spec
+            self._adapted_param.data = spec
             # self.adapted_param.load(sd["adapted_param"])
         # 2) pass nested keys to adapted module
-        nested = {k[len("adapted."):]: v for k, v in sd.items() if k.startswith("adapted.")}
+        nested = {k[len("_adapted."):]: v for k, v in sd.items() if k.startswith("_adapted.")}
         if nested:
             self.adapted.load_state_dict(nested, recurse=True, train=train, runtime=runtime, strict=strict)
         # strict checking

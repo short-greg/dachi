@@ -6,9 +6,10 @@ import random
 import asyncio
 import threading
 from typing import Iterable
+from dataclasses import InitVar
 
 # local
-from dachi.core import BaseModule, RestrictedSchemaMixin
+from dachi.core import BaseModule, RestrictedSchemaMixin, AdaptModule
 from ._core import Task, TaskStatus, State
 from contextlib import contextmanager
 from dachi.core import ModuleDict, Attr, ModuleList
@@ -42,6 +43,40 @@ class BT(Task, RestrictedSchemaMixin):
         if mapping is None:
             return super().schema()
         return cls._restricted_schema(mapping)
+
+
+class AdaptedBT(AdaptModule, Task):
+    """The root task for a behavior tree
+    """
+
+    root: InitVar[Task | None] = None
+
+    def __post_init__(self):
+        return super().__post_init__()
+
+    async def tick(self) -> TaskStatus:
+        """Update the task
+
+        Returns:
+            SangoStatus: The status after tick
+        """
+        if self.root is None:
+            return TaskStatus.SUCCESS
+        return await self.root()
+
+    def reset(self):
+        super().reset()
+        self.root.reset()
+
+    @classmethod
+    def schema(
+        cls,
+        mapping: typing.Mapping[type[BaseModule], Iterable[type[BaseModule]]] | None = None,
+    ):
+        if mapping is None:
+            return super().schema()
+        return cls._restricted_schema(mapping)
+
 
 
 class Serial(Task):

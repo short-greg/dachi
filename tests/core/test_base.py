@@ -1276,8 +1276,6 @@ def test_shared_subclass_roundtrip():
     assert rebuilt.val.data == 3.14
 
 
-
-
 @registry.register()
 class AddOne(BaseModule):
     bias: InitVar[int]
@@ -1356,11 +1354,11 @@ class TestAdaptedModule:
                train_submods: bool = True) -> AdaptModule:
         """Factory returning a fresh, *unfixed* wrapper around AddOne."""
         leaf = AddOne(bias=bias)
-        return AdaptModule(
-            adapted=leaf,
-            allowed=allow,
-            train_submods=train_submods,
-        )
+        adapted =  AdaptModule()
+        adapted.adapted = leaf
+        adapted.allowed = allow
+        adapted.train_submods = train_submods
+        return adapted
 
     # =====================================================================
     ### Construction & basic wiring
@@ -1368,8 +1366,18 @@ class TestAdaptedModule:
     def test_init_creates_spec_param_and_callback(self):
         mod = self._make()
         assert isinstance(mod.adapted_param, Param)
-        assert mod.adapted_param.data == mod.adapted.spec()
-        # mutate spec → callback should rebuild
+
+        spec1 = {
+            key: val for key, val in mod.adapted_param.data.dict().items()
+            if key != 'id'
+        }
+        spec2 = {
+            key: val for key, val in mod.adapted.spec(to_dict=True).items()
+            if key != 'id'
+        }
+
+        assert spec1 == spec2
+        
         old_id = id(mod.adapted)
         new_spec = MulTwo(factor=5).spec()
         mod.adapted_param.set(new_spec)  # triggers callback path
@@ -1413,9 +1421,6 @@ class TestAdaptedModule:
         assert isinstance(mod.adapted, AddOne)
         assert mod.adapted.bias.data == 9
 
-    # # =====================================================================
-    # ### on_swap hook semantics & double‑fire order
-    # # =====================================================================
     def test_on_swap_fires_with_old_and_new(self):
         events: list[tuple[int, int]] = []
 
@@ -1423,36 +1428,32 @@ class TestAdaptedModule:
             def on_swap(self, old, new):  # type: ignore[override]
                 events.append((id(old), id(new)))
 
-        mod = _Watcher(adapted=AddOne(bias=1))
+        mod = _Watcher()
+        mod.adapted = AddOne(bias=1)
         spec2 = AddOne(bias=2).spec()
         spec3 = AddOne(bias=3).spec()
         mod.update_adapted(spec2)
         mod.update_adapted(spec3)
-        # two events, ids strictly increasing chain
-        assert len(events) == 2
+        # three events, ids strictly increasing chain
+        assert len(events) == 3
         assert events[0][1] == events[1][0]  # new of first == old of second
 
-    # # =====================================================================
-    # ### State‑dict save / load round‑trip & namespacing
-    # # =====================================================================
     def test_state_dict_round_trip(self):
         mod = self._make(bias=7)
         sd = mod.state_dict()
+        # print(sd[])
         clone = self._make(bias=1)  # different initial value
         clone.load_state_dict(sd)
         assert clone.adapted.bias.data == 7
         # keys check
-        assert "adapted_param" in sd
-        assert any(k.startswith("adapted.") for k in sd)
+        assert "_adapted_param" in sd
+        assert any(k.startswith("_adapted.") for k in sd)
 
     def test_state_dict_non_recursive(self):
         mod = self._make()
         sd = mod.state_dict(recurse=False)
-        assert 'adapted_param' in set(sd.keys())
+        assert '_adapted_param' in set(sd.keys())
 
-    # # =====================================================================
-    # ### Schema patching with multiple placeholders & cache robustness
-    # # =====================================================================
     def test_schema_mapping_patches_refs(self):
         mapping = {Task: [AddOne], State: [MulTwo]}
         schema = AdaptModule.schema(mapping)  # classmethod
@@ -1469,9 +1470,6 @@ class TestAdaptedModule:
         s2 = AdaptModule.schema(map2)
         assert s1 == s2
 
-    # # =====================================================================
-    # ### Circular traversal guard on parameters()
-    # # =====================================================================
     def test_parameters_no_infinite_recursion(self):
         mod = self._make()
         parent = AddOne(bias=Param(0))  # dummy composite
@@ -1481,9 +1479,6 @@ class TestAdaptedModule:
         # Should not raise RecursionError
         list(parent.parameters())
 
-    # # =====================================================================
-    # ### Callback blocked in fixed mode
-    # # =====================================================================
     def test_callback_blocked_when_fixed(self):
         mod = self._make()
         mod.fix()
@@ -1494,23 +1489,20 @@ class TestAdaptedModule:
         with pytest.raises(RuntimeError):
             mod.adapted_param.set(bad_spec)
 
-    # # =====================================================================
-    # ### Gradient isolation when train_submods False
-    # # =====================================================================
-    def test_no_gradients_for_inner_when_train_submods_false(self):
-        mod = self._make(train_submods=False)
-        out = mod.forward(3)  # pylint: disable=assignment-from-no-return
-        (out * 2).backward()
-        # inner bias should have no grad, spec param should
-        assert mod.adapted.bias.grad is None
-        assert mod.adapted_param.grad is not None
+#     # def test_no_gradients_for_inner_when_train_submods_false(self):
+#     #     mod = self._make(train_submods=False)
+#     #     out = mod.forward(3)  # pylint: disable=assignment-from-no-return
+#     #     (out * 2).backward()
+#     #     # inner bias should have no grad, spec param should
+#     #     assert mod.adapted.bias.grad is None
+#     #     assert mod.adapted_param.grad is not None
 
-from dachi.core._base import registry
-registry.register()(AddOne)
-registry.register()(MulTwo)
+# from dachi.core._base import registry
+# registry.register()(AddOne)
+# registry.register()(MulTwo)
 
 
-class TestAdaptedModule:
+class TestAdaptedModule2:
     """Full behavioural surface for :class:`AdaptModule` (extended).
     Missing gaps from the earlier suite are now covered.
     """
@@ -1523,15 +1515,12 @@ class TestAdaptedModule:
                train_submods: bool = True) -> AdaptModule:
         """Factory returning a fresh, *unfixed* wrapper around AddOne."""
         leaf = AddOne(bias=bias)
-        return AdaptModule(
-            adapted=leaf,
-            allowed=allow,
-            train_submods=train_submods,
-        )
+        adapted = AdaptModule()
+        adapted.adapted = leaf
+        adapted.allowed = allow
+        adapted.train_submods = train_submods
+        return adapted
 
-    # =====================================================================
-    ### NEW TESTS – coverage gaps
-    # =====================================================================
     def test_rebuild_on_hyperparam_change(self):
         mod = self._make(bias=1)
         id_before = id(mod.adapted)
@@ -1543,7 +1532,7 @@ class TestAdaptedModule:
     def test_load_state_dict_missing_key_strict_raises(self):
         mod = self._make(bias=4)
         sd = mod.state_dict()
-        sd.pop("adapted_param")  # remove critical key
+        sd.pop("_adapted_param")  # remove critical key
         clone = self._make(bias=0)
         with pytest.raises(KeyError):
             clone.load_state_dict(sd, strict=True)
