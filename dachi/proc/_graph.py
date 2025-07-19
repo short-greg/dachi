@@ -341,16 +341,17 @@ class Idx(Process):
         return val[self.idx]
 
 
+from dachi.core import AdaptModule
 
 @dataclass
 class RefT:
     name: str
 
 
-class DAG(AsyncProcess):
+class DAG(AdaptModule, AsyncProcess):
 
     def __post_init__(self):
-
+        super().__post_init__()
         # can be a "var"
         self._nodes = ModuleDict[Process | AsyncProcess](data={})
         self._args = Attr[typing.Dict[str, t.Dict[str, RefT | t.Dict[str, t.Any]]]](data={})
@@ -395,14 +396,14 @@ class DAG(AsyncProcess):
             await self._sub(out, by) for out in self._outputs
         )
 
-    @classmethod
-    def schema(
-        cls,
-        mapping: typing.Mapping[type[BaseModule], typing.Iterable[type[BaseModule]]] | None = None,
-    ):
-        if mapping is None:
-            return super().schema()
-        return cls._restricted_schema(mapping)
+    # @classmethod
+    # def schema(
+    #     cls,
+    #     mapping: typing.Mapping[type[BaseModule], typing.Iterable[type[BaseModule]]] | None = None,
+    # ):
+    #     if mapping is None:
+    #         return super().schema()
+    #     return cls._restricted_schema(mapping)
 
 # def stream(
 #     p: StreamProcess | AsyncStreamProcess, 

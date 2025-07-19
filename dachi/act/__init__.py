@@ -17,7 +17,7 @@ from ._tasks import (
     Until,
     run_task,
     Fallback,
-    StateMachine,
+    SM,
     FixedTimer, 
     RandomTimer,
     PreemptCond,

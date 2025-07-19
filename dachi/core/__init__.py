@@ -19,7 +19,6 @@ from ._base import (
     AdaptModule,
     ParamSet,
     RestrictedSchemaMixin
-
 )
 from ._structs import (
     ModuleDict,

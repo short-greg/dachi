@@ -15,68 +15,63 @@ from contextlib import contextmanager
 from dachi.core import ModuleDict, Attr, ModuleList
 
 
-class BT(Task, RestrictedSchemaMixin):
+# class BT(Task, RestrictedSchemaMixin):
+#     """The root task for a behavior tree
+#     """
+
+#     root: Task | None = None
+
+#     async def tick(self) -> TaskStatus:
+#         """Update the task
+
+#         Returns:
+#             SangoStatus: The status after tick
+#         """
+#         if self.root is None:
+#             return TaskStatus.SUCCESS
+#         return await self.root()
+
+#     def reset(self):
+#         super().reset()
+#         self.root.reset()
+
+#     @classmethod
+#     def schema(
+#         cls,
+#         mapping: typing.Mapping[type[BaseModule], Iterable[type[BaseModule]]] | None = None,
+#     ):
+#         if mapping is None:
+#             return super().schema()
+#         return cls._restricted_schema(mapping)
+
+
+class BT(AdaptModule, Task):
     """The root task for a behavior tree
     """
-
-    root: Task | None = None
-
-    async def tick(self) -> TaskStatus:
-        """Update the task
-
-        Returns:
-            SangoStatus: The status after tick
-        """
-        if self.root is None:
-            return TaskStatus.SUCCESS
-        return await self.root()
-
-    def reset(self):
-        super().reset()
-        self.root.reset()
-
-    @classmethod
-    def schema(
-        cls,
-        mapping: typing.Mapping[type[BaseModule], Iterable[type[BaseModule]]] | None = None,
-    ):
-        if mapping is None:
-            return super().schema()
-        return cls._restricted_schema(mapping)
-
-
-class AdaptedBT(AdaptModule, Task):
-    """The root task for a behavior tree
-    """
-
     root: InitVar[Task | None] = None
 
-    def __post_init__(self):
-        return super().__post_init__()
+    def __post_init__(self, root: Task):
+        super().__post_init__()
+        Task.__post_init__(self)
+        self.adapted = root
 
     async def tick(self) -> TaskStatus:
         """Update the task
 
         Returns:
-            SangoStatus: The status after tick
+            TaskStatus: The status after tick
         """
-        if self.root is None:
+        if self._adapted is None:
             return TaskStatus.SUCCESS
-        return await self.root()
+        return await self._adapted()
+
+    def root(self) -> Task | None:
+        return self._adapted
 
     def reset(self):
         super().reset()
-        self.root.reset()
-
-    @classmethod
-    def schema(
-        cls,
-        mapping: typing.Mapping[type[BaseModule], Iterable[type[BaseModule]]] | None = None,
-    ):
-        if mapping is None:
-            return super().schema()
-        return cls._restricted_schema(mapping)
-
+        if self._adapted is not None:
+            self._adapted.reset()
 
 
 class Serial(Task):
@@ -570,13 +565,14 @@ def statefunc(func):
 # TODO: How to handle "statefuncs" 
 # I think it p
 
-class StateMachine(Task):
+class StateMachine(AdaptModule, Task):
     """StateMachine is a task composed of multiple tasks in a directed graph
     """
 
     def __post_init__(self):
         super().__post_init__()
-        self._states: ModuleDict = ModuleDict(data={})
+        Task.__post_init__(self)
+        self.adapted: ModuleDict = ModuleDict[State](data={})
         END_STATUS = typing.Literal[TaskStatus.SUCCESS | TaskStatus.FAILURE]
         self._transitions = Attr[typing.Dict[
             str, typing.Dict[str | END_STATUS, str | END_STATUS]

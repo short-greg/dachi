@@ -147,14 +147,22 @@ class ShareableItem(t.Generic[J]):
             return self._data.model_json_schema()
         else:
             return {"type": type(self._data).__name__}
+        
+    def has_callback(self, callback: Callable[[T], None]) -> bool:
+        return callback in self._callbacks
 
     def register_callback(self, callback: Callable[[T], None]) -> None:
         """Register a callback to be called when the data is updated."""
         self._callbacks.append(callback)
     
-    def unregister_callback(self, callback: Callable[[T], None]) -> None:
-        """Unregister a previously registered callback."""
-        self._callbacks.remove(callback)
+    def unregister_callback(self, callback: Callable[[T], None]) -> bool:
+        """Unregister a previously registered callback. 
+        If callback does not exist will return False"""
+        try:
+            self._callbacks.remove(callback)
+            return True
+        except ValueError:
+            return False
 
     def _get_expected_type(self):
         """Resolve expected type from the immediate generic base (Param, State, Shared)."""
@@ -1175,14 +1183,16 @@ class AdaptModule(
 
     @adapted.setter
     def adapted(self, val: V):
-        adapted = self._adapted
+        self._adapted = val
         # 1) Create a Param that holds the *spec* of the sub‑module
         if val is not None:
+            self._adapted_param.unregister_callback(self.update_adapted)
             self._adapted_param.set(data=val.spec())
+            self._adapted_param.register_callback(self.update_adapted)
         else:
             self._adapted_param.set(data=None)
-        if adapted is not None:
-            self.on_swap(adapted, val)
+        # if adapted is not None:
+        #    self.on_swap(adapted, val)
 
         # for item in sorted(set(allowed), key=str):
         #     if isinstance(item, str):
@@ -1231,15 +1241,15 @@ class AdaptModule(
         #         f"Spec kind '{new_spec.kind}' not allowed. Allowed: {sorted(self.allowed)}"
         #     )
 
-        old = self._adapted
+        # old = self._adapted
         
         sub_cls = registry[new_spec.kind].obj
         self._adapted = sub_cls.from_spec(new_spec, ctx={})
-        self.on_swap(old, self._adapted)
+        # self.on_swap(old, self._adapted)
 
-    def on_swap(self, old: BaseModule, new: BaseModule):
-        """Override or monkey‑patch to react after *adapted* is rebuilt."""
-        pass
+    # def on_swap(self, old: BaseModule, new: BaseModule):
+    #     """Override or monkey‑patch to react after *adapted* is rebuilt."""
+    #     pass
 
     def fix(self):
         """Collapse to spec‑blob so only *adapted_param* remains trainable."""

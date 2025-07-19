@@ -15,7 +15,7 @@ from ._tasks import (
     Selector, 
     Action,
     Condition,
-    StateMachine
+    SM
 
 )
 
@@ -183,7 +183,7 @@ class StateMachineFunc(TaskFuncBase):
         # ctx = _get(instance, self._ctx, ctx)
         instance, args = self.get_instance(args)
 
-        return StateMachine(
+        return SM(
             partial(self.f, instance, *args, **kwargs)
         )
 
