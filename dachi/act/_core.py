@@ -212,6 +212,53 @@ class Task(BaseModule):
         self._status.set(TaskStatus.READY)
 
 
+import typing as t
+
+class FuncTask(Task):
+    """A task that executes a function
+    """
+    name: str
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.args = []
+        self.kwargs = {}
+        self.f = None
+
+    async def func_tick(self) -> TaskStatus:
+        """Execute the function
+
+        Returns:
+            TaskStatus: The status after executing the function
+        """
+        pass
+
+    async def tick(self) -> TaskStatus:
+        """Execute the task
+
+        Returns:
+            TaskStatus: The status after executing the task
+        """
+        if self.status.is_done:
+            return self.status
+        
+        if self.obj is None:
+            raise ValueError(
+                "Task object is not set. "
+                "Please set the object before calling tick."
+            )
+
+        status = await self.func_tick()
+        self._status.set(status)
+        return status
+    
+    def reset(self):
+        """Reset the task
+        """
+        super().reset()
+        self._task = None
+
+
 class ToStatus(Process):
     """Use to convert a value to a status
     """

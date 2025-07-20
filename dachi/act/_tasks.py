@@ -15,35 +15,6 @@ from contextlib import contextmanager
 from dachi.core import ModuleDict, Attr, ModuleList
 
 
-# class BT(Task, RestrictedSchemaMixin):
-#     """The root task for a behavior tree
-#     """
-
-#     root: Task | None = None
-
-#     async def tick(self) -> TaskStatus:
-#         """Update the task
-
-#         Returns:
-#             SangoStatus: The status after tick
-#         """
-#         if self.root is None:
-#             return TaskStatus.SUCCESS
-#         return await self.root()
-
-#     def reset(self):
-#         super().reset()
-#         self.root.reset()
-
-#     @classmethod
-#     def schema(
-#         cls,
-#         mapping: typing.Mapping[type[BaseModule], Iterable[type[BaseModule]]] | None = None,
-#     ):
-#         if mapping is None:
-#             return super().schema()
-#         return cls._restricted_schema(mapping)
-
 
 class BT(AdaptModule, Task):
     """The root task for a behavior tree
@@ -54,7 +25,45 @@ class BT(AdaptModule, Task):
         super().__post_init__()
         Task.__post_init__(self)
         self.adapted = root
+        self.__method_tasks__ = {}
+        for name in dir(self):
+            # Get the attribute from the instance
+            attr = getattr(self, name)
+            # Check if it's a bound method of this instance
+            if (
+                callable(attr)
+                and hasattr(attr, "__self__")
+                and attr.__self__ is self
+                and getattr(attr, "is_task", False) is True
+            ):
+                self.__method_tasks__[name] = attr
+    
+    def task(
+        self, 
+        name: str, 
+        *args, 
+        **kwargs
+    ) -> Task:
+        """Get a task by name
 
+        Args:
+            name (str): The name of the task
+            *args: The arguments to pass to the task
+            **kwargs: The keyword arguments to pass to the task
+
+        Returns:
+            Task: The task with the given name
+        """
+        if name not in self.__method_tasks__:
+            raise ValueError(f"Task {name} not found")
+        return self.__method_tasks__[name].create(
+            name=name, 
+            args=args, 
+            kwargs=kwargs,
+            f=self.__method_tasks__[name],
+
+        )
+    
     async def tick(self) -> TaskStatus:
         """Update the task
 
@@ -78,7 +87,7 @@ class Serial(Task):
     """A task consisting of other tasks executed one 
     after the other
     """
-    tasks: ModuleList | None = None
+    tasks: ModuleList[Task] | None = None
 
     def __post_init__(
         self

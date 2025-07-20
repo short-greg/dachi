@@ -23,6 +23,17 @@ from ._tasks import (
     PreemptCond,
     WaitCondition
 )
+from ._decorator_func import (
+    selectortask,
+    actiontask,
+    sequencetask,
+    selectortask,
+    fallbacktask,
+    SelectorFTask,
+    SequenceFTask,
+    ActionFTask,
+    CondFTask,
+)
 # from ._agent import (
 #     Agent, 
 #     AgentStatus,
