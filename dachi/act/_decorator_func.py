@@ -5,13 +5,17 @@ from ._core import FuncTask
 
 
 class SequenceFTask(FuncTask):
+    """A task that executes a function and returns a status
+    """
 
     def __post_init__(self):
+        """Initialize the SequenceFTask"""
         super().__post_init__()
         self._gen = None
 
     async def func_tick(self):
-        
+        """Execute the function and return the status
+        """
         if self._gen is None:
             self._gen = await self.f(*self.args, **self.kwargs)
         try:
@@ -24,13 +28,17 @@ class SequenceFTask(FuncTask):
         
 
 class SelectorFTask(FuncTask):
+    """A task that executes a function and returns a status
+    """
 
     def __post_init__(self):
+        """Initialize the SelectorFTask"""
         super().__post_init__()
         self._gen = None
 
     async def func_tick(self):
-        
+        """Execute the function and return the status
+        """
         if self._gen is None:
             self._gen = await self.f(*self.args, **self.kwargs)
         try:
@@ -43,9 +51,9 @@ class SelectorFTask(FuncTask):
         return res
     
     def reset(self):
+        """Reset the task state"""
         super().reset()
         self._gen = None
-
 
 
 class ActionFTask(FuncTask):
@@ -53,6 +61,7 @@ class ActionFTask(FuncTask):
     """
 
     def __post_init__(self):
+        """Initialize the ActionFTask"""
         super().__post_init__()
         self._gen = None
 
@@ -72,14 +81,15 @@ class ActionFTask(FuncTask):
         return res
 
     def reset(self):
+        """Reset the task state"""
         super().reset()
         self._gen = None
 
 
 class CondFTask(FuncTask):
-    """A task that executes a function and returns a boolean condition
+    """A task that executes a function and 
+    returns a boolean condition
     """
-
     async def func_tick(self):
         """Execute the function and return the status
         """
@@ -91,7 +101,8 @@ class CondFTask(FuncTask):
 
 
 def condtask(f):
-    """Decorator for a conditional function that returns True or False
+    """Decorator for a conditional function that 
+    returns True or False
 
     Args:
         f (Callable): The function to execute

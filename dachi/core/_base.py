@@ -1,27 +1,26 @@
 from __future__ import annotations
+
+# 1st party
 from abc import abstractmethod, ABC
 
-from typing import Generic, Callable, Any, Dict, Optional, Union, List
-from dataclasses import InitVar
-import inspect
-import typing as t
-from uuid import uuid4
-import json
-from dataclasses import dataclass
-
 from functools import lru_cache
-from typing import Iterable, Union, Mapping
-from pydantic import TypeAdapter
-import copy
-
-from dachi.utils import resolve_name
-
-
+from dataclasses import InitVar
+from uuid import uuid4
+from typing import Iterable, Union, Mapping, Generic, Callable, Any, Dict, Optional, Union, List
 import typing as t
 from functools import lru_cache
 from typing import Generic, Iterable, Union
+import inspect
+import json
+import copy
+from dataclasses import dataclass
 
+# 3rd party
 from pydantic import TypeAdapter
+
+# Local
+from dachi.utils import resolve_name
+
 
 # from ._restricted_schema import RestrictedSchemaMixin  # mix‑in defined in previous patch
 
@@ -41,7 +40,6 @@ Usage::
     print(p.spec().model_dump())
     print(p.state_dict())
 """
-
 
 try:  # 3.12+
     from typing import dataclass_transform
@@ -199,14 +197,6 @@ class Param(ShareableItem[J]):
     def unfix(self):
 
         self._fixed = False
-
-
-    # model_config = ConfigDict(
-    #     json_schema_extra=lambda s, h: {"properties": {"data": s["properties"]["data"]}}
-    # )
-    # def __init__(self, data):
-    #     super().__init__(data)
-    #     self._callbacks: list[Callable[[T]]] = []
 
 
 class Attr(ShareableItem[J]):
@@ -369,14 +359,14 @@ class BaseModule:
         property of the same name, we treat that as ‘no default supplied’ rather
         than letting the callable leak into runtime initialisation.
         """
-        # 1⃣  inherited fields --------------------------------------------------
+
         parent_fields: dict[str, tuple[t.Any, t.Any, bool]] = {}
         for base in cls.__mro__[1:]:
             if hasattr(base, "__item_fields__"):
                 for n, typ, dflt, is_init in base.__item_fields__:
                     parent_fields.setdefault(n, (typ, dflt, is_init))
 
-        # 2⃣  this class’ annotations ------------------------------------------
+
         ann = t.get_type_hints(cls, include_extras=True)
         for name, typ in ann.items():
             if t.get_origin(typ) is t.ClassVar:
@@ -385,7 +375,6 @@ class BaseModule:
             dflt  = getattr(cls, name, inspect._empty)
             is_iv = isinstance(typ, InitVar)
 
-            # --- neutralise InitVar shadowed by a later method/property --------
             if is_iv and (
                 inspect.isfunction(dflt) or isinstance(dflt, property)
             ):
@@ -494,20 +483,30 @@ class BaseModule:
         return cls.__spec__
 
     # ---- sub-module traversal ----------------------------------------
-    def modules(self, *, recurse: bool = True):
+    def modules(
+        self, *, 
+        recurse: bool = True, 
+        f: t.Callable[[BaseModule], bool] | None = None):
         """Yield **self** first, then all sub-items depth-first."""
-        yield self
-        if recurse:
-            for child in self._modules.values():
-                yield from child.modules(recurse=True)
+        if f is None or f(self):
+            yield self
+            if recurse:
+                for child in self._modules.values():
+                    yield from child.modules(recurse=True, f=f)
 
-    def named_modules(self, *, recurse: bool = True, prefix: str = ""):
+    def named_modules(
+        self, *, 
+        recurse: bool = True, 
+        prefix: str = "", 
+        f: t.Callable[[BaseModule], bool] | None = None
+    ):
         """Yield ``(dotted_name, module)`` pairs."""
-        yield prefix.rstrip("."), self
-        if recurse:
-            for name, child in self._modules.items():
-                child_prefix = f"{prefix}{name}."
-                yield from child.named_modules(recurse=True, prefix=child_prefix)
+        if f is None or f(self):
+            yield prefix.rstrip("."), self
+            if recurse:
+                for name, child in self._modules.items():
+                    child_prefix = f"{prefix}{name}."
+                    yield from child.named_modules(recurse=True, prefix=child_prefix)
 
     def named_parameters(
         self, *, recurse: bool = True, prefix: str = ""
@@ -535,7 +534,7 @@ class BaseModule:
                 child_prefix = f"{prefix}{cname}."
                 yield from child.named_states(recurse=True, prefix=child_prefix)
 
-    def apply(self, fn, *, filter_type: type | None = None):
+    def apply(self, fn, *, include: t.Callable[[t.Any], bool] | None = None):
         """
         Recursively apply *fn* to every registered object.
 
@@ -544,10 +543,13 @@ class BaseModule:
         """
         targets = [self, *self._parameters.values(), *self._states.values()]
         for obj in targets:
-            if filter_type is None or isinstance(obj, filter_type):
+            
+            # check whether the type is included
+            if include is None or include(obj):
                 fn(obj)
+
         for child in self._modules.values():
-            child.apply(fn, filter_type=filter_type)
+            child.apply(fn, include=include)
 
     def eval_args(self):
         """Alias for ``train(False)``."""
@@ -559,11 +561,6 @@ class BaseModule:
         for child in self._modules.values():
             child.train(mode)
         return self
-
-    # @property
-    # def training(self) -> bool:
-    #     # True if ANY param is in training mode; False when all frozen
-    #     return any(p.training for p in self._parameters.values())
 
     def named_children(self):
         return self._modules.items()
@@ -669,7 +666,6 @@ class BaseModule:
         else:                                       # already a BaseSpec
             spec_obj = spec
 
-        # ---- 2) deduplication key ---------------------------------------
         if isinstance(spec_obj, BaseSpec):
             key = spec_obj.id                       # BaseModule path
         # elif isinstance(spec_obj, dict) and "ref_name" in spec_obj:
@@ -680,7 +676,6 @@ class BaseModule:
         if key and (hit := ctx.get(key)) is not None:
             return hit                              # reuse existing object
 
-        # ---- 3) build kwargs for this module ----------------------------
         kwargs: dict[str, t.Any] = {}
 
         for name, is_init in cls.__is_initvar__.items():

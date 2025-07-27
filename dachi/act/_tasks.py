@@ -9,11 +9,10 @@ from typing import Iterable
 from dataclasses import InitVar
 
 # local
-from dachi.core import BaseModule, RestrictedSchemaMixin, AdaptModule
+from dachi.core import BaseModule, AdaptModule
 from ._core import Task, TaskStatus, State
 from contextlib import contextmanager
 from dachi.core import ModuleDict, Attr, ModuleList
-
 
 
 class BT(AdaptModule, Task):
@@ -22,6 +21,10 @@ class BT(AdaptModule, Task):
     root: InitVar[Task | None] = None
 
     def __post_init__(self, root: Task):
+        """Create a behavior tree task
+        Args:
+            root (Task | None): The root task for the behavior tree
+        """
         super().__post_init__()
         Task.__post_init__(self)
         self.adapted = root
@@ -61,7 +64,6 @@ class BT(AdaptModule, Task):
             args=args, 
             kwargs=kwargs,
             f=self.__method_tasks__[name],
-
         )
     
     async def tick(self) -> TaskStatus:

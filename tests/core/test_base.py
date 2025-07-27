@@ -930,7 +930,7 @@ def test_apply_filters_by_type():
 
     root.apply(
         lambda x: calls.append(type(x).__name__), 
-        filter_type=Param
+        include_type=Param
     )
     assert calls == ["Param"]
 
