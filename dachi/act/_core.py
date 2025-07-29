@@ -212,18 +212,16 @@ class Task(BaseModule):
         self._status.set(TaskStatus.READY)
 
 
-import typing as t
-
 class FuncTask(Task):
     """A task that executes a function
     """
     name: str
+    args: t.List[t.Any]
+    kwargs: t.Dict[str, t.Any]
 
     def __post_init__(self):
         super().__post_init__()
-        self.args = []
-        self.kwargs = {}
-        self.f = None
+        self.obj = None
 
     async def func_tick(self) -> TaskStatus:
         """Execute the function
@@ -257,6 +255,78 @@ class FuncTask(Task):
         """
         super().reset()
         self._task = None
+
+    # TODO: Think how to handle specifications
+    
+    
+
+    # def from_spec(self, spec: t.Dict[str, t.Any]) -> 'FuncTask':
+    #     """Create a FuncTask from a specification
+
+    #     Args:
+    #         spec (dict): The specification for the task
+
+    #     Returns:
+    #         FuncTask: The created task
+    #     """
+    #     raise RuntimeError(
+    #         "FuncTask cannot be created from a specification. "
+    #     )
+    
+    # def spec(self, *, to_dict = False):
+    #     """Get the specification for the task
+
+    #     Args:
+    #         to_dict (bool): Whether to return the specification as a dict
+
+    #     Returns:
+    #         dict: The specification for the task
+    #     """
+    #     raise RuntimeError(
+    #         "FuncTask cannot be converted to a specification. "
+    #         "Check your object "
+    #     )
+
+
+class FTask(Task):
+    """A task that executes a function
+    """
+    name: str
+    args: t.List[t.Any]
+    kwargs: t.Dict[str, t.Any]
+
+    def __post_init__(self):
+        """Initialize the FTask"""
+        super().__post_init__()
+        self.obj = None
+        self._task = None
+
+    async def tick(self) -> TaskStatus:
+        """Execute the task
+
+        Returns:
+            TaskStatus: The status after executing the task
+        """
+
+        if self.status.is_done:
+            return self.status
+        
+        if self.obj is None:
+            raise ValueError(
+                "Task object is not set. "
+                "Please set the object before calling tick."
+            )
+
+        status = await self.func_tick()
+        self._status.set(status)
+        return status
+    
+    def reset(self):
+        """Reset the task
+        """
+        super().reset()
+        self._task = None
+
 
 
 class ToStatus(Process):
@@ -323,3 +393,4 @@ class Router(Process, ABC):
 
 
 ROUTE = Router | t.Callable[[t.Any], TaskStatus | State]
+

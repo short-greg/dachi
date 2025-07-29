@@ -54,5 +54,6 @@ from ._decorator_func import (
 # )
 from ._states import (
     TaskState, 
+    StateMachine,
     BranchState
 )

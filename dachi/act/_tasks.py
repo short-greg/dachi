@@ -576,82 +576,6 @@ def statefunc(func):
 # TODO: How to handle "statefuncs" 
 # I think it p
 
-class StateMachine(AdaptModule, Task):
-    """StateMachine is a task composed of multiple tasks in a directed graph
-    """
-
-    def __post_init__(self):
-        super().__post_init__()
-        Task.__post_init__(self)
-        self.adapted: ModuleDict = ModuleDict[State](data={})
-        END_STATUS = typing.Literal[TaskStatus.SUCCESS | TaskStatus.FAILURE]
-        self._transitions = Attr[typing.Dict[
-            str, typing.Dict[str | END_STATUS, str | END_STATUS]
-        ]](data={})
-        self._init_state = Attr[str | END_STATUS | None](data=None)
-        self._cur_state = Attr[str | END_STATUS | None](data=None)
-        self.__states__ = {
-            name: method
-            for name, method in self.__cls__.__dict__.items()
-            if callable(method) and getattr(method, "_is_state", False)
-        }
-    
-    async def tick(self) -> TaskStatus:
-        """Update the state machine
-        """
-        if self.status.is_done:
-            return self.status
-
-        if self._cur_state is None:
-            self._cur_state = self._init_state
-
-        if self._cur_state is None:
-            return TaskStatus.SUCCESS
-        
-        if self._cur_state in {TaskStatus.SUCCESS, TaskStatus.FAILURE}:
-            return self._cur_state
-        
-        state = self._states[self._cur_state]
-        if isinstance(state, str):
-            res = await self.__states__[state]()
-        else:
-            res = await state.update()
-        if res == TaskStatus.RUNNING:
-            self._status.set(
-                TaskStatus.RUNNING
-            )
-            return res
-        
-        new_state = self._transitions[self._cur_state][res]
-        self._cur_state.set(new_state)
-
-        if self._cur_state in {TaskStatus.SUCCESS, TaskStatus.FAILURE}:
-            self._status.set(
-                self._cur_state
-            )
-            return self._cur_state
-        
-        self._status.set(
-            TaskStatus.RUNNING
-        )
-        return TaskStatus.RUNNING
-
-    def reset(self):
-        """Reset the state machine
-        """
-        super().reset()
-        self._cur_state = self.init_state
-
-    @classmethod
-    def schema(
-        cls,
-        mapping: typing.Mapping[type[BaseModule], Iterable[type[BaseModule]]] | None = None,
-    ):
-        if mapping is None:
-            return super().schema()
-        return cls._restricted_schema(mapping)
-
-
 class FixedTimer(Action):
     """A timer that will "succeed" at a fixed interval
     """
@@ -676,6 +600,7 @@ class FixedTimer(Action):
         if elapsed >= self.seconds:
             return TaskStatus.SUCCESS
         return TaskStatus.RUNNING
+
 
 # HERE
 class RandomTimer(Action):

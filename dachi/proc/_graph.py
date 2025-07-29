@@ -11,14 +11,52 @@ from ..utils import (
 )
 from ._process import Process, AsyncProcess
 from ..core import SerialDict
-from dachi.core import ModuleDict, Attr, BaseModule
+from dachi.core import ModuleDict, Attr
+from dachi.core import AdaptModule
 from dataclasses import dataclass
+import typing as t
 
 # TODO: Check if the value coming from incoming is undefined or waiting... 
 
+# TODO: Set up DAG deserialization to set
+# the object if it is an FProc
+class FProc(Process):
+    """A process that executes a function and returns a status
+    """
+
+    name: str
+
+    def __post_init__(self):
+        """Initialize the FProc"""
+        super().__post_init__()
+        self.obj = None
+
+    async def aforward(self, obj, kwargs) -> typing.Any:
+        """Execute the process
+
+        Returns:
+            typing.Any: The result of the function execution
+        """
+        if self.status.is_done:
+            return self.status
+        
+        if self.obj is None:
+            raise ValueError(
+                "Process object is not set. "
+                "Please set the object before calling aforward."
+            )
+
+        f = getattr(self.obj, self.name, None)
+        if f is None:
+            raise ValueError(
+                f"Function {self.name} not found in object {self.obj}"
+            )
+        return await f(**kwargs)
+
 
 class BaseNode(AsyncProcess):
-    """
+    """Base class for nodes in the graph. It can be a Var or T.
+    It is used to represent a node in the graph that can be processed or async processed.
     """
 
     name: str | None = None
@@ -90,8 +128,10 @@ class BaseNode(AsyncProcess):
 
 
 class Var(BaseNode):
+    """A variable in the graph. It can be used to store a value that can be processed or async processed.
+    It is used to represent a node in the graph that can be processed or async processed.
     """
-    """
+
     async def aforward(
         self, by: typing.Dict['T', typing.Any]=None
     ) -> typing.Any:
@@ -130,7 +170,8 @@ class Var(BaseNode):
 
 
 class T(BaseNode):
-    """...
+    """A transmission in the graph. It can be used to store a value that can be processed or async processed.
+    It is used to represent a node in the graph that can be processed or async processed.
     """
     args: SerialDict
     src: Process | AsyncProcess
@@ -342,7 +383,6 @@ class Idx(Process):
         return val[self.idx]
 
 
-from dachi.core import AdaptModule
 
 @dataclass
 class RefT:
@@ -350,14 +390,26 @@ class RefT:
 
 
 class DAG(AdaptModule, AsyncProcess):
+    """Directed Acyclic Graph (DAG) for processing data.
+    This class allows for the creation of a DAG where nodes can be processes or async processes.
+    It supports the addition of nodes, setting of outputs, and forwarding of data through the graph
+    """
 
     def __post_init__(self):
+        """Initialize the DAG with an empty set of nodes and outputs"""
         super().__post_init__()
         # can be a "var"
-        self._nodes = ModuleDict[Process | AsyncProcess](data={})
+        self._nodes = ModuleDict[Process | AsyncProcess | str](data={})
         self._args = Attr[typing.Dict[str, t.Dict[str, RefT | t.Dict[str, t.Any]]]](data={})
 
     async def _sub(self, name: str, by: typing.Dict):
+        """Subroutine to get the value of a node by name, resolving any references
+        Args:
+            name (str): The name of the node to resolve
+            by (typing.Dict): A dictionary to store resolved nodes
+        Returns:
+            typing.Any: The resolved value of the node
+        """
 
         node = self._nodes[name]
         args = self._args[name]
@@ -384,12 +436,24 @@ class DAG(AdaptModule, AsyncProcess):
         }
         if isinstance(node, Process):
             res = node(**kwargs)
+        elif isinstance(node, str):
+            node = getattr(self, node, None)
+            if node is None:
+                raise ValueError(f"Node {node} not found in DAG")
+            
+            res = await node(**kwargs)
         elif isinstance(node, AsyncProcess):
             res = await node.aforward(**kwargs)
         by[name] = res
         return res
 
     async def aforward(self, by: typing.Dict=None):
+        """Forward the data through the graph, resolving all nodes and their arguments
+        Args:
+            by (typing.Dict, optional): A dictionary to store resolved nodes. Defaults to None.
+        Returns:
+            tuple: A tuple of resolved outputs from the graph
+        """
         
         by = by if by is not None else {}
         # 1) get the outputs
