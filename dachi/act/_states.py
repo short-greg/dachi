@@ -13,7 +13,7 @@ class StateMachine(AdaptModule, Task):
     def __post_init__(self):
         super().__post_init__()
         Task.__post_init__(self)
-        self.adapted: ModuleDict = ModuleDict[State](data={})
+        self.adapted: ModuleDict = ModuleDict(data={})
         END_STATUS = t.Literal[TaskStatus.SUCCESS | TaskStatus.FAILURE]
         self._transitions = Attr[t.Dict[
             str, t.Dict[str | END_STATUS, str | END_STATUS]

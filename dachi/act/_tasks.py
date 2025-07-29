@@ -72,6 +72,7 @@ class BT(AdaptModule, Task):
         Returns:
             TaskStatus: The status after tick
         """
+        print(self._adapted)
         if self._adapted is None:
             return TaskStatus.SUCCESS
         return await self._adapted()
@@ -89,7 +90,7 @@ class Serial(Task):
     """A task consisting of other tasks executed one 
     after the other
     """
-    tasks: ModuleList[Task] | None = None
+    tasks: ModuleList | None = None
 
     def __post_init__(
         self
@@ -210,13 +211,23 @@ class Parallel(Task):
             ValueError: If the number of tasks is less than the number of fails or succeeds
             ValueError: If the number of fails or succeeds is less than 0
         """
+        if self.fails_on < 0:
+            fails_on = len(self.tasks) + self.fails_on + 1
+        else:
+            fails_on = self.fails_on
+        if self.succeeds_on < 0:
+            succeeds_on = len(self.tasks) + self.succeeds_on + 1
+        else:
+            succeeds_on = self.succeeds_on
+
+        print(f"Fails on: {fails_on}, Succeeds on: {succeeds_on}, Tasks: {len(self.tasks)}")
         if (
-            self.fails_on + self.succeeds_on - 1
+            fails_on + succeeds_on - 1
         ) > len(self.tasks):
             raise ValueError(
                 'The number of tasks required to succeed or fail is greater than the number of tasks'
             )
-        if self.fails_on <= 0 or self.succeeds_on <= 0:
+        if fails_on <= 0 or succeeds_on <= 0:
             raise ValueError(
                 'The number of fails or succeeds '
                 'must be greater than 0'
@@ -274,87 +285,6 @@ class Parallel(Task):
         else:
             self._status.set(TaskStatus.RUNNING)
         return self.status
-
-    # @property
-    # def fails_on(self) -> int:
-    #     """
-    #     Returns:
-    #         int: The number of failures required to fail
-    #     """
-    #     return self._fails_on
-
-    # @fails_on.setter
-    # def fails_on(self, val) -> int:
-    #     """Set the number of failures required to fail
-
-    #     Args:
-    #         val: The number of failures required to fail
-
-    #     Returns:
-    #         int: The number of failures required to fail 
-    #     """
-    #     if val < 0:
-    #         val = (
-    #             len(self.tasks) + val + 1
-    #         )
-    #     self._fails_on = val
-    #     if val + self._fails_on > len(self.tasks):
-    #         raise ValueError(
-    #             f''
-    #         )
-    #     return val
-
-    # @property
-    # def succeeds_on(self) -> int:
-    #     """Get the number required for success
-
-    #     Returns:
-    #         int: The number of successes to succeed
-    #     """
-    #     return self.succeeds_on        
-    
-    # @succeeds_on.setter
-    # def succeeds_on(self, val) -> int:
-    #     """Set the number required for success
-
-    #     Args:
-    #         succeeds_on: the number required for success
-
-    #     Returns:
-    #         int: The number of successes to succeed
-    #     """
-    #     if val < 0:
-    #         val = (
-    #             len(self.tasks) + self.succeeds_on + 1
-    #         )
-    #     if val + self._fails_on > len(self.tasks):
-    #         raise ValueError(
-    #             f''
-    #         )
-    #     self.succeeds_on = val
-    #     return val
-    
-    # @property
-    # def success_priority(self) -> bool:
-    #     """Get the number required for success
-
-    #     Returns:
-    #         int: The number of successes to succeed
-    #     """
-    #     return self._success_priority        
-    
-    # @success_priority.setter
-    # def success_priority(self, val: bool) -> int:
-    #     """Set the number required for success
-
-    #     Args:
-    #         succeeds_on: the number required for success
-
-    #     Returns:
-    #         int: The number of successes to succeed
-    #     """
-    #     self._success_priority = val
-    #     return val
 
     def reset(self):
         super().reset()
@@ -579,12 +509,10 @@ def statefunc(func):
 class FixedTimer(Action):
     """A timer that will "succeed" at a fixed interval
     """
-    # seconds: float
-    # _start: typing.Optional[float] = pydantic.PrivateAttr(default=None)
     seconds: float
 
     def __post_init__(self):
-        super().__init__()
+        super().__post_init__()
         self._start = Attr[float | None](data=None)
 
     async def act(self) -> TaskStatus:
@@ -595,7 +523,7 @@ class FixedTimer(Action):
         """
         cur = time.time()
         if self._start.get() is None:
-            self._start = cur
+            self._start.set(cur)
         elapsed = cur - self._start.get()
         if elapsed >= self.seconds:
             return TaskStatus.SUCCESS
@@ -626,11 +554,11 @@ class RandomTimer(Action):
             self._start.set(None)
             self._target.set(None)
         cur = time.time()
-        if self._start is None:
-            self._start = cur
+        if self._start.get() is None:
+            self._start.set(cur)
             r = random.random() 
             self._target = r * self.seconds_lower + r * self.seconds_upper
-        elapsed = cur - self._start
+        elapsed = cur - self._start.get()
         if elapsed >= self._target:
             return TaskStatus.SUCCESS
         return TaskStatus.RUNNING
@@ -639,7 +567,7 @@ class RandomTimer(Action):
 @contextmanager
 async def loop_aslongas(
     task: Task, 
-    status: TaskStatus
+    status: TaskStatus=TaskStatus.SUCCESS
 ):
     """A context manager for running a task functionally
 
@@ -662,7 +590,7 @@ async def loop_aslongas(
 @contextmanager
 async def loop_until(
     task: Task, 
-    status: TaskStatus
+    status: TaskStatus=TaskStatus.SUCCESS
 ):
     """A context manager for running a task functionally
 
@@ -681,6 +609,34 @@ async def loop_until(
                 task.reset()
     
         cur_status = await task()
+
+
+class AutoRun(Task):
+    """A decorator that will automatically rerun the task until completed.
+    Useful below parallel tasks in systems that do not
+    run at intervals. Not useful for systems that run at intervals like robots or games.
+    """
+
+    task: Task
+    active: bool = True
+
+    async def tick(self) -> TaskStatus:
+        """Run the task if it is not done
+
+        Returns:
+            TaskStatus: The status of the task after running
+        """
+        if self.status.is_done:
+            return self.status
+        
+        if self.active:
+            done = False
+            while not done:
+                status = await self.task.tick()
+                done = status.is_done
+        else:
+            status = await self.task.tick()
+        return status
 
 
 class PreemptCond(Task):
@@ -743,7 +699,7 @@ class WaitCondition(Task):
             if await self.condition() 
             else TaskStatus.WAITING
         )
-        return self._status
+        return self.status
 
 
 class CountLimit(Action):
@@ -752,18 +708,19 @@ class CountLimit(Action):
     on_reached: TaskStatus=TaskStatus.SUCCESS
 
     def __post_init__(self):
-        super().__init__()
+        super().__post_init__()
         self._i = Attr[int](data=0)
 
     async def act(self):
         
-        self._i._data += 1
-        if self._i == self._count:
-            return self._on_reached
+        self._i.data += 1
+        print(f"Count: {self._i.data}, Limit: {self.count}")
+        if self._i.data >= self.count:
+            return self.on_reached
         return TaskStatus.RUNNING
     
     def reset(self):
-        super().__init__()
+        super().reset()
         self._i.set(0)
 
 

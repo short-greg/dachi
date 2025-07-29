@@ -1185,7 +1185,9 @@ class AdaptModule(
             self._adapted_param.set(data=val.spec())
             self._adapted_param.register_callback(self.update_adapted)
         else:
+            self._adapted_param.unregister_callback(self.update_adapted)
             self._adapted_param.set(data=None)
+            self._adapted_param.register_callback(self.update_adapted)
 
     @property
     def adapted_param(self) -> Param:
@@ -1216,6 +1218,7 @@ class AdaptModule(
 
     def update_adapted(self, new_spec: BaseSpec):
         """Callback fired when *adapted_param* changes."""
+
         if self.fixed:
             raise RuntimeError("Cannot update adapted on a frozen AdaptModule")
 

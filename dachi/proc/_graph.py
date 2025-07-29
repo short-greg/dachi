@@ -399,7 +399,7 @@ class DAG(AdaptModule, AsyncProcess):
         """Initialize the DAG with an empty set of nodes and outputs"""
         super().__post_init__()
         # can be a "var"
-        self._nodes = ModuleDict[Process | AsyncProcess | str](data={})
+        self._nodes = ModuleDict(data={})
         self._args = Attr[typing.Dict[str, t.Dict[str, RefT | t.Dict[str, t.Any]]]](data={})
 
     async def _sub(self, name: str, by: typing.Dict):

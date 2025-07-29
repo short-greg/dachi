@@ -78,6 +78,15 @@ class TaskStatus(Enum):
         """
         return self == TaskStatus.RUNNING
     
+    @property
+    def waiting(self) -> bool:
+        """Get whether the task is waiting
+
+        Returns:
+            bool: Whether the task is waiting or not
+        """
+        return self == TaskStatus.WAITING
+
     @classmethod
     def from_bool(cls, val: bool) -> 'TaskStatus':
         """Convert a boolean to a TaskStatus
@@ -173,6 +182,7 @@ class Task(BaseModule):
         """
         super().__post_init__()
         self._status = Attr(data=self.READY)
+        self._id = id(self)
 
     @abstractmethod    
     async def tick(self) -> TaskStatus:
@@ -205,6 +215,7 @@ class Task(BaseModule):
         Returns:
             The id of the task 
         """
+
         return self._id
     
     def reset(self):

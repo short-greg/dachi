@@ -8,10 +8,17 @@ Google‑style docstrings and minimal comments are retained per project
 conventions.  All async tests use `pytest.mark.asyncio`.
 """
 
+import asyncio
+import types
+import random
 import pytest
 from dachi.core import InitVar, Attr
 from dachi.act import _tasks as behavior
 from dachi.act._core import TaskStatus
+
+from dachi.act import _tasks as behavior
+from dachi.act._core import TaskStatus
+from dachi.core import ModuleList, Attr
 
 
 class ATask(behavior.Action):
@@ -237,18 +244,94 @@ class TestUntil:
         assert await until_.tick() == TaskStatus.SUCCESS
 
 
+# ---------------------------------------------------------------------------
+# Helper stubs used exclusively by this file
+# ---------------------------------------------------------------------------
+class _ImmediateAction(behavior.Action):
+    """A task that immediately returns a preset *status_val*."""
 
-import types
-import random
-import pytest
+    status_val: InitVar[TaskStatus]
 
-from dachi.act import _tasks as behavior
-from dachi.act._core import TaskStatus
-from dachi.core import ModuleList
+    def __post_init__(self, status_val: TaskStatus):
+        super().__post_init__()
+        self._ret = status_val
+
+    async def act(self) -> TaskStatus:
+        return self._ret
+
+
+class _FlagWaitCond(behavior.WaitCondition):
+    """WaitCondition whose outcome is controlled via the *flag* attribute."""
+
+    flag: bool = True
+
+    async def condition(self) -> bool:
+        return self.flag
+
 
 # ---------------------------------------------------------------------------
-# Helpers
+# Tests start here – each class targets a single public surface.
 # ---------------------------------------------------------------------------
+class TestParallelValidate:
+    """`Parallel.validate` should enforce quorum invariants and raise early."""
+
+    def _parallel(self, fails: int, succ: int, n: int = 3):
+        tasks = ModuleList(data=[_ImmediateAction(status_val=TaskStatus.RUNNING) for _ in range(n)])
+        return behavior.Parallel(tasks=tasks, fails_on=fails, succeeds_on=succ)
+
+    def test_ok_when_thresholds_within_bounds(self):
+        par = self._parallel(fails=1, succ=-1)  # always succeed with *all* successes
+        # Should not raise
+        par.validate()
+
+    def test_error_when_threshold_exceeds_task_count(self):
+        par = self._parallel(fails=2, succ=3, n=3)
+        # 2 + 2 - 1 > 3 triggers the guard
+        with pytest.raises(ValueError):
+            par.validate()
+
+    def test_error_when_zero_threshold(self):
+        par = self._parallel(fails=0, succ=1)
+        with pytest.raises(ValueError):
+            par.validate()
+
+
+@pytest.mark.asyncio
+class TestWaitCondition:
+    """`WaitCondition` maps *False* → WAITING and *True* → SUCCESS."""
+
+    async def test_waiting_when_false(self):
+        cond = _FlagWaitCond(flag=False)
+        assert await cond.tick() is TaskStatus.WAITING
+        assert cond.status is TaskStatus.WAITING
+
+    async def test_success_when_true(self):
+        cond = _FlagWaitCond(flag=True)
+        assert await cond.tick() is TaskStatus.SUCCESS
+        assert cond.status is TaskStatus.SUCCESS
+
+    async def test_reset_restores_ready(self):
+        cond = _FlagWaitCond(flag=False)
+        await cond.tick()
+        cond.reset()
+        assert cond.status is TaskStatus.READY
+
+
+class TestStateFuncDecorator:
+    """`statefunc` must simply flag the target callable with *_is_state*."""
+
+    def test_flag_added(self):
+        @behavior.statefunc
+        def dummy():
+            pass
+
+        assert getattr(dummy, "_is_state", False) is True
+
+
+
+# # ---------------------------------------------------------------------------
+# # Helpers
+# # ---------------------------------------------------------------------------
 
 class ImmediateAction(behavior.Action):
     """A task that immediately returns a fixed *status*."""
@@ -257,10 +340,10 @@ class ImmediateAction(behavior.Action):
 
     def __post_init__(self, status_val: TaskStatus):
         super().__post_init__()
-        self._status.data = status_val
+        self._status_val = status_val
 
     async def act(self) -> TaskStatus:  # noqa: D401
-        return self._status.data
+        return self._status_val
 
 
 @pytest.mark.asyncio
@@ -277,40 +360,6 @@ class TestRoot:
         r = behavior.BT(root=child)
         await r.tick(); r.reset()
         assert child.status is TaskStatus.READY
-
-
-# @pytest.mark.asyncio
-# class TestFTask:
-#     async def test_ftask_factory_called_once(self):
-#         counter = {"n": 0}
-
-#         def factory(a, b=None):
-#             counter["n"] += 1
-#             return lambda: TaskStatus.SUCCESS
-
-#         task = behavior.FTask(
-#             f=factory, args=[1], 
-#             kwargs={"b": 2}
-#         )
-#         await task.tick(); 
-#         await task.tick()
-#         assert counter["n"] == 1
-
-#     async def test_ftask_returns_inner_status(self):
-#         task = behavior.FTask(f=lambda: (lambda: TaskStatus.FAILURE), args=[], kwargs={})
-#         assert await task.tick() is TaskStatus.FAILURE
-
-
-#     async def test_ftask_passes_args(self):
-#         captured = {}
-
-#         def factory(x, *, y):
-#             captured["x"], captured["y"] = x, y
-#             return lambda: TaskStatus.SUCCESS
-
-#         task = behavior.FTask(f=factory, args=[10], kwargs={"y": 20})
-#         await task.tick()
-#         assert captured == {"x": 10, "y": 20}
 
 
 class TestSerialValidation:
@@ -346,11 +395,11 @@ class TestParallel:
         par = behavior.Parallel(tasks=tasks, fails_on=1, succeeds_on=2)
         assert await par.tick() is TaskStatus.FAILURE
 
-    # async def test_reset_propagates(self):
-    #     inner = SequenceAction([TaskStatus.RUNNING, TaskStatus.SUCCESS])
-    #     par = behavior.Parallel(tasks=[inner], fails_on=1, succeeds_on=1)
-    #     await par.tick(); par.reset()
-    #     assert inner.status is TaskStatus.READY
+#     # async def test_reset_propagates(self):
+#     #     inner = SequenceAction([TaskStatus.RUNNING, TaskStatus.SUCCESS])
+#     #     par = behavior.Parallel(tasks=[inner], fails_on=1, succeeds_on=1)
+#     #     await par.tick(); par.reset()
+#     #     assert inner.status is TaskStatus.READY
 
 
 @pytest.mark.asyncio
@@ -362,54 +411,24 @@ class TestNotDecorator:
         assert await behavior.Not(task=ImmediateAction(status_val=TaskStatus.FAILURE)).tick() is TaskStatus.SUCCESS
 
 
-# @pytest.mark.asyncio
-# class TestRunTask:
-#     async def test_run_task_yields(self):
-#         act = SequenceAction([TaskStatus.RUNNING, TaskStatus.SUCCESS])
-#         collected = [s async for s in behavior.run_task(act, interval=None)]
-#         assert collected == [TaskStatus.RUNNING, TaskStatus.SUCCESS]
-#         assert act.status is TaskStatus.SUCCESS
+@pytest.mark.asyncio
+class TestTimers:
+    async def test_fixed_timer(self, monkeypatch):
+        start = 0.0; monkeypatch.setattr(behavior.time, "time", lambda: start)
+        timer = behavior.FixedTimer(seconds=5)
+        assert await timer.tick() is TaskStatus.RUNNING
+        monkeypatch.setattr(behavior.time, "time", lambda: start + 6)
+        assert await timer.tick() is TaskStatus.SUCCESS
 
-
-# @pytest.mark.asyncio
-# class TestStateMachine:
-    
-#     async def test_success_path(self):
-
-#         def state_b():
-#             return TaskStatus.SUCCESS
-#         def state_a():
-#             return state_b
-#         sm = behavior.StateMachine(init_state=state_a)
-#         assert await sm.tick() is TaskStatus.RUNNING
-#         assert await sm.tick() is TaskStatus.SUCCESS
-
-#     async def test_immediate_failure(self):
-#         sm = behavior.StateMachine(init_state=lambda: TaskStatus.FAILURE)
-#         assert await sm.tick() is TaskStatus.FAILURE
-
-#     async def test_reset(self):
-#         sm = behavior.StateMachine(init_state=lambda: TaskStatus.SUCCESS)
-#         await sm.tick(); sm.reset()
-#         assert sm.status is TaskStatus.READY
-
-
-# @pytest.mark.asyncio
-# class TestTimers:
-#     async def test_fixed_timer(self, monkeypatch):
-#         start = 0.0; monkeypatch.setattr(behavior.time, "time", lambda: start)
-#         timer = behavior.FixedTimer(seconds=5)
-#         assert await timer.tick() is TaskStatus.RUNNING
-#         monkeypatch.setattr(behavior.time, "time", lambda: start + 6)
-#         assert await timer.tick() is TaskStatus.SUCCESS
-
-#     async def test_random_timer(self, monkeypatch):
-#         monkeypatch.setattr(behavior.random, "random", lambda: 0.5)  # deterministic
-#         t0 = 100.0; monkeypatch.setattr(behavior.time, "time", lambda: t0)
-#         rt = behavior.RandomTimer(seconds_lower=2, seconds_upper=4)
-#         assert await rt.tick() is TaskStatus.RUNNING
-#         monkeypatch.setattr(behavior.time, "time", lambda: t0 + 3.5)
-#         assert await rt.tick() is TaskStatus.SUCCESS
+    async def test_random_timer(self, monkeypatch):
+        monkeypatch.setattr(behavior.random, "random", lambda: 0.5)  # deterministic
+        t0 = 100.0; monkeypatch.setattr(
+            behavior.time, "time", lambda: t0
+        )
+        rt = behavior.RandomTimer(seconds_lower=2, seconds_upper=4)
+        assert await rt.tick() is TaskStatus.RUNNING
+        monkeypatch.setattr(behavior.time, "time", lambda: t0 + 3.5)
+        assert await rt.tick() is TaskStatus.SUCCESS
 
 
 
@@ -417,85 +436,95 @@ class TestNotDecorator:
 # # 14. Loop context‑manager utilities ----------------------------------------
 # # ---------------------------------------------------------------------------
 
-# @pytest.mark.asyncio
-# class TestLoopUtilities:
-#     async def test_loop_aslongas_async_context_invalid(self):
-#         cm = behavior.loop_aslongas(ImmediateAction(status=TaskStatus.SUCCESS), TaskStatus.SUCCESS)
-#         with pytest.raises(TypeError):
-#             async with cm:  # function is not a valid async context‑manager
-#                 pass
+@pytest.mark.asyncio
+class TestLoopUtilities:
+    async def test_loop_aslongas_async_context_invalid(self):
+        cm = behavior.loop_aslongas(task=ImmediateAction(status_val=TaskStatus.SUCCESS), status=TaskStatus.SUCCESS)
+        with pytest.raises(TypeError):
+            async with cm:  # function is not a valid async context‑manager
+                pass
 
-#     async def test_loop_until_async_context_invalid(self):
-#         cm = behavior.loop_until(ImmediateAction(status=TaskStatus.SUCCESS), TaskStatus.SUCCESS)
-#         with pytest.raises(TypeError):
-#             async with cm:
-#                 pass
+    async def test_loop_until_async_context_invalid(self):
+        cm = behavior.loop_until(task=ImmediateAction(status_val=TaskStatus.SUCCESS))
+        with pytest.raises(TypeError):
+            async with cm:
+                pass
 
 # # ---------------------------------------------------------------------------
 # # 15. WaitCondition ----------------------------------------------------------
 # # ---------------------------------------------------------------------------
 
-# class ToggleWait(behavior.WaitCondition):
-#     """Returns WAITING on first tick, SUCCESS on second."""
+class ToggleWait(behavior.WaitCondition):
+    """Returns WAITING on first tick, SUCCESS on second."""
 
-#     def __init__(self):
-#         super().__init__()
-#         self._first = True
+    def __init__(self):
+        super().__init__()
+        self._first = True
 
-#     async def condition(self):
-#         if self._first:
-#             self._first = False
-#             return False
-#         return True
+    async def condition(self):
+        if self._first:
+            self._first = False
+            return False
+        return True
 
-# @pytest.mark.asyncio
-# class TestWaitCondition:
-#     async def test_wait_condition_wait_then_success(self):
-#         cond = ToggleWait()
-#         assert await cond.tick() is TaskStatus.WAITING
-#         assert await cond.tick() is TaskStatus.SUCCESS
+@pytest.mark.asyncio
+class TestWaitCondition:
+    async def test_wait_condition_wait_then_success(self):
+        cond = ToggleWait()
+        assert await cond.tick() is TaskStatus.WAITING
+        assert await cond.tick() is TaskStatus.SUCCESS
 
 # # ---------------------------------------------------------------------------
 # # 16. CountLimit -------------------------------------------------------------
 # # ---------------------------------------------------------------------------
 
-# @pytest.mark.asyncio
-# class TestCountLimit:
-#     async def test_runs_until_count_then_success(self):
-#         cl = behavior.CountLimit(count=3)
-#         assert await cl.tick() is TaskStatus.RUNNING
-#         assert await cl.tick() is TaskStatus.RUNNING
-#         assert await cl.tick() is TaskStatus.SUCCESS
+@pytest.mark.asyncio
+class TestCountLimit:
+    async def test_runs_until_count_then_success(self):
+        cl = behavior.CountLimit(count=3)
+        assert await cl.tick() is TaskStatus.RUNNING
+        assert await cl.tick() is TaskStatus.RUNNING
+        assert await cl.tick() is TaskStatus.SUCCESS
 
-#     async def test_countlimit_reset(self):
-#         cl = behavior.CountLimit(count=2)
-#         await cl.tick(); await cl.tick()
-#         cl.reset()
-#         assert cl.status is TaskStatus.READY
-#         assert await cl.tick() is TaskStatus.RUNNING
+    async def test_countlimit_reset(self):
+        cl = behavior.CountLimit(count=2)
+        await cl.tick(); await cl.tick()
+        cl.reset()
+        assert cl.status is TaskStatus.READY
+        assert await cl.tick() is TaskStatus.RUNNING
 
 # # ---------------------------------------------------------------------------
 # # 17. PreemptCond ------------------------------------------------------------
 # # ---------------------------------------------------------------------------
 
-# class AlwaysTrueCond(behavior.Condition):
-#     async def condition(self):
-#         return True
+class AlwaysTrueCond(behavior.Condition):
+    async def condition(self):
+        return True
 
-# class AlwaysFalseCond(behavior.Condition):
-#     async def condition(self):
-#         return False
+class AlwaysFalseCond(behavior.Condition):
+    async def condition(self):
+        return False
+
+@pytest.mark.asyncio
+class TestPreemptCond:
+    async def test_preemptcond_failure_when_false(self):
+        main = ImmediateAction(status_val=TaskStatus.SUCCESS)
+        pc = behavior.PreemptCond(conds=[AlwaysFalseCond()], task=main)
+        assert await pc.tick() is TaskStatus.FAILURE
+        assert main.status is TaskStatus.READY  # main skipped
+
+    async def test_preemptcond_propagates_task_success(self):
+        main = ImmediateAction(status_val=TaskStatus.SUCCESS)
+        pc = behavior.PreemptCond(conds=[AlwaysTrueCond()], task=main)
+        assert await pc.tick() is TaskStatus.SUCCESS
+
+
 
 # @pytest.mark.asyncio
-# class TestPreemptCond:
-#     async def test_preemptcond_failure_when_false(self):
-#         main = ImmediateAction(status=TaskStatus.SUCCESS)
-#         pc = behavior.PreemptCond(conds=[AlwaysFalseCond()], task=main)
-#         assert await pc.tick() is TaskStatus.FAILURE
-#         assert main.status is TaskStatus.READY  # main skipped
-
-#     async def test_preemptcond_propagates_task_success(self):
-#         main = ImmediateAction(status=TaskStatus.SUCCESS)
-#         pc = behavior.PreemptCond(conds=[AlwaysTrueCond()], task=main)
-#         assert await pc.tick() is TaskStatus.SUCCESS
+# class TestRunTask:
+#     async def test_run_task_yields(self):
+#         act = SequenceAction([TaskStatus.RUNNING, TaskStatus.SUCCESS])
+#         collected = [s async for s in behavior.run_task(act, interval=None)]
+#         assert collected == [TaskStatus.RUNNING, TaskStatus.SUCCESS]
+#         assert act.status is TaskStatus.SUCCESS
 

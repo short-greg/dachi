@@ -19,13 +19,22 @@ V = t.TypeVar("V", bound=BaseModule)
 T = TypeVar("T", bound=BaseModule)
 
 
-class ModuleList(BaseModule, t.Generic[V]): # t.Generic[V]
+class ModuleList(BaseModule): # t.Generic[V]
     """
     A list-like container whose elements are themselves `BaseModule`
     instances.  Works seamlessly with the new serialization / dedup rules.
     """
     __spec_hooks__: ClassVar[t.List[str]] = ["data"]
     data: InitVar[list[V]]
+
+
+    def __init_subclass__(cls, *args, **kwargs):
+        super().__init_subclass__(*args, **kwargs)
+
+        # manually register generic alias machinery
+        # cls.__parameters__ = (V,)  # or t.get_args(cls) if dynamic
+        # cls.__orig_bases__ = (t.Generic[V],) + tuple(b for b in cls.__bases__ if b != t.Generic)
+        # cls.__class_getitem__ = t.Generic.__class_getitem__
 
     def __post_init__(self, data: Optional[Iterable[T]] = None):
         self._module_list = []
@@ -131,18 +140,19 @@ class ModuleList(BaseModule, t.Generic[V]): # t.Generic[V]
         This is useful for iterating over the modules directly.
         """
         return [*self._module_list]
+    
 
 
-class ModuleDict(BaseModule, t.Generic[V]):
+class ModuleDict(BaseModule):
     """
     A dict-like container whose values are themselves `BaseModule`
     instances. Keys must be strings.
     """
     __spec_hooks__: ClassVar[t.List[str]] = ["data"]
-    data: InitVar[dict[str, V]]
+    data: InitVar[dict[str, BaseModule | t.Any]]
 
-    def __post_init__(self, data: Optional[dict[str, V]] = None):
-        
+    def __post_init__(self, data: Optional[dict[str, BaseModule | t.Any]] = None):
+
         super().__post_init__()
         self._module_dict = {}
 
