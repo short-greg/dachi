@@ -212,49 +212,49 @@ class Task(BaseModule):
         self._status.set(TaskStatus.READY)
 
 
-class FuncTask(Task):
-    """A task that executes a function
-    """
-    name: str
-    args: t.List[t.Any]
-    kwargs: t.Dict[str, t.Any]
+# class FuncTask(Task):
+#     """A task that executes a function
+#     """
+#     name: str
+#     args: t.List[t.Any]
+#     kwargs: t.Dict[str, t.Any]
 
-    def __post_init__(self):
-        super().__post_init__()
-        self.obj = None
+#     def __post_init__(self):
+#         super().__post_init__()
+#         self.obj = None
 
-    async def func_tick(self) -> TaskStatus:
-        """Execute the function
+#     async def func_tick(self) -> TaskStatus:
+#         """Execute the function
 
-        Returns:
-            TaskStatus: The status after executing the function
-        """
-        pass
+#         Returns:
+#             TaskStatus: The status after executing the function
+#         """
+#         pass
 
-    async def tick(self) -> TaskStatus:
-        """Execute the task
+#     async def tick(self) -> TaskStatus:
+#         """Execute the task
 
-        Returns:
-            TaskStatus: The status after executing the task
-        """
-        if self.status.is_done:
-            return self.status
+#         Returns:
+#             TaskStatus: The status after executing the task
+#         """
+#         if self.status.is_done:
+#             return self.status
         
-        if self.obj is None:
-            raise ValueError(
-                "Task object is not set. "
-                "Please set the object before calling tick."
-            )
+#         if self.obj is None:
+#             raise ValueError(
+#                 "Task object is not set. "
+#                 "Please set the object before calling tick."
+#             )
 
-        status = await self.func_tick()
-        self._status.set(status)
-        return status
+#         status = await self.func_tick()
+#         self._status.set(status)
+#         return status
     
-    def reset(self):
-        """Reset the task
-        """
-        super().reset()
-        self._task = None
+#     def reset(self):
+#         """Reset the task
+#         """
+#         super().reset()
+#         self._task = None
 
     # TODO: Think how to handle specifications
     
