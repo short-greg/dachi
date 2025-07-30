@@ -9,11 +9,9 @@ from pydantic import BaseModel
 import typing as t
 from dataclasses import InitVar
 
-from dataclasses import InitVar
-from dachi.utils import is_primitive
-
 # Local
 from ._base import BaseModule, BaseSpec, registry 
+from dachi.utils import is_primitive
 
 V_co = t.TypeVar("V_co", bound=BaseModule, covariant=True)
 V = t.TypeVar("V", bound=BaseModule)

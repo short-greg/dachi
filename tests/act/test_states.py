@@ -1,14 +1,12 @@
 # tests/act/test_states.py
-
-
 import pytest
 from typing import Any
 import typing as t
 
 from dachi.act import _states as S
 from dachi.act._core import Task, TaskStatus
+from dachi.act._tasks import Action
 from dachi.proc import Process, AsyncProcess
-
 
 
 class _SyncBoolProc(Process):
@@ -112,7 +110,7 @@ def _state(fn):
 
 
 @pytest.mark.asyncio
-class TestStateMachineTrivial:
+class TestStateMachine:
     """Edge-cases: no init state / single terminal state."""
 
     async def test_no_init_is_success(self) -> None:
@@ -139,11 +137,6 @@ class TestStateMachineTrivial:
 
         sm = SM()
         assert await sm.tick() is TaskStatus.SUCCESS
-
-
-@pytest.mark.asyncio
-class TestStateMachineMultistep:
-    """Literal-to-literal transitions, failure path, reset behaviour."""
 
     async def test_two_step_chain_to_success(self) -> None:
         class SM(S.StateMachine):
@@ -219,11 +212,6 @@ class TestStateMachineMultistep:
         await sm.tick(); await sm.tick()
         assert sm.status is TaskStatus.SUCCESS
 
-
-@pytest.mark.asyncio
-class TestStateMachineErrorPaths:
-    """Robustness checks: missing transitions / undefined states."""
-
     async def test_missing_transition_raises(self) -> None:
         class SM(S.StateMachine):
             @_state
@@ -256,6 +244,164 @@ class TestStateMachineErrorPaths:
         # second tick tries to execute undefined state -> KeyError
         with pytest.raises(KeyError):
             await sm.tick()
+
+
+# ---------------------------------------------------------------------------
+# Helpers shared by new cases
+# ---------------------------------------------------------------------------
+class _BoolProc(Process):
+    """Process returning the value supplied at construction."""
+    def __init__(self, val): self.val = val
+    def forward(self): return self.val
+
+
+class _ABoolProc(AsyncProcess):
+    """Async variant of _BoolProc."""
+    def __init__(self, val): self.val = val
+    async def aforward(self): return self.val
+
+
+class _ToggleTask(Task):
+    """RUNNING ▸ SUCCESS over two ticks; counts invocations."""
+    def __post_init__(self):
+        super().__post_init__()
+        self.calls = 0
+    async def tick(self):
+        self.calls += 1
+        if self.calls == 1:
+            self._status.set(TaskStatus.RUNNING)
+        else:
+            self._status.set(TaskStatus.SUCCESS)
+        return self.status
+
+
+# ---------------------------------------------------------------------------
+# BranchState
+# ---------------------------------------------------------------------------
+@pytest.mark.asyncio
+class TestBranchStateMore:
+    """Edge-cases for truthiness handling and type errors."""
+
+    @pytest.mark.parametrize("val", [1, True])
+    async def test_async_non_bool_truthy(self, val):
+        st = S.BranchState(f=_ABoolProc(val))
+        assert await st.update() is TaskStatus.SUCCESS
+
+    async def test_sync_none_is_failure(self):
+        st = S.BranchState(f=_BoolProc(False))
+        assert await st.update() is TaskStatus.FAILURE
+
+    async def test_invalid_return_type_bubbles(self):
+        class _Bad(Process):
+            def forward(self): return TaskStatus.SUCCESS          # misuse
+        with pytest.raises(Exception):
+            await S.BranchState(f=_Bad()).update()
+
+
+
+@pytest.mark.asyncio
+class TestTaskStateLifecycle:
+    """Delegation and caching semantics around the wrapped task."""
+
+    async def test_running_then_success(self):
+        inner = _ToggleTask()
+        ts = S.TaskState(task=inner)
+        assert await ts.update() is TaskStatus.RUNNING
+        assert await ts.update() is TaskStatus.SUCCESS
+        assert inner.calls == 2                                   # both ticks forwarded
+
+    async def test_done_task_not_reinvoked(self):
+        class _Done(Action):
+            async def act(self): return TaskStatus.SUCCESS
+        done = _Done(); await done.tick()                         # mark as done
+        ts = S.TaskState(task=done)
+        res = await ts.update();                                       # first call returns SUCCESS
+        print(res)
+        res2 = await ts.update();                                       # second call should not re-tick
+        print(res2)
+        assert ts.task.status is TaskStatus.SUCCESS
+
+
+def _state(fn): fn._is_state = True; return fn                   # decorator helper
+
+
+@pytest.mark.asyncio
+class TestStateMachineExtras:
+    """Edge and mixed-node scenarios."""
+
+    async def test_cur_state_initialised_on_first_tick(self):
+        class SM(S.StateMachine):
+            @_state
+            async def leaf(self): return TaskStatus.SUCCESS
+            def __post_init__(self):
+                super().__post_init__()
+                self._init_state.set("leaf")
+                self._states["leaf"] = "leaf"
+                self._transitions.set({"leaf": {TaskStatus.SUCCESS: TaskStatus.SUCCESS}})
+        sm = SM()
+        assert sm._cur_state.data is None
+        await sm.tick()
+        assert sm._cur_state.data is TaskStatus.SUCCESS
+
+    async def test_running_stays_in_state(self):
+        class SM(S.StateMachine):
+            @_state
+            async def loop(self): return TaskStatus.RUNNING
+            def __post_init__(self):
+                super().__post_init__()
+                self._init_state.set("loop")
+                self._states["loop"] = "loop"
+                self._transitions.set({"loop": {TaskStatus.RUNNING: "loop"}})
+        sm = SM()
+        assert await sm.tick() is TaskStatus.RUNNING
+        assert sm._cur_state.data == "loop"
+
+    async def test_fail_path_terminal(self):
+        class SM(S.StateMachine):
+            @_state
+            async def entry(self): return TaskStatus.FAILURE
+            def __post_init__(self):
+                super().__post_init__()
+                self._init_state.set("entry")
+                self._states["entry"] = "entry"
+                self._transitions.set({"entry": {TaskStatus.FAILURE: TaskStatus.FAILURE}})
+        sm = SM()
+        assert await sm.tick() is TaskStatus.FAILURE
+
+    async def test_mixed_callable_and_state_objects(self):
+        class SM(S.StateMachine):
+            @_state
+            async def check(self): return TaskStatus.SUCCESS
+            def __post_init__(self):
+                super().__post_init__()
+                self._init_state.set("check")
+                # mix: string alias + BranchState instance
+                self._states["check"] = "check"
+                self._states["branch"] = S.BranchState(f=_BoolProc(True))
+                self._transitions.set({
+                    "check": {TaskStatus.SUCCESS: "branch"},
+                    "branch": {TaskStatus.SUCCESS: TaskStatus.SUCCESS}
+                })
+        sm = SM()
+        assert await sm.tick() is TaskStatus.RUNNING              # ran check
+        assert await sm.tick() is TaskStatus.SUCCESS              # ran BranchState
+
+    async def test_reset_restores_init_state(self):
+        class SM(S.StateMachine):
+            @_state
+            async def one(self): return TaskStatus.SUCCESS
+            def __post_init__(self):
+                super().__post_init__()
+                self._init_state.set("one")
+                self._states["one"] = "one"
+                self._transitions.set({"one": {TaskStatus.SUCCESS: TaskStatus.SUCCESS}})
+        sm = SM()
+        await sm.tick()
+        assert sm.status is TaskStatus.SUCCESS
+        sm.reset()
+        assert sm.status is TaskStatus.READY
+        assert sm._cur_state.data == "one"
+
 
 
 # @pytest.mark.asyncio

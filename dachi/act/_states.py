@@ -90,6 +90,25 @@ class BranchState(State):
 
     f: Process | AsyncProcess
 
+    async def check(self, val: t.Any) -> bool:
+        """Check the value of the process
+
+        Args:
+            val (t.Any): The value to check
+
+        Returns:
+            bool: True if the value is True, otherwise False
+        """
+        if isinstance(val, bool):
+            return val
+        if val == 1:
+            return True
+        if val == 0:
+            return False
+        raise ValueError(
+            f"Expected a boolean value, got {type(val)}: {val}"
+        )
+
     async def update(self) -> t.Literal[
         TaskStatus.SUCCESS, TaskStatus.FAILURE
     ]:
@@ -101,10 +120,10 @@ class BranchState(State):
             If the wrapped process is an AsyncProcess, it will await the process before returning the status
         """
         if isinstance(self.f, AsyncProcess):
-            if await self.f.aforward():
+            if await self.check(await self.f.aforward()):
                 return TaskStatus.SUCCESS
         else:
-            if self.f():
+            if await self.check(self.f()):
                 return TaskStatus.SUCCESS
         return TaskStatus.FAILURE
 
@@ -124,4 +143,7 @@ class TaskState(State):
         Returns:
             t.Literal[TaskStatus.SUCCESS, TaskStatus.FAILURE, TaskStatus.RUNNING]: The status of the task.
         """
+        if self.task.status.is_done:
+            return self.task.status
+        print('Ticking')
         return await self.task.tick()

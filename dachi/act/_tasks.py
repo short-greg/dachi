@@ -5,7 +5,6 @@ import time
 import random
 import asyncio
 import threading
-from typing import Iterable
 from dataclasses import InitVar
 
 # local
