@@ -1,6 +1,3 @@
-
-
-
 import typing as t
 from typing import Iterable
 from ._core import Task, State, TaskStatus
@@ -8,12 +5,14 @@ from ..proc import Process, AsyncProcess
 from dachi.core import ModuleDict, AdaptModule, BaseModule, Attr
 
 
-
 class StateMachine(AdaptModule, Task):
     """StateMachine is a task composed of multiple tasks in a directed graph
     """
 
     def __post_init__(self):
+        """
+        Initialize the state machine with an empty set of states and transitions.
+        """
         super().__post_init__()
         Task.__post_init__(self)
         self.adapted: ModuleDict = ModuleDict(data={})
@@ -126,7 +125,3 @@ class TaskState(State):
             t.Literal[TaskStatus.SUCCESS, TaskStatus.FAILURE, TaskStatus.RUNNING]: The status of the task.
         """
         return await self.task.tick()
-
-
-            # if filter_type is None or isinstance(obj, filter_type):
-            #     fn(obj)
