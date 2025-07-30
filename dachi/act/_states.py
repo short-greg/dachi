@@ -1,3 +1,6 @@
+
+
+
 import typing as t
 from typing import Iterable
 from ._core import Task, State, TaskStatus
@@ -20,9 +23,10 @@ class StateMachine(AdaptModule, Task):
         ]](data={})
         self._init_state = Attr[str | END_STATUS | None](data=None)
         self._cur_state = Attr[str | END_STATUS | None](data=None)
+        self._states = ModuleDict(data={})
         self.__states__ = {
             name: method
-            for name, method in self.__cls__.__dict__.items()
+            for name, method in self.__class__.__dict__.items()
             if callable(method) and getattr(method, "_is_state", False)
         }
     
@@ -32,18 +36,18 @@ class StateMachine(AdaptModule, Task):
         if self.status.is_done:
             return self.status
 
-        if self._cur_state is None:
-            self._cur_state = self._init_state
+        if self._cur_state.data is None:
+            self._cur_state.set(self._init_state.data)
 
-        if self._cur_state is None:
+        if self._cur_state.data is None:
             return TaskStatus.SUCCESS
         
-        if self._cur_state in {TaskStatus.SUCCESS, TaskStatus.FAILURE}:
+        if self._cur_state.data in {TaskStatus.SUCCESS, TaskStatus.FAILURE}:
             return self._cur_state
         
-        state = self._states[self._cur_state]
+        state = self._states[self._cur_state.data]
         if isinstance(state, str):
-            res = await self.__states__[state]()
+            res = await self.__states__[state](self)
         else:
             res = await state.update()
         if res == TaskStatus.RUNNING:
@@ -51,15 +55,14 @@ class StateMachine(AdaptModule, Task):
                 TaskStatus.RUNNING
             )
             return res
-        
-        new_state = self._transitions[self._cur_state][res]
+        new_state = self._transitions.data[self._cur_state.data][res]
         self._cur_state.set(new_state)
 
-        if self._cur_state in {TaskStatus.SUCCESS, TaskStatus.FAILURE}:
+        if self._cur_state.data in {TaskStatus.SUCCESS, TaskStatus.FAILURE}:
             self._status.set(
-                self._cur_state
+                self._cur_state.data
             )
-            return self._cur_state
+            return self._cur_state.data
         
         self._status.set(
             TaskStatus.RUNNING
@@ -70,7 +73,7 @@ class StateMachine(AdaptModule, Task):
         """Reset the state machine
         """
         super().reset()
-        self._cur_state = self.init_state
+        self._cur_state.set(self._init_state.data)
 
     @classmethod
     def schema(
@@ -88,7 +91,9 @@ class BranchState(State):
 
     f: Process | AsyncProcess
 
-    async def update(self) -> t.Literal[TaskStatus.SUCCESS, TaskStatus.FAILURE]:
+    async def update(self) -> t.Literal[
+        TaskStatus.SUCCESS, TaskStatus.FAILURE
+    ]:
         """ Update the state by executing the wrapped process and returning the status based on its result.
 
         Returns:
@@ -96,9 +101,8 @@ class BranchState(State):
             If the wrapped process returns True, it will return SUCCESS, otherwise it will return FAILURE.
             If the wrapped process is an AsyncProcess, it will await the process before returning the status
         """
-
         if isinstance(self.f, AsyncProcess):
-            if await self.f():
+            if await self.f.aforward():
                 return TaskStatus.SUCCESS
         else:
             if self.f():

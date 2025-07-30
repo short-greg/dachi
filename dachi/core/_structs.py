@@ -10,6 +10,7 @@ import typing as t
 from dataclasses import InitVar
 
 from dataclasses import InitVar
+from dachi.utils import is_primitive
 
 # Local
 from ._base import BaseModule, BaseSpec, registry 
@@ -172,8 +173,10 @@ class ModuleDict(BaseModule):
     def __setitem__(self, key: str, val: V):
         if not isinstance(key, str):
             raise TypeError("Keys must be strings")
-        if not isinstance(val, BaseModule):
-            raise TypeError("Values must be BaseModule instances")
+        
+        print(val)
+        if not isinstance(val, BaseModule) and not is_primitive(val):
+            raise TypeError("Values must be BaseModule instances or primitives")
         self._module_dict[key] = val
         if isinstance(val, BaseModule):
             self.register_module(key, val)
