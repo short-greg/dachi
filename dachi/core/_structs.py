@@ -148,7 +148,7 @@ class ModuleDict(BaseModule):
     instances. Keys must be strings.
     """
     __spec_hooks__: ClassVar[t.List[str]] = ["data"]
-    data: InitVar[dict[str, BaseModule | t.Any]]
+    data: InitVar[dict[str, BaseModule | t.Any]] = {}
 
     def __post_init__(self, data: Optional[dict[str, BaseModule | t.Any]] = None):
 

@@ -534,7 +534,7 @@ class BaseModule:
                 child_prefix = f"{prefix}{cname}."
                 yield from child.named_states(recurse=True, prefix=child_prefix)
 
-    def apply(self, fn, *, include: t.Callable[[t.Any], bool] | None = None):
+    def apply(self, fn, *, include: t.Callable[[t.Any], bool] | t.Type | None = None):
         """
         Recursively apply *fn* to every registered object.
 
@@ -543,11 +543,16 @@ class BaseModule:
         """
         targets = [self, *self._parameters.values(), *self._states.values()]
         for obj in targets:
-            
-            # check whether the type is included
-            if include is None or include(obj):
+            print(obj, include)
+            if include is None:
+                print('Including None')
                 fn(obj)
-
+            elif isinstance(include, t.Type) and isinstance(obj, include):
+                print('Including type')
+                fn(obj)
+            elif not isinstance(include, t.Type) and include(obj):
+                print('Including f')
+                fn(obj)
         for child in self._modules.values():
             child.apply(fn, include=include)
 

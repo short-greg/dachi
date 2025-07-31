@@ -915,7 +915,6 @@ def test_load_cls_unknown_kind():
 # # #     assert all(p.training for p in root.parameters(recurse=True, train=None))
 
 
-# # # # ----------  apply() with filter_type ----------
 def test_apply_filters_by_type():
     """Positive • apply() visits only objects of filter_type."""
     calls = []
@@ -930,12 +929,30 @@ def test_apply_filters_by_type():
 
     root.apply(
         lambda x: calls.append(type(x).__name__), 
-        include_type=Param
+        include=Param
     )
     assert calls == ["Param"]
 
 
-# # # # ----------  named_modules() dotted prefixes ----------
+def test_apply_filters_by_fn():
+    """Positive • apply() visits only objects of filter_type."""
+    calls = []
+
+    class Leaf(BaseModule):
+        w: InitVar[int]
+
+        def __post_init__(self, w: int):
+            self.w = Param(data=w)
+
+    root = Leaf(w=0)
+
+    root.apply(
+        lambda x: calls.append(type(x).__name__), 
+        include=lambda x: isinstance(x, Param)
+    )
+    assert calls == ["Param"]
+
+
 def test_named_modules_keys_are_correct():
     """Positive • named_modules() returns expected dotted names."""
     class Leaf(BaseModule):

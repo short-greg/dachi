@@ -419,9 +419,9 @@ class TestModuleDict:
         d = ModuleDict(data={})
         assert len(d) == 0
 
-    def test_moduledict_init_type_error(self):
-        with pytest.raises(TypeError):
-            ModuleDict(data={"bad": 123})
+    def test_moduledict_allows_primitives(self):
+        d = ModuleDict(data={"good": 123})
+        assert d["good"] == 123
 
     def test_moduledict_setitem(self):
         d = ModuleDict(data={})
@@ -429,10 +429,15 @@ class TestModuleDict:
         d["foo"] = leaf
         assert d["foo"] is leaf and "foo" in d._modules
 
+    def test_moduledict_setitem_allows_strings(self):
+        d = ModuleDict(data={})
+        d["success"] = "not a module"
+        assert d["success"] == "not a module"
+
     def test_moduledict_setitem_type_error(self):
         d = ModuleDict(data={})
         with pytest.raises(TypeError):
-            d["fail"] = "not a module"
+            d["fail"] = object() # not a BaseModule or primitive
 
     def test_moduledict_getitem(self):
         leaf = make_leaf()

@@ -383,6 +383,9 @@ class Idx(Process):
         return val[self.idx]
 
 
+class CircularReferenceError(Exception):
+    """Raised when a circular reference is detected in the DAG"""
+    pass
 
 @dataclass
 class RefT:
@@ -393,16 +396,27 @@ class DAG(AdaptModule, AsyncProcess):
     """Directed Acyclic Graph (DAG) for processing data.
     This class allows for the creation of a DAG where nodes can be processes or async processes.
     It supports the addition of nodes, setting of outputs, and forwarding of data through the graph
+
+    RefT is used to reference nodes in the graph by name
     """
 
     def __post_init__(self):
-        """Initialize the DAG with an empty set of nodes and outputs"""
+        """Initialize the DAG with an empty set of nodes and outputs
+        
+        The args specify the args that get input into a node.
+        They can be a reference (RefT) or a value. 
+        If it is a reference, the node that is referenced will be resolved
+        when the node is processed.
+
+        Methods used in the DAG that are referenced by strings must be async.
+        """
         super().__post_init__()
         # can be a "var"
-        self._nodes = ModuleDict(data={})
-        self._args = Attr[typing.Dict[str, t.Dict[str, RefT | t.Dict[str, t.Any]]]](data={})
+        self._nodes = ModuleDict()
+        self._args = Attr[typing.Dict[str, typing.Dict[str, RefT | typing.Any]]](data={})
+        self._outputs = Attr[typing.List[str] | str](data=None)
 
-    async def _sub(self, name: str, by: typing.Dict):
+    async def _sub(self, name: str, by: typing.Dict, visited: typing.Set[str]=None):
         """Subroutine to get the value of a node by name, resolving any references
         Args:
             name (str): The name of the node to resolve
@@ -410,9 +424,14 @@ class DAG(AdaptModule, AsyncProcess):
         Returns:
             typing.Any: The resolved value of the node
         """
-
+        if visited is None:
+            visited = set()
+        
+        if name in visited:
+            raise CircularReferenceError(f"Circular reference detected for node {name}")
+        visited.add(name)
         node = self._nodes[name]
-        args = self._args[name]
+        args = self._args.data[name]
 
         if name in by:
             cur = by[name]
@@ -425,7 +444,7 @@ class DAG(AdaptModule, AsyncProcess):
                 if isinstance(arg, RefT):
                     # check
                     kwargs[key] = tg.create_task(
-                        self._sub(arg.name, by)
+                        self._sub(arg.name, by, visited)
                     )
                 else:
                     kwargs[key] = arg
@@ -444,6 +463,8 @@ class DAG(AdaptModule, AsyncProcess):
             res = await node(**kwargs)
         elif isinstance(node, AsyncProcess):
             res = await node.aforward(**kwargs)
+        else: 
+            raise ValueError(f"Node {node} is not a Process or AsyncProcess")
         by[name] = res
         return res
 
@@ -454,9 +475,16 @@ class DAG(AdaptModule, AsyncProcess):
         Returns:
             tuple: A tuple of resolved outputs from the graph
         """
-        
+        if self._outputs.data is None:
+            return None
         by = by if by is not None else {}
-        # 1) get the outputs
-        return tuple(
-            await self._sub(out, by) for out in self._outputs
-        )
+        res = []
+        for name in self._outputs.data:
+            if name in by:
+                res.append(by[name])
+            else:
+                res.append(await self._sub(name, by))
+
+        if isinstance(self._outputs.data, str):
+            return res[0]
+        return tuple(res)
