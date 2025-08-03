@@ -6,6 +6,7 @@ import json
 import pydantic
 from dataclasses import InitVar
 import openai
+import inspect
 
 # 3rd party
 required = {'openai'}
@@ -13,25 +14,23 @@ installed = {pkg.key for pkg in pkg_resources.working_set}
 missing = required - installed
 
 # Local
-from ...core import (
+from dachi.core import (
     Msg, END_TOK, to_list_input,
     ToolDef, ToolBuilder, ToolCall, Resp,
     BaseModule
 )
-from ... import utils
-from ...inst import render
-from ...proc import (
+from dachi import utils
+from dachi.core import render
+from dachi.proc import (
     llm_aforward, llm_astream, llm_forward, llm_stream
 )
 
 from ...core import ModuleList
 
-# from ...asst._ai import (
-#     LLM, 
-# )
-from ...proc import RespConv, OutConv
+from dachi.proc._resp import RespProc
+from dachi.proc._out import ToOut
 from ...utils import UNDEFINED, coalesce
-from ... import store
+from ... import utils as dachi_utils
 
 # TODO: add utility for this
 
@@ -71,7 +70,7 @@ def to_openai_tool(tool: ToolDef | list[ToolDef]) -> list[dict]:
     return tools
 
 
-class TextConv(RespConv):
+class TextConv(ToOut):
     """
     OpenAITextProc is a class that processes an OpenAI response and extracts text outputs from it.
     """
@@ -94,13 +93,9 @@ class TextConv(RespConv):
             streamed (bool, optional): whether streamed or not. Defaults to False.
             is_last (bool, optional): the last. Defaults to False.
         """
-        content = '' if resp.val['content'] in (
-            None, UNDEFINED
-        ) else resp.val['content']
-        store.acc(
-            delta_store, 'all_content', content
-        )
-        resp.msg['content'] = delta_store['all_content']
+        
+        content = delta_store.get('content', '')
+        resp.msg.content = content
     
     def delta(
         self, 
@@ -120,10 +115,19 @@ class TextConv(RespConv):
         """
         if streamed and is_last:
             return ''
+        
+        if resp is END_TOK:
+            resp = ''
+
         elif streamed:
             content = resp.choices[0].delta.content
         else:
             content = resp.choices[0].message.content
+
+        delta_store['cur_content'] = content
+        delta_store['content'] = dachi_utils.acc(
+            delta_store, 'all_content', content
+        )
 
         return content
 
@@ -135,8 +139,20 @@ class TextConv(RespConv):
         """
         return {}
 
+    def render(self, data: typing.Any) -> str:
+        """Render data as text"""
+        return str(data)
 
-class StructConv(RespConv):
+    def template(self) -> str:
+        """Template for text output"""
+        return "{content}"
+
+    def example(self) -> str:
+        """Example text output"""
+        return "Sample text content"
+
+
+class StructConv(ToOut):
     """
     OpenAITextProc is a class that processes an OpenAI response and extracts text outputs from it.
     """
@@ -174,12 +190,12 @@ class StructConv(RespConv):
         """
         if streamed and resp is not END_TOK:
             delta = resp.choices[0].delta.content
-            store.acc(
+            dachi_utils.acc(
                 delta_store, 'content', delta
             )
         elif not streamed:
             content = resp.choices[0].message.content
-            store.acc(
+            dachi_utils.acc(
                 delta_store, 'content', content
             )
 
@@ -204,6 +220,9 @@ class StructConv(RespConv):
             }}
         elif isinstance(
             self.struct, pydantic.BaseModel
+        ) or (
+            inspect.isclass(self.struct) and 
+            issubclass(self.struct, pydantic.BaseModel)
         ):
             return {
                 'response_format': self.struct
@@ -211,6 +230,20 @@ class StructConv(RespConv):
         return {
             'response_format': "json_object"
         }
+
+    def render(self, data: typing.Any) -> str:
+        """Render data as JSON string"""
+        if isinstance(data, dict):
+            return json.dumps(data)
+        return str(data)
+
+    def template(self) -> str:
+        """Template for structured output"""
+        return "{data}"
+
+    def example(self) -> str:
+        """Example structured output"""
+        return '{"key": "value"}'
 
 
 # TODO: Update these converters
@@ -247,9 +280,12 @@ class StructStreamConv(StructConv):
         }
 
 
-class ParsedConv(StructConv):
+class ParsedConv(ToOut):
     """For use with the "parse" API
     """
+    struct: pydantic.BaseModel = None
+    name: str = 'content'
+    from_: str = 'response'
     
     def delta(
         self, 
@@ -287,8 +323,22 @@ class ParsedConv(StructConv):
             }
         }
 
+    def render(self, data: typing.Any) -> str:
+        """Render parsed model as string"""
+        if hasattr(data, 'model_dump_json'):
+            return data.model_dump_json()
+        return str(data)
 
-class ToolConv(RespConv):
+    def template(self) -> str:
+        """Template for parsed model output"""
+        return "{model}"
+
+    def example(self) -> str:
+        """Example parsed model output"""
+        return "Parsed Pydantic model instance"
+
+
+class ToolConv(RespProc):
     """
     Process OpenAI LLM responses to extract tool calls.
     This class extends the RespProc class and is designed to handle responses from OpenAI's language model,
@@ -359,10 +409,10 @@ class ToolConv(RespConv):
         Returns:
             typing.Any
         """
-        store.get_or_set(
+        dachi_utils.get_or_set(
             delta_store, 'tool_calls', []
         )
-        store.get_or_set(delta_store, 'tools', [])
+        dachi_utils.get_or_set(delta_store, 'tools', [])
         if streamed and resp is END_TOK:
             if 'delta' not in delta_store:
                 return utils.UNDEFINED
@@ -383,8 +433,8 @@ class ToolConv(RespConv):
                 #     delta_store, 'builder', ToolBuilder
                 # )
 
-                builder = store.get_or_set(
-                    delta_store, 'builder', ToolBuilder
+                builder = dachi_utils.get_or_set(
+                    delta_store, 'builder', ToolBuilder()
                 )
                 tool = builder.update(tool_call.id, index, name, args)
 
@@ -392,8 +442,11 @@ class ToolConv(RespConv):
                 if isinstance(tool, ToolCall):
                     delta_store['tools'].append(tool)
                     if self.run_call:
-                        tool.forward(True)
-                return [tool]
+                        tool(store=True)
+                    return [tool]
+                else:
+                    # Return the builder when tool is still being constructed
+                    return [builder]
         else:
             tools = []
             if (
@@ -413,8 +466,8 @@ class ToolConv(RespConv):
                         option=tool_def,
                         inputs=tool_def.input_model(**args)
                     )
-                    if self.run:
-                        cur_call.forward(True)
+                    if self.run_call:
+                        cur_call(store=True)
                     tools.append(cur_call)
 
                 delta_store['tools'] = tools
@@ -423,7 +476,7 @@ class ToolConv(RespConv):
         return []
 
 
-class LLM(BaseModule, ABC):
+class LLM(BaseModule):
     """An adapter for the OpenAILLM
     """
 
@@ -442,17 +495,21 @@ class LLM(BaseModule, ABC):
             api_key (str, optional): . Defaults to None.
             client_kwargs (typing.Dict, optional): . Defaults to None.
         """
-        super().__init__()
-        self.convs = ModuleList([])
+        if client_kwargs is None:
+            client_kwargs = {}
+            
+        self.convs = ModuleList(data=[])
         if self.json_output is False:
             self.convs.append(TextConv())
-        elif isinstance(self.json_output, pydantic.BaseModel):
-            self.convs.append(ParsedConv(self.json_output))
+        elif isinstance(self.json_output, pydantic.BaseModel) or (
+            inspect.isclass(self.json_output) and 
+            issubclass(self.json_output, pydantic.BaseModel)
+        ):
+            self.convs.append(ParsedConv(struct=self.json_output))
         else:
-            self.convs.append(StructConv(self.json_output))
+            self.convs.append(StructConv(struct=self.json_output))
         if self.tools is not None:
-            self.convs.append(ToolConv(self.tools))
-        super().__init__()
+            self.convs.append(ToolConv(tools=self.tools))
         self._client = openai.Client(
             api_key=api_key, **client_kwargs
         )
@@ -463,23 +520,13 @@ class LLM(BaseModule, ABC):
     def spawn(self, 
         tools: typing.Iterable[ToolDef]=UNDEFINED,
         json_output: bool | pydantic.BaseModel | typing.Dict=UNDEFINED,
-        procs: typing.List[RespConv]=UNDEFINED
+        procs: typing.List[RespProc]=UNDEFINED
     ):
         # TODO: Implement
         pass
-        # tools = coalesce(
-        #     tools, self._tools
-        # )
-        # procs = coalesce(
-        #     procs, self.procs
-        # )
-        # json_output = coalesce(json_output, self._json_output)
-        # return LLM(
-        #     tools, json, 
-        # )
 
 
-class ChatCompletion(LLM, ABC):
+class ChatCompletion(LLM):
     """
     OpenAIChatComp is an adapter for the OpenAI Chat Completions API. It provides methods for 
     interacting with the API, including synchronous and asynchronous message forwarding, 
@@ -634,9 +681,11 @@ class ChatCompletion(LLM, ABC):
             yield r
 
 
-class ToolExecConv(OutConv):
+class ToolExecConv(ToOut):
     """Use for converting a tool from a response
     """
+    name: str = 'tools'
+    from_: str = 'response'
     
     def delta(
         self, 
@@ -663,3 +712,15 @@ class ToolExecConv(OutConv):
             return [r() for r in resp]
         
         return utils.UNDEFINED
+
+    def render(self, data: typing.Any) -> str:
+        """Render tool execution result as string"""
+        return str(data)
+
+    def template(self) -> str:
+        """Template for tool execution output"""
+        return "{result}"
+
+    def example(self) -> str:
+        """Example tool execution output"""
+        return "Tool execution result"

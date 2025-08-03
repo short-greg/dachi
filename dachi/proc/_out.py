@@ -54,7 +54,7 @@ class ToOut(
     Templatable, 
     ExampleMixin
 ):
-    """Use for converting an AI response into a primitive value
+    """Use for converting an AI response into a output
     """    
     name: str
     from_: str = 'content'

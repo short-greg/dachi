@@ -1,0 +1,413 @@
+"""Tests for Dachi's OpenAI adapter layer."""
+
+from __future__ import annotations
+
+import json
+import types
+from types import SimpleNamespace
+
+import pytest
+import pydantic
+import sys
+
+# Dachi imports
+from dachi.core import Resp, END_TOK, ToolDef, Msg, ToolCall
+from dachi.utils import UNDEFINED
+
+
+def _patch_module(monkeypatch, name, replacement):
+    """Register *replacement* under *name* in sys.modules (sub-modules too)."""
+    monkeypatch.setitem(sys.modules, name, replacement)
+    parts = name.split(".")
+    for i in range(1, len(parts)):
+        parent = ".".join(parts[:i])
+        if parent not in sys.modules:
+            monkeypatch.setitem(sys.modules, parent, types.ModuleType(parent))
+    monkeypatch.setitem(sys.modules, name, replacement)
+
+
+class _MockChat:
+    """Holds a single `.create` attr that we patch in every test."""
+    def __init__(self):
+        self.completions = SimpleNamespace(create=lambda *a, **k: None)  # patch later
+
+
+class MockOpenAI:
+    """
+    Drop-in replacement for both `openai.Client` and `openai.AsyncClient`
+    that records calls but never hits the network.
+    """
+    def __init__(self, *a, **k):
+        self.calls: list[tuple[tuple, dict]] = []
+        self.chat = _MockChat()
+
+    # AsyncClient is identical for our purposes
+    AsyncClient = None
+
+
+# the async version just re-uses the same implementation
+MockOpenAI.AsyncClient = MockOpenAI  # type: ignore[attr-defined]
+
+
+def fake_delta_chunk(content: str = "hi", tool: bool = False):
+    """Return a fake streaming chunk like openai passes."""
+    if tool:
+        func = SimpleNamespace(name="dummy", arguments="{}")
+        tc = SimpleNamespace(index=0, id="id", function=func)
+        delta = SimpleNamespace(tool_calls=[tc])
+    else:
+        delta = SimpleNamespace(content=content, tool_calls=None)
+    choice = SimpleNamespace(delta=delta, message=None, finish_reason=None)
+    return SimpleNamespace(choices=[choice])
+
+
+def fake_final_message(content: str = "hello", *, tool_calls=None, finish="stop"):
+    """Non-streaming final message object."""
+    message = SimpleNamespace(content=content, tool_calls=tool_calls)
+    choice = SimpleNamespace(message=message, finish_reason=finish, delta=None)
+    return SimpleNamespace(choices=[choice])
+
+
+# ------------------------------------------------------------------
+# fixtures ----------------------------------------------------------
+# ------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def patch_openai(monkeypatch):
+    """Auto-patch every test with a mocked `openai` package."""
+    mock_pkg = types.ModuleType("openai")
+    mock_pkg.Client = MockOpenAI
+    mock_pkg.AsyncClient = MockOpenAI
+    _patch_module(monkeypatch, "openai", mock_pkg)
+    yield
+
+
+@pytest.fixture
+def adapters():
+    """
+    Import the adapter module **after** patching openai so the import succeeds.
+    Returns the imported module.
+    """
+    from importlib import import_module, reload
+    
+    mod = import_module("dachi.adapt.xopenai._openai")
+    return reload(mod)
+
+
+@pytest.fixture
+def make_tool_def():
+    """
+    Factory to create a minimal ToolDef (real class) with a random model.
+    """
+    from dachi.core import ToolDef
+
+    def _factory(name: str = "dummy", description: str = "desc"):
+        class _Args(pydantic.BaseModel):
+            x: int
+
+        def dummy_fn(x: int) -> str:
+            return f"Result: {x}"
+
+        return ToolDef(
+            name=name, description=description, fn=dummy_fn, input_model=_Args
+        )
+
+    return _factory
+
+
+# ------------------------------------------------------------------
+# 1  to_openai_tool -------------------------------------------------
+# ------------------------------------------------------------------
+
+
+class TestToOpenAITool:
+    """Unit-tests for the helper that converts ToolDef → OpenAI schema."""
+
+    def test_single(self, adapters, make_tool_def):
+        tool = make_tool_def()
+        out = adapters.to_openai_tool(tool)
+        assert isinstance(out, list) and len(out) == 1
+        fn = out[0]["function"]
+        assert fn["name"] == tool.name
+        assert fn["description"] == tool.description
+        # pydantic v1 & v2 produce 'properties' key in schema
+        assert "properties" in fn["parameters"]
+
+    def test_multiple(self, adapters, make_tool_def):
+        out = adapters.to_openai_tool([make_tool_def("a"), make_tool_def("b")])
+        assert [t["function"]["name"] for t in out] == ["a", "b"]
+
+    def test_wrong_type(self, adapters):
+        # to_openai_tool should work with ToolDef or list of ToolDef
+        # Let's test with an invalid input
+        import dachi.core
+        tool_def = dachi.core.ToolDef
+        # This should fail if we pass something that's not a ToolDef
+        with pytest.raises((TypeError, AttributeError)):
+            adapters.to_openai_tool(42)  # type: ignore[arg-type]
+
+
+# ------------------------------------------------------------------
+# 2  TextConv -------------------------------------------------------
+# ------------------------------------------------------------------
+
+
+class TestTextConv:
+    """
+    Validate delta & post logic for TextConv across streaming modes and
+    sentinel values (None / UNDEFINED).
+    """
+
+    def _mk(self, adapters):
+        return adapters.TextConv()
+
+    def test_non_stream(self, adapters):
+        conv = self._mk(adapters)
+        store = {}
+        resp = fake_final_message("hello")
+        conv.delta(resp, store, streamed=False, is_last=True)
+        conv.post(resp=Resp(msg=Msg(role="assistant", content="hello"), val={"content": "hello"}),
+                  result=None, delta_store=store, streamed=False, is_last=True)
+        assert store["all_content"] == "hello"
+
+    def test_stream_chunks_accumulate(self, adapters):
+        conv = self._mk(adapters)
+        store = {}
+        # two chunks then END_TOK
+        chunk1 = fake_delta_chunk("he")
+        chunk2 = fake_delta_chunk("llo")
+        conv.delta(chunk1, store, streamed=True)
+        conv.delta(chunk2, store, streamed=True)
+        conv.post(resp=Resp(msg=Msg(role="assistant"), val=dict(content="unused")),
+                  result=None, delta_store=store, streamed=True, is_last=True)
+        assert store["all_content"] == "hello"
+
+    @pytest.mark.parametrize("payload", [None, UNDEFINED])
+    def test_none_undefined(self, adapters, payload):
+        conv = self._mk(adapters)
+        store = {}
+        resp = fake_final_message(payload or "")
+        conv.delta(resp, store, streamed=False, is_last=True)
+        conv.post(resp=Resp(msg=Msg(role="assistant"), val={"content": payload}),
+                  result=None, delta_store=store, streamed=False, is_last=True)
+        # nothing should have been accumulated
+        assert store["all_content"] == ""
+
+
+# ------------------------------------------------------------------
+# 3  Struct / Parsed converters ------------------------------------
+# ------------------------------------------------------------------
+
+
+class TestStructConv:
+    """Exercise StructConv in all supported modes."""
+
+    def test_default_json_object(self, adapters):
+        conv = adapters.StructConv()
+        assert conv.prep() == {"response_format": "json_object"}
+
+    def test_custom_schema_dict(self, adapters):
+        schema = {"type": "object", "properties": {"foo": {"type": "string"}}}
+        conv = adapters.StructConv(struct=schema)
+        out = conv.prep()
+        assert out["response_format"]["json_schema"] == schema
+
+    def test_custom_pydantic_model(self, adapters):
+        class Foo(pydantic.BaseModel):
+            bar: int
+
+        conv = adapters.StructConv(struct=Foo)
+        fmt = conv.prep()
+        assert fmt["response_format"] == Foo
+
+
+class TestParsedConv:
+    """ParsedConv parses final JSON into model."""
+
+    def test_valid_json(self, adapters):
+        class Foo(pydantic.BaseModel):
+            bar: int
+
+        conv = adapters.ParsedConv(struct=Foo)
+        store = {}
+        payload = fake_final_message(json.dumps({"bar": 3}))
+        out = conv.delta(payload, store, streamed=False, is_last=True)
+        assert isinstance(out, Foo) and out.bar == 3
+
+    def test_bad_json_raises(self, adapters):
+        class Foo(pydantic.BaseModel):
+            bar: int
+
+        conv = adapters.ParsedConv(struct=Foo)
+        with pytest.raises(pydantic.ValidationError):
+            conv.delta(fake_final_message("not-json"), {}, False, True)
+
+
+# ------------------------------------------------------------------
+# 4  ToolConv -------------------------------------------------------
+# ------------------------------------------------------------------
+
+
+class TestToolConv:
+    """Validate tool-extraction in both streaming & non-streaming."""
+
+    def test_prep(self, adapters, make_tool_def):
+        tools = [make_tool_def("t")]
+        conv = adapters.ToolConv(tools=tools)
+        prep = conv.prep()
+        assert "tools" in prep and prep["tools"][0]["function"]["name"] == "t"
+
+    def test_non_stream(self, adapters, make_tool_def):
+        tools = [make_tool_def()]
+        conv = adapters.ToolConv(tools=tools, run_call=False)
+        delta_store = {}
+        # build fake tool_call object
+        func = SimpleNamespace(name=tools[0].name, arguments=json.dumps({"x": 1}))
+        tc = SimpleNamespace(id="id", function=func)
+        payload = fake_final_message(content="", tool_calls=[tc], finish="tool_calls")
+        out = conv.delta(payload, delta_store, streamed=False)
+        assert isinstance(out[0], adapters.ToolCall)
+        assert out[0].inputs.x == 1
+
+    def test_stream_incremental(self, adapters, make_tool_def):
+        tools = [make_tool_def()]
+        conv = adapters.ToolConv(tools=tools, run_call=False)
+        ds = {}
+        # first delta chunk (function call)
+        chunk = fake_delta_chunk(tool=True)
+        out = conv.delta(chunk, ds, streamed=True, is_last=False)
+        assert out and isinstance(out[0], adapters.ToolBuilder) or isinstance(out[0], adapters.ToolCall)  # lenient check
+
+
+# ------------------------------------------------------------------
+# 5  LLM & ChatCompletion ------------------------------------------
+# ------------------------------------------------------------------
+
+
+class TestLLMInit:
+    """Ensure converter pipeline assembled correctly."""
+
+    def test_text_only(self, adapters):
+        llm = adapters.LLM()
+        names = [type(c).__name__ for c in llm.convs]
+        assert "TextConv" in names and "ToolConv" not in names
+
+    def test_json_model_adds_parsed(self, adapters):
+        class Foo(pydantic.BaseModel):
+            y: int
+        llm = adapters.LLM(json_output=Foo)
+        assert any(isinstance(c, adapters.ParsedConv) for c in llm.convs)
+
+
+# class TestChatCompletion:
+#     """End-to-end through forward / streaming paths."""
+# 
+#     @staticmethod
+#     def _patch_response(monkeypatch, adapters, *, stream=False, chunks=None, final=None):
+#         """Install a `.create` that returns given response."""
+#         def make_async_return(val):
+#             async def coro(*a, **k): return val
+#             return coro
+# 
+#         cl: MockOpenAI = adapters.openai.Client()
+#         if stream:
+#             iterator = iter(chunks)  # type: ignore[arg-type]
+#             cl.chat.completions.create = lambda *a, **k: iterator
+#         else:
+#             cl.chat.completions.create = lambda *a, **k: final
+# 
+#         # async variant mirrors sync
+#         acl: MockOpenAI = adapters.openai.AsyncClient()
+#         if stream:
+#             async def async_iter(*a, **k):  # noqa: D401
+#                 for c in chunks:
+#                     yield c
+#             acl.chat.completions.create = async_iter
+#         else:
+#             acl.chat.completions.create = make_async_return(final)
+# 
+#         # monkeypatch ChatCompletion to use our instantiated clients
+#         monkeypatch.setattr(adapters.ChatCompletion, "_client", cl)
+#         monkeypatch.setattr(adapters.ChatCompletion, "_aclient", acl)
+# 
+#     def test_forward_text(self, adapters, monkeypatch):
+#         final = fake_final_message("hello")
+#         self._patch_response(monkeypatch, adapters, final=final)
+#         chat = adapters.ChatCompletion()
+#         msg = adapters.Msg(role="user", content="hi")  # type: ignore[call-arg]
+#         out_msg, _ = chat.forward(msg)
+#         assert out_msg.content == "hello"
+# 
+#     @pytest.mark.asyncio
+#     async def test_aforward(self, adapters, monkeypatch):
+#         final = fake_final_message("yo")
+#         self._patch_response(monkeypatch, adapters, final=final)
+#         chat = adapters.ChatCompletion()
+#         msg = adapters.Msg(role="user", content="x")  # type: ignore[call-arg]
+#         m, _ = await chat.aforward(msg)
+#         assert m.content == "yo"
+# 
+#     def test_stream_generator(self, adapters, monkeypatch):
+#         chunks = [fake_delta_chunk("h"), fake_delta_chunk("i"), adapters.END_TOK]
+#         self._patch_response(monkeypatch, adapters, stream=True, chunks=chunks)
+#         chat = adapters.ChatCompletion()
+#         msg = adapters.Msg(role="u", content="z")  # type: ignore[call-arg]
+#         resps = list(chat.stream(msg))
+#         # last yielded pair contains full text
+#         assert resps[-1][0].content == "hi"
+# 
+#     @pytest.mark.asyncio
+#     async def test_astream(self, adapters, monkeypatch):
+#         chunks = [fake_delta_chunk("o"), fake_delta_chunk("k"), adapters.END_TOK]
+#         self._patch_response(monkeypatch, adapters, stream=True, chunks=chunks)
+#         chat = adapters.ChatCompletion()
+#         msg = adapters.Msg(role="u", content="k")  # type: ignore[call-arg]
+#         out = []
+#         async for m, _ in chat.astream(msg):
+#             out.append(m.content or "")
+#         assert "".join(out).endswith("ok")  # progressive build
+# 
+# 
+# # ------------------------------------------------------------------
+# # 6  ToolExecConv ---------------------------------------------------
+# # ------------------------------------------------------------------
+# 
+# 
+class TestToolExecConv:
+    """Validate deferred execution helper."""
+
+    def test_single_call_executed(self, adapters, make_tool_def):
+        # create a dummy ToolCall that returns value 7
+        tool_def = make_tool_def()
+        tc = ToolCall(
+            tool_id="id",
+            option=tool_def,
+            inputs=tool_def.input_model(x=42),
+        )
+        # Monkey patch the actual function to return 7
+        def mock_fn(**kwargs):
+            return 7
+        tc.option.fn = mock_fn
+        
+        conv = adapters.ToolExecConv()
+        result = conv.delta(tc, {}, False, True)
+        assert result == 7
+
+    def test_list_executes(self, adapters):
+        class MockTool1:
+            def __call__(self):
+                return 1
+                
+        class MockTool2:
+            def __call__(self):
+                return 2
+                
+        tc1 = MockTool1()
+        tc2 = MockTool2()
+        conv = adapters.ToolExecConv()
+        assert conv.delta([tc1, tc2], {}, False, True) == [1, 2]
+
+    def test_undefined_pass_through(self, adapters):
+        conv = adapters.ToolExecConv()
+        assert conv.delta(adapters.UNDEFINED, {}, False, True) is adapters.UNDEFINED
