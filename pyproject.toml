@@ -15,14 +15,11 @@ readme = "README.md"
 packages = [
     {include="dachi"},
     {include="dachi/act"},
-    {include="dachi/asst"},
+    {include="dachi/core"},
     {include="dachi/adapt"},
-    {include="dachi/base"},
-    {include="dachi/msg"},
-    {include="dachi/proc"},
     {include="dachi/inst"},
-    {include="dachi/store"},
-    {include="dachi/utils"}
+    {include="dachi/proc"},
+    {include="dachi/utils"},
 ]
 
 [tool.poetry.dependencies]
