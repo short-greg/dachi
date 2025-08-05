@@ -15,14 +15,14 @@ class StateMachine(AdaptModule, Task):
         """
         super().__post_init__()
         Task.__post_init__(self)
-        self.adapted: ModuleDict = ModuleDict(data={})
+        self.adapted: ModuleDict = ModuleDict(items={})
         END_STATUS = t.Literal[TaskStatus.SUCCESS | TaskStatus.FAILURE]
         self._transitions = Attr[t.Dict[
             str, t.Dict[str | END_STATUS, str | END_STATUS]
         ]](data={})
         self._init_state = Attr[str | END_STATUS | None](data=None)
         self._cur_state = Attr[str | END_STATUS | None](data=None)
-        self._states = ModuleDict(data={})
+        self._states = ModuleDict(items={})
         self.__states__ = {
             name: method
             for name, method in self.__class__.__dict__.items()

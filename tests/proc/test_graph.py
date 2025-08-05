@@ -559,7 +559,7 @@ class TestDAG:
     async def test_resolve_process_chain(self):
         dag = DAG()
         dag._nodes = ModuleDict(
-            data={
+            items={
                 "a": _Const(1),
                 "b": _Const(2),
                 "sum": _Add(),
@@ -583,34 +583,34 @@ class TestDAG:
     async def test_resolve_async_process(self):
         dag = DAG()
         dag._nodes = ModuleDict(
-            data={"x": _AsyncConst(7)}
+            items={"x": _AsyncConst(7)}
         )
         dag._args.data = {"x": {}}
         assert await dag._sub("x", {}) == 7
 
     async def test_resolve_string_node(self):
         dag = _MethodDAG()
-        dag._nodes = ModuleDict(data={"foo": "five"})
+        dag._nodes = ModuleDict(items={"foo": "five"})
         dag._args.data = {"foo": {}}
         assert await dag._sub("foo", {}) == 5
 
     async def test_missing_node_raises_keyerror(self):
         dag = DAG()
-        dag._nodes = ModuleDict(data={})
+        dag._nodes = ModuleDict(items={})
         dag._args.data = {}
         with pytest.raises(KeyError):
             await dag._sub("ghost", {})
 
     async def test_missing_method_raises_valueerror(self):
         dag = DAG()
-        dag._nodes = ModuleDict(data={"foo": "bar"})
+        dag._nodes = ModuleDict(items={"foo": "bar"})
         dag._args.data = {"foo": {}}
         with pytest.raises(ValueError):
             await dag._sub("foo", {})
 
     async def test_circular_reference_recursion_error(self):
         dag = DAG()
-        dag._nodes = ModuleDict(data={"a": _Const(0)})
+        dag._nodes = ModuleDict(items={"a": _Const(0)})
         dag._args.data = {"a": {"loop": RefT("a")}}
         with pytest.raises(ExceptionGroup):
             await dag._sub("a", {})
@@ -618,7 +618,7 @@ class TestDAG:
     async def test_single_output_tuple(self):
         dag = DAG()
         dag._nodes = ModuleDict(
-            data={
+            items={
                 "x": _Const(10),
             }
         )
@@ -631,7 +631,7 @@ class TestDAG:
     async def test_multiple_outputs_order_preserved(self):
         dag = DAG()
         dag._nodes = ModuleDict(
-            data={
+            items={
                 "a": _Const(1),
                 "b": _Const(2),
             }
@@ -650,7 +650,7 @@ class TestDAG:
     async def test_probe_dict_short_circuits(self):
         c = _Const(99)
         dag = DAG()
-        dag._nodes = ModuleDict(data={"x": c})
+        dag._nodes = ModuleDict(items={"x": c})
         dag._args.data = {"x": {}}
         dag._outputs.set(["x"])
 

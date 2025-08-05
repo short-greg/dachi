@@ -34,11 +34,11 @@ class ModuleList(BaseModule): # t.Generic[V]
         # cls.__orig_bases__ = (t.Generic[V],) + tuple(b for b in cls.__bases__ if b != t.Generic)
         # cls.__class_getitem__ = t.Generic.__class_getitem__
 
-    def __post_init__(self, data: Optional[Iterable[T]] = None):
+    def __post_init__(self, items: Optional[Iterable[T]] = None):
         self._module_list = []
 
-        if data is not None:
-            for m in data:
+        if items is not None:
+            for m in items:
                 self.append(m)
 
     @classmethod
@@ -146,21 +146,21 @@ class ModuleDict(BaseModule):
     A dict-like container whose values are themselves `BaseModule`
     instances. Keys must be strings.
     """
-    __spec_hooks__: ClassVar[t.List[str]] = ["data"]
-    data: InitVar[dict[str, BaseModule | t.Any]] = {}
+    __spec_hooks__: ClassVar[t.List[str]] = ["items"]
+    items: InitVar[dict[str, BaseModule | t.Any]] = {}
 
-    def __post_init__(self, data: Optional[dict[str, BaseModule | t.Any]] = None):
+    def __post_init__(self, items: Optional[dict[str, BaseModule | t.Any]] = None):
 
         super().__post_init__()
         self._module_dict = {}
 
-        if data is not None:
-            for k, m in data.items():
+        if items is not None:
+            for k, m in items.items():
                 self[k] = m
 
     @classmethod
     def __build_schema_hook__(cls, name: str, type_: t.Any, default: t.Any):
-        if name != "data":
+        if name != "items":
             raise ValueError(f"No hook specified for {name}")
         return dict[str, BaseSpec]
 
@@ -171,7 +171,6 @@ class ModuleDict(BaseModule):
         if not isinstance(key, str):
             raise TypeError("Keys must be strings")
         
-        print(val)
         if not isinstance(val, BaseModule) and not is_primitive(val):
             raise TypeError("Values must be BaseModule instances or primitives")
         self._module_dict[key] = val
@@ -196,7 +195,7 @@ class ModuleDict(BaseModule):
     def values(self):
         return self._module_dict.values()
 
-    def data(self):
+    def items(self):
         return self._module_dict.items()
 
     def spec_hook(

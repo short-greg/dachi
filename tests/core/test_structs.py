@@ -369,23 +369,23 @@ class TestModuleList:
 class TestModuleDict:
 
     def test_moduledict_getitem_key_error(self):
-        d = ModuleDict(data={"x": make_leaf()})
+        d = ModuleDict(items={"x": make_leaf()})
         with pytest.raises(KeyError):
             _ = d["not_there"]
 
     def test_moduledict_key_must_be_string(self):
-        d = ModuleDict(data={})
+        d = ModuleDict(items={})
         with pytest.raises(TypeError):
             d[123] = make_leaf()
 
     def test_moduledict_registers_modules_correctly(self):
         leaf = make_leaf()
-        d = ModuleDict(data={"leaf1": leaf})
+        d = ModuleDict(items={"leaf1": leaf})
         assert d._modules["leaf1"] is leaf
 
     def test_moduledict_from_spec_shared_instance_deduplicated(self):
         shared = make_leaf(4.2)
-        d1 = ModuleDict(data={"a": shared, "b": shared})
+        d1 = ModuleDict(items={"a": shared, "b": shared})
         spec = d1.spec(to_dict=False)
         rebuilt = ModuleDict.from_spec(spec, ctx=dict())
         assert rebuilt["a"] is rebuilt["b"]
@@ -398,7 +398,7 @@ class TestModuleDict:
             ModuleDict.from_spec_hook("data", {"x": "not_a_spec"}, ctx={})
 
     def test_moduledict_spec_hook_invalid_name(self):
-        d = ModuleDict(data={})
+        d = ModuleDict(items={})
         with pytest.raises(ValueError):
             d.spec_hook(name="unknown", val={}, to_dict=True)
 
@@ -408,113 +408,113 @@ class TestModuleDict:
 
 
     def test_moduledict_init_happy(self):
-        d = ModuleDict(data={"a": make_leaf(), "b": make_leaf()})
+        d = ModuleDict(items={"a": make_leaf(), "b": make_leaf()})
         assert len(d) == 2 and "a" in d._modules and "b" in d._modules
 
     def test_moduledict_init_single(self):
-        d = ModuleDict(data={"x": make_leaf()})
+        d = ModuleDict(items={"x": make_leaf()})
         assert len(d) == 1 and "x" in d._modules
 
     def test_moduledict_init_empty(self):
-        d = ModuleDict(data={})
+        d = ModuleDict(items={})
         assert len(d) == 0
 
     def test_moduledict_allows_primitives(self):
-        d = ModuleDict(data={"good": 123})
+        d = ModuleDict(items={"good": 123})
         assert d["good"] == 123
 
     def test_moduledict_setitem(self):
-        d = ModuleDict(data={})
+        d = ModuleDict(items={})
         leaf = make_leaf(2.0)
         d["foo"] = leaf
         assert d["foo"] is leaf and "foo" in d._modules
 
     def test_moduledict_setitem_allows_strings(self):
-        d = ModuleDict(data={})
+        d = ModuleDict(items={})
         d["success"] = "not a module"
         assert d["success"] == "not a module"
 
     def test_moduledict_setitem_type_error(self):
-        d = ModuleDict(data={})
+        d = ModuleDict(items={})
         with pytest.raises(TypeError):
             d["fail"] = object() # not a BaseModule or primitive
 
     def test_moduledict_getitem(self):
         leaf = make_leaf()
-        d = ModuleDict(data={"a": leaf})
+        d = ModuleDict(items={"a": leaf})
         assert d["a"] is leaf
 
     def test_moduledict_len_iter_items(self):
         leaf1, leaf2 = make_leaf(1), make_leaf(2)
-        d = ModuleDict(data={"x": leaf1, "y": leaf2})
+        d = ModuleDict(items={"x": leaf1, "y": leaf2})
         assert len(d) == 2
         assert set(d.keys()) == {"x", "y"}
         assert set(d.values()) == {leaf1, leaf2}
-        assert dict(d.data()) == {"x": leaf1, "y": leaf2}
+        assert dict(d.items()) == {"x": leaf1, "y": leaf2}
 
     def test_moduledict_overwrite_removes_old_attr(self):
-        d = ModuleDict(data={"key": make_leaf(1)})
+        d = ModuleDict(items={"key": make_leaf(1)})
         d["key"] = make_leaf(9)
         assert d["key"].w.data == 9
 
     def test_moduledict_spec_roundtrip(self):
-        d = ModuleDict(data={"a": make_leaf(3.3)})
+        d = ModuleDict(items={"a": make_leaf(3.3)})
         spec = d.spec()
         assert isinstance(spec, BaseSpec)
         assert spec.data["a"].w == 3.3
 
     def test_moduledict_from_spec_roundtrip(self):
-        d1 = ModuleDict(data={"a": make_leaf(3.3), "b": make_leaf(1.1)})
+        d1 = ModuleDict(items={"a": make_leaf(3.3), "b": make_leaf(1.1)})
         spec = d1.spec(to_dict=False)
         d2 = ModuleDict.from_spec(spec, ctx=dict())
         assert isinstance(d2, ModuleDict)
         assert d2["a"].w.data == 3.3
 
     def test_moduledict_state_dict_flags(self):
-        d = ModuleDict(data={"a": make_leaf(1.0, 5), "b": make_leaf(2.0, 10)})
+        d = ModuleDict(items={"a": make_leaf(1.0, 5), "b": make_leaf(2.0, 10)})
         sd = d.state_dict(runtime=False)
         assert sd == {"a.w": 1.0, "b.w": 2.0}
 
     def test_moduledict_state_dict_roundtrip(self):
-        d1 = ModuleDict(data={"x": make_leaf(3, 4), "y": make_leaf(5, 6)})
+        d1 = ModuleDict(items={"x": make_leaf(3, 4), "y": make_leaf(5, 6)})
         sd = d1.state_dict()
-        d2 = ModuleDict(data={"x": make_leaf(0, 0), "y": make_leaf(0, 0)})
+        d2 = ModuleDict(items={"x": make_leaf(0, 0), "y": make_leaf(0, 0)})
         d2.load_state_dict(sd, strict=True)
         assert d2.state_dict() == sd
 
     def test_moduledict_load_state_strict_fail(self):
-        d = ModuleDict(data={"a": make_leaf()})
+        d = ModuleDict(items={"a": make_leaf()})
         with pytest.raises(KeyError):
             d.load_state_dict({"a.w": 1.0, "z.w": 2.0}, strict=True)
 
     def test_moduledict_load_state_non_strict(self):
-        d = ModuleDict(data={"a": make_leaf()})
+        d = ModuleDict(items={"a": make_leaf()})
         d.load_state_dict({}, strict=False)
 
     def test_moduledict_load_state_type_error(self):
-        d = ModuleDict(data={"a": make_leaf()})
+        d = ModuleDict(items={"a": make_leaf()})
         with pytest.raises(TypeError):
             d.load_state_dict("not a dict")
 
     def test_moduledict_named_parameters_states(self):
-        d = ModuleDict(data={"k": make_leaf()})
+        d = ModuleDict(items={"k": make_leaf()})
         pnames = dict(d.named_parameters()).keys()
         snames = dict(d.named_states()).keys()
         assert "k.w" in pnames and "k.s" in snames
 
     def test_moduledict_named_modules_keys(self):
-        d = ModuleDict(data={"a": make_leaf()})
+        d = ModuleDict(items={"a": make_leaf()})
         names = dict(d.named_modules()).keys()
         assert set(names) == {"", "a"}
 
     def test_moduledict_param_deduplication(self):
         leaf = make_leaf(2.2)
-        d = ModuleDict(data={"first": leaf, "second": leaf})
+        d = ModuleDict(items={"first": leaf, "second": leaf})
         params = list(d.parameters())
         assert len(params) == 1
 
     def test_moduledict_shared_module_instance(self):
         shared = make_leaf(7.7)
-        d = ModuleDict(data={"x": shared, "y": shared})
+        d = ModuleDict(items={"x": shared, "y": shared})
         state = d.state_dict()
         assert state["x.w"] == state["y.w"] == 7.7
