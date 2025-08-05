@@ -25,6 +25,8 @@ from dachi.proc import (
     llm_aforward, llm_astream, llm_forward, llm_stream
 )
 
+from dachi.proc import Process, AsyncProcess, StreamProcess, AsyncStreamProcess
+
 from ...core import ModuleList
 
 from dachi.proc._resp import RespProc
@@ -526,7 +528,7 @@ class LLM(BaseModule):
         pass
 
 
-class ChatCompletion(LLM):
+class ChatCompletion(LLM, Process, AsyncProcess, StreamProcess, AsyncStreamProcess):
     """
     OpenAIChatComp is an adapter for the OpenAI Chat Completions API. It provides methods for 
     interacting with the API, including synchronous and asynchronous message forwarding, 
