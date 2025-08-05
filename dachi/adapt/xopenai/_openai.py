@@ -486,6 +486,7 @@ class LLM(BaseModule):
     json_output: bool | pydantic.BaseModel | typing.Dict = False
     api_key: InitVar[str | None] = None
     client_kwargs: InitVar[typing.Dict | None] = None
+    message_arg: str = 'messages'
 
     def __post_init__(
         self, api_key, client_kwargs
@@ -577,7 +578,6 @@ class ChatCompletion(LLM, Process, AsyncProcess, StreamProcess, AsyncStreamProce
             - The `_resp_proc` parameter is used to process the response from the LLM.
         """
         kwargs = {
-            **self._kwargs, 
             **kwargs, 
             self._message_arg:to_list_input(msg)
         }
@@ -669,11 +669,6 @@ class ChatCompletion(LLM, Process, AsyncProcess, StreamProcess, AsyncStreamProce
             - This method uses the `llm_forward` function to handle the interaction with the LLM.
             - The `_resp_proc` parameter is used to process the response from the LLM.
         """
-        kwargs = {
-            **self._kwargs, 
-            **kwargs, 
-            self._message_arg:to_list_input(msg)
-        }
         async for r in await llm_astream(
             self._aclient.chat.completions.create, 
             _proc=self.procs,
