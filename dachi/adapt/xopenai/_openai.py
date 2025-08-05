@@ -539,9 +539,9 @@ class ChatCompletion(LLM, Process, AsyncProcess, StreamProcess, AsyncStreamProce
     interacting with the API, including synchronous and asynchronous message forwarding, 
     streaming, and spawning new instances with modified configurations.
     """
-    procs: InitVar[Sequential[RespProc] | None] = None
+    proc: InitVar[Sequential[RespProc] | RespProc | None] = None
 
-    def __post_init__(self, procs: typing.List[RespProc]):
+    def __post_init__(self, proc: typing.List[RespProc]):
         """
         Initializes the OpenAIChatComp instance with the provided tools and JSON output configuration.
         Args:
@@ -549,9 +549,11 @@ class ChatCompletion(LLM, Process, AsyncProcess, StreamProcess, AsyncStreamProce
                 If not provided, defaults to an empty list.
         """
         super().__post_init__()
-        if procs is None:
-            procs = Sequential(items=[])
-        self.procs = procs
+        if isinstance(proc, RespProc):
+            proc = Sequential(items=[proc])
+        if proc is None:
+            proc = Sequential(items=[])
+        self.proc = proc
 
     def spawn(
         self, 
@@ -603,7 +605,7 @@ class ChatCompletion(LLM, Process, AsyncProcess, StreamProcess, AsyncStreamProce
 
         return llm_forward(
             self._client.chat.completions.create, 
-            _proc=self.procs, 
+            _proc=self.proc, 
             **kwargs
         )
 
@@ -633,7 +635,7 @@ class ChatCompletion(LLM, Process, AsyncProcess, StreamProcess, AsyncStreamProce
         }
         return await llm_aforward(
             self._aclient.chat.completions.create, 
-            _proc=self.procs, 
+            _proc=self.proc, 
             **kwargs
         )
 
@@ -663,7 +665,7 @@ class ChatCompletion(LLM, Process, AsyncProcess, StreamProcess, AsyncStreamProce
         }
         for r in llm_stream(
             self._client.chat.completions.create, 
-            _proc=self.procs, 
+            _proc=self.proc, 
             stream=True,
             **kwargs
         ):
@@ -690,7 +692,7 @@ class ChatCompletion(LLM, Process, AsyncProcess, StreamProcess, AsyncStreamProce
         """
         async for r in await llm_astream(
             self._aclient.chat.completions.create, 
-            _proc=self.procs,
+            _proc=self.proc,
             stream=True,
             **kwargs
         ):
