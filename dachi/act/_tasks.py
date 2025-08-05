@@ -102,9 +102,9 @@ class Serial(Task):
         """
         super().__post_init__()
         if self.tasks is None:
-            self.tasks = ModuleList(data=[])
+            self.tasks = ModuleList(items=[])
         elif isinstance(self.tasks, typing.List):
-            self.tasks = ModuleList(data=self.tasks)
+            self.tasks = ModuleList(items=self.tasks)
         if self.tasks is not None and not isinstance(self.tasks, ModuleList):
             raise ValueError(
                 f"Tasks must be of type ModuleList not {type(self.tasks)}"

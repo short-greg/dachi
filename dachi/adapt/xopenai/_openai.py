@@ -501,7 +501,7 @@ class LLM(BaseModule):
         if client_kwargs is None:
             client_kwargs = {}
             
-        self.convs = ModuleList(data=[])
+        self.convs = ModuleList(items=[])
         if self.json_output is False:
             self.convs.append(TextConv())
         elif isinstance(self.json_output, pydantic.BaseModel) or (
@@ -577,6 +577,7 @@ class ChatCompletion(LLM, Process, AsyncProcess, StreamProcess, AsyncStreamProce
             - This method uses the `llm_forward` function to handle the interaction with the LLM.
             - The `_resp_proc` parameter is used to process the response from the LLM.
         """
+        
         kwargs = {
             **kwargs, 
             self.message_arg:to_list_input(msg)

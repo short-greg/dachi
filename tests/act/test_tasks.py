@@ -276,7 +276,7 @@ class TestParallelValidate:
     """`Parallel.validate` should enforce quorum invariants and raise early."""
 
     def _parallel(self, fails: int, succ: int, n: int = 3):
-        tasks = ModuleList(data=[_ImmediateAction(status_val=TaskStatus.RUNNING) for _ in range(n)])
+        tasks = ModuleList(items=[_ImmediateAction(status_val=TaskStatus.RUNNING) for _ in range(n)])
         return behavior.Parallel(tasks=tasks, fails_on=fails, succeeds_on=succ)
 
     def test_ok_when_thresholds_within_bounds(self):

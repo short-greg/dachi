@@ -23,9 +23,8 @@ class ModuleList(BaseModule): # t.Generic[V]
     A list-like container whose elements are themselves `BaseModule`
     instances.  Works seamlessly with the new serialization / dedup rules.
     """
-    __spec_hooks__: ClassVar[t.List[str]] = ["data"]
-    data: InitVar[list[V]]
-
+    __spec_hooks__: ClassVar[t.List[str]] = ["items"]
+    items: InitVar[list[V]]
 
     def __init_subclass__(cls, *args, **kwargs):
         super().__init_subclass__(*args, **kwargs)

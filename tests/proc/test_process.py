@@ -321,12 +321,12 @@ class TestSequential:
 
     def test_three_stage_pipeline(self) -> None:
         seq = P.Sequential(
-            data=[_EchoProcess(), _EchoProcess()]
+            items=[_EchoProcess(), _EchoProcess()]
         )
         assert seq.forward(2) == 2
 
     def test_empty_sequential_identity(self) -> None:
-        seq = P.Sequential(data=[])
+        seq = P.Sequential(items=[])
         assert seq.forward(99) == 99
 
 #     # def test_type_mismatch_raises(self) -> None:
@@ -407,11 +407,11 @@ class TestAsyncParallel:
     async def test_order_preserved(self) -> None:
         """Ensure that async tasks complete in the order they were started."""
         items = [self.AsyncP(), self.AsyncP()]
-        par = P.AsyncParallel(data=items)
+        par = P.AsyncParallel(items=items)
         assert await par.aforward(1) == [1, 1]
 
     async def test_single_module(self) -> None:
-        par = P.AsyncParallel(data=[self.SyncP()])
+        par = P.AsyncParallel(items=[self.SyncP()])
         assert await par.aforward(3) == [4]
 
 
