@@ -254,9 +254,9 @@ class BaseDialog(pydantic.BaseModel, Renderable):
         """
         return [msg.to_input() for msg in self if msg.filtered is False]
 
-    def to_list_input(self) -> typing.List[typing.Dict]:
+    # def to_list_input(self) -> typing.List[typing.Dict]:
 
-        return self.to_input()
+    #     return self.to_input()
 
     def aslist(self) -> typing.List['Msg']:
         """Retrieve the message list
@@ -508,9 +508,17 @@ def to_dialog(prompt: typing.Union[BaseDialog, Msg]) -> BaseDialog:
 def to_list_input(
     msg: typing.List | typing.Tuple | BaseDialog | Msg
 ) -> typing.List:
-
-    if not isinstance(msg, typing.List) and not isinstance(msg, typing.Tuple):
-        return msg.to_list_input()
+    """Convert a message or a list of messages to an input
+    Args:
+        msg (typing.List | typing.Tuple | BaseDialog | Msg): The message or messages to convert
+    Returns:
+        typing.List: A list of inputs
+    """
+    
+    if isinstance(msg, BaseDialog):
+        return msg.to_input()
+    elif isinstance(msg, Msg):
+        return [msg.to_input()]
     return msg
 
 
