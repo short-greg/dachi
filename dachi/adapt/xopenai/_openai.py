@@ -539,7 +539,7 @@ class ChatCompletion(LLM, Process, AsyncProcess, StreamProcess, AsyncStreamProce
     interacting with the API, including synchronous and asynchronous message forwarding, 
     streaming, and spawning new instances with modified configurations.
     """
-    procs: InitVar[typing.List[RespProc]] = None
+    procs: InitVar[Sequential[RespProc] | None] = None
 
     def __post_init__(self, procs: typing.List[RespProc]):
         """
@@ -550,8 +550,8 @@ class ChatCompletion(LLM, Process, AsyncProcess, StreamProcess, AsyncStreamProce
         """
         super().__post_init__()
         if procs is None:
-            procs = []
-        self.procs = Sequential(items=procs)
+            procs = Sequential(items=[])
+        self.procs = procs
 
     def spawn(
         self, 
