@@ -373,12 +373,13 @@ def recur(
     )
 
 
-class Sequential(ModuleList):
+class Sequential(ModuleList, Process, AsyncProcess):
     """
     Sequential class wraps multiple modules into a sequential list of modules that will be executed one after the other.
     Methods:
         __init__(*module) -> None:
             Initialize the Sequential with a list of modules.
+            The modules can be any type of Process or AsyncProcess.
         add(module):
             Add a module to the Sequential.
         forward(*x) -> Any:
@@ -400,6 +401,32 @@ class Sequential(ModuleList):
                 x = module(*x)
             else:
                 x = module(x)
+            first = False
+        return x
+    
+    async def aforward(self, *x):
+        """Asynchronously pass the input (x) through each of the modules
+
+        Returns:
+            Any: The result of the final model
+        """
+        multi = len(x) > 1
+        if len(x) == 1:
+            x = x[0]
+
+        first = True
+        for module in self:
+            if first and multi:
+                if isinstance(module, AsyncProcess):
+                    x = await module.aforward(*x)
+                else: # isinstance(module, Process):
+                    x = module.forward(*x)
+            else:
+                if isinstance(module, AsyncProcess):
+                    x = await module.aforward(x)
+                else: # isinstance(module, Process):
+                    x = module.forward(x)
+
             first = False
         return x
 
