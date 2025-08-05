@@ -541,14 +541,14 @@ class ChatCompletion(LLM, Process, AsyncProcess, StreamProcess, AsyncStreamProce
     """
     proc: InitVar[Sequential | RespProc | None] = None
 
-    def __post_init__(self, proc: typing.List[RespProc]):
+    def __post_init__(self, api_key, client_kwargs, proc: typing.List[RespProc]):
         """
         Initializes the OpenAIChatComp instance with the provided tools and JSON output configuration.
         Args:
             procs (typing.List[RespProc], optional): A list of response processors to handle the output from the API.
                 If not provided, defaults to an empty list.
         """
-        super().__post_init__()
+        super().__post_init__(api_key, client_kwargs)
         if isinstance(proc, RespProc):
             proc = Sequential(items=[proc])
         if proc is None:
