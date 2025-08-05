@@ -579,7 +579,7 @@ class ChatCompletion(LLM, Process, AsyncProcess, StreamProcess, AsyncStreamProce
         """
         kwargs = {
             **kwargs, 
-            self._message_arg:to_list_input(msg)
+            self.message_arg:to_list_input(msg)
         }
 
         return llm_forward(
@@ -610,7 +610,7 @@ class ChatCompletion(LLM, Process, AsyncProcess, StreamProcess, AsyncStreamProce
         kwargs = {
             **self._kwargs, 
             **kwargs, 
-            self._message_arg: to_list_input(msg)
+            self.message_arg: to_list_input(msg)
         }
         return await llm_aforward(
             self._aclient.chat.completions.create, 
@@ -640,7 +640,7 @@ class ChatCompletion(LLM, Process, AsyncProcess, StreamProcess, AsyncStreamProce
         kwargs = {
             **self._kwargs, 
             **kwargs, 
-            self._message_arg:to_list_input(msg)
+            self.message_arg:to_list_input(msg)
         }
         for r in llm_stream(
             self._client.chat.completions.create, 
