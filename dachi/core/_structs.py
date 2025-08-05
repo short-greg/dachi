@@ -45,7 +45,7 @@ class ModuleList(BaseModule): # t.Generic[V]
     def __build_schema_hook__(
         cls, name: str, type_: t.Any, default: t.Any
     ):
-        if name != "data":
+        if name != "items":
             raise ValueError(f"No hook specified for {name}")
         return list[BaseSpec]
 
