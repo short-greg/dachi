@@ -273,7 +273,7 @@ class BaseSpec(BaseModel):
     )
     style: t.Literal['structured'] = 'structured'
 
-    model_config = ConfigDict(extra='forbid', arbitrary_types_allowed=False)
+    model_config = ConfigDict(extra='forbid', arbitrary_types_allowed=True)
 
     @classmethod
     def class_kind(cls) -> str:
@@ -416,7 +416,7 @@ class BaseModule:
             f"{cls._spec_model_name()}",
             __base__       = BaseSpec,
             kind           = (t.Literal[cls.__qualname__], cls.__qualname__),
-            model_config   = ConfigDict(arbitrary_types_allowed=True),
+            # model_config   = ConfigDict(arbitrary_types_allowed=True),
             **spec_fields,
         )
 
