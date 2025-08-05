@@ -22,7 +22,9 @@ from dachi.core import (
 from dachi import utils
 from dachi.core import render
 from dachi.proc import (
-    llm_aforward, llm_astream, llm_forward, llm_stream
+    llm_aforward, llm_astream, 
+    llm_forward, llm_stream,
+    Sequential, RespProc
 )
 
 from dachi.proc import Process, AsyncProcess, StreamProcess, AsyncStreamProcess
@@ -479,7 +481,9 @@ class ToolConv(RespProc):
 
 
 class LLM(BaseModule):
-    """An adapter for the OpenAILLM
+    """LLM is a base class for language model adapters.
+    It provides a structure for implementing various language model interactions,
+    including synchronous and asynchronous message forwarding, streaming, and spawning new instances.
     """
 
     tools: typing.List[ToolDef] | None = None
@@ -535,6 +539,20 @@ class ChatCompletion(LLM, Process, AsyncProcess, StreamProcess, AsyncStreamProce
     interacting with the API, including synchronous and asynchronous message forwarding, 
     streaming, and spawning new instances with modified configurations.
     """
+    procs: InitVar[typing.List[RespProc]] = None
+
+    def __post_init__(self, procs: typing.List[RespProc]):
+        """
+        Initializes the OpenAIChatComp instance with the provided tools and JSON output configuration.
+        Args:
+            procs (typing.List[RespProc], optional): A list of response processors to handle the output from the API.
+                If not provided, defaults to an empty list.
+        """
+        super().__post_init__()
+        if procs is None:
+            procs = []
+        self.procs = Sequential(items=procs)
+
     def spawn(
         self, 
         tools: typing.Iterable[ToolDef]=UNDEFINED,
