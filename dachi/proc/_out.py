@@ -126,12 +126,15 @@ class ToOut(
             rs = rs[0]
         
         if is_undefined:
+            resp.data[self.name] = utils.UNDEFINED
             resp.out[self.name] = utils.UNDEFINED
             return utils.UNDEFINED
 
+        
         resp.out[self.name] = res = self.delta(
             rs, delta_store, is_streamed, is_last
         )
+        res.data[self.name] = res
         print(self.__class__.__name__, self.name, res)
         self.post(
             resp, 
