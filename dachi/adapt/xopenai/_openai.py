@@ -490,10 +490,11 @@ class LLM(BaseModule):
     json_output: bool | pydantic.BaseModel | typing.Dict = False
     api_key: InitVar[str | None] = None
     client_kwargs: InitVar[typing.Dict | None] = None
+    kwargs: InitVar[typing.Dict] = None
     message_arg: str = 'messages'
 
     def __post_init__(
-        self, api_key, client_kwargs
+        self, api_key, client_kwargs, kwargs
     ):
         """
         Args:
@@ -504,7 +505,10 @@ class LLM(BaseModule):
         """
         if client_kwargs is None:
             client_kwargs = {}
-            
+
+        if kwargs is None:
+            kwargs = {}
+        self.kwargs = kwargs
         self.convs = ModuleList(items=[])
         if self.json_output is False:
             self.convs.append(TextConv())
@@ -541,14 +545,14 @@ class ChatCompletion(LLM, Process, AsyncProcess, StreamProcess, AsyncStreamProce
     """
     proc: InitVar[Sequential | RespProc | None] = None
 
-    def __post_init__(self, api_key, client_kwargs, proc: typing.List[RespProc]):
+    def __post_init__(self, api_key, client_kwargs, kwargs, proc: typing.List[RespProc]):
         """
         Initializes the OpenAIChatComp instance with the provided tools and JSON output configuration.
         Args:
             procs (typing.List[RespProc], optional): A list of response processors to handle the output from the API.
                 If not provided, defaults to an empty list.
         """
-        super().__post_init__(api_key, client_kwargs)
+        super().__post_init__(api_key, client_kwargs, kwargs)
         if isinstance(proc, RespProc):
             proc = Sequential(items=[proc])
         if proc is None:
@@ -599,13 +603,13 @@ class ChatCompletion(LLM, Process, AsyncProcess, StreamProcess, AsyncStreamProce
         """
         
         kwargs = {
+            **self.kwargs,
             **kwargs, 
             self.message_arg:to_list_input(msg)
         }
-
         return llm_forward(
             self._client.chat.completions.create, 
-            _proc=self.proc, 
+            _proc=self.proc,
             **kwargs
         )
 
@@ -629,7 +633,7 @@ class ChatCompletion(LLM, Process, AsyncProcess, StreamProcess, AsyncStreamProce
         """
 
         kwargs = {
-            **self._kwargs, 
+            **self.kwargs, 
             **kwargs, 
             self.message_arg: to_list_input(msg)
         }
@@ -659,7 +663,7 @@ class ChatCompletion(LLM, Process, AsyncProcess, StreamProcess, AsyncStreamProce
         """
 
         kwargs = {
-            **self._kwargs, 
+            **self.kwargs, 
             **kwargs, 
             self.message_arg:to_list_input(msg)
         }
@@ -690,6 +694,11 @@ class ChatCompletion(LLM, Process, AsyncProcess, StreamProcess, AsyncStreamProce
             - This method uses the `llm_forward` function to handle the interaction with the LLM.
             - The `_resp_proc` parameter is used to process the response from the LLM.
         """
+        kwargs = {
+            **self.kwargs, 
+            **kwargs, 
+            self.message_arg: to_list_input(msg)
+        }
         async for r in await llm_astream(
             self._aclient.chat.completions.create, 
             _proc=self.proc,

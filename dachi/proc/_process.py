@@ -1,5 +1,6 @@
 # 1st party
 from abc import ABC, abstractmethod
+from functools import partial
 import typing
 from typing import Any
 import asyncio
@@ -25,7 +26,9 @@ S = typing.TypeVar('S', bound=pydantic.BaseModel)
 
 
 class Process(BaseModule, ABC):
-    """Base class for Modules
+    """
+    Base class for synchronous processing modules.
+    It inherits from BaseModule and implements the forward method.
     """
     @abstractmethod
     def forward(self, *args, **kwargs) -> typing.Any:
@@ -548,7 +551,6 @@ def process_loop(
         yield m, args, dict(zip(kwarg_names, kwargs))
 
 
-from functools import partial
 
 
 def create_proc_task(
@@ -557,6 +559,21 @@ def create_proc_task(
     *args, 
     **kwargs
 ) -> typing.Any:
+    """Create a task for the process to run in the task group
+
+    This function creates a task in the provided asyncio TaskGroup for the given function `f`.
+    It handles both synchronous and asynchronous functions, as well as Process and AsyncProcess types.
+    
+    Args:
+        tg (asyncio.TaskGroup): The task group to create the task in
+        f (AsyncProcess | Process | typing.Callable): The function to run
+        *args: The arguments to pass to the function
+        **kwargs: The keyword arguments to pass to the function
+        
+    Returns:
+
+        typing.Any: The task created
+    """
 
     if isinstance(f, AsyncProcess):
         
@@ -603,11 +620,6 @@ async def async_process_map(
     async with asyncio.TaskGroup() as tg:
         
         for cur_f, a, kv in process_loop(f, *args, **kwargs):
-
-            if isinstance(cur_f, AsyncProcess):
-                tasks.append(tg.create_task(cur_f.aforward, *a, **kv))
-            else:
-                tasks.append(tg.create_task(cur_f, *a, **kv))
             tasks.append(
                 create_proc_task(tg, cur_f, *a, **kv)
             )
