@@ -134,7 +134,7 @@ class ToOut(
         resp.out[self.name] = res = self.delta(
             rs, delta_store, is_streamed, is_last
         )
-        res.data[self.name] = res
+        resp.data[self.name] = res
         print(self.__class__.__name__, self.name, res)
         self.post(
             resp, 
