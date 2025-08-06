@@ -79,6 +79,7 @@ class TextConv(ToOut):
     OpenAITextProc is a class that processes an OpenAI response and extracts text outputs from it.
     """
     name: str = 'content'
+    from_: str = 'response'
 
     def post(
         self, 
@@ -97,7 +98,6 @@ class TextConv(ToOut):
             streamed (bool, optional): whether streamed or not. Defaults to False.
             is_last (bool, optional): the last. Defaults to False.
         """
-        
         content = delta_store.get('content', '')
         resp.msg.content = content
     
