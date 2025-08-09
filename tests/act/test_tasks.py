@@ -277,7 +277,7 @@ class TestParallelValidate:
 
     def _parallel(self, fails: int, succ: int, n: int = 3):
         tasks = ModuleList(items=[_ImmediateAction(status_val=TaskStatus.RUNNING) for _ in range(n)])
-        return behavior.Parallel(tasks=tasks, fails_on=fails, succeeds_on=succ)
+        return behavior.Multi(tasks=tasks, fails_on=fails, succeeds_on=succ)
 
     def test_ok_when_thresholds_within_bounds(self):
         par = self._parallel(fails=1, succ=-1)  # always succeed with *all* successes
@@ -378,21 +378,21 @@ class TestSerialValidation:
 @pytest.mark.asyncio
 class TestParallel:
     async def test_all_success(self):
-        par = behavior.Parallel(tasks=[ImmediateAction(status_val=TaskStatus.SUCCESS) for _ in range(3)], succeeds_on=-1, fails_on=1)
+        par = behavior.Multi(tasks=[ImmediateAction(status_val=TaskStatus.SUCCESS) for _ in range(3)], succeeds_on=-1, fails_on=1)
         assert await par.tick() is TaskStatus.SUCCESS
 
     async def test_failure_threshold(self):
-        par = behavior.Parallel(tasks=[ImmediateAction(status_val=TaskStatus.FAILURE), ImmediateAction(status_val=TaskStatus.RUNNING)], fails_on=1, succeeds_on=2)
+        par = behavior.Multi(tasks=[ImmediateAction(status_val=TaskStatus.FAILURE), ImmediateAction(status_val=TaskStatus.RUNNING)], fails_on=1, succeeds_on=2)
         assert await par.tick() is TaskStatus.RUNNING
 
     async def test_running_until_quorum(self):
         tasks = [ImmediateAction(status_val=TaskStatus.SUCCESS), ImmediateAction(status_val=TaskStatus.FAILURE), ImmediateAction(status_val=TaskStatus.RUNNING)]
-        par = behavior.Parallel(tasks=tasks, fails_on=2, succeeds_on=2)
+        par = behavior.Multi(tasks=tasks, fails_on=2, succeeds_on=2)
         assert await par.tick() is TaskStatus.RUNNING
 
     async def test_fails_on_1_failure(self):
         tasks = [ImmediateAction(status_val=TaskStatus.SUCCESS), ImmediateAction(status_val=TaskStatus.FAILURE)]
-        par = behavior.Parallel(tasks=tasks, fails_on=1, succeeds_on=2)
+        par = behavior.Multi(tasks=tasks, fails_on=1, succeeds_on=2)
         assert await par.tick() is TaskStatus.FAILURE
 
 #     # async def test_reset_propagates(self):
@@ -509,13 +509,13 @@ class AlwaysFalseCond(behavior.Condition):
 class TestPreemptCond:
     async def test_preemptcond_failure_when_false(self):
         main = ImmediateAction(status_val=TaskStatus.SUCCESS)
-        pc = behavior.PreemptCond(conds=[AlwaysFalseCond()], task=main)
+        pc = behavior.PreemptCond(cond=[AlwaysFalseCond()], task=main)
         assert await pc.tick() is TaskStatus.FAILURE
         assert main.status is TaskStatus.READY  # main skipped
 
     async def test_preemptcond_propagates_task_success(self):
         main = ImmediateAction(status_val=TaskStatus.SUCCESS)
-        pc = behavior.PreemptCond(conds=[AlwaysTrueCond()], task=main)
+        pc = behavior.PreemptCond(cond=[AlwaysTrueCond()], task=main)
         assert await pc.tick() is TaskStatus.SUCCESS
 
 

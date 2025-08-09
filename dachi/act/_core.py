@@ -8,6 +8,7 @@ from ..core import Attr, BaseModule
 from ..proc import Process
 # TODO: Add in Action (For GOAP)
 from abc import ABC
+import typing as t
 
 
 class TaskStatus(Enum):
@@ -221,6 +222,39 @@ class Task(BaseModule):
     def reset(self):
 
         self._status.set(TaskStatus.READY)
+
+
+class Composite(Task):
+    """A task that is composed of other tasks
+    """
+
+    @abstractmethod
+    def update_loop(self) -> t.Iterator[Task]:
+        """Get the current sub-task of the composite task
+
+        Yields:
+            Task: Each current sub-task
+        """
+        pass
+
+    @abstractmethod
+    def sub_tasks(self) -> t.Iterator[Task]:
+        """Get the sub-tasks of the composite task
+
+        Yields:
+            Task: Each current sub-task
+        """
+        pass
+
+    @abstractmethod
+    async def update_status(self) -> TaskStatus:
+        pass
+
+
+class Leaf(Task):
+    """A task that is composed of other tasks
+    """
+    pass
 
 
 # class FuncTask(Task):

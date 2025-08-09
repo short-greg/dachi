@@ -2,13 +2,14 @@ from ._core import (
     Task, 
     TaskStatus,
     Router, ROUTE, TOSTATUS, ToStatus, State,
-    from_bool
+    from_bool,
+    Composite, Leaf,
 )
 from ._tasks import (
     Serial, 
     Sequence, 
     Selector, 
-    Parallel, 
+    Multi, 
     Action,
     Condition, 
     BT,
