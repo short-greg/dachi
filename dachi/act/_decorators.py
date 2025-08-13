@@ -1,0 +1,133 @@
+# 1st party
+from abc import abstractmethod
+import typing as t
+import time
+import random
+import asyncio
+import threading
+from dataclasses import InitVar
+
+# local
+from dachi.core import BaseModule, AdaptModule
+from ._core import Task, TaskStatus, State, Composite, Leaf
+from contextlib import contextmanager
+from dachi.core import ModuleDict, Attr, ModuleList
+
+
+
+
+class Decorator(Composite):
+    """A task that decorates another task
+    """
+
+    task: Task
+
+    def update_loop(self) -> t.Iterator[Task]:
+        """Get the sub-tasks of the composite task
+
+        Returns:
+            ModuleList: The sub-tasks
+        """
+        yield self.task
+
+    def sub_tasks(self) -> t.Iterator[Task]:
+        """Get the sub-tasks of the composite task
+
+        Returns:
+            ModuleList: The sub-tasks
+        """
+        yield self.task
+
+    async def update_status(self) -> TaskStatus:
+        if self.status.is_done:
+            return self.status
+        self._status.set(await self.decorate(
+            self.task.status
+        ))
+        return self.status
+
+    @abstractmethod
+    async def decorate(self, status: TaskStatus, reset: bool=False) -> bool:
+        pass
+
+    async def tick(self) -> TaskStatus:
+        """Decorate the tick for the decorated task
+
+        Args:
+            terminal (Terminal): The terminal for the task
+
+        Returns:
+            SangoStatus: The decorated status
+        """
+        await self.task.tick()
+        await self.update_status()
+        return self.status
+
+
+
+class Until(Decorator):
+    """Loop until a condition is met
+    """
+
+    target_status: TaskStatus = TaskStatus.SUCCESS
+
+    async def decorate(
+        self, 
+        status: TaskStatus
+    ) -> TaskStatus:
+        """Continue running unless the result is a success
+
+        Args:
+            status (SangoStatus): The status of the decorated task
+
+        Returns:
+            SangoStatus: The decorated status
+        """
+        if status == self.target_status:
+            return status
+        if status.is_done:
+            self.task.reset()
+        return TaskStatus.RUNNING
+
+
+class AsLongAs(Decorator):
+    """Loop while a condition is met
+    """
+    target_status: TaskStatus = TaskStatus.SUCCESS
+
+    async def decorate(
+        self, status: TaskStatus
+    ) -> TaskStatus:
+        """Continue running unless the result is a failure
+
+        Args:
+            status (SangoStatus): The status of the decorated task
+
+        Returns:
+            SangoStatus: The decorated status
+        """
+        if status == self.target_status:
+            if status.is_done:
+                self.task.reset()
+        elif status.is_done:
+            return status
+        return TaskStatus.RUNNING
+
+
+class Not(Decorator):
+    """Invert the result
+    """
+
+    async def decorate(
+        self, 
+        status: TaskStatus
+    ) -> TaskStatus:
+        """Return Success if status is a Failure or Failure if it is a SUCCESS
+
+        Args:
+            status (SangoStatus): The status of the decorated task
+
+        Returns:
+            SangoStatus: The decorated status
+        """
+        return status.invert()

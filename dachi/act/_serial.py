@@ -1,0 +1,304 @@
+# 1st party
+from abc import abstractmethod
+import typing as t
+import time
+import random
+import asyncio
+import threading
+from dataclasses import InitVar
+
+# local
+from dachi.core import BaseModule, AdaptModule
+from ._core import Task, TaskStatus, State, Composite, Leaf
+from contextlib import contextmanager
+from dachi.core import ModuleDict, Attr, ModuleList
+from ._leafs import Condition
+
+
+class Serial(Composite):
+    """A task consisting of other tasks executed one 
+    after the other
+    """
+
+    @property
+    @abstractmethod
+    def cascaded(self) -> bool:
+        pass
+
+
+
+class Sequence(Serial):
+    """Create a sequence of tasks to execute
+    """
+
+    tasks: ModuleList | None = None
+    cascaded: InitVar[bool] = False
+
+    def __post_init__(self, cascaded):
+        """
+
+        Args:
+            tasks (t.List[Task], optional): The tasks. Defaults to None.
+            context (Context, optional): . Defaults to None.
+        """
+        super().__post_init__()
+        if self.tasks is None:
+            self.tasks = ModuleList(items=[])
+        elif isinstance(self.tasks, t.List):
+            self.tasks = ModuleList(items=self.tasks)
+        if self.tasks is not None and not isinstance(self.tasks, ModuleList):
+            raise ValueError(
+                f"Tasks must be of type ModuleList not {type(self.tasks)}"
+            )
+        self._idx = Attr[int](data=0)
+        self._cascaded = cascaded
+
+    @property
+    def cascaded(self) -> bool:
+        return self._cascaded
+                
+    def sub_tasks(self) -> t.Iterator[Task]:
+        """Get the sub-tasks of the composite task
+        
+        Returns:
+            ModuleList: The sub-tasks
+        """
+        if self.tasks is not None:
+            yield from self.tasks
+
+    async def update_status(self) -> TaskStatus:
+        """Update the status of the task based on the current task status
+        
+        Returns:
+            TaskStatus: The status of the task
+        """
+        if self.status.is_done:
+            return self.status
+        
+        status = self.tasks[self._idx.data].status
+        if status == TaskStatus.SUCCESS:
+            self._idx.data += 1
+            if self._idx.data >= len(self.tasks):
+                self._status.set(TaskStatus.SUCCESS)
+            else:
+                self._status.set(TaskStatus.RUNNING)
+        elif status == TaskStatus.FAILURE:
+            self._status.set(TaskStatus.FAILURE)
+        else:
+            self._status.set(TaskStatus.RUNNING)
+            
+        return self.status
+
+    async def tick(self) -> TaskStatus:
+        """Update the task
+
+        Returns:
+            TaskStatus: The status
+        """
+        if self.status.is_done:
+            return self.status
+
+        # Handle empty task list
+        if len(self.tasks) == 0:
+            self._status.set(TaskStatus.SUCCESS)
+            return self.status
+
+        if self.cascaded:
+            for task in self.tasks[self._idx.data:]:
+                await task.tick()
+                await self.update_status()
+                if task.status.running or self.status.is_done:
+                    return self.status
+        else:
+            task = self.tasks[self._idx.data]
+            await task.tick()
+            await self.update_status()
+        return self.status        
+    
+    def reset(self):
+        
+        super().reset()
+        for task in self.tasks:
+            if isinstance(task, Task):
+                task.reset()
+
+        self._idx.data = 0
+
+
+class Selector(Serial):
+    """Create a set of tasks to select from
+    """
+    
+    tasks: ModuleList | None = None
+    cascaded: InitVar[bool] = False
+
+    def __post_init__(
+        self, cascaded: bool
+    ):
+        """
+
+        Args:
+            tasks (t.List[Task], optional): The tasks. Defaults to None.
+            context (Context, optional): . Defaults to None.
+        """
+        super().__post_init__()
+        if self.tasks is None:
+            self.tasks = ModuleList(items=[])
+        elif isinstance(self.tasks, t.List):
+            self.tasks = ModuleList(items=self.tasks)
+        if self.tasks is not None and not isinstance(self.tasks, ModuleList):
+            raise ValueError(
+                f"Tasks must be of type ModuleList not {type(self.tasks)}"
+            )
+        self._idx = Attr[int](data=0)
+        self._cascaded = cascaded
+
+    @property
+    def cascaded(self) -> bool:
+        return self._cascaded
+
+    def sub_tasks(self) -> t.Iterator[Task]:
+        """Get the sub-tasks of the composite task
+        
+        Returns:
+            ModuleList: The sub-tasks
+        """
+        if self.tasks is not None:
+            yield from self.tasks
+
+    async def update_status(self) -> TaskStatus:
+        """Update the status of the task based on the current task status
+        
+        Returns:
+            TaskStatus: The status of the task
+        """
+        if self.status.is_done:
+            return self.status
+        
+        status = self.tasks[self._idx.data].status
+        if status == TaskStatus.SUCCESS:
+            self._status.set(TaskStatus.SUCCESS)
+        elif status == TaskStatus.FAILURE:
+            self._idx.data += 1
+            if self._idx.data >= len(self.tasks):
+                self._status.set(TaskStatus.FAILURE)
+            else:
+                self._status.set(TaskStatus.RUNNING)
+        else:
+            self._status.set(TaskStatus.RUNNING)
+
+        return self.status
+
+    async def tick(self) -> TaskStatus:
+        """Update the task 
+        Returns:
+            TaskStatus: The status
+        """
+        if self.status.is_done:
+            return self.status
+        
+        # Handle empty task list
+        if len(self.tasks) == 0:
+            self._status.set(TaskStatus.FAILURE)
+            return self.status
+        
+        if self.cascaded:
+            while self._idx.data < len(self.tasks) and not self.status.is_done:
+                task = self.tasks[self._idx.data]
+                await task.tick()
+                await self.update_status()
+                if task.status.running or self.status.is_done:
+                    return self.status
+        else:
+            await self.tasks[self._idx.data].tick()
+            await self.update_status()
+        return self.status
+
+    def reset(self):
+        super().reset()
+        self._idx.data = 0
+        for task in self.tasks:
+            if isinstance(task, Task):
+                task.reset()
+
+
+Fallback = Selector
+
+
+
+class PreemptCond(Serial):
+    """Use to have a condition applied with
+    each tick in order to stop the execution
+    of other tasks
+    """
+    cond: Condition
+    task: Task
+
+    @property
+    def cascaded(self) -> bool:
+        """Whether the task is cascaded or not
+
+        Returns:
+            bool: Whether the task is cascaded or not
+        """
+        return True
+    
+    def update_loop(self) -> t.Iterator[Task]:
+        """Get the sub-tasks of the composite task
+
+        Yields:
+            t.Iterator[Task]: The sub-tasks
+        """
+        yield self.cond
+        if self.cond.status.success:
+            yield self.task
+
+    def sub_tasks(self) -> t.Iterator[Task]:
+        """Get the sub-tasks of the composite task
+
+        Returns:
+            ModuleList: The sub-tasks
+        """
+        yield self.cond
+        yield self.task
+
+    async def update_status(self) -> TaskStatus:
+        """Update the status of the task based on the condition and task status
+
+        Returns:
+            TaskStatus: The status of the task
+        """
+        if self.cond.status.success:
+            self._status.set(self.task.status)
+        else:
+            self._status.set(TaskStatus.FAILURE)
+        return self.status
+
+    async def tick(self) -> TaskStatus:
+        """
+
+        Args:
+            reset (bool, optional): . Defaults to False.
+
+        Returns:
+            TaskStatus: 
+        """
+        status = TaskStatus.SUCCESS
+        for cond in self.cond:
+            cond.reset()
+            status = await cond.tick() & status
+        
+        if status.failure:
+            self._status.set(
+                TaskStatus.FAILURE
+            )
+        
+        else:
+            self._status.set(
+                await self.task.tick()
+            )
+        return self.status
+    
+    def reset(self):
+        self.cond.reset()
+        self.task.reset()

@@ -90,7 +90,7 @@ class ModuleList(BaseModule): # t.Generic[V]
         Nested `BaseModule` instances are recursively converted.
         `ModuleList` containers are converted element-wise.
         """
-        if name == "data":
+        if name == "items":
             # Special case for _items, which is a list of modules
             if isinstance(val, list):
                 val = [
@@ -115,7 +115,7 @@ class ModuleList(BaseModule): # t.Generic[V]
         This is used to create a ModuleList from a spec.
         """
         res = None
-        if name == "data":
+        if name == "items":
             if isinstance(val, list):
                 res = []
                 for item in val:
@@ -160,14 +160,35 @@ class ModuleDict(BaseModule):
 
     @classmethod
     def __build_schema_hook__(cls, name: str, type_: t.Any, default: t.Any):
+        """
+        Build a schema for the module dict.
+        """
         if name != "items":
             raise ValueError(f"No hook specified for {name}")
         return dict[str, BaseSpec]
 
     def __getitem__(self, key: str) -> V:
+        """Get an item from the module dict.
+
+        Args:
+            key (str): The key of the item to retrieve.
+
+        Returns:
+            V: The item associated with the key.
+        """
         return self._module_dict[key]
 
     def __setitem__(self, key: str, val: V):
+        """Set an item in the module dict.
+
+        Args:
+            key (str): The key of the item to set.
+            val (V): The item to set.
+
+        Raises:
+            TypeError: If the key is not a string.
+            TypeError: If the value is not a BaseModule instance or primitive.
+        """
         if not isinstance(key, str):
             raise TypeError("Keys must be strings")
         
@@ -205,7 +226,7 @@ class ModuleDict(BaseModule):
         val: t.Any,
         to_dict: bool = False,
     ):
-        if name == "data":
+        if name == "items":
             return {
                 k: v.spec(to_dict=to_dict)
                 for k, v in self._module_dict.items()
@@ -219,7 +240,7 @@ class ModuleDict(BaseModule):
         val: t.Any,
         ctx: "dict | None" = None,
     ) -> dict[str, V]:
-        if name != "data":
+        if name != "items":
             raise ValueError(f"Unknown spec hook name: {name}")
         if not isinstance(val, dict):
             raise TypeError(f"Expected a dict for 'items', got {type(val)}")

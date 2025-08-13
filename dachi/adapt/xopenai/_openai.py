@@ -7,6 +7,7 @@ import pydantic
 from dataclasses import InitVar
 import openai
 import inspect
+from abc import abstractmethod
 
 # 3rd party
 required = {'openai'}
@@ -26,15 +27,12 @@ from dachi.proc import (
     llm_forward, llm_stream,
     Sequential, RespProc
 )
-
 from dachi.proc import Process, AsyncProcess, StreamProcess, AsyncStreamProcess
-
-from ...core import ModuleList
-
+from dachi.core import ModuleList
 from dachi.proc._resp import RespProc
 from dachi.proc._out import ToOut
-from ...utils import UNDEFINED, coalesce
-from ... import utils as dachi_utils
+from dachi.utils import UNDEFINED, coalesce
+from dachi import utils as dachi_utils
 
 # TODO: add utility for this
 
@@ -43,14 +41,26 @@ if len(missing) > 0:
     raise RuntimeError(f'To use this module openai must be installed.')
 
 
-def to_openai_tool(tool: ToolDef | list[ToolDef]) -> list[dict]:
+class OpenAIAdapter(Process):
+    """Use to convert response to OpenAI format
     """
 
+    streamed: bool = False
+
+    @abstractmethod
+    def forward(self, resp: typing.Dict) -> typing.Dict:
+        pass
+
+
+
+def to_openai_tool(tool: ToolDef | list[ToolDef]) -> list[dict]:
+    """Converts a tool definition or a list of tool definitions to OpenAI format.
+
     Args:
-        tool (ToolDef | list[ToolDef]): 
+        tool (ToolDef | list[ToolDef]): The tool definition(s) to convert.
 
     Returns:
-        list[dict]: 
+        list[dict]: A list of dictionaries representing the OpenAI tools.
     """
     if isinstance(tool, ToolDef):
         tool = [tool]
@@ -158,7 +168,7 @@ class TextConv(ToOut):
 
 class StructConv(ToOut):
     """
-    OpenAITextProc is a class that processes an OpenAI response and extracts text outputs from it.
+    StructConv is a a class that converts structured data 
     """
     struct: pydantic.BaseModel | typing.Dict = None
     name: str = 'content'
@@ -210,9 +220,9 @@ class StructConv(ToOut):
         return ''
 
     def prep(self) -> typing.Dict:
-        """
+        """ Prepares the request for structured output.
         Returns:
-            typing.Dict: 
+            typing.Dict: A dictionary representation of the structured output.
         """
         if isinstance(
             self.struct, 
@@ -253,6 +263,8 @@ class StructConv(ToOut):
 # TODO: Update these converters
 
 class StructStreamConv(StructConv):
+    """StructStreamConv is a class that converts structured data for streaming
+    """
 
     def delta(
         self, 
@@ -261,8 +273,7 @@ class StructStreamConv(StructConv):
         streamed: bool=False, 
         is_last: bool=False
     ):
-        """
-        Processes a delta response and extracts text.
+        """Processes a delta response and extracts text.
         Args:
             response: The response object containing the delta.
             msg: A dictionary to store the message content.
@@ -279,14 +290,19 @@ class StructStreamConv(StructConv):
             raise RuntimeError(resp.error)
         
     def prep(self):
+        """
+        Prepares the request for streaming.
+        """
         return {
             "response_format": "json_object"
         }
 
 
 class ParsedConv(ToOut):
-    """For use with the "parse" API
+    """ParsedConv is a class that converts parsed 
+    data to OpenAI format.
     """
+
     struct: pydantic.BaseModel = None
     name: str = 'content'
     from_: str = 'response'
@@ -316,7 +332,7 @@ class ParsedConv(ToOut):
         return delta_store["content"]
     
     def prep(self):
-        
+        """Prepares the request for streaming."""
         return {
             "response_format": {
                 "type": "json_schema",
@@ -354,7 +370,11 @@ class ToolConv(RespProc):
     run_call: bool=False
 
     def __post_init__(self, tools: typing.List[ToolDef]):
+        """Initialize ToolConv with a list of tool definitions.
 
+        Args:
+            tools (typing.List[ToolDef]): A list of tool definitions to be used by the converter.
+        """
         self.tools = {
             tool.name: tool
             for tool in tools
@@ -362,8 +382,7 @@ class ToolConv(RespProc):
 
     def prep(self):
         """
-        Returns:
-            : 
+        Returns (typing.Dict): A dictionary representation of the tool definitions.
         """
         return {
             'tools': to_openai_tool(
@@ -379,6 +398,15 @@ class ToolConv(RespProc):
         streamed = False, 
         is_last = False
     ):
+        """Post-process the response and update the delta store.
+
+        Args:
+            resp (Resp): The response object.
+            result (_type_): The result of the processing.
+            delta_store (_type_): The delta store to update.
+            streamed (bool, optional): Whether the response is streamed or not. Defaults to False.
+            is_last (bool, optional): Whether this is the last response. Defaults to False.
+        """
         if len(delta_store['tools']) != 0 and self.run_call: 
             
             resp.data['tool_calls'] = [

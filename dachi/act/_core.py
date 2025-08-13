@@ -9,7 +9,8 @@ from ..proc import Process
 # TODO: Add in Action (For GOAP)
 from abc import ABC
 import typing as t
-
+from contextlib import contextmanager
+from asyncio import sleep as async_sleep
 
 class TaskStatus(Enum):
     """Status of a Behavior Tree task
@@ -257,82 +258,6 @@ class Leaf(Task):
     pass
 
 
-# class FuncTask(Task):
-#     """A task that executes a function
-#     """
-#     name: str
-#     args: t.List[t.Any]
-#     kwargs: t.Dict[str, t.Any]
-
-#     def __post_init__(self):
-#         super().__post_init__()
-#         self.obj = None
-
-#     async def func_tick(self) -> TaskStatus:
-#         """Execute the function
-
-#         Returns:
-#             TaskStatus: The status after executing the function
-#         """
-#         pass
-
-#     async def tick(self) -> TaskStatus:
-#         """Execute the task
-
-#         Returns:
-#             TaskStatus: The status after executing the task
-#         """
-#         if self.status.is_done:
-#             return self.status
-        
-#         if self.obj is None:
-#             raise ValueError(
-#                 "Task object is not set. "
-#                 "Please set the object before calling tick."
-#             )
-
-#         status = await self.func_tick()
-#         self._status.set(status)
-#         return status
-    
-#     def reset(self):
-#         """Reset the task
-#         """
-#         super().reset()
-#         self._task = None
-
-    # TODO: Think how to handle specifications
-    
-    
-
-    # def from_spec(self, spec: t.Dict[str, t.Any]) -> 'FuncTask':
-    #     """Create a FuncTask from a specification
-
-    #     Args:
-    #         spec (dict): The specification for the task
-
-    #     Returns:
-    #         FuncTask: The created task
-    #     """
-    #     raise RuntimeError(
-    #         "FuncTask cannot be created from a specification. "
-    #     )
-    
-    # def spec(self, *, to_dict = False):
-    #     """Get the specification for the task
-
-    #     Args:
-    #         to_dict (bool): Whether to return the specification as a dict
-
-    #     Returns:
-    #         dict: The specification for the task
-    #     """
-    #     raise RuntimeError(
-    #         "FuncTask cannot be converted to a specification. "
-    #         "Check your object "
-    #     )
-
-
 class FTask(Task):
     """A task that executes a function
     """
@@ -439,3 +364,155 @@ class Router(Process, ABC):
 
 ROUTE = Router | t.Callable[[t.Any], TaskStatus | State]
 
+
+
+async def run_task(
+    task: Task, 
+    interval: t.Optional[float]=1./60
+) -> t.AsyncIterator[TaskStatus]:
+    """Run a task until completion
+
+    Args:
+        task (Task): The task to execute
+        interval (float, optional): The interval to execute on. Defaults to 1./60.
+
+    Yields:
+        Iterator[t.Iterator[TaskStatus]]: The status
+    """
+    status = None
+    while (
+        status == TaskStatus.RUNNING 
+        or status == TaskStatus.READY
+    ):
+        status = await task.tick()
+        if interval is not None:
+            await async_sleep(interval)
+        yield status
+
+
+# TODO: How to handle "statefuncs" 
+
+
+@contextmanager
+async def loop_aslongas(
+    task: Task, 
+    status: TaskStatus=TaskStatus.SUCCESS
+):
+    """A context manager for running a task functionally
+
+    Args:
+        task (Task): The task to manage
+    """
+    cur_status = task.status
+    try:
+        yield task, cur_status
+    finally:
+        if cur_status.is_done:
+            if status != cur_status:
+                return
+            else: 
+                task.reset()
+    
+        cur_status = await task()
+
+
+@contextmanager
+async def loop_until(
+    task: Task, 
+    status: TaskStatus=TaskStatus.SUCCESS
+):
+    """A context manager for running a task functionally
+
+    Args:
+        task (Task): The task to manage
+    """
+    cur_status = task.status
+    try:
+        yield task, cur_status
+    finally:
+        
+        if cur_status.is_done:
+            if status == cur_status:
+                return
+            else: 
+                task.reset()
+    
+        cur_status = await task()
+
+
+
+
+# class FuncTask(Task):
+#     """A task that executes a function
+#     """
+#     name: str
+#     args: t.List[t.Any]
+#     kwargs: t.Dict[str, t.Any]
+
+#     def __post_init__(self):
+#         super().__post_init__()
+#         self.obj = None
+
+#     async def func_tick(self) -> TaskStatus:
+#         """Execute the function
+
+#         Returns:
+#             TaskStatus: The status after executing the function
+#         """
+#         pass
+
+#     async def tick(self) -> TaskStatus:
+#         """Execute the task
+
+#         Returns:
+#             TaskStatus: The status after executing the task
+#         """
+#         if self.status.is_done:
+#             return self.status
+        
+#         if self.obj is None:
+#             raise ValueError(
+#                 "Task object is not set. "
+#                 "Please set the object before calling tick."
+#             )
+
+#         status = await self.func_tick()
+#         self._status.set(status)
+#         return status
+    
+#     def reset(self):
+#         """Reset the task
+#         """
+#         super().reset()
+#         self._task = None
+
+    # TODO: Think how to handle specifications
+    
+    
+
+    # def from_spec(self, spec: t.Dict[str, t.Any]) -> 'FuncTask':
+    #     """Create a FuncTask from a specification
+
+    #     Args:
+    #         spec (dict): The specification for the task
+
+    #     Returns:
+    #         FuncTask: The created task
+    #     """
+    #     raise RuntimeError(
+    #         "FuncTask cannot be created from a specification. "
+    #     )
+    
+    # def spec(self, *, to_dict = False):
+    #     """Get the specification for the task
+
+    #     Args:
+    #         to_dict (bool): Whether to return the specification as a dict
+
+    #     Returns:
+    #         dict: The specification for the task
+    #     """
+    #     raise RuntimeError(
+    #         "FuncTask cannot be converted to a specification. "
+    #         "Check your object "
+    #     )

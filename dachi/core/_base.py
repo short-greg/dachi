@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 # 1st party
 from abc import abstractmethod, ABC
 
@@ -15,8 +13,15 @@ import json
 import copy
 from dataclasses import dataclass
 
-# 3rd party
-from pydantic import TypeAdapter
+
+
+try:  # 3.12+
+    from typing import dataclass_transform
+except ImportError:  # 3.8–3.11
+    from typing_extensions import dataclass_transform
+
+# 3rd Party
+from pydantic import BaseModel, Field, ConfigDict, create_model, field_validator, TypeAdapter
 
 # Local
 from dachi.utils import resolve_name
@@ -40,13 +45,6 @@ Usage::
     print(p.spec().model_dump())
     print(p.state_dict())
 """
-
-try:  # 3.12+
-    from typing import dataclass_transform
-except ImportError:  # 3.8–3.11
-    from typing_extensions import dataclass_transform
-
-from pydantic import BaseModel, Field, ConfigDict, create_model, field_validator
 
 T = t.TypeVar("T")
 J = t.TypeVar("J", bound=t.Union[BaseModel, dict, str, int, float, bool])
@@ -486,7 +484,7 @@ class BaseModule:
     def modules(
         self, *, 
         recurse: bool = True, 
-        f: t.Callable[[BaseModule], bool] | None = None):
+        f: t.Callable[['BaseModule'], bool] | None = None):
         """Yield **self** first, then all sub-items depth-first."""
         if f is None or f(self):
             yield self
@@ -498,7 +496,7 @@ class BaseModule:
         self, *, 
         recurse: bool = True, 
         prefix: str = "", 
-        f: t.Callable[[BaseModule], bool] | None = None
+        f: t.Callable[['BaseModule'], bool] | None = None
     ):
         """Yield ``(dotted_name, module)`` pairs."""
         if f is None or f(self):
@@ -510,7 +508,7 @@ class BaseModule:
 
     def named_parameters(
         self, *, recurse: bool = True, prefix: str = ""
-    ) -> t.Generator[tuple[str, Param]]:
+    ) -> t.Generator[tuple[str, Param], None, None]:
         for name, p in self._parameters.items():
             #if train_only is None or p.training is train_only:
             # if train_only and isinstance(p, Param) or not train_only:
@@ -754,7 +752,7 @@ class BaseModule:
         self._states[name] = state
         super().__setattr__(name, state)
 
-    def register_module(self, name: str, module: BaseModule):
+    def register_module(self, name: str, module: 'BaseModule'):
         self._modules[name] = module
         super().__setattr__(name, module)
 

@@ -1,5 +1,9 @@
 from dachi.act import _core
+from dachi.act._core import TaskStatus
+from .utils import ImmediateAction, SetStorageActionCounter
+from dachi.act._decorators import AsLongAs
 
+from dachi.act._core import loop_aslongas, loop_until
 
 class TestTaskStatus(object):
 
@@ -140,6 +144,41 @@ class TestTaskStatusProperties:
         assert core.TaskStatus.SUCCESS.success is True
         assert core.TaskStatus.RUNNING.running is True
 
+
+
+@pytest.mark.asyncio
+class TestLoopUtilities:
+    async def test_loop_aslongas_async_context_invalid(self):
+        cm = loop_aslongas(task=ImmediateAction(status_val=TaskStatus.SUCCESS), status=TaskStatus.SUCCESS)
+        with pytest.raises(TypeError):
+            async with cm:  # function is not a valid async context‑manager
+                pass
+
+    async def test_loop_until_async_context_invalid(self):
+        cm = loop_until(task=ImmediateAction(status_val=TaskStatus.SUCCESS))
+        with pytest.raises(TypeError):
+            async with cm:
+                pass
+
+
+@pytest.mark.asyncio
+class TestAsLongAs:
+    async def test_while_fails_if_failure(self):
+        action1 = SetStorageActionCounter(value=0)
+        action1._count = -1
+        while_ = AsLongAs(task=action1, target_status=TaskStatus.FAILURE)
+        await while_.tick()
+        action1.value = 1
+        assert while_.status == TaskStatus.RUNNING
+
+    async def test_aslongas_fails_if_failure_after_two(self):
+        action1 = SetStorageActionCounter(value=1)
+        action1._count = 1
+        action1.value.data = 4
+        aslongas = AsLongAs(task=action1)
+        await aslongas.tick()
+        action1.value.data = 0
+        assert await aslongas.tick() == TaskStatus.FAILURE
 
 class TestFromBoolHelper:
     """:pyfunc:`~core.from_bool` mirrors :pyfunc:`TaskStatus.from_bool`."""
