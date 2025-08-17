@@ -1,8 +1,11 @@
 # 1st party
+from __future__ import annotations
 import typing
+import typing as t
 from abc import abstractmethod
 from typing import Self
-from typing import Any, Dict, Optional, Union
+import base64
+from datetime import datetime, timezone
 
 # 3rd party
 from pydantic import BaseModel, PrivateAttr
@@ -10,8 +13,18 @@ import pydantic
 
 # local
 from . import Renderable
-from ._tool import ToolCall, AsyncToolCall
-from ._structs import ModuleList
+from ._tool import ToolCall, AsyncToolCall, ToolOut
+from ._base import BaseModule
+
+try:
+    # pydantic v2 preferred
+    from pydantic import BaseModel, Field
+    _PD_V2 = True
+except Exception:  # pragma: no cover
+    # pydantic v1 fallback
+    from pydantic import BaseModel, Field  # type: ignore
+    _PD_V2 = False
+
 
 
 class _Final:
@@ -23,48 +36,91 @@ END_TOK = _Final()
 NULL_TOK = object()
 
 
-class Msg(BaseModel):
-    """
-    """
 
-    role: str
-    alias: Optional[str] = None
-    type: str = "data"
-    content: Union[str, Dict[str, Any], None] = None
-    filtered: bool = False
-    tools: typing.List[ToolCall] | typing.List[AsyncToolCall] | None = None
-
-    def __post_init__(self):
-        self.tools = (
-            self.tools 
-            or typing.List[ToolCall | AsyncToolCall]([])
-        )
-
-    def apply(self, func):
-        return func(self)
-
-    def output(self, key: str = "tool_out", default=None) -> Any:
-        return self.meta.get(key, default)
-
-    def render(self) -> str:
-        return f"{self.alias or self.role}: {self.content}"
-
-    def to_input(self) -> Dict[str, Any]:
-        if self.filtered:
-            return {}
-        return {"role": self.role, "content": self.content}
-
-    class Config:
-        extra = "allow"
+class RespDelta(pydantic.BaseModel):
+    """Delta information for streaming responses."""
+    
+    text: str | None = pydantic.Field(
+        default=None, description="Incremental text content for streaming responses"
+    )
+    tool: str | None = pydantic.Field(
+        default=None, description="Partial tool call arguments (JSON string) for streaming responses"
+    )
+    thinking: str | None = pydantic.Field(
+        default=None, description="Incremental reasoning/thinking content for streaming responses"
+    )
+    citations: typing.List[typing.Dict] | None = pydantic.Field(
+        default=None, description="Incremental citation information for streaming responses"
+    )
+    finish_reason: str | None = pydantic.Field(
+        default=None, description="Reason generation stopped (e.g., 'stop', 'length', 'tool_calls')"
+    )
+    proc_store: typing.Dict[str, typing.Any] = pydantic.Field(
+        default_factory=dict, description="Storage for RespProc processing data"
+    )
 
 
 class Resp(pydantic.BaseModel):
+    """A response from the LLM or an API.
+    
+    This class represents a unified response format that contains both the message 
+    content and metadata from API calls. It supports streaming responses through 
+    delta accumulation and provides access to raw API responses.
+    """
 
-    msg: Msg | None = None
-    val: typing.Any = None
-    follow_up: typing.List[Msg] | None = pydantic.Field(
-        default=list
+    # Core content
+    msg: Msg | None = pydantic.Field(
+        default=None, description="The main message content from the LLM response"
     )
+    text: str | None = pydantic.Field(
+        default=None, description="Generated text content from the LLM"
+    )
+    tool: typing.List[typing.Dict] | None = pydantic.Field(
+        default=None, description="Complete tool call objects for non-streaming responses"
+    )
+    thinking: str | None = pydantic.Field(
+        default=None, description="Model's reasoning or thought process content"
+    )
+    logprobs: typing.Dict | None = pydantic.Field(
+        default=None, description="Log probabilities for generated tokens"
+    )
+    citations: typing.List[typing.Dict] | None = pydantic.Field(
+        default=None, description="Source citations for generated content"
+    )
+    finish_reason: str | None = pydantic.Field(
+        default=None, description="Reason generation stopped (e.g., 'stop', 'length', 'tool_calls')"
+    )
+    
+    # Legacy/compatibility
+    val: typing.Any = pydantic.Field(
+        default=None, description="Legacy field for processed API outputs"
+    )
+    follow_up: typing.List[Msg] | None = pydantic.Field(
+        default_factory=list, description="Follow-up messages (e.g., tool execution results)"
+    )
+    
+    # Metadata
+    response_id: str | None = pydantic.Field(
+        default=None, description="Unique identifier for this response"
+    )
+    model: str | None = pydantic.Field(
+        default=None, description="Model name/version that generated this response"
+    )
+    usage: typing.Dict[str, int] = pydantic.Field(
+        default_factory=dict, description="Token usage statistics (prompt_tokens, completion_tokens, etc.)"
+    )
+    
+    # Streaming support
+    delta: RespDelta = pydantic.Field(
+        default_factory=RespDelta, description="Delta information for streaming responses"
+    )
+    
+    # Provider-specific metadata
+    meta: typing.Dict[str, typing.Any] = pydantic.Field(
+        default_factory=dict, description="Provider-specific metadata and additional fields"
+    )
+    
+    # Private attributes
     _data: typing.Dict = pydantic.PrivateAttr(
         default_factory=dict
     )
@@ -77,22 +133,22 @@ class Resp(pydantic.BaseModel):
 
     @property
     def data(self) -> typing.Any:
-        """
-
-        Args:
-            key (str): 
+        """ Get the raw data from the response.
 
         Returns:
-            typing.Any: 
+            typing.Any: The raw data from the response.
         """
         return self._data
         
-    @property
-    def delta(self) -> typing.Dict:
-        return self._delta
+    # Note: delta is now a proper RespDelta field, no property needed
     
     @property
     def out(self) -> typing.Dict:
+        """Get the output values from the response.
+
+        Returns:
+            typing.Dict: The output values from the response.
+        """
         return self._out
     
     def spawn(self, msg: Msg, data: typing.Dict=None, follow_up: bool=None) -> 'Resp':
@@ -111,9 +167,120 @@ class Resp(pydantic.BaseModel):
             follow_up=follow_up,
         )
         resp.data.update(data)
-        resp.delta.update(self._delta)
         resp.out.update(self._out)
+        # Copy delta information including proc_store for streaming
+        if self.delta:
+            resp.delta.text = self.delta.text
+            resp.delta.tool = self.delta.tool  
+            resp.delta.thinking = self.delta.thinking
+            resp.delta.citations = self.delta.citations
+            resp.delta.finish_reason = self.delta.finish_reason
+            resp.delta.proc_store.update(self.delta.proc_store)
         return resp
+
+
+class Attachment(BaseModel):
+    """
+    Declarative reference to a non-text asset.
+
+    Attributes:
+        kind: 'image' | 'audio' | 'video' | 'file' | 'data'
+        ref: Stable handle (file id, URL, object key). Adapters resolve/upload.
+        mime: Optional MIME type, e.g. 'image/png'.
+        name: Human-friendly label/filename.
+        purpose: Hint for adapters, e.g. 'vision_input', 'context_doc'.
+        info: Small, inspectable metadata. Large payloads should be external.
+    """
+    kind: t.Literal['image', 'audio', 'video', 'file', 'data']
+    data: str = Field(
+        description="The raw data in bytes or the url for the data."
+    )
+    mime: t.Optional[str] = Field(default=None, description="MIME type of the attachment, e.g. 'image/png'.")
+    name: t.Optional[str] = Field(default=None, description="Human-friendly label/filename.")
+    purpose: t.Optional[str] = Field(default=None, description="Hint for adapters, e.g. 'vision_input', 'context_doc'.")
+    info: t.Dict[str, t.Any] = Field(default_factory=dict)
+
+
+def to_b64(filepath) -> str:
+    """ Convert a file to a base64 string.
+    """
+    with open(filepath, "rb") as f:
+        return base64.b64encode(f.read()).decode("utf-8")
+
+
+class Msg(BaseModel):
+    """
+    Text-first message with attachments and tool events.
+
+    Notes:
+        - `content` may be plain text or an ordered mapping of channels (e.g., {"final": "...", "thinking": "..."}).
+        - Attachments are declarative refs; adapters handle upload/encoding.
+        - Tool events interleave calls, deltas, and results (including computer-use).
+        - Provider/runtime metadata should live on Resp, not here.
+    """
+    role: str
+    text: t.Optional[t.Union[str, t.Dict[str, t.Any]]] = Field(default=None, description="Text content as a single element or a sequence of label text values.")
+    alias: t.Optional[str] = None
+
+    attachments: t.List[Attachment] = Field(default_factory=list, description="List of attachments included in the message.")
+    tool_calls: t.List[ToolCall | AsyncToolCall] = Field(default_factory=list, description="List of tool calls included output by the message.")
+    tool_outs: t.List[ToolOut] = Field(default_factory=list, description="List of tool outputs included in the message.")
+
+    tags: t.List[str] = Field(default_factory=list, description="List of tags associated with the message.")
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), description="Timestamp of the message creation in UTC.")
+    prev_id: t.Optional[str] = Field(default=None, description="ID of the previous message in the conversation.")
+    
+    # Fields for compatibility with existing tests
+    filtered: bool = Field(default=False, description="Whether this message should be filtered from outputs")
+    meta: t.Dict[str, t.Any] = Field(default_factory=dict, description="Metadata dictionary for additional information")
+
+    class Config:
+        extra = "allow"
+
+    def render(self) -> str:
+        """Compact, human-readable line for logs."""
+        name = self.alias or self.role
+        if isinstance(self.text, str):
+            text = self.text
+        elif isinstance(self.text, dict):
+            text = self.text.get("final") or self.text.get("text") or ""
+        else:
+            text = ""
+        extras: t.List[str] = []
+        if self.attachments:
+            extras.append(f"attachments={len(self.attachments)}")
+        if self.tool_calls:
+            extras.append(f"tool_calls={len(self.tool_calls)}")
+        suffix = f"  [{' | '.join(extras)}]" if extras else ""
+        return f"{name}: {text}{suffix}"
+    
+    def apply(self, func):
+        """Apply a function to this message and return the result."""
+        return func(self)
+    
+    def output(self, key: str = "tool_out", default=None):
+        """Get a value from the meta dictionary."""
+        return self.meta.get(key, default)
+
+    # def to_input(self) -> t.Dict[str, t.Any]:
+    #     """
+    #     Provider-agnostic dict for adapters to expand into provider-specific shapes.
+
+    #     Returns:
+    #         Dict[str, Any]: Minimal neutral representation.
+    #     """
+    #     base: t.Dict[str, t.Any] = {"role": self.role}
+    #     if isinstance(self.content, (str, dict)):
+    #         base["content"] = self.content
+    #     if self.alias:
+    #         base["alias"] = self.alias
+    #     if self.attachments:
+    #         base["attachments"] = [a.model_dump() if _PD_V2 else a.dict()]
+    #     if self.tools:
+    #         base["tools"] = [e.model_dump() if _PD_V2 else e.dict()]
+    #     if self.tags:
+    #         base["tags"] = list(self.tags)
+    #     return base
 
 
 class BaseDialog(pydantic.BaseModel, Renderable):
@@ -246,13 +413,13 @@ class BaseDialog(pydantic.BaseModel, Renderable):
             for message in self
         )
     
-    def to_input(self) -> typing.List[typing.Dict]:
-        """Convert the dialog to an input to pass into an API
+    # def to_input(self) -> typing.List[typing.Dict]:
+    #     """Convert the dialog to an input to pass into an API
 
-        Returns:
-            typing.List[typing.Dict]: A list of inputs
-        """
-        return [msg.to_input() for msg in self if msg.filtered is False]
+    #     Returns:
+    #         typing.List[typing.Dict]: A list of inputs
+    #     """
+    #     return [msg.to_input() for msg in self if msg.filtered is False]
 
     # def to_list_input(self) -> typing.List[typing.Dict]:
 
@@ -285,21 +452,21 @@ class BaseDialog(pydantic.BaseModel, Renderable):
         pass
 
     
-def to_input(
-    inp: typing.Union[typing.Iterable[Msg], Msg]
-    ) -> typing.Union[typing.List[Msg], Msg]:
-    """Convert a list of messages or a single message to an input
+# def to_input(
+#     inp: typing.Union[typing.Iterable[Msg], Msg]
+#     ) -> typing.Union[typing.List[Msg], Msg]:
+#     """Convert a list of messages or a single message to an input
 
-    Args:
-        inp (typing.Union[typing.Iterable[Msg], Msg]): The inputs to convert
+#     Args:
+#         inp (typing.Union[typing.Iterable[Msg], Msg]): The inputs to convert
 
-    Returns:
-        typing.Union[typing.List[Msg], Msg]: The input
-    """
-    if isinstance(inp, Msg):
-        return inp.to_input() if inp.filtered is False else None
+#     Returns:
+#         typing.Union[typing.List[Msg], Msg]: The input
+#     """
+#     if isinstance(inp, Msg):
+#         return inp.to_input() if inp.filtered is False else None
     
-    return {msg.to_input() for msg in inp if msg.filtered is False}
+#     return {msg.to_input() for msg in inp if msg.filtered is False}
 
 
 class ListDialog(BaseDialog):
@@ -1196,3 +1363,458 @@ class TreeDialog(BaseDialog):
     def _update(self):
         self._update_counts()
         self._update_indices()
+
+
+class AIAdapt(BaseModule):
+    """
+    Use to adapt the message from the standard format
+    to the format required by the LLM
+    """
+
+    @abstractmethod
+    def from_output(self, output: typing.Dict) -> Resp:
+        pass
+
+    @abstractmethod
+    def from_streamed(self, output: typing.Dict, prev_resp: Resp | None=None) -> Resp:
+        pass
+
+    @abstractmethod
+    def to_input(self, inp: Msg | BaseDialog, **kwargs) -> typing.Dict:
+        """Convert the input message to the format required by the LLM.
+
+        Args:
+            msg (Msg | BaseDialog): The input message to convert.
+
+        Returns:
+            typing.Dict: The converted message in the required format.
+        """
+        pass
+
+
+class DefaultAdapter(AIAdapt):
+    """
+    Default/Null adapter that passes data through without transformation.
+    
+    Used when no specific adapter is needed, providing minimal processing
+    while maintaining the AIAdapt interface.
+    """
+    
+    def to_input(self, inp: Msg | BaseDialog, **kwargs) -> typing.Dict:
+        """Pass through kwargs without transformation."""
+        return kwargs
+    
+    def from_output(self, output: typing.Dict) -> Resp:
+        """Create a basic Resp object from the output."""
+        resp = Resp(msg=Msg(role='assistant'))
+        resp.data['response'] = output
+        return resp
+    
+    def from_streamed(self, output: typing.Dict, prev_resp: Resp | None = None) -> Resp:
+        """Handle streaming by creating or updating Resp objects."""
+        if prev_resp is None:
+            resp = Resp(msg=Msg(role='assistant'))
+        else:
+            resp = prev_resp.spawn(msg=Msg(role='assistant'))
+        
+        resp.data['response'] = output
+        return resp
+
+
+class OpenAIChat(AIAdapt):
+    """
+    Adapter for OpenAI Chat Completions API.
+    
+    Converts between Dachi's unified message format and OpenAI Chat Completions API format.
+    
+    Message Conversion:
+    - Msg.role -> message.role (user/assistant/system/tool)
+    - Msg.text -> message.content 
+    - Msg.attachments -> message.content (for vision/multimodal)
+    - Msg.tool_outs -> role="tool" messages with tool_call_id
+    
+    Unified kwargs (converted):
+    - temperature, max_tokens, top_p, frequency_penalty, presence_penalty
+    - stream, stop, seed, user
+    
+    API-specific kwargs (passed through):
+    - tools, tool_choice, response_format, logprobs, top_logprobs
+    - parallel_tool_calls, service_tier, stream_options
+    """
+
+    def to_input(self, inp: Msg | BaseDialog, **kwargs) -> typing.Dict:
+        """Convert Dachi format to Chat Completions format.
+        
+        Args:
+            inp: Single message or dialog to convert
+            **kwargs: Additional parameters for the API call
+            
+        Returns:
+            Dict with 'messages' array and processed kwargs
+        """
+        if isinstance(inp, Msg):
+            messages = [self._convert_message(inp)]
+        else:
+            messages = [self._convert_message(msg) for msg in inp]
+        
+        # Add tool messages from ToolOut objects
+        for msg in (inp if isinstance(inp, BaseDialog) else [inp]):
+            for tool_out in msg.tool_outs:
+                messages.append({
+                    "role": "tool",
+                    "content": str(tool_out.result),
+                    "tool_call_id": tool_out.tool_call_id
+                })
+        
+        return {
+            "messages": messages,
+            **kwargs
+        }
+    
+    def from_output(self, output: typing.Dict) -> Resp:
+        """Convert Chat Completions response to Dachi Resp.
+        
+        Args:
+            output: Raw OpenAI API response
+            
+        Returns:
+            Resp object with unified fields populated
+        """
+        choice = output.get("choices", [{}])[0]
+        message = choice.get("message", {})
+        
+        msg = Msg(
+            role=message.get("role", "assistant"),
+            text=message.get("content", "")
+        )
+        
+        resp = Resp(
+            msg=msg,
+            text=message.get("content"),
+            finish_reason=choice.get("finish_reason"),
+            response_id=output.get("id"),
+            model=output.get("model"),
+            usage=output.get("usage", {}),
+            tool=message.get("tool_calls", []) if message.get("tool_calls") else None
+        )
+        
+        # Store provider-specific fields in meta
+        resp.meta.update({
+            k: v for k, v in output.items() 
+            if k not in {"choices", "usage", "model", "id"}
+        })
+        
+        # Store raw response
+        resp._data = output
+        return resp
+    
+    def from_streamed(self, output: typing.Dict, prev_resp: Resp | None = None) -> Resp:
+        """Handle Chat Completions streaming responses.
+        
+        Args:
+            output: Streaming chunk from OpenAI API
+            prev_resp: Previous response for delta accumulation
+            
+        Returns:
+            New Resp object spawned from prev_resp or fresh Resp
+        """
+        choice = output.get("choices", [{}])[0]
+        delta = choice.get("delta", {})
+        
+        # Create new message with delta content
+        msg = Msg(
+            role=delta.get("role", "assistant"),
+            text=delta.get("content", "") or ""
+        )
+        
+        # Create delta object for streaming
+        resp_delta = RespDelta(
+            text=delta.get("content"),
+            tool=delta.get("tool_calls", [{}])[0].get("function", {}).get("arguments") if delta.get("tool_calls") else None,
+            finish_reason=choice.get("finish_reason")
+        )
+        
+        if prev_resp is None:
+            resp = Resp(msg=msg, delta=resp_delta)
+        else:
+            resp = prev_resp.spawn(msg=msg, data=output)
+            resp.delta = resp_delta
+        
+        return resp
+    
+    def _convert_message(self, msg: Msg) -> typing.Dict:
+        """Convert single Msg to OpenAI message format."""
+        openai_msg = {
+            "role": msg.role,
+            "content": msg.text or ""
+        }
+        
+        # Handle attachments (vision)
+        if msg.attachments:
+            content = []
+            if msg.text:
+                content.append({"type": "text", "text": msg.text})
+            
+            for attachment in msg.attachments:
+                if attachment.kind == "image":
+                    # Convert to OpenAI vision format
+                    image_url = attachment.data
+                    if not image_url.startswith("data:"):
+                        # Assume base64, add data URL prefix
+                        mime = attachment.mime or "image/png"
+                        image_url = f"data:{mime};base64,{attachment.data}"
+                    
+                    content.append({
+                        "type": "image_url",
+                        "image_url": {"url": image_url}
+                    })
+            
+            openai_msg["content"] = content
+        
+        return openai_msg
+
+
+class OpenAIResp(AIAdapt):
+    """
+    Adapter for OpenAI Responses API.
+    
+    Converts between Dachi's unified message format and OpenAI Responses API format.
+    
+    Message Conversion:
+    - Single Msg with role="user" -> input field
+    - Multiple messages -> messages array (same as Chat Completions)
+    - instructions kwarg -> instructions field (replaces system messages)
+    
+    Unified kwargs (converted):
+    - temperature, max_tokens, top_p, frequency_penalty, presence_penalty
+    - stream, stop, seed, user
+    
+    API-specific kwargs (passed through):
+    - instructions, context, tools, tool_choice, response_format
+    - modalities, audio, parallel_tool_calls, metadata
+    """
+
+    def to_input(self, inp: Msg | BaseDialog, **kwargs) -> typing.Dict:
+        """Convert Dachi format to Responses API format.
+        
+        Args:
+            inp: Single message or dialog to convert
+            **kwargs: Additional parameters for the API call
+            
+        Returns:
+            Dict with 'input' or 'messages' and processed kwargs
+        """
+        # Handle single user message case
+        if isinstance(inp, Msg) and inp.role == "user" and "instructions" not in kwargs:
+            return {
+                "input": inp.text or "",
+                **kwargs
+            }
+        
+        # Handle multiple messages (same as Chat Completions)
+        if isinstance(inp, Msg):
+            messages = [self._convert_message(inp)]
+        else:
+            messages = [self._convert_message(msg) for msg in inp]
+        
+        # Add tool messages from ToolOut objects
+        for msg in (inp if isinstance(inp, BaseDialog) else [inp]):
+            for tool_out in msg.tool_outs:
+                messages.append({
+                    "role": "tool",
+                    "content": str(tool_out.result),
+                    "tool_call_id": tool_out.tool_call_id
+                })
+        
+        return {
+            "messages": messages,
+            **kwargs
+        }
+    
+    def from_output(self, output: typing.Dict) -> Resp:
+        """Convert Responses API response to Dachi Resp.
+        
+        Args:
+            output: Raw OpenAI API response
+            
+        Returns:
+            Resp object with unified fields populated
+        """
+        # Responses API has similar structure to Chat Completions
+        choice = output.get("choices", [{}])[0]
+        message = choice.get("message", {})
+        
+        msg = Msg(
+            role=message.get("role", "assistant"),
+            text=message.get("content", "")
+        )
+        
+        resp = Resp(
+            msg=msg,
+            text=message.get("content"),
+            thinking=output.get("reasoning"),  # Responses API specific
+            finish_reason=choice.get("finish_reason"),
+            response_id=output.get("id"),
+            model=output.get("model"),
+            usage=output.get("usage", {}),
+            tool=message.get("tool_calls", []) if message.get("tool_calls") else None
+        )
+        
+        # Store provider-specific fields in meta
+        resp.meta.update({
+            k: v for k, v in output.items() 
+            if k not in {"choices", "usage", "model", "id", "reasoning"}
+        })
+        
+        # Store raw response
+        resp._data = output
+        return resp
+    
+    def from_streamed(self, output: typing.Dict, prev_resp: Resp | None = None) -> Resp:
+        """Handle Responses API streaming responses.
+        
+        Args:
+            output: Streaming chunk from OpenAI API
+            prev_resp: Previous response for delta accumulation
+            
+        Returns:
+            New Resp object spawned from prev_resp or fresh Resp
+        """
+        # Responses API streaming should be similar to Chat Completions
+        choice = output.get("choices", [{}])[0]
+        delta = choice.get("delta", {})
+        
+        msg = Msg(
+            role=delta.get("role", "assistant"),
+            text=delta.get("content", "") or ""
+        )
+        
+        # Create delta object for streaming
+        resp_delta = RespDelta(
+            text=delta.get("content"),
+            thinking=delta.get("reasoning"),  # Responses API may have reasoning in delta
+            tool=delta.get("tool_calls", [{}])[0].get("function", {}).get("arguments") if delta.get("tool_calls") else None,
+            finish_reason=choice.get("finish_reason")
+        )
+        
+        if prev_resp is None:
+            resp = Resp(msg=msg, delta=resp_delta)
+        else:
+            resp = prev_resp.spawn(msg=msg, data=output)
+            resp.delta = resp_delta
+        
+        return resp
+    
+    def _convert_message(self, msg: Msg) -> typing.Dict:
+        """Convert single Msg to OpenAI message format."""
+        openai_msg = {
+            "role": msg.role,
+            "content": msg.text or ""
+        }
+        
+        # Handle attachments (same as Chat Completions)
+        if msg.attachments:
+            content = []
+            if msg.text:
+                content.append({"type": "text", "text": msg.text})
+            
+            for attachment in msg.attachments:
+                if attachment.kind == "image":
+                    image_url = attachment.data
+                    if not image_url.startswith("data:"):
+                        mime = attachment.mime or "image/png"
+                        image_url = f"data:{mime};base64,{attachment.data}"
+                    
+                    content.append({
+                        "type": "image_url",
+                        "image_url": {"url": image_url}
+                    })
+            
+            openai_msg["content"] = content
+        
+        return openai_msg
+
+
+# class Msg(BaseModel):
+#     """
+#     """
+
+#     role: str
+#     alias: Optional[str] = None
+#     type: str = "data"
+#     content: Union[str, Dict[str, Any], None] = None
+#     tools: typing.List[ToolCall] | typing.List[AsyncToolCall] | None = None
+
+#     def __post_init__(self):
+#         self.tools = (
+#             self.tools 
+#             or typing.List[ToolCall | AsyncToolCall]([])
+#         )
+
+#     def apply(self, func):
+#         return func(self)
+
+#     def output(self, key: str = "tool_out", default=None) -> Any:
+#         return self.meta.get(key, default)
+
+#     def render(self) -> str:
+#         return f"{self.alias or self.role}: {self.content}"
+
+#     def to_input(self) -> Dict[str, Any]:
+#         if self.filtered:
+#             return {}
+#         return {"role": self.role, "content": self.content}
+
+#     class Config:
+#         extra = "allow"
+
+
+# class ToolEvent(BaseModel):
+#     """
+#     A single tool lifecycle event (generic or computer-use).
+
+#     Lifecycle:
+#         call  →  delta*  →  result | error
+
+#     Attributes:
+#         id: Unique id for this event (optional but useful).
+#         call_id: Correlates all events for one invocation.
+#         name: Tool name, e.g. 'search', 'get_weather', 'computer.use'.
+#         kind: 'generic' or 'computer'. Purely informative for adapters.
+#         type: 'call' | 'delta' | 'result' | 'error'.
+#         args: Arguments for the call (for 'call').
+#         data: Small, structured telemetry (for 'delta').
+#         result: Final structured output (for 'result').
+#         error: Terminal error descriptor (for 'error').
+#         artifacts: Large outputs as references (screenshots/files). No raw bytes.
+#         ts: Event timestamp (UTC).
+#         parent_id: Optional parent event id.
+#         stream_id: Optional grouping key for multi-stream deltas.
+#         computer: Optional computer-use info (when kind == 'computer').
+#     """
+#     id: t.Optional[str] = None
+#     call_id: str
+#     name: str
+#     kind: str = "generic"  # 'generic' | 'computer'
+#     type: str  # 'call' | 'delta' | 'result' | 'error'
+
+#     args: t.Optional[t.Dict[str, t.Any]] = None
+#     data: t.Optional[t.Dict[str, t.Any]] = None
+#     result: t.Optional[t.Dict[str, t.Any]] = None
+#     error: t.Optional[ToolError] = None
+
+#     artifacts: t.List[Attachment] = Field(default_factory=list)
+
+#     ts: datetime = Field(default_factory=lambda: datetime.utcnow())
+#     parent_id: t.Optional[str] = None
+#     stream_id: t.Optional[str] = None
+
+#     computer: t.Optional[ComputerUseInfo] = None
+
+#     class Config:
+#         extra = "allow"
+
+#     @property
+#     def is_terminal(self) -> bool:
+#         """Whether the event is terminal for its call_id."""
+#         return self.type in ("result", "error")

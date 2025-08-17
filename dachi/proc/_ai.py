@@ -6,9 +6,9 @@ import pydantic
 
 # local
 from ..core import (
-    Msg, END_TOK, Resp
+    Msg, END_TOK, Resp,
+    Msg, AIAdapt
 )
-from dachi.core._msg import Msg
 from ._process import AsyncProcess
 from ._resp import RespProc, RESPONSE_FIELD
 
@@ -19,6 +19,7 @@ S = typing.TypeVar('S', bound=pydantic.BaseModel)
 LLM_PROMPT: typing.TypeAlias = typing.Union[typing.Iterable[Msg], Msg]
 S = typing.TypeVar('S', bound=pydantic.BaseModel)
 # TODO: MOVE OUT OF HERE
+from abc import abstractmethod
 
 
 def _prepare(proc, kwargs):
@@ -36,6 +37,7 @@ def _prepare(proc, kwargs):
 def llm_forward(
     f: typing.Callable, 
     *args, 
+    _adapt: AIAdapt | None = None,
     _proc: typing.List[RespProc] | RespProc=None, 
     _role: str='assistant',
     **kwargs
@@ -52,15 +54,17 @@ def llm_forward(
         tuple: A tuple containing the final message (Msg) and the last value processed by the Response objects.
     """
     _proc = _prepare(_proc, kwargs)
+    
+    if _adapt is None:
+        from dachi.core import DefaultAdapter
+        _adapt = DefaultAdapter()
 
+    kwargs.update(_adapt.to_input(*args, **kwargs))
     result = f(
         *args, **kwargs
     )
-    resp = Resp(
-        msg=Msg(role=_role)
-    )
+    resp = _adapt.from_output(result)
 
-    resp.data[RESPONSE_FIELD] = result
     for r in _proc:
         resp = r(resp)
     return resp
@@ -69,6 +73,7 @@ def llm_forward(
 async def llm_aforward(
     f, 
     *args, 
+    _adapt: AIAdapt | None = None,
     _proc: typing.List[RespProc] | RespProc=None, 
     _role: str='assistant',
     **kwargs
@@ -86,9 +91,11 @@ async def llm_aforward(
     """
     _proc = _prepare(_proc, kwargs)
 
+    kwargs.update(_adapt(*args, **kwargs))
     result = await f(
         *args, **kwargs
     )
+    result = _adapt.from_output(result)
 
     resp = Resp(
         msg=Msg(role=_role)
@@ -106,6 +113,7 @@ async def llm_aforward(
 def llm_stream(
     f: typing.Callable, 
     *args, 
+    _adapt: AIAdapt | None = None,
     _proc: typing.List[RespProc] | RespProc=None, 
     _role: str='assistant',
     **kwargs
@@ -124,19 +132,26 @@ def llm_stream(
     _proc = _prepare(_proc, kwargs)
     prev_message: Msg | None = None
     resp = None
+    
+    if _adapt is None:
+        from dachi.core import DefaultAdapter
+        _adapt = DefaultAdapter()
+        
+    kwargs.update(_adapt.to_input(*args, **kwargs))
     for response in f(
         *args, **kwargs
     ):
-        msg = Msg(role=_role)
-        if prev_message is not None:
-            msg.delta = prev_message.delta
+        resp = _adapt.from_streamed(response, resp)
+        # msg = Msg(role=_role)
+        # if prev_message is not None:
+        #     msg.delta = prev_message.delta
 
-        if resp is None:
-            resp = Resp(msg=msg)
-        else:
-            resp = resp.spawn(
-                msg=msg
-            )
+        # if resp is None:
+        #     resp = Resp(msg=msg)
+        # else:
+        #     resp = resp.spawn(
+        #         msg=msg
+        #     )
         resp.data[RESPONSE_FIELD] = response
 
         for r in _proc:
@@ -159,6 +174,7 @@ def llm_stream(
 async def llm_astream(
     f: typing.Callable, 
     *args, 
+    _adapt: AIAdapt | None = None,
     _proc: typing.List[RespProc] | RespProc=None, 
     _role: str='assistant',
     **kwargs
@@ -182,16 +198,17 @@ async def llm_astream(
     async for response in await f(
         *args, **kwargs
     ):
-        msg = Msg(role=_role)
-        if prev_message is not None:
-            msg.delta = prev_message.delta
+        resp = _adapt.from_streamed(response, resp)
+        # msg = Msg(role=_role)
+        # if prev_message is not None:
+        #     msg.delta = prev_message.delta
 
-        if resp is None:
-            resp = Resp(msg=msg)
-        else:
-            resp = resp.spawn(
-                msg=msg
-            )
+        # if resp is None:
+        #     resp = Resp(msg=msg)
+        # else:
+        #     resp = resp.spawn(
+        #         msg=msg
+        #     )
 
         resp.data[RESPONSE_FIELD] = response
 

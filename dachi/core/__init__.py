@@ -42,11 +42,16 @@ from ._msg import (
     TreeDialog,
     DialogTurn,
     Resp,
+    RespDelta,
+    Attachment,
     to_dialog,
-    to_input,
     to_list_input,
     END_TOK,
-    NULL_TOK
+    NULL_TOK,
+    AIAdapt,
+    DefaultAdapter,
+    OpenAIChat,
+    OpenAIResp
 )
 from ._render import (
     TemplateField,

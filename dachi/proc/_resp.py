@@ -2,6 +2,11 @@
 # 1st party 
 from abc import ABC, abstractmethod
 import typing
+import json
+import inspect
+
+# 3rd party
+import pydantic
 
 # local
 from ..core import Msg, Resp
@@ -89,7 +94,7 @@ class RespProc(Process, ABC):
         """
 
         delta_store = utils.get_or_set(
-            resp.delta, self.name, {}
+            resp.delta.proc_store, self.name, {}
         )
         if isinstance(self.from_, str):
             from_ = [self.from_]
@@ -214,4 +219,151 @@ class FromResp(Process):
         return {
             key: resp.out[key]
             for key in keys
+        }
+
+
+class TextConv(RespProc):
+    """
+    Unified text processor that extracts text content from responses.
+    Works with the unified Resp structure instead of OpenAI-specific format.
+    """
+    name: str = 'content'
+    from_: str = 'text'
+
+    def post(
+        self, 
+        resp: Resp, 
+        result, 
+        delta_store, 
+        streamed = False, 
+        is_last = False
+    ):
+        """Update the message content with accumulated text."""
+        content = delta_store.get('content', '')
+        if resp.msg:
+            resp.msg.text = content
+    
+    def delta(
+        self, 
+        resp, 
+        delta_store: typing.Dict, 
+        streamed: bool=False, 
+        is_last: bool=False
+    ):
+        """Process text content from unified response structure."""
+        if streamed and is_last:
+            return ''
+        
+        if resp is None or resp == '':
+            content = ''
+        else:
+            content = str(resp)
+
+        delta_store['cur_content'] = content
+        delta_store['content'] = utils.acc(
+            delta_store, 'all_content', content
+        )
+
+        return content
+
+
+class StructConv(RespProc):
+    """
+    Unified structured data converter for JSON/structured outputs.
+    Works with the unified Resp structure.
+    """
+    struct: typing.Union[pydantic.BaseModel, typing.Dict, None] = None
+    name: str = 'content'
+    from_: str = 'text'
+
+    def post(
+        self, 
+        resp: Resp, 
+        result, 
+        delta_store, 
+        streamed = False, 
+        is_last = False
+    ):
+        """Update message content with structured data."""
+        if is_last and resp.msg:
+            resp.msg.text = delta_store.get('content', '')
+        elif resp.msg:
+            resp.msg.text = ''
+
+    def delta(
+        self, 
+        resp, 
+        delta_store: typing.Dict, 
+        streamed: bool=False, 
+        is_last: bool=False
+    ):
+        """Process structured data from unified response."""
+        if streamed and resp is not None:
+            delta_content = str(resp) if resp else ''
+            utils.acc(delta_store, 'content', delta_content)
+        elif not streamed and resp is not None:
+            content = str(resp) if resp else ''
+            utils.acc(delta_store, 'content', content)
+
+        if is_last:
+            try:
+                struct = json.loads(delta_store.get('content', '{}'))
+                return struct
+            except json.JSONDecodeError:
+                return {}
+
+        return ''
+
+    def prep(self) -> typing.Dict:
+        """Prepare request parameters for structured output."""
+        if isinstance(self.struct, typing.Dict):
+            return {'response_format': {
+                "type": "json_schema",
+                "json_schema": self.struct
+            }}
+        elif isinstance(self.struct, pydantic.BaseModel) or (
+            inspect.isclass(self.struct) and 
+            issubclass(self.struct, pydantic.BaseModel)
+        ):
+            return {'response_format': self.struct}
+        return {'response_format': "json_object"}
+
+
+class ParsedConv(RespProc):
+    """
+    Unified parsed data converter that validates JSON against Pydantic models.
+    Works with the unified Resp structure.
+    """
+    struct: pydantic.BaseModel = None
+    name: str = 'content'
+    from_: str = 'text'
+    
+    def delta(
+        self, 
+        resp, 
+        delta_store: typing.Dict, 
+        streamed: bool=False, 
+        is_last: bool=False
+    ):
+        """Parse and validate structured data against Pydantic model."""
+        if not is_last:
+            return utils.UNDEFINED
+            
+        content = str(resp) if resp else '{}'
+        try:
+            delta_store["content"] = self.struct.model_validate_json(content)
+            return delta_store["content"]
+        except Exception:
+            return utils.UNDEFINED
+    
+    def prep(self):
+        """Prepare request parameters for structured output with schema."""
+        return {
+            "response_format": {
+                "type": "json_schema", 
+                "json_schema": {
+                    "name": self.struct.__name__,
+                    "schema": self.struct.model_json_schema()
+                }
+            }
         }

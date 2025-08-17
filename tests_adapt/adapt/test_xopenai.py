@@ -11,7 +11,7 @@ import pydantic
 import sys
 
 # Dachi imports
-from dachi.core import Resp, END_TOK, ToolDef, Msg, ToolCall
+from dachi.core import Resp, RespDelta, END_TOK, ToolDef, Msg, ToolCall, OpenAIChat, OpenAIResp
 from dachi.utils import UNDEFINED
 
 
@@ -84,15 +84,27 @@ def patch_openai(monkeypatch):
 
 
 @pytest.fixture
-def adapters():
+def openai_adapters():
     """
     Import the adapter module **after** patching openai so the import succeeds.
-    Returns the imported module.
+    Returns the imported module for backward compatibility tests.
     """
     from importlib import import_module, reload
     
     mod = import_module("dachi.adapt.xopenai._openai")
     return reload(mod)
+
+
+@pytest.fixture
+def chat_adapter():
+    """OpenAI Chat Completions adapter."""
+    return OpenAIChat()
+
+
+@pytest.fixture  
+def resp_adapter():
+    """OpenAI Responses adapter."""
+    return OpenAIResp()
 
 
 @pytest.fixture
@@ -121,12 +133,120 @@ def make_tool_def():
 # ------------------------------------------------------------------
 
 
+# ------------------------------------------------------------------
+# 1  OpenAI Adapters -----------------------------------------------
+# ------------------------------------------------------------------
+
+
+class TestOpenAIChat:
+    """Test OpenAI Chat Completions adapter."""
+
+    def test_to_input_basic_message(self, chat_adapter):
+        msg = Msg(role="user", text="Hello")
+        result = chat_adapter.to_input(msg, temperature=0.7)
+        
+        assert "messages" in result
+        assert result["temperature"] == 0.7
+        assert len(result["messages"]) == 1
+        assert result["messages"][0]["role"] == "user"
+        assert result["messages"][0]["content"] == "Hello"
+
+    def test_to_input_with_attachments(self, chat_adapter):
+        from dachi.core import Attachment
+        msg = Msg(
+            role="user",
+            text="What's in this image?", 
+            attachments=[
+                Attachment(kind="image", data="base64data", mime="image/png")
+            ]
+        )
+        result = chat_adapter.to_input(msg)
+        
+        message = result["messages"][0]
+        assert isinstance(message["content"], list)
+        assert message["content"][0]["type"] == "text"
+        assert message["content"][1]["type"] == "image_url"
+        assert "data:image/png;base64," in message["content"][1]["image_url"]["url"]
+
+    def test_from_output(self, chat_adapter):
+        openai_response = {
+            "id": "resp_123",
+            "model": "gpt-4o", 
+            "choices": [{
+                "message": {"role": "assistant", "content": "Hello there!"},
+                "finish_reason": "stop"
+            }],
+            "usage": {"total_tokens": 10, "prompt_tokens": 5, "completion_tokens": 5}
+        }
+        
+        resp = chat_adapter.from_output(openai_response)
+        
+        assert isinstance(resp, Resp)
+        assert resp.text == "Hello there!"
+        assert resp.response_id == "resp_123"
+        assert resp.model == "gpt-4o"
+        assert resp.finish_reason == "stop"
+        assert resp.usage["total_tokens"] == 10
+
+    def test_from_streamed(self, chat_adapter):
+        chunk = {
+            "choices": [{
+                "delta": {"content": "Hello"},
+                "finish_reason": None
+            }]
+        }
+        
+        resp = chat_adapter.from_streamed(chunk)
+        
+        assert isinstance(resp, Resp)
+        assert resp.delta.text == "Hello"
+        assert resp.delta.finish_reason is None
+
+
+class TestOpenAIResp:
+    """Test OpenAI Responses adapter."""
+
+    def test_to_input_single_user_message(self, resp_adapter):
+        msg = Msg(role="user", text="Hello")
+        result = resp_adapter.to_input(msg)
+        
+        # Should use 'input' field for single user message
+        assert "input" in result
+        assert result["input"] == "Hello"
+        assert "messages" not in result
+
+    def test_to_input_with_instructions(self, resp_adapter):
+        msg = Msg(role="user", text="Hello")
+        result = resp_adapter.to_input(msg, instructions="Be helpful")
+        
+        # Should use 'messages' when instructions provided
+        assert "messages" in result
+        assert result["instructions"] == "Be helpful"
+
+    def test_from_output_with_reasoning(self, resp_adapter):
+        openai_response = {
+            "id": "resp_123",
+            "model": "gpt-4o",
+            "reasoning": "The user is greeting me...",
+            "choices": [{
+                "message": {"role": "assistant", "content": "Hello there!"},
+                "finish_reason": "stop"
+            }],
+            "usage": {"total_tokens": 15}
+        }
+        
+        resp = resp_adapter.from_output(openai_response)
+        
+        assert resp.thinking == "The user is greeting me..."
+        assert resp.text == "Hello there!"
+
+
 class TestToOpenAITool:
     """Unit-tests for the helper that converts ToolDef → OpenAI schema."""
 
-    def test_single(self, adapters, make_tool_def):
+    def test_single(self, openai_adapters, make_tool_def):
         tool = make_tool_def()
-        out = adapters.to_openai_tool(tool)
+        out = openai_adapters.to_openai_tool(tool)
         assert isinstance(out, list) and len(out) == 1
         fn = out[0]["function"]
         assert fn["name"] == tool.name
@@ -134,114 +254,23 @@ class TestToOpenAITool:
         # pydantic v1 & v2 produce 'properties' key in schema
         assert "properties" in fn["parameters"]
 
-    def test_multiple(self, adapters, make_tool_def):
-        out = adapters.to_openai_tool([make_tool_def("a"), make_tool_def("b")])
+    def test_multiple(self, openai_adapters, make_tool_def):
+        out = openai_adapters.to_openai_tool([make_tool_def("a"), make_tool_def("b")])
         assert [t["function"]["name"] for t in out] == ["a", "b"]
 
-    def test_wrong_type(self, adapters):
+    def test_wrong_type(self, openai_adapters):
         # to_openai_tool should work with ToolDef or list of ToolDef
         # Let's test with an invalid input
         import dachi.core
         tool_def = dachi.core.ToolDef
         # This should fail if we pass something that's not a ToolDef
         with pytest.raises((TypeError, AttributeError)):
-            adapters.to_openai_tool(42)  # type: ignore[arg-type]
+            openai_adapters.to_openai_tool(42)  # type: ignore[arg-type]
 
 
 # ------------------------------------------------------------------
-# 2  TextConv -------------------------------------------------------
+# 2  OpenAI-Specific Tool Processing -------------------------------
 # ------------------------------------------------------------------
-
-
-class TestTextConv:
-    """
-    Validate delta & post logic for TextConv across streaming modes and
-    sentinel values (None / UNDEFINED).
-    """
-
-    def _mk(self, adapters):
-        return adapters.TextConv()
-
-    def test_non_stream(self, adapters):
-        conv = self._mk(adapters)
-        store = {}
-        resp = fake_final_message("hello")
-        conv.delta(resp, store, streamed=False, is_last=True)
-        conv.post(resp=Resp(msg=Msg(role="assistant", content="hello"), val={"content": "hello"}),
-                  result=None, delta_store=store, streamed=False, is_last=True)
-        assert store["all_content"] == "hello"
-
-    def test_stream_chunks_accumulate(self, adapters):
-        conv = self._mk(adapters)
-        store = {}
-        # two chunks then END_TOK
-        chunk1 = fake_delta_chunk("he")
-        chunk2 = fake_delta_chunk("llo")
-        conv.delta(chunk1, store, streamed=True)
-        conv.delta(chunk2, store, streamed=True)
-        conv.post(resp=Resp(msg=Msg(role="assistant"), val=dict(content="unused")),
-                  result=None, delta_store=store, streamed=True, is_last=True)
-        assert store["all_content"] == "hello"
-
-    @pytest.mark.parametrize("payload", [None, UNDEFINED])
-    def test_none_undefined(self, adapters, payload):
-        conv = self._mk(adapters)
-        store = {}
-        resp = fake_final_message(payload or "")
-        conv.delta(resp, store, streamed=False, is_last=True)
-        conv.post(resp=Resp(msg=Msg(role="assistant"), val={"content": payload}),
-                  result=None, delta_store=store, streamed=False, is_last=True)
-        # nothing should have been accumulated
-        assert store["all_content"] == ""
-
-
-# ------------------------------------------------------------------
-# 3  Struct / Parsed converters ------------------------------------
-# ------------------------------------------------------------------
-
-
-class TestStructConv:
-    """Exercise StructConv in all supported modes."""
-
-    def test_default_json_object(self, adapters):
-        conv = adapters.StructConv()
-        assert conv.prep() == {"response_format": "json_object"}
-
-    def test_custom_schema_dict(self, adapters):
-        schema = {"type": "object", "properties": {"foo": {"type": "string"}}}
-        conv = adapters.StructConv(struct=schema)
-        out = conv.prep()
-        assert out["response_format"]["json_schema"] == schema
-
-    def test_custom_pydantic_model(self, adapters):
-        class Foo(pydantic.BaseModel):
-            bar: int
-
-        conv = adapters.StructConv(struct=Foo)
-        fmt = conv.prep()
-        assert fmt["response_format"] == Foo
-
-
-class TestParsedConv:
-    """ParsedConv parses final JSON into model."""
-
-    def test_valid_json(self, adapters):
-        class Foo(pydantic.BaseModel):
-            bar: int
-
-        conv = adapters.ParsedConv(struct=Foo)
-        store = {}
-        payload = fake_final_message(json.dumps({"bar": 3}))
-        out = conv.delta(payload, store, streamed=False, is_last=True)
-        assert isinstance(out, Foo) and out.bar == 3
-
-    def test_bad_json_raises(self, adapters):
-        class Foo(pydantic.BaseModel):
-            bar: int
-
-        conv = adapters.ParsedConv(struct=Foo)
-        with pytest.raises(pydantic.ValidationError):
-            conv.delta(fake_final_message("not-json"), {}, False, True)
 
 
 # ------------------------------------------------------------------
@@ -252,32 +281,32 @@ class TestParsedConv:
 class TestToolConv:
     """Validate tool-extraction in both streaming & non-streaming."""
 
-    def test_prep(self, adapters, make_tool_def):
+    def test_prep(self, openai_adapters, make_tool_def):
         tools = [make_tool_def("t")]
-        conv = adapters.ToolConv(tools=tools)
+        conv = openai_adapters.ToolConv(tools=tools)
         prep = conv.prep()
         assert "tools" in prep and prep["tools"][0]["function"]["name"] == "t"
 
-    def test_non_stream(self, adapters, make_tool_def):
+    def test_non_stream(self, openai_adapters, make_tool_def):
         tools = [make_tool_def()]
-        conv = adapters.ToolConv(tools=tools, run_call=False)
+        conv = openai_adapters.ToolConv(tools=tools, run_call=False)
         delta_store = {}
         # build fake tool_call object
         func = SimpleNamespace(name=tools[0].name, arguments=json.dumps({"x": 1}))
         tc = SimpleNamespace(id="id", function=func)
         payload = fake_final_message(content="", tool_calls=[tc], finish="tool_calls")
         out = conv.delta(payload, delta_store, streamed=False)
-        assert isinstance(out[0], adapters.ToolCall)
+        assert isinstance(out[0], openai_adapters.ToolCall)
         assert out[0].inputs.x == 1
 
-    def test_stream_incremental(self, adapters, make_tool_def):
+    def test_stream_incremental(self, openai_adapters, make_tool_def):
         tools = [make_tool_def()]
-        conv = adapters.ToolConv(tools=tools, run_call=False)
+        conv = openai_adapters.ToolConv(tools=tools, run_call=False)
         ds = {}
         # first delta chunk (function call)
         chunk = fake_delta_chunk(tool=True)
         out = conv.delta(chunk, ds, streamed=True, is_last=False)
-        assert out and isinstance(out[0], adapters.ToolBuilder) or isinstance(out[0], adapters.ToolCall)  # lenient check
+        assert out and isinstance(out[0], openai_adapters.ToolBuilder) or isinstance(out[0], openai_adapters.ToolCall)  # lenient check
 
 
 # ------------------------------------------------------------------
@@ -288,16 +317,16 @@ class TestToolConv:
 class TestLLMInit:
     """Ensure converter pipeline assembled correctly."""
 
-    def test_text_only(self, adapters):
-        llm = adapters.LLM()
+    def test_text_only(self, openai_adapters):
+        llm = openai_adapters.LLM()
         names = [type(c).__name__ for c in llm.convs]
         assert "TextConv" in names and "ToolConv" not in names
 
-    def test_json_model_adds_parsed(self, adapters):
+    def test_json_model_adds_parsed(self, openai_adapters):
         class Foo(pydantic.BaseModel):
             y: int
-        llm = adapters.LLM(json_output=Foo)
-        assert any(isinstance(c, adapters.ParsedConv) for c in llm.convs)
+        llm = openai_adapters.LLM(json_output=Foo)
+        assert any(isinstance(c, openai_adapters.ParsedConv) for c in llm.convs)
 
 
 # class TestChatCompletion:
@@ -374,40 +403,4 @@ class TestLLMInit:
 # # ------------------------------------------------------------------
 # 
 # 
-class TestToolExecConv:
-    """Validate deferred execution helper."""
-
-    def test_single_call_executed(self, adapters, make_tool_def):
-        # create a dummy ToolCall that returns value 7
-        tool_def = make_tool_def()
-        tc = ToolCall(
-            tool_id="id",
-            option=tool_def,
-            inputs=tool_def.input_model(x=42),
-        )
-        # Monkey patch the actual function to return 7
-        def mock_fn(**kwargs):
-            return 7
-        tc.option.fn = mock_fn
-        
-        conv = adapters.ToolExecConv()
-        result = conv.delta(tc, {}, False, True)
-        assert result == 7
-
-    def test_list_executes(self, adapters):
-        class MockTool1:
-            def __call__(self):
-                return 1
-                
-        class MockTool2:
-            def __call__(self):
-                return 2
-                
-        tc1 = MockTool1()
-        tc2 = MockTool2()
-        conv = adapters.ToolExecConv()
-        assert conv.delta([tc1, tc2], {}, False, True) == [1, 2]
-
-    def test_undefined_pass_through(self, adapters):
-        conv = adapters.ToolExecConv()
-        assert conv.delta(adapters.UNDEFINED, {}, False, True) is adapters.UNDEFINED
+# Note: TestToolExecConv moved to tests/proc/test_resp.py as it tests core functionality

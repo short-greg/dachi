@@ -51,6 +51,7 @@ from ._out import (
     ParseOut,
     ParsedOut,
     CSVOut,
+    ToolExecConv,
     conv_to_out,
 
 )
@@ -64,6 +65,9 @@ from ._ai import (
 from ._resp import (
     RespProc,
     FromResp,
+    TextConv,
+    StructConv,
+    ParsedConv,
 )
 from ._parse import (
     Parser,

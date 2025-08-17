@@ -5,15 +5,14 @@ from typing import (
     Callable, Type, Optional,
     Any, Dict, get_type_hints
 )
+import typing as t
 from inspect import signature, Parameter
 import inspect
 
 # 3rd party
 import pydantic
 from pydantic import create_model, BaseModel
-
-# locla
-from ._base import BaseModule
+from pydantic import Field
 
 # local
 from ..utils import is_async_function, pydantic_v2
@@ -155,9 +154,44 @@ class ToolCall(pydantic.BaseModel):
         return result
 
 
+class ToolError(BaseModel):
+    """
+    Normalized tool error information. Preserve a compact provider blob for audits.
+
+    Attributes:
+        kind: Short category ('timeout', 'navigation', 'validation', 'permission', 'provider', ...).
+        message: Human-readable summary.
+        provider_raw: Optional compact provider payload.
+    """
+    kind: str
+    message: str
+    provider_raw: t.Optional[t.Dict[str, t.Any]] = None
+
+
+class ComputerUse(BaseModel):
+    """
+    Small, structured telemetry for computer-use tools (not sent directly to providers).
+
+    Attributes:
+        action: Optional action, e.g. 'open_url', 'click', 'type', 'scroll'.
+        log: Short progress note.
+        ocr_text: Optional OCR snippet tied to the latest screenshot.
+        focus: Optional element/region description.
+        extras: Additional small fields specific to the action.
+    """
+    action: t.Optional[str] = None
+    log: t.Optional[str] = None
+    ocr_text: t.Optional[str] = None
+    focus: t.Optional[t.Dict[str, t.Any]] = None
+    extras: t.Dict[str, t.Any] = Field(default_factory=dict)
+
+
 class ToolOut(pydantic.BaseModel):
     """A response from the LLM that a tool was called
     """
+    tool_call_id: str = pydantic.Field(
+        description="The ID linking this output to the original tool call"
+    )
     option: ToolDef = pydantic.Field(
         description="The tool that was chosen."
     )
@@ -195,7 +229,8 @@ class AsyncToolCall(pydantic.BaseModel):
 
 
 class ToolBuilder(object):
-    """Use to build up a tool
+    """Use to build up a tool from the 
+    delta values
     """
     def __init__(self):
         """

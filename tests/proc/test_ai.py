@@ -34,7 +34,7 @@ class DummyAIModel(
         resp = Resp(
             msg=Msg(
             role='assistant', 
-            content=self.target
+            text=self.target
         ))
         resp.data['response'] = self.target
         resp.data['content'] = self.target
@@ -55,14 +55,14 @@ class DummyAIModel(
         
             resp = resp.spawn(
                 msg=Msg(
-                role='assistant', content=self.target
+                role='assistant', text=self.target
             ))
             resp.data['response'] = self.target
             resp.data['content'] = c
             yield RespProc.run(resp, self.proc, is_last=False, is_streamed=True)
     
         resp = resp.spawn(msg=Msg(
-            role='assistant', content=self.target
+            role='assistant', text=self.target
         ))
         resp.data['response'] = END_TOK
         resp.data['content'] = ''
@@ -122,14 +122,14 @@ class TextResp(_ai.RespProc):
         resp: Resp, 
         result, 
         delta_store, 
-        streamed = False, 
+        is_streamed = False, 
         is_last = True
     ):
         
         resp.out[self.name] = delta_store.get(
             'content', ''
         )
-        resp.msg.content = delta_store.get(
+        resp.msg.text = delta_store.get(
             'content', ''
         )
 
@@ -137,19 +137,20 @@ class TextResp(_ai.RespProc):
         self, 
         resp,
         delta_store: typing.Dict, 
-        streamed: bool=False, 
+        is_streamed: bool=False, 
         is_last: bool=True
     ) -> typing.Any: 
         
         if resp is not _ai.END_TOK:
-            resp = resp['content']
-            print(resp)
+            # resp is now the raw response dict from resp.data['response']
+            content = resp.get('content', '') if isinstance(resp, dict) else str(resp)
+            print(content)
             utils.acc(
                 delta_store, 
                 'content',
-                resp
+                content
             )
-            return resp
+            return content
         return ''
 
 
@@ -164,7 +165,7 @@ class DeltaResp(_ai.RespProc):
         resp, 
         result, 
         delta_store, 
-        streamed = False, 
+        is_streamed = False, 
         is_last = True
     ):
         resp.out[self.name] = delta_store.get('content', '')
@@ -173,11 +174,11 @@ class DeltaResp(_ai.RespProc):
         self, 
         resp, 
         delta_store: typing.Dict, 
-        streamed: bool=False, 
+        is_streamed: bool=False, 
         is_last: bool=True
     ) -> typing.Any: 
         if resp is not _ai.END_TOK:
-            return resp['content']
+            return resp.get('content', '') if isinstance(resp, dict) else str(resp)
         return ''
 
 
@@ -215,9 +216,9 @@ class TestLLM:
         ):
             print('R: ', type(r))
             responses.append(r)
-            contents.append(r.msg.content)
+            contents.append(r.msg.text)
             deltas.append(r.data['content'])
         assert contents[0] == 'H'
         assert contents[-1] == 'Hi! Jack'
         assert deltas[-1] is ''
-        assert responses[-1].msg.content == 'Hi! Jack'
+        assert responses[-1].msg.text == 'Hi! Jack'

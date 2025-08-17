@@ -11,7 +11,7 @@ from dachi.core import (
 # Helpers
 def _sample_msg(**overrides):
     """Return a minimal valid `Msg`, applying any keyword overrides."""
-    base = {"role": "user", "content": "hello"}
+    base = {"role": "user", "text": "hello"}
     base.update(overrides)
     return Msg(**base)
 
@@ -38,7 +38,7 @@ class TestMsg:
         msg = _sample_msg()
         as_dict = msg.model_dump()
         assert as_dict["role"] == "user"
-        assert as_dict["content"] == "hello"
+        assert as_dict["text"] == "hello"
         # optional fields defaulted
         assert as_dict.get("alias") is None
 
@@ -51,9 +51,9 @@ class TestMsg:
 
     def test_large_content_and_dict_content(self):
         big = "x" * 1_048_576  # 1 MiB
-        Msg(role="system", content=big)  # should not raise
+        Msg(role="system", text=big)  # should not raise
         nested = {"a": 1, "b": {"c": 2}}
-        Msg(role="assistant", content=nested)  # should not raise
+        Msg(role="assistant", text=nested)  # should not raise
 
 #     # --------------------------- behaviour ---------------------------
 
@@ -94,16 +94,24 @@ class TestMsg:
         assert msg.render() == "🦊: hello"
 
     def test_to_input_normal(self):
+        # Note: to_input() method removed - conversion now handled by AIAdapt
         msg = _sample_msg()
-        assert msg.to_input() == {"role": "user", "content": "hello"}
+        # Test basic message structure instead
+        assert msg.role == "user"
+        assert msg.text == "hello"
 
     def test_to_input_filtered_returns_empty(self):
+        # Note: to_input() method removed - conversion now handled by AIAdapt
         msg = _sample_msg(filtered=True)
-        assert msg.to_input() == {}
+        # Test filtered flag is set correctly
+        assert msg.filtered == True
 
     def test_equality_semantics(self):
-        a = _sample_msg()
-        b = _sample_msg()
+        # Use fixed timestamp to ensure equality
+        from datetime import datetime, timezone
+        fixed_time = datetime(2023, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+        a = _sample_msg(timestamp=fixed_time)
+        b = _sample_msg(timestamp=fixed_time)
         assert a == b and a is not b
 
 
@@ -168,9 +176,9 @@ class TestResp:
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _msg(role="user", content="hi", **kw):
+def _msg(role="user", text="hi", **kw):
     """Convenience for quickly making valid Msg objects."""
-    return Msg(role=role, content=content, **kw)
+    return Msg(role=role, text=text, **kw)
 
 
 # ---------------------------------------------------------------------------
@@ -298,8 +306,8 @@ class TestListDialog:
         clone = dlg.clone()
         assert clone is not dlg and list(clone) == list(dlg)
         # shallow: mutate message object shared
-        m1.content = "changed"
-        assert clone[0].content == "changed"
+        m1.text = "changed"
+        assert clone[0].text == "changed"
         # but structural independence
         dlg.append(_msg("z"))
         assert len(clone) == 2 < len(dlg)
@@ -307,11 +315,14 @@ class TestListDialog:
     # # ----- to_input / render helpers ----------------------------------------
 
     def test_to_input_filters(self):
+        # Note: to_input() method removed - conversion now handled by AIAdapt
         visible = _msg("user", "show")
         hidden = _msg("assistant", "hide", filtered=True)
         dlg = ListDialog(messages=[visible, hidden])
-        res = dlg.to_input()
-        assert res == [visible.to_input()]
+        # Test filtering behavior in dialog
+        assert len(dlg) == 2
+        assert not visible.filtered
+        assert hidden.filtered
 
     def test_render_default(self):
         m1, m2 = _msg("system", "hello"), _msg("user", "world")
@@ -322,9 +333,9 @@ class TestListDialog:
 
 
 
-def _msg(role: str = "user", content: str = "hi", **kw) -> Msg:
+def _msg(role: str = "user", text: str = "hi", **kw) -> Msg:
     """Convenience factory for a valid Msg object."""
-    return Msg(role=role, content=content, **kw)
+    return Msg(role=role, text=text, **kw)
 
 
 class TestDialogTurn:
@@ -531,7 +542,7 @@ class TestTreeDialog:
 
     def test_multiple_appends_creates_linear_path(self):
         td = TreeDialog()
-        ms = [_msg(content=f"m{i}") for i in range(3)]
+        ms = [_msg(text=f"m{i}") for i in range(3)]
         for m in ms:
             td.append(m)
 
@@ -699,7 +710,7 @@ class TestTreeDialog:
 
     def test_iteration_order_root_to_leaf(self):
         td = self._build_three_level_tree()
-        contents = [m.content for m in td]
+        contents = [m.text for m in td]
         assert contents == ["root", "child", "grandchild"]
 
     # # ------------------------------------------------------------------

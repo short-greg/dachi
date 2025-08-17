@@ -110,7 +110,7 @@ class ToOut(
             Msg: The processed message
         """
         delta_store = utils.get_or_set(
-            resp.delta, self.name, {}
+            resp.delta.proc_store, self.name, {}
         )
 
         if isinstance(self.from_, str):
@@ -947,6 +947,59 @@ class CSVOut(ToOut):
 
     def template(self):
         return super().template()
+
+
+class ToolExecConv(ToOut):
+    """Use for converting a tool from a response to execute it.
+    
+    This converter takes tool call objects and executes them, returning
+    the execution results. Works with the unified Resp structure.
+    """
+    name: str = 'tools'
+    from_: str = 'tool'
+    
+    def delta(
+        self, 
+        resp, 
+        delta_store: typing.Dict, 
+        is_streamed: bool=False, 
+        is_last: bool=True
+    ) -> typing.Any:
+        """Execute tool calls and return results.
+
+        Args:
+            resp: Tool call data from unified response structure
+            delta_store: State storage for streaming
+            is_streamed: Whether this is a streaming response
+            is_last: Whether this is the final chunk
+
+        Returns:
+            Execution results or UNDEFINED if no tools to execute
+        """
+        if resp is None or resp is utils.UNDEFINED:
+            return utils.UNDEFINED
+        
+        # Handle individual ToolCall objects
+        if hasattr(resp, '__call__'):
+            return resp()
+        
+        # Handle list of ToolCall objects
+        if isinstance(resp, list):
+            return [r() for r in resp if hasattr(r, '__call__')]
+        
+        return utils.UNDEFINED
+
+    def render(self, data: typing.Any) -> str:
+        """Render tool execution result as string"""
+        return str(data)
+
+    def template(self) -> str:
+        """Template for tool execution output"""
+        return "{result}"
+
+    def example(self) -> str:
+        """Example tool execution output"""
+        return "Tool execution result"
 
 
 def conv_to_out(

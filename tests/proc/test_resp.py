@@ -1,6 +1,9 @@
-from dachi.core import Msg, Resp
-from dachi.proc import _resp as _resp
+from dachi.core import Msg, Resp, ToolDef, ToolCall
+from dachi.proc import _resp as _resp, TextConv, StructConv, ParsedConv, ToolExecConv
 from dachi import utils
+import json
+import pytest
+import pydantic
 
 
 class EchoProc(_resp.RespProc):
@@ -157,3 +160,166 @@ class TestFromResp:
 
         fr = _resp.FromResp(keys=["a", "b"], as_dict=True)
         assert fr(resp) == {"a": "A", "b": "B"}
+
+
+# ------------------------------------------------------------------
+# Unified Response Processors -------------------------------------
+# ------------------------------------------------------------------
+
+
+class TestTextConv:
+    """
+    Validate delta & post logic for TextConv with unified response format.
+    """
+
+    def test_non_stream(self):
+        conv = TextConv()
+        delta_store = {}
+        resp_text = "hello"
+        
+        result = conv.delta(resp_text, delta_store, streamed=False, is_last=True)
+        
+        # Create mock response and test post processing
+        resp = Resp(msg=Msg(role="assistant"))
+        conv.post(resp, result, delta_store, streamed=False, is_last=True)
+        
+        assert delta_store["all_content"] == "hello"
+        assert resp.msg.text == "hello"
+
+    def test_stream_chunks_accumulate(self):
+        conv = TextConv()
+        delta_store = {}
+        
+        # Process streaming chunks
+        conv.delta("he", delta_store, streamed=True, is_last=False)
+        conv.delta("llo", delta_store, streamed=True, is_last=False)
+        
+        # Create mock response and test post processing
+        resp = Resp(msg=Msg(role="assistant"))
+        conv.post(resp, None, delta_store, streamed=True, is_last=True)
+        
+        assert delta_store["all_content"] == "hello"
+        assert resp.msg.text == "hello"
+
+    @pytest.mark.parametrize("payload", [None, ""])
+    def test_none_empty(self, payload):
+        conv = TextConv()
+        delta_store = {}
+        
+        result = conv.delta(payload, delta_store, streamed=False, is_last=True)
+        
+        resp = Resp(msg=Msg(role="assistant"))
+        conv.post(resp, result, delta_store, streamed=False, is_last=True)
+        
+        assert delta_store["all_content"] == ""
+        assert resp.msg.text == ""
+
+
+class TestStructConv:
+    """Exercise StructConv in all supported modes with unified format."""
+
+    def test_default_json_object(self):
+        conv = StructConv()
+        assert conv.prep() == {"response_format": "json_object"}
+
+    def test_custom_schema_dict(self):
+        schema = {"type": "object", "properties": {"foo": {"type": "string"}}}
+        conv = StructConv(struct=schema)
+        out = conv.prep()
+        assert out["response_format"]["json_schema"] == schema
+
+    def test_custom_pydantic_model(self):
+        class Foo(pydantic.BaseModel):
+            bar: int
+
+        conv = StructConv(struct=Foo)
+        fmt = conv.prep()
+        assert fmt["response_format"] == Foo
+
+    def test_json_parsing(self):
+        conv = StructConv()
+        delta_store = {}
+        json_text = '{"name": "test", "value": 42}'
+        
+        result = conv.delta(json_text, delta_store, streamed=False, is_last=True)
+        
+        assert isinstance(result, dict)
+        assert result["name"] == "test"
+        assert result["value"] == 42
+
+
+class TestParsedConv:
+    """ParsedConv parses final JSON into model with unified format."""
+
+    def test_valid_json(self):
+        class Foo(pydantic.BaseModel):
+            bar: int
+
+        conv = ParsedConv(struct=Foo)
+        delta_store = {}
+        json_text = json.dumps({"bar": 3})
+        
+        result = conv.delta(json_text, delta_store, streamed=False, is_last=True)
+        
+        assert isinstance(result, Foo) and result.bar == 3
+
+    def test_bad_json_returns_undefined(self):
+        class Foo(pydantic.BaseModel):
+            bar: int
+
+        conv = ParsedConv(struct=Foo)
+        delta_store = {}
+        
+        result = conv.delta("not-json", delta_store, streamed=False, is_last=True)
+        
+        # Should return UNDEFINED instead of raising
+        assert result is utils.UNDEFINED
+
+    def test_not_last_returns_undefined(self):
+        class Foo(pydantic.BaseModel):
+            bar: int
+
+        conv = ParsedConv(struct=Foo)
+        delta_store = {}
+        
+        result = conv.delta('{"bar": 3}', delta_store, streamed=True, is_last=False)
+        
+        assert result is utils.UNDEFINED
+
+
+class TestToolExecConv:
+    """Validate deferred execution helper with unified format."""
+
+    def test_single_call_executed(self):
+        # create a dummy ToolCall that returns value 7
+        class MockTool:
+            def __call__(self):
+                return 7
+                
+        tc = MockTool()
+        
+        conv = ToolExecConv()
+        result = conv.delta(tc, {}, False, True)
+        assert result == 7
+
+    def test_list_executes(self):
+        class MockTool1:
+            def __call__(self):
+                return 1
+                
+        class MockTool2:
+            def __call__(self):
+                return 2
+                
+        tc1 = MockTool1()
+        tc2 = MockTool2()
+        conv = ToolExecConv()
+        assert conv.delta([tc1, tc2], {}, False, True) == [1, 2]
+
+    def test_undefined_pass_through(self):
+        conv = ToolExecConv()
+        assert conv.delta(utils.UNDEFINED, {}, False, True) is utils.UNDEFINED
+
+    def test_none_pass_through(self):
+        conv = ToolExecConv()
+        assert conv.delta(None, {}, False, True) is utils.UNDEFINED
