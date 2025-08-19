@@ -7,7 +7,7 @@ import pydantic
 # local
 from ..core import (
     Msg, END_TOK, Resp,
-    Msg, AIAdapt
+    AIAdapt, DefaultAdapter
 )
 from ._process import AsyncProcess
 from ._resp import RespProc, RESPONSE_FIELD
@@ -56,7 +56,6 @@ def llm_forward(
     _proc = _prepare(_proc, kwargs)
     
     if _adapt is None:
-        from dachi.core import DefaultAdapter
         _adapt = DefaultAdapter()
 
     kwargs.update(_adapt.to_input(*args, **kwargs))
@@ -90,19 +89,18 @@ async def llm_aforward(
         Tuple[Msg, Any]: A tuple containing the processed message and the final value from the response processing.
     """
     _proc = _prepare(_proc, kwargs)
+    
+    if _adapt is None:
+        _adapt = DefaultAdapter()
 
-    kwargs.update(_adapt(*args, **kwargs))
+    kwargs.update(_adapt.to_input(*args, **kwargs))
     result = await f(
         *args, **kwargs
     )
-    result = _adapt.from_output(result)
+    resp = _adapt.from_output(result)
 
-    resp = Resp(
-        msg=Msg(role=_role)
-    )
-    resp.data[RESPONSE_FIELD] = result
     for r in _proc:
-        if isinstance(_proc, AsyncProcess):
+        if isinstance(r, AsyncProcess):
             resp = await r.aforward(resp)
         else:
             resp = r(resp)
@@ -134,7 +132,6 @@ def llm_stream(
     resp = None
     
     if _adapt is None:
-        from dachi.core import DefaultAdapter
         _adapt = DefaultAdapter()
         
     kwargs.update(_adapt.to_input(*args, **kwargs))
@@ -155,9 +152,9 @@ def llm_stream(
         resp.data[RESPONSE_FIELD] = response
 
         for r in _proc:
-            msg = r(resp, True, False)
-        prev_message = msg
-        yield msg
+            resp = r(resp, True, False)
+        prev_message = resp
+        yield resp
     
     msg = Msg(role=_role)
     if prev_message is not None:
@@ -195,6 +192,11 @@ async def llm_astream(
     _proc = _prepare(_proc, kwargs)
     prev_message: Msg | None = None
     resp = None
+    
+    if _adapt is None:
+        _adapt = DefaultAdapter()
+        
+    kwargs.update(_adapt.to_input(*args, **kwargs))
     async for response in await f(
         *args, **kwargs
     ):
@@ -213,12 +215,12 @@ async def llm_astream(
         resp.data[RESPONSE_FIELD] = response
 
         for r in _proc:
-            if isinstance(_proc, AsyncProcess):
+            if isinstance(r, AsyncProcess):
                 resp = await r(resp, True, False)
             else:
                 resp = r(resp, True, False)
 
-        prev_message = msg
+        prev_message = resp.msg
         yield resp
     
     msg = Msg(role=_role)

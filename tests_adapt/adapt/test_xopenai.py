@@ -241,6 +241,66 @@ class TestOpenAIResp:
         assert resp.text == "Hello there!"
 
 
+class TestChatCompletionWithAdapter:
+    """Test ChatCompletion integration with AIAdapt."""
+    
+    def test_forward_uses_adapter(self, openai_adapters, monkeypatch):
+        """Test that forward method properly uses adapter."""
+        # Mock the adapter methods
+        mock_adapter = OpenAIChat()
+        original_to_input = mock_adapter.to_input
+        original_from_output = mock_adapter.from_output
+        
+        # Track calls to adapter methods
+        to_input_calls = []
+        from_output_calls = []
+        
+        def mock_to_input(inp, **kwargs):
+            to_input_calls.append((inp, kwargs))
+            return original_to_input(inp, **kwargs)
+            
+        def mock_from_output(output):
+            from_output_calls.append(output)
+            return original_from_output(output)
+            
+        mock_adapter.to_input = mock_to_input
+        mock_adapter.from_output = mock_from_output
+        
+        # Create ChatCompletion with custom adapter
+        chat = openai_adapters.ChatCompletion(adapt=mock_adapter)
+        
+        # Mock the OpenAI client
+        fake_response = {
+            "id": "test_123",
+            "model": "gpt-4o", 
+            "choices": [{
+                "message": {"role": "assistant", "content": "Test response"},
+                "finish_reason": "stop"
+            }]
+        }
+        
+        def mock_create(*args, **kwargs):
+            return fake_response
+            
+        chat._client.chat.completions.create = mock_create
+        
+        # Test forward call
+        msg = Msg(role="user", text="Hello")
+        result = chat.forward(msg, temperature=0.7)
+        
+        # Verify adapter methods were called
+        assert len(to_input_calls) == 1
+        assert len(from_output_calls) == 1
+        assert to_input_calls[0][0] == msg
+        assert "temperature" in to_input_calls[0][1]
+        assert from_output_calls[0] == fake_response
+        
+        # Verify result
+        from dachi.core import Resp
+        assert isinstance(result, Resp)
+        assert result.text == "Test response"
+        
+        
 class TestToOpenAITool:
     """Unit-tests for the helper that converts ToolDef → OpenAI schema."""
 
@@ -300,6 +360,19 @@ class TestLLMInit:
             y: int
         llm = openai_adapters.LLM(json_output=Foo)
         assert any(isinstance(c, ParsedConv) for c in llm.convs)
+        
+    def test_llm_has_default_adapter(self, openai_adapters):
+        """Test that LLM initializes with default OpenAIChat adapter."""
+        llm = openai_adapters.LLM()
+        assert llm.adapt is not None
+        assert type(llm.adapt).__name__ == "OpenAIChat"
+        
+    def test_llm_custom_adapter(self, openai_adapters):
+        """Test that LLM can use custom adapter."""
+        custom_adapter = OpenAIResp()
+        llm = openai_adapters.LLM(adapt=custom_adapter)
+        assert llm.adapt is custom_adapter
+        assert type(llm.adapt).__name__ == "OpenAIResp"
 
 
 # class TestChatCompletion:

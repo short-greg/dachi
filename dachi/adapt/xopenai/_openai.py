@@ -16,8 +16,8 @@ missing = required - installed
 
 # Local
 from dachi.core import (
-    Msg, to_list_input,
-    ToolDef, BaseModule
+    Msg, to_list_input, Resp,
+    ToolDef, BaseModule, AIAdapt, OpenAIChat
 )
 from dachi import utils
 from dachi.proc import (
@@ -102,6 +102,7 @@ class LLM(BaseModule):
     client_kwargs: InitVar[typing.Dict | None] = None
     kwargs: InitVar[typing.Dict] = None
     message_arg: str = 'messages'
+    adapt: AIAdapt | None = None
 
     def __post_init__(
         self, api_key, client_kwargs, kwargs
@@ -137,6 +138,9 @@ class LLM(BaseModule):
         self._aclient = openai.AsyncClient(
             api_key=api_key, **client_kwargs
         )
+        
+        if self.adapt is None:
+            self.adapt = OpenAIChat()
         
     def spawn(self, 
         tools: typing.Iterable[ToolDef]=UNDEFINED,
@@ -197,7 +201,7 @@ class ChatCompletion(LLM, Process, AsyncProcess, StreamProcess, AsyncStreamProce
         self, 
         msg, 
         **kwargs
-    )-> typing.Tuple[Msg, typing.Any]:
+    )-> Resp:
         """
         Processes a message by forwarding it to the language model (LLM) and returns the response.
         Args:
@@ -205,8 +209,7 @@ class ChatCompletion(LLM, Process, AsyncProcess, StreamProcess, AsyncStreamProce
             **kwargs: Additional keyword arguments to customize the LLM request. These arguments
                       are merged with the default arguments stored in `self._kwargs`.
         Returns:
-            typing.Tuple[Msg, typing.Any]: A tuple containing the processed message and the 
-            response from the LLM.
+            Resp: The response from the LLM.
         Notes:
             - This method uses the `llm_forward` function to handle the interaction with the LLM.
             - The `_resp_proc` parameter is used to process the response from the LLM.
@@ -214,11 +217,12 @@ class ChatCompletion(LLM, Process, AsyncProcess, StreamProcess, AsyncStreamProce
         
         kwargs = {
             **self.kwargs,
-            **kwargs, 
-            self.message_arg:to_list_input(msg)
+            **kwargs
         }
         return llm_forward(
             self._client.chat.completions.create, 
+            msg,
+            _adapt=self.adapt,
             _proc=self.proc,
             **kwargs
         )
@@ -227,7 +231,7 @@ class ChatCompletion(LLM, Process, AsyncProcess, StreamProcess, AsyncStreamProce
         self, 
         msg, 
         **kwargs
-    ) -> typing.Tuple[Msg, typing.Any]:
+    ) -> Resp:
         """
         Processes a message by asynchronously forwarding it to the language model (LLM) and returns the response.
         Args:
@@ -235,20 +239,20 @@ class ChatCompletion(LLM, Process, AsyncProcess, StreamProcess, AsyncStreamProce
             **kwargs: Additional keyword arguments to customize the LLM request. These arguments
                       are merged with the default arguments stored in `self._kwargs`.
         Returns:
-            typing.Tuple[Msg, typing.Any]: A tuple containing the processed message and the 
-            response from the LLM.
+            Resp: The response from the LLM.
         Notes:
-            - This method uses the `llm_forward` function to handle the interaction with the LLM.
+            - This method uses the `llm_aforward` function to handle the interaction with the LLM.
             - The `_resp_proc` parameter is used to process the response from the LLM.
         """
 
         kwargs = {
             **self.kwargs, 
-            **kwargs, 
-            self.message_arg: to_list_input(msg)
+            **kwargs
         }
         return await llm_aforward(
             self._aclient.chat.completions.create, 
+            msg,
+            _adapt=self.adapt,
             _proc=self.proc, 
             **kwargs
         )
@@ -257,7 +261,7 @@ class ChatCompletion(LLM, Process, AsyncProcess, StreamProcess, AsyncStreamProce
         self, 
         msg, 
         **kwargs
-    ) -> typing.Iterator[typing.Tuple[Msg, typing.Any]]:
+    ) -> typing.Iterator[Resp]:
         """
         Processes a message by streaming it to the language model (LLM) and returns the response.
         Args:
@@ -265,20 +269,20 @@ class ChatCompletion(LLM, Process, AsyncProcess, StreamProcess, AsyncStreamProce
             **kwargs: Additional keyword arguments to customize the LLM request. These arguments
                       are merged with the default arguments stored in `self._kwargs`.
         Returns:
-            typing.Tuple[Msg, typing.Any]: A tuple containing the processed message and the 
-            response from the LLM.
+            typing.Iterator[Resp]: An iterator of response objects from the LLM.
         Notes:
-            - This method uses the `llm_forward` function to handle the interaction with the LLM.
+            - This method uses the `llm_stream` function to handle the interaction with the LLM.
             - The `_resp_proc` parameter is used to process the response from the LLM.
         """
 
         kwargs = {
             **self.kwargs, 
-            **kwargs, 
-            self.message_arg:to_list_input(msg)
+            **kwargs
         }
         for r in llm_stream(
             self._client.chat.completions.create, 
+            msg,
+            _adapt=self.adapt,
             _proc=self.proc, 
             stream=True,
             **kwargs
@@ -290,7 +294,7 @@ class ChatCompletion(LLM, Process, AsyncProcess, StreamProcess, AsyncStreamProce
         msg, 
         *args, 
         **kwargs
-    ) -> typing.AsyncIterator[typing.Tuple[Msg, typing.Any]]:
+    ) -> typing.AsyncIterator[Resp]:
         """
         Processes a message by streaming it to the language model (LLM) and returns the response.
         Args:
@@ -298,19 +302,19 @@ class ChatCompletion(LLM, Process, AsyncProcess, StreamProcess, AsyncStreamProce
             **kwargs: Additional keyword arguments to customize the LLM request. These arguments
                       are merged with the default arguments stored in `self._kwargs`.
         Returns:
-            typing.Tuple[Msg, typing.Any]: A tuple containing the processed message and the 
-            response from the LLM.
+            typing.AsyncIterator[Resp]: An async iterator of response objects from the LLM.
         Notes:
-            - This method uses the `llm_forward` function to handle the interaction with the LLM.
+            - This method uses the `llm_astream` function to handle the interaction with the LLM.
             - The `_resp_proc` parameter is used to process the response from the LLM.
         """
         kwargs = {
             **self.kwargs, 
-            **kwargs, 
-            self.message_arg: to_list_input(msg)
+            **kwargs
         }
         async for r in await llm_astream(
             self._aclient.chat.completions.create, 
+            msg,
+            _adapt=self.adapt,
             _proc=self.proc,
             stream=True,
             **kwargs
