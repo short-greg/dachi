@@ -278,35 +278,7 @@ class TestToOpenAITool:
 # ------------------------------------------------------------------
 
 
-class TestToolConv:
-    """Validate tool-extraction in both streaming & non-streaming."""
-
-    def test_prep(self, openai_adapters, make_tool_def):
-        tools = [make_tool_def("t")]
-        conv = openai_adapters.ToolConv(tools=tools)
-        prep = conv.prep()
-        assert "tools" in prep and prep["tools"][0]["function"]["name"] == "t"
-
-    def test_non_stream(self, openai_adapters, make_tool_def):
-        tools = [make_tool_def()]
-        conv = openai_adapters.ToolConv(tools=tools, run_call=False)
-        delta_store = {}
-        # build fake tool_call object
-        func = SimpleNamespace(name=tools[0].name, arguments=json.dumps({"x": 1}))
-        tc = SimpleNamespace(id="id", function=func)
-        payload = fake_final_message(content="", tool_calls=[tc], finish="tool_calls")
-        out = conv.delta(payload, delta_store, streamed=False)
-        assert isinstance(out[0], openai_adapters.ToolCall)
-        assert out[0].inputs.x == 1
-
-    def test_stream_incremental(self, openai_adapters, make_tool_def):
-        tools = [make_tool_def()]
-        conv = openai_adapters.ToolConv(tools=tools, run_call=False)
-        ds = {}
-        # first delta chunk (function call)
-        chunk = fake_delta_chunk(tool=True)
-        out = conv.delta(chunk, ds, streamed=True, is_last=False)
-        assert out and isinstance(out[0], openai_adapters.ToolBuilder) or isinstance(out[0], openai_adapters.ToolCall)  # lenient check
+# ToolConv tests moved to tests/proc/test_resp.py since it's now a unified processor
 
 
 # ------------------------------------------------------------------
@@ -323,10 +295,11 @@ class TestLLMInit:
         assert "TextConv" in names and "ToolConv" not in names
 
     def test_json_model_adds_parsed(self, openai_adapters):
+        from dachi.proc._resp import ParsedConv
         class Foo(pydantic.BaseModel):
             y: int
         llm = openai_adapters.LLM(json_output=Foo)
-        assert any(isinstance(c, openai_adapters.ParsedConv) for c in llm.convs)
+        assert any(isinstance(c, ParsedConv) for c in llm.convs)
 
 
 # class TestChatCompletion:

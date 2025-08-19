@@ -4,12 +4,13 @@ from abc import ABC, abstractmethod
 import typing
 import json
 import inspect
+from dataclasses import InitVar
 
 # 3rd party
 import pydantic
 
 # local
-from ..core import Msg, Resp
+from ..core import Msg, Resp, ToolDef, ToolCall, ToolBuilder, END_TOK, render
 from ._process import Process
 from .. import utils
 
@@ -327,6 +328,169 @@ class StructConv(RespProc):
         ):
             return {'response_format': self.struct}
         return {'response_format': "json_object"}
+
+
+class StructStreamConv(RespProc):
+    """
+    Unified structured streaming converter for real-time JSON parsing.
+    Works with the unified Resp structure for streaming responses.
+    """
+    name: str = 'content'
+    from_: str = 'text'
+
+    def delta(
+        self, 
+        resp, 
+        delta_store: typing.Dict, 
+        is_streamed: bool=False, 
+        is_last: bool=False
+    ):
+        """Process streaming structured data chunks."""
+        if not is_streamed:
+            return utils.UNDEFINED
+            
+        if hasattr(resp, 'type'):
+            if resp.type == "content.delta":
+                if hasattr(resp, 'parsed') and resp.parsed is not None:
+                    return resp.parsed
+            elif resp.type == "content.done":
+                return None
+            elif resp.type == "error":
+                raise RuntimeError(resp.error)
+        
+        return utils.UNDEFINED
+
+    def prep(self):
+        """Prepare request parameters for streaming structured output."""
+        return {
+            "response_format": "json_object",
+            "stream": True
+        }
+
+
+class ToolConv(RespProc):
+    """
+    Unified tool call processor that extracts and manages tool calls.
+    Works with the unified Resp structure instead of OpenAI-specific format.
+    """
+    tools: InitVar[typing.List[ToolDef]]
+    name: str = 'tools'
+    from_: str = 'tool_calls'
+    run_call: bool = False
+
+    def __post_init__(self, tools: typing.List[ToolDef]):
+        """Initialize with tool definitions."""
+        super().__post_init__()
+        self.tools = {
+            tool.name: tool
+            for tool in tools
+        }
+
+    def prep(self):
+        """Prepare tool definitions for the request."""
+        return {
+            'tools': [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": tool.name,
+                        "description": tool.description,
+                        "parameters": (
+                            tool.input_model.model_json_schema()
+                            if utils.pydantic_v2() else
+                            tool.input_model.schema()
+                        )
+                    }
+                }
+                for tool in self.tools.values()
+            ]
+        }
+    
+    def post(
+        self, 
+        resp: Resp, 
+        result, 
+        delta_store, 
+        is_streamed = False, 
+        is_last = False
+    ):
+        """Post-process tool calls and add follow-up messages."""
+        if len(delta_store.get('tools', [])) != 0 and self.run_call: 
+            resp.data['tool_calls'] = [
+                tc.model_dump() if hasattr(tc, "model_dump") else tc.to_dict()
+                for tc in delta_store.get('tool_calls', [])
+            ]
+
+            for tool in delta_store['tools']:
+                resp.follow_up.append(Msg(
+                    role="tool",
+                    content=render(tool.result),
+                    tool_call_id=tool.tool_id,
+                    name=tool.option.name
+                ))
+
+    def delta(
+        self, 
+        resp, 
+        delta_store: typing.Dict, 
+        is_streamed: bool=False, 
+        is_last: bool=False
+    ) -> typing.Any:
+        """Process tool calls from unified response structure."""
+        utils.get_or_set(delta_store, 'tool_calls', [])
+        utils.get_or_set(delta_store, 'tools', [])
+        
+        if is_streamed and resp is END_TOK:
+            if 'builder' not in delta_store:
+                return utils.UNDEFINED
+            return delta_store['builder'].tools
+        
+        if is_streamed:
+            if hasattr(resp, 'tool_calls') and resp.tool_calls is not None:
+                tool_call = resp.tool_calls[0]
+                index = getattr(tool_call, 'index', 0)
+                name = getattr(tool_call, 'name', None)
+                args = getattr(tool_call, 'arguments', '')
+
+                builder = utils.get_or_set(
+                    delta_store, 'builder', ToolBuilder()
+                )
+                tool = builder.update(
+                    getattr(tool_call, 'id', ''), index, name, args
+                )
+
+                delta_store['tool'] = tool
+                if isinstance(tool, ToolCall):
+                    delta_store['tools'].append(tool)
+                    if self.run_call:
+                        tool(store=True)
+                    return [tool]
+                else:
+                    return [builder]
+        else:
+            tools = []
+            if hasattr(resp, 'tool_calls') and resp.tool_calls:
+                delta_store['tool_calls'] = resp.tool_calls
+                for tool_call in resp.tool_calls:
+                    name = tool_call.function.name if hasattr(tool_call, 'function') else tool_call.name
+                    argstr = tool_call.function.arguments if hasattr(tool_call, 'function') else tool_call.arguments
+                    args = json.loads(argstr) if isinstance(argstr, str) else argstr
+                    
+                    tool_def = self.tools[name]
+                    
+                    cur_call = ToolCall(
+                        tool_id=getattr(tool_call, 'id', ''),
+                        option=tool_def,
+                        inputs=tool_def.input_model(**args)
+                    )
+                    if self.run_call:
+                        cur_call(store=True)
+                    tools.append(cur_call)
+
+                delta_store['tools'] = tools
+                return tools
+                
+        return []
 
 
 class ParsedConv(RespProc):

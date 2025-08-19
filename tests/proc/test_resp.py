@@ -1,9 +1,11 @@
-from dachi.core import Msg, Resp, ToolDef, ToolCall
+from dachi.core import Msg, Resp, ToolDef, ToolCall, ToolBuilder
 from dachi.proc import _resp as _resp, TextConv, StructConv, ParsedConv, ToolExecConv
+from dachi.proc._resp import ToolConv, StructStreamConv
 from dachi import utils
 import json
 import pytest
 import pydantic
+from types import SimpleNamespace
 
 
 class EchoProc(_resp.RespProc):
@@ -323,3 +325,97 @@ class TestToolExecConv:
     def test_none_pass_through(self):
         conv = ToolExecConv()
         assert conv.delta(None, {}, False, True) is utils.UNDEFINED
+
+
+class TestToolConv:
+    """Test unified ToolConv for processing tool calls."""
+
+    def make_tool_def(self, name="dummy", description="desc"):
+        """Factory to create a minimal ToolDef."""
+        class Args(pydantic.BaseModel):
+            x: int
+
+        def dummy_fn(x: int) -> str:
+            return f"Result: {x}"
+
+        return ToolDef(
+            name=name, description=description, fn=dummy_fn, input_model=Args
+        )
+
+    def test_prep(self):
+        tools = [self.make_tool_def("t")]
+        conv = ToolConv(tools=tools)
+        prep = conv.prep()
+        assert "tools" in prep and prep["tools"][0]["function"]["name"] == "t"
+
+    def test_non_stream(self):
+        tools = [self.make_tool_def()]
+        conv = ToolConv(tools=tools, run_call=False)
+        delta_store = {}
+        
+        # Create mock tool call response
+        func = SimpleNamespace(name=tools[0].name, arguments=json.dumps({"x": 1}))
+        tc = SimpleNamespace(id="id", function=func)
+        resp = SimpleNamespace(tool_calls=[tc])
+        
+        out = conv.delta(resp, delta_store, is_streamed=False)
+        assert isinstance(out[0], ToolCall)
+        assert out[0].inputs.x == 1
+
+    def test_stream_returns_undefined_when_no_tools(self):
+        tools = [self.make_tool_def()]
+        conv = ToolConv(tools=tools, run_call=False)
+        ds = {}
+        
+        # Mock response without tool calls
+        resp = SimpleNamespace(tool_calls=None)
+        out = conv.delta(resp, ds, is_streamed=True, is_last=False)
+        assert out == []
+
+
+class TestStructStreamConv:
+    """Test unified StructStreamConv for streaming structured data."""
+
+    def test_prep(self):
+        conv = StructStreamConv()
+        prep = conv.prep()
+        assert prep["response_format"] == "json_object"
+        assert prep["stream"] is True
+
+    def test_delta_chunk(self):
+        conv = StructStreamConv()
+        delta_store = {}
+        
+        # Mock streaming chunk
+        chunk = SimpleNamespace(type="content.delta", parsed={"key": "value"})
+        result = conv.delta(chunk, delta_store, is_streamed=True, is_last=False)
+        
+        assert result == {"key": "value"}
+
+    def test_delta_done(self):
+        conv = StructStreamConv()
+        delta_store = {}
+        
+        # Mock done signal
+        done = SimpleNamespace(type="content.done")
+        result = conv.delta(done, delta_store, is_streamed=True, is_last=True)
+        
+        assert result is None
+
+    def test_delta_error(self):
+        conv = StructStreamConv()
+        delta_store = {}
+        
+        # Mock error
+        error = SimpleNamespace(type="error", error="Something went wrong")
+        
+        with pytest.raises(RuntimeError, match="Something went wrong"):
+            conv.delta(error, delta_store, is_streamed=True, is_last=False)
+
+    def test_non_streamed_returns_undefined(self):
+        conv = StructStreamConv()
+        delta_store = {}
+        
+        result = conv.delta("some text", delta_store, is_streamed=False, is_last=True)
+        
+        assert result is utils.UNDEFINED
