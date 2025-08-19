@@ -12,6 +12,7 @@ from ._process import (
     AsyncParallel,
     AsyncStreamProcess,
     AsyncStreamSequence,
+    Partial,
     astream,
     aforward,
     async_multiprocess,
@@ -23,7 +24,9 @@ from ._process import (
     stream,
     process_loop,
     process_map,
-    create_proc_task
+    create_proc_task,
+    multiprocess,
+    async_multiprocess,
 )
 from ._graph import (
     BaseNode,
