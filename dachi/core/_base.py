@@ -168,6 +168,137 @@ class ShareableItem(t.Generic[J]):
             if origin in {Param, Attr, Shared}:
                 return t.get_args(base)[0]
         return None
+    
+    def __eq__(self, other):
+        if isinstance(other, ShareableItem):
+            return self.data == other.data
+        return False
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
+    def __str__(self):
+        return str(self.data)
+
+    def __repr__(self):
+        return f"{self.__class__.__name__}({repr(self.data)})"
+
+    def __call__(self, value: J):
+        self.data = value
+        return self.data
+
+    # Arithmetic dunder methods
+    def __add__(self, other):
+        result = self.data + (other.data if isinstance(other, ShareableItem) else other)
+        self.data = result
+        return self
+
+    def __sub__(self, other):
+        result = self.data - (other.data if isinstance(other, ShareableItem) else other)
+        self.data = result
+        return self
+
+    def __mul__(self, other):
+        result = self.data * (other.data if isinstance(other, ShareableItem) else other)
+        self.data = result
+        return self
+
+    def __truediv__(self, other):
+        result = self.data / (other.data if isinstance(other, ShareableItem) else other)
+        self.data = result
+        return self
+
+    def __floordiv__(self, other):
+        result = self.data // (other.data if isinstance(other, ShareableItem) else other)
+        self.data = result
+        return self
+
+    def __mod__(self, other):
+        result = self.data % (other.data if isinstance(other, ShareableItem) else other)
+        self.data = result
+        return self
+
+    def __pow__(self, other):
+        result = self.data ** (other.data if isinstance(other, ShareableItem) else other)
+        self.data = result
+        return self
+
+    # Reverse arithmetic dunder methods
+    def __radd__(self, other):
+        result = (other.data if isinstance(other, ShareableItem) else other) + self.data
+        self.data = result
+        return self
+
+    def __rsub__(self, other):
+        result = (other.data if isinstance(other, ShareableItem) else other) - self.data
+        self.data = result
+        return self
+
+    def __rmul__(self, other):
+        result = (other.data if isinstance(other, ShareableItem) else other) * self.data
+        self.data = result
+        return self
+
+    def __rtruediv__(self, other):
+        result = (other.data if isinstance(other, ShareableItem) else other) / self.data
+        self.data = result
+        return self
+
+    def __rfloordiv__(self, other):
+        result = (other.data if isinstance(other, ShareableItem) else other) // self.data
+        self.data = result
+        return self
+
+    def __rmod__(self, other):
+        result = (other.data if isinstance(other, ShareableItem) else other) % self.data
+        self.data = result
+        return self
+
+    def __rpow__(self, other):
+        result = (other.data if isinstance(other, ShareableItem) else other) ** self.data
+        self.data = result
+        return self
+
+    # In-place arithmetic dunder methods
+    def __iadd__(self, other):
+        self.data = self.data + (other.data if isinstance(other, ShareableItem) else other)
+        return self
+
+    def __isub__(self, other):
+        self.data = self.data - (other.data if isinstance(other, ShareableItem) else other)
+        return self
+
+    def __imul__(self, other):
+        self.data = self.data * (other.data if isinstance(other, ShareableItem) else other)
+        return self
+
+    def __itruediv__(self, other):
+        self.data = self.data / (other.data if isinstance(other, ShareableItem) else other)
+        return self
+
+    def __ifloordiv__(self, other):
+        self.data = self.data // (other.data if isinstance(other, ShareableItem) else other)
+        return self
+
+    def __imod__(self, other):
+        self.data = self.data % (other.data if isinstance(other, ShareableItem) else other)
+        return self
+
+    def __ipow__(self, other):
+        self.data = self.data ** (other.data if isinstance(other, ShareableItem) else other)
+        return self
+
+    def __lt__(self, other):
+        return self.data < (other.data if isinstance(other, ShareableItem) else other)
+
+    def __le__(self, other):
+        return self.data <= (other.data if isinstance(other, ShareableItem) else other)
+
+    def __gt__(self, other):
+        return self.data > (other.data if isinstance(other, ShareableItem) else other)
+
+    def __ge__(self, other):
+        return self.data >= (other.data if isinstance(other, ShareableItem) else other)
 
 
 class Param(ShareableItem[J]):
