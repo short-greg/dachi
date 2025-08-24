@@ -791,27 +791,40 @@ class Partial(pydantic.BaseModel):
 
 
 class Func(Process):
-    """
+    """Function process that applies a callable to the input data.
     """
     f: typing.Callable
     args: typing.List[typing.Any] = None
     kwargs: typing.Dict[str, typing.Any] = None
 
     def __post_init__(self):
+        """Initialize the function process with default arguments if not provided.
 
+        """
         if self.args is None:
             self.args = []
         if self.kwargs is None:
             self.kwargs = {}
 
     def forward(self, *args, **kwargs):
+        """
+        Forward the input data through the function process.
 
+        Args:
+            *args: Positional arguments to pass to the function.
+            **kwargs: Keyword arguments to pass to the function.
+
+        Returns:
+            The result of the function call.
+        """
         return self.f(
             *self.args, *args, **self.kwargs, **kwargs
         )
 
 
 class StreamSequence(StreamProcess):
+    """Stream sequence that applies a pre-processing, a module, and a post-processing step.
+    """
 
     pre: Process
     mod: StreamProcess
@@ -825,6 +838,8 @@ class StreamSequence(StreamProcess):
 
 
 class AsyncStreamSequence(AsyncStreamProcess):
+    """Asynchronous stream sequence that applies a pre-processing, a module, and a post-processing step.
+    """
 
     pre: Process | AsyncProcess
     mod: AsyncStreamProcess

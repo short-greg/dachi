@@ -50,9 +50,7 @@ T = t.TypeVar("T")
 J = t.TypeVar("J", bound=t.Union[BaseModel, dict, str, int, float, bool])
 
 from typing import Generic, Union
-# -----------------------------------------------------------
-# Shareable leaf hierarchy
-# -----------------------------------------------------------
+
 
 def to_kind(cls): 
     """Convert a class to its kind."""
@@ -305,6 +303,13 @@ class Param(ShareableItem[J]):
     """Trainable parameter; ``training`` may be toggled to freeze it."""
     
     def __init__(self, data: J, fixed: bool=False):
+        """
+        Initialize a trainable parameter.
+
+        Args:
+            data (J): The initial value of the parameter.
+            fixed (bool): Whether the parameter is fixed (unmodifiable).
+        """
 
         super().__init__(data)
         self._fixed = fixed
@@ -317,24 +322,41 @@ class Param(ShareableItem[J]):
         data = super().set(data)
 
     def is_fixed(self) -> bool:
+        """
+        Check if the parameter is fixed.
+        """
         return self._fixed
     
     def fix(self):
-
+        """
+        Fix the parameter, making it unmodifiable.
+        """
         self._fixed = True
 
     def unfix(self):
-
+        """
+        Unfix the parameter, making it modifiable.
+        """
         self._fixed = False
 
 
 class Attr(ShareableItem[J]):
-    """Mutable runtime state (e.g. counters, RNG seeds, rolling averages)."""
+    """Mutable runtime state (e.g. counters, RNG seeds, rolling averages).
+
+    Example:
+
+    attr = Attr[float](data=0.0)
+    """
     pass
 
 
 class Shared(ShareableItem[J]):
-    """Pointer‑like wrapper whose value should *not* enter ``state_dict``."""
+    """Pointer‑like wrapper whose value should *not* enter ``state_dict``.
+    
+    Example:
+
+    shared = Shared[float](data=0.0)
+    """
     pass
 
 
@@ -395,6 +417,11 @@ class ExampleMixin(ABC):
 
 
 class BaseSpec(BaseModel):
+    """Base class for Specs
+    Specs are automatically subclassed by BaseModule 
+    to create a Spec for that Module. It can
+    manually be subclassed if needed.
+    """
 
     kind : str
     id   : str = Field(
@@ -440,7 +467,16 @@ def get_class_annotations(cls: type) -> dict[str, type]:
 
 @dataclass_transform(kw_only_default=True, field_specifiers=(Field,))
 class BaseModule:
-    """Dataclass‑like runtime object without exec‑generated ``__init__``."""
+    """Dataclass‑like runtime object without exec‑generated ``__init__``.
+    
+    A Pydantic BaseModel will be created for BaseModules
+    automatically so all fields specified in the
+    class header must be serializable by Pydantic to
+    create the Spec.
+
+    Use InitVar to indicate that a variable should be initialized in post_init. Other fields will automatically be included as member variables.
+
+    """
 
     # populated by __init_subclass__
     __spec__: t.ClassVar[type[BaseSpec]]
@@ -640,6 +676,9 @@ class BaseModule:
     def named_parameters(
         self, *, recurse: bool = True, prefix: str = ""
     ) -> t.Generator[tuple[str, Param], None, None]:
+        """
+        Yield all parameter names and their corresponding Param objects.
+        """
         for name, p in self._parameters.items():
             #if train_only is None or p.training is train_only:
             # if train_only and isinstance(p, Param) or not train_only:
@@ -656,6 +695,9 @@ class BaseModule:
         return self._modules.values()
 
     def named_states(self, *, recurse: bool = True, prefix: str = ""):
+        """
+        Yield all states names and their corresponding Attr objects.
+        """
         for name, s in self._states.items():
             yield f"{prefix}{name}", s
         if recurse:
@@ -697,6 +739,9 @@ class BaseModule:
         return self
 
     def named_children(self):
+        """
+        Yield all child module names and their corresponding modules.
+        """
         return self._modules.items()
 
     def spec_hook(
@@ -876,18 +921,24 @@ class BaseModule:
             super().__setattr__(name, value)
 
     def register_parameter(self, name: str, param: Param):
+        """Register a parameter with the given name."""
         self._parameters[name] = param
         super().__setattr__(name, param)
 
     def register_state(self, name: str, state: Attr):
+        """Register a state with the given name."""
         self._states[name] = state
         super().__setattr__(name, state)
 
     def register_module(self, name: str, module: 'BaseModule'):
+        """Register a submodule with the given name."""
         self._modules[name] = module
         super().__setattr__(name, module)
 
     def parameters(self, *, recurse: bool = True, _seen: t.Optional[set[int]] = None) -> t.Iterator[Param]:
+        """
+        Yield all parameter names and their corresponding Param objects.
+        """
         if _seen is None:
             _seen = set()
 
@@ -908,6 +959,15 @@ class BaseModule:
         train: bool = True,
         runtime: bool = True,
     ) -> dict[str, t.Any]:
+        """
+        Returns a dictionary representation of the module's state.
+
+        Args:
+            recurse: Whether to recurse into child modules.
+            train: Whether to include training parameters (Param).
+            runtime: Whether to include runtime states (Attr).
+        """
+
         out: dict[str, t.Any] = {}
 
         if train:
@@ -960,7 +1020,16 @@ class BaseModule:
         runtime: bool = True,
         strict: bool = True
     ):
-        
+        """
+        Load the state dictionary into the module.
+
+        Args:
+            sd: The state dictionary to load.
+            recurse: Whether to recurse into child modules.
+            train: Whether to include training parameters (Param).
+            runtime: Whether to include runtime states (Attr).
+            strict: Whether to enforce strict loading (i.e., all keys must match).
+        """
         if not isinstance(sd, dict):
             raise TypeError(
                 f"StateDict must be of type dict not {type(sd)}"
@@ -1167,6 +1236,14 @@ class Registry:
                  name: Optional[str] = None,
                  tags: Optional[Dict[str, Any]] = None,
                  description: Optional[str] = None) -> Callable[[Union[type, Callable]], Union[type, Callable]]:
+        """
+        Register a Module in the registry.
+
+        Args:
+            name: The name of the module.
+            tags: A dictionary of tags associated with the module.
+            description: A description of the module.
+        """
         def decorator(obj: Union[type, Callable]) -> Union[type, Callable]:
 
             key: str = name or to_kind(obj)
@@ -1190,6 +1267,16 @@ class Registry:
                obj_type: Optional[str] = None,
                tags: Optional[Dict[str, Any]] = None,
                package: Optional[str] = None) -> Dict[str, RegistryEntry]:
+        """
+        Filter the registry entries based on the given criteria.
+        Args:
+            obj_type: The type of the object to filter by.
+            tags: A dictionary of tags to filter by.
+            package: The package to filter by.
+
+        Returns:
+            A dictionary of matching registry entries.
+        """
         results: Dict[str, RegistryEntry] = {}
         for k, v in self._entries.items():
             if obj_type and v.type != obj_type:
@@ -1211,19 +1298,32 @@ class Registry:
             raise KeyError(f"Registry entry '{key}' not found. Available entries: {list(self._entries.keys())}")
 
     def deregister(self, key: str) -> None:
+        """Remove an entry from the registry by key."""
         if key in self._entries:
             del self._entries[key]
 
     def list_entries(self) -> List[str]:
+        """
+        List all registered entries in the registry.
+        """
         return list(self._entries.keys())
 
     def list_types(self) -> List[str]:
+        """
+        List all unique types of registered entries.
+        """
         return list(set(v.type for v in self._entries.values()))
 
     def list_packages(self) -> List[str]:
+        """
+        List all unique packages of registered entries.
+        """
         return list(set(v.package for v in self._entries.values()))
 
     def list_tags(self) -> List[str]:
+        """
+        List all unique tags of registered entries.
+        """
         tags: set[str] = set()
         for v in self._entries.values():
             tags.update(v.tags.keys())
@@ -1233,6 +1333,16 @@ class Registry:
                  name: Optional[str] = None,
                  tags: Optional[Dict[str, Any]] = None,
                  description: Optional[str] = None) -> Callable[[Union[type, Callable]], Union[type, Callable]]:
+        """
+        Create a decorator to register a module.
+        Args:
+            name: The name of the module.
+            tags: A dictionary of tags associated with the module.
+            description: A description of the module.
+
+        Returns:
+            A decorator that registers the module.
+        """
         return self.register(
             name=name,
             tags=tags,
@@ -1273,6 +1383,9 @@ class AdaptModule(
     # fixed: bool = False
 
     def __post_init__(self):
+        """
+        Initialize the adapted module.
+        """
         super().__post_init__()
         self._allowed = list()
         self._adapted_param = Param(data=None)
@@ -1283,10 +1396,16 @@ class AdaptModule(
 
     @property
     def allowed(self) -> t.List:
+        """
+        Get the allowed sub-module classes.
+        """
         return [*self._allowed]
 
     @allowed.setter
     def allowed(self, allowed: t.List):
+        """
+        Set the allowed sub-module classes.
+        """
         if allowed is None:
             self._allowed = None
             return

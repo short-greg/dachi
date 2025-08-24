@@ -15,7 +15,7 @@ from pydantic import create_model, BaseModel
 from pydantic import Field
 
 # local
-from ..utils import is_async_function, pydantic_v2
+from ..utils import is_async_function
 
 # 1) How can the tool be used by the LLM
 # 2) So I would simply pass the tool to the
@@ -146,7 +146,7 @@ class ToolCall(pydantic.BaseModel):
     option_text: str | None = None
 
     def __call__(self, store: bool=False):
-        data = self.inputs.model_dump() if pydantic_v2() else self.inputs.model_dump()
+        data = self.inputs.model_dump()
         # remaining keys are normal named parameters
         result = self.option.fn(**data)
         if store:
@@ -221,7 +221,7 @@ class AsyncToolCall(pydantic.BaseModel):
         Returns:
             typing.Any: The result of the call
         """
-        data = self.inputs.model_dump() if pydantic_v2() else self.inputs.dict()
+        data = self.inputs.model_dump()
         result = await self.option.fn(**data)
         if store:
             self.result = result

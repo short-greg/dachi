@@ -140,7 +140,6 @@ class ModuleList(BaseModule): # t.Generic[V]
         return [*self._module_list]
     
 
-
 class ModuleDict(BaseModule):
     """
     A dict-like container whose values are themselves `BaseModule`
@@ -226,6 +225,9 @@ class ModuleDict(BaseModule):
         val: t.Any,
         to_dict: bool = False,
     ):
+        """
+        Spec hook for the module dict.
+        """
         if name == "items":
             return {
                 k: v.spec(to_dict=to_dict)

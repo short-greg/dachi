@@ -63,7 +63,11 @@ from ._ai import (
     llm_astream,
     LLM_PROMPT,
     llm_forward,
-    llm_stream
+    llm_stream,
+    AIAdapt,
+    DefaultAdapter,
+    OpenAIChat,
+    OpenAIResp
 )
 from ._resp import (
     RespProc,

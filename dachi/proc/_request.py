@@ -1,23 +1,19 @@
+from __future__ import annotations
+
 import asyncio
+import inspect
 import threading
 import time
+import traceback
 import uuid
-import inspect
+from concurrent.futures import Future
 from dataclasses import dataclass
 from enum import Enum, auto
-from typing import Any, Callable, Optional, Iterator
-from concurrent.futures import Future
 from queue import Queue, Empty
-from ._utils import singleton
-import threading
-import traceback
-from queue import Queue, Empty
-from typing import Iterator, Optional
+from typing import Any, Iterator, Optional, Callable
 
-import inspect
-from typing import Callable, Any, Optional
-# You already have this:
-# from your_project import singleton
+from ..utils._utils import singleton
+from ._process import AsyncProcess, AsyncStreamProcess
 
 
 class RequestState(Enum):
@@ -66,13 +62,12 @@ _SENTINEL = object()
 MAX_CONCURRENCY = 8 
 
 @singleton
-class RequestDispatcher:
+class AsyncDispatcher:
     """
-    Sync-friendly dispatcher with true concurrency (bounded by a semaphore).
+    Async dispatcher with true concurrency (bounded by a semaphore).
     Submit:
-      - submit_func(f, *args, _callback=None, **kwargs) -> req_id
-      - submit_stream(f, *args, _callback=None, **kwargs) -> req_id
-      - submit_rest(method, url, *, as_json=False, **requests_kwargs) -> req_id
+      - submit_proc(proc, *args, _callback=None, **kwargs) -> req_id
+      - submit_stream(proc, *args, _callback=None, **kwargs) -> req_id
     Consume:
       - status(req_id) -> RequestStatus | None
       - result(req_id) -> Any | None (raises stored error on ERROR)
@@ -88,15 +83,15 @@ class RequestDispatcher:
         t = threading.Thread(target=self._run_loop, daemon=True)
         t.start()
 
-    def submit_func(
+    def submit_proc(
         self,
-        f: Callable[..., Any],
+        proc: AsyncProcess,
         /,
         *args,
         _callback: Optional[Callable[[str, Any, Optional[BaseException]], None]] = None,
         **kwargs,
     ) -> str:
-        """Schedule a function (sync or async). Returns request id."""
+        """Schedule an AsyncProcess. Returns request id."""
         req_id, job = self._create_job(_callback, stream=False)
 
         async def _job():
@@ -105,7 +100,7 @@ class RequestDispatcher:
                     return self._complete_cancel(job)
                 self._mark_running(job, streaming=False)
                 try:
-                    res = await self._run_callable(f, *args, **kwargs)
+                    res = await proc.aforward(*args, **kwargs)
                     self._complete_ok(job, res)
                 except Exception as exc:
                     self._complete_err(job, exc)
@@ -115,23 +110,15 @@ class RequestDispatcher:
 
     def submit_stream(
         self,
-        f: Callable[..., Any],
+        proc: AsyncStreamProcess,
         /,
         *args,
         _callback: Optional[Callable[[str, Any, Optional[BaseException]], None]] = None,
         **kwargs,
     ) -> str:
         """
-        Submit a streaming job.
-
-        Producer shapes supported:
-        - async generator function
-        - async function returning: async context manager (yielding async-iter / sync-iter / scalar),
-                                    async iterable, sync iterable (ONE-SHOT per current behavior), or scalar
-        - sync generator function
-        - sync function returning: sync context manager (yielding iterable / scalar),
-                                    sync iterable, or scalar
-
+        Submit a streaming job using an AsyncStreamProcess.
+        
         Exit paths (exactly one):
         - success: sentinel → _complete_ok(job, None)
         - error:   sentinel → _complete_err(job, exc)
@@ -139,35 +126,12 @@ class RequestDispatcher:
         """
         req_id, job = self._create_job(_callback, stream=True)
 
-        # ---- small shape predicates ----
-        def _is_async_gen_fn(fn): return inspect.isasyncgenfunction(fn)
-        def _is_async_fn(fn):     return inspect.iscoroutinefunction(fn)
-        def _is_gen_fn(fn):       return inspect.isgeneratorfunction(fn)
-
-        def _is_async_cm(x):   return hasattr(x, "__aenter__") and hasattr(x, "__aexit__")
-        def _is_async_iter(x): return hasattr(x, "__aiter__")
-        def _is_sync_cm(x):    return hasattr(x, "__enter__") and hasattr(x, "__exit__")
-        def _is_sync_iter(x):  return hasattr(x, "__iter__") and not isinstance(x, (str, bytes, dict))
-
         # ---- emission & cancel checks ----
         class _CancelledSignal(Exception):
             pass
 
-        def _emit_one(x) -> None:
-            if job.cancelled:
-                job.stream_q.put(_SENTINEL)
-                raise _CancelledSignal()
-            job.stream_q.put(x)
-
         async def _consume_async_iter(ait) -> None:
             async for chunk in ait:
-                if job.cancelled:
-                    job.stream_q.put(_SENTINEL)
-                    raise _CancelledSignal()
-                job.stream_q.put(chunk)
-
-        def _consume_sync_iter(it) -> None:
-            for chunk in it:
                 if job.cancelled:
                     job.stream_q.put(_SENTINEL)
                     raise _CancelledSignal()
@@ -195,71 +159,9 @@ class RequestDispatcher:
                 self._mark_running(job, streaming=True)
 
                 try:
-                    # (A) async generator function
-                    if _is_async_gen_fn(f):
-                        agen = f(*args, **kwargs)
-                        await _consume_async_iter(agen)
-                        return _finish_ok()
-
-                    # (B) async function → normalize result
-                    if _is_async_fn(f):
-                        res = await f(*args, **kwargs)
-
-                        # async context manager
-                        if _is_async_cm(res):
-                            async with res as aobj:
-                                if _is_async_iter(aobj):
-                                    await _consume_async_iter(aobj)
-                                elif _is_sync_iter(aobj):
-                                    # iterate sync iterable in a thread
-                                    await self._loop.run_in_executor(None, _consume_sync_iter, aobj)
-                                else:
-                                    _emit_one(aobj)
-                            return _finish_ok()
-
-                        # async iterable
-                        if _is_async_iter(res):
-                            await _consume_async_iter(res)
-                            return _finish_ok()
-
-                        if _is_sync_iter(res):
-                            _emit_one(res)   # emit the whole iterable as a single chunk
-                            return _finish_ok()
-
-                        # scalar one-shot
-                        _emit_one(res)
-                        return _finish_ok()
-
-                    # (C) sync generator function
-                    if _is_gen_fn(f):
-                        def _work_gen():
-                            _consume_sync_iter(f(*args, **kwargs))
-                        await self._loop.run_in_executor(None, _work_gen)
-                        return _finish_ok()
-
-                    # (D) sync function → normalize value
-                    def _call_sync():
-                        return f(*args, **kwargs)
-                    val = await self._loop.run_in_executor(None, _call_sync)
-
-                    # sync context manager
-                    if _is_sync_cm(val):
-                        def _work_cm():
-                            with val as obj:
-                                if _is_sync_iter(obj):
-                                    _consume_sync_iter(obj)
-                                else:
-                                    _emit_one(obj)
-                        await self._loop.run_in_executor(None, _work_cm)
-                        return _finish_ok()
-
-                    # sync iterable
-                    if _is_sync_iter(val):
-                        await self._loop.run_in_executor(None, _consume_sync_iter, val)
-                        return _finish_ok()
-
-                    # scalar one-shot
-                    _emit_one(val)
+                    # Use AsyncStreamProcess.astream method
+                    async_iter = proc.astream(*args, **kwargs)
+                    await _consume_async_iter(async_iter)
                     return _finish_ok()
 
                 except _CancelledSignal:
@@ -270,43 +172,6 @@ class RequestDispatcher:
         self._schedule(_job())
         return req_id
 
-    def submit_rest(
-        self,
-        method: str,
-        url: str,
-        /,
-        *,
-        as_json: bool = False,
-        **requests_kwargs,
-    ) -> str:
-        """
-        Run a blocking HTTP request via `requests` without blocking others.
-        """
-        import requests
-        req_id, job = self._create_job(stream=False)
-
-        async def _job():
-            async with self._sema:
-                if job.cancelled:
-                    return self._complete_cancel(job)
-                self._mark_running(job, streaming=False)
-                try:
-                    def _call():
-                        r = requests.request(method, url, **requests_kwargs)
-                        if as_json:
-                            return {"status_code": r.status_code, "json": r.json()}
-                        return {
-                            "status_code": r.status_code,
-                            "headers": dict(r.headers),
-                            "text": r.text,
-                        }
-                    res = await self._loop.run_in_executor(None, _call)
-                    self._complete_ok(job, res)
-                except Exception as exc:
-                    self._complete_err(job, exc)
-
-        self._schedule(_job())
-        return req_id
 
     def status(self, req_id: str) -> RequestStatus | None:
         with self._lock:
@@ -630,8 +495,3 @@ class RequestDispatcher:
         with self._lock:
             self._jobs.pop(rid, None)
 
-    async def _run_callable(self, f: Callable[..., Any], *args, **kwargs) -> Any:
-        """Await async callables; run sync ones in a default thread pool."""
-        if inspect.iscoroutinefunction(f):
-            return await f(*args, **kwargs)
-        return await self._loop.run_in_executor(None, lambda: f(*args, **kwargs))

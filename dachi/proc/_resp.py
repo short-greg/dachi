@@ -395,11 +395,7 @@ class ToolConv(RespProc):
                     "function": {
                         "name": tool.name,
                         "description": tool.description,
-                        "parameters": (
-                            tool.input_model.model_json_schema()
-                            if utils.pydantic_v2() else
-                            tool.input_model.schema()
-                        )
+                        "parameters": tool.input_model.model_json_schema()
                     }
                 }
                 for tool in self.tools.values()

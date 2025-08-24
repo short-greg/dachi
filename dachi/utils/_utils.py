@@ -222,7 +222,7 @@ class Args:
         self.kwargs = kwargs
 
 
-def pydantic_v2():
+def is_pydantic_v2():
     return int(pydantic.__version__.split(".")[0]) >= 2
 
 

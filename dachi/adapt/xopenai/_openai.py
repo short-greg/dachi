@@ -19,7 +19,6 @@ from dachi.core import (
     Msg, to_list_input, Resp,
     ToolDef, BaseModule, AIAdapt, OpenAIChat
 )
-from dachi import utils
 from dachi.proc import (
     llm_aforward, llm_astream, 
     llm_forward, llm_stream,
@@ -64,11 +63,7 @@ def to_openai_tool(tool: ToolDef | list[ToolDef]) -> list[dict]:
 
     tools = []
     for t in tool:
-        schema = (
-            t.input_model.model_json_schema()
-            if utils.pydantic_v2() else
-            t.input_model.schema()
-        )
+        schema = t.input_model.model_json_schema()
 
         tools.append({
             "type": "function",
