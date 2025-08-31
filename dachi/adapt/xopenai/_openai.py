@@ -17,7 +17,7 @@ missing = required - installed
 # Local
 from dachi.core import (
     Msg, to_list_input, Resp,
-    ToolDef, BaseModule, AIAdapt, OpenAIChat
+    BaseTool, BaseModule, AIAdapt, OpenAIChat
 )
 from dachi.proc import (
     llm_aforward, llm_astream, 
@@ -49,7 +49,7 @@ class OpenAIAdapter(Process):
 
 
 
-def to_openai_tool(tool: ToolDef | list[ToolDef]) -> list[dict]:
+def to_openai_tool(tool: BaseTool | list[BaseTool]) -> list[dict]:
     """Converts a tool definition or a list of tool definitions to OpenAI format.
 
     Args:
@@ -58,7 +58,7 @@ def to_openai_tool(tool: ToolDef | list[ToolDef]) -> list[dict]:
     Returns:
         list[dict]: A list of dictionaries representing the OpenAI tools.
     """
-    if isinstance(tool, ToolDef):
+    if isinstance(tool, BaseTool):
         tool = [tool]
 
     tools = []
@@ -91,7 +91,7 @@ class LLM(BaseModule):
     including synchronous and asynchronous message forwarding, streaming, and spawning new instances.
     """
 
-    tools: typing.List[ToolDef] | None = None
+    tools: typing.List[BaseTool] | None = None
     json_output: bool | pydantic.BaseModel | typing.Dict = False
     api_key: InitVar[str | None] = None
     client_kwargs: InitVar[typing.Dict | None] = None
@@ -138,7 +138,7 @@ class LLM(BaseModule):
             self.adapt = OpenAIChat()
         
     def spawn(self, 
-        tools: typing.Iterable[ToolDef]=UNDEFINED,
+        tools: typing.Iterable[BaseTool]=UNDEFINED,
         json_output: bool | pydantic.BaseModel | typing.Dict=UNDEFINED,
         procs: typing.List[RespProc]=UNDEFINED
     ):
@@ -146,174 +146,5 @@ class LLM(BaseModule):
         pass
 
 
-class ChatCompletion(LLM, Process, AsyncProcess, StreamProcess, AsyncStreamProcess):
-    """
-    OpenAIChatComp is an adapter for the OpenAI Chat Completions API. It provides methods for 
-    interacting with the API, including synchronous and asynchronous message forwarding, 
-    streaming, and spawning new instances with modified configurations.
-    """
-    proc: InitVar[Sequential | RespProc | None] = None
-
-    def __post_init__(self, api_key, client_kwargs, kwargs, proc: typing.List[RespProc]):
-        """
-        Initializes the OpenAIChatComp instance with the provided tools and JSON output configuration.
-        Args:
-            procs (typing.List[RespProc], optional): A list of response processors to handle the output from the API.
-                If not provided, defaults to an empty list.
-        """
-        super().__post_init__(api_key, client_kwargs, kwargs)
-        if isinstance(proc, RespProc):
-            proc = Sequential(items=[proc])
-        if proc is None:
-            proc = Sequential(items=[])
-        self.proc = proc
-
-    def spawn(
-        self, 
-        tools: typing.Iterable[ToolDef]=UNDEFINED,
-        json_output: bool | pydantic.BaseModel | typing.Dict=UNDEFINED
-    ):
-        """
-        Spawns a new OpenAIChatComp instance, updating all values that are defined.
-        Args:
-            tools (ToolSet, optional): The set of tools to be used. If not provided, 
-                defaults to the instance's `_tools` attribute.
-            json_output (bool | pydantic.BaseMode | typing.Dict, optional): Specifies 
-                the JSON output configuration. If not provided, defaults to the 
-                instance's `_json_output` attribute.
-        Returns:
-            OpenAIChatComp: A new instance of OpenAIChatComp with the updated values.
-        """
-        tools = coalesce(
-            tools, self._tools
-        )
-        json_output = coalesce(json_output, self._json_output)
-        return ChatCompletion(
-            tools, json
-        )
-    
-    def forward(
-        self, 
-        msg, 
-        **kwargs
-    )-> Resp:
-        """
-        Processes a message by forwarding it to the language model (LLM) and returns the response.
-        Args:
-            msg (Msg): The message object to be processed by the LLM.
-            **kwargs: Additional keyword arguments to customize the LLM request. These arguments
-                      are merged with the default arguments stored in `self._kwargs`.
-        Returns:
-            Resp: The response from the LLM.
-        Notes:
-            - This method uses the `llm_forward` function to handle the interaction with the LLM.
-            - The `_resp_proc` parameter is used to process the response from the LLM.
-        """
-        
-        kwargs = {
-            **self.kwargs,
-            **kwargs
-        }
-        return llm_forward(
-            self._client.chat.completions.create, 
-            msg,
-            _adapt=self.adapt,
-            _proc=self.proc,
-            **kwargs
-        )
-
-    async def aforward(
-        self, 
-        msg, 
-        **kwargs
-    ) -> Resp:
-        """
-        Processes a message by asynchronously forwarding it to the language model (LLM) and returns the response.
-        Args:
-            msg (Msg): The message object to be processed by the LLM.
-            **kwargs: Additional keyword arguments to customize the LLM request. These arguments
-                      are merged with the default arguments stored in `self._kwargs`.
-        Returns:
-            Resp: The response from the LLM.
-        Notes:
-            - This method uses the `llm_aforward` function to handle the interaction with the LLM.
-            - The `_resp_proc` parameter is used to process the response from the LLM.
-        """
-
-        kwargs = {
-            **self.kwargs, 
-            **kwargs
-        }
-        return await llm_aforward(
-            self._aclient.chat.completions.create, 
-            msg,
-            _adapt=self.adapt,
-            _proc=self.proc, 
-            **kwargs
-        )
-
-    def stream(
-        self, 
-        msg, 
-        **kwargs
-    ) -> typing.Iterator[Resp]:
-        """
-        Processes a message by streaming it to the language model (LLM) and returns the response.
-        Args:
-            msg (Msg): The message object to be processed by the LLM.
-            **kwargs: Additional keyword arguments to customize the LLM request. These arguments
-                      are merged with the default arguments stored in `self._kwargs`.
-        Returns:
-            typing.Iterator[Resp]: An iterator of response objects from the LLM.
-        Notes:
-            - This method uses the `llm_stream` function to handle the interaction with the LLM.
-            - The `_resp_proc` parameter is used to process the response from the LLM.
-        """
-
-        kwargs = {
-            **self.kwargs, 
-            **kwargs
-        }
-        for r in llm_stream(
-            self._client.chat.completions.create, 
-            msg,
-            _adapt=self.adapt,
-            _proc=self.proc, 
-            stream=True,
-            **kwargs
-        ):
-            yield r
-    
-    async def astream(
-        self, 
-        msg, 
-        *args, 
-        **kwargs
-    ) -> typing.AsyncIterator[Resp]:
-        """
-        Processes a message by streaming it to the language model (LLM) and returns the response.
-        Args:
-            msg (Msg): The message object to be processed by the LLM.
-            **kwargs: Additional keyword arguments to customize the LLM request. These arguments
-                      are merged with the default arguments stored in `self._kwargs`.
-        Returns:
-            typing.AsyncIterator[Resp]: An async iterator of response objects from the LLM.
-        Notes:
-            - This method uses the `llm_astream` function to handle the interaction with the LLM.
-            - The `_resp_proc` parameter is used to process the response from the LLM.
-        """
-        kwargs = {
-            **self.kwargs, 
-            **kwargs
-        }
-        async for r in await llm_astream(
-            self._aclient.chat.completions.create, 
-            msg,
-            _adapt=self.adapt,
-            _proc=self.proc,
-            stream=True,
-            **kwargs
-        ):
-            yield r
 
 

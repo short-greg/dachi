@@ -281,16 +281,19 @@ class LLM(Process, AsyncProcess, StreamProcess, AsyncStreamProcess):
     """
     Adapter for Large Language Models (LLMs).
     """
-    def forward(self, inp: Msg | BaseDialog, **kwargs) -> Resp:
+    def forward(self, inp: Msg | BaseDialog, out=None,**kwargs) -> Resp:
         raise NotImplementedError
 
-    async def aforward(self, inp: Msg | BaseDialog, **kwargs) -> Resp:
+    async def aforward(
+        self, inp: Msg | BaseDialog, out=None,
+        tools=None, **kwargs
+    ) -> Resp:
         raise NotImplementedError
 
-    def stream(self, inp: Msg | BaseDialog, **kwargs) -> t.Iterator[Resp]:
+    def stream(self, inp: Msg | BaseDialog, out=None, tools=None, **kwargs) -> t.Iterator[Resp]:
         raise NotImplementedError
-    
-    def astream(self, inp: Msg | BaseDialog, **kwargs) -> t.AsyncIterator[Resp]:
+
+    def astream(self, inp: Msg | BaseDialog, out=None, tools=None, **kwargs) -> t.AsyncIterator[Resp]:
         raise NotImplementedError
 
 
@@ -323,408 +326,32 @@ class DefaultAdapter(AIAdapt):
         return resp
 
 
-class OpenAIChat(LLM, AIAdapt):
+class Op(AsyncProcess, Process, StreamProcess, AsyncStreamProcess):
     """
-    Adapter for OpenAI Chat Completions API.
-    
-    Converts between Dachi's unified message format and OpenAI Chat Completions API format.
-    
-    Message Conversion:
-    - Msg.role -> message.role (user/assistant/system/tool)
-    - Msg.text -> message.content 
-    - Msg.attachments -> message.content (for vision/multimodal)
-    - Msg.tool_outs -> role="tool" messages with tool_call_id
-    
-    Unified kwargs (converted):
-    - temperature, max_tokens, top_p, frequency_penalty, presence_penalty
-    - stream, stop, seed, user
-    
-    API-specific kwargs (passed through):
-    - tools, tool_choice, response_format, logprobs, top_logprobs
-    - parallel_tool_calls, service_tier, stream_options
+    A basic operation that applies a function to the input.
     """
 
-    def __post_init__(self):
-        super().__post_init__()
-        # Create the OpenAI Client
+    llm: LLM
+    base_out: t.Any
+    tools: t.List[t.Any]
 
-    def to_input(self, inp: Msg | BaseDialog, **kwargs) -> t.Dict:
-        """Convert Dachi format to Chat Completions format.
-        
-        Args:
-            inp: Single message or dialog to convert
-            **kwargs: Additional parameters for the API call
-            
-        Returns:
-            Dict with 'messages' array and processed kwargs
-        """
-        if isinstance(inp, Msg):
-            messages = [self._convert_message(inp)]
-        else:
-            messages = [self._convert_message(msg) for msg in inp]
-        
-        # Add tool messages from ToolOut objects
-        for msg in (inp if isinstance(inp, BaseDialog) else [inp]):
-            for tool_out in msg.tool_outs:
-                messages.append({
-                    "role": "tool",
-                    "content": str(tool_out.result),
-                    "tool_call_id": tool_out.tool_call_id
-                })
-        
-        return {
-            "messages": messages,
-            **kwargs
-        }
-    
-    def from_output(
-        self, 
-        output: t.Dict,
-        inp: Msg | BaseDialog | str | None = None,
-    ) -> Resp:
-        """Convert Chat Completions response to Dachi Resp.
-        
-        Args:
-            output: Raw OpenAI API response
-            
-        Returns:
-            Resp object with unified fields populated
-        """
-        choice = output.get("choices", [{}])[0]
-        message = choice.get("message", {})
-        
-        msg = Msg(
-            role=message.get("role", "assistant"),
-            text=message.get("content", "")
-        )
-        
-        resp = Resp(
-            msg=msg,
-            text=message.get("content"),
-            finish_reason=choice.get("finish_reason"),
-            response_id=output.get("id"),
-            model=output.get("model"),
-            usage=output.get("usage", {}),
-            tool=message.get("tool_calls", []) if message.get("tool_calls") else None
-        )
-        
-        # Store provider-specific fields in meta
-        resp.meta.update({
-            k: v for k, v in output.items() 
-            if k not in {"choices", "usage", "model", "id"}
-        })
-        
-        # Store raw response
-        resp._data = output
-        return resp
-    
-    def from_streamed(
-        self, 
-        output: t.Dict, 
-        inp: Msg | BaseDialog | str | None = None,
-        prev_resp: Resp | None = None
-    ) -> Resp:
-        """Handle Chat Completions streaming responses.
-        
-        Args:
-            output: Streaming chunk from OpenAI API
-            prev_resp: Previous response for delta accumulation
-            
-        Returns:
-            New Resp object spawned from prev_resp or fresh Resp
-        """
-        choice = output.get("choices", [{}])[0]
-        delta = choice.get("delta", {})
-        
-        # Create new message with delta content
-        msg = Msg(
-            role=delta.get("role", "assistant"),
-            text=delta.get("content", "") or ""
-        )
-        
-        # Create delta object for streaming
-        resp_delta = RespDelta(
-            text=delta.get("content"),
-            tool=delta.get("tool_calls", [{}])[0].get("function", {}).get("arguments") if delta.get("tool_calls") else None,
-            finish_reason=choice.get("finish_reason")
-        )
-        
-        if prev_resp is None:
-            resp = Resp(msg=msg, delta=resp_delta)
-        else:
-            resp = prev_resp.spawn(msg=msg, data=output)
-            resp.delta = resp_delta
-        
-        return resp
-    
-    def _convert_message(self, msg: Msg) -> t.Dict:
-        """Convert single Msg to OpenAI message format."""
-        openai_msg = {
-            "role": msg.role,
-            "content": msg.text or ""
-        }
-        
-        # Handle attachments (vision)
-        if msg.attachments:
-            content = []
-            if msg.text:
-                content.append({"type": "text", "text": msg.text})
-            
-            for attachment in msg.attachments:
-                if attachment.kind == "image":
-                    # Convert to OpenAI vision format
-                    image_url = attachment.data
-                    if not image_url.startswith("data:"):
-                        # Assume base64, add data URL prefix
-                        mime = attachment.mime or "image/png"
-                        image_url = f"data:{mime};base64,{attachment.data}"
-                    
-                    content.append({
-                        "type": "image_url",
-                        "image_url": {"url": image_url}
-                    })
-            
-            openai_msg["content"] = content
-        
-        return openai_msg
-    
-    def forward(self, inp: Msg | BaseDialog, **kwargs) -> Resp:
-        inp = self.to_input(inp, **kwargs)
-        # execute the request
-        return self.from_output(
-            self.client.chat.completions.create(**inp),
-            inp
-        )
+    def forward(self, inp: S, out=None, **kwargs) -> S:
+        out = out or self.base_out
+        return self.llm.forward(inp, tools=self.tools, op=out, **kwargs).out
 
-    async def aforward(self, inp: Msg | BaseDialog, **kwargs) -> Resp:
-        inp = self.to_input(inp, **kwargs)
-        return self.from_output(
-            await self.async_client.chat.completions.create(**inp),
-            inp
-        )   
+    async def aforward(self, inp: S, out=None, **kwargs) -> S:
+        out = out or self.base_out
+        resp = await self.llm.aforward(inp, tools=self.tools, op=out, **kwargs)
+        return resp.out
 
-    async def astream(self, inp: Msg | BaseDialog, **kwargs) -> t.AsyncIterator[Resp]:
-        inp = self.to_input(inp, **kwargs)
-        async for chunk in self.async_client.chat.completions.create(**inp):
-            yield self.from_streamed(chunk, inp)
+    def stream(self, inp: S, out=None, **kwargs) -> t.Iterator[S]:
+        out = out or self.base_out
+        for resp in self.llm.stream(inp, tools=self.tools, op=out, **kwargs):
 
-    def stream(self, inp: Msg | BaseDialog, **kwargs) -> t.Iterator[Resp]:
-        inp = self.to_input(inp, **kwargs)
-        for chunk in self.client.chat.completions.create(**inp):
-            yield self.from_streamed(chunk, inp)
+            yield resp.out
 
+    async def astream(self, inp: S, out=None, **kwargs) -> t.AsyncIterator[S]:
+        out = out or self.base_out
+        async for resp in await self.llm.astream(inp, tools=self.tools, op=out, **kwargs):
+            yield resp.out
 
-class OpenAIResp(LLM, AIAdapt):
-    """
-    Adapter for OpenAI Responses API.
-    
-    Converts between Dachi's unified message format and OpenAI Responses API format.
-    
-    Message Conversion:
-    - Single Msg with role="user" -> input field
-    - Multiple messages -> messages array (same as Chat Completions)
-    - instructions kwarg -> instructions field (replaces system messages)
-    
-    Unified kwargs (converted):
-    - temperature, max_tokens, top_p, frequency_penalty, presence_penalty
-    - stream, stop, seed, user
-    
-    API-specific kwargs (passed through):
-    - instructions, context, tools, tool_choice, response_format
-    - modalities, audio, parallel_tool_calls, metadata
-    """
-
-    def to_input(self, inp: Msg | BaseDialog | str, **kwargs) -> t.Dict:
-        """Convert Dachi format to Responses API format.
-        
-        Args:
-            inp: Single message or dialog to convert
-            **kwargs: Additional parameters for the API call
-            
-        Returns:
-            Dict with 'input' or 'messages' and processed kwargs
-        """
-        # Handle single user message case
-        if isinstance(inp, Msg) and inp.role == "user" and "instructions" not in kwargs:
-            return {
-                "input": inp.text or "",
-                **kwargs
-            }
-        
-        # Handle multiple messages (same as Chat Completions)
-        if isinstance(inp, str):
-            inp = Msg(role="user", text=inp)
-        
-        if isinstance(inp, Msg):
-            messages = [self._convert_message(inp)]
-        else:
-            messages = [self._convert_message(msg) for msg in inp]
-        
-        # Add tool messages from ToolOut objects
-        for msg in (inp if isinstance(inp, BaseDialog) else [inp]):
-            for tool_out in msg.tool_outs:
-                messages.append({
-                    "role": "tool",
-                    "content": str(tool_out.result),
-                    "tool_call_id": tool_out.tool_call_id
-                })
-        
-        return {
-            "messages": messages,
-            **kwargs
-        }   
-     
-    def from_output(
-        self, 
-        output: t.Dict, 
-        inp: Msg | BaseDialog | str | None = None
-    ) -> Resp:
-        """Convert Responses API response to Dachi Resp.
-        
-        Args:
-            output: Raw OpenAI API response
-            
-        Returns:
-            Resp object with unified fields populated
-        """
-        # Responses API has similar structure to Chat Completions
-        choice = output.get("choices", [{}])[0]
-        message = choice.get("message", {})
-
-        resp_id = output.get("id", None)
-        
-        if isinstance(inp, Msg):
-            prev_id = inp.id
-        else:
-            prev_id = None
-
-        msg = Msg(
-            role=message.get("role", "assistant"),
-            text=message.get("content", ""),
-            id=resp_id,
-            prev_id=prev_id
-        )
-        
-        resp = Resp(
-            msg=msg,
-            text=message.get("content"),
-            thinking=output.get("reasoning"),  # Responses API specific
-            finish_reason=choice.get("finish_reason"),
-            response_id=output.get("id"),
-            model=output.get("model"),
-            usage=output.get("usage", {}),
-            tool=message.get("tool_calls", []) if message.get("tool_calls") else None
-        )
-        
-        # Store provider-specific fields in meta
-        resp.meta.update({
-            k: v for k, v in output.items() 
-            if k not in {"choices", "usage", "model", "id", "reasoning"}
-        })
-        
-        # Store raw response
-        resp._data = output
-        return resp
-    
-    def from_streamed(
-        self, output: t.Dict, 
-        inp: Msg | BaseDialog | str | None = None,
-        prev_resp: Resp | None = None
-    ) -> Resp:
-        """Handle Responses API streaming responses.
-        
-        Args:
-            output: Streaming chunk from OpenAI API
-            prev_resp: Previous response for delta accumulation
-            
-        Returns:
-            New Resp object spawned from prev_resp or fresh Resp
-        """
-        # Responses API streaming should be similar to Chat Completions
-        choice = output.get("choices", [{}])[0]
-        delta = choice.get("delta", {})
-
-        if isinstance(inp, Msg):
-            prev_id = inp.id
-        else:
-            prev_id = None
-
-        msg = Msg(
-            role=delta.get("role", "assistant"),
-            text=delta.get("content", "") or "",
-            id=output.get("id", None),
-            prev_id=prev_id
-        )
-        
-        # Create delta object for streaming
-        resp_delta = RespDelta(
-            text=delta.get("content"),
-            thinking=delta.get("reasoning"),  # Responses API may have reasoning in delta
-            tool=delta.get("tool_calls", [{}])[0].get("function", {}).get("arguments") if delta.get("tool_calls") else None,
-            finish_reason=choice.get("finish_reason")
-        )
-        
-        if prev_resp is None:
-            resp = Resp(msg=msg, delta=resp_delta)
-        else:
-            resp = prev_resp.spawn(msg=msg, data=output)
-            resp.delta = resp_delta
-        
-        return resp
-    
-    def _convert_message(self, msg: Msg) -> t.Dict:
-        """Convert single Msg to OpenAI message format."""
-        openai_msg = {
-            "role": msg.role,
-            "content": msg.text or ""
-        }
-        
-        # Handle attachments (same as Chat Completions)
-        if msg.attachments:
-            content = []
-            if msg.text:
-                content.append({"type": "text", "text": msg.text})
-            
-            for attachment in msg.attachments:
-                if attachment.kind == "image":
-                    image_url = attachment.data
-                    if not image_url.startswith("data:"):
-                        mime = attachment.mime or "image/png"
-                        image_url = f"data:{mime};base64,{attachment.data}"
-                    
-                    content.append({
-                        "type": "image_url",
-                        "image_url": {"url": image_url}
-                    })
-            
-            openai_msg["content"] = content
-        
-        return openai_msg
-    
-    def forward(self, inp: Msg | BaseDialog, **kwargs) -> Resp:
-        inp = self.to_input(inp, **kwargs)
-        return self.from_output(
-            self.client.responses.create(**inp),
-            inp
-        )
-    
-    async def aforward(
-        self, 
-        inp: Msg | BaseDialog, 
-        **kwargs
-    ) -> Resp:
-        inp = self.to_input(inp, **kwargs)
-        return self.from_output(
-            await self.async_client.responses.create(**inp),
-            inp
-        )
-    
-    def stream(self, inp, **kwargs) -> t.Iterator[Resp]:
-        inp = self.to_input(inp, **kwargs)
-        for chunk in self.client.responses.create(**inp):
-            yield self.from_streamed(chunk, inp)
-
-    async def astream(self, inp, **kwargs) -> t.AsyncIterator[Resp]:
-        inp = self.to_input(inp, **kwargs)
-        async for chunk in self.async_client.responses.create(**inp):
-            yield self.from_streamed(chunk, inp)

@@ -1,421 +1,386 @@
-from dachi.core import Msg, Resp, ToolDef, ToolCall, ToolBuilder
-from dachi.proc import _resp as _resp, TextConv, StructConv, ParsedConv, ToolExecConv
-from dachi.proc._resp import ToolConv, StructStreamConv
+from dachi.core import Msg, Resp
+from dachi.proc._resp import ToPrim, KVOut, IndexOut, CSVOut, ToolExecConv, ToOut
 from dachi import utils
 import json
 import pytest
 import pydantic
-from types import SimpleNamespace
 
 
-class EchoProc(_resp.RespProc):
-    """Pass-through; copies 'response' into 'echo'."""
-
-    def __init__(self):
-        self.name = "echo"
-        self.from_ = "response"
-        self.__post_init__()  # sets _single
-
-    def delta(self, resp, delta_store, is_streamed=False, is_last=True):
-        return resp
-
-
-class SumProc(_resp.RespProc):
-    """Adds numeric fields 'a' and 'b'."""
-
-    def __init__(self):
-        self.name = "sum"
-        self.from_ = ["a", "b"]
-        self.__post_init__()
-
-    def delta(
-        self, 
-        resp, 
-        delta_store, 
-        is_streamed=False, 
-        is_last=True
-    ):
-        return sum(resp)
+# Test helper classes that use the new ToOut API
+class EchoOut(ToOut):
+    """Pass-through processor for testing."""
+    
+    def forward(self, resp):
+        return str(resp.text) if hasattr(resp, 'text') else str(resp)
+    
+    def delta(self, resp, delta_store, is_last=True):
+        return str(resp)
+    
+    def render(self, data):
+        return str(data)
+    
+    def template(self):
+        return "<echo>"
+    
+    def example(self):
+        return "example"
 
 
-class ConcatProc(_resp.RespProc):
+class ConcatOut(ToOut):
     """Concatenates chunks across streaming."""
-
-    def __init__(self):
-        self.name = "concat"
-        self.from_ = "chunk"
-        self.__post_init__()
-
-    def delta(self, chunk, delta_store, is_streamed=False, is_last=True):
-        buf = delta_store.get("buf", "") + chunk
+    
+    def forward(self, resp):
+        return str(resp.text) if hasattr(resp, 'text') else str(resp)
+    
+    def delta(self, chunk, delta_store, is_last=True):
+        buf = delta_store.get("buf", "") + str(chunk)
         if is_last:
             return buf
         delta_store["buf"] = buf
         return utils.UNDEFINED
+    
+    def render(self, data):
+        return str(data)
+    
+    def template(self):
+        return "<concat>"
+    
+    def example(self):
+        return "concatenated"
 
 
-class UpperConv(_resp.RespProc):
-    """Upper-cases the assistant 'response'."""
-
-    def __init__(self):
-        self.name = "upper"
-        self.from_ = "response"
-        self.__post_init__()
-
-    def delta(self, txt, delta_store, is_streamed=False, is_last=True):
-        return txt.upper()
-
-
-# RespProc basic forwarding
-class TestRespProcForward:
-    def test_single_source_pass_through(self):
-        resp = Resp(msg=Msg(role="assistant"))
-        resp.data["response"] = "hello"
-
-        out = EchoProc()(resp)
-        assert out.data["echo"] == "hello"
-
-    def test_multi_source_sum(self):
-        resp = Resp(msg=Msg(role="assistant"))
-        resp.data.update(a=1, b=2)
-
-        out = SumProc()(resp)
-        assert out.data["sum"] == 3
-
-    def test_returns_undefined_if_all_inputs_undefined(self):
-        resp = Resp(msg=Msg(role="assistant"))
-        resp.data.update(a=utils.UNDEFINED, b=utils.UNDEFINED)
-
-        out = SumProc()(resp)
-        assert out is utils.UNDEFINED
-
-
-# Streaming behaviour with delta_store
-class TestRespProcStreaming:
-
-    def test_concat_stream(self):
-        proc = ConcatProc()
-        ds = {}
-
-        # 1st chunk
-        r1 = Resp(msg=Msg(role="assistant"))
-        r1.data["chunk"] = "Hel"
-        res1 = proc.forward(r1, is_streamed=True, is_last=False)
-        assert res1.data["concat"] is utils.UNDEFINED
-
-        # 2nd / final chunk
-        r2 = r1.spawn(
-            msg=Msg(role="assistant")
-        )
-        # r2 = Resp(msg=Msg(role="assistant"))
-        r2.data["chunk"] = "lo"
-        res2 = proc.forward(r2, is_streamed=True, is_last=True)
-        assert res2.data["concat"] == "Hello"
-
-
-# RespProc.run helper
-class TestRespProcRun:
-    def test_run_with_list(self):
-        resp = Resp(msg=Msg(role="assistant"))
-        resp.data["response"] = "abc"
-        resp.data.update(a=1, b=2)
-
-        out = _resp.RespProc.run(resp, [EchoProc(), SumProc()])
-        assert out.data["echo"] == "abc"
-        assert out.data["sum"] == 3
-
-    def test_run_with_single_proc(self):
-        resp = Resp(msg=Msg(role="assistant"))
-        resp.data["response"] = "xyz"
-
-        out = _resp.RespProc.run(resp, EchoProc())
-        assert out.data["echo"] == "xyz"
-
-
-# RespConv behaviour
-class TestRespConv:
-    def test_upper_conv(self):
-        resp = Resp(msg=Msg(role="assistant"))
-        resp.data["response"] = "hello"
-
-        out = UpperConv()(resp)
-        assert out.data["upper"] == "HELLO"
-
-
-# FromResp utility
-class TestFromResp:
-
-    def test_fromresp_tuple(self):
-        resp = Resp(msg=Msg(role="assistant"))
-        resp.out.update(
-            {"a": "A", "b": "B"}
-        )
-
-        fr = _resp.FromResp(keys=["a", "b"], as_dict=False)
-        assert fr(resp) == ("A", "B")
-
-    def test_fromresp_dict(self):
-        resp = Resp(msg=Msg(role="assistant"))
-        resp.out.update(
-            {"a": "A", "b": "B"}
-        )
-
-        fr = _resp.FromResp(keys=["a", "b"], as_dict=True)
-        assert fr(resp) == {"a": "A", "b": "B"}
-
-
-# ------------------------------------------------------------------
-# Unified Response Processors -------------------------------------
-# ------------------------------------------------------------------
-
-
-class TestTextConv:
-    """
-    Validate delta & post logic for TextConv with unified response format.
-    """
-
-    def test_non_stream(self):
-        conv = TextConv()
-        delta_store = {}
-        resp_text = "hello"
+# Tests for the new ToOut API
+class TestToOutBasic:
+    """Test basic ToOut functionality with forward() method."""
+    
+    def test_toprim_forward_bool_true(self):
+        proc = ToPrim(out_cls='bool')
+        resp = Resp(msg=Msg(role="assistant", text="true"))
+        result = proc.forward(resp)
+        assert result == True
         
-        result = conv.delta(resp_text, delta_store, streamed=False, is_last=True)
+    def test_toprim_forward_bool_false(self):
+        proc = ToPrim(out_cls='bool')
+        resp = Resp(msg=Msg(role="assistant", text="false"))
+        result = proc.forward(resp)
+        assert result == False
         
-        # Create mock response and test post processing
-        resp = Resp(msg=Msg(role="assistant"))
-        conv.post(resp, result, delta_store, streamed=False, is_last=True)
+    def test_toprim_forward_int(self):
+        proc = ToPrim(out_cls='int')
+        resp = Resp(msg=Msg(role="assistant", text="42"))
+        result = proc.forward(resp)
+        assert result == 42
         
-        assert delta_store["all_content"] == "hello"
-        assert resp.msg.text == "hello"
+    def test_toprim_forward_float(self):
+        proc = ToPrim(out_cls='float')
+        resp = Resp(msg=Msg(role="assistant", text="3.14"))
+        result = proc.forward(resp)
+        assert result == 3.14
+        
+    def test_toprim_forward_str(self):
+        proc = ToPrim(out_cls='str')
+        resp = Resp(msg=Msg(role="assistant", text="hello"))
+        result = proc.forward(resp)
+        assert result == "hello"
+        
+    def test_kvout_forward(self):
+        proc = KVOut(sep='::')
+        resp = Resp(msg=Msg(role="assistant", text="name::John\\nage::25"))
+        result = proc.forward(resp)
+        assert result == {'name': 'John', 'age': '25'}
+        
+    def test_indexout_forward(self):
+        proc = IndexOut(sep='::')
+        resp = Resp(msg=Msg(role="assistant", text="1::First\\n2::Second\\n3::Third"))
+        result = proc.forward(resp)
+        assert result == ['First', 'Second', 'Third']
+        
+    def test_csvout_forward_with_header(self):
+        proc = CSVOut()
+        resp = Resp(msg=Msg(role="assistant", text="name,age\\nJohn,25\\nJane,30"))
+        result = proc.forward(resp)
+        expected = [{'name': 'John', 'age': '25'}, {'name': 'Jane', 'age': '30'}]
+        assert result == expected
+        
+    def test_csvout_forward_no_header(self):
+        proc = CSVOut(use_header=False)
+        resp = Resp(msg=Msg(role="assistant", text="John,25\\nJane,30"))
+        result = proc.forward(resp)
+        expected = [['John', '25'], ['Jane', '30']]
+        assert result == expected
 
-    def test_stream_chunks_accumulate(self):
-        conv = TextConv()
+
+class TestToOutStreaming:
+    """Test streaming functionality with delta() method."""
+    
+    def test_toprim_delta_streaming(self):
+        proc = ToPrim(out_cls='int')
         delta_store = {}
         
-        # Process streaming chunks
-        conv.delta("he", delta_store, streamed=True, is_last=False)
-        conv.delta("llo", delta_store, streamed=True, is_last=False)
+        # First chunk
+        result1 = proc.delta("4", delta_store, is_last=False)
+        assert result1 == utils.UNDEFINED
         
-        # Create mock response and test post processing
-        resp = Resp(msg=Msg(role="assistant"))
-        conv.post(resp, None, delta_store, streamed=True, is_last=True)
+        # Final chunk
+        result2 = proc.delta("2", delta_store, is_last=True)
+        assert result2 == 42
         
-        assert delta_store["all_content"] == "hello"
-        assert resp.msg.text == "hello"
-
-    @pytest.mark.parametrize("payload", [None, ""])
-    def test_none_empty(self, payload):
-        conv = TextConv()
+    def test_concat_streaming(self):
+        proc = ConcatOut()
         delta_store = {}
         
-        result = conv.delta(payload, delta_store, streamed=False, is_last=True)
+        # First chunk
+        result1 = proc.delta("Hel", delta_store, is_last=False)
+        assert result1 == utils.UNDEFINED
         
-        resp = Resp(msg=Msg(role="assistant"))
-        conv.post(resp, result, delta_store, streamed=False, is_last=True)
+        # Second chunk
+        result2 = proc.delta("lo", delta_store, is_last=False)
+        assert result2 == utils.UNDEFINED
         
-        assert delta_store["all_content"] == ""
-        assert resp.msg.text == ""
-
-
-class TestStructConv:
-    """Exercise StructConv in all supported modes with unified format."""
-
-    def test_default_json_object(self):
-        conv = StructConv()
-        assert conv.prep() == {"response_format": "json_object"}
-
-    def test_custom_schema_dict(self):
-        schema = {"type": "object", "properties": {"foo": {"type": "string"}}}
-        conv = StructConv(struct=schema)
-        out = conv.prep()
-        assert out["response_format"]["json_schema"] == schema
-
-    def test_custom_pydantic_model(self):
-        class Foo(pydantic.BaseModel):
-            bar: int
-
-        conv = StructConv(struct=Foo)
-        fmt = conv.prep()
-        assert fmt["response_format"] == Foo
-
-    def test_json_parsing(self):
-        conv = StructConv()
-        delta_store = {}
-        json_text = '{"name": "test", "value": 42}'
-        
-        result = conv.delta(json_text, delta_store, streamed=False, is_last=True)
-        
-        assert isinstance(result, dict)
-        assert result["name"] == "test"
-        assert result["value"] == 42
-
-
-class TestParsedConv:
-    """ParsedConv parses final JSON into model with unified format."""
-
-    def test_valid_json(self):
-        class Foo(pydantic.BaseModel):
-            bar: int
-
-        conv = ParsedConv(struct=Foo)
-        delta_store = {}
-        json_text = json.dumps({"bar": 3})
-        
-        result = conv.delta(json_text, delta_store, streamed=False, is_last=True)
-        
-        assert isinstance(result, Foo) and result.bar == 3
-
-    def test_bad_json_returns_undefined(self):
-        class Foo(pydantic.BaseModel):
-            bar: int
-
-        conv = ParsedConv(struct=Foo)
-        delta_store = {}
-        
-        result = conv.delta("not-json", delta_store, streamed=False, is_last=True)
-        
-        # Should return UNDEFINED instead of raising
-        assert result is utils.UNDEFINED
-
-    def test_not_last_returns_undefined(self):
-        class Foo(pydantic.BaseModel):
-            bar: int
-
-        conv = ParsedConv(struct=Foo)
-        delta_store = {}
-        
-        result = conv.delta('{"bar": 3}', delta_store, streamed=True, is_last=False)
-        
-        assert result is utils.UNDEFINED
+        # Final chunk
+        result3 = proc.delta("!", delta_store, is_last=True)
+        assert result3 == "Hello!"
 
 
 class TestToolExecConv:
-    """Validate deferred execution helper with unified format."""
-
-    def test_single_call_executed(self):
-        # create a dummy ToolCall that returns value 7
+    """Test tool execution converter."""
+    
+    def test_forward_with_callable_tools(self):
+        # Mock response with callable tools
         class MockTool:
             def __call__(self):
-                return 7
+                return "executed"
                 
-        tc = MockTool()
+        resp = Resp(msg=Msg(role="assistant"))
+        resp.tool_calls = [MockTool(), MockTool()]
         
-        conv = ToolExecConv()
-        result = conv.delta(tc, {}, False, True)
-        assert result == 7
-
-    def test_list_executes(self):
-        class MockTool1:
+        proc = ToolExecConv()
+        result = proc.forward(resp)
+        assert result == ["executed", "executed"]
+        
+    def test_forward_no_tools(self):
+        resp = Resp(msg=Msg(role="assistant"))
+        
+        proc = ToolExecConv()
+        result = proc.forward(resp)
+        assert result == []
+        
+    def test_delta_with_callable(self):
+        class MockTool:
             def __call__(self):
-                return 1
+                return "executed"
                 
-        class MockTool2:
-            def __call__(self):
-                return 2
-                
-        tc1 = MockTool1()
-        tc2 = MockTool2()
-        conv = ToolExecConv()
-        assert conv.delta([tc1, tc2], {}, False, True) == [1, 2]
-
-    def test_undefined_pass_through(self):
-        conv = ToolExecConv()
-        assert conv.delta(utils.UNDEFINED, {}, False, True) is utils.UNDEFINED
-
-    def test_none_pass_through(self):
-        conv = ToolExecConv()
-        assert conv.delta(None, {}, False, True) is utils.UNDEFINED
+        proc = ToolExecConv()
+        result = proc.delta(MockTool(), {}, is_last=True)
+        assert result == "executed"
+        
+    def test_delta_with_non_callable(self):
+        proc = ToolExecConv()
+        result = proc.delta("not callable", {}, is_last=True)
+        assert result == utils.UNDEFINED
 
 
-class TestToolConv:
-    """Test unified ToolConv for processing tool calls."""
-
-    def make_tool_def(self, name="dummy", description="desc"):
-        """Factory to create a minimal ToolDef."""
-        class Args(pydantic.BaseModel):
-            x: int
-
-        def dummy_fn(x: int) -> str:
-            return f"Result: {x}"
-
-        return ToolDef(
-            name=name, description=description, fn=dummy_fn, input_model=Args
-        )
-
-    def test_prep(self):
-        tools = [self.make_tool_def("t")]
-        conv = ToolConv(tools=tools)
-        prep = conv.prep()
-        assert "tools" in prep and prep["tools"][0]["function"]["name"] == "t"
-
-    def test_non_stream(self):
-        tools = [self.make_tool_def()]
-        conv = ToolConv(tools=tools, run_call=False)
+class TestToPrimExtended:
+    """Extended tests for ToPrim with various data types."""
+    
+    def test_toprim_bool_true_variations(self):
+        """Test various true boolean representations."""
+        proc = ToPrim(out_cls='bool')
+        for true_val in ['true', 'True', 'TRUE', 'y', 'yes', '1', 't']:
+            resp = Resp(msg=Msg(role='assistant', text=true_val))
+            assert proc.forward(resp) is True, f"Failed for: {true_val}"
+            
+    def test_toprim_bool_false_variations(self):
+        """Test various false boolean representations."""
+        proc = ToPrim(out_cls='bool')
+        for false_val in ['false', 'False', 'FALSE', 'n', 'no', '0', 'f', 'other']:
+            resp = Resp(msg=Msg(role='assistant', text=false_val))
+            assert proc.forward(resp) is False, f"Failed for: {false_val}"
+    
+    def test_toprim_streaming_accumulation(self):
+        """Test that ToPrim accumulates streaming data correctly."""
+        proc = ToPrim(out_cls='int')
         delta_store = {}
         
-        # Create mock tool call response
-        func = SimpleNamespace(name=tools[0].name, arguments=json.dumps({"x": 1}))
-        tc = SimpleNamespace(id="id", function=func)
-        resp = SimpleNamespace(tool_calls=[tc])
-        
-        out = conv.delta(resp, delta_store, is_streamed=False)
-        assert isinstance(out[0], ToolCall)
-        assert out[0].inputs.x == 1
-
-    def test_stream_returns_undefined_when_no_tools(self):
-        tools = [self.make_tool_def()]
-        conv = ToolConv(tools=tools, run_call=False)
-        ds = {}
-        
-        # Mock response without tool calls
-        resp = SimpleNamespace(tool_calls=None)
-        out = conv.delta(resp, ds, is_streamed=True, is_last=False)
-        assert out == []
+        # Stream individual digits
+        assert proc.delta("1", delta_store, is_last=False) == utils.UNDEFINED
+        assert proc.delta("2", delta_store, is_last=False) == utils.UNDEFINED  
+        result = proc.delta("3", delta_store, is_last=True)
+        assert result == 123
 
 
-class TestStructStreamConv:
-    """Test unified StructStreamConv for streaming structured data."""
+class TestKVOutExtended:
+    """Extended tests for KVOut key-value parsing."""
+    
+    def test_kvout_multiline_values(self):
+        """Test key-value parsing with complex values."""
+        proc = KVOut(sep='::')
+        text = "name::John Doe\ndescription::A person who\nlikes testing\nage::25"
+        resp = Resp(msg=Msg(role='assistant', text=text))
+        result = proc.forward(resp)
+        # Should handle the multiline gracefully
+        assert 'name' in result
+        assert 'age' in result
+        
+    def test_kvout_different_separators(self):
+        """Test different separator characters."""
+        separators = ['::', ':', '=', '|']
+        for sep in separators:
+            proc = KVOut(sep=sep)
+            text = f"key1{sep}value1\nkey2{sep}value2"
+            resp = Resp(msg=Msg(role='assistant', text=text))
+            result = proc.forward(resp)
+            assert result == {'key1': 'value1', 'key2': 'value2'}
+            
+    def test_kvout_whitespace_handling(self):
+        """Test that whitespace is handled correctly."""
+        proc = KVOut(sep='::')
+        text = "  name  ::  John  \n  age  ::  25  "
+        resp = Resp(msg=Msg(role='assistant', text=text))
+        result = proc.forward(resp)
+        assert result == {'  name  ': '  John  ', '  age  ': '  25  '}
 
-    def test_prep(self):
-        conv = StructStreamConv()
-        prep = conv.prep()
-        assert prep["response_format"] == "json_object"
-        assert prep["stream"] is True
 
-    def test_delta_chunk(self):
-        conv = StructStreamConv()
-        delta_store = {}
+class TestIndexOutExtended:
+    """Extended tests for IndexOut indexed parsing."""
+    
+    def test_indexout_out_of_order(self):
+        """Test parsing indices provided out of order."""
+        proc = IndexOut(sep='::')
+        text = "3::Third\n1::First\n2::Second"
+        resp = Resp(msg=Msg(role='assistant', text=text))
+        result = proc.forward(resp)
+        assert result == ['First', 'Second', 'Third']
         
-        # Mock streaming chunk
-        chunk = SimpleNamespace(type="content.delta", parsed={"key": "value"})
-        result = conv.delta(chunk, delta_store, is_streamed=True, is_last=False)
+    def test_indexout_zero_based_vs_one_based(self):
+        """Test that 1-based indices are converted to 0-based."""
+        proc = IndexOut(sep='::')
+        text = "1::First\n2::Second"
+        resp = Resp(msg=Msg(role='assistant', text=text))
+        result = proc.forward(resp)
+        assert result[0] == 'First'
+        assert result[1] == 'Second'
         
-        assert result == {"key": "value"}
+    def test_indexout_large_gaps(self):
+        """Test handling of large gaps in indices."""
+        proc = IndexOut(sep='::')
+        text = "1::First\n10::Tenth"
+        resp = Resp(msg=Msg(role='assistant', text=text))
+        result = proc.forward(resp)
+        assert len(result) == 10
+        assert result[0] == 'First'
+        assert result[9] == 'Tenth'
+        assert all(x is None for x in result[1:9])
 
-    def test_delta_done(self):
-        conv = StructStreamConv()
-        delta_store = {}
-        
-        # Mock done signal
-        done = SimpleNamespace(type="content.done")
-        result = conv.delta(done, delta_store, is_streamed=True, is_last=True)
-        
-        assert result is None
 
-    def test_delta_error(self):
-        conv = StructStreamConv()
-        delta_store = {}
+class TestCSVOutExtended:
+    """Extended tests for CSVOut CSV parsing."""
+    
+    def test_csvout_quoted_fields(self):
+        """Test CSV parsing with quoted fields containing commas."""
+        proc = CSVOut()
+        csv_text = 'name,description\n"John, Jr.","A person, who likes commas"\nJane,Simple'
+        resp = Resp(msg=Msg(role='assistant', text=csv_text))
+        result = proc.forward(resp)
+        assert len(result) == 2
+        assert result[0]['name'] == 'John, Jr.'
+        assert result[0]['description'] == 'A person, who likes commas'
         
-        # Mock error
-        error = SimpleNamespace(type="error", error="Something went wrong")
+    def test_csvout_different_delimiters(self):
+        """Test CSV parsing with various delimiters."""
+        delimiters = [',', ';', '|', '\t']
+        for delim in delimiters:
+            proc = CSVOut(delimiter=delim, use_header=False)
+            text = f"John{delim}25{delim}Boston\nJane{delim}30{delim}Seattle"
+            resp = Resp(msg=Msg(role='assistant', text=text))
+            result = proc.forward(resp)
+            assert len(result) == 2
+            assert result[0] == ['John', '25', 'Boston']
+            
+    def test_csvout_malformed_data(self):
+        """Test CSV parsing with malformed data."""
+        proc = CSVOut(use_header=False)
+        # Missing fields in second row
+        text = "John,25,Boston\nJane,30\nBob,35,Chicago"
+        resp = Resp(msg=Msg(role='assistant', text=text))
+        result = proc.forward(resp)
+        assert len(result) == 3
+        assert len(result[1]) == 2  # Jane row has only 2 fields
         
-        with pytest.raises(RuntimeError, match="Something went wrong"):
-            conv.delta(error, delta_store, is_streamed=True, is_last=False)
+    def test_csvout_empty_and_whitespace(self):
+        """Test CSV parsing with empty fields and whitespace."""
+        proc = CSVOut(use_header=False)
+        text = "John,,Boston\n ,25, \n\n"
+        resp = Resp(msg=Msg(role='assistant', text=text))
+        result = proc.forward(resp)
+        # Should handle empty fields and whitespace
+        assert len(result) >= 2
 
-    def test_non_streamed_returns_undefined(self):
-        conv = StructStreamConv()
-        delta_store = {}
-        
-        result = conv.delta("some text", delta_store, is_streamed=False, is_last=True)
-        
-        assert result is utils.UNDEFINED
+
+# TODO: Parser tests from test_parse.py need to be added here
+# The following Parser classes still exist in _resp.py and need testing:
+# - CSVRowParser
+# - LineParser  
+# - CharDelimParser
+#
+# These were previously tested in test_parse.py but since all functionality
+# is now consolidated in _resp.py, their tests should be moved here.
+
+class TestParsersIntegration:
+    """Tests for Parser classes that are used by ToOut classes."""
+    
+    def test_csv_parser_basic(self):
+        """Basic test for CSVRowParser - more comprehensive tests needed."""
+        # Import the parser from _resp since it's no longer in _parse
+        from dachi.proc._resp import CSVRowParser
+        parser = CSVRowParser(use_header=True)
+        result = parser.forward("name,age\nJohn,25")
+        # This is a placeholder - full test suite from test_parse.py should be migrated
+        assert len(result) == 1
+    
+    def test_line_parser_basic(self):
+        """Basic test for LineParser."""
+        from dachi.proc._resp import LineParser
+        parser = LineParser()
+        result = parser.forward("line1\nline2\nline3")
+        # This is a placeholder - more comprehensive tests needed
+        assert isinstance(result, list)
+
+
+# TODO: MIGRATION NOTES
+"""
+TESTS CONSOLIDATED FROM test_out.py and test_parse.py
+
+This file now contains tests for all response processing functionality that was
+previously spread across multiple files:
+
+1. ToOut classes (formerly in test_out.py):
+   - ToPrim, KVOut, IndexOut, CSVOut, ToolExecConv
+   - Both forward() and delta() methods
+   - Streaming behavior
+
+2. Parser classes (formerly in test_parse.py):
+   - CSVRowParser, LineParser, CharDelimParser
+   - These need more comprehensive test coverage
+
+3. Deprecated functionality:
+   - RespProc.run() method - removed
+   - Field-based processing (name/from_) - removed
+   - Removed classes: TextConv, StructConv, ParsedConv, etc.
+
+The new unified API focuses on:
+- forward(resp) for complete responses  
+- delta(resp, delta_store, is_last) for streaming
+- No automatic field management (handled by _ai.py)
+- Cleaner, simpler interface
+
+Next steps:
+- Add comprehensive parser tests from test_parse.py
+- Test integration with _ai.py when available
+- Test template() and render() methods
+- Test error conditions with new API
+"""
+
+
+if __name__ == "__main__":
+    pytest.main([__file__])

@@ -381,12 +381,29 @@ class SerialTuple(BaseModule):
         # The list elements may be BaseSpec OR primitives, so we use Any
         return list[t.Any]
 
-    def __len__(self):           return len(self._storage)
-    def __iter__(self):          return iter(self._storage)
-    def __getitem__(self, idx):  return self._storage[idx]
+    def __len__(self):
+        """
+        Get the number of items in the container.
+        """
+        return len(self._storage)
+
+    def __iter__(self):
+        """
+        Get an iterator over the items in the container.
+        """
+        return iter(self._storage)
+
+    def __getitem__(self, idx):
+        """
+        Get an item from the container by index.
+        """
+        return self._storage[idx]
 
     # Only mutation we expose is append – tuples are conceptually immutable
     def append(self, value: t.Any):
+        """
+        Append an item to the container.
+        """
         if isinstance(value, BaseModule):
             self.register_module(str(len(self._storage)), value)
         self._storage.append(value)

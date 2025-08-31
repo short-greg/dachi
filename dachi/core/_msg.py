@@ -13,7 +13,7 @@ import pydantic
 
 # local
 from . import Renderable
-from ._tool import ToolCall, AsyncToolCall, ToolOut
+from ._tool import ToolUse
 from ._base import BaseModule
 
 try:
@@ -54,6 +54,9 @@ class RespDelta(pydantic.BaseModel):
     )
     finish_reason: str | None = pydantic.Field(
         default=None, description="Reason generation stopped (e.g., 'stop', 'length', 'tool_calls')"
+    )
+    usage: typing.Dict[str, int] | None = pydantic.Field(
+        default=None, description="Per-chunk token usage statistics (when stream_options.include_usage=true)"
     )
     proc_store: typing.Dict[str, typing.Any] = pydantic.Field(
         default_factory=dict, description="Storage for RespProc processing data"
@@ -108,6 +111,9 @@ class Resp(pydantic.BaseModel):
     )
     usage: typing.Dict[str, int] = pydantic.Field(
         default_factory=dict, description="Token usage statistics (prompt_tokens, completion_tokens, etc.)"
+    )
+    choices: typing.List[typing.Dict[str, typing.Any]] | None = pydantic.Field(
+        default=None, description="Choice-level metadata for multiple completions (index, finish_reason, etc.)"
     )
     
     # Streaming support
@@ -223,8 +229,7 @@ class Msg(BaseModel):
     alias: t.Optional[str] = None
 
     attachments: t.List[Attachment] = Field(default_factory=list, description="List of attachments included in the message.")
-    tool_calls: t.List[ToolCall | AsyncToolCall] = Field(default_factory=list, description="List of tool calls included output by the message.")
-    tool_outs: t.List[ToolOut] = Field(default_factory=list, description="List of tool outputs included in the message.")
+    tool_calls: t.List[ToolUse] = Field(default_factory=list, description="List of tool calls with their results stored in ToolUse.result")
 
     tags: t.List[str] = Field(default_factory=list, description="List of tags associated with the message.")
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), description="Timestamp of the message creation in UTC.")

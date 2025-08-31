@@ -27,13 +27,18 @@ from ._structs import (
     SerialTuple
 )
 from ._tool import (
-    ToolDef,
-    make_tool_def,
-    make_tool_defs,
-    ToolCall,
-    ToolBuilder,
-    ToolOut,
-    AsyncToolCall   
+    BaseTool,
+    Tool,
+    AsyncTool,
+    register_tool,
+    register_tools,
+    tool,
+    get_tool_function,
+    list_tool_functions,
+    ToolUse,
+    ToolBuffer,
+    ToolChunk,
+    # ToolOut,
 )
 from ._msg import (
     Msg,
