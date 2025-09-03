@@ -16,11 +16,9 @@ from ._process import (
 )
 from ..core import Param, END_TOK
 from ..utils import primitives, str_formatter
-from ._resp import FromResp
 from ._msg import ToMsg
-from ._out import (
-    ToOut, ParseOut,
-    PrimOut, PydanticOut, StrOut
+from ._resp import (
+    ToOut, PrimOut, TextOut, StructOut
 )
 Engine: typing.TypeAlias = Process | AsyncProcess | StreamProcess | AsyncStreamProcess
 
@@ -52,26 +50,19 @@ class IBase(BaseModule):
 
         out_cls = self._return_annotation
         if self.out_conv is None:
-            if out_cls is str:
-                self.out_conv = StrOut(
-                    name='out', from_=self.llm_out,
-                )
-
+            if out_cls != inspect.Signature.empty and hasattr(out_cls, '__bases__') and issubclass(out_cls, pydantic.BaseModel):
+                # For pydantic models, use StructOut
+                self.out_conv = StructOut(struct=out_cls)
+            elif out_cls is str:
+                # For string outputs, use TextOut (good for streaming)
+                self.out_conv = TextOut()
             elif out_cls in primitives:
-                self.out_conv = PrimOut(
-                    name='out', from_=self.llm_out,
-                    out_cls=self.out_cls
-                )
-            elif issubclass(out_cls, pydantic.BaseModel):
-                self.out_conv = PydanticOut(
-                    name='out', 
-                    from_=self.llm_out, 
-                    out_cls=out_cls
-                )
+                # For other primitives, use PrimOut
+                self.out_conv = PrimOut(out_cls=out_cls)
             else:
-                self.out_conv = ParseOut(name='out', from_=self.llm_out)
+                # Default case - use TextOut
+                self.out_conv = TextOut()
 
-        self._out = FromResp(keys='out')
 
     def _align_params(
         self, *args, **kwargs
@@ -130,9 +121,6 @@ class IBase(BaseModule):
         """
         pass
     
-    @property
-    def from_resp(self) -> FromResp:
-        return self._out
 
 
 class InstF(IBase):
@@ -380,7 +368,7 @@ class FuncDec(FuncDecBase):
             msg, **self.kwargs
         )
         res_msg = self.inst.out_conv(res_msg)
-        return self.inst.from_resp(res_msg)
+        return res_msg.out if hasattr(res_msg, 'out') else res_msg
 
     def spawn(self, instance=None) -> Self:
         """
@@ -440,7 +428,7 @@ class AFuncDec(FuncDecBase):
             cue.text, **self.kwargs
         )
         res_msg = self.inst.out_conv(res_msg)
-        return self.inst.from_resp(res_msg)
+        return res_msg.out if hasattr(res_msg, 'out') else res_msg
     
     async def __call__(self, *args, **kwargs):
         """
@@ -506,11 +494,14 @@ class StreamDec(FuncDecBase, StreamProcess):
             instance
         )
 
+        delta_store = {}
         for resp in engine.stream(
             msg, **self.kwargs
         ):  
-            resp = self.inst.out_conv(resp, True, resp.data['response'] == END_TOK)
-            yield self.inst.from_resp(resp)
+            is_last = resp.data['response'] == END_TOK
+            result = self.inst.out_conv.delta(resp, delta_store, is_last)
+            resp.out = result
+            yield resp.out
 
     def spawn(self, instance=None) -> Self:
         """
@@ -575,11 +566,14 @@ class AStreamDec(FuncDecBase, AsyncStreamProcess):
             instance
         )
 
-        async for resp_msg in engine.astream(
+        delta_store = {}
+        async for resp in engine.astream(
             msg, **self.kwargs
         ):
-            resp = self.inst.out_conv(resp, True, resp.data['response'] == END_TOK)
-            yield self.inst.from_resp(resp)
+            is_last = resp.data['response'] == END_TOK
+            result = self.inst.out_conv.delta(resp, delta_store, is_last)
+            resp.out = result
+            yield resp.out
 
     def spawn(self, instance=None) -> Self:
         

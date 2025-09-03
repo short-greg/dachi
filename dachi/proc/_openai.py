@@ -23,7 +23,7 @@ class OpenAIChat(LLM, AIAdapt):
     - Msg.role -> message.role (user/assistant/system/tool)
     - Msg.text -> message.content 
     - Msg.attachments -> message.content (for vision/multimodal)
-    - Msg.tool_outs -> role="tool" messages with tool_call_id
+    - Msg.tool_calls -> role="tool" messages with tool_call_id
     
     Unified kwargs (converted):
     - temperature, max_tokens, top_p, frequency_penalty, presence_penalty
@@ -59,9 +59,9 @@ class OpenAIChat(LLM, AIAdapt):
         else:
             messages = [self._convert_message(msg) for msg in inp]
         
-        # Add tool messages from ToolOut objects
+        # Add tool messages from ToolUse objects
         for msg in (inp if isinstance(inp, BaseDialog) else [inp]):
-            for tool_out in msg.tool_outs:
+            for tool_out in msg.tool_calls:
                 messages.append({
                     "role": "tool",
                     "content": str(tool_out.result),
@@ -258,9 +258,9 @@ class OpenAIResp(LLM, AIAdapt):
         else:
             messages = [self._convert_message(msg) for msg in inp]
         
-        # Add tool messages from ToolOut objects
+        # Add tool messages from ToolUse objects
         for msg in (inp if isinstance(inp, BaseDialog) else [inp]):
-            for tool_out in msg.tool_outs:
+            for tool_out in msg.tool_calls:
                 messages.append({
                     "role": "tool",
                     "content": str(tool_out.result),

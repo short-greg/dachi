@@ -64,25 +64,53 @@ class RespDelta(pydantic.BaseModel):
 
 
 class Resp(pydantic.BaseModel):
-    """A response from the LLM or an API.
+    """A complete response from an LLM or API call.
     
-    This class represents a unified response format that contains both the message 
-    content and metadata from API calls. It supports streaming responses through 
-    delta accumulation and provides access to raw API responses.
+    This class represents a unified response format that contains both the complete message 
+    content and metadata from API calls. It supports streaming responses through delta 
+    accumulation and provides access to processed outputs via the `out` property.
+    
+    Key concepts:
+        - msg: Contains the complete, accumulated message content (not deltas)
+        - out: Contains processed output from response processors (can be dict, single value, tuple, or None)
+        - delta: Contains incremental streaming information (text chunks, partial tool calls, etc.)
+        - data: Internal storage for raw API responses and processing state
+        
+    For streaming responses:
+        - msg.text contains the accumulated text so far
+        - delta contains the incremental changes in this chunk
+        - out contains the processed result from the current chunk
+        
+    For complete responses:
+        - msg contains the final complete message
+        - out contains the final processed result
+        - delta is typically empty
+        
+    Usage:
+        Access processed output:
+            resp = processor(response)
+            result = resp.out  # Can be str, dict, tuple, or None
+            
+        Access message content:
+            text = resp.msg.text  # Complete accumulated text
+            
+        Access streaming deltas:
+            if resp.delta.text:  # Check if there's new text in this chunk
+                chunk = resp.delta.text
     """
 
     # Core content
     msg: Msg | None = pydantic.Field(
-        default=None, description="The main message content from the LLM response"
+        default=None, description="The complete, accumulated message content (not delta). Contains final text for completed responses, accumulated text for streaming."
     )
     text: str | None = pydantic.Field(
-        default=None, description="Generated text content from the LLM"
+        default=None, description="Direct text content from the LLM (alternative to msg.text for simple cases)"
     )
     tool: typing.List[typing.Dict] | None = pydantic.Field(
-        default=None, description="Complete tool call objects for non-streaming responses"
+        default=None, description="Complete tool call objects with results for non-streaming responses"
     )
     thinking: str | None = pydantic.Field(
-        default=None, description="Model's reasoning or thought process content"
+        default=None, description="Complete model reasoning/thought process content (accumulated, not delta)"
     )
     logprobs: typing.Dict | None = pydantic.Field(
         default=None, description="Log probabilities for generated tokens"
@@ -133,8 +161,8 @@ class Resp(pydantic.BaseModel):
     _delta: typing.Dict = pydantic.PrivateAttr(
         default_factory=dict
     )
-    _out: typing.Dict = pydantic.PrivateAttr(
-        default_factory=dict
+    _out: typing.Union[typing.Dict, typing.Any, typing.Tuple, None] = pydantic.PrivateAttr(
+        default=None
     )
 
     @property
@@ -149,13 +177,24 @@ class Resp(pydantic.BaseModel):
     # Note: delta is now a proper RespDelta field, no property needed
     
     @property
-    def out(self) -> typing.Dict:
+    def out(self) -> typing.Union[typing.Dict, typing.Any, typing.Tuple, None]:
         """Get the output values from the response.
+        
+        The out attribute can contain processed output from response processors:
+        - dict: Key-value pairs for structured outputs
+        - single value: For simple outputs (str, int, bool, etc.)
+        - tuple: For multiple outputs
+        - None: When no processing has been done
 
         Returns:
-            typing.Dict: The output values from the response.
+            typing.Union[typing.Dict, typing.Any, typing.Tuple, None]: The processed output values
         """
         return self._out
+    
+    @out.setter
+    def out(self, value: typing.Union[typing.Dict, typing.Any, typing.Tuple, None]) -> None:
+        """Set the output values for the response."""
+        self._out = value
     
     def spawn(self, msg: Msg, data: typing.Dict=None, follow_up: bool=None) -> 'Resp':
         """Spawn a new response with the same delta and out but a different message and data
@@ -173,7 +212,7 @@ class Resp(pydantic.BaseModel):
             follow_up=follow_up,
         )
         resp.data.update(data)
-        resp.out.update(self._out)
+        resp.out = self._out
         # Copy delta information including proc_store for streaming
         if self.delta:
             resp.delta.text = self.delta.text
@@ -216,13 +255,35 @@ def to_b64(filepath) -> str:
 
 class Msg(BaseModel):
     """
-    Text-first message with attachments and tool events.
+    Represents a complete, accumulated message in a conversation.
+    
+    This class contains the full, final content of a message - not incremental deltas.
+    For streaming responses, this represents the accumulated text so far, not just 
+    the latest chunk. Delta information is stored separately in RespDelta.
+    
+    Key concepts:
+        - Role: Indicates who sent the message ('user', 'assistant', 'system', etc.)
+        - Text: The complete accumulated content, not just the latest delta
+        - Tool calls: Complete tool/function calls with their results
+        - Attachments: Files, images, or other media associated with the message
+        
+    Usage:
+        Complete message:
+            msg = Msg(role='user', text='Hello, how are you?')
+            
+        Accumulated streaming message:
+            # During streaming, text contains all content received so far
+            msg = Msg(role='assistant', text='The answer is 42 and here is why...')
+            
+        Message with tool calls:
+            msg = Msg(role='assistant', text='I found the information')
+            msg.tool_calls.append(ToolUse(name='search', arguments={'query': 'python'}))
 
     Notes:
-        - `content` may be plain text or an ordered mapping of channels (e.g., {"final": "...", "thinking": "..."}).
-        - Attachments are declarative refs; adapters handle upload/encoding.
-        - Tool events interleave calls, deltas, and results (including computer-use).
-        - Provider/runtime metadata should live on Resp, not here.
+        - Text may be plain text or structured dict with channels (e.g., {"final": "...", "thinking": "..."})
+        - Attachments are declarative refs; adapters handle upload/encoding
+        - Tool events include complete calls, not partial deltas
+        - Provider/runtime metadata should live on Resp, not here
     """
     role: str
     text: t.Optional[t.Union[str, t.Dict[str, t.Any]]] = Field(default=None, description="Text content as a single element or a sequence of label text values.")

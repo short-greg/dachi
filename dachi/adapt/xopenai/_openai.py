@@ -22,10 +22,9 @@ from dachi.core import (
 from dachi.proc import (
     llm_aforward, llm_astream, 
     llm_forward, llm_stream,
-    Sequential, RespProc
+    Sequential
 )
-from dachi.proc._resp import TextConv, StructConv, ParsedConv, ToolConv
-from dachi.proc._out import ToolExecConv
+from dachi.proc._resp import TextConv, StructConv, ParsedConv, ToolConv, ToOut
 from dachi.proc import Process, AsyncProcess, StreamProcess, AsyncStreamProcess
 from dachi.core import ModuleList
 from dachi.utils import UNDEFINED, coalesce
@@ -140,7 +139,7 @@ class LLM(BaseModule):
     def spawn(self, 
         tools: typing.Iterable[BaseTool]=UNDEFINED,
         json_output: bool | pydantic.BaseModel | typing.Dict=UNDEFINED,
-        procs: typing.List[RespProc]=UNDEFINED
+        procs: typing.List[ToOut]=UNDEFINED
     ):
         # TODO: Implement
         pass

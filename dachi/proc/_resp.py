@@ -3,6 +3,10 @@
 from abc import abstractmethod
 import typing
 import inspect
+import json
+import csv
+import io
+from collections import OrderedDict
 
 # 3rd party
 import pydantic
@@ -12,40 +16,16 @@ from ..core import Resp, render
 from ._process import Process
 from .. import utils
 
-
-RESPONSE_FIELD = 'response'
-
-# TODO: After updating this
-# the _out.py, _parse.py and _resp.py tests must
-# be updated. and consolidated into here
-# I also want to remove "def post"
-# all of these just output a value (They will be ToOuts)
-# and that value will 
-
-# Also, I want to update these to take in a Resp rather
-# than a message. Then I want to have a delta method
-# and a regular forward method (separate them
-# Aim to simplify all of these classes
-
-# 1st party
-import inspect
-import typing
-from abc import abstractmethod
-import csv
-import io
-from collections import OrderedDict
-
-# 3rd party
-import pydantic
-
-# local
 from ..core import (
     Templatable, 
     ExampleMixin, ModuleList,
     render, 
-    Resp, struct_template
+    Resp, struct_template, END_TOK
 )
-from ._parse import LineParser, Parser
+
+
+
+# local
 from .. import utils
 
 S = typing.TypeVar('S', bound=pydantic.BaseModel)
@@ -63,6 +43,22 @@ from abc import abstractmethod
 from .. import utils
 from collections import OrderedDict
 from dachi.proc import Process
+
+
+RESPONSE_FIELD = 'response'
+
+# TODO: After updating this
+# the _out.py, _parse.py and _resp.py tests must
+# be updated. and consolidated into here
+# I also want to remove "def post"
+# all of these just output a value (They will be ToOuts)
+# and that value will 
+
+# Also, I want to update these to take in a Resp rather
+# than a message. Then I want to have a delta method
+# and a regular forward method (separate them
+# Aim to simplify all of these classes
+
 
 # RespProc => use to covert to "out"
 # out = {
@@ -101,68 +97,6 @@ from dachi.proc import Process
 # <- checks tool use and can continue the conversation
 
 
-
-
-# class RespConv(Process, ABC):
-#     """Use to process the resoponse from an LLM
-#     """
-
-#     name: str
-
-#     @abstractmethod
-#     def delta(
-#         self, 
-#         resp, 
-#         delta_store: typing.Dict, 
-#         streamed: bool=False, 
-#         is_last: bool=False
-#     ) -> Msg: 
-#         pass
-
-#     def forward(
-#         self, 
-#         resp: Resp, 
-#         is_streamed: bool=False, 
-#         is_last: bool=True
-#     ):
-
-#         r = resp.val
-
-#         delta_store = utils.get_or_set(
-#             resp.delta, self.name, {}
-#         )
-        
-#         resp.data[self.name] = res = self.delta(
-#             r, 
-#             delta_store, 
-#             is_streamed, 
-#             is_last
-#         )
-
-#         self.post(
-#             resp, 
-#             res, 
-#             resp.delta[self.name], 
-#             is_streamed, 
-#             is_last
-#         )
-#         return resp
-
-#     def prep(self) -> typing.Dict:
-#         return {}
-
-
-
-
-
-
-
-
-
-
-
-
-
 class JSONObj(pydantic.BaseModel):
     """Wrapper for JSON output configuration"""
     json_schema: typing.Dict | pydantic.BaseModel | None = None
@@ -197,10 +131,6 @@ class JSONObj(pydantic.BaseModel):
                 "schema": schema_dict
             }
         }
-
-
-
-
 
 
 class ReadError(Exception):
@@ -269,6 +199,7 @@ class ToOut(
         
         return resp
 
+
     def forward(self, resp: Resp) -> typing.Any:
         """Process complete non-streaming response
         
@@ -279,14 +210,14 @@ class ToOut(
             Processed result
         """
         # Simple non-streaming processing - override in subclasses
-        return resp.text if hasattr(resp, 'text') else str(resp)
+        return resp.msg.text if resp.msg.text is not None else str(resp)
     
     @abstractmethod
-    def delta(self, resp, delta_store: typing.Dict, is_last: bool = True) -> typing.Any:
+    def delta(self, resp: Resp, delta_store: typing.Dict, is_last: bool = True) -> typing.Any:
         """Process streaming response chunks
         
         Args:
-            resp: Response chunk
+            resp: Response chunk containing data in resp.data['response']
             delta_store: State storage for accumulating across chunks
             is_last: Whether this is the final chunk
             
@@ -296,9 +227,26 @@ class ToOut(
         pass
 
 
+class Parser(Process):
+    """Base class for parsers. 
+    It converts the input text
+    into a list of objects
+    """
+    def forward(
+        self, 
+        resp, 
+        delta_store: typing.Dict, 
+        streamed: bool=False, 
+        is_last: bool=True
+    ) -> typing.List | None:
+        pass
+
+    @abstractmethod
+    def render(self, data) -> str:
+        pass
 
 
-class ToPrim(ToOut):
+class PrimOut(ToOut):
     """Use for converting an AI response into a primitive value
     """
 
@@ -312,7 +260,7 @@ class ToPrim(ToOut):
     
     def forward(self, resp: Resp) -> typing.Any:
         """Process complete non-streaming response"""
-        val = str(resp.text) if hasattr(resp, 'text') else str(resp)
+        val = str(resp.msg.text) if resp.msg.text is not None else str(resp)
         
         if isinstance(self.out_cls, typing.Type):
             return self.out_cls(val)
@@ -323,7 +271,7 @@ class ToPrim(ToOut):
 
     def delta(
         self, 
-        resp, 
+        resp: Resp, 
         delta_store: typing.Dict, 
         is_last: bool=True
     ) -> typing.Any:
@@ -378,8 +326,6 @@ class ToPrim(ToOut):
         return f'<{self.out_cls.__name__}>'
 
 
-
-
 class KVOut(ToOut):
     """Create a Reader of a list of key values
     """
@@ -394,7 +340,7 @@ class KVOut(ToOut):
 
     def forward(self, resp: Resp) -> typing.Any:
         """Process complete non-streaming response"""
-        text = str(resp.text) if hasattr(resp, 'text') else str(resp)
+        text = str(resp.msg.text) if resp.msg.text is not None else str(resp)
         lines = text.strip().split('\n')
         
         result = {}
@@ -412,7 +358,7 @@ class KVOut(ToOut):
     
     def delta(
         self, 
-        resp, 
+        resp: Resp, 
         delta_store: typing.Dict, 
         is_last: bool=True
     ) -> typing.Any:
@@ -484,6 +430,118 @@ class KVOut(ToOut):
         return self.render(data)
 
 
+class StructOut(ToOut):
+    """
+    Unified structured data converter for JSON/structured outputs.
+    Works with the unified Resp structure.
+    """
+    struct: typing.Union[pydantic.BaseModel, typing.Dict, None] = None
+
+    def forward(self, resp: Resp) -> typing.Any:
+        """Process complete non-streaming structured response"""
+        text = resp.msg.text if resp.msg.text is not None else str(resp)
+        try:
+            parsed_json = json.loads(text)
+            
+            # If struct is set, use it to process the parsed JSON
+            if self.struct is not None:
+                if inspect.isclass(self.struct) and issubclass(self.struct, pydantic.BaseModel):
+                    # Use pydantic validation
+                    return self.struct.model_validate(parsed_json)
+                elif isinstance(self.struct, dict):
+                    # Use dict schema (for now just return parsed JSON)
+                    return parsed_json
+            
+            return parsed_json
+        except (json.JSONDecodeError, TypeError, ValueError):
+            return {} if self.struct is None else (self.struct() if inspect.isclass(self.struct) else {})
+
+    def delta(
+        self, 
+        resp: Resp, 
+        delta_store: typing.Dict, 
+        is_last: bool = True
+    ) -> typing.Any:
+        """Process structured data from unified response."""
+        if resp is not None and resp is not utils.UNDEFINED:
+            delta_content = str(resp) if resp else ''
+            utils.acc(delta_store, 'content', delta_content)
+
+        if is_last:
+            try:
+                struct = json.loads(delta_store.get('content', '{}'))
+                return struct
+            except json.JSONDecodeError:
+                return {}
+
+        return utils.UNDEFINED
+
+    def render(self, data: typing.Any) -> str:
+        """Render structured data as JSON string"""
+        return json.dumps(data, indent=2)
+
+    def template(self) -> str:
+        """Template for structured output"""
+        return '{"key": "value"}'
+
+    def prep(self) -> typing.Dict:
+        """Prepare request parameters for structured output."""
+        if isinstance(self.struct, typing.Dict):
+            return {'response_format': {
+                "type": "json_schema",
+                "json_schema": self.struct
+            }}
+        elif isinstance(self.struct, pydantic.BaseModel) or (
+            inspect.isclass(self.struct) and 
+            issubclass(self.struct, pydantic.BaseModel)
+        ):
+            return {'response_format': self.struct}
+        return {'response_format': "json_object"}
+
+    def example(self) -> str:
+        """Generate example output for structured data"""
+        raise RuntimeError("StructOut.example() not implemented - cannot generate examples for arbitrary pydantic models")
+
+
+class TextOut(ToOut):
+    """Use for converting an AI response text - good for streaming text output
+    """
+
+    def forward(self, resp: Resp) -> typing.Any:
+        """Process complete non-streaming text response"""
+        return resp.msg.text if resp.msg.text is not None else str(resp)
+
+    def delta(
+        self, 
+        resp: Resp, 
+        delta_store: typing.Dict, 
+        is_last: bool = True
+    ) -> typing.Any:
+        """Process streaming text chunks - returns immediately for good streaming"""
+        if resp is None or resp is utils.UNDEFINED:
+            return utils.UNDEFINED
+
+        # For text, return immediately to support streaming
+        # Return the delta text chunk for this streaming response
+        text_chunk = resp.delta.text or ''
+        utils.acc(delta_store, 'text', text_chunk)
+        
+        # For TextOut, always return the chunk immediately for good streaming
+        return text_chunk
+
+    def render(self, data: typing.Any) -> str:
+        """Output an example of the data"""
+        return str(data)
+
+    def template(self) -> str:
+        """Output the template for the string"""
+        return '<text>'
+
+    def example(self) -> str:
+        """Generate example text output"""
+        return "example text"
+
+
 class IndexOut(ToOut):
     """Create a Reader of a list of key values
     """
@@ -497,7 +555,7 @@ class IndexOut(ToOut):
 
     def forward(self, resp: Resp) -> typing.Any:
         """Process complete non-streaming response"""
-        text = str(resp.text) if hasattr(resp, 'text') else str(resp)
+        text = str(resp.msg.text) if resp.msg.text is not None else str(resp)
         lines = text.strip().split('\n')
         
         result = []
@@ -521,7 +579,7 @@ class IndexOut(ToOut):
         
     def delta(
         self, 
-        resp, 
+        resp: Resp, 
         delta_store: typing.Dict, 
         is_last: bool=True
     ) -> typing.Any:
@@ -600,19 +658,75 @@ class IndexOut(ToOut):
         return self.render(data)
 
 
+class JSONListOut(ToOut):
+    """Processes JSON arrays, handling streaming of individual JSON objects."""
+    
+    model_cls: typing.Type[pydantic.BaseModel] | None = None
+    
+    def forward(self, resp: Resp) -> typing.Any:
+        """Process complete JSON array response"""
+        text = str(resp.msg.text) if resp.msg.text is not None else str(resp)
+        try:
+            data = json.loads(text)
+            if not isinstance(data, list):
+                raise RuntimeError("Expected JSON array, got different type")
+            
+            if self.model_cls:
+                return [self.model_cls(**item) if isinstance(item, dict) else item for item in data]
+            return data
+        except json.JSONDecodeError as e:
+            raise RuntimeError(f"Failed to parse JSON array: {e}") from e
+    
+    def delta(
+        self, 
+        resp: Resp, 
+        delta_store: typing.Dict, 
+        is_last: bool=True
+    ) -> typing.Any:
+        """Process streaming JSON array chunks, returning individual objects as they complete"""
+        resp = self.coalesce_resp(resp)
+        val = utils.acc(delta_store, 'val', resp)
+        
+        processed_count = utils.get_or_set(delta_store, 'processed_count', 0)
+        
+        try:
+            parsed = json.loads(val)
+            if isinstance(parsed, list) and len(parsed) > processed_count:
+                new_items = parsed[processed_count:]
+                if self.model_cls:
+                    new_items = [
+                        self.model_cls(**item) if isinstance(item, dict) else item 
+                        for item in new_items
+                    ]
+                delta_store['processed_count'] = len(parsed)
+                return new_items
+        except json.JSONDecodeError:
+            pass
+        
+        return utils.UNDEFINED
+    
+    def render(self, data: typing.Any) -> str:
+        """Render data as JSON array"""
+        return json.dumps(data, indent=2)
+    
+    def template(self) -> str:
+        """Template for JSON array output"""
+        if self.model_cls:
+            schema = self.model_cls.model_json_schema()
+            return f'[{json.dumps(schema.get("properties", {}))}, ...]'
+        return '[{"key": "<value>"}, ...]'
+    
+    def example(self) -> str:
+        """Example JSON array output"""
+        if self.model_cls:
+            try:
+                example_obj = self.model_cls()
+                return self.render([example_obj.model_dump(), example_obj.model_dump()])
+            except Exception:
+                pass
+        return self.render([{"name": "John", "age": 25}, {"name": "Jane", "age": 30}]) 
 
 
-# TODO: Replace this with ToJSONList
-# JSONList will expect the response to be a 
-# list of JSON objects. These can be streamed however
-# [
-#    {}, # object 1
-#    {} # object 2
-# ]
-# it has to detect when 
-# also include a way to create the 
-# It can take int a ModuleList of StructConvs
-# but still be able to return 
 class TupleOut(ToOut):
 
     convs: ModuleList
@@ -621,7 +735,7 @@ class TupleOut(ToOut):
     def forward(self, resp: Resp) -> typing.Any:
         """Process complete non-streaming response"""
         # Simple implementation - parse and process each part with its converter
-        text = str(resp.text) if hasattr(resp, 'text') else str(resp)
+        text = str(resp.msg.text) if resp.msg.text is not None else str(resp)
         
         # Use parser to split the text into parts
         parts = self.parser.render([text])
@@ -639,9 +753,9 @@ class TupleOut(ToOut):
     
     def delta(
         self, 
-        resp, 
-        delta_store, 
-        is_last = True
+        resp: Resp, 
+        delta_store: typing.Dict, 
+        is_last: bool=True
     ) -> typing.Any:
         parsed = utils.sub_dict(delta_store, 'parsed')
         i = utils.get_or_set(delta_store, 'i', 0)
@@ -698,17 +812,84 @@ class TupleOut(ToOut):
         ]
         return self.parser.render(datas)
 
-# TODO: Add a JSONValsOut 
-# This will expect a JSON that startswith a dictionary
-# and will make it possible to stream 
-# one value from the JSON at a time alone with the key
-# out = (key, value) <-will set the .out to 
+
+class JSONValsOut(ToOut):
+    """Processes JSON objects, streaming key-value pairs one at a time."""
+    
+    processors: typing.Dict[str, ToOut] | None = None
+    
+    def forward(self, resp: Resp) -> typing.Any:
+        """Process complete JSON object response"""
+        text = str(resp.msg.text) if resp.msg.text is not None else str(resp)
+        try:
+            data = json.loads(text)
+            if isinstance(data, dict):
+                result = []
+                for k, v in data.items():
+                    if self.processors and k in self.processors:
+                        mock_resp = type('MockResp', (), {'text': str(v)})()
+                        processed_v = self.processors[k].forward(mock_resp)
+                        result.append((k, processed_v))
+                    else:
+                        result.append((k, v))
+                return result
+            else:
+                raise RuntimeError("Expected JSON object, got different type")
+        except json.JSONDecodeError as e:
+            raise RuntimeError(f"Failed to parse JSON object: {e}") from e
+    
+    def delta(
+        self, 
+        resp: Resp, 
+        delta_store: typing.Dict, 
+        is_last: bool=True
+    ) -> typing.Any:
+        """Process streaming JSON object chunks, returning new key-value pairs as they complete"""
+        resp = self.coalesce_resp(resp)
+        val = utils.acc(delta_store, 'val', resp)
+        
+        processed_keys = utils.get_or_set(delta_store, 'processed_keys', set())
+        
+        try:
+            parsed = json.loads(val)
+            if isinstance(parsed, dict):
+                new_pairs = []
+                for k, v in parsed.items():
+                    if k not in processed_keys:
+                        if self.processors and k in self.processors:
+                            mock_resp = type('MockResp', (), {'text': str(v)})()
+                            processed_v = self.processors[k].forward(mock_resp)
+                            new_pairs.append((k, processed_v))
+                        else:
+                            new_pairs.append((k, v))
+                        processed_keys.add(k)
+                
+                delta_store['processed_keys'] = processed_keys
+                if new_pairs:
+                    return new_pairs
+        except json.JSONDecodeError:
+            pass
+        
+        return utils.UNDEFINED
+    
+    def render(self, data: typing.Any) -> str:
+        """Render key-value pairs as JSON object"""
+        if isinstance(data, list) and all(isinstance(item, tuple) and len(item) == 2 for item in data):
+            obj = {k: v for k, v in data}
+        else:
+            obj = data
+        return json.dumps(obj, indent=2)
+    
+    def template(self) -> str:
+        """Template for JSON values output"""
+        return '{"key1": "<value1>", "key2": "<value2>"}'
+    
+    def example(self) -> str:
+        """Example JSON values output"""
+        return self.render([("name", "John"), ("age", 25), ("city", "Boston")]) 
 
 
 
-
-# TODO: Review what this can do
-# compared to CSVRowParser
 class CSVOut(ToOut):
     """
     Dynamically parse CSV data, returning new rows as accumulated. 
@@ -722,7 +903,7 @@ class CSVOut(ToOut):
         import csv
         import io
         
-        text = str(resp.text) if hasattr(resp, 'text') else str(resp)
+        text = str(resp.msg.text) if resp.msg.text is not None else str(resp)
         
         rows = list(csv.reader(io.StringIO(text), delimiter=self.delimiter))
         
@@ -738,7 +919,7 @@ class CSVOut(ToOut):
     
     def delta(
         self, 
-        resp, 
+        resp: Resp, 
         delta_store: typing.Dict, 
         is_last: bool=False
     ) -> typing.List | None:
@@ -747,7 +928,11 @@ class CSVOut(ToOut):
         """
         # resp = self.handle_null(resp, '')
 
-        val = utils.acc(delta_store, 'val', resp, '')
+        # TODO: Response is not currently correct, it is
+        # not treating it as a Resp class
+        # just get the data from resp.msg.text
+
+        val = utils.acc(delta_store, 'val', resp.msg.text, '')
         row = utils.get_or_set(delta_store, 'row', 0)
         header = utils.get_or_set(
             delta_store, 'header', None
@@ -821,85 +1006,6 @@ class CSVOut(ToOut):
     def template(self):
         return super().template()
 
-
-class ToolExecConv(ToOut):
-    """Use for converting a tool from a response to execute it.
-    
-    This converter takes tool call objects and executes them, returning
-    the execution results. Works with the unified Resp structure.
-    """
-    
-    def forward(self, resp: Resp) -> typing.Any:
-        """Process complete non-streaming tool calls"""
-        # Assuming resp has tool calls that can be executed
-        if hasattr(resp, 'tool_calls') and resp.tool_calls:
-            return [tool() for tool in resp.tool_calls if hasattr(tool, '__call__')]
-        return []
-    
-    def delta(
-        self, 
-        resp, 
-        delta_store: typing.Dict, 
-        is_last: bool=True
-    ) -> typing.Any:
-        """Execute tool calls and return results.
-
-        Args:
-            resp: Tool call data from unified response structure
-            delta_store: State storage for streaming
-            is_streamed: Whether this is a streaming response
-            is_last: Whether this is the final chunk
-
-        Returns:
-            Execution results or UNDEFINED if no tools to execute
-        """
-        if resp is None or resp is utils.UNDEFINED:
-            return utils.UNDEFINED
-        
-        # Handle individual ToolCall objects
-        if hasattr(resp, '__call__'):
-            return resp()
-        
-        # Handle list of ToolCall objects
-        if isinstance(resp, list):
-            return [r() for r in resp if hasattr(r, '__call__')]
-        
-        return utils.UNDEFINED
-
-    def render(self, data: typing.Any) -> str:
-        """Render tool execution result as string"""
-        return str(data)
-
-    def template(self) -> str:
-        """Template for tool execution output"""
-        return "{result}"
-
-    def example(self) -> str:
-        """Example tool execution output"""
-        return "Tool execution result"
-
-
-
-
-
-class Parser(Process):
-    """Base class for parsers. 
-    It converts the input text
-    into a list of objects
-    """
-    def forward(
-        self, 
-        resp, 
-        delta_store: typing.Dict, 
-        streamed: bool=False, 
-        is_last: bool=True
-    ) -> typing.List | None:
-        pass
-
-    @abstractmethod
-    def render(self, data) -> str:
-        pass
-
 # TODO: Look into how to get CSVRowParser
 # combined with CSVout. Ensure CSVOut
 # can process row by row or if it already
@@ -915,7 +1021,7 @@ class CSVRowParser(Parser):
 
     def forward(
         self, 
-        resp, 
+        resp: Resp, 
         delta_store: typing.Dict=None, 
         streamed: bool=False, 
         is_last: bool=True
@@ -926,7 +1032,7 @@ class CSVRowParser(Parser):
         # resp = self.handle_null(resp, '')
         delta_store = delta_store if delta_store is not None else {}
 
-        val = utils.acc(delta_store, 'val', resp, '')
+        val = utils.acc(delta_store, 'val', resp.msg.text, '')
         row = utils.get_or_set(delta_store, 'row', 0)
         header = utils.get_or_set(
             delta_store, 'header', None
@@ -998,7 +1104,7 @@ class CharDelimParser(Parser):
 
     def forward(
         self, 
-        resp, 
+        resp: Resp, 
         delta_store: typing.Dict=None, 
         streamed: bool=False, 
         is_last: bool=True
@@ -1039,7 +1145,6 @@ class CharDelimParser(Parser):
         return f'{self.sep}'.join(data)
 
 
-# Make a ToOut based on this
 class LineParser(Parser):
     """
     Parses line by line. Can have a line continue by putting a backslash at the end of the line.
@@ -1119,53 +1224,3 @@ class LineParser(Parser):
 
 
 
-
-# class ParsedOut(ToOut):
-#     """A Reader that does not change the data. 
-#     So in most cases will simply output a string
-#     """
-
-#     parser: Parser
-
-#     def render(self, data: typing.Any) -> str:
-#         """Output an example of the data
-
-#         Args:
-#             data (typing.Any): 
-
-#         Returns:
-#             str: 
-#         """
-#         return str(data)
-
-#     def delta(
-#         self, 
-#         resp, 
-#         delta_store: typing.Dict, 
-#         streamed: bool=False, 
-#         is_last: bool=False
-#     ) -> typing.Any:
-#         """Read in the output
-
-#         Args:
-#             message (str): The message to read
-
-#         Returns:
-#             typing.Any: The output of the reader
-#         """
-#         return self._parser(
-#             resp, delta_store, streamed=streamed,
-#             is_last=is_last
-#         )
-
-#     def template(self) -> str:
-
-#         return self._parser.render(
-#             ['<Template 1>', '<Template 2>']
-#         )
-
-#     def example(self):
-        
-#         return self._parser.render(
-#             ['Example 1', 'Example 2']
-#         )

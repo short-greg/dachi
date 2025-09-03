@@ -11,7 +11,8 @@ from ..core import (
     BaseModule, RespDelta
 )
 from ._process import AsyncProcess
-from ._resp import RespProc, RESPONSE_FIELD
+from ._resp import RESPONSE_FIELD, ToOut
+from .. import utils
 
 # TODO: MOVE OUT OF HERE
 S = t.TypeVar('S', bound=pydantic.BaseModel)
@@ -24,23 +25,105 @@ LLM_PROMPT: t.TypeAlias = t.Union[t.Iterable[Msg], Msg]
 S = t.TypeVar('S', bound=pydantic.BaseModel)
 
 
-def _prepare(proc, kwargs):
+def get_resp_output(resp: Resp, out: t.Union[t.Tuple[ToOut, ...], t.Dict[str, ToOut], ToOut, None]):
+    """Process out parameter for non-streaming functions using forward() method.
+    
+    Takes an out parameter and processes it by calling the forward() method on each processor.
+    Returns the processed result in the same structure as the input (dict, tuple, or single value).
+    
+    Args:
+        resp (Resp): The response object to process
+        out (Union[Dict[str, ToOut], Tuple[ToOut, ...], ToOut, None]): The output processors to apply
+            - Dict: Keys map to processor results, e.g. {'text': TextOut(), 'summary': SummaryOut()}
+            - Tuple: Returns tuple of processor results, e.g. (text_result, summary_result)  
+            - Single ToOut: Returns single processor result
+            - None: No processing, returns None
+            
+    Returns:
+        Union[Dict, Tuple, Any, None]: Processed result matching input structure:
+            - Dict input -> Dict output with same keys
+            - Tuple input -> Tuple output with same length
+            - Single input -> Single output value
+            - None input -> None output
+            
+    Raises:
+        TypeError: If out parameter is not a supported type (dict, tuple, ToOut, or None)
+        
+    Example:
+        >>> resp = Resp(...)
+        >>> result = get_resp_output(resp, {'content': TextOut(), 'tokens': TokenOut()})
+        >>> # Returns: {'content': 'processed text', 'tokens': 42}
+    """
+    if out is None:
+        return None
+    elif isinstance(out, dict):
+        return {key: processor.forward(resp) for key, processor in out.items()}
+    elif isinstance(out, tuple):
+        return tuple(processor.forward(resp) for processor in out)
+    elif isinstance(out, ToOut):
+        return out.forward(resp)
+    else:
+        raise TypeError(f"Unsupported out type: {type(out)}")
 
-    if isinstance(proc, RespProc):
-        proc = [proc]
-    elif proc is None:
-        proc = []
-    for r in proc:
-        if isinstance(proc, RespProc):
-            kwargs.update(r.prep())
-    return proc
+
+def get_delta_resp_output(
+    resp: Resp, 
+    out: t.Union[t.Tuple[ToOut, ...], t.Dict[str, ToOut], ToOut, None], 
+    is_last: bool
+):
+    """Process out parameter for streaming functions using delta() method.
+    
+    Uses resp.delta.proc_store for state management automatically. Keys are:
+    - Dict: uses the original dictionary keys  
+    - Tuple: uses numerical keys "0", "1", etc.
+    - Single: uses key "val"
+    
+    Args:
+        resp (Resp): The response object to process (uses resp.delta.proc_store for state)
+        out (Union[Dict[str, ToOut], Tuple[ToOut, ...], ToOut, None]): The output processors to apply
+        is_last (bool): Whether this is the final streaming chunk
+        
+    Returns:
+        Union[Dict, Tuple, Any, None]: Processed result matching input structure
+            
+    Raises:
+        TypeError: If out parameter is not a supported type (dict, tuple, ToOut, or None)
+    """
+    if out is None:
+        return None
+    elif isinstance(out, dict):
+        result = {}
+        for key, processor in out.items():
+            if key not in resp.delta.proc_store:
+                resp.delta.proc_store[key] = {}
+            value = processor.delta(resp, resp.delta.proc_store[key], is_last)
+            result[key] = value
+        return result
+    elif isinstance(out, tuple):
+        results = []
+        for i, processor in enumerate(out):
+            key = str(i)
+            if key not in resp.delta.proc_store:
+                resp.delta.proc_store[key] = {}
+            result = processor.delta(resp, resp.delta.proc_store[key], is_last)
+            results.append(result)
+        return tuple(results)
+    elif isinstance(out, ToOut):
+        key = "val"
+        if key not in resp.delta.proc_store:
+            resp.delta.proc_store[key] = {}
+        return out.delta(resp, resp.delta.proc_store[key], is_last)
+    else:
+        raise TypeError(f"Unsupported out type: {type(out)}")
+
+
 
 
 def llm_forward(
     f: t.Callable, 
     *args, 
     _adapt: t.Union['AIAdapt', None] = None,
-    _proc: t.List[RespProc] | RespProc=None, 
+    out: t.Union[t.Tuple[ToOut, ...], t.Dict[str, ToOut], ToOut, None] = None, 
     _role: str='assistant',
     **kwargs
 ) -> Resp:
@@ -55,8 +138,6 @@ def llm_forward(
     Returns:
         tuple: A tuple containing the final message (Msg) and the last value processed by the Response objects.
     """
-    _proc = _prepare(_proc, kwargs)
-    
     if _adapt is None:
         _adapt = DefaultAdapter()
 
@@ -66,8 +147,9 @@ def llm_forward(
     )
     resp = _adapt.from_output(result)
 
-    for r in _proc:
-        resp = r(resp)
+    # Process with out parameter
+    resp.out = get_resp_output(resp, out)
+    
     return resp
 
 
@@ -75,7 +157,7 @@ async def llm_aforward(
     f, 
     *args, 
     _adapt: t.Union['AIAdapt', None] = None,
-    _proc: t.List[RespProc] | RespProc=None, 
+    out: t.Union[t.Tuple[ToOut, ...], t.Dict[str, ToOut], ToOut, None] = None, 
     _role: str='assistant',
     **kwargs
 ) -> Resp:
@@ -90,8 +172,6 @@ async def llm_aforward(
     Returns:
         Tuple[Msg, Any]: A tuple containing the processed message and the final value from the response processing.
     """
-    _proc = _prepare(_proc, kwargs)
-    
     if _adapt is None:
         _adapt = DefaultAdapter()
 
@@ -101,11 +181,8 @@ async def llm_aforward(
     )
     resp = _adapt.from_output(result)
 
-    for r in _proc:
-        if isinstance(r, AsyncProcess):
-            resp = await r.aforward(resp)
-        else:
-            resp = r(resp)
+    # Process with out parameter
+    resp.out = get_resp_output(resp, out)
 
     return resp
 
@@ -114,7 +191,7 @@ def llm_stream(
     f: t.Callable, 
     *args, 
     _adapt: t.Union['AIAdapt', None] = None,
-    _proc: t.List[RespProc] | RespProc=None, 
+    out: t.Union[t.Tuple[ToOut, ...], t.Dict[str, ToOut], ToOut, None] = None, 
     _role: str='assistant',
     **kwargs
 ) -> t.Iterator[Resp]:
@@ -129,7 +206,6 @@ def llm_stream(
     Yields:
         Tuple[Msg, Any]: A tuple containing the message object and the processed value from the response.
     """
-    _proc = _prepare(_proc, kwargs)
     prev_message: Msg | None = None
     resp = None
     
@@ -137,24 +213,17 @@ def llm_stream(
         _adapt = DefaultAdapter()
         
     kwargs.update(_adapt.to_input(*args, **kwargs))
+    
     for response in f(
         *args, **kwargs
     ):
         resp = _adapt.from_streamed(response, resp)
-        # msg = Msg(role=_role)
-        # if prev_message is not None:
-        #     msg.delta = prev_message.delta
-
-        # if resp is None:
-        #     resp = Resp(msg=msg)
-        # else:
-        #     resp = resp.spawn(
-        #         msg=msg
-        #     )
         resp.data[RESPONSE_FIELD] = response
 
-        for r in _proc:
-            resp = r(resp, True, False)
+        # Process with out parameter for streaming
+        is_last = response == END_TOK
+        resp.out = get_delta_resp_output(resp, out, is_last)
+        
         prev_message = resp
         yield resp
     
@@ -163,9 +232,8 @@ def llm_stream(
         msg.delta = prev_message.delta
     resp.data[RESPONSE_FIELD] = END_TOK
 
-    for r in _proc:
-
-        resp = r(resp, True, True)
+    # Process END_TOK with processors to get final accumulated results
+    resp.out = get_delta_resp_output(resp, out, True)
 
     yield resp
 
@@ -174,7 +242,7 @@ async def llm_astream(
     f: t.Callable, 
     *args, 
     _adapt: t.Union['AIAdapt', None] = None,
-    _proc: t.List[RespProc] | RespProc=None, 
+    out: t.Union[t.Tuple[ToOut, ...], t.Dict[str, ToOut], ToOut, None] = None, 
     _role: str='assistant',
     **kwargs
 ) -> t.AsyncIterator[Resp]:
@@ -191,7 +259,6 @@ async def llm_astream(
     Yields:
         t.AsyncIterator: The Message and the results
     """
-    _proc = _prepare(_proc, kwargs)
     prev_message: Msg | None = None
     resp = None
     
@@ -199,30 +266,18 @@ async def llm_astream(
         _adapt = DefaultAdapter()
         
     kwargs.update(_adapt.to_input(*args, **kwargs))
+    
     async for response in await f(
         *args, **kwargs
     ):
         resp = _adapt.from_streamed(response, resp)
-        # msg = Msg(role=_role)
-        # if prev_message is not None:
-        #     msg.delta = prev_message.delta
-
-        # if resp is None:
-        #     resp = Resp(msg=msg)
-        # else:
-        #     resp = resp.spawn(
-        #         msg=msg
-        #     )
-
         resp.data[RESPONSE_FIELD] = response
 
-        for r in _proc:
-            if isinstance(r, AsyncProcess):
-                resp = await r(resp, True, False)
-            else:
-                resp = r(resp, True, False)
+        # Process with out parameter for streaming
+        is_last = response == END_TOK
+        resp.out = get_delta_resp_output(resp, out, is_last)
 
-        prev_message = resp.msg
+        prev_message = resp
         yield resp
     
     msg = Msg(role=_role)
@@ -230,9 +285,8 @@ async def llm_astream(
         msg.delta = prev_message.delta
     resp.data[RESPONSE_FIELD] = END_TOK
 
-    for r in _proc:
-
-        resp = r(resp, True, True)
+    # Process END_TOK with processors to get final accumulated results
+    resp.out = get_delta_resp_output(resp, out, True)
 
     yield resp
 
@@ -318,10 +372,23 @@ class DefaultAdapter(AIAdapt):
     def from_streamed(self, output: t.Dict, prev_resp: Resp | None = None) -> Resp:
         """Handle streaming by creating or updating Resp objects."""
         if prev_resp is None:
-            resp = Resp(msg=Msg(role='assistant'))
+            accumulated_text = ''
         else:
-            resp = prev_resp.spawn(msg=Msg(role='assistant'))
+            accumulated_text = prev_resp.msg.text or ''
         
+        # Get delta content for this chunk
+        delta_content = ''
+        if isinstance(output, dict) and 'content' in output:
+            delta_content = output['content']
+            accumulated_text += delta_content
+        
+        if prev_resp is None:
+            resp = Resp(msg=Msg(role='assistant', text=accumulated_text))
+        else:
+            resp = prev_resp.spawn(msg=Msg(role='assistant', text=accumulated_text))
+        
+        # Set delta text for this chunk
+        resp.delta.text = delta_content
         resp.data['response'] = output
         return resp
 
