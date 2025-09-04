@@ -1,174 +1,189 @@
-Here's the updated README skeleton with the name "Dachi":
+# Dachi - AI Framework for Building Intelligent Systems
 
----
+**Dachi** is a comprehensive AI framework for building intelligent systems using Large Language Models (LLMs). It provides flexible interaction with LLMs, task coordination through behavior trees, and customizable workflows for AI agents with robust communication and state management.
 
-# Dachi - AI Library for Building Intelligent Systems
+## Key Features
 
-**Dachi** is an AI framework for building  building intelligent systems using LLMs (Large Language Models). It provides developers to interact with large language models and other AI models seamlessly within Python code, to be able to easily process responses from LLMs, and to construct complex behaviors making use of parallelization and other decision processes through the behavior tree paradigm.
+- **🔄 Async AI Processing**: Coordinate synchronous behavior trees with asynchronous AI calls using AsyncDispatcher
+- **💬 Agent Communication**: Typed message passing between agents using Bulletin message boards
+- **🧠 Shared State Management**: Thread-safe shared state with TTL and reactive callbacks via Blackboard
+- **🌳 Behavior Trees**: Complex decision trees and state machines for AI agent coordination
+- **🔧 Modular Architecture**: Extensible BaseModule system with spec/state separation
+- **🤖 Multiple AI Providers**: Built-in support for OpenAI, with extensible adapter system
 
-## Features
+## Quick Start
 
-- **Flexible Interaction**: Easily read and interact with LLMs directly in Python code, allowing for more natural and controlled usage.
-- **Task Coordination**: Use behavior trees to build complex behaviors such as decision-making with multiple agents. Behavior trees make orchestration and coordination straightforward.
-- **Customizable Workflows**: Define and customize workflows for LLMs using behavior trees or dynamically generated graphs.
+Get up and running in under 5 minutes:
+
+```python
+from dachi.comm import Blackboard, AsyncDispatcher
+from dachi.proc import OpenAIChat
+from dachi.utils import Msg
+
+# Create core components
+blackboard = Blackboard()
+dispatcher = AsyncDispatcher(max_concurrent_requests=2)
+ai_processor = OpenAIChat(model="gpt-4", temperature=0.7)
+
+def chat(user_message: str) -> str:
+    # Submit async AI request
+    message = Msg(content=user_message)
+    request_id = dispatcher.submit_proc(ai_processor, message)
+    
+    # Wait for response
+    import time
+    while True:
+        status = dispatcher.status(request_id)
+        if status.is_complete():
+            return dispatcher.result(request_id).content
+        time.sleep(0.1)
+
+# Use it
+response = chat("Hello! Explain quantum computing simply.")
+print(response)
+```
+
+👉 **[Complete Quick Start Guide](docs/quick-start.md)** - Build a smart task processor in 10 minutes
 
 ## Installation
 
-To install **Dachi**, use pip:
-
 ```bash
-pip install dachi
+# Install from source (recommended for development)
+git clone https://github.com/your-org/dachi.git
+cd dachi
+pip install -e .
+
+# Install dependencies
+conda activate dachi  # or your preferred environment
+pip install -r requirements.txt
 ```
 
-## Getting Started
+## Documentation
 
-### Basic Usage
+### Getting Started
+- 📚 **[Quick Start Guide](docs/quick-start.md)** - Get running in 10 minutes
+- 🏗️ **[Architecture Overview](docs/core-architecture.md)** - Understanding Dachi's design
+- 📖 **[Usage Patterns](docs/usage-patterns.md)** - Canonical patterns for core components
 
-Below is a basic example of how to use Dachi to interact with an LLM:
+### Tutorials  
+- 💬 **[Simple Chat Agent](docs/tutorial-simple-chat-agent.md)** - Build a conversational AI with state management
+- 🤝 **[Multi-Agent Communication](docs/tutorial-multi-agent-communication.md)** - Coordinate multiple specialized agents
+- 🔍 **[Architecture in Practice](docs/architecture-in-practice.md)** - How components work together
 
+### Core Architecture
+- 🏗️ **[Communication & Requests](docs/communication-and-requests.md)** - Bulletin, Blackboard, AsyncDispatcher
+- 💾 **[Serialization & State](docs/serialization-and-state.md)** - State management patterns
+- 🔌 **[Adapters](docs/adapters.md)** - AI provider integration
+- 📨 **[Message System](docs/message-system.md)** - Msg/Resp handling
+
+## Core Components
+
+### Communication Layer
 ```python
-from dachi import LLM
+from dachi.comm import Blackboard, Bulletin, AsyncDispatcher
 
-engine = dachi.act.OpenAIChatModel(
-    model='gpt-4o-mini'
-)
+# Shared state management
+blackboard = Blackboard()
+blackboard.set("key", "value", scope="agent_001")
 
-@dachi.signaturefunc(engine=engine)
-def summarize(document: str, num_sentences: int) -> str:
-    """
-    Summarize the document in {num_sentences} sentences.
+# Agent message passing  
+bulletin = Bulletin[MessageType]()
+bulletin.publish(message)
 
-    # Document
-
-    {document}
-    """
-    pass
-
-# Instantiate the LLM and read a response
-summary = summarize(document, 5)
-print(summary)
-
-
-# instructfunc is an alternative 
-@dachi.instructfunc(engine=engine)
-def summarize(document: str, num_sentences: int) -> str:
-    cue = dachi.Cue('Summarize the document in {num_sentences} sentences')
-    cue2 = dachi.Cue("""
-    
-    # Document
-
-    {document}    
-    """)
-    dachi.op.join([cue, cue2], '\n')
-
-    return dachi.op.fill(document=document, num_sentences=num_sentences)
-    
+# Async AI coordination
+dispatcher = AsyncDispatcher(max_concurrent_requests=5)
+request_id = dispatcher.submit_proc(ai_processor, message)
 ```
 
-### Advanced usage
-
-You can leverage behavior trees to define more complex interactions and processes with the LLM:
-
+### Behavior Trees
 ```python
-import dachi
+from dachi.act import Task, TaskStatus, Sequence, Parallel
 
-
-# This is the standard way to create a behavior tree
-engine = dachi.adapt.openai.OpenAIChatModel(model='gpt-4o-mini')
-
-# Define behavior tree nodes
-@dachi.signaturefunc(engine=engine)
-def task1(document: str):
-    """
-    Extract keywords from the doucment passed in.
-
-    # Document
-
-    {document}
-    """
-    pass
-
-@dachi.signaturefunc(engine=engine)
-def task2(document: str, num_sentences: int):
-    """
-    Write a summary of the document passed in {num_sentences} sentences
-
-    {document}
-    """
-    pass
-
-
-keywords = dachi.act.Shared()
-summarized = dachi.act.Shared()
-
-# Create a behavior tree with parallel execution
-tree = Sango(
-    root=Parallel([
-        dachi.act.taskf(task1, '<Some document>', out=keywords), 
-        dachi.act.taskf(task2, '<Some document>', 4, out=summarized)
-    ])
-)
-
-while status != dachi.act.RUNNING:
-    status = tree.tick()
-
-
-# You can also use function decorators to create
-# a behavior tree
-
-class Agent(Task):
-
-    def __init__(self):
-
-        self.context = Context()
-        self.data = Shared()
-        self.task1 = SomeTask()
-        self.task2 = SomeTask2(self.data)
-        self._sequence = None
-
-    @sequencemethod()
-    def sequence(self):
-        """
-        This method yields the tasks or the task statuses
-        to the caller. The sequence fails on the first failure.
-        """
-
-        yield y == 'ready'
-        # This does not actually do anything
-        yield dachi.act.TaskStatus.SUCCESS
-        yield self.task1
-        yield self.task2
-
+class AIAnalysisTask(Task):
     def tick(self) -> TaskStatus:
+        # Submit async AI request on first tick
+        if not self.request_submitted:
+            self.request_id = dispatcher.submit_proc(ai_proc, message)
+            self.request_submitted = True
+            return TaskStatus.RUNNING
         
-        if self._sequence is None:
-            self._sequence = self.sequence()
+        # Check status on subsequent ticks
+        status = dispatcher.status(self.request_id)
+        return TaskStatus.SUCCESS if status.is_complete() else TaskStatus.RUNNING
 
-        return self._sequence()
-        
-    def reset(self):
-        self._sequence = None
-
+# Compose complex behaviors
+tree = Sequence("analysis_pipeline")
+tree.add_child(AIAnalysisTask("analyze"))
+tree.add_child(ProcessResultsTask("process"))
 ```
 
-## Roadmap
+### AI Processing
+```python
+from dachi.proc import OpenAIChat
+from dachi.utils import Msg
 
-- **Improve planning**: Add support for proactive planning and better integration of planning systems with LLMs.
-- **Add adapters**: Add adapters for a wider variety.
-- **Add evaluation and learning capabilities**: Add the ability for the systems to evaluate the output and learn.
+# Create AI processor
+ai_processor = OpenAIChat(model="gpt-4", temperature=0.7)
+
+# Process messages
+message = Msg(content="Analyze this data", context={"type": "analysis"})
+response = ai_processor.forward(message)  # Sync
+# or
+response = await ai_processor.aforward(message)  # Async
+```
+
+## Architecture Highlights
+
+**🏗️ Foundation Layer**
+- `BaseModule`: Universal building block with registry and spec/state management
+- `Process`: Four execution modes (sync/async × regular/streaming)  
+- `Task`: Behavior tree nodes with composable TaskStatus operations
+- `ShareableItem`: Param/Attr/Shared hierarchy for different data lifecycles
+
+**💬 Communication Layer**  
+- `Blackboard`: Thread-safe shared state with TTL and reactive callbacks
+- `Bulletin`: Type-safe message boards for agent coordination
+- `AsyncDispatcher`: Sync/async coordination for AI processing
+- `Msg/Resp`: Structured AI message handling
+
+**🤖 AI Integration**
+- OpenAI Chat Completions API with streaming support
+- OpenAI Responses API for reasoning models  
+- Extensible adapter system for other providers
+- Tool calling and multimodal support
+
+## Development
+
+### Testing
+```bash
+# Run all tests
+pytest tests tests_adapt
+
+# Run specific component tests  
+pytest tests/comm/     # Communication components
+pytest tests/act/      # Behavior trees
+pytest tests/core/     # Core modules
+```
+
+### Environment Setup
+```bash
+# Activate conda environment
+source /opt/miniconda3/etc/profile.d/conda.sh && conda activate dachi
+
+# Build documentation
+cd docs && make html
+```
 
 ## Contributing
 
-Contributions are welcome! Please follow these steps:
+We welcome contributions! Please see our [contributing guidelines](CONTRIBUTING.md) for details.
 
-1. Fork the repository.
-2. Create a new branch for your feature or bug fix.
-3. Commit your changes and submit a pull request.
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature-name`
+3. Make your changes and add tests
+4. Run tests: `pytest tests tests_adapt`
+5. Submit a pull request
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
-
----
-
-Let me know if you need any additional changes!
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.

@@ -30,6 +30,88 @@ class Bulletin(BaseModel, Generic[T]):
     
     Supports publishing items with optional locking, retrieving items with
     filtering capabilities, releasing locked items, expiration, callbacks, and scoping.
+    
+    Essential for inter-agent communication, task coordination, and message passing
+    in multi-agent systems and behavior trees. Provides thread-safe operations with
+    scoping to prevent cross-agent interference.
+    
+    Usage Patterns:
+    
+    1. **Basic Post → Retrieve → Ack Pattern**:
+        ```python
+        from pydantic import BaseModel
+        
+        class TaskRequest(BaseModel):
+            task_id: str
+            priority: int
+            payload: str
+        
+        # Agent A posts a task request
+        bulletin = Bulletin[TaskRequest]()
+        request = TaskRequest(task_id="task_001", priority=1, payload="process data")
+        post_id = bulletin.publish(request, lock=True)
+        
+        # Agent B retrieves the locked request
+        post = bulletin.retrieve_first(item_type=TaskRequest)
+        if post and not post["locked"]:
+            # Process the task
+            process_task(post["item"])
+            # Acknowledge completion by removing the post
+            bulletin.remove(post["id"])
+        ```
+    
+    2. **Scoped Communication (Multi-tenant safety)**:
+        ```python
+        # Each agent uses its own scope to avoid interference
+        agent_scope = "agent_alpha"
+        
+        # Publish within agent's scope
+        bulletin.publish(message, scope=agent_scope)
+        
+        # Retrieve only messages within scope
+        posts = bulletin.retrieve_all(scope=agent_scope)
+        
+        # Other agents in different scopes won't see these messages
+        ```
+    
+    3. **Event-driven Communication with Callbacks**:
+        ```python
+        def on_bulletin_event(post, event_type):
+            if event_type == Bulletin.ON_PUBLISH:
+                print(f"New message posted: {post['item']}")
+            elif event_type == Bulletin.ON_EXPIRE:
+                print(f"Message expired: {post['id']}")
+        
+        bulletin.register_callback(on_bulletin_event)
+        
+        # Messages with TTL for automatic cleanup
+        bulletin.publish(message, ttl=300)  # Expires in 5 minutes
+        ```
+    
+    4. **Filtered Retrieval for Specific Tasks**:
+        ```python
+        # Retrieve high-priority tasks only
+        high_priority = bulletin.retrieve_all(
+            filter_func=lambda task: task.priority >= 8,
+            item_type=TaskRequest,
+            include_locked=False
+        )
+        
+        # Retrieve oldest pending task
+        oldest_task = bulletin.retrieve_first(
+            order_func=lambda task: task.timestamp,
+            include_locked=False
+        )
+        ```
+    
+    Thread Safety:
+        All operations are thread-safe using internal RLock. Multiple agents
+        can safely post/retrieve concurrently without data corruption.
+        
+    Singleton + Namespace Notes:
+        While Bulletin instances are independent, consider using scoping
+        when sharing instances across agents to prevent message leakage.
+        Use unique scope identifiers (e.g., agent IDs) for isolation.
     """
     
     # Event types
