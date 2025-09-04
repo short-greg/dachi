@@ -100,7 +100,7 @@ class Buffer(pydantic.BaseModel):
                 item = iterator.read()
                 process(item)
         """
-        return BufferIter(self)
+        return BufferIter(buffer=self)
 
     def __getitem__(self, idx) -> typing.Union[typing.Any, typing.List]:
         """Access buffer data using index, slice, or iterable of indices.
@@ -181,7 +181,7 @@ class BufferIter(pydantic.BaseModel):
         Returns:
             True if all available buffer data has been consumed, False otherwise
         """
-        return self.i >= (len(self._buffer) - 1)
+        return self.i >= len(self.buffer)
     
     def is_open(self) -> bool:
         """Check if underlying buffer accepts new data.
@@ -192,7 +192,7 @@ class BufferIter(pydantic.BaseModel):
         Returns:
             True if underlying buffer is open and may receive more data
         """
-        return self._buffer.is_open()
+        return self.buffer.is_open()
 
     def read(self) -> typing.Any:
         """Read next item from buffer sequentially.
@@ -215,9 +215,9 @@ class BufferIter(pydantic.BaseModel):
                 # All data consumed
                 pass
         """
-        if self.i < (len(self._buffer) - 1):
+        if self.i < len(self.buffer):
             self.i += 1
-            return self._buffer[self.i - 1]
+            return self.buffer[self.i - 1]
         raise StopIteration('Reached the end of the buffer')
 
     def read_all(self) -> typing.List:
@@ -239,10 +239,10 @@ class BufferIter(pydantic.BaseModel):
             batch_process(remaining_items)
         """
         
-        if self.i < len(self._buffer):
+        if self.i < len(self.buffer):
             i = self.i
-            self.i = len(self._buffer)
-            return self._buffer[i:]
+            self.i = len(self.buffer)
+            return self.buffer[i:]
             
         return []
 

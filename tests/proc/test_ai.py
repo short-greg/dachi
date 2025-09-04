@@ -276,7 +276,7 @@ class TestOpenAIChat:
         resp = adapter.from_output(openai_response)
         
         assert isinstance(resp, Resp)
-        assert resp.text == "Hello there!"
+        assert resp.msg.text == "Hello there!"
         assert resp.response_id == "chatcmpl-123"
         assert resp.model == "gpt-4o"
         assert resp.finish_reason == "stop"
@@ -362,7 +362,7 @@ class TestOpenAIResp:
         resp = adapter.from_output(openai_response)
         
         assert resp.thinking == "The user is greeting me, so I should respond politely."
-        assert resp.text == "Hello there!"
+        assert resp.msg.text == "Hello there!"
         assert resp.response_id == "resp_123"
         assert resp.model == "gpt-4o"
         assert resp.finish_reason == "stop"
@@ -487,7 +487,7 @@ class TestMultipleCompletions:
         resp = adapter.from_output(openai_response)
         
         # Main response uses first choice by default
-        assert resp.text == "First completion"
+        assert resp.msg.text == "First completion"
         assert resp.finish_reason == "stop"
         
         # All choices metadata captured
@@ -525,7 +525,7 @@ class TestMultipleCompletions:
         resp = adapter.from_output(openai_response)
         
         # Main response uses first choice
-        assert resp.text == "Option A"
+        assert resp.msg.text == "Option A"
         assert resp.finish_reason == "stop"
         assert resp.thinking == "Multiple ways to respond"
         
@@ -553,7 +553,7 @@ class TestMultipleCompletions:
         
         resp = adapter.from_output(openai_response)
         
-        assert resp.text == "Single response"
+        assert resp.msg.text == "Single response"
         assert resp.choices is not None
         assert len(resp.choices) == 1
         assert resp.choices[0]["index"] == 0
