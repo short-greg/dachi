@@ -11,7 +11,7 @@ from collections import defaultdict
 from pydantic import BaseModel, Field, PrivateAttr
 
 # local
-from ._utils import singleton
+from ..utils._utils import singleton
 
 T = TypeVar("T", bound=BaseModel)
 

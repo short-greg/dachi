@@ -89,8 +89,3 @@ from ._inst import (
     signaturefunc,
     signaturemethod,
 )
-from ._request import (
-    RequestState,
-    RequestStatus,
-    AsyncDispatcher,
-)

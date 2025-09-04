@@ -39,7 +39,7 @@ from queue import Queue, Empty
 from typing import Any, Iterator, Optional, Callable
 
 from ..utils._utils import singleton
-from ._process import AsyncProcess, AsyncStreamProcess
+from ..proc._process import AsyncProcess, AsyncStreamProcess
 
 
 class RequestState(Enum):

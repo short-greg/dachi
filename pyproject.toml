@@ -19,6 +19,7 @@ packages = [
     {include="dachi/inst"},
     {include="dachi/proc"},
     {include="dachi/utils"},
+    {include="dachi/comm"},
 ]
 
 [tool.poetry.dependencies]

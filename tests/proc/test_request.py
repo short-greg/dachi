@@ -9,7 +9,7 @@ import pytest
 
 
 # Adjust if your module path differs
-from dachi.proc._request import AsyncDispatcher, RequestState, RequestStatus
+from dachi.comm._request import AsyncDispatcher, RequestState, RequestStatus
 from dachi.proc._process import AsyncProcess, AsyncStreamProcess
 
 
