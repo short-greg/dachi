@@ -325,7 +325,6 @@ class Bulletin(BaseModel, Generic[T]):
             }
     
 
-
 class Blackboard(BaseModel):
     """
     Shared state storage with reactive callbacks for behavior trees and agents.
@@ -539,7 +538,7 @@ class Blackboard(BaseModel):
     
     def __delattr__(self, key: str) -> None:
         """Override delattr to remove from _data and trigger callbacks."""
-        if key.startswith('_') or key in self.__fields__:
+        if key.startswith('_') or key in self.model_fields:
             super().__delattr__(key)
         else:
             with self._lock:

@@ -25,6 +25,12 @@ class OpenAIChat(LLM, AIAdapt):
     - Msg.attachments -> message.content (for vision/multimodal)
     - Msg.tool_calls -> role="tool" messages with tool_call_id
     
+    Streaming Pattern:
+    1. Accumulates text in resp.msg.text (complete message state)
+    2. Sets resp.delta.text to chunk content only  
+    3. Uses resp.spawn() to create next chunk response
+    4. Processors use resp.out_store for stateful accumulation
+    
     Unified kwargs (converted):
     - temperature, max_tokens, top_p, frequency_penalty, presence_penalty
     - stream, stop, seed, user
@@ -220,6 +226,18 @@ class OpenAIResp(LLM, AIAdapt):
     Adapter for OpenAI Responses API.
     
     Converts between Dachi's unified message format and OpenAI Responses API format.
+    Specialized for reasoning models that provide thinking/reasoning content.
+    
+    Key Differences from Chat Completions:
+    - Handles 'reasoning' field for model thinking process
+    - Accumulates both text and thinking content separately during streaming
+    - Uses same streaming pattern as OpenAIChat but with dual content streams
+    
+    Streaming Pattern:
+    1. Accumulates text in resp.msg.text, thinking in resp.thinking  
+    2. Sets resp.delta.text and resp.delta.thinking to chunk content only
+    3. Uses resp.spawn() to maintain both content streams across chunks
+    4. Processors use resp.out_store for stateful accumulation
     """
     
     url: str | None = None

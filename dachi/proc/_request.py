@@ -1,3 +1,29 @@
+"""Async request dispatcher for concurrent AI processing with centralized job management.
+
+Provides AsyncDispatcher for managing concurrent requests to AI providers with features like:
+- Concurrency limiting to prevent API rate limit issues
+- Request state tracking for integration with behavior trees and state machines  
+- Streaming support with proper resource management
+- Callback-based completion notification
+- Thread-safe job management across sync/async boundaries
+
+Typical usage in behavior trees:
+    dispatcher = AsyncDispatcher(max_concurrency=5)
+    
+    # Task dispatches request and returns immediately
+    req_id = dispatcher.submit_proc(llm_adapter, message)
+    
+    # Later, task checks status without blocking
+    status = dispatcher.status(req_id)
+    if status.state == RequestState.DONE:
+        result = dispatcher.result(req_id)
+        return TaskStatus.SUCCESS
+    elif status.state == RequestState.ERROR:
+        return TaskStatus.FAILURE  
+    else:
+        return TaskStatus.RUNNING  # Still processing
+"""
+
 from __future__ import annotations
 
 import asyncio
@@ -17,6 +43,18 @@ from ._process import AsyncProcess, AsyncStreamProcess
 
 
 class RequestState(Enum):
+    """State transitions for async requests in the dispatcher.
+    
+    State flow:
+    QUEUED -> RUNNING/STREAMING -> DONE/ERROR/CANCELLED
+    
+    - QUEUED: Request submitted but not yet started (waiting for concurrency slot)
+    - RUNNING: Non-streaming request currently executing
+    - STREAMING: Streaming request currently producing data
+    - DONE: Request completed successfully
+    - ERROR: Request failed with exception
+    - CANCELLED: Request was cancelled before or during execution
+    """
     QUEUED = auto()
     RUNNING = auto()
     STREAMING = auto()
@@ -26,6 +64,19 @@ class RequestState(Enum):
 
 @dataclass
 class RequestStatus:
+    """Public status information for tracking async request progress.
+    
+    Used by behavior trees and state machines to monitor request completion
+    without blocking execution. Provides timing information for performance analysis.
+    
+    Attributes:
+        req_id: Unique request identifier
+        state: Current request state (QUEUED, RUNNING, etc.)
+        queued_at: Timestamp when request was submitted
+        started_at: Timestamp when execution began (None if not started)
+        ended_at: Timestamp when request completed (None if still running)
+        error: Error message if request failed (None if successful)
+    """
     req_id: str
     state: RequestState
     queued_at: float
@@ -35,6 +86,19 @@ class RequestStatus:
 
 @dataclass
 class _Job:
+    """Internal job tracking for async request lifecycle management.
+    
+    Manages the complete lifecycle of an async request including execution state,
+    result storage, streaming coordination, and callback management. Handles
+    complex scenarios like streaming with multiple consumers and thread-safe
+    state transitions.
+    
+    Key responsibilities:
+    - Track request execution state and timing
+    - Coordinate streaming data flow between producers and consumers
+    - Manage callback execution to prevent race conditions
+    - Handle cancellation across different execution phases
+    """
     req_id: str
     future: Future
     state: RequestState
@@ -59,19 +123,66 @@ class _Job:
 
 _SENTINEL = object()
 
-MAX_CONCURRENCY = 8 
+MAX_CONCURRENCY = 8  # Default maximum concurrent requests to prevent API overload 
 
 @singleton
 class AsyncDispatcher:
     """
-    Async dispatcher with true concurrency (bounded by a semaphore).
-    Submit:
-      - submit_proc(proc, *args, _callback=None, **kwargs) -> req_id
-      - submit_stream(proc, *args, _callback=None, **kwargs) -> req_id
-    Consume:
-      - status(req_id) -> RequestStatus | None
-      - result(req_id) -> Any | None (raises stored error on ERROR)
-      - stream_result(req_id, timeout=None) -> iterator over chunks
+    Centralized async request dispatcher for AI processing with concurrency control.
+    
+    Core component for managing concurrent AI requests across the system. Enables
+    behavior trees and state machines to dispatch long-running AI operations without
+    blocking, then poll for completion or consume results asynchronously.
+    
+    Key Features:
+    - **Concurrency Limiting**: Prevents overwhelming APIs with too many parallel requests
+    - **Non-blocking Integration**: Tasks can dispatch requests and check status later
+    - **Streaming Support**: Handles streaming AI responses with proper resource management
+    - **Thread Safety**: Safe coordination between sync behavior trees and async AI calls
+    - **Callback Support**: Optional completion notifications for event-driven patterns
+    
+    Submission Methods:
+        submit_proc(proc, *args, _callback=None, **kwargs) -> req_id
+            Submit non-streaming async process for execution
+            
+        submit_stream(proc, *args, _callback=None, **kwargs) -> req_id  
+            Submit streaming async process for execution
+    
+    Consumption Methods:
+        status(req_id) -> RequestStatus | None
+            Get current request status without blocking
+            
+        result(req_id) -> Any | None  
+            Get result for completed non-streaming request (raises on error)
+            
+        stream_result(req_id, timeout=None) -> Iterator
+            Get iterator for consuming streaming request output
+    
+    Example Integration with Behavior Trees:
+        class LLMQueryTask(Task):
+            def __init__(self, dispatcher, llm, query):
+                self.dispatcher = dispatcher
+                self.llm = llm
+                self.query = query
+                self.req_id = None
+                
+            def tick(self) -> TaskStatus:
+                if self.req_id is None:
+                    # First tick: dispatch request
+                    self.req_id = self.dispatcher.submit_proc(
+                        self.llm, self.query
+                    )
+                    return TaskStatus.RUNNING
+                    
+                # Subsequent ticks: check status
+                status = self.dispatcher.status(self.req_id)
+                if status.state == RequestState.DONE:
+                    self.result = self.dispatcher.result(self.req_id)
+                    return TaskStatus.SUCCESS
+                elif status.state == RequestState.ERROR:
+                    return TaskStatus.FAILURE
+                else:
+                    return TaskStatus.RUNNING  # Still processing
     """
 
     def __init__(self, max_concurrency: int = 8) -> None:
@@ -91,7 +202,38 @@ class AsyncDispatcher:
         _callback: Optional[Callable[[str, Any, Optional[BaseException]], None]] = None,
         **kwargs,
     ) -> str:
-        """Schedule an AsyncProcess. Returns request id."""
+        """Submit non-streaming async process for concurrent execution.
+        
+        Dispatches an AI processing task (like LLM inference) to run concurrently
+        with other operations. The calling task can continue execution and poll
+        for completion later using the returned request ID.
+        
+        Args:
+            proc: AsyncProcess instance (like OpenAIChat) to execute
+            *args: Positional arguments to pass to proc.aforward()
+            _callback: Optional completion callback (req_id, result, error) -> None
+            **kwargs: Keyword arguments to pass to proc.aforward()
+            
+        Returns:
+            Unique request ID for tracking this submission
+            
+        Example:
+            dispatcher = AsyncDispatcher()
+            llm = OpenAIChat()
+            
+            # Submit request
+            req_id = dispatcher.submit_proc(
+                llm, 
+                Msg(role="user", text="Hello"),
+                temperature=0.7
+            )
+            
+            # Continue other work...
+            
+            # Later check result
+            if dispatcher.status(req_id).state == RequestState.DONE:
+                response = dispatcher.result(req_id)
+        """
         req_id, job = self._create_job(_callback, stream=False)
 
         async def _job():
@@ -117,12 +259,41 @@ class AsyncDispatcher:
         **kwargs,
     ) -> str:
         """
-        Submit a streaming job using an AsyncStreamProcess.
+        Submit streaming async process for concurrent execution.
         
-        Exit paths (exactly one):
-        - success: sentinel → _complete_ok(job, None)
-        - error:   sentinel → _complete_err(job, exc)
-        - cancel:  sentinel → _complete_cancel(job)
+        Dispatches a streaming AI task (like streaming LLM inference) to run 
+        concurrently. The calling task can continue and later consume the stream
+        using stream_result(). Handles proper cleanup and resource management.
+        
+        Args:
+            proc: AsyncStreamProcess instance (like streaming OpenAIChat) to execute
+            *args: Positional arguments to pass to proc.astream()
+            _callback: Optional completion callback (req_id, result, error) -> None
+            **kwargs: Keyword arguments to pass to proc.astream()
+            
+        Returns:
+            Unique request ID for consuming the stream
+            
+        Example:
+            dispatcher = AsyncDispatcher()
+            llm = OpenAIChat()  # Streaming-capable
+            
+            # Submit streaming request
+            req_id = dispatcher.submit_stream(
+                llm,
+                Msg(role="user", text="Write a story"),
+                temperature=0.8
+            )
+            
+            # Consume stream when ready
+            for chunk in dispatcher.stream_result(req_id):
+                print(chunk.delta.text, end="")
+                
+        Note:
+            Streaming exit paths (exactly one occurs):
+            - Success: All chunks consumed → callback with (req_id, None, None)
+            - Error: Exception during streaming → callback with (req_id, None, exception)
+            - Cancel: Request cancelled → callback with (req_id, None, None)
         """
         req_id, job = self._create_job(_callback, stream=True)
 
@@ -174,6 +345,34 @@ class AsyncDispatcher:
 
 
     def status(self, req_id: str) -> RequestStatus | None:
+        """Get current status of submitted request without blocking.
+        
+        Essential for behavior trees and state machines to monitor request
+        progress without blocking task execution. Returns None if request
+        ID is not found (may have been cleaned up).
+        
+        Args:
+            req_id: Request ID returned from submit_proc() or submit_stream()
+            
+        Returns:
+            RequestStatus with current state and timing info, or None if not found
+            
+        Example:
+            status = dispatcher.status(req_id)
+            if status is None:
+                # Request not found (cleaned up or invalid ID)
+                return TaskStatus.FAILURE
+            elif status.state == RequestState.DONE:
+                # Request completed successfully
+                result = dispatcher.result(req_id)
+                return TaskStatus.SUCCESS
+            elif status.state == RequestState.ERROR:
+                # Request failed
+                return TaskStatus.FAILURE
+            else:
+                # Request still running (QUEUED/RUNNING/STREAMING)
+                return TaskStatus.RUNNING
+        """
         with self._lock:
             job = self._jobs.get(req_id)
             if not job:
@@ -188,6 +387,38 @@ class AsyncDispatcher:
             )
 
     def result(self, req_id: str) -> Any | None:
+        """Get result from completed non-streaming request.
+        
+        Retrieves the final result from a request submitted via submit_proc().
+        Result can only be consumed once - subsequent calls return None.
+        Job is automatically cleaned up after result consumption.
+        
+        Args:
+            req_id: Request ID from submit_proc()
+            
+        Returns:
+            Request result if completed successfully, None otherwise
+            
+        Raises:
+            Exception: The original exception if request failed
+            
+        Note:
+            - Returns None for streaming requests (use stream_result() instead)
+            - Returns None for non-completed requests (check status() first)
+            - Returns None if result was already consumed
+            - Job is cleaned up after successful result retrieval
+            
+        Example:
+            # Check completion before retrieving result
+            status = dispatcher.status(req_id)
+            if status and status.state == RequestState.DONE:
+                try:
+                    result = dispatcher.result(req_id)
+                    process_result(result)
+                except Exception as e:
+                    # Request failed
+                    handle_error(e)
+        """
         with self._lock:
             job = self._jobs.get(req_id)
             if not job:
@@ -216,6 +447,41 @@ class AsyncDispatcher:
 
 
     def stream_result(self, req_id: str, timeout: float | None = None):
+        """Get iterator for consuming streaming request results.
+        
+        Creates iterator for consuming chunks from a streaming request submitted
+        via submit_stream(). Iterator can only be created once per request.
+        Automatically handles cleanup and callback execution when stream is consumed.
+        
+        Args:
+            req_id: Request ID from submit_stream()
+            timeout: Timeout in seconds for waiting for chunks (None = no timeout)
+            
+        Returns:
+            Iterator yielding chunks from the streaming request
+            
+        Raises:
+            KeyError: If req_id is unknown or not a streaming request
+            RuntimeError: If stream iterator already created or consumed
+            
+        Example:
+            # Submit streaming request
+            req_id = dispatcher.submit_stream(streaming_llm, message)
+            
+            # Consume stream (can only do this once)
+            accumulated_text = ""
+            for chunk in dispatcher.stream_result(req_id):
+                accumulated_text += chunk.delta.text or ""
+                print(chunk.delta.text, end="", flush=True)
+            
+            # Stream is now consumed and cleaned up
+            
+        Note:
+            - Stream can only be consumed once per request
+            - Job is automatically cleaned up when stream is fully consumed
+            - Callbacks are executed after stream consumption completes
+            - Timeout only applies to individual chunk retrieval, not total time
+        """
         with self._lock:
             job = self._jobs.get(req_id)
             if not job or job.stream_q is None:
@@ -302,7 +568,17 @@ class AsyncDispatcher:
         t.start()
 
     def _purge_finished(self, ttl: float | None = None) -> int:
-        """Remove DONE/ERROR/CANCELLED jobs."""
+        """Clean up completed jobs to prevent memory leaks.
+        
+        Removes finished jobs from internal tracking to free memory.
+        Can be called periodically for long-running applications.
+        
+        Args:
+            ttl: Time-to-live in seconds (None = remove all finished jobs)
+            
+        Returns:
+            Number of jobs that were purged
+        """
         now = time.time()
         removed = 0
         with self._lock:
@@ -315,6 +591,31 @@ class AsyncDispatcher:
         return removed
 
     def cancel(self, req_id: str) -> bool:
+        """Cancel a pending or running request.
+        
+        Attempts to cancel a request at any stage of execution. Success depends
+        on current request state and whether cancellation can be performed safely.
+        
+        Args:
+            req_id: Request ID to cancel
+            
+        Returns:
+            True if cancellation was successful, False otherwise
+            
+        Cancellation Behavior:
+            - QUEUED requests: Cancelled immediately before execution starts
+            - RUNNING/STREAMING requests: Marked for cancellation, may complete naturally
+            - DONE/ERROR/CANCELLED requests: Cannot be cancelled (returns False)
+            
+        Example:
+            req_id = dispatcher.submit_proc(llm, message)
+            
+            # Later decide to cancel
+            if dispatcher.cancel(req_id):
+                print("Request cancelled successfully")
+            else:
+                print("Could not cancel request (may have completed)")
+        """
         with self._lock:
             job = self._jobs.get(req_id)
             if not job:
@@ -354,7 +655,16 @@ class AsyncDispatcher:
         return True
 
     def shutdown(self):
-        """Stop the loop (useful in tests)."""
+        """Shutdown the dispatcher event loop.
+        
+        Stops the internal asyncio event loop used for request processing.
+        Should be called when the dispatcher is no longer needed, particularly
+        in testing scenarios or during application shutdown.
+        
+        Note:
+            This is primarily for cleanup in tests and shutdown procedures.
+            In normal operation, the singleton dispatcher runs for the application lifetime.
+        """
         self._loop.call_soon_threadsafe(self._loop.stop)
 
     def _run_loop(self):

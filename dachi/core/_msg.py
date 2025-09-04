@@ -16,6 +16,38 @@ from . import Renderable
 from ._tool import ToolUse
 from ._base import BaseModule
 
+"""
+Streaming Response Flow:
+
+The response architecture handles both complete and streaming responses with clear separation:
+
+1. First streaming chunk:
+   resp = Resp(msg=Msg(text="Hello"))
+   resp.delta = RespDelta(text="Hello")  # Same as msg.text for first chunk
+   resp.out_store = {}  # Empty processing state
+   
+2. Second chunk arrives:
+   resp.msg.text = "Hello world"         # Accumulated complete text
+   resp.delta.text = " world"            # Just the new chunk
+   resp.out_store["processor"] = {...}   # Updated processing state
+   resp.out = current_processed_result   # Current processed output
+   
+3. Processing with output processors:
+   # Processors use resp.out_store to maintain state across chunks
+   # resp.out gets updated with current processed result
+   
+4. spawn() for next chunk:
+   new_resp = resp.spawn(new_msg, chunk_data)
+   # Copies out_store state and out value for continuity
+   # Creates fresh delta for new chunk
+   
+Key principles:
+- Resp.msg: Always contains complete accumulated state
+- RespDelta: Only contains current chunk changes  
+- out_store: Accumulates processor state across streaming
+- out: Current processed result (any type)
+"""
+
 try:
     # pydantic v2 preferred
     from pydantic import BaseModel, Field
@@ -38,73 +70,91 @@ NULL_TOK = object()
 
 
 class RespDelta(pydantic.BaseModel):
-    """Delta information for streaming responses."""
+    """Single streaming chunk data - NOT accumulated values.
+    
+    Contains only the incremental changes for the current streaming chunk.
+    All fields represent deltas/changes, not accumulated state.
+    
+    Field Meanings:
+        text: New text content in this chunk only
+        tool: Partial tool call JSON fragment for this chunk  
+        thinking: New reasoning content in this chunk only
+        citations: New citation information in this chunk only
+        finish_reason: Set only when streaming completes
+        usage: Token usage for this specific chunk
+        
+    Important: These are chunk deltas, not accumulated values.
+    For accumulated values, use the parent Resp object fields.
+    """
     
     text: str | None = pydantic.Field(
-        default=None, description="Incremental text content for streaming responses"
+        default=None, description="Incremental text content for this streaming chunk only"
     )
     tool: str | None = pydantic.Field(
-        default=None, description="Partial tool call arguments (JSON string) for streaming responses"
+        default=None, description="Partial tool call arguments (JSON fragment) for this streaming chunk"
     )
     thinking: str | None = pydantic.Field(
-        default=None, description="Incremental reasoning/thinking content for streaming responses"
+        default=None, description="Incremental reasoning/thinking content for this streaming chunk only"
     )
     citations: typing.List[typing.Dict] | None = pydantic.Field(
-        default=None, description="Incremental citation information for streaming responses"
+        default=None, description="Incremental citation information for this streaming chunk only"
     )
     finish_reason: str | None = pydantic.Field(
-        default=None, description="Reason generation stopped (e.g., 'stop', 'length', 'tool_calls')"
+        default=None, description="Reason generation stopped (e.g., 'stop', 'length', 'tool_calls') - set only when streaming completes"
     )
     usage: typing.Dict[str, int] | None = pydantic.Field(
-        default=None, description="Per-chunk token usage statistics (when stream_options.include_usage=true)"
-    )
-    proc_store: typing.Dict[str, typing.Any] = pydantic.Field(
-        default_factory=dict, description="Storage for RespProc processing data"
+        default=None, description="Per-chunk token usage statistics for this specific chunk"
     )
 
 
 class Resp(pydantic.BaseModel):
-    """A complete response from an LLM or API call.
+    """Complete response from an LLM with streaming accumulation support.
     
-    This class represents a unified response format that contains both the complete message 
-    content and metadata from API calls. It supports streaming responses through delta 
-    accumulation and provides access to processed outputs via the `out` property.
+    This class represents a unified response format that separates complete message 
+    content from processing metadata and streaming chunks. It supports both complete
+    and streaming response patterns with clear separation of concerns.
     
-    Key concepts:
-        - msg: Contains the complete, accumulated message content (not deltas)
-        - out: Contains processed output from response processors (can be dict, single value, tuple, or None)
-        - delta: Contains incremental streaming information (text chunks, partial tool calls, etc.)
-        - data: Internal storage for raw API responses and processing state
+    Core Architecture:
+        - Accumulates streaming chunks into complete response
+        - Separates message content from processing metadata
+        - Handles both complete and streaming response patterns
+    
+    Field Purposes:
+        msg: Complete accumulated message ready for LLM consumption
+             - msg.text contains full accumulated text (not deltas)
+             - Always represents final/current complete state
         
-    For streaming responses:
-        - msg.text contains the accumulated text so far
-        - delta contains the incremental changes in this chunk
-        - out contains the processed result from the current chunk
+        out: Processed output value from response processors
+             - Can be any type: str, int, BaseModel, dict, tuple, None
+             - Ephemeral processing result (not serialized)
+             
+        delta: Current streaming chunk information only
+               - Contains incremental changes for this chunk
+               - Reset/updated for each streaming iteration
+               
+        out_store: State storage for output processors during streaming
+                   - Accumulates processing state across chunks
+                   - Used by ToOut processors for stateful streaming
         
-    For complete responses:
-        - msg contains the final complete message
-        - out contains the final processed result
-        - delta is typically empty
+        data: Internal storage for raw API responses and processing state
         
-    Usage:
-        Access processed output:
-            resp = processor(response)
-            result = resp.out  # Can be str, dict, tuple, or None
+    Usage Patterns:
+        Complete response:
+            resp.msg contains final message, resp.out contains final result
             
-        Access message content:
-            text = resp.msg.text  # Complete accumulated text
+        Streaming response:
+            resp.msg accumulates over chunks, resp.delta shows current chunk
+            resp.out_store maintains processing state across chunks
             
-        Access streaming deltas:
-            if resp.delta.text:  # Check if there's new text in this chunk
-                chunk = resp.delta.text
+        Access patterns:
+            text = resp.msg.text     # Complete accumulated text
+            result = resp.out        # Processed output (any type)
+            chunk = resp.delta.text  # Current streaming chunk only
     """
 
     # Core content
     msg: Msg | None = pydantic.Field(
         default=None, description="The complete, accumulated message content (not delta). Contains final text for completed responses, accumulated text for streaming."
-    )
-    text: str | None = pydantic.Field(
-        default=None, description="Direct text content from the LLM (alternative to msg.text for simple cases)"
     )
     tool: typing.List[typing.Dict] | None = pydantic.Field(
         default=None, description="Complete tool call objects with results for non-streaming responses"
@@ -154,6 +204,11 @@ class Resp(pydantic.BaseModel):
         default_factory=dict, description="Provider-specific metadata and additional fields"
     )
     
+    # Output processing state
+    out_store: typing.Dict[str, typing.Any] = pydantic.Field(
+        default_factory=dict, description="State storage for output processors during streaming"
+    )
+    
     # Private attributes
     _data: typing.Dict = pydantic.PrivateAttr(
         default_factory=dict
@@ -197,13 +252,28 @@ class Resp(pydantic.BaseModel):
         self._out = value
     
     def spawn(self, msg: Msg, data: typing.Dict=None, follow_up: bool=None) -> 'Resp':
-        """Spawn a new response with the same delta and out but a different message and data
-
+        """Create new response for next streaming chunk.
+        
+        Preserves accumulation state (out_store, out) while allowing new message 
+        content and chunk data. Used to maintain processing continuity across 
+        streaming chunks without losing processor state.
+        
         Args:
-            msg (Msg): The message to spawn
-
+            msg: New accumulated message state (complete text so far)
+            data: Raw chunk data for this iteration  
+            follow_up: Optional follow-up message flag
+            
         Returns:
-            Resp: A new response with the same data but a different message
+            New Resp with preserved processing state, fresh delta ready for new chunk
+            
+        Usage:
+            # During streaming - maintain processor state across chunks
+            new_resp = prev_resp.spawn(
+                msg=Msg(text=accumulated_text),
+                data=api_chunk_data  
+            )
+            # new_resp.out_store contains accumulated processor state
+            # new_resp.delta will be updated with new chunk deltas
         """
         data = data if data is not None else {}
         resp = Resp(
@@ -213,14 +283,15 @@ class Resp(pydantic.BaseModel):
         )
         resp.data.update(data)
         resp.out = self._out
-        # Copy delta information including proc_store for streaming
+        # Copy processing state for continuity
+        resp.out_store.update(self.out_store)
+        # Copy current delta state (will be updated with new chunk)
         if self.delta:
             resp.delta.text = self.delta.text
             resp.delta.tool = self.delta.tool  
             resp.delta.thinking = self.delta.thinking
             resp.delta.citations = self.delta.citations
             resp.delta.finish_reason = self.delta.finish_reason
-            resp.delta.proc_store.update(self.delta.proc_store)
         return resp
 
 

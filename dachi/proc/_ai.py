@@ -73,13 +73,13 @@ def get_delta_resp_output(
 ):
     """Process out parameter for streaming functions using delta() method.
     
-    Uses resp.delta.proc_store for state management automatically. Keys are:
+    Uses resp.out_store for state management automatically. Keys are:
     - Dict: uses the original dictionary keys  
     - Tuple: uses numerical keys "0", "1", etc.
     - Single: uses key "val"
     
     Args:
-        resp (Resp): The response object to process (uses resp.delta.proc_store for state)
+        resp (Resp): The response object to process (uses resp.out_store for state)
         out (Union[Dict[str, ToOut], Tuple[ToOut, ...], ToOut, None]): The output processors to apply
         is_last (bool): Whether this is the final streaming chunk
         
@@ -94,25 +94,25 @@ def get_delta_resp_output(
     elif isinstance(out, dict):
         result = {}
         for key, processor in out.items():
-            if key not in resp.delta.proc_store:
-                resp.delta.proc_store[key] = {}
-            value = processor.delta(resp, resp.delta.proc_store[key], is_last)
+            if key not in resp.out_store:
+                resp.out_store[key] = {}
+            value = processor.delta(resp, resp.out_store[key], is_last)
             result[key] = value
         return result
     elif isinstance(out, tuple):
         results = []
         for i, processor in enumerate(out):
             key = str(i)
-            if key not in resp.delta.proc_store:
-                resp.delta.proc_store[key] = {}
-            result = processor.delta(resp, resp.delta.proc_store[key], is_last)
+            if key not in resp.out_store:
+                resp.out_store[key] = {}
+            result = processor.delta(resp, resp.out_store[key], is_last)
             results.append(result)
         return tuple(results)
     elif isinstance(out, ToOut):
         key = "val"
-        if key not in resp.delta.proc_store:
-            resp.delta.proc_store[key] = {}
-        return out.delta(resp, resp.delta.proc_store[key], is_last)
+        if key not in resp.out_store:
+            resp.out_store[key] = {}
+        return out.delta(resp, resp.out_store[key], is_last)
     else:
         raise TypeError(f"Unsupported out type: {type(out)}")
 
