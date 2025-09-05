@@ -136,7 +136,11 @@ class OpenAIChat(OpenAIBase):
             **kwargs
         }
     
-    def from_output(self, output: t.Dict, inp: Msg | BaseDialog | str | None = None) -> Resp:
+    def from_output(
+        self, 
+        output: t.Dict, 
+        inp: Msg | BaseDialog | str | None = None
+    ) -> Resp:
         """Convert Chat Completions response to Dachi Resp."""
         choice = output.get("choices", [{}])[0]
         message = choice.get("message", {})
@@ -180,7 +184,12 @@ class OpenAIChat(OpenAIBase):
         resp._data = output
         return resp
     
-    def from_streamed(self, output: t.Dict, inp: Msg | BaseDialog | str | None = None, prev_resp: Resp | None = None) -> Resp:
+    def from_streamed(
+        self, 
+        output: t.Dict, 
+        inp: Msg | BaseDialog | str | None = None, 
+        prev_resp: Resp | None = None
+    ) -> Resp:
         """Handle Chat Completions streaming responses with proper accumulation."""
         choice = output.get("choices", [{}])[0]
         delta = choice.get("delta", {})
@@ -243,13 +252,15 @@ class OpenAIChat(OpenAIBase):
         
         return openai_msg
     
-    
-    def forward(self, inp: Msg | BaseDialog, 
-               model: str | None = None, 
-               tools: list[BaseTool] | None = None, 
-               structured: bool | dict | pydantic.BaseModel | None = None,
-               out: ToOut | dict[str, ToOut] | tuple[ToOut, ...] | None = None,
-               **kwargs) -> Resp:
+    def forward(
+        self, 
+        inp: Msg | BaseDialog, 
+        model: str | None = None, 
+        tools: list[BaseTool] | None = None, 
+        structured: bool | dict | pydantic.BaseModel | None = None,
+        out: ToOut | dict[str, ToOut] | tuple[ToOut, ...] | None = None,
+        **kwargs
+    ) -> Resp:
         # Add explicit parameters to kwargs if provided
         if model is not None:
             kwargs['model'] = model
