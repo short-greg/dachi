@@ -1,6 +1,6 @@
-from ._request import (
+from ._dispatch import (
     RequestState,
-    RequestStatus,
+    DispatchStatus,
     AsyncDispatcher,
 )
 from ._inter import (

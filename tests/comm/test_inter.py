@@ -53,7 +53,7 @@ class TestBulletin:
         bulletin = Bulletin[Essay]()
         essay = Essay(title="Test Essay", content="This is a test")
         
-        post_id = bulletin.publish(essay)
+        post_id = bulletin.post(essay)
         assert isinstance(post_id, str)
         assert len(post_id) > 0
         
@@ -65,14 +65,14 @@ class TestBulletin:
         bulletin = Bulletin[Essay]()
         
         with pytest.raises(TypeError, match="Published items must be BaseModel instances"):
-            bulletin.publish("not a basemodel")
+            bulletin.post("not a basemodel")
     
     def test_retrieve_first_by_id(self):
         bulletin = Bulletin[Essay]()
         essay = Essay(title="Test Essay", content="This is a test")
         
-        post_id = bulletin.publish(essay)
-        retrieved = bulletin.retrieve_first(id=post_id)
+        post_id = bulletin.post(essay)
+        retrieved = bulletin.get_first(id=post_id)
         
         assert retrieved is not None
         assert retrieved["id"] == post_id
@@ -86,10 +86,10 @@ class TestBulletin:
         essay1 = Essay(title="Python Guide", content="Learn Python")
         essay2 = Essay(title="Java Tutorial", content="Learn Java")
         
-        bulletin.publish(essay1)
-        bulletin.publish(essay2)
+        bulletin.post(essay1)
+        bulletin.post(essay2)
         
-        retrieved = bulletin.retrieve_first(filter_func=lambda item: "Python" in item.title)
+        retrieved = bulletin.get_first(filter_func=lambda item: "Python" in item.title)
         assert retrieved is not None
         assert retrieved["item"].title == "Python Guide"
     
@@ -98,10 +98,10 @@ class TestBulletin:
         essay = Essay(title="Essay", content="Content")
         task = Task(name="Complete work")
         
-        bulletin.publish(essay)
-        bulletin.publish(task)
+        bulletin.post(essay)
+        bulletin.post(task)
         
-        retrieved = bulletin.retrieve_first(item_type=Task)
+        retrieved = bulletin.get_first(item_type=Task)
         assert retrieved is not None
         assert retrieved["item"].name == "Complete work"
         assert isinstance(retrieved["item"], Task)
@@ -112,11 +112,11 @@ class TestBulletin:
         essay2 = Essay(title="Second", content="Content 2")
         essay3 = Essay(title="Third", content="Content 3")
         
-        bulletin.publish(essay1)
-        bulletin.publish(essay2)
-        bulletin.publish(essay3)
+        bulletin.post(essay1)
+        bulletin.post(essay2)
+        bulletin.post(essay3)
         
-        all_posts = bulletin.retrieve_all()
+        all_posts = bulletin.get_all()
         assert len(all_posts) == 3
         titles = {post["item"].title for post in all_posts}
         assert titles == {"First", "Second", "Third"}
@@ -127,11 +127,11 @@ class TestBulletin:
         essay2 = Essay(title="Java Tutorial", content="Learn Java")
         essay3 = Essay(title="Python Advanced", content="Advanced Python")
         
-        bulletin.publish(essay1)
-        bulletin.publish(essay2)
-        bulletin.publish(essay3)
+        bulletin.post(essay1)
+        bulletin.post(essay2)
+        bulletin.post(essay3)
         
-        python_posts = bulletin.retrieve_all(filter_func=lambda item: "Python" in item.title)
+        python_posts = bulletin.get_all(filter_func=lambda item: "Python" in item.title)
         assert len(python_posts) == 2
         titles = {post["item"].title for post in python_posts}
         assert titles == {"Python Guide", "Python Advanced"}
@@ -142,11 +142,11 @@ class TestBulletin:
         task1 = Task(name="Task 1")
         task2 = Task(name="Task 2")
         
-        bulletin.publish(essay)
-        bulletin.publish(task1)
-        bulletin.publish(task2)
+        bulletin.post(essay)
+        bulletin.post(task1)
+        bulletin.post(task2)
         
-        task_posts = bulletin.retrieve_all(item_type=Task)
+        task_posts = bulletin.get_all(item_type=Task)
         assert len(task_posts) == 2
         task_names = {post["item"].name for post in task_posts}
         assert task_names == {"Task 1", "Task 2"}
@@ -156,10 +156,10 @@ class TestBulletin:
         essay1 = Essay(title="Locked", content="Content 1")
         essay2 = Essay(title="Unlocked", content="Content 2")
         
-        id1 = bulletin.publish(essay1, lock=True)
-        id2 = bulletin.publish(essay2, lock=False)
+        id1 = bulletin.post(essay1, lock=True)
+        id2 = bulletin.post(essay2, lock=False)
         
-        unlocked_posts = bulletin.retrieve_all(include_locked=False)
+        unlocked_posts = bulletin.get_all(include_locked=False)
         assert len(unlocked_posts) == 1
         assert unlocked_posts[0]["item"].title == "Unlocked"
     
@@ -167,7 +167,7 @@ class TestBulletin:
         bulletin = Bulletin[Essay]()
         essay = Essay(title="Test", content="Content")
         
-        post_id = bulletin.publish(essay, lock=True)
+        post_id = bulletin.post(essay, lock=True)
         stats = bulletin.get_stats()
         assert stats["locked_posts"] == 1
         
@@ -183,10 +183,10 @@ class TestBulletin:
         essay = Essay(title="Test Essay", content="This is a test")
         
         before_time = time.time()
-        post_id = bulletin.publish(essay, ttl=2.0)
+        post_id = bulletin.post(essay, ttl=2.0)
         after_time = time.time()
         
-        post = bulletin.retrieve_first(id=post_id)
+        post = bulletin.get_first(id=post_id)
         assert post is not None
         assert before_time <= post["timestamp"] <= after_time
         assert post["expires_at"] is not None
@@ -201,14 +201,14 @@ class TestBulletin:
         bulletin = Bulletin[Essay]()
         essay = Essay(title="Test", content="Content")
         
-        post_id = bulletin.publish(essay)
+        post_id = bulletin.post(essay)
         assert bulletin.get_stats()["total_posts"] == 1
         
         success = bulletin.remove(post_id)
         assert success == True
         assert bulletin.get_stats()["total_posts"] == 0
         
-        retrieved = bulletin.retrieve_first(id=post_id)
+        retrieved = bulletin.get_first(id=post_id)
         assert retrieved is None
     
     def test_retrieve_first_with_ordering(self):
@@ -217,14 +217,14 @@ class TestBulletin:
         essay2 = Essay(title="High Priority", content="Content", priority=10)
         essay3 = Essay(title="Medium Priority", content="Content", priority=5)
         
-        bulletin.publish(essay1)
+        bulletin.post(essay1)
         time.sleep(0.01)
-        bulletin.publish(essay2)
+        bulletin.post(essay2)
         time.sleep(0.01) 
-        bulletin.publish(essay3)
+        bulletin.post(essay3)
         
         # Get highest priority first
-        retrieved = bulletin.retrieve_first(order_func=lambda item: -item.priority)
+        retrieved = bulletin.get_first(order_func=lambda item: -item.priority)
         assert retrieved is not None
         assert retrieved["item"].title == "High Priority"
     
@@ -238,8 +238,8 @@ class TestBulletin:
         essay1 = Essay(title="First", content="Content 1")
         essay2 = Essay(title="Second", content="Content 2")
         
-        bulletin.publish(essay1)
-        bulletin.publish(essay2)
+        bulletin.post(essay1)
+        bulletin.post(essay2)
         assert bulletin.get_stats()["total_posts"] == 2
         
         cleared_count = bulletin.clear()
@@ -252,9 +252,9 @@ class TestBulletin:
         task = Task(name="Task")
         message = Message(text="Hello", sender="User")
         
-        bulletin.publish(essay, lock=True)
-        bulletin.publish(task, lock=False)
-        bulletin.publish(message, lock=True)
+        bulletin.post(essay, lock=True)
+        bulletin.post(task, lock=False)
+        bulletin.post(message, lock=True)
         
         stats = bulletin.get_stats()
         assert stats["total_posts"] == 3
@@ -273,7 +273,7 @@ class TestBulletin:
             try:
                 for i in range(10):
                     essay = Essay(title=f"Essay {thread_id}-{i}", content=f"Content from thread {thread_id}")
-                    post_id = bulletin.publish(essay)
+                    post_id = bulletin.post(essay)
                     results.append(post_id)
             except Exception as e:
                 errors.append(e)
@@ -281,7 +281,7 @@ class TestBulletin:
         def retriever_thread():
             try:
                 for _ in range(50):
-                    posts = bulletin.retrieve_all()
+                    posts = bulletin.get_all()
                     if posts:
                         bulletin.release(posts[0]["id"])
                     time.sleep(0.001)
@@ -312,14 +312,14 @@ class TestBulletin:
         essay = Essay(title="Expiring", content="Will expire soon")
         
         # Publish with very short TTL
-        post_id = bulletin.publish(essay, ttl=0.05)
+        post_id = bulletin.post(essay, ttl=0.05)
         assert bulletin.get_stats()["total_posts"] == 1
         
         # Wait for expiration
         time.sleep(0.1)
         
         # Trigger cleanup by calling retrieve_first
-        bulletin.retrieve_first()
+        bulletin.get_first()
         assert bulletin.get_stats()["total_posts"] == 0
 
     def test_retrieve_all_with_ordering(self):
@@ -328,12 +328,12 @@ class TestBulletin:
         essay2 = Essay(title="High", content="Content", priority=10)
         essay3 = Essay(title="Medium", content="Content", priority=5)
         
-        bulletin.publish(essay1)
-        bulletin.publish(essay2)
-        bulletin.publish(essay3)
+        bulletin.post(essay1)
+        bulletin.post(essay2)
+        bulletin.post(essay3)
         
         # Get all ordered by priority (descending)
-        all_posts = bulletin.retrieve_all(order_func=lambda item: -item.priority)
+        all_posts = bulletin.get_all(order_func=lambda item: -item.priority)
         assert len(all_posts) == 3
         titles = [post["item"].title for post in all_posts]
         assert titles == ["High", "Medium", "Low"]
@@ -343,12 +343,12 @@ class TestBulletin:
         essay1 = Essay(title="First", content="Content")
         essay2 = Essay(title="Second", content="Content")
         
-        bulletin.publish(essay1)
+        bulletin.post(essay1)
         time.sleep(0.01)
-        bulletin.publish(essay2)
+        bulletin.post(essay2)
         
         # Should get first published (FIFO)
-        retrieved = bulletin.retrieve_first()
+        retrieved = bulletin.get_first()
         assert retrieved is not None
         assert retrieved["item"].title == "First"
 
@@ -384,7 +384,7 @@ class TestBulletin_Callbacks:
         bulletin.register_callback(callback)
         
         essay = Essay(title="Test", content="Content")
-        post_id = bulletin.publish(essay)
+        post_id = bulletin.post(essay)
         
         callback.assert_called_once()
         call_args = callback.call_args[0]
@@ -399,7 +399,7 @@ class TestBulletin_Callbacks:
         bulletin.register_callback(callback)
         
         essay = Essay(title="Test", content="Content")
-        post_id = bulletin.publish(essay, lock=True)
+        post_id = bulletin.post(essay, lock=True)
         
         bulletin.release(post_id)
         
@@ -417,7 +417,7 @@ class TestBulletin_Callbacks:
         bulletin.register_callback(callback)
         
         essay = Essay(title="Test", content="Content")
-        post_id = bulletin.publish(essay)
+        post_id = bulletin.post(essay)
         
         bulletin.remove(post_id)
         
@@ -434,13 +434,13 @@ class TestBulletin_Callbacks:
         bulletin.register_callback(callback)
         
         essay = Essay(title="Expiring", content="Will expire")
-        post_id = bulletin.publish(essay, ttl=0.05)
+        post_id = bulletin.post(essay, ttl=0.05)
         
         # Wait for expiration
         time.sleep(0.1)
         
         # Trigger cleanup
-        bulletin.retrieve_first()
+        bulletin.get_first()
         
         # Should be called twice: once for publish, once for expire
         assert callback.call_count == 2
@@ -459,7 +459,7 @@ class TestBulletin_Callbacks:
         
         essay = Essay(title="Test", content="Content")
         # Should not raise exception even though callback fails
-        post_id = bulletin.publish(essay)
+        post_id = bulletin.post(essay)
         assert post_id is not None
     
     def test_multiple_callbacks(self):
@@ -471,7 +471,7 @@ class TestBulletin_Callbacks:
         bulletin.register_callback(callback2)
         
         essay = Essay(title="Test", content="Content")
-        bulletin.publish(essay)
+        bulletin.post(essay)
         
         callback1.assert_called_once()
         callback2.assert_called_once()
@@ -491,10 +491,10 @@ class TestBulletin_ComplexScenarios:
         ]
         
         for task in tasks:
-            bulletin.publish(task, lock=False)
+            bulletin.post(task, lock=False)
         
         # Retrieve tasks by priority score (urgency * importance)
-        priority_tasks = bulletin.retrieve_all(
+        priority_tasks = bulletin.get_all(
             order_func=lambda item: -(item.urgency * item.importance)
         )
         
@@ -511,8 +511,8 @@ class TestBulletin_ComplexScenarios:
         task1 = Task(name="Quick task", urgency=5)
         task2 = Task(name="Slow task", urgency=3)
         
-        bulletin.publish(task1, ttl=0.1)  # Expires quickly
-        bulletin.publish(task2, ttl=1.0)  # Expires later
+        bulletin.post(task1, ttl=0.1)  # Expires quickly
+        bulletin.post(task2, ttl=1.0)  # Expires later
         
         # Should be called twice for publishing
         assert callback.call_count == 2
@@ -521,7 +521,7 @@ class TestBulletin_ComplexScenarios:
         time.sleep(0.15)
         
         # Trigger cleanup
-        remaining = bulletin.retrieve_all()
+        remaining = bulletin.get_all()
         
         assert len(remaining) == 1
         assert remaining[0]["item"].name == "Slow task"
@@ -567,18 +567,18 @@ class TestGenericBulletinUsage:
         essay = Essay(title="Essay", content="Content")
         task = Task(name="Task")
         
-        essay_id = essay_bulletin.publish(essay)
-        task_id = task_bulletin.publish(task)
+        essay_id = essay_bulletin.post(essay)
+        task_id = task_bulletin.post(task)
         
-        essay_post = essay_bulletin.retrieve_first(id=essay_id)
-        task_post = task_bulletin.retrieve_first(id=task_id)
+        essay_post = essay_bulletin.get_first(id=essay_id)
+        task_post = task_bulletin.get_first(id=task_id)
         
         assert isinstance(essay_post["item"], Essay)
         assert isinstance(task_post["item"], Task)
         
         # Cross-bulletin retrieval should return None
-        assert essay_bulletin.retrieve_first(id=task_id) is None
-        assert task_bulletin.retrieve_first(id=essay_id) is None
+        assert essay_bulletin.get_first(id=task_id) is None
+        assert task_bulletin.get_first(id=essay_id) is None
     
     def test_untyped_bulletin_accepts_any_basemodel(self):
         bulletin = Bulletin()
@@ -587,10 +587,10 @@ class TestGenericBulletinUsage:
         task = Task(name="Task")
         message = Message(text="Hello", sender="User")
         
-        essay_id = bulletin.publish(essay)
-        task_id = bulletin.publish(task)
-        message_id = bulletin.publish(message)
+        essay_id = bulletin.post(essay)
+        task_id = bulletin.post(task)
+        message_id = bulletin.post(message)
         
-        assert bulletin.retrieve_first(id=essay_id)["item"] == essay
-        assert bulletin.retrieve_first(id=task_id)["item"] == task
-        assert bulletin.retrieve_first(id=message_id)["item"] == message
+        assert bulletin.get_first(id=essay_id)["item"] == essay
+        assert bulletin.get_first(id=task_id)["item"] == task
+        assert bulletin.get_first(id=message_id)["item"] == message

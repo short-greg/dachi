@@ -185,7 +185,7 @@ class Bulletin(BaseModel, Generic[T]):
             return scoped_id[len(scope) + 1:]
         return scoped_id
     
-    def publish(self, item: T, lock: bool = True, ttl: Optional[float] = None, scope: Optional[str] = None) -> str:
+    def post(self, item: T, lock: bool = True, ttl: Optional[float] = None, scope: Optional[str] = None) -> str:
         """Publish an item to the bulletin board."""
         if not isinstance(item, BaseModel):
             raise TypeError("Published items must be BaseModel instances")
@@ -209,7 +209,7 @@ class Bulletin(BaseModel, Generic[T]):
             
         return local_id if scope else post_id
     
-    def retrieve_first(
+    def get_first(
         self, 
         id: Optional[str] = None,
         filter_func: Optional[Callable[[T], bool]] = None,
@@ -265,7 +265,7 @@ class Bulletin(BaseModel, Generic[T]):
                 return local_post
             return post
     
-    def retrieve_all(
+    def get_all(
         self,
         filter_func: Optional[Callable[[T], bool]] = None,
         order_func: Optional[Callable[[T], Any]] = None,

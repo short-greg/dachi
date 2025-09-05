@@ -37,6 +37,7 @@ from dataclasses import dataclass
 from enum import Enum, auto
 from queue import Queue, Empty
 from typing import Any, Iterator, Optional, Callable
+import threading, traceback
 
 from ..utils._utils import singleton
 from ..proc._process import AsyncProcess, AsyncStreamProcess
@@ -63,21 +64,21 @@ class RequestState(Enum):
     CANCELLED = auto()
 
 @dataclass
-class RequestStatus:
+class DispatchStatus:
     """Public status information for tracking async request progress.
     
     Used by behavior trees and state machines to monitor request completion
     without blocking execution. Provides timing information for performance analysis.
     
     Attributes:
-        req_id: Unique request identifier
+        disp_id: Unique request identifier
         state: Current request state (QUEUED, RUNNING, etc.)
         queued_at: Timestamp when request was submitted
         started_at: Timestamp when execution began (None if not started)
         ended_at: Timestamp when request completed (None if still running)
         error: Error message if request failed (None if successful)
     """
-    req_id: str
+    disp_id: str
     state: RequestState
     queued_at: float
     started_at: Optional[float]
@@ -99,7 +100,7 @@ class _Job:
     - Manage callback execution to prevent race conditions
     - Handle cancellation across different execution phases
     """
-    req_id: str
+    disp_id: str
     future: Future
     state: RequestState
     queued_at: float
@@ -142,21 +143,21 @@ class AsyncDispatcher:
     - **Callback Support**: Optional completion notifications for event-driven patterns
     
     Submission Methods:
-        submit_proc(proc, *args, _callback=None, **kwargs) -> req_id
+        submit_proc(proc, *args, _callback=None, **kwargs) -> disp_id
             Submit non-streaming async process for execution
             
-        submit_stream(proc, *args, _callback=None, **kwargs) -> req_id  
+        submit_stream(proc, *args, _callback=None, **kwargs) -> disp_id  
             Submit streaming async process for execution
     
     Consumption Methods:
-        status(req_id) -> RequestStatus | None
+        status(disp_id) -> DispatchStatus | None
             Get current request status without blocking
             
-        result(req_id) -> Any | None  
+        result(disp_id) -> Any | None  
             Get result for completed non-streaming request (raises on error)
             
         stream_result(req_id, timeout=None) -> Iterator
-            Get iterator for consuming streaming request output
+            Get iterator disp_id consuming streaming request output
     
     Example Integration with Behavior Trees:
         class LLMQueryTask(Task):
@@ -164,20 +165,20 @@ class AsyncDispatcher:
                 self.dispatcher = dispatcher
                 self.llm = llm
                 self.query = query
-                self.req_id = None
-                
+                self.disp_id = None
+
             def tick(self) -> TaskStatus:
-                if self.req_id is None:
+                if self.disp_id is None:
                     # First tick: dispatch request
-                    self.req_id = self.dispatcher.submit_proc(
+                    self.disp_id = self.dispatcher.submit_proc(
                         self.llm, self.query
                     )
                     return TaskStatus.RUNNING
                     
                 # Subsequent ticks: check status
-                status = self.dispatcher.status(self.req_id)
+                status = self.dispatcher.status(self.disp_id)
                 if status.state == RequestState.DONE:
-                    self.result = self.dispatcher.result(self.req_id)
+                    self.result = self.dispatcher.result(self.disp_id)
                     return TaskStatus.SUCCESS
                 elif status.state == RequestState.ERROR:
                     return TaskStatus.FAILURE
@@ -211,18 +212,18 @@ class AsyncDispatcher:
         Args:
             proc: AsyncProcess instance (like OpenAIChat) to execute
             *args: Positional arguments to pass to proc.aforward()
-            _callback: Optional completion callback (req_id, result, error) -> None
+            _callback: Optional completion callback (disp_id, result, error) -> None
             **kwargs: Keyword arguments to pass to proc.aforward()
             
         Returns:
-            Unique request ID for tracking this submission
-            
+            Unique dispatch ID for tracking this submission
+
         Example:
             dispatcher = AsyncDispatcher()
             llm = OpenAIChat()
             
             # Submit request
-            req_id = dispatcher.submit_proc(
+            disp_id = dispatcher.submit_proc(
                 llm, 
                 Msg(role="user", text="Hello"),
                 temperature=0.7
@@ -231,10 +232,10 @@ class AsyncDispatcher:
             # Continue other work...
             
             # Later check result
-            if dispatcher.status(req_id).state == RequestState.DONE:
-                response = dispatcher.result(req_id)
+            if dispatcher.status(disp_id).state == RequestState.DONE:
+                response = dispatcher.result(disp_id)
         """
-        req_id, job = self._create_job(_callback, stream=False)
+        disp_id, job = self._create_job(_callback, stream=False)
 
         async def _job():
             async with self._sema:
@@ -248,7 +249,7 @@ class AsyncDispatcher:
                     self._complete_err(job, exc)
 
         self._schedule(_job())
-        return req_id
+        return disp_id
 
     def submit_stream(
         self,
@@ -256,6 +257,7 @@ class AsyncDispatcher:
         /,
         *args,
         _callback: Optional[Callable[[str, Any, Optional[BaseException]], None]] = None,
+        _sleep: float | None = None,
         **kwargs,
     ) -> str:
         """
@@ -268,34 +270,34 @@ class AsyncDispatcher:
         Args:
             proc: AsyncStreamProcess instance (like streaming OpenAIChat) to execute
             *args: Positional arguments to pass to proc.astream()
-            _callback: Optional completion callback (req_id, result, error) -> None
+            _callback: Optional completion callback (disp_id, result, error) -> None
             **kwargs: Keyword arguments to pass to proc.astream()
             
         Returns:
-            Unique request ID for consuming the stream
-            
+            Unique dispatch ID for consuming the stream
+
         Example:
             dispatcher = AsyncDispatcher()
             llm = OpenAIChat()  # Streaming-capable
             
             # Submit streaming request
-            req_id = dispatcher.submit_stream(
+            disp_id = dispatcher.submit_stream(
                 llm,
                 Msg(role="user", text="Write a story"),
                 temperature=0.8
             )
             
             # Consume stream when ready
-            for chunk in dispatcher.stream_result(req_id):
+            for chunk in dispatcher.stream_result(disp_id):
                 print(chunk.delta.text, end="")
                 
         Note:
             Streaming exit paths (exactly one occurs):
-            - Success: All chunks consumed → callback with (req_id, None, None)
-            - Error: Exception during streaming → callback with (req_id, None, exception)
-            - Cancel: Request cancelled → callback with (req_id, None, None)
+            - Success: All chunks consumed → callback with (disp_id, None, None)
+            - Error: Exception during streaming → callback with (disp_id, None, exception)
+            - Cancel: Request cancelled → callback with (disp_id, None, None)
         """
-        req_id, job = self._create_job(_callback, stream=True)
+        disp_id, job = self._create_job(_callback, stream=True)
 
         # ---- emission & cancel checks ----
         class _CancelledSignal(Exception):
@@ -307,6 +309,8 @@ class AsyncDispatcher:
                     job.stream_q.put(_SENTINEL)
                     raise _CancelledSignal()
                 job.stream_q.put(chunk)
+                if _sleep:
+                    await asyncio.sleep(_sleep)
 
         # ---- unified finish helpers ----
         def _finish_ok():
@@ -341,10 +345,9 @@ class AsyncDispatcher:
                     return _finish_err(exc)
 
         self._schedule(_job())
-        return req_id
+        return disp_id
 
-
-    def status(self, req_id: str) -> RequestStatus | None:
+    def status(self, disp_id: str) -> DispatchStatus | None:
         """Get current status of submitted request without blocking.
         
         Essential for behavior trees and state machines to monitor request
@@ -352,19 +355,19 @@ class AsyncDispatcher:
         ID is not found (may have been cleaned up).
         
         Args:
-            req_id: Request ID returned from submit_proc() or submit_stream()
+            disp_id: Request ID returned from submit_proc() or submit_stream()
             
         Returns:
             RequestStatus with current state and timing info, or None if not found
             
         Example:
-            status = dispatcher.status(req_id)
+            status = dispatcher.status(disp_id)
             if status is None:
                 # Request not found (cleaned up or invalid ID)
                 return TaskStatus.FAILURE
             elif status.state == RequestState.DONE:
                 # Request completed successfully
-                result = dispatcher.result(req_id)
+                result = dispatcher.result(disp_id)
                 return TaskStatus.SUCCESS
             elif status.state == RequestState.ERROR:
                 # Request failed
@@ -374,11 +377,11 @@ class AsyncDispatcher:
                 return TaskStatus.RUNNING
         """
         with self._lock:
-            job = self._jobs.get(req_id)
+            job = self._jobs.get(disp_id)
             if not job:
                 return None
-            return RequestStatus(
-                req_id=req_id,
+            return DispatchStatus(
+                disp_id=disp_id,
                 state=job.state,
                 queued_at=job.queued_at,
                 started_at=job.started_at,
@@ -386,7 +389,7 @@ class AsyncDispatcher:
                 error=str(job.error) if job.error else None,
             )
 
-    def result(self, req_id: str) -> Any | None:
+    def result(self, disp_id: str) -> Any | None:
         """Get result from completed non-streaming request.
         
         Retrieves the final result from a request submitted via submit_proc().
@@ -394,8 +397,8 @@ class AsyncDispatcher:
         Job is automatically cleaned up after result consumption.
         
         Args:
-            req_id: Request ID from submit_proc()
-            
+            disp_id: Dispatch ID from submit_proc()
+
         Returns:
             Request result if completed successfully, None otherwise
             
@@ -410,17 +413,17 @@ class AsyncDispatcher:
             
         Example:
             # Check completion before retrieving result
-            status = dispatcher.status(req_id)
+            status = dispatcher.status(disp_id)
             if status and status.state == RequestState.DONE:
                 try:
-                    result = dispatcher.result(req_id)
+                    result = dispatcher.result(disp_id)
                     process_result(result)
                 except Exception as e:
                     # Request failed
                     handle_error(e)
         """
         with self._lock:
-            job = self._jobs.get(req_id)
+            job = self._jobs.get(disp_id)
             if not job:
                 return None
             if job.stream_q is not None:
@@ -432,7 +435,7 @@ class AsyncDispatcher:
                 out = job.result
                 job.result = None
                 job.result_consumed = True
-                self._jobs.pop(req_id, None)   # purge now
+                self._jobs.pop(disp_id, None)   # purge now
                 return out
 
             if job.state == RequestState.ERROR:
@@ -440,13 +443,12 @@ class AsyncDispatcher:
                     return None
                 job.result_consumed = True
                 err = job.error
-                self._jobs.pop(req_id, None)   # purge now
+                self._jobs.pop(disp_id, None)   # purge now
                 raise err  # type: ignore[misc]
 
             return None
 
-
-    def stream_result(self, req_id: str, timeout: float | None = None):
+    def stream_result(self, disp_id: str, timeout: float | None = None):
         """Get iterator for consuming streaming request results.
         
         Creates iterator for consuming chunks from a streaming request submitted
@@ -454,23 +456,23 @@ class AsyncDispatcher:
         Automatically handles cleanup and callback execution when stream is consumed.
         
         Args:
-            req_id: Request ID from submit_stream()
+            disp_id: Dispatch ID from submit_stream()
             timeout: Timeout in seconds for waiting for chunks (None = no timeout)
             
         Returns:
             Iterator yielding chunks from the streaming request
             
         Raises:
-            KeyError: If req_id is unknown or not a streaming request
+            KeyError: If disp_id is unknown or not a streaming request
             RuntimeError: If stream iterator already created or consumed
             
         Example:
             # Submit streaming request
-            req_id = dispatcher.submit_stream(streaming_llm, message)
+            disp_id = dispatcher.submit_stream(streaming_llm, message)
             
             # Consume stream (can only do this once)
             accumulated_text = ""
-            for chunk in dispatcher.stream_result(req_id):
+            for chunk in dispatcher.stream_result(disp_id):
                 accumulated_text += chunk.delta.text or ""
                 print(chunk.delta.text, end="", flush=True)
             
@@ -483,19 +485,19 @@ class AsyncDispatcher:
             - Timeout only applies to individual chunk retrieval, not total time
         """
         with self._lock:
-            job = self._jobs.get(req_id)
+            job = self._jobs.get(disp_id)
             if not job or job.stream_q is None:
-                raise KeyError(f"Unknown or non-streaming req_id={req_id}")
+                raise KeyError(f"Unknown or non-streaming disp_id={disp_id}")
 
             if job.stream_reader_created:
                 if job.stream_consumed:
-                    raise RuntimeError(f"Stream already consumed for req_id={req_id}")
-                raise RuntimeError(f"Stream is already being consumed for req_id={req_id}")
+                    raise RuntimeError(f"Stream already consumed for disp_id={disp_id}")
+                raise RuntimeError(f"Stream is already being consumed for disp_id={disp_id}")
 
             job.stream_reader_created = True
             q = job.stream_q
             job_ref = job
-            rid = job.req_id
+            rid = job.disp_id
 
         def _iter():
             from queue import Empty
@@ -545,10 +547,10 @@ class AsyncDispatcher:
         return _iter()
 
 
-    def _invoke_callback(self, req_id: str, result, error: BaseException | None) -> None:
+    def _invoke_callback(self,  disp_id: str, result, error: BaseException | None) -> None:
         cb = None
         with self._lock:
-            job = self._jobs.get(req_id)
+            job = self._jobs.get(disp_id)
             if job:
                 cb = job.callback  # your field name may differ; see §2 below
         if not cb:
@@ -556,7 +558,7 @@ class AsyncDispatcher:
 
         def _runner():
             try:
-                cb(req_id, result, error)
+                cb(disp_id, result, error)
             except Exception:
                 # Never propagate; keep dispatcher resilient
                 try:
@@ -590,15 +592,15 @@ class AsyncDispatcher:
                     removed += 1
         return removed
 
-    def cancel(self, req_id: str) -> bool:
+    def cancel(self, disp_id: str) -> bool:
         """Cancel a pending or running request.
         
         Attempts to cancel a request at any stage of execution. Success depends
         on current request state and whether cancellation can be performed safely.
         
         Args:
-            req_id: Request ID to cancel
-            
+            disp_id: Dispatch ID to cancel
+
         Returns:
             True if cancellation was successful, False otherwise
             
@@ -608,16 +610,16 @@ class AsyncDispatcher:
             - DONE/ERROR/CANCELLED requests: Cannot be cancelled (returns False)
             
         Example:
-            req_id = dispatcher.submit_proc(llm, message)
-            
+            disp_id = dispatcher.submit_proc(llm, message)
+
             # Later decide to cancel
-            if dispatcher.cancel(req_id):
+            if dispatcher.cancel(disp_id):
                 print("Request cancelled successfully")
             else:
                 print("Could not cancel request (may have completed)")
         """
         with self._lock:
-            job = self._jobs.get(req_id)
+            job = self._jobs.get(disp_id)
             if not job:
                 return False
             if job.state in (RequestState.DONE, RequestState.ERROR, RequestState.CANCELLED):
@@ -625,7 +627,7 @@ class AsyncDispatcher:
 
             job.cancelled = True
             is_stream = job.stream_q is not None
-            cb, rid = job.callback, job.req_id
+            cb, rid = job.callback, job.disp_id
 
             # queued and no consumer → complete immediately
             if is_stream and job.started_at is None and not job.stream_reader_created:
@@ -679,9 +681,9 @@ class AsyncDispatcher:
         callback: Optional[Callable[[str, Any, Optional[BaseException]], None]] = None,
         stream: bool = False,
     ) -> tuple[str, _Job]:
-        req_id = str(uuid.uuid4())
+        disp_id = str(uuid.uuid4())
         job = _Job(
-            req_id=req_id,
+            disp_id=disp_id,
             future=Future(),
             state=RequestState.QUEUED,
             queued_at=time.time(),
@@ -689,8 +691,8 @@ class AsyncDispatcher:
             callback=callback,
         )
         with self._lock:
-            self._jobs[req_id] = job
-        return req_id, job
+            self._jobs[disp_id] = job
+        return disp_id, job
 
     def _mark_running(self, job: _Job, *, streaming: bool):
         job.started_at = time.time()
@@ -703,7 +705,7 @@ class AsyncDispatcher:
             job.state = RequestState.DONE
             job.result = result
             is_stream = job.stream_q is not None
-            cb, rid = job.callback, job.req_id
+            cb, disp_id = job.callback, job.disp_id
 
             if is_stream and job.stream_reader_created and not job.stream_consumed and cb:
                 job.deferred_cb = (result, None)
@@ -712,9 +714,8 @@ class AsyncDispatcher:
         # non-stream → fire now (result() will purge)
         if not is_stream:
             if cb:
-                import threading, traceback
                 def _run():
-                    try: cb(rid, result, None)
+                    try: cb(disp_id, result, None)
                     except Exception:
                         try: traceback.print_exc()
                         except Exception: pass
@@ -723,17 +724,15 @@ class AsyncDispatcher:
 
         # streaming + no consumer → fire now and purge
         if cb:
-            import threading, traceback
             def _run():
-                try: cb(rid, result, None)
+                try: cb(disp_id, result, None)
                 except Exception:
                     try: traceback.print_exc()
                     except Exception: pass
             threading.Thread(target=_run, daemon=True).start()
 
         with self._lock:
-            self._jobs.pop(rid, None)
-
+            self._jobs.pop(disp_id, None)
 
     def _complete_err(self, job, exc: BaseException):
         with self._lock:
@@ -741,7 +740,7 @@ class AsyncDispatcher:
             job.state = RequestState.ERROR
             job.error = exc
             is_stream = job.stream_q is not None
-            cb, rid = job.callback, job.req_id
+            cb, disp_id = job.callback, job.disp_id
 
             if is_stream and job.stream_reader_created and not job.stream_consumed and cb:
                 job.deferred_cb = (None, exc)
@@ -749,9 +748,8 @@ class AsyncDispatcher:
 
         if not is_stream:
             if cb:
-                import threading, traceback
                 def _run():
-                    try: cb(rid, None, exc)
+                    try: cb(disp_id, None, exc)
                     except Exception:
                         try: traceback.print_exc()
                         except Exception: pass
@@ -759,16 +757,15 @@ class AsyncDispatcher:
             return
 
         if cb:
-            import threading, traceback
             def _run():
-                try: cb(rid, None, exc)
+                try: cb(disp_id, None, exc)
                 except Exception:
                     try: traceback.print_exc()
                     except Exception: pass
             threading.Thread(target=_run, daemon=True).start()
 
         with self._lock:
-            self._jobs.pop(rid, None)
+            self._jobs.pop(disp_id, None)
 
 
     def _complete_cancel(self, job):
@@ -776,7 +773,7 @@ class AsyncDispatcher:
             job.ended_at = time.time()
             job.state = RequestState.CANCELLED
             is_stream = job.stream_q is not None
-            cb, rid = job.callback, job.req_id
+            cb, disp_id = job.callback, job.disp_id
 
             if is_stream and job.stream_reader_created and not job.stream_consumed and cb:
                 job.deferred_cb = (None, None)
@@ -784,24 +781,21 @@ class AsyncDispatcher:
 
         if not is_stream:
             if cb:
-                import threading, traceback
                 def _run():
-                    try: cb(rid, None, None)
+                    try: cb(disp_id, None, None)
                     except Exception:
                         try: traceback.print_exc()
                         except Exception: pass
                 threading.Thread(target=_run, daemon=True).start()
             return
 
-        if cb:
-            import threading, traceback
+        if cb: 
             def _run():
-                try: cb(rid, None, None)
+                try: cb(disp_id, None, None)
                 except Exception:
                     try: traceback.print_exc()
                     except Exception: pass
             threading.Thread(target=_run, daemon=True).start()
 
         with self._lock:
-            self._jobs.pop(rid, None)
-
+            self._jobs.pop(disp_id, None)

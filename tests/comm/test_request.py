@@ -9,7 +9,7 @@ import pytest
 
 
 # Adjust if your module path differs
-from dachi.comm._request import AsyncDispatcher, RequestState, RequestStatus
+from dachi.comm._dispatch import AsyncDispatcher, RequestState, DispatchStatus
 from dachi.proc._process import AsyncProcess, AsyncStreamProcess
 
 
@@ -587,7 +587,7 @@ class TestStatus:
         assert st_done.state == RequestState.DONE
 
         st = rd.status(rid)
-        assert isinstance(st, RequestStatus)
+        assert isinstance(st, DispatchStatus)
         assert st.queued_at is not None
         assert st.started_at is not None and st.ended_at is not None
         assert st.queued_at <= st.started_at <= st.ended_at
