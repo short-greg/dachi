@@ -9,11 +9,86 @@ import openai
 from ..core import (
     Msg, Resp, BaseModule, RespDelta, BaseDialog
 )
+from ..core._tool import BaseTool
 from ._process import Process, AsyncProcess, AsyncStreamProcess, StreamProcess
-from ._ai import AIAdapt, LLM
+from ._ai import AIAdapt, LLM, get_resp_output, get_delta_resp_output
+from ._resp import ToOut
 
 
-class OpenAIChat(LLM, AIAdapt):
+class OpenAIBase(LLM, AIAdapt):
+    """Base class for OpenAI adapters with common functionality"""
+    
+    url: str | None = None
+    
+    def __post_init__(self):
+        super().__post_init__()
+        # Create the OpenAI clients
+        client_kwargs = {}
+        if self.url:
+            client_kwargs['base_url'] = self.url
+        
+        try:
+            self.client = openai.Client(**client_kwargs)
+            self.async_client = openai.AsyncClient(**client_kwargs)
+        except openai.OpenAIError:
+            # For testing purposes, set clients to None
+            self.client = None
+            self.async_client = None
+    
+    def set_structured_output_arg(self, structured: bool | dict | pydantic.BaseModel | None, kwargs: dict) -> None:
+        """Add response_format to kwargs if structured output requested."""
+        if structured is None or structured is False:
+            return
+        elif structured is True:
+            kwargs['response_format'] = {"type": "json_object"}
+        elif isinstance(structured, dict):
+            kwargs['response_format'] = structured
+        elif isinstance(structured, type) and issubclass(structured, pydantic.BaseModel):
+            # Convert Pydantic model class to JSON schema with strict mode
+            schema = structured.model_json_schema()
+            kwargs['response_format'] = {
+                "type": "json_schema", 
+                "json_schema": {
+                    "name": structured.__name__,
+                    "strict": True,
+                    "schema": schema
+                }
+            }
+        else:
+            raise ValueError(f"Unsupported structured output type: {type(structured)}")
+    
+    def set_tool_arg(self, tools: list[BaseTool] | None, kwargs: dict) -> None:
+        """Add tools to kwargs if provided."""
+        if tools is None:
+            return
+        
+        openai_tools = []
+        for tool in tools:
+            schema = {
+                "type": "function",
+                "function": {
+                    "name": tool.name,
+                    "description": tool.description,
+                    "parameters": tool.input_model.model_json_schema()
+                }
+            }
+            openai_tools.append(schema)
+        kwargs['tools'] = openai_tools
+    
+    def apply_output_processing(self, resp: Resp, out: ToOut | dict[str, ToOut] | tuple[ToOut, ...] | None) -> Resp:
+        """Apply ToOut processing to response."""
+        if out is not None:
+            resp.out = get_resp_output(resp, out)
+        return resp
+    
+    def apply_streaming_output_processing(self, resp: Resp, out: ToOut | dict[str, ToOut] | tuple[ToOut, ...] | None, is_last: bool = False) -> Resp:
+        """Apply ToOut processing to streaming response."""
+        if out is not None:
+            resp.out = get_delta_resp_output(resp, out, is_last)
+        return resp
+
+
+class OpenAIChat(OpenAIBase):
     """
     Adapter for OpenAI Chat Completions API.
     
@@ -39,24 +114,6 @@ class OpenAIChat(LLM, AIAdapt):
     - tools, tool_choice, response_format, logprobs, top_logprobs
     - parallel_tool_calls, service_tier, stream_options
     """
-    
-    url: str | None = None
-
-    def __post_init__(self):
-        super().__post_init__()
-        # Create the OpenAI clients
-        client_kwargs = {}
-        if self.url:
-            client_kwargs['base_url'] = self.url
-        
-        # Only create clients if we have an API key or explicit test mode
-        try:
-            self.client = openai.Client(**client_kwargs)
-            self.async_client = openai.AsyncClient(**client_kwargs)
-        except openai.OpenAIError:
-            # For testing purposes, set clients to None
-            self.client = None
-            self.async_client = None
 
     def to_input(self, inp: Msg | BaseDialog, **kwargs) -> t.Dict:
         """Convert Dachi format to Chat Completions format."""
@@ -186,42 +243,97 @@ class OpenAIChat(LLM, AIAdapt):
         
         return openai_msg
     
-    def forward(self, inp: Msg | BaseDialog, **kwargs) -> Resp:
+    
+    def forward(self, inp: Msg | BaseDialog, 
+               model: str | None = None, 
+               tools: list[BaseTool] | None = None, 
+               structured: bool | dict | pydantic.BaseModel | None = None,
+               out: ToOut | dict[str, ToOut] | tuple[ToOut, ...] | None = None,
+               **kwargs) -> Resp:
+        # Add explicit parameters to kwargs if provided
+        if model is not None:
+            kwargs['model'] = model
+        self.set_tool_arg(tools, kwargs)
+        self.set_structured_output_arg(structured, kwargs)
+            
         api_input = self.to_input(inp, **kwargs)
-        return self.from_output(
+        resp = self.from_output(
             self.client.chat.completions.create(**api_input),
             inp
         )
+        
+        return self.apply_output_processing(resp, out)
 
-    async def aforward(self, inp: Msg | BaseDialog, **kwargs) -> Resp:
+    async def aforward(self, inp: Msg | BaseDialog, 
+                      model: str | None = None, 
+                      tools: list[BaseTool] | None = None, 
+                      structured: bool | dict | pydantic.BaseModel | None = None,
+                      out: ToOut | dict[str, ToOut] | tuple[ToOut, ...] | None = None,
+                      **kwargs) -> Resp:
+        # Add explicit parameters to kwargs if provided
+        if model is not None:
+            kwargs['model'] = model
+        self.set_tool_arg(tools, kwargs)
+        self.set_structured_output_arg(structured, kwargs)
+            
         api_input = self.to_input(inp, **kwargs)
-        return self.from_output(
+        resp = self.from_output(
             await self.async_client.chat.completions.create(**api_input),
             inp
-        )   
+        )
+        
+        return self.apply_output_processing(resp, out)
 
-    async def astream(self, inp: Msg | BaseDialog, **kwargs) -> t.AsyncIterator[Resp]:
+    async def astream(self, inp: Msg | BaseDialog, 
+                     model: str | None = None, 
+                     tools: list[BaseTool] | None = None, 
+                     structured: bool | dict | pydantic.BaseModel | None = None,
+                     out: ToOut | dict[str, ToOut] | tuple[ToOut, ...] | None = None,
+                     **kwargs) -> t.AsyncIterator[Resp]:
+        # Add explicit parameters to kwargs if provided
+        if model is not None:
+            kwargs['model'] = model
+        self.set_tool_arg(tools, kwargs)
+        self.set_structured_output_arg(structured, kwargs)
+            
         api_input = self.to_input(inp, **kwargs)
         api_input['stream'] = True
         
         prev_resp = None
         async for chunk in await self.async_client.chat.completions.create(**api_input):
             resp = self.from_streamed(chunk, inp, prev_resp)
+            # Apply streaming output processing (is_last determined by finish_reason)
+            is_last = resp.finish_reason is not None
+            resp = self.apply_streaming_output_processing(resp, out, is_last)
             prev_resp = resp
             yield resp
 
-    def stream(self, inp: Msg | BaseDialog, **kwargs) -> t.Iterator[Resp]:
+    def stream(self, inp: Msg | BaseDialog, 
+              model: str | None = None, 
+              tools: list[BaseTool] | None = None, 
+              structured: bool | dict | pydantic.BaseModel | None = None,
+              out: ToOut | dict[str, ToOut] | tuple[ToOut, ...] | None = None,
+              **kwargs) -> t.Iterator[Resp]:
+        # Add explicit parameters to kwargs if provided
+        if model is not None:
+            kwargs['model'] = model
+        self.set_tool_arg(tools, kwargs)
+        self.set_structured_output_arg(structured, kwargs)
+            
         api_input = self.to_input(inp, **kwargs)
         api_input['stream'] = True
         
         prev_resp = None
         for chunk in self.client.chat.completions.create(**api_input):
             resp = self.from_streamed(chunk, inp, prev_resp)
+            # Apply streaming output processing (is_last determined by finish_reason)
+            is_last = resp.finish_reason is not None
+            resp = self.apply_streaming_output_processing(resp, out, is_last)
             prev_resp = resp
             yield resp
 
 
-class OpenAIResp(LLM, AIAdapt):
+class OpenAIResp(OpenAIBase):
     """
     Adapter for OpenAI Responses API.
     
@@ -240,23 +352,6 @@ class OpenAIResp(LLM, AIAdapt):
     4. Processors use resp.out_store for stateful accumulation
     """
     
-    url: str | None = None
-
-    def __post_init__(self):
-        super().__post_init__()
-        # Create the OpenAI clients
-        client_kwargs = {}
-        if self.url:
-            client_kwargs['base_url'] = self.url
-        
-        # Only create clients if we have an API key or explicit test mode
-        try:
-            self.client = openai.Client(**client_kwargs)
-            self.async_client = openai.AsyncClient(**client_kwargs)
-        except openai.OpenAIError:
-            # For testing purposes, set clients to None
-            self.client = None
-            self.async_client = None
 
     def to_input(self, inp: Msg | BaseDialog | str, **kwargs) -> t.Dict:
         """Convert Dachi format to Responses API format."""
@@ -422,36 +517,102 @@ class OpenAIResp(LLM, AIAdapt):
         
         return openai_msg
     
-    def forward(self, inp: Msg | BaseDialog, **kwargs) -> Resp:
+    def forward(self, inp: Msg | BaseDialog, 
+               model: str | None = None, 
+               tools: list[BaseTool] | None = None, 
+               structured: bool | dict | pydantic.BaseModel | None = None,
+               out: ToOut | dict[str, ToOut] | tuple[ToOut, ...] | None = None,
+               reasoning_summary_request: bool | None = None,
+               **kwargs) -> Resp:
+        # Add explicit parameters to kwargs if provided
+        if model is not None:
+            kwargs['model'] = model
+        if reasoning_summary_request is not None:
+            kwargs['reasoning_summary_request'] = reasoning_summary_request
+        self.set_tool_arg(tools, kwargs)
+        self.set_structured_output_arg(structured, kwargs)
+            
         api_input = self.to_input(inp, **kwargs)
-        return self.from_output(
+        resp = self.from_output(
             self.client.responses.create(**api_input),
             inp
         )
+        
+        return self.apply_output_processing(resp, out)
     
-    async def aforward(self, inp: Msg | BaseDialog, **kwargs) -> Resp:
+    async def aforward(self, inp: Msg | BaseDialog, 
+                      model: str | None = None, 
+                      tools: list[BaseTool] | None = None, 
+                      structured: bool | dict | pydantic.BaseModel | None = None,
+                      out: ToOut | dict[str, ToOut] | tuple[ToOut, ...] | None = None,
+                      reasoning_summary_request: bool | None = None,
+                      **kwargs) -> Resp:
+        # Add explicit parameters to kwargs if provided
+        if model is not None:
+            kwargs['model'] = model
+        if reasoning_summary_request is not None:
+            kwargs['reasoning_summary_request'] = reasoning_summary_request
+        self.set_tool_arg(tools, kwargs)
+        self.set_structured_output_arg(structured, kwargs)
+            
         api_input = self.to_input(inp, **kwargs)
-        return self.from_output(
+        resp = self.from_output(
             await self.async_client.responses.create(**api_input),
             inp
         )
+        
+        return self.apply_output_processing(resp, out)
     
-    def stream(self, inp, **kwargs) -> t.Iterator[Resp]:
+    def stream(self, inp, 
+              model: str | None = None, 
+              tools: list[BaseTool] | None = None, 
+              structured: bool | dict | pydantic.BaseModel | None = None,
+              out: ToOut | dict[str, ToOut] | tuple[ToOut, ...] | None = None,
+              reasoning_summary_request: bool | None = None,
+              **kwargs) -> t.Iterator[Resp]:
+        # Add explicit parameters to kwargs if provided
+        if model is not None:
+            kwargs['model'] = model
+        if reasoning_summary_request is not None:
+            kwargs['reasoning_summary_request'] = reasoning_summary_request
+        self.set_tool_arg(tools, kwargs)
+        self.set_structured_output_arg(structured, kwargs)
+            
         api_input = self.to_input(inp, **kwargs)
         api_input['stream'] = True
         
         prev_resp = None
         for chunk in self.client.responses.create(**api_input):
             resp = self.from_streamed(chunk, inp, prev_resp)
+            # Apply streaming output processing (is_last determined by finish_reason)
+            is_last = resp.finish_reason is not None
+            resp = self.apply_streaming_output_processing(resp, out, is_last)
             prev_resp = resp
             yield resp
 
-    async def astream(self, inp, **kwargs) -> t.AsyncIterator[Resp]:
+    async def astream(self, inp, 
+                     model: str | None = None, 
+                     tools: list[BaseTool] | None = None, 
+                     structured: bool | dict | pydantic.BaseModel | None = None,
+                     out: ToOut | dict[str, ToOut] | tuple[ToOut, ...] | None = None,
+                     reasoning_summary_request: bool | None = None,
+                     **kwargs) -> t.AsyncIterator[Resp]:
+        # Add explicit parameters to kwargs if provided
+        if model is not None:
+            kwargs['model'] = model
+        if reasoning_summary_request is not None:
+            kwargs['reasoning_summary_request'] = reasoning_summary_request
+        self.set_tool_arg(tools, kwargs)
+        self.set_structured_output_arg(structured, kwargs)
+            
         api_input = self.to_input(inp, **kwargs)
         api_input['stream'] = True
         
         prev_resp = None
         async for chunk in await self.async_client.responses.create(**api_input):
             resp = self.from_streamed(chunk, inp, prev_resp)
+            # Apply streaming output processing (is_last determined by finish_reason)
+            is_last = resp.finish_reason is not None
+            resp = self.apply_streaming_output_processing(resp, out, is_last)
             prev_resp = resp
             yield resp
