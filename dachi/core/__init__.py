@@ -45,7 +45,6 @@ from ._msg import (
     BaseDialog,
     ListDialog,
     TreeDialog,
-    TreeDialog2,
     DialogTurn,
     Resp,
     RespDelta,
