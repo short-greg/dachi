@@ -533,8 +533,8 @@ class TestTreeDialog:
         assert len(td) == 1
         assert td.indices == [0]
         assert td.counts == [1]
-        assert td.root.message is m0
-        assert td.leaf.message is m0
+        assert td.root is m0
+        assert td.leaf is m0
 
     # # ------------------------------------------------------------------
     # # Append chain
@@ -550,7 +550,7 @@ class TestTreeDialog:
         assert td.indices == [0, 0, 0]
         assert td.counts == [1, 1, 1]
         # Ensure leaf contains last appended msg
-        assert td.leaf.message is ms[-1]
+        assert td.leaf is ms[-1]
 
     # # ------------------------------------------------------------------
     # # Insert branching positive & edge
@@ -564,7 +564,7 @@ class TestTreeDialog:
         new_msg = _msg("user", "inserted")
         td.insert(0, new_msg)  # Insert at depth 1
 
-        assert td.root.message is new_msg
+        assert td.root is new_msg
 
     def test_insert_replaces_leaf_with_new_msg_with_append(self):
         td = TreeDialog()
@@ -574,7 +574,8 @@ class TestTreeDialog:
         new_msg = _msg("user", "inserted")
         td.insert(1, new_msg)  # Insert at depth 1
 
-        assert td.leaf.parent.message is new_msg
+        # After inserting at position 1, the inserted message should be at position 1 in the path
+        assert td[1] is new_msg
 
 
     # @pytest.mark.parametrize("depth", [0, 1])
@@ -618,7 +619,7 @@ class TestTreeDialog:
         m_new = _msg("assistant", "new")
         td.replace(1, m_new)
 
-        assert td.leaf.message is m_new
+        assert td.leaf is m_new
         assert td.indices == [0, 0]
         assert td.counts == [1, 1]
 

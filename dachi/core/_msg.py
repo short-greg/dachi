@@ -589,23 +589,6 @@ class BaseDialog(pydantic.BaseModel, Renderable):
         """
         pass
 
-    
-# def to_input(
-#     inp: typing.Union[typing.Iterable[Msg], Msg]
-#     ) -> typing.Union[typing.List[Msg], Msg]:
-#     """Convert a list of messages or a single message to an input
-
-#     Args:
-#         inp (typing.Union[typing.Iterable[Msg], Msg]): The inputs to convert
-
-#     Returns:
-#         typing.Union[typing.List[Msg], Msg]: The input
-#     """
-#     if isinstance(inp, Msg):
-#         return inp.to_input() if inp.filtered is False else None
-    
-#     return {msg.to_input() for msg in inp if msg.filtered is False}
-
 
 class ListDialog(BaseDialog):
     """A Dialog that uses a list data structure.
@@ -1276,59 +1259,18 @@ class TreeDialog(BaseDialog):
         return [*self._counts]
         
     @property
-    def root(self) -> 'DialogTurn' | None:
-        """Get the root node as a DialogTurn for compatibility.
-        
-        Note: This creates a temporary DialogTurn structure for compatibility
-        with existing TreeDialog interface. For pure TreeDialog2 usage,
-        prefer accessing messages directly.
-        """
+    def root(self) -> Msg | None:
+        """Get the root message."""
         if self._root is None:
             return None
-        return self._create_dialog_turn_tree()
+        return self._messages[self._root]
         
     @property
-    def leaf(self) -> 'DialogTurn' | None:
-        """Get the current leaf node as a DialogTurn for compatibility."""
+    def leaf(self) -> Msg | None:
+        """Get the current leaf message."""
         if self._leaf is None:
             return None
-        tree = self._create_dialog_turn_tree()
-        return self._find_dialog_turn_by_id(tree, self._leaf)
-        
-    def _create_dialog_turn_tree(self) -> 'DialogTurn':
-        """Create a DialogTurn tree for compatibility with TreeDialog interface."""
-        if self._root is None:
-            return None
-            
-        def build_turn(node_id: str) -> 'DialogTurn':
-            msg = self._messages[node_id]
-            children_ids = self._children.get(node_id, [])
-            children = [build_turn(child_id) for child_id in children_ids]
-            return DialogTurn(message=msg, children=children)
-            
-        return build_turn(self._root)
-        
-    def _find_dialog_turn_by_id(self, turn: 'DialogTurn', target_id: str) -> 'DialogTurn' | None:
-        """Find a DialogTurn in the tree corresponding to a node ID."""
-        # This is a simplistic approach - in practice we'd need better mapping
-        path = self._get_path_to_leaf()
-        if not path:
-            return None
-            
-        current = turn
-        target_index = None
-        try:
-            target_index = path.index(target_id)
-        except ValueError:
-            return None
-            
-        for i in range(1, target_index + 1):
-            if i-1 < len(self._indices) and self._indices[i-1] < len(current.children):
-                current = current.children[self._indices[i-1]]
-            else:
-                return None
-                
-        return current
+        return self._messages[self._leaf]
         
     def rise(self, count: int):
         """Move the leaf pointer up by count levels."""
@@ -1623,95 +1565,3 @@ class TreeDialog(BaseDialog):
         clone._update()
         return clone
     
-
-
-
-
-
-
-
-
-
-# class Msg(BaseModel):
-#     """
-#     """
-
-#     role: str
-#     alias: Optional[str] = None
-#     type: str = "data"
-#     content: Union[str, Dict[str, Any], None] = None
-#     tools: typing.List[ToolCall] | typing.List[AsyncToolCall] | None = None
-
-#     def __post_init__(self):
-#         self.tools = (
-#             self.tools 
-#             or typing.List[ToolCall | AsyncToolCall]([])
-#         )
-
-#     def apply(self, func):
-#         return func(self)
-
-#     def output(self, key: str = "tool_out", default=None) -> Any:
-#         return self.meta.get(key, default)
-
-#     def render(self) -> str:
-#         return f"{self.alias or self.role}: {self.content}"
-
-#     def to_input(self) -> Dict[str, Any]:
-#         if self.filtered:
-#             return {}
-#         return {"role": self.role, "content": self.content}
-
-#     class Config:
-#         extra = "allow"
-
-
-# class ToolEvent(BaseModel):
-#     """
-#     A single tool lifecycle event (generic or computer-use).
-
-#     Lifecycle:
-#         call  →  delta*  →  result | error
-
-#     Attributes:
-#         id: Unique id for this event (optional but useful).
-#         call_id: Correlates all events for one invocation.
-#         name: Tool name, e.g. 'search', 'get_weather', 'computer.use'.
-#         kind: 'generic' or 'computer'. Purely informative for adapters.
-#         type: 'call' | 'delta' | 'result' | 'error'.
-#         args: Arguments for the call (for 'call').
-#         data: Small, structured telemetry (for 'delta').
-#         result: Final structured output (for 'result').
-#         error: Terminal error descriptor (for 'error').
-#         artifacts: Large outputs as references (screenshots/files). No raw bytes.
-#         ts: Event timestamp (UTC).
-#         parent_id: Optional parent event id.
-#         stream_id: Optional grouping key for multi-stream deltas.
-#         computer: Optional computer-use info (when kind == 'computer').
-#     """
-#     id: t.Optional[str] = None
-#     call_id: str
-#     name: str
-#     kind: str = "generic"  # 'generic' | 'computer'
-#     type: str  # 'call' | 'delta' | 'result' | 'error'
-
-#     args: t.Optional[t.Dict[str, t.Any]] = None
-#     data: t.Optional[t.Dict[str, t.Any]] = None
-#     result: t.Optional[t.Dict[str, t.Any]] = None
-#     error: t.Optional[ToolError] = None
-
-#     artifacts: t.List[Attachment] = Field(default_factory=list)
-
-#     ts: datetime = Field(default_factory=lambda: datetime.utcnow())
-#     parent_id: t.Optional[str] = None
-#     stream_id: t.Optional[str] = None
-
-#     computer: t.Optional[ComputerUseInfo] = None
-
-#     class Config:
-#         extra = "allow"
-
-#     @property
-#     def is_terminal(self) -> bool:
-#         """Whether the event is terminal for its call_id."""
-#         return self.type in ("result", "error")
