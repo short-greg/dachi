@@ -9,7 +9,7 @@ import pydantic
 # local
 from dachi.core import Msg, Resp, ListDialog
 from dachi.core._tool import BaseTool, tool
-from dachi.proc._openai import OpenAIBase, OpenAIChat, OpenAIResp
+from dachi.proc.openai import OpenAIBase, OpenAIChat, OpenAIResp
 from dachi.proc._resp import TextOut, StructOut
 
 

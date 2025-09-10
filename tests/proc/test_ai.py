@@ -3,7 +3,7 @@ from dachi.core import END_TOK, ModuleList, BaseDialog
 from dachi.proc import _ai
 from dachi.proc._resp import ToOut
 import typing as t
-from dachi.proc._openai import OpenAIChat, OpenAIResp
+from dachi.proc.openai import OpenAIChat, OpenAIResp
 from dachi import utils
 import typing
 import types

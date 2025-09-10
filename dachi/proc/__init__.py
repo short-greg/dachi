@@ -55,7 +55,7 @@ from ._ai import (
     LLM,
     Op,
 )
-from ._openai import (
+from .openai import (
     OpenAIChat,
     OpenAIResp
 )
