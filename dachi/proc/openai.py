@@ -18,6 +18,8 @@ from ._resp import ToOut
 class OpenAIBase(LLM, AIAdapt):
     """Base class for OpenAI adapters with common functionality"""
     
+    api_key: str | None = None
+
     url: str | None = None
     
     def __post_init__(self):
@@ -26,6 +28,8 @@ class OpenAIBase(LLM, AIAdapt):
         client_kwargs = {}
         if self.url:
             client_kwargs['base_url'] = self.url
+        if self.api_key:
+            client_kwargs['api_key'] = self.api_key
         
         try:
             self.client = openai.Client(**client_kwargs)
