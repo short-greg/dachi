@@ -889,7 +889,6 @@ class JSONValsOut(ToOut):
         return self.render([("name", "John"), ("age", 25), ("city", "Boston")]) 
 
 
-
 class CSVOut(ToOut):
     """
     Dynamically parse CSV data, returning new rows as accumulated. 

@@ -74,6 +74,8 @@ from ._resp import (
     CSVRowParser,
     CharDelimParser,
     LineParser,
+    TextOut,
+
 )
 from ._inst import (
     IBase,

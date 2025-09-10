@@ -19,7 +19,6 @@ class OpenAIBase(LLM, AIAdapt):
     """Base class for OpenAI adapters with common functionality"""
     
     api_key: str | None = None
-
     url: str | None = None
     
     def __post_init__(self):
