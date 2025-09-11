@@ -425,8 +425,10 @@ class OpenAIResp(OpenAIBase):
         }
     
      
-    def from_output(self, output: t.Dict, inp: Msg | BaseDialog | str | None = None) -> Resp:
+    def from_output(self, output: t.Dict | pydantic.BaseModel, inp: Msg | BaseDialog | str | None = None) -> Resp:
         """Convert Responses API response to Dachi Resp."""
+        if isinstance(output, pydantic.BaseModel):
+            output = output.model_dump()
         choice = output.get("choices", [{}])[0]
         message = choice.get("message", {})
 
