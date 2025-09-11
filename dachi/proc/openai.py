@@ -118,24 +118,28 @@ class OpenAIChat(OpenAIBase):
     - parallel_tool_calls, service_tier, stream_options
     """
 
-    def to_input(self, inp: Msg | BaseDialog, **kwargs) -> t.Dict:
+    def to_input(self, inp: Msg | BaseDialog | str, **kwargs) -> t.Dict:
         """Convert Dachi format to Chat Completions format."""
+        if isinstance(inp, str):
+            inp = Msg(role="user", text=inp)
         if isinstance(inp, Msg):
             messages = [self._convert_message(inp)]
         else:
             messages = [self._convert_message(msg) for msg in inp]
         
         # Add tool messages from ToolUse objects
-        for msg in (inp if isinstance(inp, BaseDialog) else [inp]):
+        out_messages = []
+        for msg in messages:
+            out_messages.append(msg)
             for tool_out in msg.tool_calls:
-                messages.append({
+                out_messages.append({
                     "role": "tool",
                     "content": str(tool_out.result),
                     "tool_call_id": tool_out.tool_call_id
                 })
         
         return {
-            "messages": messages,
+            "messages": out_messages,
             **kwargs
         }
     
@@ -278,12 +282,15 @@ class OpenAIChat(OpenAIBase):
         
         return self.apply_output_processing(resp, out)
 
-    async def aforward(self, inp: Msg | BaseDialog, 
-                      model: str | None = None, 
-                      tools: list[BaseTool] | None = None, 
-                      structured: bool | dict | pydantic.BaseModel | None = None,
-                      out: ToOut | dict[str, ToOut] | tuple[ToOut, ...] | None = None,
-                      **kwargs) -> Resp:
+    async def aforward(
+        self, 
+        inp: Msg | BaseDialog | str, 
+        model: str | None = None,
+        tools: list[BaseTool] | None = None, 
+        structured: bool | dict | pydantic.BaseModel | None = None,
+        out: ToOut | dict[str, ToOut] | tuple[ToOut, ...] | None = None,
+        **kwargs
+    ) -> Resp:
         # Add explicit parameters to kwargs if provided
         if model is not None:
             kwargs['model'] = model
@@ -298,12 +305,14 @@ class OpenAIChat(OpenAIBase):
         
         return self.apply_output_processing(resp, out)
 
-    async def astream(self, inp: Msg | BaseDialog, 
-                     model: str | None = None, 
-                     tools: list[BaseTool] | None = None, 
-                     structured: bool | dict | pydantic.BaseModel | None = None,
-                     out: ToOut | dict[str, ToOut] | tuple[ToOut, ...] | None = None,
-                     **kwargs) -> t.AsyncIterator[Resp]:
+    async def astream(
+        self, inp: Msg | BaseDialog, 
+        model: str | None = None, 
+        tools: list[BaseTool] | None = None, 
+        structured: bool | dict | pydantic.BaseModel | None = None,
+        out: ToOut | dict[str, ToOut] | tuple[ToOut, ...] | None = None,
+        **kwargs
+    ) -> t.AsyncIterator[Resp]:
         # Add explicit parameters to kwargs if provided
         if model is not None:
             kwargs['model'] = model
@@ -322,12 +331,15 @@ class OpenAIChat(OpenAIBase):
             prev_resp = resp
             yield resp
 
-    def stream(self, inp: Msg | BaseDialog, 
-              model: str | None = None, 
-              tools: list[BaseTool] | None = None, 
-              structured: bool | dict | pydantic.BaseModel | None = None,
-              out: ToOut | dict[str, ToOut] | tuple[ToOut, ...] | None = None,
-              **kwargs) -> t.Iterator[Resp]:
+    def stream(
+        self, 
+        inp: Msg | BaseDialog, 
+        model: str | None = None, 
+        tools: list[BaseTool] | None = None, 
+        structured: bool | dict | pydantic.BaseModel | None = None,
+        out: ToOut | dict[str, ToOut] | tuple[ToOut, ...] | None = None,
+        **kwargs
+    ) -> t.Iterator[Resp]:
         # Add explicit parameters to kwargs if provided
         if model is not None:
             kwargs['model'] = model
@@ -366,7 +378,6 @@ class OpenAIResp(OpenAIBase):
     4. Processors use resp.out_store for stateful accumulation
     """
     
-
     def to_input(self, inp: Msg | BaseDialog | str, **kwargs) -> t.Dict:
         """Convert Dachi format to Responses API format."""
         # Handle single user message case
@@ -386,16 +397,18 @@ class OpenAIResp(OpenAIBase):
             messages = [self._convert_message(msg) for msg in inp]
         
         # Add tool messages from ToolUse objects
-        for msg in (inp if isinstance(inp, BaseDialog) else [inp]):
+        out_messages = []
+        for msg in messages:
+            out_messages.append(msg)
             for tool_out in msg.tool_calls:
-                messages.append({
+                out_messages.append({
                     "role": "tool",
                     "content": str(tool_out.result),
                     "tool_call_id": tool_out.tool_call_id
                 })
         
         return {
-            "messages": messages,
+            "messages": out_messages,
             **kwargs
         }   
      
@@ -531,13 +544,15 @@ class OpenAIResp(OpenAIBase):
         
         return openai_msg
     
-    def forward(self, inp: Msg | BaseDialog, 
-               model: str | None = None, 
-               tools: list[BaseTool] | None = None, 
-               structured: bool | dict | pydantic.BaseModel | None = None,
-               out: ToOut | dict[str, ToOut] | tuple[ToOut, ...] | None = None,
-               reasoning_summary_request: bool | None = None,
-               **kwargs) -> Resp:
+    def forward(
+        self, inp: Msg | BaseDialog, 
+        model: str | None = None, 
+        tools: list[BaseTool] | None = None, 
+        structured: bool | dict | pydantic.BaseModel | None = None,
+        out: ToOut | dict[str, ToOut] | tuple[ToOut, ...] | None = None,
+        reasoning_summary_request: bool | None = None,
+        **kwargs
+    ) -> Resp:
         # Add explicit parameters to kwargs if provided
         if model is not None:
             kwargs['model'] = model
@@ -554,13 +569,16 @@ class OpenAIResp(OpenAIBase):
         
         return self.apply_output_processing(resp, out)
     
-    async def aforward(self, inp: Msg | BaseDialog, 
-                      model: str | None = None, 
-                      tools: list[BaseTool] | None = None, 
-                      structured: bool | dict | pydantic.BaseModel | None = None,
-                      out: ToOut | dict[str, ToOut] | tuple[ToOut, ...] | None = None,
-                      reasoning_summary_request: bool | None = None,
-                      **kwargs) -> Resp:
+    async def aforward(
+        self, 
+        inp: Msg | BaseDialog, 
+        model: str | None = None, 
+        tools: list[BaseTool] | None = None, 
+        structured: bool | dict | pydantic.BaseModel | None = None,
+        out: ToOut | dict[str, ToOut] | tuple[ToOut, ...] | None = None,
+        reasoning_summary_request: bool | None = None,
+        **kwargs
+    ) -> Resp:
         # Add explicit parameters to kwargs if provided
         if model is not None:
             kwargs['model'] = model
@@ -577,13 +595,16 @@ class OpenAIResp(OpenAIBase):
         
         return self.apply_output_processing(resp, out)
     
-    def stream(self, inp, 
-              model: str | None = None, 
-              tools: list[BaseTool] | None = None, 
-              structured: bool | dict | pydantic.BaseModel | None = None,
-              out: ToOut | dict[str, ToOut] | tuple[ToOut, ...] | None = None,
-              reasoning_summary_request: bool | None = None,
-              **kwargs) -> t.Iterator[Resp]:
+    def stream(
+        self, 
+        inp, 
+        model: str | None = None, 
+        tools: list[BaseTool] | None = None, 
+        structured: bool | dict | pydantic.BaseModel | None = None,
+        out: ToOut | dict[str, ToOut] | tuple[ToOut, ...] | None = None,
+        reasoning_summary_request: bool | None = None,
+        **kwargs
+    ) -> t.Iterator[Resp]:
         # Add explicit parameters to kwargs if provided
         if model is not None:
             kwargs['model'] = model
@@ -604,13 +625,16 @@ class OpenAIResp(OpenAIBase):
             prev_resp = resp
             yield resp
 
-    async def astream(self, inp, 
-                     model: str | None = None, 
-                     tools: list[BaseTool] | None = None, 
-                     structured: bool | dict | pydantic.BaseModel | None = None,
-                     out: ToOut | dict[str, ToOut] | tuple[ToOut, ...] | None = None,
-                     reasoning_summary_request: bool | None = None,
-                     **kwargs) -> t.AsyncIterator[Resp]:
+    async def astream(
+        self, 
+        inp, 
+        model: str | None = None, 
+        tools: list[BaseTool] | None = None, 
+        structured: bool | dict | pydantic.BaseModel | None = None,
+        out: ToOut | dict[str, ToOut] | tuple[ToOut, ...] | None = None,
+        reasoning_summary_request: bool | None = None,
+        **kwargs
+    ) -> t.AsyncIterator[Resp]:
         # Add explicit parameters to kwargs if provided
         if model is not None:
             kwargs['model'] = model
