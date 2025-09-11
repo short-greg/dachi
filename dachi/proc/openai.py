@@ -384,14 +384,14 @@ class OpenAIResp(OpenAIBase):
     
     def to_input(self, inp: Msg | BaseDialog | str, **kwargs) -> t.Dict:
         """Convert Dachi format to Responses API format."""
-        # Handle single user message case
+        # Handle single user message case - use simple string input
         if isinstance(inp, Msg) and inp.role == "user" and "instructions" not in kwargs:
             return {
                 "input": inp.text or "",
                 **kwargs
             }
         
-        # Handle multiple messages (same as Chat Completions)
+        # Handle multiple messages or complex cases - use input array format
         if isinstance(inp, str):
             original_messages = [Msg(role="user", text=inp)]
         elif isinstance(inp, Msg):
@@ -414,8 +414,9 @@ class OpenAIResp(OpenAIBase):
                     "tool_call_id": tool_out.id
                 })
         
+        # For Responses API, use input parameter with messages array
         return {
-            "messages": out_messages,
+            "input": out_messages,
             **kwargs
         }   
      

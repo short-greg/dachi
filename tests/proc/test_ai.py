@@ -328,8 +328,10 @@ class TestOpenAIResp:
         msg = Msg(role="user", text="Hello")
         result = adapter.to_input(msg, instructions="Be helpful")
         
-        assert "messages" in result
+        assert "input" in result
         assert result["instructions"] == "Be helpful"
+        # When instructions are provided, input should be an array of messages
+        assert isinstance(result["input"], list)
 
     def test_from_output_captures_all_fields_including_reasoning(self):
         adapter = OpenAIResp()
