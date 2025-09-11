@@ -415,10 +415,15 @@ class OpenAIResp(OpenAIBase):
                 })
         
         # For Responses API, use input parameter with messages array
+        # Map parameter names for Responses API
+        if 'max_tokens' in kwargs:
+            kwargs['max_output_tokens'] = kwargs.pop('max_tokens')
+            
         return {
             "input": out_messages,
             **kwargs
-        }   
+        }
+    
      
     def from_output(self, output: t.Dict, inp: Msg | BaseDialog | str | None = None) -> Resp:
         """Convert Responses API response to Dachi Resp."""
