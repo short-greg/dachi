@@ -75,7 +75,6 @@ from ._resp import (
     CharDelimParser,
     LineParser,
     TextOut,
-
 )
 from ._inst import (
     IBase,

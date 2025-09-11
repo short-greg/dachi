@@ -123,19 +123,23 @@ class OpenAIChat(OpenAIBase):
         if isinstance(inp, str):
             inp = Msg(role="user", text=inp)
         if isinstance(inp, Msg):
-            messages = [self._convert_message(inp)]
+            original_messages = [inp]
         else:
-            messages = [self._convert_message(msg) for msg in inp]
+            original_messages = list(inp)
         
-        # Add tool messages from ToolUse objects
+        # Convert messages to OpenAI format
+        messages = [self._convert_message(msg) for msg in original_messages]
+        
+        # Add tool messages from ToolUse objects (using original Msg objects)
         out_messages = []
-        for msg in messages:
+        for i, msg in enumerate(messages):
             out_messages.append(msg)
-            for tool_out in msg.tool_calls:
+            # Access tool_calls from original Msg object, not converted dict
+            for tool_out in original_messages[i].tool_calls:
                 out_messages.append({
                     "role": "tool",
                     "content": str(tool_out.result),
-                    "tool_call_id": tool_out.tool_call_id
+                    "tool_call_id": tool_out.id
                 })
         
         return {
@@ -389,22 +393,25 @@ class OpenAIResp(OpenAIBase):
         
         # Handle multiple messages (same as Chat Completions)
         if isinstance(inp, str):
-            inp = Msg(role="user", text=inp)
-        
-        if isinstance(inp, Msg):
-            messages = [self._convert_message(inp)]
+            original_messages = [Msg(role="user", text=inp)]
+        elif isinstance(inp, Msg):
+            original_messages = [inp]
         else:
-            messages = [self._convert_message(msg) for msg in inp]
+            original_messages = list(inp)
         
-        # Add tool messages from ToolUse objects
+        # Convert messages to OpenAI format
+        messages = [self._convert_message(msg) for msg in original_messages]
+        
+        # Add tool messages from ToolUse objects (using original Msg objects)
         out_messages = []
-        for msg in messages:
+        for i, msg in enumerate(messages):
             out_messages.append(msg)
-            for tool_out in msg.tool_calls:
+            # Access tool_calls from original Msg object, not converted dict
+            for tool_out in original_messages[i].tool_calls:
                 out_messages.append({
                     "role": "tool",
                     "content": str(tool_out.result),
-                    "tool_call_id": tool_out.tool_call_id
+                    "tool_call_id": tool_out.id
                 })
         
         return {

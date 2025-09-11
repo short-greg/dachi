@@ -100,11 +100,11 @@ class TestMsg:
         assert msg.role == "user"
         assert msg.text == "hello"
 
-    def test_to_input_filtered_returns_empty(self):
-        # Note: to_input() method removed - conversion now handled by AIAdapt
-        msg = _sample_msg(filtered=True)
-        # Test filtered flag is set correctly
-        assert msg.filtered == True
+    # def test_to_input_filtered_returns_empty(self):
+    #     # Note: to_input() method removed - conversion now handled by AIAdapt
+    #     msg = _sample_msg(filtered=True)
+    #     # Test filtered flag is set correctly
+    #     assert msg.filtered == True
 
     def test_equality_semantics(self):
         # Use fixed timestamp to ensure equality
@@ -314,24 +314,21 @@ class TestListDialog:
 
     # # ----- to_input / render helpers ----------------------------------------
 
-    def test_to_input_filters(self):
-        # Note: to_input() method removed - conversion now handled by AIAdapt
-        visible = _msg("user", "show")
-        hidden = _msg("assistant", "hide", filtered=True)
-        dlg = ListDialog(messages=[visible, hidden])
-        # Test filtering behavior in dialog
-        assert len(dlg) == 2
-        assert not visible.filtered
-        assert hidden.filtered
+    # def test_to_input_filters(self):
+    #     # Note: to_input() method removed - conversion now handled by AIAdapt
+    #     visible = _msg("user", "show")
+    #     hidden = _msg("assistant", "hide", filtered=True)
+    #     dlg = ListDialog(messages=[visible, hidden])
+    #     # Test filtering behavior in dialog
+    #     assert len(dlg) == 2
+    #     assert not visible.filtered
+    #     assert hidden.filtered
 
     def test_render_default(self):
         m1, m2 = _msg("system", "hello"), _msg("user", "world")
         dlg = ListDialog(messages=[m1, m2])
         rendered = dlg.render()
         assert rendered.split("\n") == [m1.render(), m2.render()]
-
-
-
 
 def _msg(role: str = "user", text: str = "hi", **kw) -> Msg:
     """Convenience factory for a valid Msg object."""
@@ -666,24 +663,24 @@ class TestTreeDialog:
 
     def test_child_navigation(self):
         td = self._build_three_level_tree()
-        leaf_msg = td.leaf.message
+        leaf_msg = td.leaf
         # go up then back down
         td.rise(1)
         td.leaf_child(0)
-        assert td.leaf.message is leaf_msg  # should now match leaf message
+        assert td.leaf is leaf_msg  # should now match leaf message
 
     def test_sibling_navigation(self):
         td = TreeDialog()
         td.append(_msg("sys", "root"))
         td.append(_msg("assistant", "c0"))
         td.append(_msg("assistant", "c1"))  # create sibling via insert
-        sibling_msg = td.leaf.message
+        sibling_msg = td.leaf
         td.rise(1)
         td.append(_msg("assistant", "c2"))  # create sibling via insert
 
         # Now leaf is sibling1; move back to original using sibling(-1)
         td.leaf_sibling(-1)
-        assert td.leaf.message is sibling_msg
+        assert td.leaf is sibling_msg
 
     # # ------------------------------------------------------------------
     # # Clone behaviour

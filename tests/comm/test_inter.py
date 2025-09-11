@@ -547,9 +547,9 @@ class TestSingletonBulletin:
         bulletin.clear()  # Clear any existing posts
         
         essay = Essay(title="Singleton Test", content="Testing singleton pattern")
-        post_id = bulletin.publish(essay)
+        post_id = bulletin.post(essay)
         
-        retrieved = bulletin.retrieve_first(id=post_id)
+        retrieved = bulletin.get_first(id=post_id)
         assert retrieved is not None
         assert retrieved["item"].title == "Singleton Test"
     

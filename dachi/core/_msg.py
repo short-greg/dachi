@@ -368,8 +368,6 @@ class Msg(BaseModel):
     id: t.Optional[str] = Field(default=None, description="Unique identifier for the message.")
     prev_id: t.Optional[str] = Field(default=None, description="ID of the previous message in the conversation.")
     
-    # Fields for compatibility with existing tests
-    filtered: bool = Field(default=False, description="Whether this message should be filtered from outputs")
     meta: t.Dict[str, t.Any] = Field(default_factory=dict, description="Metadata dictionary for additional information")
 
     class Config:
@@ -550,18 +548,6 @@ class BaseDialog(pydantic.BaseModel, Renderable):
             message.render()
             for message in self
         )
-    
-    # def to_input(self) -> typing.List[typing.Dict]:
-    #     """Convert the dialog to an input to pass into an API
-
-    #     Returns:
-    #         typing.List[typing.Dict]: A list of inputs
-    #     """
-    #     return [msg.to_input() for msg in self if msg.filtered is False]
-
-    # def to_list_input(self) -> typing.List[typing.Dict]:
-
-    #     return self.to_input()
 
     def aslist(self) -> typing.List['Msg']:
         """Retrieve the message list
