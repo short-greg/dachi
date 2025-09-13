@@ -476,6 +476,23 @@ class BaseModule:
 
     Use InitVar to indicate that a variable should be initialized in post_init. Other fields will automatically be included as member variables.
 
+    Example:
+    class MyModule(BaseModule):
+    
+        # The attributes defined here must
+        # be serializable by Pydantic to create
+        # MyModuleSpec. Don't include Param, Attr, Shared
+        # in the header; instead, define them in __post_init__.
+
+        val: int = 1
+        name: InitVar[str]
+
+        def __post_init__(self, name: str):
+            self.name = name
+            self.weight = Param(data=0.5)
+            self.cur_index = Attr(data=0)
+    m = MyModule(name="test")
+
     """
 
     # populated by __init_subclass__

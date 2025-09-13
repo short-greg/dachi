@@ -18,47 +18,11 @@ import typing as t
 
 # TODO: Check if the value coming from incoming is undefined or waiting... 
 
-# TODO: Set up DAG deserialization to set
-# the object if it is an FProc
-class FProc(Process):
-    """A process that executes a function and returns a status
-    """
-
-    name: str
-
-    def __post_init__(self):
-        """Initialize the FProc"""
-        super().__post_init__()
-        self.obj = None
-
-    async def aforward(self, obj, kwargs) -> typing.Any:
-        """Execute the process
-
-        Returns:
-            typing.Any: The result of the function execution
-        """
-        if self.status.is_done:
-            return self.status
-        
-        if self.obj is None:
-            raise ValueError(
-                "Process object is not set. "
-                "Please set the object before calling aforward."
-            )
-
-        f = getattr(self.obj, self.name, None)
-        if f is None:
-            raise ValueError(
-                f"Function {self.name} not found in object {self.obj}"
-            )
-        return await f(**kwargs)
-
 
 class BaseNode(AsyncProcess):
     """Base class for nodes in the graph. It can be a Var or T.
     It is used to represent a node in the graph that can be processed or async processed.
     """
-
     name: str | None = None
     val: typing.Any = UNDEFINED
     annotation: str | None = None
@@ -128,7 +92,10 @@ class BaseNode(AsyncProcess):
 
 
 class Var(BaseNode):
-    """A variable in the graph. It can be used to store a value that can be processed or async processed.
+    """A variable in the graph. A variable is a Root Node
+    that feeds into T nodes (process nodes).
+    
+    It can be used to store a value that can be processed or async processed.
     It is used to represent a node in the graph that can be processed or async processed.
     """
 
@@ -163,15 +130,35 @@ class Var(BaseNode):
         return res
     
     def incoming(self) -> typing.Iterator[typing.Tuple[str, 'BaseNode']]:
-        
+        """Get the incoming connections for this node
+        Since it is a Root node it has no incoming connections
+
+        Yields:
+            typing.Tuple[str, 'BaseNode']: The incoming connections
+        """
         if False:
             yield None
         return
 
 
 class T(BaseNode):
-    """A transmission in the graph. It can be used to store a value that can be processed or async processed.
-    It is used to represent a node in the graph that can be processed or async processed.
+    """A process node in a DAG. It can be used to store a value that can be processed or async processed.
+    It is both used to wrap a Process/AsyncProcess and to represent a node in the graph that can be processed or async processed.
+
+    example:
+        ```python
+        t = T(
+            args=SerialDict(),
+            src=Process(),
+            is_async=False
+        )
+        ```
+        val = await t.aforward()
+
+    Args:
+        args (SerialDict): The arguments to the process
+        src (Process | AsyncProcess): The process to execute
+        is_async (bool, optional): Whether the process is async. Defaults to False.
     """
     args: SerialDict
     src: Process | AsyncProcess
@@ -214,22 +201,13 @@ class T(BaseNode):
             if isinstance(arg, BaseNode):
                 yield k, arg
 
-    # def has_partial(self) -> bool:
-
-    #     for k, a in self.args.items():
-    #         if isinstance(a, T):
-    #             a = a.val
-    #         if (isinstance(a, Partial) and not a.complete):
-    #             return True
-    #     return False
-
     def eval_args(self) -> SerialDict:
         """Evaluate the current arguments
             - The value of t
             - The current value for a Streamer or Partial
 
         Returns:
-            Self: Evaluate the 
+            Self: Evaluate the input args to the process
         """
         kwargs = {}
         
@@ -246,6 +224,14 @@ class T(BaseNode):
         self, 
         by: typing.Dict['T', typing.Any]=None
     ) -> typing.Dict[str, typing.Any]:
+        """Get the incoming arguments for this node
+        Args:
+            by (typing.Dict[&#39;T&#39;, typing.Any], optional): The
+                values to use for the incoming arguments.
+                Defaults to None.
+        Returns:
+            typing.Dict[str, typing.Any]: The evaluated arguments
+        """
 
         by = by if by is not None else {}
         kwargs = {}
@@ -288,46 +274,13 @@ class T(BaseNode):
             if isinstance(arg, BaseNode):
                 yield arg
 
-    # async def aforward(
-    #     self, by: typing.Dict['BaseNode', typing.Any]=None
-    # ) -> typing.Any:
-    #     """Probe the graph using the values specified in by
-
-    #     Args:
-    #         by (typing.Dict[&#39;T&#39;, typing.Any]): The inputs to the network
-
-    #     Raises:
-    #         RuntimeError: If the value is undefined
-
-    #     Returns:
-    #         typing.Any: The value returned by the probe
-    #     """
-    #     by = by or {}
-    #     if not is_undefined(self.val):
-    #         return self.val
-
-    #     if self in by:
-    #         return by[self]
-            
-    #     args, kwargs = self.args(by)
-        
-    #     if self._is_async:
-    #         val = by[self] = await self.src(*args, **kwargs)
-    #     else:
-    #         val = by[self] = self.src(*args, **kwargs)    
-
-    #     if val is UNDEFINED:
-    #         raise RuntimeError(
-    #             'Val has not been defined and no source for T'
-    #         )
-    #     return val
-
 
 def t(
     p: Process, 
     _name: str=None, _annotation: str=None,
     **kwargs, 
 ) -> T:
+    """Convenience function to create a T node from a Process. """
 
     args = SerialDict(data=kwargs)
     return T(
@@ -387,8 +340,10 @@ class CircularReferenceError(Exception):
     """Raised when a circular reference is detected in the DAG"""
     pass
 
+
 @dataclass
 class RefT:
+    """Reference to a node in the DAG by name"""
     name: str
 
 
@@ -488,3 +443,39 @@ class DAG(AdaptModule, AsyncProcess):
         if isinstance(self._outputs.data, str):
             return res[0]
         return tuple(res)
+
+
+# TODO: Set up DAG deserialization to set
+# the object if it is an FProc
+class FProc(Process):
+    """A process that executes a function and returns a status
+    """
+
+    name: str
+
+    def __post_init__(self):
+        """Initialize the FProc"""
+        super().__post_init__()
+        self.obj = None
+
+    async def aforward(self, obj, kwargs) -> typing.Any:
+        """Execute the process
+
+        Returns:
+            typing.Any: The result of the function execution
+        """
+        if self.status.is_done:
+            return self.status
+        
+        if self.obj is None:
+            raise ValueError(
+                "Process object is not set. "
+                "Please set the object before calling aforward."
+            )
+
+        f = getattr(self.obj, self.name, None)
+        if f is None:
+            raise ValueError(
+                f"Function {self.name} not found in object {self.obj}"
+            )
+        return await f(**kwargs)

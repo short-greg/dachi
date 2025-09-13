@@ -22,7 +22,7 @@ class NestedStruct(BaseModel):
 
 class WriteOut(Process):
 
-    def forward(self, x: str) -> str:
+    def delta(self, x: str) -> str:
 
         return x
 
@@ -74,5 +74,5 @@ class Append(Process):
         super().__init__()
         self._append = append
 
-    def forward(self, name: str='') -> Any:
+    def delta(self, name: str='') -> Any:
         return name + self._append

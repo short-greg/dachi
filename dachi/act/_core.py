@@ -358,7 +358,7 @@ class Router(Process, ABC):
     """
 
     @abstractmethod
-    def forward(self, val) -> TaskStatus | State:
+    def delta(self, val) -> TaskStatus | State:
         pass
 
 

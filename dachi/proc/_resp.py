@@ -15,6 +15,7 @@ import pydantic
 from ..core import Resp, render
 from ._process import Process
 from .. import utils
+from ._parser import LineParser, Parser
 
 from ..core import (
     Templatable, 
@@ -186,7 +187,7 @@ class ToOut(
         pass
 
     def coalesce_resp(self, resp, default='') -> str:
-        """_summary_
+        """Coalesce the response into a single string
 
         Args:
             resp : 
@@ -199,21 +200,13 @@ class ToOut(
         
         return resp
 
-
-    def forward(self, resp: Resp) -> typing.Any:
-        """Process complete non-streaming response
-        
-        Args:
-            resp: Complete response to process
-            
-        Returns:
-            Processed result
-        """
-        # Simple non-streaming processing - override in subclasses
-        return resp.msg.text if resp.msg.text is not None else str(resp)
-    
     @abstractmethod
-    def delta(self, resp: Resp, delta_store: typing.Dict, is_last: bool = True) -> typing.Any:
+    def delta(
+        self, 
+        resp: Resp, 
+        delta_store: typing.Dict, 
+        is_last: bool = True
+    ) -> typing.Any:
         """Process streaming response chunks
         
         Args:
@@ -227,29 +220,14 @@ class ToOut(
         pass
 
 
-class Parser(Process):
-    """Base class for parsers. 
-    It converts the input text
-    into a list of objects
-    """
-    def forward(
-        self, 
-        resp, 
-        delta_store: typing.Dict, 
-        streamed: bool=False, 
-        is_last: bool=True
-    ) -> typing.List | None:
-        pass
-
-    @abstractmethod
-    def render(self, data) -> str:
-        pass
-
 
 class PrimOut(ToOut):
-    """Use for converting an AI response into a primitive value
-    """
+    """Use for converting an AI response into a primitive value. This will be a str, int, float or bool. When streaming, It will wait until the entire response is received before processing.
 
+    Args:
+        out_cls: The name of the primitive class to convert to. One of 'str', 'int', 'float', 'bool' or the actual type.
+
+    """
     out_cls: str
     prim_map: typing.ClassVar[typing.Dict[str, typing.Callable]] = {
         'str': str,
@@ -259,7 +237,10 @@ class PrimOut(ToOut):
     }
     
     def forward(self, resp: Resp) -> typing.Any:
-        """Process complete non-streaming response"""
+        """Process complete non-streaming response
+        
+        resp (Resp): Complete response to process
+        """
         val = str(resp.msg.text) if resp.msg.text is not None else str(resp)
         
         if isinstance(self.out_cls, typing.Type):
@@ -275,7 +256,13 @@ class PrimOut(ToOut):
         delta_store: typing.Dict, 
         is_last: bool=True
     ) -> typing.Any:
-        """Process streaming response chunks"""
+        """Process streaming response chunks
+        
+        Args:
+            resp (Resp): The response object to process
+            delta_store (typing.Dict): The dictionary to store deltas
+            is_last (bool, optional): Whether this is the last chunk. Defaults to True. 
+        """
         if resp is None or resp is utils.UNDEFINED:
             resp = ''
 
@@ -297,14 +284,18 @@ class PrimOut(ToOut):
         """Output an example of the data
 
         Args:
-            data (typing.Any): 
+            data (typing.Any): The primitive data to render
 
         Returns:
-            str: 
+            str: The rendered data
         """
         return str(data)
     
     def example(self) -> str:
+        """Generate example output based on the specified primitive type
+        Returns:
+            str: Example output as a string
+        """
         if self.out_cls == 'int':
             return self.render(1)
         elif self.out_cls == 'bool':
@@ -328,18 +319,34 @@ class PrimOut(ToOut):
 
 class KVOut(ToOut):
     """Create a Reader of a list of key values
+
+    Example:
+        kv_out = KVOut(sep='::', key_descr={'name': 'The name of the person', 'age': 'The age of the person'})
+        resp = Resp(msg=Msg(role='assistant', text='name::John Doe\nage::30'))
+        data = kv_out.forward(resp)
+        print(data)
     """
     sep: str = '::'
     key_descr: typing.Type[pydantic.BaseModel] | None = None
-
+    
     def __post_init__(
         self
     ):
+        """
+            Initializes the KVOut instance.
+            Creates a LineProcessor for parsing
+            into lines that will be used for
+            determining the keys and values.
+        """
         super().__post_init__()
         self.line_parser = LineParser()
 
     def forward(self, resp: Resp) -> typing.Any:
-        """Process complete non-streaming response"""
+        """Process complete non-streaming response
+
+        Args:
+            resp (Resp): The response object to process
+        """
         text = str(resp.msg.text) if resp.msg.text is not None else str(resp)
         lines = text.strip().split('\n')
         
@@ -362,10 +369,22 @@ class KVOut(ToOut):
         delta_store: typing.Dict, 
         is_last: bool=True
     ) -> typing.Any:
-        """Process streaming response chunks"""
+        """
+        Process streaming response chunks
+        Args:
+            resp (Resp): The response object to process
+            delta_store (typing.Dict): The dictionary to store deltas
+            is_last (bool, optional): Whether this is the last chunk. Defaults to True.
+
+        Raises:
+            RuntimeError: If processing fails
+
+        Returns:
+            typing.Any: The processed result
+        """
         resp = self.coalesce_resp(resp)
         line_store = utils.get_or_set(delta_store, 'lines', {})
-        res = self.line_parser.forward(resp, line_store, streamed=True, is_last=is_last)
+        res = self.line_parser.delta(resp, line_store, streamed=True, is_last=is_last)
 
         if res is utils.UNDEFINED or res is None:
             return res
@@ -453,8 +472,8 @@ class StructOut(ToOut):
                     return parsed_json
             
             return parsed_json
-        except (json.JSONDecodeError, TypeError, ValueError):
-            return {} if self.struct is None else (self.struct() if inspect.isclass(self.struct) else {})
+        except (json.JSONDecodeError, TypeError, ValueError) as e:
+            raise RuntimeError(f"Failed to parse JSON: {e}")
 
     def delta(
         self, 
@@ -508,7 +527,10 @@ class TextOut(ToOut):
     """
 
     def forward(self, resp: Resp) -> typing.Any:
-        """Process complete non-streaming text response"""
+        """Process complete non-streaming text response
+        
+        resp: Complete response to process
+        """
         return resp.msg.text if resp.msg.text is not None else str(resp)
 
     def delta(
@@ -554,7 +576,10 @@ class IndexOut(ToOut):
         self.line_parser = LineParser()
 
     def forward(self, resp: Resp) -> typing.Any:
-        """Process complete non-streaming response"""
+        """Process complete non-streaming response
+        
+        resp (Resp): The response object to process
+        """
         text = str(resp.msg.text) if resp.msg.text is not None else str(resp)
         lines = text.strip().split('\n')
         
@@ -583,12 +608,21 @@ class IndexOut(ToOut):
         delta_store: typing.Dict, 
         is_last: bool=True
     ) -> typing.Any:
-        """Process streaming response chunks"""
+        """Process streaming response chunks
+        Args:
+            resp (Resp): The response object to process
+            delta_store (typing.Dict): The dictionary to store deltas
+            is_last (bool, optional): Whether this is the last chunk. Defaults to True.
+        Raises:
+            RuntimeError: If processing fails
+        Returns:
+            typing.Any: The processed result
+        """
         resp = self.coalesce_resp(resp)
         line_store = utils.get_or_set(
             delta_store, 'lines', {}
         )
-        resp = self.line_parser.forward(resp, line_store, streamed=True, is_last=is_last)
+        resp = self.line_parser.delta(resp, line_store, streamed=True, is_last=is_last)
         if resp is utils.UNDEFINED or resp is None:
             return utils.UNDEFINED
         result = []
@@ -653,13 +687,24 @@ class IndexOut(ToOut):
         return '\n'.join(lines)
     
     def example(self):
-        
+        """Generate an example output for the tuple.
+
+        Returns:
+            str: An example output string.
+        """
         data = ["Data 1", "Data 2", "Data 3"]
         return self.render(data)
 
 
 class JSONListOut(ToOut):
-    """Processes JSON arrays, handling streaming of individual JSON objects."""
+    """Processes JSON arrays, handling streaming of individual JSON objects.
+    
+    Example:
+        json_list_out = JSONListOut(model_cls=MyModel)
+        resp = Resp(msg=Msg(role='assistant', text='[{"name": "John", "age": 25}, {"name": "Jane", "age": 30}]'))
+        data = json_list_out.forward(resp)
+        print(data)  # Output: [MyModel(name='John', age=25), MyModel(name='Jane', age=30)]
+    """
     
     model_cls: typing.Type[pydantic.BaseModel] | None = None
     
@@ -728,26 +773,55 @@ class JSONListOut(ToOut):
 
 
 class TupleOut(ToOut):
+    """Processes a response into a tuple of values using specified processors and a parser.
+    
+    Each processor must inherit from Process, take in a string, and output some value.
+    
+    Example:
+        class StrProcessor(Process):
+            def forward(self, s: str) -> str:
+                return s.strip()
+                
+        class IntProcessor(Process):
+            def forward(self, s: str) -> int:
+                return int(s.strip())
+        
+        tuple_out = TupleOut(
+            processors=ModuleList([StrProcessor(), IntProcessor()]),
+            parser=LineParser()
+        )
+        resp = Resp(msg=Msg(role='assistant', text='Hello\n42'))
+        data = tuple_out.forward(resp)
+        print(data)  # Output: ('Hello', 42)
 
-    convs: ModuleList
+        resp1 = Resp(msg=Msg(role='assistant', text='Hello\n'))
+        resp2 = Resp(msg=Msg(role='assistant', text='42'))
+        print("Streaming tuple:")
+        # For streaming, use delta method
+        tuple_out.delta(resp1, delta_store={})
+        # Output: ['Hello']
+        tuple_out.delta(resp2, delta_store={}, is_last=True)
+        # Output: [42]
+    """
+
+    processors: ModuleList
     parser: Parser
 
     def forward(self, resp: Resp) -> typing.Any:
         """Process complete non-streaming response"""
-        # Simple implementation - parse and process each part with its converter
+        # Simple implementation - parse and process each part with its processor
         text = str(resp.msg.text) if resp.msg.text is not None else str(resp)
         
         # Use parser to split the text into parts
-        parts = self.parser.render([text])
+        parts = self.parser.forward(text)
         
-        if len(parts) != len(self.convs):
-            raise RuntimeError(f"Expected {len(self.convs)} parts, got {len(parts)}")
+        if len(parts) != len(self.processors):
+            raise RuntimeError(f"Expected {len(self.processors)} parts, got {len(parts)}")
         
         results = []
-        for part, conv in zip(parts, self.convs):
-            # Create a mock response for each converter
-            mock_resp = type('MockResp', (), {'text': part})()
-            results.append(conv.forward(mock_resp))
+        for part, processor in zip(parts, self.processors):
+            # Note: processors take in a string and output some value
+            results.append(processor.forward(str(part)))
         
         return tuple(results)
     
@@ -757,9 +831,18 @@ class TupleOut(ToOut):
         delta_store: typing.Dict, 
         is_last: bool=True
     ) -> typing.Any:
+        """Process streaming response chunks
+        
+        Args:
+            resp (Resp): The response object to process
+            delta_store (typing.Dict): The dictionary to store deltas
+            is_last (bool, optional): Whether this is the last chunk. Defaults to True.
+        Raises:
+            RuntimeError: If processing fails
+        """
         parsed = utils.sub_dict(delta_store, 'parsed')
         i = utils.get_or_set(delta_store, 'i', 0)
-        res = self.parser.forward(
+        res = self.parser.delta(
             resp, 
             parsed, 
             streamed=True,
@@ -769,18 +852,19 @@ class TupleOut(ToOut):
             return utils.UNDEFINED
 
         outs = []
-        if is_last and len(res) != len(self.convs[i:]):
+        if is_last and len(res) != len(self.processors[i:]):
             raise RuntimeError(
                 "There are more out processors to retrieve than items."
             )
         
-        if len(res) > len(self.convs[i:]):
+        if len(res) > len(self.processors[i:]):
             raise RuntimeError(
                 "There are more items to retrieve than out processors."
             )
-        for res_i, conv in zip(res, self.convs[i:]):
+        for res_i, processor in zip(res, self.processors[i:]):
 
-            outs.append(conv.delta(res_i, {}))
+            # Note: processors take in a string and output some value
+            outs.append(processor.forward(str(res_i)))
             utils.acc(delta_store, 'i', 1)
         return outs
         
@@ -793,29 +877,44 @@ class TupleOut(ToOut):
         Returns:
             str: 
         """
-        datas = [
-            conv.render(data_i) 
-            for data_i, conv in 
-            zip(data, self.convs)
-        ]
-        return self.parser.render(datas)
+        return self.parser.render(data)
 
     def template(self):
-        
-        templates = [conv.template() for conv in self.convs]
+        """Generate template showing expected format"""
+        templates = ["<item1>", "<item2>", "<item3>"]
         return self.parser.render(templates)
 
     def example(self):
-        datas = [
-            conv.example() 
-            for conv in self.convs
-        ]
-        return self.parser.render(datas)
+        """Generate simple example of tuple output"""
+        data = ["value1", "value2", "value3"]
+        return self.parser.render(data)
 
 
 class JSONValsOut(ToOut):
-    """Processes JSON objects, streaming key-value pairs one at a time."""
+    """Processes JSON objects, streaming key-value pairs one at a time.
     
+    Example:
+        json_vals_out = JSONValsOut(processors={'name': PrimOut(out_cls='str'), 'age': PrimOut(out_cls='int')})
+        resp = Resp(msg=Msg(role='assistant', text='{"name": "John", "age": 30, "city": "New York"}'))
+        data = json_vals_out.forward(resp)
+        print(data)
+        # Output: [('name', 'John'), ('age', 30), ('city', 'New York')]
+
+        resp1 = Resp(msg=Msg(role='assistant', text='{"name": "John", '))
+        resp2 = Resp(msg=Msg(role='assistant', text='"age": 30, '))
+        resp3 = Resp(msg=Msg(role='assistant', text='"city": "New York"}'))
+        resp4 = Resp(msg=Msg(role='assistant', text='}'))
+        print("Streaming JSON values:")
+        # For streaming, use delta method
+        json_vals_out.delta(resp1, delta_store={})
+        # Output: [('name', 'John')]
+        json_vals_out.delta(resp2, delta_store={})
+        # Output: [('age', 30)]
+        json_vals_out.delta(resp3, delta_store={})
+        # Output: [('city', 'New York')]
+        json_vals_out.delta(resp4, delta_store={}, is_last=True)
+        # Output: None (no more new key-value pairs)
+    """
     processors: typing.Dict[str, ToOut] | None = None
     
     def forward(self, resp: Resp) -> typing.Any:
@@ -827,8 +926,8 @@ class JSONValsOut(ToOut):
                 result = []
                 for k, v in data.items():
                     if self.processors and k in self.processors:
-                        mock_resp = type('MockResp', (), {'text': str(v)})()
-                        processed_v = self.processors[k].forward(mock_resp)
+                        # Note: processors assume input is a string
+                        processed_v = self.processors[k].forward(str(v))
                         result.append((k, processed_v))
                     else:
                         result.append((k, v))
@@ -857,8 +956,8 @@ class JSONValsOut(ToOut):
                 for k, v in parsed.items():
                     if k not in processed_keys:
                         if self.processors and k in self.processors:
-                            mock_resp = type('MockResp', (), {'text': str(v)})()
-                            processed_v = self.processors[k].forward(mock_resp)
+                            # Note: processors assume input is a string
+                            processed_v = self.processors[k].forward(str(v))
                             new_pairs.append((k, processed_v))
                         else:
                             new_pairs.append((k, v))
@@ -893,14 +992,19 @@ class CSVOut(ToOut):
     """
     Dynamically parse CSV data, returning new rows as accumulated. 
     The header will be returned along with them if used.
+
+    Example:
+        csv_out = CSVOut(delimiter=',', use_header=True)
+        resp = Resp(msg=Msg(role='assistant', text='name,age,city\nJohn,30,Boston\nJane,25,New York'))
+        data = csv_out.forward(resp
+        print(data)
+        # Output: [{'name': 'John', 'age': '30', 'city': 'Boston'}, {'name': 'Jane', 'age': '25', 'city': 'New York'}]
     """
     delimiter: str = ','
     use_header: bool = True
 
     def forward(self, resp: Resp) -> typing.Any:
         """Process complete non-streaming CSV response"""
-        import csv
-        import io
         
         text = str(resp.msg.text) if resp.msg.text is not None else str(resp)
         
@@ -1004,222 +1108,3 @@ class CSVOut(ToOut):
 
     def template(self):
         return super().template()
-
-# TODO: Look into how to get CSVRowParser
-# combined with CSVout. Ensure CSVOut
-# can process row by row or if it already
-# can
-class CSVRowParser(Parser):
-    """
-    Dynamically parse CSV data, returning new rows as accumulated. 
-    The header will be returned along with them if used.
-    """
-
-    delimiter: str = ','
-    use_header: bool = True
-
-    def forward(
-        self, 
-        resp: Resp, 
-        delta_store: typing.Dict=None, 
-        streamed: bool=False, 
-        is_last: bool=True
-    ) -> typing.List | None:
-        """
-        Parses CSV data incrementally using csv.reader.
-        """
-        # resp = self.handle_null(resp, '')
-        delta_store = delta_store if delta_store is not None else {}
-
-        val = utils.acc(delta_store, 'val', resp.msg.text, '')
-        row = utils.get_or_set(delta_store, 'row', 0)
-        header = utils.get_or_set(
-            delta_store, 'header', None
-        )
-        # Process accumulated data using csv.reader
-        # csv_data = io.StringIO(delta_store['val'])
-
-        rows = list(
-            csv.reader(io.StringIO(val), delimiter=self.delimiter)
-        )
-        new_rows = []
-        for i, row in enumerate(rows[row:]):  # Only return new rows
-            new_rows.append(row)
-
-        if len(new_rows) == 0:
-            return utils.UNDEFINED
-        
-        if not is_last:
-            new_rows.pop()
-
-        if len(new_rows) == 0:
-            return utils.UNDEFINED
-
-        if (
-            self.use_header is True 
-            and delta_store['header'] is None
-        ):
-            delta_store['header'] = new_rows.pop(0)
-            utils.acc(delta_store, 'row', 1)
-
-        header = delta_store['header']
-        utils.acc(delta_store, 'row', len(new_rows))
-        if len(new_rows) == 0:
-            return utils.UNDEFINED
-        
-        if self.use_header:
-            return [OrderedDict(zip(header, row)) for row in new_rows]
-        return new_rows
-
-    def render(self, data) -> str:
-        """
-
-        Args:
-            data: An iterable of rows. If header is set to true
-
-        Returns:
-            str: the rendered CSV
-        """
-        output = io.StringIO()
-        writer = csv.writer(output, delimiter=self.delimiter)
-        
-        if self.use_header:
-            header = [key for key, _ in data[0]]
-            writer.writerow(header)
-            for row in data:
-                writer.writerow([value for _, value in row])
-        else:
-            for row in data:
-                writer.writerow(row)
-        
-        return output.getvalue()
-
-# Review this and see how it differs
-# from KVParser
-class CharDelimParser(Parser):
-    """Parses based on a defined character
-    """
-    sep: str = ','
-
-    def forward(
-        self, 
-        resp: Resp, 
-        delta_store: typing.Dict=None, 
-        streamed: bool=False, 
-        is_last: bool=True
-    ) -> typing.List | None:
-        
-        delta_store = delta_store if delta_store is not None else {}
-        # resp = self.handle_null(resp, '')
-        resp = resp or ''
-        val = utils.acc(delta_store, 'val', resp)
-        res = val.split(self.sep)
-        return_val = utils.UNDEFINED
-        
-        if len(res) > 0:
-            if len(val) == 0:
-                return_val = []
-            elif val[-1] == self.sep:
-                return_val = res[:-1]
-                delta_store['val'] = ''
-            elif is_last:
-                return_val = res
-                delta_store['val'] = ''
-            else:
-                return_val = res[:-1]
-                delta_store['val'] = res[-1]
-                
-        return return_val
-
-    def render(self, data) -> str:
-        """Renders the data separated by lines
-
-        Args:
-            data: The data to render
-
-        Returns:
-            str: The rendered data
-        """
-        
-        return f'{self.sep}'.join(data)
-
-
-class LineParser(Parser):
-    """
-    Parses line by line. Can have a line continue by putting a backslash at the end of the line.
-    """
-
-    def forward(
-        self, 
-        resp, 
-        delta_store: typing.Dict=None, 
-        streamed: bool=False, 
-        is_last: bool=True
-    ) -> typing.List:
-        """
-
-        Args:
-            resp : 
-            delta_store (typing.Dict): 
-            is_last (bool, optional): . Defaults to False.
-
-        Returns:
-            typing.Any: 
-        """ 
-        delta_store = delta_store if delta_store is not None else {}
-        resp = resp or ''
-        utils.acc(delta_store, 'val', resp)
-        lines = delta_store['val'].splitlines()
-        buffer = []
-
-        if is_last and len(lines) == 0:
-            return []
-        final_ch = delta_store.get('val', '')[-1] if delta_store.get('val', '') else ''
-        buffered_lines = []
-        for i, line in enumerate(lines):
-
-            if not line:
-                continue  # skip empty lines if that's desired
-
-            if line.endswith("\\"):
-                buffer.append(line[:-1])
-            else:
-
-                buffer.append(line)
-                buffered_lines.append(buffer)
-                # logical_line = "".join(buffer)
-                # logical_line = "\n".join(buffer)
-                # result.append(logical_line)
-                buffer = []
-
-        if not is_last and len(buffered_lines) > 0:
-            if final_ch == '\n':
-                buffered_lines[-1].append('\n')
-            delta_store['val'] = ''.join(buffered_lines[-1])
-            buffered_lines.pop(-1)
-
-        if len(buffered_lines) == 0:
-            return utils.UNDEFINED
-
-        return [
-            ''.join(line)
-            for line in buffered_lines
-        ]
-
-    def render(self, data) -> str:
-        """Render the data
-
-        Args:
-            data: The data to render
-
-        Returns:
-            str: The data rendered in lines
-        """
-        res = []
-        for d in data:
-            res.append(d.replace('\n', '\\n'))
-        return f'\n'.join(data)
-
-
-
-

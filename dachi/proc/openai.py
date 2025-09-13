@@ -147,7 +147,7 @@ class OpenAIChat(OpenAIBase):
             **kwargs
         }
     
-    def from_output(
+    def to_output(
         self, 
         output: t.Dict, 
         inp: Msg | BaseDialog | str | None = None
@@ -263,7 +263,7 @@ class OpenAIChat(OpenAIBase):
         
         return openai_msg
     
-    def forward(
+    def delta(
         self, 
         inp: Msg | BaseDialog, 
         model: str | None = None, 
@@ -279,7 +279,7 @@ class OpenAIChat(OpenAIBase):
         self.set_structured_output_arg(structured, kwargs)
             
         api_input = self.to_input(inp, **kwargs)
-        resp = self.from_output(
+        resp = self.to_output(
             self.client.chat.completions.create(**api_input),
             inp
         )
@@ -302,7 +302,7 @@ class OpenAIChat(OpenAIBase):
         self.set_structured_output_arg(structured, kwargs)
             
         api_input = self.to_input(inp, **kwargs)
-        resp = self.from_output(
+        resp = self.to_output(
             await self.async_client.chat.completions.create(**api_input),
             inp
         )
@@ -382,7 +382,11 @@ class OpenAIResp(OpenAIBase):
     4. Processors use resp.out_store for stateful accumulation
     """
     
-    def to_input(self, inp: Msg | BaseDialog | str, **kwargs) -> t.Dict:
+    def to_input(
+        self, 
+        inp: Msg | BaseDialog | str, 
+        **kwargs
+    ) -> t.Dict:
         """Convert Dachi format to Responses API format."""
         # Handle single user message case - use simple string input
         if isinstance(inp, Msg) and inp.role == "user" and "instructions" not in kwargs:
@@ -425,7 +429,11 @@ class OpenAIResp(OpenAIBase):
         }
     
      
-    def from_output(self, output: t.Dict | pydantic.BaseModel, inp: Msg | BaseDialog | str | None = None) -> Resp:
+    def to_output(
+        self, 
+        output: t.Dict | pydantic.BaseModel, 
+        inp: Msg | BaseDialog | str | None = None
+    ) -> Resp:
         """Convert Responses API response to Dachi Resp."""
         if isinstance(output, pydantic.BaseModel):
             output = output.model_dump()
@@ -559,7 +567,7 @@ class OpenAIResp(OpenAIBase):
         
         return openai_msg
     
-    def forward(
+    def delta(
         self, inp: Msg | BaseDialog, 
         model: str | None = None, 
         tools: list[BaseTool] | None = None, 
@@ -577,7 +585,7 @@ class OpenAIResp(OpenAIBase):
         self.set_structured_output_arg(structured, kwargs)
             
         api_input = self.to_input(inp, **kwargs)
-        resp = self.from_output(
+        resp = self.to_output(
             self.client.responses.create(**api_input),
             inp
         )
@@ -603,7 +611,7 @@ class OpenAIResp(OpenAIBase):
         self.set_structured_output_arg(structured, kwargs)
             
         api_input = self.to_input(inp, **kwargs)
-        resp = self.from_output(
+        resp = self.to_output(
             await self.async_client.responses.create(**api_input),
             inp
         )

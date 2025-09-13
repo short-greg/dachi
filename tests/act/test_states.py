@@ -107,7 +107,7 @@ class TestBranchStateMore:
 
     async def test_invalid_return_type_bubbles(self):
         class _Bad(Process):
-            def forward(self): return TaskStatus.SUCCESS          # misuse
+            def delta(self): return TaskStatus.SUCCESS          # misuse
         with pytest.raises(Exception):
             await S.BranchState(f=_Bad()).update()
 

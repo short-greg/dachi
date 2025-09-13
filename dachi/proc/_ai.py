@@ -145,7 +145,7 @@ def llm_forward(
     result = f(
         *args, **kwargs
     )
-    resp = _adapt.from_output(result)
+    resp = _adapt.to_output(result)
 
     # Process with out parameter
     resp.out = get_resp_output(resp, out)
@@ -179,7 +179,7 @@ async def llm_aforward(
     result = await f(
         *args, **kwargs
     )
-    resp = _adapt.from_output(result)
+    resp = _adapt.to_output(result)
 
     # Process with out parameter
     resp.out = get_resp_output(resp, out)
@@ -298,7 +298,7 @@ class AIAdapt(BaseModule):
     """
 
     @abstractmethod
-    def from_output(
+    def to_output(
         self, 
         output: t.Dict,
         inp: Msg | BaseDialog | str | None = None,
@@ -363,9 +363,16 @@ class DefaultAdapter(AIAdapt):
         """Pass through kwargs without transformation."""
         return kwargs
     
-    def from_output(self, output: t.Dict) -> Resp:
+    def to_output(self, output: t.Dict) -> Resp:
         """Create a basic Resp object from the output."""
-        resp = Resp(msg=Msg(role='assistant'))
+        # Extract text content from common patterns
+        text_content = None
+        if isinstance(output, dict):
+            text_content = output.get('content') or output.get('text') or output.get('message')
+        elif isinstance(output, str):
+            text_content = output
+            
+        resp = Resp(msg=Msg(role='assistant', text=text_content))
         resp.data['response'] = output
         return resp
     
@@ -404,7 +411,7 @@ class Op(AsyncProcess, Process, StreamProcess, AsyncStreamProcess):
 
     def forward(self, inp: S, out=None, **kwargs) -> S:
         out = out or self.base_out
-        return self.llm.forward(inp, tools=self.tools, op=out, **kwargs).out
+        return self.llm.delta(inp, tools=self.tools, op=out, **kwargs).out
 
     async def aforward(self, inp: S, out=None, **kwargs) -> S:
         out = out or self.base_out

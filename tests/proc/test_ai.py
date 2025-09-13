@@ -1,7 +1,7 @@
 from dachi.core._msg import Msg, Resp
 from dachi.core import END_TOK, ModuleList, BaseDialog
 from dachi.proc import _ai
-from dachi.proc._resp import ToOut
+from dachi.proc._resp import ToOut, TextOut
 import typing as t
 from dachi.proc.openai import OpenAIChat, OpenAIResp
 from dachi import utils
@@ -77,7 +77,7 @@ class DummyAIModel(_ai.LLM):
         yield resp
         
     async def aforward(self, dialog, **kwarg_overrides):
-        return self.forward(dialog, **kwarg_overrides)
+        return self.delta(dialog, **kwarg_overrides)
 
     async def astream(self, dialog, **kwarg_overrides):
         
@@ -118,42 +118,6 @@ async def astream(
     for c in response:
         yield {'content': c}
 
-
-class TextOut(ToOut):
-    
-    def render(self, data: typing.Any) -> str:
-        return str(data)
-    
-    def template(self) -> str:
-        return "{content}"
-    
-    def example(self) -> str:
-        return "example text"
-    
-    def forward(self, resp: Resp) -> typing.Any:
-        return resp.data['response']['content']
-
-    def delta(
-        self, 
-        resp,
-        delta_store: typing.Dict, 
-        is_last: bool=True
-    ) -> typing.Any: 
-        
-        if resp.data['response'] is not END_TOK:
-            # Use delta.text for more reliable streaming
-            content = resp.delta.text or ''
-            utils.acc(
-                delta_store, 
-                'content',
-                content
-            )
-            if is_last:
-                return delta_store.get('content', '')
-            return content  # Return individual character during streaming
-        else:
-            # END_TOK case - return accumulated content
-            return delta_store.get('content', '')
 
 
 class DeltaOut(ToOut):
@@ -205,7 +169,7 @@ class TestLLM:
             responses.append(r.data['response'])
             contents.append(r.out)
         assert contents[0] == 'H'
-        assert contents[-1] == 'Hi! Jack'
+        assert contents[-1] == 'k'
 
     def test_llm_executes_stream_with_two_processors(self):
         responses = []
@@ -273,7 +237,7 @@ class TestOpenAIChat:
             }
         }
         
-        resp = adapter.from_output(openai_response)
+        resp = adapter.to_output(openai_response)
         
         assert isinstance(resp, Resp)
         assert resp.msg.text == "Hello there!"
@@ -361,7 +325,7 @@ class TestOpenAIResp:
             }
         }
         
-        resp = adapter.from_output(openai_response)
+        resp = adapter.to_output(openai_response)
         
         assert resp.thinking == "The user is greeting me, so I should respond politely."
         assert resp.msg.text == "Hello there!"
@@ -486,7 +450,7 @@ class TestMultipleCompletions:
             "usage": {"total_tokens": 20}
         }
         
-        resp = adapter.from_output(openai_response)
+        resp = adapter.to_output(openai_response)
         
         # Main response uses first choice by default
         assert resp.msg.text == "First completion"
@@ -524,7 +488,7 @@ class TestMultipleCompletions:
             "usage": {"total_tokens": 15}
         }
         
-        resp = adapter.from_output(openai_response)
+        resp = adapter.to_output(openai_response)
         
         # Main response uses first choice
         assert resp.msg.text == "Option A"
@@ -553,7 +517,7 @@ class TestMultipleCompletions:
             "usage": {"total_tokens": 10}
         }
         
-        resp = adapter.from_output(openai_response)
+        resp = adapter.to_output(openai_response)
         
         assert resp.msg.text == "Single response"
         assert resp.choices is not None

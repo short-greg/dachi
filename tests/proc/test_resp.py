@@ -1,5 +1,7 @@
-from dachi.core import Msg, Resp
-from dachi.proc._resp import PrimOut, KVOut, IndexOut, CSVOut, ToOut, JSONListOut, JSONValsOut
+from dachi.core import Msg, Resp, ModuleList
+from dachi.proc._resp import PrimOut, KVOut, IndexOut, CSVOut, ToOut, JSONListOut, JSONValsOut, StructOut, TextOut, TupleOut
+from dachi.proc._parser import LineParser
+from dachi.proc._process import Process
 from dachi import utils
 import json
 import pytest
@@ -374,36 +376,105 @@ class TestJSONValsOut:
         assert all(isinstance(item, tuple) and len(item) == 2 for item in results if isinstance(item, tuple))
 
 
-# TODO: Parser tests from test_parse.py need to be added here
-# The following Parser classes still exist in _resp.py and need testing:
-# - CSVRowParser
-# - LineParser  
-# - CharDelimParser
-#
-# These were previously tested in test_parse.py but since all functionality
-# is now consolidated in _resp.py, their tests should be moved here.
+class TestStructOut:
+    """Tests for StructOut structured data processing."""
+    
+    def test_structout_forward_basic_json(self):
+        """Test basic JSON parsing."""
+        proc = StructOut()
+        resp = Resp(msg=Msg(role='assistant', text='{"name": "John", "age": 25}'))
+        result = proc.forward(resp)
+        assert result == {"name": "John", "age": 25}
+    
+    def test_structout_forward_with_pydantic_model(self):
+        """Test structured output with Pydantic model validation."""
+        class Person(pydantic.BaseModel):
+            name: str
+            age: int
+        
+        proc = StructOut(struct=Person)
+        resp = Resp(msg=Msg(role='assistant', text='{"name": "John", "age": 25}'))
+        result = proc.forward(resp)
+        assert isinstance(result, Person)
+        assert result.name == "John"
+        assert result.age == 25
+    
+    def test_structout_forward_invalid_json(self):
+        """Test error handling for invalid JSON."""
+        proc = StructOut()
+        resp = Resp(msg=Msg(role='assistant', text='{"invalid": json'))
+        with pytest.raises(RuntimeError, match="Failed to parse JSON"):
+            proc.forward(resp)
 
-class TestParsersIntegration:
-    """Tests for Parser classes that are used by ToOut classes."""
+
+class TestTextOut:
+    """Tests for TextOut text processing."""
     
-    def test_csv_parser_basic(self):
-        """Basic test for CSVRowParser - more comprehensive tests needed."""
-        # Import the parser from _resp since it's no longer in _parse
-        from dachi.proc._resp import CSVRowParser
-        from dachi.core import Resp, Msg
-        parser = CSVRowParser(use_header=True)
-        resp = Resp(msg=Msg(role="assistant", text="name,age\nJohn,25"))
-        result = parser.forward(resp)
-        # This is a placeholder - full test suite from test_parse.py should be migrated
-        assert len(result) == 1
+    def test_textout_forward_basic(self):
+        """Test basic text extraction."""
+        proc = TextOut()
+        resp = Resp(msg=Msg(role='assistant', text='Hello world'))
+        result = proc.forward(resp)
+        assert result == 'Hello world'
     
-    def test_line_parser_basic(self):
-        """Basic test for LineParser."""
-        from dachi.proc._resp import LineParser
-        parser = LineParser()
-        result = parser.forward("line1\nline2\nline3")
-        # This is a placeholder - more comprehensive tests needed
-        assert isinstance(result, list)
+    def test_textout_forward_none_text(self):
+        """Test handling of None text."""
+        proc = TextOut()
+        resp = Resp(msg=Msg(role='assistant', text=None))
+        result = proc.forward(resp)
+        assert result.startswith('msg=Msg(')  # Should get string representation of resp
+    
+    def test_textout_delta_streaming(self):
+        """Test TextOut streaming behavior - check what gets set in resp.out."""
+        text_out = TextOut()
+        delta_store = {}
+        
+        # Test first chunk
+        resp1 = Resp(msg=Msg(role='assistant', text='accumulated_so_far'))
+        resp1.delta.text = 'Hello'  # This chunk
+        resp1.out = text_out.delta(resp1, delta_store, is_last=False)
+        assert resp1.out == 'Hello'  # Should have the chunk text in out
+        
+        # Test second chunk  
+        resp2 = Resp(msg=Msg(role='assistant', text='accumulated_more'))
+        resp2.delta.text = ' world'  # This chunk
+        resp2.out = text_out.delta(resp2, delta_store, is_last=True)
+        assert resp2.out == ' world'  # Should have the chunk text in out
+
+
+class TestTupleOut:
+    """Tests for TupleOut tuple processing."""
+    
+    def test_tupleout_forward_basic(self):
+        """Test basic tuple processing with Process-based processors."""
+        
+        # Processors that inherit from Process, take strings and return objects
+        class StrProcessor(Process):
+            def forward(self, s: str) -> str:
+                return s.strip()
+        
+        class IntProcessor(Process):
+            def forward(self, s: str) -> int:
+                return int(s.strip())
+        
+        processors = ModuleList(items=[StrProcessor(), IntProcessor()])
+        proc = TupleOut(processors=processors, parser=LineParser())
+        resp = Resp(msg=Msg(role='assistant', text='hello\n42'))
+        result = proc.forward(resp)
+        assert result == ('hello', 42)
+    
+    def test_tupleout_forward_mismatch_count(self):
+        """Test error when processor count doesn't match parsed parts."""
+        
+        class StrProcessor(Process):
+            def forward(self, s: str) -> str:
+                return s.strip()
+        
+        processors = ModuleList(items=[StrProcessor()])  # Only 1 processor
+        proc = TupleOut(processors=processors, parser=LineParser()) 
+        resp = Resp(msg=Msg(role='assistant', text='hello\n42'))  # 2 parts
+        with pytest.raises(RuntimeError, match="Expected 1 parts, got 2"):
+            proc.forward(resp)
 
 
 # TODO: MIGRATION NOTES

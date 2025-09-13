@@ -33,7 +33,6 @@ class IBase(BaseModule):
     f: typing.Callable
     is_method: bool = False
     out_conv: ToOut = None
-    llm_out: str | typing.Tuple[str] = 'content'
 
     def __post_init__(self):
         """ Initializes the IBase instance.
@@ -120,7 +119,6 @@ class IBase(BaseModule):
             typing.Type: 
         """
         pass
-    
 
 
 class InstF(IBase):
@@ -170,7 +168,7 @@ class SigF(IBase):
     def __post_init__(self):
         """
         Args:
-            f (_type_): The function to wrap
+            f: The function to wrap
             is_method (bool, optional): Whether f is a method. Defaults to False.
             doc (typing.Optional[str], optional): The docstring for the function. Defaults to None.
             train (bool, optional): Whether to train the instruction. Defaults to False.
@@ -237,6 +235,15 @@ class FuncDecBase(object):
         instance=None,
         kwargs: typing.Dict=None
     ):
+        """Initialize the Func Decorator
+
+        Args:
+            engine (Engine): The engine to use for the function
+            inst (IBase): The instruction base to use
+            to_msg (ToMsg, optional): The function to convert the Cue to a Msg. Defaults to None.
+            instance (optional): The instance to use if a method. Defaults to None.
+            kwargs (typing.Dict, optional): The kwargs to pass to the engine. Defaults to None.
+        """
         super().__init__()
         self.engine = engine
         self.instance = instance
@@ -330,20 +337,14 @@ class FuncDecBase(object):
 class FuncDec(FuncDecBase):
     """
     A class that allows one to decorate a function with an "instruction" so that the function will be an LLM (Language Model) call.
-    """
-    
-    def __init__(
-        self, 
-        engine: Process,
-        inst: IBase, 
-        to_msg: ToMsg=None,
-        instance=None,
-        kwargs: typing.Dict=None
-    ):
-        super().__init__(
-            engine, inst, to_msg, instance, kwargs
-        )
 
+    Example:
+        @instructfunc(engine=llm_engine)
+        def my_function(param1: str, param2: int) -> str:
+            return f"Process {param1} with number {param2}"
+        result = my_function("example", 42)
+        print(result)  # Output from the LLM based on the instruction
+    """
     def forward(self, *args, **kwargs):
         """
         Executes the assistant with the provided arguments and processes the result.
@@ -364,11 +365,11 @@ class FuncDec(FuncDecBase):
         msg = self.to_msg(cue)
         engine = self.get_engine(instance)
 
-        res_msg = engine(
+        resp = engine(
             msg, **self.kwargs
         )
-        res_msg = self.inst.out_conv(res_msg)
-        return res_msg.out if hasattr(res_msg, 'out') else res_msg
+        resp = self.inst.out_conv(resp)
+        return resp.out if hasattr(resp, 'out') else resp
 
     def spawn(self, instance=None) -> Self:
         """
@@ -393,18 +394,6 @@ class AFuncDec(FuncDecBase):
     """
     A class that allows one to decorate an async function with an "instruction" so that the function will be an LLM (Language Model) call.
     """
-
-    def __init__(
-        self, 
-        engine: AsyncProcess,
-        inst: IBase, 
-        to_msg: ToMsg=None,
-        instance=None,
-        kwargs: typing.Dict=None
-    ):
-        super().__init__(
-            engine, inst, instance, kwargs
-        )
 
     async def aforward(self, *args, **kwargs):
         """
@@ -535,18 +524,6 @@ class AStreamDec(FuncDecBase, AsyncStreamProcess):
     A class that allows one to decorate a asynchronous streaming function with an "instruction" so that the function will be an LLM (Language Model) call.
     """
 
-    def __init__(
-        self, 
-        engine: AsyncStreamProcess,
-        inst: IBase, 
-        to_msg: ToMsg=None,
-        instance=None,
-        kwargs: typing.Dict=None
-    ):
-        super().__init__(
-            engine, inst, to_msg, instance, kwargs
-        )
-
     async def astream(self, *args, **kwargs):
         """
         Asynchronously streams the execution of an instruction by calling the LLM.
@@ -585,6 +562,14 @@ class AStreamDec(FuncDecBase, AsyncStreamProcess):
         )
 
     async def __call__(self, *args, **kwargs):
+        """
+        Alias for astream(). Asynchronously streams the execution of an instruction by calling the LLM.
+        Args:
+            *args: Variable length argument list.
+            **kwargs: Arbitrary keyword arguments.
+        Yields:
+            The delta of the response from the LLM engine.
+        """
         
         async for res in self.astream(
             *args, **kwargs
@@ -617,7 +602,7 @@ def instructfunc(
             return f(*args, **kwargs)
         
         inst = InstF(
-            f=f, is_method=is_method, llm_out=out
+            f=f, is_method=is_method
         )
 
         if not to_async and not to_stream:
@@ -672,7 +657,6 @@ def signaturefunc(
     to_async: bool=False,
     to_stream: bool=False,
     train: bool=False,
-    out: typing.Tuple[str] | str = 'content',
     kwargs: typing.Dict=None
 ):
     """Decorate a method with instructfunc
@@ -693,7 +677,7 @@ def signaturefunc(
         
         inst = SigF(
             f=f, is_method=is_method, train=train, 
-            doc=doc, llm_out=out,
+            doc=doc
         )
 
         if not to_async and not to_stream:
@@ -725,14 +709,12 @@ def signaturemethod(
     to_async: bool=False,
     to_stream: bool=False,
     train: bool=False,
-    out: typing.Tuple[str] | str = 'content',
     kwargs: typing.Dict=None
 ):
     """Decorate a method with SignatureFunc
 
     Args:
         engine (PromptModel, optional): The engine for the AI . Defaults to None.
-        out (out, optional): The out to use for the method. Defaults to None.
         doc (typing.Union[str, typing.Callable[[], str]], optional): A docstring to override with. Defaults to None.
 
     Returns:
@@ -742,7 +724,6 @@ def signaturemethod(
         engine, doc=doc, is_method=True,
         to_async=to_async, to_stream=to_stream,
         train=train,
-        out=out,
         kwargs=kwargs
     )
 

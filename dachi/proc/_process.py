@@ -29,6 +29,9 @@ class Process(BaseModule, ABC):
     """
     Base class for synchronous processing modules.
     It inherits from BaseModule and implements the forward method.
+
+    Refer to the BaseModule documentation for details on field definitions and initialization.
+
     """
     @abstractmethod
     def forward(self, *args, **kwargs) -> typing.Any:
@@ -49,7 +52,10 @@ class Process(BaseModule, ABC):
 
 
 class AsyncProcess(BaseModule, ABC):
-    """Base class for Modules
+    """Base class for Async Processes. It defines the
+    aforward method that must be implemented by subclasses.
+    Refer to the BaseModule documentation for details on field definitions and initialization.
+
     """
     @abstractmethod
     async def aforward(
@@ -66,8 +72,11 @@ class AsyncProcess(BaseModule, ABC):
 
 
 class StreamProcess(BaseModule, ABC):
-    """Base class for Modules
-    """   
+    """Base class for Stream Processes. It defines the
+    stream method that must be implemented by subclasses.
+
+    Refer to the BaseModule documentation for details on field definitions and initialization.
+    """
     
     @abstractmethod
     def stream(self, *args, **kwargs) -> typing.Iterator[typing.Any]:
@@ -80,8 +89,11 @@ class StreamProcess(BaseModule, ABC):
 
 
 class AsyncStreamProcess(BaseModule, ABC):
-    """Base class for Modules
-    """   
+    """Base class for AsyncStream Processes. It defines the
+    stream method that must be implemented by subclasses.
+
+    Refer to BaseModule documentation for details on field definitions and initialization.
+    """
     
     @abstractmethod
     async def astream(self, *args, **kwargs) -> typing.AsyncIterator:
@@ -245,6 +257,12 @@ async def astream(f: typing.Union[AsyncStreamProcess, typing.Callable], *args, *
 # TDOO: Doesn't serialize
 class Recur(pydantic.BaseModel):
     """Use to mark data that should not be batched when calling the map functions
+
+    Example:
+    recur = Recur(data="hello", n=5)
+    for r in recur:
+        print(r)
+        # prints "hello" 5 times
     """
     data: typing.Any
     n: int
@@ -267,11 +285,18 @@ class Recur(pydantic.BaseModel):
 
 class Chunk(pydantic.BaseModel):
     """Use to mark data for batching
-    """
+    As opposed to Recur, Chunk will batch the data into n chunks
 
+    Example:
+    chunk = Chunk(data=[1,2,3,4,5], n=2)
+    for c in chunk:
+        print(c)
+        # prints [1,2] then [3,4,5]
+    """
     data: typing.List
     n: int | None = None
     shuffle: bool = False
+    use_last: bool = True
 
     def __iter__(self) -> typing.Iterator[typing.List]:
         """
@@ -280,12 +305,6 @@ class Chunk(pydantic.BaseModel):
             typing.Any: Get each value in the  
         """
         n = self.n
-        # if (
-        #     isinstance(self.data, typing.Iterable) 
-        #     and not isinstance(self.data, np.ndarray)
-        # ):
-        #     data = np.array(list(self.data))
-        # else:
         data = np.array(self.data)
         count = n if n is not None else len(data)
         if self.shuffle:
@@ -296,7 +315,7 @@ class Chunk(pydantic.BaseModel):
         chunk_size = len(data) // count
         cur = 0
         for d_i in range(count):
-            if d_i == (count - 1):
+            if d_i == (count - 1) and self.use_last:
                 if n is None:
                     yield data[order[cur]]
                 else:
@@ -335,14 +354,6 @@ class Chunk(pydantic.BaseModel):
             Chunk(data=d, n=n) for d in data
         )
 
-    # @property
-    # def n(self) -> int:
-    #     """Get the number of iterations
-
-    #     Returns:
-    #         int: The number of iterations in the loop
-    #     """
-    #     return self._n
 
 def chunk(
     *data: typing.List, n: int=None
@@ -434,25 +445,17 @@ class Sequential(ModuleList, Process, AsyncProcess):
         return x
 
 
-class AsyncFunc(AsyncProcess):
-    """A function wrapper
-    """
-    f: typing.Callable
-    args: typing.List[typing.Any]
-    kwargs: typing.Dict[str, typing.Any]
-    
-    async def forward(self, *args, **kwargs):
-
-        return await self.f(
-            *self.args, *args, **self.kwargs, **kwargs
-        )
-
-
 class AsyncParallel(
     ModuleList, AsyncProcess
 ):
-    """A type of Parallel module that makes use of 
-    Python's Async
+    """Calls multiple modules in parallel and then 
+    combines the results into a list
+
+    Example:
+    process = AsyncParallel(
+        items=[process1, process2, process3]
+    )
+    y1, y2, y3 = process.aforward(x)
     """
     async def aforward(self, *args, **kwargs) -> typing.List:
         """The asynchronous method to use for inputs
@@ -549,8 +552,6 @@ def process_loop(
         args = vs[1:len(args) + 1]
         kwargs = vs[len(args) + 1:]
         yield m, args, dict(zip(kwarg_names, kwargs))
-
-
 
 
 def create_proc_task(
@@ -790,6 +791,66 @@ class Partial(pydantic.BaseModel):
         )
 
 
+class StreamSequence(StreamProcess):
+    """A process sequence that wraps a StreamProcess with a pre and post process.
+    The pre and post processes are standard Processes that are applied before and after the streaming process.
+    Each streamed item is postprocessed
+
+    Example: 
+    process = StreamSequence(
+        pre=pre_process,
+        mod=streaming_model,
+        post=post_process
+    )
+    """
+
+    pre: Process
+    mod: StreamProcess
+    post: Process
+
+    def stream(self, x: typing.Any) -> typing.Iterator:
+        """Stream the input through the pre, mod, and post processes
+        Args:
+            x (typing.Any): The input to the process
+        Yields:
+            typing.Any: The output of the process
+        """
+
+        x = self.pre(x)
+        for x_i in self.mod.stream(x):
+            yield self.post(x_i)
+
+
+class AsyncStreamSequence(AsyncStreamProcess):
+    """Asynchronous stream sequence that applies a pre-processing, a module, and a post-processing step.
+
+    Example:
+    process = AsyncStreamSequence(
+        pre=pre_process,
+        mod=async_streaming_model,
+        post=post_process
+    )
+    async for y in await process.astream(x):
+        print(y)
+    """
+
+    pre: Process | AsyncProcess
+    mod: AsyncStreamProcess
+    post: Process | AsyncProcess
+
+    async def astream(self, x: typing.Any) -> typing.AsyncIterator:
+
+        if isinstance(self.pre, AsyncProcess):
+            x = await self.pre.aforward(x)
+        else:
+            x = self.pre(x)
+        async for x_i in self.mod.astream(x):
+            if isinstance(self.post, AsyncProcess):
+                yield await self.post.aforward(x_i)
+            else:
+                yield self.post(x_i)
+
+
 class Func(Process):
     """Function process that applies a callable to the input data.
     """
@@ -822,37 +883,16 @@ class Func(Process):
         )
 
 
-class StreamSequence(StreamProcess):
-    """Stream sequence that applies a pre-processing, a module, and a post-processing step.
+class AsyncFunc(AsyncProcess):
+    """A function wrapper
     """
+    f: typing.Callable
+    args: typing.List[typing.Any]
+    kwargs: typing.Dict[str, typing.Any]
+    
+    async def forward(self, *args, **kwargs):
 
-    pre: Process
-    mod: StreamProcess
-    post: Process
+        return await self.f(
+            *self.args, *args, **self.kwargs, **kwargs
+        )
 
-    def stream(self, x: typing.Any) -> typing.Iterator:
-
-        x = self.pre(x)
-        for x_i in self.mod.stream(x):
-            yield self.post(x_i)
-
-
-class AsyncStreamSequence(AsyncStreamProcess):
-    """Asynchronous stream sequence that applies a pre-processing, a module, and a post-processing step.
-    """
-
-    pre: Process | AsyncProcess
-    mod: AsyncStreamProcess
-    post: Process | AsyncProcess
-
-    async def astream(self, x: typing.Any) -> typing.AsyncIterator:
-
-        if isinstance(self.pre, AsyncProcess):
-            x = await self.pre.aforward(x)
-        else:
-            x = self.pre(x)
-        async for x_i in self.mod.astream(x):
-            if isinstance(self.post, AsyncProcess):
-                yield await self.post.aforward(x_i)
-            else:
-                yield self.post(x_i)

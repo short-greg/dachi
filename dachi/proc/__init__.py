@@ -70,11 +70,13 @@ from ._resp import (
     JSONValsOut,
     TupleOut,
     CSVOut,
+    TextOut,
+)
+from ._parser import (
     Parser,
     CSVRowParser,
     CharDelimParser,
     LineParser,
-    TextOut,
 )
 from ._inst import (
     IBase,
