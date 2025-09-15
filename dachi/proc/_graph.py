@@ -1,3 +1,40 @@
+"""
+This module implements a Directed Acyclic Graph (DAG) for processing data using nodes that can be either variables (Var) or processes (T). There are two ways to implement this. 
+1. Using the DAG class to define nodes and their connections explicitly.
+2. Using the T and Var classes directly to create a graph structure.
+Example usage:
+
+var = Var(val=5, name='input')
+t1 = T(
+    val=UNDEFINED,
+    src=SomeProcess(),
+    args=SerialDict(items={'x': var})
+)
+t2 = T(
+    val=UNDEFINED,
+    src=AnotherProcess(),
+    args=SerialDict(items={'y': t1})
+)
+# or t2 = t(AnotherProcess(), x=t1)
+t2.probe(by={var: 10})  # Should return the output of AnotherProcess with input from SomeProcess with x=10
+
+
+dag = DAG(
+    nodes=ModuleDict(data={
+        'input': var,
+        't1': t1,
+        't2': t2
+    }),
+    args=Attr(data={
+        't1': {'x': RefT(name='input')},
+        't2': {'y': RefT(name='t1')}
+    }),
+    outputs=Attr(data=['t2'])
+)
+
+result = dag.aforward(by={var: 10})  # Should return the output of AnotherProcess with input from SomeProcess with x=10
+"""
+
 
 # 1st party
 import typing

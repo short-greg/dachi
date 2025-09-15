@@ -7,12 +7,10 @@ import pydantic
 
 # local
 from ..core import (
-    Msg, END_TOK, Resp,
-    BaseModule, RespDelta
+    Msg, END_TOK, Resp, BaseModule
 )
 from ._process import AsyncProcess
 from ._resp import RESPONSE_FIELD, ToOut
-from .. import utils
 
 # TODO: MOVE OUT OF HERE
 S = t.TypeVar('S', bound=pydantic.BaseModel)
@@ -57,11 +55,11 @@ def get_resp_output(resp: Resp, out: t.Union[t.Tuple[ToOut, ...], t.Dict[str, To
     if out is None:
         return None
     elif isinstance(out, dict):
-        return {key: processor.forward(resp) for key, processor in out.items()}
+        return {key: processor.forward(resp.msg.text) for key, processor in out.items()}
     elif isinstance(out, tuple):
-        return tuple(processor.forward(resp) for processor in out)
+        return tuple(processor.forward(resp.msg.text) for processor in out)
     elif isinstance(out, ToOut):
-        return out.forward(resp)
+        return out.forward(resp.msg.text)
     else:
         raise TypeError(f"Unsupported out type: {type(out)}")
 
@@ -96,7 +94,7 @@ def get_delta_resp_output(
         for key, processor in out.items():
             if key not in resp.out_store:
                 resp.out_store[key] = {}
-            value = processor.delta(resp, resp.out_store[key], is_last)
+            value = processor.delta(resp.delta.text, resp.out_store[key], is_last)
             result[key] = value
         return result
     elif isinstance(out, tuple):
@@ -105,18 +103,16 @@ def get_delta_resp_output(
             key = str(i)
             if key not in resp.out_store:
                 resp.out_store[key] = {}
-            result = processor.delta(resp, resp.out_store[key], is_last)
+            result = processor.delta(resp.delta.text, resp.out_store[key], is_last)
             results.append(result)
         return tuple(results)
     elif isinstance(out, ToOut):
         key = "val"
         if key not in resp.out_store:
             resp.out_store[key] = {}
-        return out.delta(resp, resp.out_store[key], is_last)
+        return out.delta(resp.delta.text, resp.out_store[key], is_last)
     else:
         raise TypeError(f"Unsupported out type: {type(out)}")
-
-
 
 
 def llm_forward(
@@ -231,6 +227,9 @@ def llm_stream(
     if prev_message is not None:
         msg.delta = prev_message.delta
     resp.data[RESPONSE_FIELD] = END_TOK
+    
+    # For END_TOK, set delta.text to None to indicate no new content
+    resp.delta.text = None
 
     # Process END_TOK with processors to get final accumulated results
     resp.out = get_delta_resp_output(resp, out, True)
@@ -284,6 +283,9 @@ async def llm_astream(
     if prev_message is not None:
         msg.delta = prev_message.delta
     resp.data[RESPONSE_FIELD] = END_TOK
+    
+    # For END_TOK, set delta.text to None to indicate no new content
+    resp.delta.text = None
 
     # Process END_TOK with processors to get final accumulated results
     resp.out = get_delta_resp_output(resp, out, True)
@@ -410,21 +412,58 @@ class Op(AsyncProcess, Process, StreamProcess, AsyncStreamProcess):
     tools: t.List[t.Any]
 
     def forward(self, inp: S, out=None, **kwargs) -> S:
+        """
+        Processes the input through the LLM and returns the output
+        Args:
+            inp (S): The input data to be processed.
+            out (_type_, optional): The output processor or format. Defaults to None.
+            **kwargs: Additional keyword arguments to pass to the LLM.
+        Returns:
+            S: The processed output data.
+        """
         out = out or self.base_out
         return self.llm.delta(inp, tools=self.tools, op=out, **kwargs).out
 
     async def aforward(self, inp: S, out=None, **kwargs) -> S:
+        """
+        Asynchronously processes the input through the LLM and returns the output
+        Args:
+            inp (S): _description_
+            out (_type_, optional): _description_. Defaults to None.
+            **kwargs: _description_
+        Returns:
+            S: _description_
+        """
         out = out or self.base_out
         resp = await self.llm.aforward(inp, tools=self.tools, op=out, **kwargs)
         return resp.out
 
     def stream(self, inp: S, out=None, **kwargs) -> t.Iterator[S]:
+        """
+        Streams the input through the LLM, yielding outputs as they are produced.
+        Args:
+            inp (S): The input data to be processed.
+            out (_type_, optional): The output processor or format. Defaults to None.
+            **kwargs: Additional keyword arguments to pass to the LLM.
+        Yields:
+            Iterator[S]: An iterator that yields processed outputs.
+        """
         out = out or self.base_out
         for resp in self.llm.stream(inp, tools=self.tools, op=out, **kwargs):
 
             yield resp.out
 
     async def astream(self, inp: S, out=None, **kwargs) -> t.AsyncIterator[S]:
+        """
+
+        Asynchronously streams the input through the LLM, yielding outputs as they are produced.
+        Args:
+            inp (S): The input data to be processed.
+            out (_type_, optional): The output processor or format. Defaults to None.
+            **kwargs: Additional keyword arguments to pass to the LLM.
+        Yields:
+            AsyncIterator[S]: An asynchronous iterator that yields processed outputs.
+        """
         out = out or self.base_out
         async for resp in await self.llm.astream(inp, tools=self.tools, op=out, **kwargs):
             yield resp.out

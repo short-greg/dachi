@@ -73,6 +73,7 @@ class DummyAIModel(_ai.LLM):
         ))
         resp.data['response'] = END_TOK
         resp.data['content'] = ''
+        resp.delta.text = None  # Explicitly set delta.text to None for END_TOK
         
         yield resp
         
@@ -131,19 +132,21 @@ class DeltaOut(ToOut):
     def example(self) -> str:
         return "example text"
     
-    def forward(self, resp: Resp) -> typing.Any:
-        return resp.data['response']['content']
+    def forward(self, resp: str | None) -> typing.Any:
+        # For the new API, we just return the text content directly
+        return resp if resp is not None else ''
 
     def delta(
         self, 
-        resp, 
+        resp: str | None, 
         delta_store: typing.Dict, 
         is_last: bool=True
     ) -> typing.Any: 
-        if resp.data['response'] is not END_TOK:
-            # Use delta.text for more reliable streaming
-            return resp.delta.text or ''
-        return ''
+        # For the new API, resp is already the delta text content
+        # Return empty string when resp is None (indicating END_TOK)
+        if resp is None:
+            return ''
+        return resp
 
 
 class TestLLM:
@@ -169,7 +172,7 @@ class TestLLM:
             responses.append(r.data['response'])
             contents.append(r.out)
         assert contents[0] == 'H'
-        assert contents[-1] == 'k'
+        assert contents[-1] == ''
 
     def test_llm_executes_stream_with_two_processors(self):
         responses = []

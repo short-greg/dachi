@@ -290,6 +290,7 @@ class ToolUse(pydantic.BaseModel):
             result = await fn(**data)
         
         self.result = result
+        self.executed = True
         return result
 
     def forward(self) -> typing.Any:
@@ -301,6 +302,8 @@ class ToolUse(pydantic.BaseModel):
             )
         fn = get_tool_function(self.option.name)
         result = fn(**data)
+        self.result = result
+        self.executed = True
         return result
 
 

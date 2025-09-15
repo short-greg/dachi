@@ -1,27 +1,26 @@
+"""
+This module contains parsers for parsing text responses into
+structured data.
+
+The API for this module is as follows:
+- Parser: Base class for all parsers.
+- forward(val: str | None) -> typing.List | None: Parses the complete response.
+- delta(val: str | None, delta_store: typing.Dict, is_last: bool=True) -> typing.List | None: Parses the response incrementally.
+- render(data) -> str: Renders the structured data back into a string.
+
+"""
 
 # 1st party 
 from abc import abstractmethod
 import typing
-import inspect
-import json
 import csv
 import io
 from collections import OrderedDict
 
-# 3rd party
-import pydantic
 
 # local
-from ..core import Resp, render
 from ._process import Process
 from .. import utils
-
-from ..core import (
-    Templatable, 
-    ExampleMixin, ModuleList,
-    render, 
-    Resp, struct_template, END_TOK
-)
 
 
 class Parser(Process):
@@ -168,13 +167,13 @@ class CSVRowParser(Parser):
             str: the rendered CSV
         """
         output = io.StringIO()
-        writer = csv.writer(output, delimiter=self.delimiter)
+        writer = csv.writer(output, delimiter=self.delimiter, lineterminator='\n')
         
         if self.use_header:
-            header = [key for key, _ in data[0]]
+            header = list(data[0].keys())
             writer.writerow(header)
             for row in data:
-                writer.writerow([value for _, value in row])
+                writer.writerow(list(row.values()))
         else:
             for row in data:
                 writer.writerow(row)
@@ -200,7 +199,7 @@ class CharDelimParser(Parser):
     """
     sep: str = ','
 
-    def forward(self, val: str | None):
+    def forward(self, val: str | None) -> typing.List:
         """Parse complete delimited response
         
         Args:

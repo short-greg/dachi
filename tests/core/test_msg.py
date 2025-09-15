@@ -3,7 +3,7 @@ from pydantic import ValidationError
 
 from dachi.core import (
     Msg, Resp, 
-    ListDialog, DialogTurn, 
+    ListDialog, 
     TreeDialog
 )
 
@@ -335,181 +335,6 @@ def _msg(role: str = "user", text: str = "hi", **kw) -> Msg:
     return Msg(role=role, text=text, **kw)
 
 
-class TestDialogTurn:
-
-    def test_empty_node_basics(self):
-        m = _msg()
-        node = DialogTurn(message=m)
-
-        assert node.message is m
-        assert node.children == []
-        assert node.parent is None  # private attr but exposed via property
-        assert node.depth() == 1
-        assert node.root() is node
-        assert node.leaf() is node
-        assert node.n_children() == 0
-        assert node.n_siblings() == 1  # root counts itself only
-
-    def test_constructor_sets_parent_on_children(self):
-        child1 = DialogTurn(message=_msg("assistant", "a1"))
-        child2 = DialogTurn(message=_msg("assistant", "a2"))
-        root = DialogTurn(message=_msg("system", "root"), children=[child1, child2])
-
-        assert child1.parent is root
-        assert child2.parent is root
-        # depth chain correctness
-        assert child1.depth() == 2
-        assert child1.root() is root
-        assert root.n_children() == 2
-
-    def test_append_child(self):
-        root = DialogTurn(message=_msg())
-        child_msg = _msg("assistant", "child")
-        child_turn = root.append(child_msg)
-
-        assert child_turn in root.children
-        assert child_turn.parent is root
-        assert root.n_children() == 1
-        assert child_turn.depth() == 2
-        # append returns the new DialogTurn
-        assert isinstance(child_turn, DialogTurn)
-
-    def test_prepend_child(self):
-        root = DialogTurn(message=_msg())
-        first = root.append(_msg("assistant", "1"))
-        prepended = root.prepend(_msg("assistant", "0"))
-
-        # new child should be at index 0
-        assert root.parent is prepended
-        assert prepended.children[0] is root
-        assert root.children[0] is first
-
-    @pytest.mark.parametrize("method", ["append", "prepend"])
-    def test_append_prepend_invalid_type(self, method):
-        root = DialogTurn(message=_msg())
-        with pytest.raises(ValidationError):
-            getattr(root, method)(42)  # type: ignore[arg-type]
-
-    def test_prune_detaches_child_and_updates_counts(self):
-        root = DialogTurn(message=_msg())
-        c1 = root.append(_msg("assistant", "1"))
-        c2 = root.append(_msg("assistant", "2"))
-
-        detached = root.prune(0)
-        assert detached is c1
-        assert detached.parent is None
-        assert root.n_children() == 1
-        assert root.children[0] is c2
-
-    @pytest.mark.parametrize("bad_idx", [-1, 1])
-    def test_prune_invalid_index(self, bad_idx):
-        root = DialogTurn(message=_msg())
-        root.append(_msg())
-        with pytest.raises(IndexError):
-            root.prune(bad_idx)
-
-    def _build_chain(self, depth: int = 3):  # helper to build left chain of given depth
-        root = DialogTurn(message=_msg("system", "root"))
-        cur = root
-        for i in range(depth):
-            cur = cur.append(_msg("assistant", f"lvl{i}"))
-        return root, cur
-
-    def test_child_navigation(self):
-        root = DialogTurn(message=_msg())
-        c1 = root.append(_msg("assistant", "c1"))
-        c2 = root.append(_msg("assistant", "c2"))
-
-        assert root.child(0) is c1
-        assert root.child(1) is c2
-        with pytest.raises(IndexError):
-            root.child(2)
-        with pytest.raises(TypeError):
-            root.child(1.1)  # type: ignore[arg-type]
-
-    def test_sibling_navigation(self):
-        root = DialogTurn(message=_msg())
-        a = root.append(_msg("assistant", "a"))
-        b = root.append(_msg("assistant", "b"))
-        c = root.append(_msg("assistant", "c"))
-
-        assert b.sibling(-1) is a
-        assert b.sibling(1) is c
-        assert b.sibling(0) is b
-        with pytest.raises(IndexError):
-            a.sibling(-1)
-        with pytest.raises(IndexError):
-            c.sibling(1)
-        with pytest.raises(TypeError):
-            b.sibling("x")  # type: ignore[arg-type]
-
-    def test_ancestor_navigation(self):
-        root, leaf = self._build_chain(4)
-        assert leaf.ancestor(4) is root
-        assert leaf.ancestor(0) is leaf
-        with pytest.raises(IndexError):
-            leaf.ancestor(5)
-        with pytest.raises(IndexError):
-            leaf.ancestor(-1)  # type: ignore[arg-type]
-        with pytest.raises(TypeError):
-            leaf.ancestor(1.2)  # type: ignore[arg-type]
-
-    def test_depth_root_leaf_properties(self):
-        root, leaf = self._build_chain(3)
-        assert root.depth() == 1
-        assert leaf.depth() == 4
-        assert root.root() is root
-        assert leaf.root() is root
-        assert root.leaf() is leaf
-        # Add another branch to root and ensure leaf still leftmost
-        other = root.append(_msg("assistant", "other"))
-        assert root.leaf() is leaf
-        # leaf of 'other' subtree should be itself (no children)
-        assert other.leaf() is other
-
-    def test_reparent_pruned_subtree(self):
-        root = DialogTurn(message=_msg())
-        child = root.append(_msg("assistant", "c"))
-        subchild = child.append(_msg("assistant", "sc"))
-
-        # prune child from root
-        detached = root.prune(0)
-        assert detached is child
-        assert detached.parent is None
-        # attach to subchild (creates deeper nesting)
-        new_parent = subchild.append(_msg("assistant", "x"))
-        assert new_parent.parent is subchild
-
-    def test_duplicate_child_append(self):
-        root = DialogTurn(message=_msg())
-        child = root.append(_msg("assistant", "dup"))
-        # trying to append same DialogTurn instance again should raise or reparent safely
-        with pytest.raises((ValueError, ValidationError, RuntimeError)):
-            root.append(child)  # type: ignore[arg-type]
-
-    def test_counts_update_after_mutations(self):
-        root = DialogTurn(message=_msg())
-        assert root.n_children() == 0
-        c1 = root.append(_msg())
-        assert root.n_children() == 1
-        c2 = root.append(_msg())
-        assert root.n_children() == 2
-        root.prune(1)
-        assert root.n_children() == 1
-        root.prune(0)
-        assert root.n_children() == 0
-
-    # # ------------------------------------------------------------------
-    # # Cycle protection (smoke)
-    # # ------------------------------------------------------------------
-    # def test_cycle_detection_on_root(self):
-    #     node = DialogTurn(message=_msg())
-    #     # forge an explicit cycle – not a valid use but we want robustness
-    #     node._parent = node  # type: ignore[attr-defined]
-    #     with pytest.raises((RecursionError, RuntimeError)):
-    #         _ = node.root()
-
-
 class TestTreeDialog:
     # ------------------------------------------------------------------
     # Construction & base properties
@@ -730,3 +555,176 @@ class TestTreeDialog:
 
 
 
+# class TestDialogTurn:
+
+#     def test_empty_node_basics(self):
+#         m = _msg()
+#         node = DialogTurn(message=m)
+
+#         assert node.message is m
+#         assert node.children == []
+#         assert node.parent is None  # private attr but exposed via property
+#         assert node.depth() == 1
+#         assert node.root() is node
+#         assert node.leaf() is node
+#         assert node.n_children() == 0
+#         assert node.n_siblings() == 1  # root counts itself only
+
+#     def test_constructor_sets_parent_on_children(self):
+#         child1 = DialogTurn(message=_msg("assistant", "a1"))
+#         child2 = DialogTurn(message=_msg("assistant", "a2"))
+#         root = DialogTurn(message=_msg("system", "root"), children=[child1, child2])
+
+#         assert child1.parent is root
+#         assert child2.parent is root
+#         # depth chain correctness
+#         assert child1.depth() == 2
+#         assert child1.root() is root
+#         assert root.n_children() == 2
+
+#     def test_append_child(self):
+#         root = DialogTurn(message=_msg())
+#         child_msg = _msg("assistant", "child")
+#         child_turn = root.append(child_msg)
+
+#         assert child_turn in root.children
+#         assert child_turn.parent is root
+#         assert root.n_children() == 1
+#         assert child_turn.depth() == 2
+#         # append returns the new DialogTurn
+#         assert isinstance(child_turn, DialogTurn)
+
+#     def test_prepend_child(self):
+#         root = DialogTurn(message=_msg())
+#         first = root.append(_msg("assistant", "1"))
+#         prepended = root.prepend(_msg("assistant", "0"))
+
+#         # new child should be at index 0
+#         assert root.parent is prepended
+#         assert prepended.children[0] is root
+#         assert root.children[0] is first
+
+#     @pytest.mark.parametrize("method", ["append", "prepend"])
+#     def test_append_prepend_invalid_type(self, method):
+#         root = DialogTurn(message=_msg())
+#         with pytest.raises(ValidationError):
+#             getattr(root, method)(42)  # type: ignore[arg-type]
+
+#     def test_prune_detaches_child_and_updates_counts(self):
+#         root = DialogTurn(message=_msg())
+#         c1 = root.append(_msg("assistant", "1"))
+#         c2 = root.append(_msg("assistant", "2"))
+
+#         detached = root.prune(0)
+#         assert detached is c1
+#         assert detached.parent is None
+#         assert root.n_children() == 1
+#         assert root.children[0] is c2
+
+#     @pytest.mark.parametrize("bad_idx", [-1, 1])
+#     def test_prune_invalid_index(self, bad_idx):
+#         root = DialogTurn(message=_msg())
+#         root.append(_msg())
+#         with pytest.raises(IndexError):
+#             root.prune(bad_idx)
+
+#     def _build_chain(self, depth: int = 3):  # helper to build left chain of given depth
+#         root = DialogTurn(message=_msg("system", "root"))
+#         cur = root
+#         for i in range(depth):
+#             cur = cur.append(_msg("assistant", f"lvl{i}"))
+#         return root, cur
+
+#     def test_child_navigation(self):
+#         root = DialogTurn(message=_msg())
+#         c1 = root.append(_msg("assistant", "c1"))
+#         c2 = root.append(_msg("assistant", "c2"))
+
+#         assert root.child(0) is c1
+#         assert root.child(1) is c2
+#         with pytest.raises(IndexError):
+#             root.child(2)
+#         with pytest.raises(TypeError):
+#             root.child(1.1)  # type: ignore[arg-type]
+
+#     def test_sibling_navigation(self):
+#         root = DialogTurn(message=_msg())
+#         a = root.append(_msg("assistant", "a"))
+#         b = root.append(_msg("assistant", "b"))
+#         c = root.append(_msg("assistant", "c"))
+
+#         assert b.sibling(-1) is a
+#         assert b.sibling(1) is c
+#         assert b.sibling(0) is b
+#         with pytest.raises(IndexError):
+#             a.sibling(-1)
+#         with pytest.raises(IndexError):
+#             c.sibling(1)
+#         with pytest.raises(TypeError):
+#             b.sibling("x")  # type: ignore[arg-type]
+
+#     def test_ancestor_navigation(self):
+#         root, leaf = self._build_chain(4)
+#         assert leaf.ancestor(4) is root
+#         assert leaf.ancestor(0) is leaf
+#         with pytest.raises(IndexError):
+#             leaf.ancestor(5)
+#         with pytest.raises(IndexError):
+#             leaf.ancestor(-1)  # type: ignore[arg-type]
+#         with pytest.raises(TypeError):
+#             leaf.ancestor(1.2)  # type: ignore[arg-type]
+
+#     def test_depth_root_leaf_properties(self):
+#         root, leaf = self._build_chain(3)
+#         assert root.depth() == 1
+#         assert leaf.depth() == 4
+#         assert root.root() is root
+#         assert leaf.root() is root
+#         assert root.leaf() is leaf
+#         # Add another branch to root and ensure leaf still leftmost
+#         other = root.append(_msg("assistant", "other"))
+#         assert root.leaf() is leaf
+#         # leaf of 'other' subtree should be itself (no children)
+#         assert other.leaf() is other
+
+#     def test_reparent_pruned_subtree(self):
+#         root = DialogTurn(message=_msg())
+#         child = root.append(_msg("assistant", "c"))
+#         subchild = child.append(_msg("assistant", "sc"))
+
+#         # prune child from root
+#         detached = root.prune(0)
+#         assert detached is child
+#         assert detached.parent is None
+#         # attach to subchild (creates deeper nesting)
+#         new_parent = subchild.append(_msg("assistant", "x"))
+#         assert new_parent.parent is subchild
+
+#     def test_duplicate_child_append(self):
+#         root = DialogTurn(message=_msg())
+#         child = root.append(_msg("assistant", "dup"))
+#         # trying to append same DialogTurn instance again should raise or reparent safely
+#         with pytest.raises((ValueError, ValidationError, RuntimeError)):
+#             root.append(child)  # type: ignore[arg-type]
+
+#     def test_counts_update_after_mutations(self):
+#         root = DialogTurn(message=_msg())
+#         assert root.n_children() == 0
+#         c1 = root.append(_msg())
+#         assert root.n_children() == 1
+#         c2 = root.append(_msg())
+#         assert root.n_children() == 2
+#         root.prune(1)
+#         assert root.n_children() == 1
+#         root.prune(0)
+#         assert root.n_children() == 0
+
+#     # # ------------------------------------------------------------------
+#     # # Cycle protection (smoke)
+#     # # ------------------------------------------------------------------
+#     # def test_cycle_detection_on_root(self):
+#     #     node = DialogTurn(message=_msg())
+#     #     # forge an explicit cycle – not a valid use but we want robustness
+#     #     node._parent = node  # type: ignore[attr-defined]
+#     #     with pytest.raises((RecursionError, RuntimeError)):
+#     #         _ = node.root()

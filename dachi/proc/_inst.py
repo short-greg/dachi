@@ -1,3 +1,32 @@
+"""
+This module provides classes and decorators for creating and specifying functions as instructions for a language model.
+
+There are two main types
+1) signaturefunc - where the function returns a dictionary of arguments to be inserted into a docstring template
+2) instructfunc - where the function returns a string that is the instruction to be sent to the LLM
+
+Example usage:
+```python
+from dachi.proc import instructfunc, signaturefunc
+
+@instructfunc(engine=llm_engine)
+def my_function(param1: str, param2: int) -> str:
+    return f"Process {param1} with number {param2}"
+result = my_function("example", 42)
+print(result)  # Output from the LLM based on the instruction
+
+@signaturefunc(engine=llm_engine)
+def summarize(text: str) -> dict:
+    \"""
+    Process the following text and return a summary.
+    
+    {text}
+    \"""
+    pass
+
+
+"""
+
 # 1st party
 import typing
 from abc import abstractmethod
@@ -368,8 +397,8 @@ class FuncDec(FuncDecBase):
         resp = engine(
             msg, **self.kwargs
         )
-        resp = self.inst.out_conv(resp)
-        return resp.out if hasattr(resp, 'out') else resp
+        result = self.inst.out_conv.forward(resp.msg.text)
+        return result
 
     def spawn(self, instance=None) -> Self:
         """
@@ -416,8 +445,8 @@ class AFuncDec(FuncDecBase):
         res_msg = await engine.aforward(
             cue.text, **self.kwargs
         )
-        res_msg = self.inst.out_conv(res_msg)
-        return res_msg.out if hasattr(res_msg, 'out') else res_msg
+        result = self.inst.out_conv.forward(res_msg.msg.text)
+        return result
     
     async def __call__(self, *args, **kwargs):
         """
@@ -488,7 +517,7 @@ class StreamDec(FuncDecBase, StreamProcess):
             msg, **self.kwargs
         ):  
             is_last = resp.data['response'] == END_TOK
-            result = self.inst.out_conv.delta(resp, delta_store, is_last)
+            result = self.inst.out_conv.delta(resp.delta.text, delta_store, is_last)
             resp.out = result
             yield resp.out
 
@@ -548,7 +577,7 @@ class AStreamDec(FuncDecBase, AsyncStreamProcess):
             msg, **self.kwargs
         ):
             is_last = resp.data['response'] == END_TOK
-            result = self.inst.out_conv.delta(resp, delta_store, is_last)
+            result = self.inst.out_conv.delta(resp.delta.text, delta_store, is_last)
             resp.out = result
             yield resp.out
 

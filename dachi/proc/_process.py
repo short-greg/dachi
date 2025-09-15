@@ -1,3 +1,22 @@
+"""
+
+This module defines various processing classes and functions for synchronous and asynchronous operations and the Process interfaces.
+
+The module also includes utility functions for forwarding, streaming, mapping, and reducing operations across these processing classes.
+
+The Process interfaces are:
+
+class Process
+- forward(self, *args, **kwargs) -> typing.Any:
+class AsyncProcess
+- aforward(self, *args, **kwargs) -> typing.Any:
+class StreamProcess
+- stream(self, *args, **kwargs) -> typing.Iterator[typing.Any]:
+class AsyncStreamProcess
+- astream(self, *args, **kwargs) -> typing.AsyncIterator:typing.Any
+
+"""
+
 # 1st party
 from abc import ABC, abstractmethod
 from functools import partial

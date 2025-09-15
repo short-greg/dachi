@@ -4,14 +4,11 @@ from __future__ import annotations
 import uuid
 import time
 import threading
-from typing import TypeVar, Generic, Callable, Dict, List, Optional, TypedDict, Any, Union, ClassVar
+from typing import TypeVar, Generic, Callable, Dict, List, Optional, TypedDict, Any, ClassVar
 from collections import defaultdict
 
 # 3rd party
 from pydantic import BaseModel, Field, PrivateAttr
-
-# local
-from ..utils._utils import singleton
 
 T = TypeVar("T", bound=BaseModel)
 

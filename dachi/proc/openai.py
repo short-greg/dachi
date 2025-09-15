@@ -428,7 +428,6 @@ class OpenAIResp(OpenAIBase):
             **kwargs
         }
     
-     
     def to_output(
         self, 
         output: t.Dict | pydantic.BaseModel, 
@@ -486,7 +485,7 @@ class OpenAIResp(OpenAIBase):
         })
         
         # Store raw response
-        resp._data = output
+        resp.data = output
         return resp
     
     def from_streamed(self, output: t.Dict, inp: Msg | BaseDialog | str | None = None, prev_resp: Resp | None = None) -> Resp:

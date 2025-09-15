@@ -1,4 +1,4 @@
-from dachi.core import Msg, Resp, ModuleList
+from dachi.core import ModuleList
 from dachi.proc._resp import PrimOut, KVOut, IndexOut, CSVOut, ToOut, JSONListOut, JSONValsOut, StructOut, TextOut, TupleOut
 from dachi.proc._parser import LineParser
 from dachi.proc._process import Process
@@ -12,11 +12,11 @@ import pydantic
 class EchoOut(ToOut):
     """Pass-through processor for testing."""
     
-    def forward(self, resp):
-        return str(resp.text) if hasattr(resp, 'text') else str(resp)
+    def forward(self, resp: str | None):
+        return str(resp) if resp is not None else utils.UNDEFINED
     
-    def delta(self, resp, delta_store, is_last=True):
-        return str(resp)
+    def delta(self, resp: str | None, delta_store, is_last=True):
+        return str(resp) if resp is not None else ""
     
     def render(self, data):
         return str(data)
@@ -31,11 +31,12 @@ class EchoOut(ToOut):
 class ConcatOut(ToOut):
     """Concatenates chunks across streaming."""
     
-    def forward(self, resp):
-        return str(resp.text) if hasattr(resp, 'text') else str(resp)
+    def forward(self, resp: str | None):
+        return str(resp) if resp is not None else utils.UNDEFINED
     
-    def delta(self, chunk, delta_store, is_last=True):
-        buf = delta_store.get("buf", "") + str(chunk)
+    def delta(self, chunk: str | None, delta_store, is_last=True):
+        chunk_str = str(chunk) if chunk is not None else ""
+        buf = delta_store.get("buf", "") + chunk_str
         if is_last:
             return buf
         delta_store["buf"] = buf
@@ -57,57 +58,48 @@ class TestToOutBasic:
     
     def test_toprim_forward_bool_true(self):
         proc = PrimOut(out_cls='bool')
-        resp = Resp(msg=Msg(role="assistant", text="true"))
-        result = proc.forward(resp)
+        result = proc.forward("true")
         assert result == True
         
     def test_toprim_forward_bool_false(self):
         proc = PrimOut(out_cls='bool')
-        resp = Resp(msg=Msg(role="assistant", text="false"))
-        result = proc.forward(resp)
+        result = proc.forward("false")
         assert result == False
         
     def test_toprim_forward_int(self):
         proc = PrimOut(out_cls='int')
-        resp = Resp(msg=Msg(role="assistant", text="42"))
-        result = proc.forward(resp)
+        result = proc.forward("42")
         assert result == 42
         
     def test_toprim_forward_float(self):
         proc = PrimOut(out_cls='float')
-        resp = Resp(msg=Msg(role="assistant", text="3.14"))
-        result = proc.forward(resp)
+        result = proc.forward("3.14")
         assert result == 3.14
         
     def test_toprim_forward_str(self):
         proc = PrimOut(out_cls='str')
-        resp = Resp(msg=Msg(role="assistant", text="hello"))
-        result = proc.forward(resp)
+        result = proc.forward("hello")
         assert result == "hello"
         
     def test_kvout_forward(self):
         proc = KVOut(sep='::')
-        resp = Resp(msg=Msg(role="assistant", text="name::John\nage::25"))
-        result = proc.forward(resp)
+        result = proc.forward("name::John\nage::25")
         assert result == {'name': 'John', 'age': '25'}
         
     def test_indexout_forward(self):
         proc = IndexOut(sep='::')
-        resp = Resp(msg=Msg(role="assistant", text="1::First\n2::Second\n3::Third"))
-        result = proc.forward(resp)
+        result = proc.forward("1::First\n2::Second\n3::Third")
         assert result == ['First', 'Second', 'Third']
         
     def test_csvout_forward_with_header(self):
         proc = CSVOut()
-        resp = Resp(msg=Msg(role="assistant", text="name,age\nJohn,25\nJane,30"))
-        result = proc.forward(resp)
+        result = proc.forward("name,age\nJohn,25\nJane,30")
         expected = [{'name': 'John', 'age': '25'}, {'name': 'Jane', 'age': '30'}]
         assert result == expected
         
     def test_csvout_forward_no_header(self):
         proc = CSVOut(use_header=False)
-        resp = Resp(msg=Msg(role="assistant", text="John,25\nJane,30"))
-        result = proc.forward(resp)
+        result = proc.forward("John,25\nJane,30")
         expected = [['John', '25'], ['Jane', '30']]
         assert result == expected
 
@@ -152,15 +144,13 @@ class TestPrimOutExtended:
         """Test various true boolean representations."""
         proc = PrimOut(out_cls='bool')
         for true_val in ['true', 'True', 'TRUE', 'y', 'yes', '1', 't']:
-            resp = Resp(msg=Msg(role='assistant', text=true_val))
-            assert proc.forward(resp) is True, f"Failed for: {true_val}"
+            assert proc.forward(true_val) is True, f"Failed for: {true_val}"
             
     def test_toprim_bool_false_variations(self):
         """Test various false boolean representations."""
         proc = PrimOut(out_cls='bool')
         for false_val in ['false', 'False', 'FALSE', 'n', 'no', '0', 'f', 'other']:
-            resp = Resp(msg=Msg(role='assistant', text=false_val))
-            assert proc.forward(resp) is False, f"Failed for: {false_val}"
+            assert proc.forward(false_val) is False, f"Failed for: {false_val}"
     
     def test_toprim_streaming_accumulation(self):
         """Test that PrimOut accumulates streaming data correctly."""
@@ -181,8 +171,7 @@ class TestKVOutExtended:
         """Test key-value parsing with complex values."""
         proc = KVOut(sep='::')
         text = "name::John Doe\ndescription::A person who likes testing\nage::25"
-        resp = Resp(msg=Msg(role='assistant', text=text))
-        result = proc.forward(resp)
+        result = proc.forward(text)
         # Should handle the multiline gracefully
         assert result == {'name': 'John Doe', 'description': 'A person who likes testing', 'age': '25'}
         
@@ -192,16 +181,14 @@ class TestKVOutExtended:
         for sep in separators:
             proc = KVOut(sep=sep)
             text = f"key1{sep}value1\nkey2{sep}value2"
-            resp = Resp(msg=Msg(role='assistant', text=text))
-            result = proc.forward(resp)
+            result = proc.forward(text)
             assert result == {'key1': 'value1', 'key2': 'value2'}
             
     def test_kvout_whitespace_handling(self):
         """Test that whitespace is handled correctly."""
         proc = KVOut(sep='::')
         text = "  name  ::  John  \n  age  ::  25  "
-        resp = Resp(msg=Msg(role='assistant', text=text))
-        result = proc.forward(resp)
+        result = proc.forward(text)
         # KVOut strips whitespace from keys and values
         assert result == {'name': 'John', 'age': '25'}
 
@@ -213,16 +200,14 @@ class TestIndexOutExtended:
         """Test parsing indices provided out of order."""
         proc = IndexOut(sep='::')
         text = "3::Third\n1::First\n2::Second"
-        resp = Resp(msg=Msg(role='assistant', text=text))
-        result = proc.forward(resp)
+        result = proc.forward(text)
         assert result == ['First', 'Second', 'Third']
         
     def test_indexout_zero_based_vs_one_based(self):
         """Test that 1-based indices are converted to 0-based."""
         proc = IndexOut(sep='::')
         text = "1::First\n2::Second"
-        resp = Resp(msg=Msg(role='assistant', text=text))
-        result = proc.forward(resp)
+        result = proc.forward(text)
         assert result[0] == 'First'
         assert result[1] == 'Second'
         
@@ -230,8 +215,7 @@ class TestIndexOutExtended:
         """Test handling of large gaps in indices."""
         proc = IndexOut(sep='::')
         text = "1::First\n10::Tenth"
-        resp = Resp(msg=Msg(role='assistant', text=text))
-        result = proc.forward(resp)
+        result = proc.forward(text)
         assert len(result) == 10
         assert result[0] == 'First'
         assert result[9] == 'Tenth'
@@ -245,8 +229,7 @@ class TestCSVOutExtended:
         """Test CSV parsing with quoted fields containing commas."""
         proc = CSVOut()
         csv_text = 'name,description\n"John, Jr.","A person, who likes commas"\nJane,Simple'
-        resp = Resp(msg=Msg(role='assistant', text=csv_text))
-        result = proc.forward(resp)
+        result = proc.forward(csv_text)
         assert len(result) == 2
         assert result[0]['name'] == 'John, Jr.'
         assert result[0]['description'] == 'A person, who likes commas'
@@ -257,8 +240,7 @@ class TestCSVOutExtended:
         for delim in delimiters:
             proc = CSVOut(delimiter=delim, use_header=False)
             text = f"John{delim}25{delim}Boston\nJane{delim}30{delim}Seattle"
-            resp = Resp(msg=Msg(role='assistant', text=text))
-            result = proc.forward(resp)
+            result = proc.forward(text)
             assert len(result) == 2
             assert result[0] == ['John', '25', 'Boston']
             
@@ -267,8 +249,7 @@ class TestCSVOutExtended:
         proc = CSVOut(use_header=False)
         # Missing fields in second row
         text = "John,25,Boston\nJane,30\nBob,35,Chicago"
-        resp = Resp(msg=Msg(role='assistant', text=text))
-        result = proc.forward(resp)
+        result = proc.forward(text)
         assert len(result) == 3
         assert len(result[1]) == 2  # Jane row has only 2 fields
         
@@ -276,8 +257,7 @@ class TestCSVOutExtended:
         """Test CSV parsing with empty fields and whitespace."""
         proc = CSVOut(use_header=False)
         text = "John,,Boston\n ,25, \n\n"
-        resp = Resp(msg=Msg(role='assistant', text=text))
-        result = proc.forward(resp)
+        result = proc.forward(text)
         # Should handle empty fields and whitespace
         assert len(result) >= 2
 
@@ -289,23 +269,20 @@ class TestJSONListOut:
         """Test basic JSON array parsing."""
         proc = JSONListOut()
         text = '[{"name": "John", "age": 25}, {"name": "Jane", "age": 30}]'
-        resp = Resp(msg=Msg(role='assistant', text=text))
-        result = proc.forward(resp)
+        result = proc.forward(text)
         expected = [{"name": "John", "age": 25}, {"name": "Jane", "age": 30}]
         assert result == expected
         
     def test_jsonlistout_forward_empty(self):
         """Test empty JSON array."""
         proc = JSONListOut()
-        resp = Resp(msg=Msg(role='assistant', text='[]'))
-        result = proc.forward(resp)
+        result = proc.forward('[]')
         assert result == []
         
     def test_jsonlistout_forward_single_item(self):
         """Test JSON array with single item."""
         proc = JSONListOut()
-        resp = Resp(msg=Msg(role='assistant', text='[{"id": 1, "name": "test"}]'))
-        result = proc.forward(resp)
+        result = proc.forward('[{"id": 1, "name": "test"}]')
         assert result == [{"id": 1, "name": "test"}]
         
     def test_jsonlistout_delta_streaming(self):
@@ -334,23 +311,20 @@ class TestJSONValsOut:
         """Test basic JSON object key-value parsing."""
         proc = JSONValsOut()
         text = '{"name": "John", "age": 25, "city": "Boston"}'
-        resp = Resp(msg=Msg(role='assistant', text=text))
-        result = proc.forward(resp)
+        result = proc.forward(text)
         expected = [("name", "John"), ("age", 25), ("city", "Boston")]
         assert result == expected
         
     def test_jsonvalsout_forward_empty(self):
         """Test empty JSON object."""
         proc = JSONValsOut()
-        resp = Resp(msg=Msg(role='assistant', text='{}'))
-        result = proc.forward(resp)
+        result = proc.forward('{}')
         assert result == []
         
     def test_jsonvalsout_forward_single_key(self):
         """Test JSON object with single key."""
         proc = JSONValsOut()
-        resp = Resp(msg=Msg(role='assistant', text='{"status": "success"}'))
-        result = proc.forward(resp)
+        result = proc.forward('{"status": "success"}')
         assert result == [("status", "success")]
         
     def test_jsonvalsout_delta_streaming(self):
@@ -382,8 +356,7 @@ class TestStructOut:
     def test_structout_forward_basic_json(self):
         """Test basic JSON parsing."""
         proc = StructOut()
-        resp = Resp(msg=Msg(role='assistant', text='{"name": "John", "age": 25}'))
-        result = proc.forward(resp)
+        result = proc.forward('{"name": "John", "age": 25}')
         assert result == {"name": "John", "age": 25}
     
     def test_structout_forward_with_pydantic_model(self):
@@ -393,8 +366,7 @@ class TestStructOut:
             age: int
         
         proc = StructOut(struct=Person)
-        resp = Resp(msg=Msg(role='assistant', text='{"name": "John", "age": 25}'))
-        result = proc.forward(resp)
+        result = proc.forward('{"name": "John", "age": 25}')
         assert isinstance(result, Person)
         assert result.name == "John"
         assert result.age == 25
@@ -402,9 +374,8 @@ class TestStructOut:
     def test_structout_forward_invalid_json(self):
         """Test error handling for invalid JSON."""
         proc = StructOut()
-        resp = Resp(msg=Msg(role='assistant', text='{"invalid": json'))
         with pytest.raises(RuntimeError, match="Failed to parse JSON"):
-            proc.forward(resp)
+            proc.forward('{"invalid": json')
 
 
 class TestTextOut:
@@ -413,33 +384,27 @@ class TestTextOut:
     def test_textout_forward_basic(self):
         """Test basic text extraction."""
         proc = TextOut()
-        resp = Resp(msg=Msg(role='assistant', text='Hello world'))
-        result = proc.forward(resp)
+        result = proc.forward('Hello world')
         assert result == 'Hello world'
     
     def test_textout_forward_none_text(self):
         """Test handling of None text."""
         proc = TextOut()
-        resp = Resp(msg=Msg(role='assistant', text=None))
-        result = proc.forward(resp)
-        assert result.startswith('msg=Msg(')  # Should get string representation of resp
+        result = proc.forward(None)
+        assert result == utils.UNDEFINED
     
     def test_textout_delta_streaming(self):
-        """Test TextOut streaming behavior - check what gets set in resp.out."""
+        """Test TextOut streaming behavior."""
         text_out = TextOut()
         delta_store = {}
         
         # Test first chunk
-        resp1 = Resp(msg=Msg(role='assistant', text='accumulated_so_far'))
-        resp1.delta.text = 'Hello'  # This chunk
-        resp1.out = text_out.delta(resp1, delta_store, is_last=False)
-        assert resp1.out == 'Hello'  # Should have the chunk text in out
+        result1 = text_out.delta('Hello', delta_store, is_last=False)
+        assert result1 == 'Hello'  # Should have the chunk text
         
         # Test second chunk  
-        resp2 = Resp(msg=Msg(role='assistant', text='accumulated_more'))
-        resp2.delta.text = ' world'  # This chunk
-        resp2.out = text_out.delta(resp2, delta_store, is_last=True)
-        assert resp2.out == ' world'  # Should have the chunk text in out
+        result2 = text_out.delta(' world', delta_store, is_last=True)
+        assert result2 == ' world'  # Should have the chunk text
 
 
 class TestTupleOut:
@@ -459,8 +424,7 @@ class TestTupleOut:
         
         processors = ModuleList(items=[StrProcessor(), IntProcessor()])
         proc = TupleOut(processors=processors, parser=LineParser())
-        resp = Resp(msg=Msg(role='assistant', text='hello\n42'))
-        result = proc.forward(resp)
+        result = proc.forward('hello\n42')
         assert result == ('hello', 42)
     
     def test_tupleout_forward_mismatch_count(self):
@@ -472,9 +436,8 @@ class TestTupleOut:
         
         processors = ModuleList(items=[StrProcessor()])  # Only 1 processor
         proc = TupleOut(processors=processors, parser=LineParser()) 
-        resp = Resp(msg=Msg(role='assistant', text='hello\n42'))  # 2 parts
         with pytest.raises(RuntimeError, match="Expected 1 parts, got 2"):
-            proc.forward(resp)
+            proc.forward('hello\n42')  # 2 parts
 
 
 # TODO: MIGRATION NOTES
