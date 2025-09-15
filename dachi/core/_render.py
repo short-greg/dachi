@@ -1,22 +1,24 @@
+"""
+Rendering utilities for converting various objects to text.
+"""
 
 # 1st party
 import typing
 import inspect
 from dataclasses import dataclass
+import string
+import roman
+import re
+from typing import Self, get_type_hints
 
 # 3rd party
 import pydantic
 from ._base import Renderable
 
 # local
-from ..utils import is_primitive, escape_curly_braces
-
+from dachi.utils import is_primitive, escape_curly_braces
 from dachi.utils import escape_curly_braces, is_primitive
-import typing
-from typing import Self, get_type_hints
 
-# 3rd party
-import pydantic
 
 @dataclass
 class TemplateField(Renderable):
@@ -123,8 +125,6 @@ def render(
     return str(x)
 
 
-
-
 def model_template(model_cls: typing.Type[pydantic.BaseModel]) -> str:
     """Get the template for a pydantic.BaseModel
 
@@ -213,18 +213,6 @@ def render_multi(
         render(x) for x in xs
     ]
 
-
-# 1st party
-import typing
-import string
-import roman
-import re
-
-# 3rd party
-import pydantic
-
-# local
-from ..core._render import render
 
 S = typing.TypeVar('S', bound=pydantic.BaseModel)
 X = typing.Union[str]
@@ -405,7 +393,6 @@ DEFAULT_STYLE = {
     "bullet": bullet,
     "numbered": numbered
 }
-
 
 
 # def generate_numbered_list(n, numbering_type='arabic') -> typing.List:

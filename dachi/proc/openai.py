@@ -15,6 +15,17 @@ from ._ai import AIAdapt, LLM, get_resp_output, get_delta_resp_output
 from ._resp import ToOut
 
 
+# Transformation helpers for OpenAI responses
+def extract_commonly_useful_meta(output: t.Dict) -> t.Dict[str, t.Any]:
+    """Extract commonly useful metadata fields for debugging, monitoring, and feature detection."""
+    return {
+        k: v for k, v in output.items() 
+        if k in {
+            "object", "created", "system_fingerprint", "service_tier"
+        } and v is not None
+    }
+
+
 class OpenAIBase(LLM, AIAdapt):
     """Base class for OpenAI adapters with common functionality"""
     
@@ -149,10 +160,14 @@ class OpenAIChat(OpenAIBase):
     
     def to_output(
         self, 
-        output: t.Dict, 
+        output: t.Dict | pydantic.BaseModel, 
         inp: Msg | BaseDialog | str | None = None
     ) -> Resp:
         """Convert Chat Completions response to Dachi Resp."""
+        # Convert Pydantic model to dict if needed
+        if isinstance(output, pydantic.BaseModel):
+            output = output.model_dump()
+        
         choice = output.get("choices", [{}])[0]
         message = choice.get("message", {})
         
@@ -177,19 +192,8 @@ class OpenAIChat(OpenAIBase):
             } for i, c in enumerate(output.get("choices", []))]
         )
         
-        # Store provider-specific fields in meta
-        resp.meta.update({
-            "object": output.get("object"),
-            "created": output.get("created"),
-            "system_fingerprint": output.get("system_fingerprint"),
-            "service_tier": output.get("service_tier"),
-        })
-        
-        # Store any additional fields not explicitly handled
-        resp.meta.update({
-            k: v for k, v in output.items() 
-            if k not in {"choices", "usage", "model", "id", "object", "created", "system_fingerprint"}
-        })
+        # Store commonly useful metadata (debugging, monitoring, feature detection)
+        resp.meta.update(extract_commonly_useful_meta(output))
         
         # Store raw response
         resp._data = output
@@ -197,11 +201,15 @@ class OpenAIChat(OpenAIBase):
     
     def from_streamed(
         self, 
-        output: t.Dict, 
+        output: t.Dict | pydantic.BaseModel, 
         inp: Msg | BaseDialog | str | None = None, 
         prev_resp: Resp | None = None
     ) -> Resp:
         """Handle Chat Completions streaming responses with proper accumulation."""
+        # Convert Pydantic model to dict if needed
+        if isinstance(output, pydantic.BaseModel):
+            output = output.model_dump()
+        
         choice = output.get("choices", [{}])[0]
         delta = choice.get("delta", {})
         
@@ -213,8 +221,15 @@ class OpenAIChat(OpenAIBase):
             accumulated_text = delta_text
         
         # Create new message with accumulated content
+        # Use previous role if delta doesn't specify one (common in streaming)
+        role = delta.get("role")
+        if role is None and prev_resp and prev_resp.msg:
+            role = prev_resp.msg.role
+        if role is None:
+            role = "assistant"  # Default fallback
+        
         msg = Msg(
-            role=delta.get("role", "assistant"),
+            role=role,
             text=accumulated_text  # Full accumulated text
         )
         
@@ -456,11 +471,11 @@ class OpenAIResp(OpenAIBase):
         resp = Resp(
             msg=msg,
             text=message.get("content"),
-            thinking=output.get("reasoning"),  # Responses API specific
+            thinking=output.get("reasoning"),  # Can be string or dict - now supported by field type
             finish_reason=choice.get("finish_reason"),
             response_id=output.get("id"),
             model=output.get("model"),
-            usage=output.get("usage", {}),
+            usage=output.get("usage", {}),  # Can include nested structures - now supported by field type
             tool=message.get("tool_calls", []) if message.get("tool_calls") else None,
             logprobs=choice.get("logprobs"),
             choices=[{
@@ -470,26 +485,19 @@ class OpenAIResp(OpenAIBase):
             } for i, c in enumerate(output.get("choices", []))]
         )
         
-        # Store provider-specific fields in meta
-        resp.meta.update({
-            "object": output.get("object"),
-            "created": output.get("created"),
-            "system_fingerprint": output.get("system_fingerprint"),
-            "service_tier": output.get("service_tier"),
-        })
-        
-        # Store any additional fields not explicitly handled
-        resp.meta.update({
-            k: v for k, v in output.items() 
-            if k not in {"choices", "usage", "model", "id", "reasoning", "object", "created", "system_fingerprint"}
-        })
+        # Store commonly useful metadata (debugging, monitoring, feature detection)
+        resp.meta.update(extract_commonly_useful_meta(output))
         
         # Store raw response
         resp.data = output
         return resp
     
-    def from_streamed(self, output: t.Dict, inp: Msg | BaseDialog | str | None = None, prev_resp: Resp | None = None) -> Resp:
+    def from_streamed(self, output: t.Dict | pydantic.BaseModel, inp: Msg | BaseDialog | str | None = None, prev_resp: Resp | None = None) -> Resp:
         """Handle Responses API streaming responses with proper accumulation."""
+        # Convert Pydantic model to dict if needed
+        if isinstance(output, pydantic.BaseModel):
+            output = output.model_dump()
+        
         choice = output.get("choices", [{}])[0]
         delta = choice.get("delta", {})
 
@@ -505,15 +513,29 @@ class OpenAIResp(OpenAIBase):
         else:
             accumulated_text = delta_text
 
-        # Accumulate thinking content
-        delta_thinking = delta.get("reasoning", "") or ""
-        if prev_resp:
-            accumulated_thinking = (prev_resp.thinking or "") + delta_thinking
+        # Accumulate thinking content - handle both string and dict formats
+        delta_thinking = delta.get("reasoning")
+        if prev_resp and prev_resp.thinking:
+            if isinstance(prev_resp.thinking, str) and isinstance(delta_thinking, str):
+                accumulated_thinking = prev_resp.thinking + (delta_thinking or "")
+            elif isinstance(delta_thinking, str):
+                # Previous was dict, current is string - just use current
+                accumulated_thinking = delta_thinking
+            else:
+                # Keep previous if current is None/empty, otherwise use current
+                accumulated_thinking = delta_thinking or prev_resp.thinking
         else:
             accumulated_thinking = delta_thinking
 
+        # Use previous role if delta doesn't specify one (common in streaming)
+        role = delta.get("role")
+        if role is None and prev_resp and prev_resp.msg:
+            role = prev_resp.msg.role
+        if role is None:
+            role = "assistant"  # Default fallback
+        
         msg = Msg(
-            role=delta.get("role", "assistant"),
+            role=role,
             text=accumulated_text,  # Full accumulated text
             id=output.get("id", None),
             prev_id=prev_id
@@ -522,10 +544,10 @@ class OpenAIResp(OpenAIBase):
         # Create delta object for streaming
         resp_delta = RespDelta(
             text=delta_text,  # Just the delta part
-            thinking=delta_thinking,  # Just the delta part
+            thinking=delta.get("reasoning"),  # Just the delta part - can be string or dict
             tool=delta.get("tool_calls", [{}])[0].get("function", {}).get("arguments") if delta.get("tool_calls") else None,
             finish_reason=choice.get("finish_reason"),
-            usage=output.get("usage")
+            usage=output.get("usage")  # Can include nested structures
         )
         
         if prev_resp is None:

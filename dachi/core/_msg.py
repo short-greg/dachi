@@ -1,3 +1,11 @@
+"""
+Defines core Msg, Resp, and Dialog classes for conversation handling.
+
+
+
+
+"""
+
 # 1st party
 from __future__ import annotations
 import typing
@@ -14,7 +22,6 @@ import pydantic
 # local
 from . import Renderable
 from ._tool import ToolUse
-from ._base import BaseModule
 
 """
 Streaming Response Flow:
@@ -93,8 +100,8 @@ class RespDelta(pydantic.BaseModel):
     tool: str | None = pydantic.Field(
         default=None, description="Partial tool call arguments (JSON fragment) for this streaming chunk"
     )
-    thinking: str | None = pydantic.Field(
-        default=None, description="Incremental reasoning/thinking content for this streaming chunk only"
+    thinking: str | typing.Dict[str, typing.Any] | None = pydantic.Field(
+        default=None, description="Incremental reasoning/thinking content for this streaming chunk only. Can be string or structured dict."
     )
     citations: typing.List[typing.Dict] | None = pydantic.Field(
         default=None, description="Incremental citation information for this streaming chunk only"
@@ -102,8 +109,8 @@ class RespDelta(pydantic.BaseModel):
     finish_reason: str | None = pydantic.Field(
         default=None, description="Reason generation stopped (e.g., 'stop', 'length', 'tool_calls') - set only when streaming completes"
     )
-    usage: typing.Dict[str, int] | None = pydantic.Field(
-        default=None, description="Per-chunk token usage statistics for this specific chunk"
+    usage: typing.Dict[str, typing.Any] | None = pydantic.Field(
+        default=None, description="Per-chunk token usage statistics for this specific chunk. Can include nested structures."
     )
 
 
@@ -159,8 +166,8 @@ class Resp(pydantic.BaseModel):
     tool: typing.List[typing.Dict] | None = pydantic.Field(
         default=None, description="Complete tool call objects with results for non-streaming responses"
     )
-    thinking: str | None = pydantic.Field(
-        default=None, description="Complete model reasoning/thought process content (accumulated, not delta)"
+    thinking: str | typing.Dict[str, typing.Any] | None = pydantic.Field(
+        default=None, description="Complete model reasoning/thought process content (accumulated, not delta). Can be string or structured dict."
     )
     logprobs: typing.Dict | None = pydantic.Field(
         default=None, description="Log probabilities for generated tokens"
@@ -187,8 +194,8 @@ class Resp(pydantic.BaseModel):
     model: str | None = pydantic.Field(
         default=None, description="Model name/version that generated this response"
     )
-    usage: typing.Dict[str, int] = pydantic.Field(
-        default_factory=dict, description="Token usage statistics (prompt_tokens, completion_tokens, etc.)"
+    usage: typing.Dict[str, typing.Any] = pydantic.Field(
+        default_factory=dict, description="Token usage statistics (prompt_tokens, completion_tokens, etc.). Can include nested structures for detailed token breakdowns."
     )
     choices: typing.List[typing.Dict[str, typing.Any]] | None = pydantic.Field(
         default=None, description="Choice-level metadata for multiple completions (index, finish_reason, etc.)"
