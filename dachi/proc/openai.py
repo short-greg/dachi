@@ -49,28 +49,6 @@ class OpenAIBase(LLM, AIAdapt):
             self.client = None
             self.async_client = None
     
-    def set_structured_output_arg(self, structured: bool | dict | pydantic.BaseModel | None, kwargs: dict) -> None:
-        """Add response_format to kwargs if structured output requested."""
-        if structured is None or structured is False:
-            return
-        elif structured is True:
-            kwargs['response_format'] = {"type": "json_object"}
-        elif isinstance(structured, dict):
-            kwargs['response_format'] = structured
-        elif isinstance(structured, type) and issubclass(structured, pydantic.BaseModel):
-            # Convert Pydantic model class to JSON schema with strict mode
-            schema = structured.model_json_schema()
-            kwargs['response_format'] = {
-                "type": "json_schema", 
-                "json_schema": {
-                    "name": structured.__name__,
-                    "strict": True,
-                    "schema": schema
-                }
-            }
-        else:
-            raise ValueError(f"Unsupported structured output type: {type(structured)}")
-    
     def set_tool_arg(self, tools: list[BaseTool] | None, kwargs: dict) -> None:
         """Add tools to kwargs if provided."""
         if tools is None:
@@ -128,6 +106,28 @@ class OpenAIChat(OpenAIBase):
     - tools, tool_choice, response_format, logprobs, top_logprobs
     - parallel_tool_calls, service_tier, stream_options
     """
+
+    def set_structured_output_arg(self, structured: bool | dict | pydantic.BaseModel | None, kwargs: dict) -> None:
+        """Add response_format to kwargs if structured output requested."""
+        if structured is None or structured is False:
+            return
+        elif structured is True:
+            kwargs['response_format'] = {"type": "json_object"}
+        elif isinstance(structured, dict):
+            kwargs['response_format'] = structured
+        elif isinstance(structured, type) and issubclass(structured, pydantic.BaseModel):
+            # Convert Pydantic model class to JSON schema with strict mode
+            schema = structured.model_json_schema()
+            kwargs['response_format'] = {
+                "type": "json_schema", 
+                "json_schema": {
+                    "name": structured.__name__,
+                    "strict": True,
+                    "schema": schema
+                }
+            }
+        else:
+            raise ValueError(f"Unsupported structured output type: {type(structured)}")
 
     def to_input(self, inp: Msg | BaseDialog | str, **kwargs) -> t.Dict:
         """Convert Dachi format to Chat Completions format."""
@@ -396,6 +396,26 @@ class OpenAIResp(OpenAIBase):
     3. Uses resp.spawn() to maintain both content streams across chunks
     4. Processors use resp.out_store for stateful accumulation
     """
+    
+    def set_structured_output_arg(self, structured: bool | dict | pydantic.BaseModel | None, kwargs: dict) -> None:
+        """Add text format to kwargs for Responses API if structured output requested."""
+        if structured is None or structured is False:
+            return
+        elif structured is True:
+            kwargs['text'] = {"format": {"type": "json_object"}}
+        elif isinstance(structured, dict):
+            kwargs['text'] = {"format": structured}
+        elif isinstance(structured, type) and issubclass(structured, pydantic.BaseModel):
+            # Convert Pydantic model class to JSON schema
+            schema = structured.model_json_schema()
+            kwargs['text'] = {
+                "format": {
+                    "type": "json_schema",
+                    "schema": schema
+                }
+            }
+        else:
+            raise ValueError(f"Unsupported structured output type: {type(structured)}")
     
     def to_input(
         self, 

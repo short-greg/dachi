@@ -551,20 +551,6 @@ class StructOut(ToOut):
         """Template for structured output"""
         return '{"key": "value"}'
 
-    # def prep(self) -> typing.Dict:
-    #     """Prepare request parameters for structured output."""
-    #     if isinstance(self.struct, typing.Dict):
-    #         return {'response_format': {
-    #             "type": "json_schema",
-    #             "json_schema": self.struct
-    #         }}
-    #     elif isinstance(self.struct, pydantic.BaseModel) or (
-    #         inspect.isclass(self.struct) and 
-    #         issubclass(self.struct, pydantic.BaseModel)
-    #     ):
-    #         return {'response_format': self.struct}
-    #     return {'response_format': "json_object"}
-
     def example(self) -> str:
         """Generate example output for structured data"""
         raise RuntimeError("StructOut.example() not implemented - cannot generate examples for arbitrary pydantic models")

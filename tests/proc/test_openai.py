@@ -167,48 +167,6 @@ class TestOpenAIBase:
         assert tool_schema['function']['description'] == 'A test function for tool testing'
         assert 'parameters' in tool_schema['function']
     
-    def test_set_structured_output_arg_with_false_does_nothing(self):
-        base = OpenAIBase()
-        kwargs = {}
-        base.set_structured_output_arg(False, kwargs)
-        assert kwargs == {}
-    
-    def test_set_structured_output_arg_with_none_does_nothing(self):
-        base = OpenAIBase()
-        kwargs = {}
-        base.set_structured_output_arg(None, kwargs)
-        assert kwargs == {}
-    
-    def test_set_structured_output_arg_with_true_adds_json_object(self):
-        base = OpenAIBase()
-        kwargs = {}
-        base.set_structured_output_arg(True, kwargs)
-        assert kwargs['response_format'] == {"type": "json_object"}
-    
-    def test_set_structured_output_arg_with_dict_passes_through(self):
-        base = OpenAIBase()
-        kwargs = {}
-        custom_format = {"type": "custom_format", "schema": "test"}
-        base.set_structured_output_arg(custom_format, kwargs)
-        assert kwargs['response_format'] == custom_format
-    
-    def test_set_structured_output_arg_with_pydantic_creates_json_schema(self):
-        base = OpenAIBase()
-        kwargs = {}
-        base.set_structured_output_arg(_TestModel, kwargs)
-        
-        assert 'response_format' in kwargs
-        response_format = kwargs['response_format']
-        assert response_format['type'] == 'json_schema'
-        assert response_format['json_schema']['name'] == '_TestModel'
-        assert response_format['json_schema']['strict'] is True
-        assert 'schema' in response_format['json_schema']
-    
-    def test_set_structured_output_arg_with_invalid_type_raises_error(self):
-        base = OpenAIBase()
-        kwargs = {}
-        with pytest.raises(ValueError, match="Unsupported structured output type"):
-            base.set_structured_output_arg("invalid", kwargs)
 
 
 class TestOpenAIChat:
@@ -353,6 +311,38 @@ class TestOpenAIChat:
         assert 'tools' not in api_calls[0] or api_calls[0]['tools'] is None
         assert 'response_format' not in api_calls[0] or api_calls[0]['response_format'] is None
 
+    def test_set_structured_output_arg_with_none_does_nothing(self):
+        kwargs = {}
+        self.chat.set_structured_output_arg(None, kwargs)
+        assert kwargs == {}
+    
+    def test_set_structured_output_arg_with_true_adds_json_object(self):
+        kwargs = {}
+        self.chat.set_structured_output_arg(True, kwargs)
+        assert kwargs['response_format'] == {"type": "json_object"}
+    
+    def test_set_structured_output_arg_with_dict_passes_through(self):
+        kwargs = {}
+        custom_format = {"type": "custom_format", "schema": "test"}
+        self.chat.set_structured_output_arg(custom_format, kwargs)
+        assert kwargs['response_format'] == custom_format
+    
+    def test_set_structured_output_arg_with_pydantic_creates_json_schema(self):
+        kwargs = {}
+        self.chat.set_structured_output_arg(_TestModel, kwargs)
+        
+        assert 'response_format' in kwargs
+        response_format = kwargs['response_format']
+        assert response_format['type'] == 'json_schema'
+        assert response_format['json_schema']['name'] == '_TestModel'
+        assert response_format['json_schema']['strict'] is True
+        assert 'schema' in response_format['json_schema']
+    
+    def test_set_structured_output_arg_with_invalid_type_raises_error(self):
+        kwargs = {}
+        with pytest.raises(ValueError, match="Unsupported structured output type"):
+            self.chat.set_structured_output_arg("invalid", kwargs)
+
 
 class TestOpenAIResp:
     """Test OpenAIResp Responses API adapter"""
@@ -422,3 +412,33 @@ class TestOpenAIResp:
         assert len(api_calls) == 1
         assert isinstance(resp, Resp)
         assert resp.thinking == "The user greeted me, so I should respond politely."
+
+    def test_set_structured_output_arg_with_none_does_nothing(self):
+        kwargs = {}
+        self.resp_adapter.set_structured_output_arg(None, kwargs)
+        assert kwargs == {}
+    
+    def test_set_structured_output_arg_with_true_adds_text_format(self):
+        kwargs = {}
+        self.resp_adapter.set_structured_output_arg(True, kwargs)
+        assert kwargs['text'] == {"format": {"type": "json_object"}}
+    
+    def test_set_structured_output_arg_with_dict_passes_through(self):
+        kwargs = {}
+        custom_format = {"type": "custom_format", "schema": "test"}
+        self.resp_adapter.set_structured_output_arg(custom_format, kwargs)
+        assert kwargs['text'] == {"format": custom_format}
+    
+    def test_set_structured_output_arg_with_pydantic_creates_json_schema(self):
+        kwargs = {}
+        self.resp_adapter.set_structured_output_arg(_TestModel, kwargs)
+        
+        assert 'text' in kwargs
+        text_format = kwargs['text']
+        assert text_format['format']['type'] == 'json_schema'
+        assert 'schema' in text_format['format']
+    
+    def test_set_structured_output_arg_with_invalid_type_raises_error(self):
+        kwargs = {}
+        with pytest.raises(ValueError, match="Unsupported structured output type"):
+            self.resp_adapter.set_structured_output_arg("invalid", kwargs)
