@@ -263,7 +263,7 @@ class TestOpenAIChat:
     def test_forward_with_model_parameter_passes_to_api(self):
         msg = Msg(role="user", text="Hello")
         
-        self.chat.delta(msg, model="gpt-4-turbo")
+        self.chat.forward(msg, model="gpt-4-turbo")
         
         api_calls = self.chat.client.chat.completions.calls
         assert len(api_calls) == 1
@@ -273,7 +273,7 @@ class TestOpenAIChat:
         msg = Msg(role="user", text="Hello")
         tools = [test_function]
         
-        self.chat.delta(msg, tools=tools)
+        self.chat.forward(msg, tools=tools)
         
         api_calls = self.chat.client.chat.completions.calls
         assert len(api_calls) == 1
@@ -284,7 +284,7 @@ class TestOpenAIChat:
     def test_forward_with_structured_true_adds_json_object(self):
         msg = Msg(role="user", text="Hello")
         
-        self.chat.delta(msg, structured=True)
+        self.chat.forward(msg, structured=True)
         
         api_calls = self.chat.client.chat.completions.calls
         assert len(api_calls) == 1
@@ -293,7 +293,7 @@ class TestOpenAIChat:
     def test_forward_with_structured_pydantic_adds_json_schema(self):
         msg = Msg(role="user", text="Hello")
         
-        self.chat.delta(msg, structured=_TestModel)
+        self.chat.forward(msg, structured=_TestModel)
         
         api_calls = self.chat.client.chat.completions.calls
         assert len(api_calls) == 1
@@ -303,7 +303,7 @@ class TestOpenAIChat:
     def test_forward_with_out_parameter_processes_response(self):
         msg = Msg(role="user", text="Hello")
         
-        resp = self.chat.delta(msg, out=TextOut())
+        resp = self.chat.forward(msg, out=TextOut())
         
         assert hasattr(resp, 'out')
         assert resp.out == "Hello there!"  # Based on mock response
@@ -344,7 +344,7 @@ class TestOpenAIChat:
     def test_forward_without_optional_params_works(self):
         msg = Msg(role="user", text="Hello")
         
-        resp = self.chat.delta(msg)
+        resp = self.chat.forward(msg)
         
         api_calls = self.chat.client.chat.completions.calls
         assert len(api_calls) == 1
@@ -395,7 +395,7 @@ class TestOpenAIResp:
     def test_forward_with_reasoning_summary_request_passes_to_api(self):
         msg = Msg(role="user", text="Hello")
         
-        self.resp_adapter.delta(msg, reasoning_summary_request=True)
+        self.resp_adapter.forward(msg, reasoning_summary_request=True)
         
         api_calls = self.resp_adapter.client.responses.calls
         assert len(api_calls) == 1
@@ -405,7 +405,7 @@ class TestOpenAIResp:
         msg = Msg(role="user", text="Hello")
         tools = [test_function]
         
-        self.resp_adapter.delta(msg, model="o1-preview", tools=tools)
+        self.resp_adapter.forward(msg, model="o1-preview", tools=tools)
         
         api_calls = self.resp_adapter.client.responses.calls
         assert len(api_calls) == 1

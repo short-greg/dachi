@@ -278,7 +278,7 @@ class OpenAIChat(OpenAIBase):
         
         return openai_msg
     
-    def delta(
+    def forward(
         self, 
         inp: Msg | BaseDialog, 
         model: str | None = None, 
@@ -588,7 +588,7 @@ class OpenAIResp(OpenAIBase):
         
         return openai_msg
     
-    def delta(
+    def forward(
         self, inp: Msg | BaseDialog, 
         model: str | None = None, 
         tools: list[BaseTool] | None = None, 
