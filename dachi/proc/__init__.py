@@ -71,6 +71,7 @@ from ._resp import (
     TupleOut,
     CSVOut,
     TextOut,
+    StructOut,
 )
 from ._parser import (
     Parser,

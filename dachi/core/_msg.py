@@ -16,7 +16,7 @@ import base64
 from datetime import datetime, timezone
 
 # 3rd party
-from pydantic import BaseModel, PrivateAttr, ValidationError
+from pydantic import BaseModel, PrivateAttr
 import pydantic
 
 # local
@@ -73,7 +73,6 @@ class _Final:
 
 END_TOK = _Final()
 NULL_TOK = object()
-
 
 
 class RespDelta(pydantic.BaseModel):
