@@ -57,23 +57,18 @@ class TestMsg:
 
 #     # --------------------------- behaviour ---------------------------
 
-    def test_apply_returns_lambda_result(self):
-        msg = _sample_msg()
-        out = msg.apply(lambda m: m.role.upper())
-        assert out == "USER"
-        # original untouched
-        assert msg.role == "user"
-
-    def test_apply_raises_when_function_raises(self):
-        msg = _sample_msg()
-        with pytest.raises(RuntimeError):
-            msg.apply(lambda m: (_ for _ in ()).throw(RuntimeError("boom")))
+    # TODO: Apply was removed so remove
+    # def test_apply_raises_when_function_raises(self):
+    #     msg = _sample_msg()
+    #     with pytest.raises(RuntimeError):
+    #         msg.apply(lambda m: (_ for _ in ()).throw(RuntimeError("boom")))
 
 #     # --------------------------- output ---------------------------
 
-    def test_output_present_key(self):
-        msg = _sample_msg(meta={"tool_out": 9})
-        assert msg.output() == 9
+    # TODO: Remove
+    # def test_output_present_key(self):
+    #     msg = _sample_msg(meta={"tool_out": 9})
+    #     assert msg.output() == 9
 
     # def test_output_missing_key_returns_default(self):
     #     msg = _sample_msg()
@@ -123,36 +118,36 @@ class TestResp:
     def test_ctor_initialises_empty_data_dict(self):
         resp = self._new_resp()
         # Note: implementation bug uses list, but we assert interface behaves like dict
-        assert isinstance(resp._data, dict)  # type: ignore[attr-defined]
-        assert resp._data == {}
+        assert isinstance(resp._raw, dict)  # type: ignore[attr-defined]
+        assert resp._raw == {}
 
 #     # --------------------------- data() & set_data() ---------------------------
 
     def test_set_and_get_data(self):
         resp = self._new_resp()
-        out = resp.data["k"] = 1
+        out = resp.raw["k"] = 1
         # set_data is chainable
-        assert out is resp.data['k']
-        resp.data["k"] = 2
-        assert resp.data["k"] == 2
+        assert out is resp.raw['k']
+        resp.raw["k"] = 2
+        assert resp.raw["k"] == 2
 
     def test_data_unknown_key_raises(self):
         resp = self._new_resp()
         with pytest.raises(KeyError):
-            resp.data["missing"]
+            resp.raw["missing"]
 
     def test_set_data_allows_non_hashable_values(self):
         lst = [1, 2]
         resp = self._new_resp()
-        resp.data["l"] = lst
-        assert resp.data["l"] is lst
+        resp.raw["l"] = lst
+        assert resp.raw["l"] is lst
 
 #     # --------------------------- get_tmp ---------------------------
 
     def test_get_tmp_without_tmp_attr_raises(self):
         resp = self._new_resp()
         with pytest.raises(KeyError):
-            resp.data['a']
+            resp.raw['a']
 
 #     # --------------------------- isolation ---------------------------
 
@@ -160,8 +155,8 @@ class TestResp:
         msg = _sample_msg()
         r1 = Resp(msg=msg)
         r2 = Resp(msg=msg)
-        r1.data["x"] = 1
-        assert "x" not in r2._data
+        r1.raw["x"] = 1
+        assert "x" not in r2._raw
 
 #     # --------------------------- repr ---------------------------
 

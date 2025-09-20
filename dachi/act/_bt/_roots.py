@@ -14,7 +14,6 @@ from contextlib import contextmanager
 from dachi.core import ModuleDict, Attr, ModuleList
 
 
-
 class BT(AdaptModule, Task):
     """The root task for a behavior tree
     """

@@ -7,11 +7,11 @@ import openai
 
 # local
 from ..core import (
-    Msg, Resp, BaseModule, RespDelta, BaseDialog
+    Msg, Resp, BaseModule, DeltaResp, BaseDialog
 )
 from ..core._tool import BaseTool
 from ._process import Process, AsyncProcess, AsyncStreamProcess, StreamProcess
-from ._ai import AIAdapt, LLM, get_resp_output, get_delta_resp_output
+from ._ai import LLMAdapter, extract_tools_from_messages, extract_format_override_from_messages
 from ._resp import ToOut
 
 
@@ -26,61 +26,91 @@ def extract_commonly_useful_meta(output: t.Dict) -> t.Dict[str, t.Any]:
     }
 
 
-class OpenAIBase(LLM, AIAdapt):
-    """Base class for OpenAI adapters with common functionality"""
-    
-    api_key: str | None = None
-    url: str | None = None
-    
-    def __post_init__(self):
-        super().__post_init__()
-        # Create the OpenAI clients
-        client_kwargs = {}
-        if self.url:
-            client_kwargs['base_url'] = self.url
-        if self.api_key:
-            client_kwargs['api_key'] = self.api_key
-        
-        try:
-            self.client = openai.Client(**client_kwargs)
-            self.async_client = openai.AsyncClient(**client_kwargs)
-        except openai.OpenAIError:
-            # For testing purposes, set clients to None
-            self.client = None
-            self.async_client = None
-    
-    def set_tool_arg(self, tools: list[BaseTool] | None, kwargs: dict) -> None:
-        """Add tools to kwargs if provided."""
-        if tools is None:
-            return
-        
-        openai_tools = []
-        for tool in tools:
-            schema = {
-                "type": "function",
-                "function": {
-                    "name": tool.name,
-                    "description": tool.description,
-                    "parameters": tool.input_model.model_json_schema()
+# Format conversion helper functions
+
+def convert_tools_to_openai_format(tools: list[BaseTool]) -> list[dict]:
+    """Convert Dachi tools to OpenAI tools format"""
+    openai_tools = []
+    for tool in tools:
+        schema = {
+            "type": "function",
+            "function": {
+                "name": tool.name,
+                "description": tool.description,
+                "parameters": tool.input_model.model_json_schema()
+            }
+        }
+        openai_tools.append(schema)
+    return openai_tools
+
+
+def build_openai_response_format(format_override) -> dict:
+    """Convert format_override to OpenAI response_format (Chat API)"""
+    if format_override is None or format_override is False:
+        return {}
+    elif format_override is True or format_override == "json":
+        return {"response_format": {"type": "json_object"}}
+    elif format_override == "text":
+        return {}  # Default text format
+    elif isinstance(format_override, dict):
+        return {"response_format": format_override}
+    elif isinstance(format_override, type) and issubclass(format_override, pydantic.BaseModel):
+        # Convert Pydantic model class to JSON schema with strict mode
+        schema = format_override.model_json_schema()
+        return {
+            "response_format": {
+                "type": "json_schema", 
+                "json_schema": {
+                    "name": format_override.__name__,
+                    "strict": True,
+                    "schema": schema
                 }
             }
-            openai_tools.append(schema)
-        kwargs['tools'] = openai_tools
-    
-    def apply_output_processing(self, resp: Resp, out: ToOut | dict[str, ToOut] | tuple[ToOut, ...] | None) -> Resp:
-        """Apply ToOut processing to response."""
-        if out is not None:
-            resp.out = get_resp_output(resp, out)
-        return resp
-    
-    def apply_streaming_output_processing(self, resp: Resp, out: ToOut | dict[str, ToOut] | tuple[ToOut, ...] | None, is_last: bool = False) -> Resp:
-        """Apply ToOut processing to streaming response."""
-        if out is not None:
-            resp.out = get_delta_resp_output(resp, out, is_last)
-        return resp
+        }
+    else:
+        raise ValueError(f"Unsupported format_override type: {type(format_override)}")
 
 
-class OpenAIChat(OpenAIBase):
+def build_openai_text_format(format_override) -> dict:
+    """Convert format_override to OpenAI text.format (Responses API)"""
+    if format_override is None or format_override is False:
+        return {}
+    elif format_override is True or format_override == "json":
+        return {"text": {"format": {"type": "json_object"}}}
+    elif format_override == "text":
+        return {}  # Default text format
+    elif isinstance(format_override, dict):
+        return {"text": {"format": format_override}}
+    elif isinstance(format_override, type) and issubclass(format_override, pydantic.BaseModel):
+        # Convert Pydantic model class to JSON schema
+        schema = format_override.model_json_schema()
+        return {
+            "text": {
+                "format": {
+                    "type": "json_schema",
+                    "schema": schema
+                }
+            }
+        }
+    else:
+        raise ValueError(f"Unsupported format_override type: {type(format_override)}")
+
+
+def extract_openai_tool_calls(message: dict) -> list:
+    """Extract tool calls from OpenAI response message"""
+    return message.get("tool_calls", []) if message.get("tool_calls") else []
+
+
+def accumulate_streaming_text(prev_text: str | None, delta_text: str | None) -> str:
+    """Pure function for text accumulation without spawn()"""
+    if prev_text is None:
+        prev_text = ""
+    if delta_text is None:
+        delta_text = ""
+    return prev_text + delta_text
+
+
+class OpenAIChat(LLMAdapter):
     """
     Adapter for OpenAI Chat Completions API.
     
@@ -93,10 +123,9 @@ class OpenAIChat(OpenAIBase):
     - Msg.tool_calls -> role="tool" messages with tool_call_id
     
     Streaming Pattern:
-    1. Accumulates text in resp.msg.text (complete message state)
-    2. Sets resp.delta.text to chunk content only  
-    3. Uses resp.spawn() to create next chunk response
-    4. Processors use resp.out_store for stateful accumulation
+    1. Accumulates text without spawn() logic (pure accumulation)
+    2. Returns both Resp and DeltaResp from streaming
+    3. Uses helper functions for clean text accumulation
     
     Unified kwargs (converted):
     - temperature, max_tokens, top_p, frequency_penalty, presence_penalty
@@ -107,43 +136,24 @@ class OpenAIChat(OpenAIBase):
     - parallel_tool_calls, service_tier, stream_options
     """
 
-    def set_structured_output_arg(self, structured: bool | dict | pydantic.BaseModel | None, kwargs: dict) -> None:
-        """Add response_format to kwargs if structured output requested."""
-        if structured is None or structured is False:
-            return
-        elif structured is True:
-            kwargs['response_format'] = {"type": "json_object"}
-        elif isinstance(structured, dict):
-            kwargs['response_format'] = structured
-        elif isinstance(structured, type) and issubclass(structured, pydantic.BaseModel):
-            # Convert Pydantic model class to JSON schema with strict mode
-            schema = structured.model_json_schema()
-            kwargs['response_format'] = {
-                "type": "json_schema", 
-                "json_schema": {
-                    "name": structured.__name__,
-                    "strict": True,
-                    "schema": schema
-                }
-            }
+    def to_input(self, messages: Msg | BaseDialog, **kwargs) -> t.Dict:
+        """Convert Dachi messages to Chat Completions format using universal helpers."""
+        # Use universal helper functions to extract tools and format_override
+        tools = extract_tools_from_messages(messages)
+        format_override = extract_format_override_from_messages(messages)
+        
+        # Convert single message to list for uniform processing
+        if isinstance(messages, Msg):
+            original_messages = [messages]
         else:
-            raise ValueError(f"Unsupported structured output type: {type(structured)}")
-
-    def to_input(self, inp: Msg | BaseDialog | str, **kwargs) -> t.Dict:
-        """Convert Dachi format to Chat Completions format."""
-        if isinstance(inp, str):
-            inp = Msg(role="user", text=inp)
-        if isinstance(inp, Msg):
-            original_messages = [inp]
-        else:
-            original_messages = list(inp)
+            original_messages = list(messages)
         
         # Convert messages to OpenAI format
-        messages = [self._convert_message(msg) for msg in original_messages]
+        openai_messages = [self._convert_message(msg) for msg in original_messages]
         
         # Add tool messages from ToolUse objects (using original Msg objects)
         out_messages = []
-        for i, msg in enumerate(messages):
+        for i, msg in enumerate(openai_messages):
             out_messages.append(msg)
             # Access tool_calls from original Msg object, not converted dict
             for tool_out in original_messages[i].tool_calls:
@@ -153,37 +163,47 @@ class OpenAIChat(OpenAIBase):
                     "tool_call_id": tool_out.id
                 })
         
-        return {
+        # Build final API input
+        api_input = {
             "messages": out_messages,
             **kwargs
         }
+        
+        # Add tools if present
+        if tools:
+            api_input["tools"] = convert_tools_to_openai_format(tools)
+            
+        # Add response format if present  
+        if format_override:
+            api_input.update(build_openai_response_format(format_override))
+        
+        return api_input
     
-    def to_output(
+    def from_result(
         self, 
         output: t.Dict | pydantic.BaseModel, 
-        inp: Msg | BaseDialog | str | None = None
+        messages: Msg | BaseDialog
     ) -> Resp:
         """Convert Chat Completions response to Dachi Resp."""
         # Convert Pydantic model to dict if needed
         if isinstance(output, pydantic.BaseModel):
             output = output.model_dump()
         
+        # Extract tools and format info from messages for potential validation/processing
+        tools = extract_tools_from_messages(messages)
+        format_override = extract_format_override_from_messages(messages)
+        
         choice = output.get("choices", [{}])[0]
         message = choice.get("message", {})
         
-        msg = Msg(
-            role=message.get("role", "assistant"),
-            text=message.get("content", "")
-        )
-        
         resp = Resp(
-            msg=msg,
-            text=message.get("content"),
+            role=message.get("role", "assistant"),
+            text=message.get("content", ""),
             finish_reason=choice.get("finish_reason"),
-            response_id=output.get("id"),
+            id=output.get("id"),
             model=output.get("model"),
-            usage=output.get("usage", {}),
-            tool=message.get("tool_calls", []) if message.get("tool_calls") else None,
+            usage=output.get("usage") or {},
+            tool_use=extract_openai_tool_calls(message),
             logprobs=choice.get("logprobs"),
             choices=[{
                 "index": c.get("index", i),
@@ -196,58 +216,63 @@ class OpenAIChat(OpenAIBase):
         resp.meta.update(extract_commonly_useful_meta(output))
         
         # Store raw response
-        resp._data = output
+        resp.raw = output
         return resp
     
-    def from_streamed(
+    def from_streamed_result(
         self, 
         output: t.Dict | pydantic.BaseModel, 
-        inp: Msg | BaseDialog | str | None = None, 
+        messages: Msg | BaseDialog, 
         prev_resp: Resp | None = None
-    ) -> Resp:
-        """Handle Chat Completions streaming responses with proper accumulation."""
+    ) -> t.Tuple[Resp, DeltaResp]:
+        """Handle Chat Completions streaming responses with pure accumulation."""
         # Convert Pydantic model to dict if needed
         if isinstance(output, pydantic.BaseModel):
             output = output.model_dump()
         
+        # Extract tools and format info from messages for potential validation/processing
+        tools = extract_tools_from_messages(messages)
+        format_override = extract_format_override_from_messages(messages)
+        
         choice = output.get("choices", [{}])[0]
         delta = choice.get("delta", {})
         
-        # Accumulate text content
+        # Accumulate text content using helper function
         delta_text = delta.get("content", "") or ""
-        if prev_resp and prev_resp.msg:
-            accumulated_text = prev_resp.msg.text + delta_text
-        else:
-            accumulated_text = delta_text
+        accumulated_text = accumulate_streaming_text(
+            prev_resp.text if prev_resp else None, 
+            delta_text
+        )
         
-        # Create new message with accumulated content
         # Use previous role if delta doesn't specify one (common in streaming)
         role = delta.get("role")
-        if role is None and prev_resp and prev_resp.msg:
-            role = prev_resp.msg.role
+        if role is None and prev_resp:
+            role = prev_resp.role
         if role is None:
             role = "assistant"  # Default fallback
         
-        msg = Msg(
+        # Create response with accumulated content (no spawn() logic)
+        resp = Resp(
             role=role,
-            text=accumulated_text  # Full accumulated text
+            text=accumulated_text,  # Full accumulated text
+            finish_reason=choice.get("finish_reason"),
+            id=output.get("id"),
+            model=output.get("model"),
+            usage=output.get("usage") or {}
         )
         
         # Create delta object for streaming
-        resp_delta = RespDelta(
+        delta_resp = DeltaResp(
             text=delta_text,  # Just the delta part
             tool=delta.get("tool_calls", [{}])[0].get("function", {}).get("arguments") if delta.get("tool_calls") else None,
             finish_reason=choice.get("finish_reason"),
             usage=output.get("usage")
         )
         
-        if prev_resp is None:
-            resp = Resp(msg=msg, delta=resp_delta)
-        else:
-            resp = prev_resp.spawn(msg=msg, data=output)
-            resp.delta = resp_delta
+        # Store raw response
+        resp.raw = output
         
-        return resp
+        return resp, delta_resp
     
     def _convert_message(self, msg: Msg) -> t.Dict:
         """Convert single Msg to OpenAI message format."""
@@ -278,107 +303,9 @@ class OpenAIChat(OpenAIBase):
         
         return openai_msg
     
-    def forward(
-        self, 
-        inp: Msg | BaseDialog, 
-        model: str | None = None, 
-        tools: list[BaseTool] | None = None, 
-        structured: bool | dict | pydantic.BaseModel | None = None,
-        out: ToOut | dict[str, ToOut] | tuple[ToOut, ...] | None = None,
-        **kwargs
-    ) -> Resp:
-        # Add explicit parameters to kwargs if provided
-        if model is not None:
-            kwargs['model'] = model
-        self.set_tool_arg(tools, kwargs)
-        self.set_structured_output_arg(structured, kwargs)
-            
-        api_input = self.to_input(inp, **kwargs)
-        resp = self.to_output(
-            self.client.chat.completions.create(**api_input),
-            inp
-        )
-        
-        return self.apply_output_processing(resp, out)
-
-    async def aforward(
-        self, 
-        inp: Msg | BaseDialog | str, 
-        model: str | None = None,
-        tools: list[BaseTool] | None = None, 
-        structured: bool | dict | pydantic.BaseModel | None = None,
-        out: ToOut | dict[str, ToOut] | tuple[ToOut, ...] | None = None,
-        **kwargs
-    ) -> Resp:
-        # Add explicit parameters to kwargs if provided
-        if model is not None:
-            kwargs['model'] = model
-        self.set_tool_arg(tools, kwargs)
-        self.set_structured_output_arg(structured, kwargs)
-            
-        api_input = self.to_input(inp, **kwargs)
-        resp = self.to_output(
-            await self.async_client.chat.completions.create(**api_input),
-            inp
-        )
-        
-        return self.apply_output_processing(resp, out)
-
-    async def astream(
-        self, inp: Msg | BaseDialog, 
-        model: str | None = None, 
-        tools: list[BaseTool] | None = None, 
-        structured: bool | dict | pydantic.BaseModel | None = None,
-        out: ToOut | dict[str, ToOut] | tuple[ToOut, ...] | None = None,
-        **kwargs
-    ) -> t.AsyncIterator[Resp]:
-        # Add explicit parameters to kwargs if provided
-        if model is not None:
-            kwargs['model'] = model
-        self.set_tool_arg(tools, kwargs)
-        self.set_structured_output_arg(structured, kwargs)
-            
-        api_input = self.to_input(inp, **kwargs)
-        api_input['stream'] = True
-        
-        prev_resp = None
-        async for chunk in await self.async_client.chat.completions.create(**api_input):
-            resp = self.from_streamed(chunk, inp, prev_resp)
-            # Apply streaming output processing (is_last determined by finish_reason)
-            is_last = resp.finish_reason is not None
-            resp = self.apply_streaming_output_processing(resp, out, is_last)
-            prev_resp = resp
-            yield resp
-
-    def stream(
-        self, 
-        inp: Msg | BaseDialog, 
-        model: str | None = None, 
-        tools: list[BaseTool] | None = None, 
-        structured: bool | dict | pydantic.BaseModel | None = None,
-        out: ToOut | dict[str, ToOut] | tuple[ToOut, ...] | None = None,
-        **kwargs
-    ) -> t.Iterator[Resp]:
-        # Add explicit parameters to kwargs if provided
-        if model is not None:
-            kwargs['model'] = model
-        self.set_tool_arg(tools, kwargs)
-        self.set_structured_output_arg(structured, kwargs)
-            
-        api_input = self.to_input(inp, **kwargs)
-        api_input['stream'] = True
-        
-        prev_resp = None
-        for chunk in self.client.chat.completions.create(**api_input):
-            resp = self.from_streamed(chunk, inp, prev_resp)
-            # Apply streaming output processing (is_last determined by finish_reason)
-            is_last = resp.finish_reason is not None
-            resp = self.apply_streaming_output_processing(resp, out, is_last)
-            prev_resp = resp
-            yield resp
 
 
-class OpenAIResp(OpenAIBase):
+class OpenAIResp(LLMAdapter):
     """
     Adapter for OpenAI Responses API.
     
@@ -388,115 +315,93 @@ class OpenAIResp(OpenAIBase):
     Key Differences from Chat Completions:
     - Handles 'reasoning' field for model thinking process
     - Accumulates both text and thinking content separately during streaming
-    - Uses same streaming pattern as OpenAIChat but with dual content streams
+    - Uses pure accumulation without spawn() logic
+    - Different parameter mapping (max_tokens -> max_output_tokens)
     
     Streaming Pattern:
-    1. Accumulates text in resp.msg.text, thinking in resp.thinking  
-    2. Sets resp.delta.text and resp.delta.thinking to chunk content only
-    3. Uses resp.spawn() to maintain both content streams across chunks
-    4. Processors use resp.out_store for stateful accumulation
+    1. Accumulates text and thinking content using helper functions
+    2. Returns both Resp and DeltaResp from streaming
+    3. Uses text.format instead of response_format for structured output
     """
     
-    def set_structured_output_arg(self, structured: bool | dict | pydantic.BaseModel | None, kwargs: dict) -> None:
-        """Add text format to kwargs for Responses API if structured output requested."""
-        if structured is None or structured is False:
-            return
-        elif structured is True:
-            kwargs['text'] = {"format": {"type": "json_object"}}
-        elif isinstance(structured, dict):
-            kwargs['text'] = {"format": structured}
-        elif isinstance(structured, type) and issubclass(structured, pydantic.BaseModel):
-            # Convert Pydantic model class to JSON schema
-            schema = structured.model_json_schema()
-            kwargs['text'] = {
-                "format": {
-                    "type": "json_schema",
-                    "schema": schema
-                }
+    def to_input(self, messages: Msg | BaseDialog, **kwargs) -> t.Dict:
+        """Convert Dachi messages to Responses API format using universal helpers."""
+        # Use universal helper functions to extract tools and format_override
+        tools = extract_tools_from_messages(messages)
+        format_override = extract_format_override_from_messages(messages)
+        
+        # Handle single user message case - use simple string input
+        if isinstance(messages, Msg) and messages.role == "user" and "instructions" not in kwargs:
+            api_input = {
+                "input": messages.text or "",
+                **kwargs
             }
         else:
-            raise ValueError(f"Unsupported structured output type: {type(structured)}")
-    
-    def to_input(
-        self, 
-        inp: Msg | BaseDialog | str, 
-        **kwargs
-    ) -> t.Dict:
-        """Convert Dachi format to Responses API format."""
-        # Handle single user message case - use simple string input
-        if isinstance(inp, Msg) and inp.role == "user" and "instructions" not in kwargs:
-            return {
-                "input": inp.text or "",
+            # Handle multiple messages or complex cases - use input array format
+            if isinstance(messages, Msg):
+                original_messages = [messages]
+            else:
+                original_messages = list(messages)
+            
+            # Convert messages to OpenAI format
+            openai_messages = [self._convert_message(msg) for msg in original_messages]
+            
+            # Add tool messages from ToolUse objects (using original Msg objects)
+            out_messages = []
+            for i, msg in enumerate(openai_messages):
+                out_messages.append(msg)
+                # Access tool_calls from original Msg object, not converted dict
+                for tool_out in original_messages[i].tool_calls:
+                    out_messages.append({
+                        "role": "tool",
+                        "content": str(tool_out.result),
+                        "tool_call_id": tool_out.id
+                    })
+            
+            api_input = {
+                "input": out_messages,
                 **kwargs
             }
         
-        # Handle multiple messages or complex cases - use input array format
-        if isinstance(inp, str):
-            original_messages = [Msg(role="user", text=inp)]
-        elif isinstance(inp, Msg):
-            original_messages = [inp]
-        else:
-            original_messages = list(inp)
-        
-        # Convert messages to OpenAI format
-        messages = [self._convert_message(msg) for msg in original_messages]
-        
-        # Add tool messages from ToolUse objects (using original Msg objects)
-        out_messages = []
-        for i, msg in enumerate(messages):
-            out_messages.append(msg)
-            # Access tool_calls from original Msg object, not converted dict
-            for tool_out in original_messages[i].tool_calls:
-                out_messages.append({
-                    "role": "tool",
-                    "content": str(tool_out.result),
-                    "tool_call_id": tool_out.id
-                })
-        
-        # For Responses API, use input parameter with messages array
         # Map parameter names for Responses API
-        if 'max_tokens' in kwargs:
-            kwargs['max_output_tokens'] = kwargs.pop('max_tokens')
+        if 'max_tokens' in api_input:
+            api_input['max_output_tokens'] = api_input.pop('max_tokens')
+        
+        # Add tools if present
+        if tools:
+            api_input["tools"] = convert_tools_to_openai_format(tools)
             
-        return {
-            "input": out_messages,
-            **kwargs
-        }
+        # Add text format if present  
+        if format_override:
+            api_input.update(build_openai_text_format(format_override))
+            
+        return api_input
     
-    def to_output(
+    def from_result(
         self, 
         output: t.Dict | pydantic.BaseModel, 
-        inp: Msg | BaseDialog | str | None = None
+        messages: Msg | BaseDialog
     ) -> Resp:
         """Convert Responses API response to Dachi Resp."""
         if isinstance(output, pydantic.BaseModel):
             output = output.model_dump()
+        
+        # Extract tools and format info from messages for potential validation/processing
+        tools = extract_tools_from_messages(messages)
+        format_override = extract_format_override_from_messages(messages)
+        
         choice = output.get("choices", [{}])[0]
         message = choice.get("message", {})
 
-        resp_id = output.get("id", None)
-        
-        if isinstance(inp, Msg):
-            prev_id = inp.id
-        else:
-            prev_id = None
-
-        msg = Msg(
+        resp = Resp(
             role=message.get("role", "assistant"),
             text=message.get("content", ""),
-            id=resp_id,
-            prev_id=prev_id
-        )
-        
-        resp = Resp(
-            msg=msg,
-            text=message.get("content"),
-            thinking=output.get("reasoning"),  # Can be string or dict - now supported by field type
+            thinking=output.get("reasoning"),  # Can be string or dict
             finish_reason=choice.get("finish_reason"),
-            response_id=output.get("id"),
+            id=output.get("id"),
             model=output.get("model"),
-            usage=output.get("usage", {}),  # Can include nested structures - now supported by field type
-            tool=message.get("tool_calls", []) if message.get("tool_calls") else None,
+            usage=output.get("usage") or {},
+            tool_use=extract_openai_tool_calls(message),
             logprobs=choice.get("logprobs"),
             choices=[{
                 "index": c.get("index", i),
@@ -509,27 +414,31 @@ class OpenAIResp(OpenAIBase):
         resp.meta.update(extract_commonly_useful_meta(output))
         
         # Store raw response
-        resp.data = output
+        resp.raw = output
         return resp
     
-    def from_streamed(self, output: t.Dict | pydantic.BaseModel, inp: Msg | BaseDialog | str | None = None, prev_resp: Resp | None = None) -> Resp:
-        """Handle Responses API streaming responses with proper accumulation."""
+    def from_streamed_result(self, result: t.Dict, messages: Msg | BaseDialog, prev_resp: Resp | None = None) -> t.Tuple[Resp, DeltaResp]:
+        """Convert streaming LLM response to Dachi Resp + DeltaResp"""
         # Convert Pydantic model to dict if needed
-        if isinstance(output, pydantic.BaseModel):
-            output = output.model_dump()
+        if isinstance(result, pydantic.BaseModel):
+            result = result.model_dump()
         
-        choice = output.get("choices", [{}])[0]
+        # Extract tools and format info from messages for potential validation/processing
+        tools = extract_tools_from_messages(messages)
+        format_override = extract_format_override_from_messages(messages)
+        
+        choice = result.get("choices", [{}])[0]
         delta = choice.get("delta", {})
 
-        if isinstance(inp, Msg):
-            prev_id = inp.id
+        if isinstance(messages, Msg):
+            prev_id = messages.id
         else:
             prev_id = None
 
         # Accumulate text content
         delta_text = delta.get("content", "") or ""
-        if prev_resp and prev_resp.msg:
-            accumulated_text = prev_resp.msg.text + delta_text
+        if prev_resp and prev_resp.text:
+            accumulated_text = prev_resp.text + delta_text
         else:
             accumulated_text = delta_text
 
@@ -549,35 +458,39 @@ class OpenAIResp(OpenAIBase):
 
         # Use previous role if delta doesn't specify one (common in streaming)
         role = delta.get("role")
-        if role is None and prev_resp and prev_resp.msg:
-            role = prev_resp.msg.role
+        if role is None and prev_resp:
+            role = prev_resp.role
         if role is None:
             role = "assistant"  # Default fallback
         
-        msg = Msg(
+        # Create accumulated response using new Resp inheritance model
+        resp = Resp(
             role=role,
             text=accumulated_text,  # Full accumulated text
-            id=output.get("id", None),
-            prev_id=prev_id
+            id=result.get("id", None),
+            prev_id=prev_id,
+            thinking=accumulated_thinking,  # Full accumulated thinking
+            model=result.get("model"),
+            finish_reason=choice.get("finish_reason"),
+            usage=result.get("usage", {}),
+            logprobs=choice.get("logprobs"),
+            citations=choice.get("citations")
         )
         
-        # Create delta object for streaming
-        resp_delta = RespDelta(
+        # Store raw response
+        resp.raw = result
+        resp.meta.update(extract_commonly_useful_meta(result))
+        
+        # Create delta object for streaming (just the incremental changes)
+        delta_resp = DeltaResp(
             text=delta_text,  # Just the delta part
             thinking=delta.get("reasoning"),  # Just the delta part - can be string or dict
             tool=delta.get("tool_calls", [{}])[0].get("function", {}).get("arguments") if delta.get("tool_calls") else None,
             finish_reason=choice.get("finish_reason"),
-            usage=output.get("usage")  # Can include nested structures
+            usage=result.get("usage")  # Can include nested structures
         )
         
-        if prev_resp is None:
-            resp = Resp(msg=msg, delta=resp_delta, thinking=accumulated_thinking)
-        else:
-            resp = prev_resp.spawn(msg=msg, data=output)
-            resp.delta = resp_delta
-            resp.thinking = accumulated_thinking  # Full accumulated thinking
-        
-        return resp
+        return resp, delta_resp
     
     def _convert_message(self, msg: Msg) -> t.Dict:
         """Convert single Msg to OpenAI message format."""
@@ -608,113 +521,3 @@ class OpenAIResp(OpenAIBase):
         
         return openai_msg
     
-    def forward(
-        self, inp: Msg | BaseDialog, 
-        model: str | None = None, 
-        tools: list[BaseTool] | None = None, 
-        structured: bool | dict | pydantic.BaseModel | None = None,
-        out: ToOut | dict[str, ToOut] | tuple[ToOut, ...] | None = None,
-        reasoning_summary_request: bool | None = None,
-        **kwargs
-    ) -> Resp:
-        # Add explicit parameters to kwargs if provided
-        if model is not None:
-            kwargs['model'] = model
-        if reasoning_summary_request is not None:
-            kwargs['reasoning_summary_request'] = reasoning_summary_request
-        self.set_tool_arg(tools, kwargs)
-        self.set_structured_output_arg(structured, kwargs)
-            
-        api_input = self.to_input(inp, **kwargs)
-        resp = self.to_output(
-            self.client.responses.create(**api_input),
-            inp
-        )
-        
-        return self.apply_output_processing(resp, out)
-    
-    async def aforward(
-        self, 
-        inp: Msg | BaseDialog, 
-        model: str | None = None, 
-        tools: list[BaseTool] | None = None, 
-        structured: bool | dict | pydantic.BaseModel | None = None,
-        out: ToOut | dict[str, ToOut] | tuple[ToOut, ...] | None = None,
-        reasoning_summary_request: bool | None = None,
-        **kwargs
-    ) -> Resp:
-        # Add explicit parameters to kwargs if provided
-        if model is not None:
-            kwargs['model'] = model
-        if reasoning_summary_request is not None:
-            kwargs['reasoning_summary_request'] = reasoning_summary_request
-        self.set_tool_arg(tools, kwargs)
-        self.set_structured_output_arg(structured, kwargs)
-            
-        api_input = self.to_input(inp, **kwargs)
-        resp = self.to_output(
-            await self.async_client.responses.create(**api_input),
-            inp
-        )
-        
-        return self.apply_output_processing(resp, out)
-    
-    def stream(
-        self, 
-        inp, 
-        model: str | None = None, 
-        tools: list[BaseTool] | None = None, 
-        structured: bool | dict | pydantic.BaseModel | None = None,
-        out: ToOut | dict[str, ToOut] | tuple[ToOut, ...] | None = None,
-        reasoning_summary_request: bool | None = None,
-        **kwargs
-    ) -> t.Iterator[Resp]:
-        # Add explicit parameters to kwargs if provided
-        if model is not None:
-            kwargs['model'] = model
-        if reasoning_summary_request is not None:
-            kwargs['reasoning_summary_request'] = reasoning_summary_request
-        self.set_tool_arg(tools, kwargs)
-        self.set_structured_output_arg(structured, kwargs)
-            
-        api_input = self.to_input(inp, **kwargs)
-        api_input['stream'] = True
-        
-        prev_resp = None
-        for chunk in self.client.responses.create(**api_input):
-            resp = self.from_streamed(chunk, inp, prev_resp)
-            # Apply streaming output processing (is_last determined by finish_reason)
-            is_last = resp.finish_reason is not None
-            resp = self.apply_streaming_output_processing(resp, out, is_last)
-            prev_resp = resp
-            yield resp
-
-    async def astream(
-        self, 
-        inp, 
-        model: str | None = None, 
-        tools: list[BaseTool] | None = None, 
-        structured: bool | dict | pydantic.BaseModel | None = None,
-        out: ToOut | dict[str, ToOut] | tuple[ToOut, ...] | None = None,
-        reasoning_summary_request: bool | None = None,
-        **kwargs
-    ) -> t.AsyncIterator[Resp]:
-        # Add explicit parameters to kwargs if provided
-        if model is not None:
-            kwargs['model'] = model
-        if reasoning_summary_request is not None:
-            kwargs['reasoning_summary_request'] = reasoning_summary_request
-        self.set_tool_arg(tools, kwargs)
-        self.set_structured_output_arg(structured, kwargs)
-            
-        api_input = self.to_input(inp, **kwargs)
-        api_input['stream'] = True
-        
-        prev_resp = None
-        async for chunk in await self.async_client.responses.create(**api_input):
-            resp = self.from_streamed(chunk, inp, prev_resp)
-            # Apply streaming output processing (is_last determined by finish_reason)
-            is_last = resp.finish_reason is not None
-            resp = self.apply_streaming_output_processing(resp, out, is_last)
-            prev_resp = resp
-            yield resp

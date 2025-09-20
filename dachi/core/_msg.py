@@ -1,9 +1,14 @@
 """
-Defines core Msg, Resp, and Dialog classes for conversation handling.
+Defines core Msg, Prompt, Resp, DeltaResp and Dialog classes for conversation handling.
 
+This module provides a simplified message architecture where:
+- Msg: Base message class with core content and metadata
+- Prompt(Msg): User prompts with LLM configuration and sampling parameters  
+- Resp(Msg): LLM responses with generation metadata and tool execution
+- DeltaResp: Streaming deltas containing only incremental changes
 
-
-
+The architecture eliminates the complex spawn() logic and streaming state management
+of the previous implementation, providing cleaner inheritance and simpler usage.
 """
 
 # 1st party
@@ -11,49 +16,17 @@ from __future__ import annotations
 import typing
 import typing as t
 from abc import abstractmethod
-from typing import Self
+from typing import Self, Literal
 import base64
 from datetime import datetime, timezone
 
 # 3rd party
-from pydantic import BaseModel, PrivateAttr
+from pydantic import BaseModel, PrivateAttr, Field
 import pydantic
 
 # local
 from . import Renderable
-from ._tool import ToolUse
-
-"""
-Streaming Response Flow:
-
-The response architecture handles both complete and streaming responses with clear separation:
-
-1. First streaming chunk:
-   resp = Resp(msg=Msg(text="Hello"))
-   resp.delta = RespDelta(text="Hello")  # Same as msg.text for first chunk
-   resp.out_store = {}  # Empty processing state
-   
-2. Second chunk arrives:
-   resp.msg.text = "Hello world"         # Accumulated complete text
-   resp.delta.text = " world"            # Just the new chunk
-   resp.out_store["processor"] = {...}   # Updated processing state
-   resp.out = current_processed_result   # Current processed output
-   
-3. Processing with output processors:
-   # Processors use resp.out_store to maintain state across chunks
-   # resp.out gets updated with current processed result
-   
-4. spawn() for next chunk:
-   new_resp = resp.spawn(new_msg, chunk_data)
-   # Copies out_store state and out value for continuity
-   # Creates fresh delta for new chunk
-   
-Key principles:
-- Resp.msg: Always contains complete accumulated state
-- RespDelta: Only contains current chunk changes  
-- out_store: Accumulates processor state across streaming
-- out: Current processed result (any type)
-"""
+from ._tool import ToolUse, BaseTool
 
 try:
     # pydantic v2 preferred
@@ -65,7 +38,6 @@ except Exception:  # pragma: no cover
     _PD_V2 = False
 
 
-
 class _Final:
     """A unique object to mark the end of a streaming response."""
     def __repr__(self):
@@ -75,259 +47,13 @@ END_TOK = _Final()
 NULL_TOK = object()
 
 
-class RespDelta(pydantic.BaseModel):
-    """Single streaming chunk data - NOT accumulated values.
-    
-    Contains only the incremental changes for the current streaming chunk.
-    All fields represent deltas/changes, not accumulated state.
-    
-    Field Meanings:
-        text: New text content in this chunk only
-        tool: Partial tool call JSON fragment for this chunk  
-        thinking: New reasoning content in this chunk only
-        citations: New citation information in this chunk only
-        finish_reason: Set only when streaming completes
-        usage: Token usage for this specific chunk
-        
-    Important: These are chunk deltas, not accumulated values.
-    For accumulated values, use the parent Resp object fields.
-    """
-    
-    text: str | None = pydantic.Field(
-        default=None, description="Incremental text content for this streaming chunk only"
-    )
-    tool: str | None = pydantic.Field(
-        default=None, description="Partial tool call arguments (JSON fragment) for this streaming chunk"
-    )
-    thinking: str | typing.Dict[str, typing.Any] | None = pydantic.Field(
-        default=None, description="Incremental reasoning/thinking content for this streaming chunk only. Can be string or structured dict."
-    )
-    citations: typing.List[typing.Dict] | None = pydantic.Field(
-        default=None, description="Incremental citation information for this streaming chunk only"
-    )
-    finish_reason: str | None = pydantic.Field(
-        default=None, description="Reason generation stopped (e.g., 'stop', 'length', 'tool_calls') - set only when streaming completes"
-    )
-    usage: typing.Dict[str, typing.Any] | None = pydantic.Field(
-        default=None, description="Per-chunk token usage statistics for this specific chunk. Can include nested structures."
-    )
-
-
-class Resp(pydantic.BaseModel):
-    """Complete response from an LLM with streaming accumulation support.
-    
-    This class represents a unified response format that separates complete message 
-    content from processing metadata and streaming chunks. It supports both complete
-    and streaming response patterns with clear separation of concerns.
-    
-    Core Architecture:
-        - Accumulates streaming chunks into complete response
-        - Separates message content from processing metadata
-        - Handles both complete and streaming response patterns
-    
-    Field Purposes:
-        msg: Complete accumulated message ready for LLM consumption
-             - msg.text contains full accumulated text (not deltas)
-             - Always represents final/current complete state
-        
-        out: Processed output value from response processors
-             - Can be any type: str, int, BaseModel, dict, tuple, None
-             - Ephemeral processing result (not serialized)
-             
-        delta: Current streaming chunk information only
-               - Contains incremental changes for this chunk
-               - Reset/updated for each streaming iteration
-               
-        out_store: State storage for output processors during streaming
-                   - Accumulates processing state across chunks
-                   - Used by ToOut processors for stateful streaming
-        
-        data: Internal storage for raw API responses and processing state
-        
-    Usage Patterns:
-        Complete response:
-            resp.msg contains final message, resp.out contains final result
-            
-        Streaming response:
-            resp.msg accumulates over chunks, resp.delta shows current chunk
-            resp.out_store maintains processing state across chunks
-            
-        Access patterns:
-            text = resp.msg.text     # Complete accumulated text
-            result = resp.out        # Processed output (any type)
-            chunk = resp.delta.text  # Current streaming chunk only
-    """
-
-    # Core content
-    msg: Msg | None = pydantic.Field(
-        default=None, description="The complete, accumulated message content (not delta). Contains final text for completed responses, accumulated text for streaming."
-    )
-    tool: typing.List[typing.Dict] | None = pydantic.Field(
-        default=None, description="Complete tool call objects with results for non-streaming responses"
-    )
-    thinking: str | typing.Dict[str, typing.Any] | None = pydantic.Field(
-        default=None, description="Complete model reasoning/thought process content (accumulated, not delta). Can be string or structured dict."
-    )
-    logprobs: typing.Dict | None = pydantic.Field(
-        default=None, description="Log probabilities for generated tokens"
-    )
-    citations: typing.List[typing.Dict] | None = pydantic.Field(
-        default=None, description="Source citations for generated content"
-    )
-    finish_reason: str | None = pydantic.Field(
-        default=None, description="Reason generation stopped (e.g., 'stop', 'length', 'tool_calls')"
-    )
-    
-    # Legacy/compatibility
-    val: typing.Any = pydantic.Field(
-        default=None, description="Legacy field for processed API outputs"
-    )
-    follow_up: typing.List[Msg] | None = pydantic.Field(
-        default_factory=list, description="Follow-up messages (e.g., tool execution results)"
-    )
-    
-    # Metadata
-    response_id: str | None = pydantic.Field(
-        default=None, description="Unique identifier for this response"
-    )
-    model: str | None = pydantic.Field(
-        default=None, description="Model name/version that generated this response"
-    )
-    usage: typing.Dict[str, typing.Any] = pydantic.Field(
-        default_factory=dict, description="Token usage statistics (prompt_tokens, completion_tokens, etc.). Can include nested structures for detailed token breakdowns."
-    )
-    choices: typing.List[typing.Dict[str, typing.Any]] | None = pydantic.Field(
-        default=None, description="Choice-level metadata for multiple completions (index, finish_reason, etc.)"
-    )
-    
-    # Streaming support
-    delta: RespDelta = pydantic.Field(
-        default_factory=RespDelta, description="Delta information for streaming responses"
-    )
-    
-    # Provider-specific metadata
-    meta: typing.Dict[str, typing.Any] = pydantic.Field(
-        default_factory=dict, description="Provider-specific metadata and additional fields"
-    )
-    
-    # Output processing state
-    out_store: typing.Dict[str, typing.Any] = pydantic.Field(
-        default_factory=dict, description="State storage for output processors during streaming"
-    )
-    
-    # Private attributes
-    _data: typing.Dict = pydantic.PrivateAttr(
-        default_factory=dict
-    )
-    _delta: typing.Dict = pydantic.PrivateAttr(
-        default_factory=dict
-    )
-    _out: typing.Union[typing.Dict, typing.Any, typing.Tuple, None] = pydantic.PrivateAttr(
-        default=None
-    )
-
-    @property
-    def data(self) -> typing.Any:
-        """ Get the raw data from the response.
-
-        Returns:
-            typing.Any: The raw data from the response.
-        """
-        return self._data
-    
-    @data.setter
-    def data(self, value: typing.Any) -> None:
-        """Set the raw data for the response."""
-        self._data = value
-        
-    # Note: delta is now a proper RespDelta field, no property needed
-    
-    @property
-    def out(self) -> typing.Union[typing.Dict, typing.Any, typing.Tuple, None]:
-        """Get the output values from the response.
-        
-        The out attribute can contain processed output from response processors:
-        - dict: Key-value pairs for structured outputs
-        - single value: For simple outputs (str, int, bool, etc.)
-        - tuple: For multiple outputs
-        - None: When no processing has been done
-
-        Returns:
-            typing.Union[typing.Dict, typing.Any, typing.Tuple, None]: The processed output values
-        """
-        return self._out
-    
-    @out.setter
-    def out(self, value: typing.Union[typing.Dict, typing.Any, typing.Tuple, None]) -> None:
-        """Set the output values for the response."""
-        self._out = value
-    
-    def spawn(self, msg: Msg, data: typing.Dict=None, follow_up: bool=None) -> 'Resp':
-        """Create new response for next streaming chunk.
-        
-        Preserves accumulation state (out_store, out) while allowing new message 
-        content and chunk data. Used to maintain processing continuity across 
-        streaming chunks without losing processor state.
-        
-        Args:
-            msg: New accumulated message state (complete text so far)
-            data: Raw chunk data for this iteration  
-            follow_up: Optional follow-up message flag
-            
-        Returns:
-            New Resp with preserved processing state, fresh delta ready for new chunk
-            
-        Usage:
-            # During streaming - maintain processor state across chunks
-            new_resp = prev_resp.spawn(
-                msg=Msg(text=accumulated_text),
-                data=api_chunk_data  
-            )
-            # new_resp.out_store contains accumulated processor state
-            # new_resp.delta will be updated with new chunk deltas
-        """
-        data = data if data is not None else {}
-        resp = Resp(
-            msg=msg,
-            val=self.val,
-            follow_up=follow_up,
-        )
-        resp.data.update(data)
-        resp.out = self._out
-        # Copy processing state for continuity
-        resp.out_store.update(self.out_store)
-        # Copy current delta state (will be updated with new chunk)
-        if self.delta:
-            resp.delta.text = self.delta.text
-            resp.delta.tool = self.delta.tool  
-            resp.delta.thinking = self.delta.thinking
-            resp.delta.citations = self.delta.citations
-            resp.delta.finish_reason = self.delta.finish_reason
-        return resp
-    
-    def tool(self) -> typing.Dict[str, typing.Any]:
-        """Execute the tool calls in the response and return the new response(s).
-
-        Returns:
-            None Resp | typing.List[typing.Dict]: List of tool call dictionaries matching the name.
-        """
-        result = {}
-        if self.msg is not None and self.msg.tool_calls:
-            for tool_call in self.msg.tool_calls:
-                res = tool_call()
-
-                # Need to append the result to the dictionary
-                result[tool_call.name] = res
-        return result
-
-
 class Attachment(BaseModel):
     """
     Declarative reference to a non-text asset.
 
     Attributes:
         kind: 'image' | 'audio' | 'video' | 'file' | 'data'
-        ref: Stable handle (file id, URL, object key). Adapters resolve/upload.
+        data: The raw data in bytes or the url for the data.
         mime: Optional MIME type, e.g. 'image/png'.
         name: Human-friendly label/filename.
         purpose: Hint for adapters, e.g. 'vision_input', 'context_doc'.
@@ -352,49 +78,52 @@ def to_b64(filepath) -> str:
 
 class Msg(BaseModel):
     """
-    Represents a complete, accumulated message in a conversation.
+    Base message class representing a complete message in a conversation.
     
-    This class contains the full, final content of a message - not incremental deltas.
-    For streaming responses, this represents the accumulated text so far, not just 
-    the latest chunk. Delta information is stored separately in RespDelta.
+    This class contains the core content and metadata for any message type.
+    Subclasses like Prompt and Resp add specialized attributes for their use cases.
     
     Key concepts:
         - Role: Indicates who sent the message ('user', 'assistant', 'system', etc.)
-        - Text: The complete accumulated content, not just the latest delta
-        - Tool calls: Complete tool/function calls with their results
+        - Text: The message content, can be plain text or structured dict
+        - Tool calls: Completed tool/function calls with their results
         - Attachments: Files, images, or other media associated with the message
+        - Metadata: Extensible storage for additional information
         
     Usage:
-        Complete message:
-            msg = Msg(role='user', text='Hello, how are you?')
-            
-        Accumulated streaming message:
-            # During streaming, text contains all content received so far
-            msg = Msg(role='assistant', text='The answer is 42 and here is why...')
-            
-        Message with tool calls:
-            msg = Msg(role='assistant', text='I found the information')
-            msg.tool_calls.append(ToolUse(name='search', arguments={'query': 'python'}))
-
-    Notes:
-        - Text may be plain text or structured dict with channels (e.g., {"final": "...", "thinking": "..."})
-        - Attachments are declarative refs; adapters handle upload/encoding
-        - Tool events include complete calls, not partial deltas
-        - Provider/runtime metadata should live on Resp, not here
+        msg = Msg(role='user', text='Hello, how are you?')
+        msg = Msg(role='assistant', text={'final': 'The answer is 42', 'thinking': 'Let me calculate...'})
     """
+    # Core message content
     role: str
-    text: t.Optional[t.Union[str, t.Dict[str, t.Any]]] = Field(default=None, description="Text content as a single element or a sequence of label text values.")
     alias: t.Optional[str] = None
-
-    attachments: t.List[Attachment] = Field(default_factory=list, description="List of attachments included in the message.")
-    tool_calls: t.List[ToolUse] = Field(default_factory=list, description="List of tool calls with their results stored in ToolUse.result")
-
-    tags: t.List[str] = Field(default_factory=list, description="List of tags associated with the message.")
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), description="Timestamp of the message creation in UTC.")
-    id: t.Optional[str] = Field(default=None, description="Unique identifier for the message.")
-    prev_id: t.Optional[str] = Field(default=None, description="ID of the previous message in the conversation.")
+    text: t.Optional[t.Union[str, t.Dict[str, t.Any]]] = Field(
+        default="", 
+        description="Text content as string or structured dict with channels (e.g., final, thinking)"
+    )
     
-    meta: t.Dict[str, t.Any] = Field(default_factory=dict, description="Metadata dictionary for additional information")
+    # Rich content  
+    attachments: t.List[Attachment] = Field(
+        default_factory=list, 
+        description="List of attachments included in the message"
+    )
+    tool_calls: t.List[ToolUse] = Field(
+        default_factory=list, 
+        description="List of completed tool calls with their results stored in ToolUse.result"
+    )
+    
+    # Message metadata
+    id: t.Optional[str] = Field(default=None, description="Unique identifier for the message")
+    prev_id: t.Optional[str] = Field(default=None, description="ID of the previous message in the conversation")
+    timestamp: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc), 
+        description="Timestamp of the message creation in UTC"
+    )
+    tags: t.List[str] = Field(default_factory=list, description="List of tags associated with the message")
+    meta: t.Dict[str, t.Any] = Field(
+        default_factory=dict, 
+        description="Metadata dictionary for additional information"
+    )
 
     class Config:
         extra = "allow"
@@ -415,41 +144,226 @@ class Msg(BaseModel):
             extras.append(f"tool_calls={len(self.tool_calls)}")
         suffix = f"  [{' | '.join(extras)}]" if extras else ""
         return f"{name}: {text}{suffix}"
-    
-    def apply(self, func):
-        """Apply a function to this message and return the result."""
-        return func(self)
-    
-    def output(self, key: str = "tool_out", default=None):
-        """Get a value from the meta dictionary."""
-        return self.meta.get(key, default)
 
-    # def to_input(self) -> t.Dict[str, t.Any]:
-    #     """
-    #     Provider-agnostic dict for adapters to expand into provider-specific shapes.
 
-    #     Returns:
-    #         Dict[str, Any]: Minimal neutral representation.
-    #     """
-    #     base: t.Dict[str, t.Any] = {"role": self.role}
-    #     if isinstance(self.content, (str, dict)):
-    #         base["content"] = self.content
-    #     if self.alias:
-    #         base["alias"] = self.alias
-    #     if self.attachments:
-    #         base["attachments"] = [a.model_dump() if _PD_V2 else a.dict()]
-    #     if self.tools:
-    #         base["tools"] = [e.model_dump() if _PD_V2 else e.dict()]
-    #     if self.tags:
-    #         base["tags"] = list(self.tags)
-    #     return base
+class Prompt(Msg):
+    """
+    User prompt message with LLM configuration and sampling parameters.
+    
+    Extends the base Msg with prompt-specific settings that control LLM behavior,
+    tool availability, output formatting, and generation parameters.
+    
+    Key features:
+        - Tool configuration: Override available tools for this prompt
+        - Schema control: Force specific output formats (JSON, text, structured)
+        - Sampling parameters: Control temperature, max_tokens, etc.
+        - Advanced features: System prompt overrides, reasoning controls
+        
+    Usage:
+        prompt = Prompt(
+            text="Analyze this data",
+            tools=[my_analysis_tool],
+            temperature=0.7,
+            max_tokens=1000,
+            format_override=MyOutputModel
+        )
+    """
+    role: str = "user"  # Default for prompts
+    
+    # Tool configuration
+    tool_override: bool = Field(
+        default=False, 
+        description="Defines whether tools should override those in previous prompts"
+    )
+    tools: t.Optional[t.List[BaseTool]] = Field(
+        default=None, 
+        description="Available tools for LLM. If None, uses sequence priority"
+    )
+    
+    # Output format control  
+    format_override: t.Optional[t.Union[Literal["json", "text"], t.Type[pydantic.BaseModel]]] = Field(
+        default=None, 
+        description="Override output format: 'json'/'text' or Pydantic model class for structured output"
+    )
+    
+    # LLM Sampling parameters (commonly passed via **kwargs)
+    model: t.Optional[str] = Field(default=None, description="Model override")
+    temperature: t.Optional[float] = Field(default=None, description="Sampling temperature")
+    max_tokens: t.Optional[int] = Field(default=None, description="Maximum tokens to generate")
+    top_p: t.Optional[float] = Field(default=None, description="Nucleus sampling")
+    frequency_penalty: t.Optional[float] = Field(default=None, description="Frequency penalty")
+    presence_penalty: t.Optional[float] = Field(default=None, description="Presence penalty")
+    seed: t.Optional[int] = Field(default=None, description="Deterministic seed")
+    
+    # Advanced prompt features
+    system_prompt: t.Optional[str] = Field(default=None, description="System message override")
+    reasoning_summary_request: t.Optional[bool] = Field(
+        default=None, 
+        description="Request reasoning summary for reasoning models"
+    )
+
+
+class Resp(Msg):
+    """
+    LLM response message with generation metadata and tool execution capabilities.
+    
+    Extends the base Msg with response-specific metadata from LLM generation,
+    including usage statistics, reasoning content, tool execution, and processing results.
+    
+    Key features:
+        - Generation metadata: Model, finish reason, token usage
+        - Advanced features: Reasoning content, citations, log probabilities
+        - Tool execution: Tools to be executed (tool_use) vs completed (tool_calls)
+        - Processing output: Results from ToOut processors
+        - Raw data: Access to original LLM response for debugging
+        
+    Usage:
+        resp = Resp(
+            text="The analysis shows...",
+            model="gpt-4",
+            usage={"prompt_tokens": 100, "completion_tokens": 200},
+            tool_use=[tool_to_execute]
+        )
+    """
+    role: str = "assistant"  # Default for responses
+    
+    # LLM Response metadata  
+    model: t.Optional[str] = Field(default=None, description="Model that generated response")
+    finish_reason: t.Optional[str] = Field(
+        default=None, 
+        description="Reason generation stopped (e.g., 'stop', 'length', 'tool_calls')"
+    )
+    
+    # Usage/billing information
+    usage: t.Dict[str, t.Any] = Field(
+        default_factory=dict, 
+        description="Token usage statistics (prompt_tokens, completion_tokens, etc.)"
+    )
+    
+    # Advanced LLM features
+    logprobs: t.Optional[t.Dict] = Field(
+        default=None, 
+        description="Log probabilities for generated tokens"
+    )
+    thinking: t.Optional[t.Union[str, t.Dict[str, t.Any]]] = Field(
+        default=None, 
+        description="Reasoning content for reasoning models (o1, etc.)"
+    )
+    citations: t.Optional[t.List[t.Dict]] = Field(
+        default=None, 
+        description="Source citations for generated content"
+    )
+    
+    # Multi-choice support
+    choices: t.Optional[t.List[t.Dict[str, t.Any]]] = Field(
+        default=None, 
+        description="Alternative completions for multi-choice scenarios"
+    )
+    
+    # Tool execution
+    tool_use: t.List[ToolUse] = Field(
+        default_factory=list, 
+        description="Tools to be executed (not yet completed)"
+    )
+    
+    # Processing output
+    out: t.Any = Field(
+        default=None, 
+        description="Processed result from ToOut processors"
+    )
+    
+    # Internal
+    _raw: t.Dict = PrivateAttr(default_factory=dict)
+    
+    @property
+    def raw(self) -> t.Dict:
+        """Get the raw data from the LLM response."""
+        return self._raw
+        
+    @raw.setter  
+    def raw(self, value: t.Dict):
+        """Set the raw data for the LLM response."""
+        self._raw = value
+        
+    def use_tool(self, idx: t.Optional[int] = None):
+        """Execute the tool calls in the response and return the results.
+        
+        Args:
+            idx: Index of specific tool to execute, or None to execute all
+            
+        Returns:
+            Dict[str, Any]: Dictionary mapping tool names to their results
+        """
+        result = {}
+        tools_to_execute = []
+        
+        if idx is None:
+            tools_to_execute = self.tool_use[:]  # Copy all tools
+        else:
+            if 0 <= idx < len(self.tool_use):
+                tools_to_execute = [self.tool_use[idx]]
+        
+        for tool_use in tools_to_execute:
+            res = tool_use()  # Execute the tool
+            result[tool_use.option.name] = res
+            
+            # Move executed tool from tool_use to tool_calls
+            if tool_use in self.tool_use:
+                self.tool_use.remove(tool_use)
+                self.tool_calls.append(tool_use)
+        
+        return result
+
+
+class DeltaResp(BaseModel):
+    """
+    Streaming delta information containing only incremental changes.
+    
+    This class represents a single streaming chunk with only the new content
+    that was added in this specific chunk. It does NOT contain accumulated values.
+    
+    Field Meanings:
+        text: New text content in this chunk only
+        thinking: New reasoning content in this chunk only
+        citations: New citation information in this chunk only
+        tool: Partial tool call JSON fragment for this chunk  
+        finish_reason: Set only when streaming completes
+        usage: Token usage for this specific chunk
+        
+    Important: These are chunk deltas, not accumulated values.
+    For accumulated values, use the parent Resp object fields.
+    """
+    
+    text: t.Optional[str] = Field(
+        default=None, 
+        description="Incremental text content for this streaming chunk only"
+    )
+    thinking: t.Optional[t.Union[str, t.Dict[str, t.Any]]] = Field(
+        default=None, 
+        description="Incremental reasoning content for this chunk only"
+    )
+    citations: t.Optional[t.List[t.Dict]] = Field(
+        default=None, 
+        description="Incremental citation information for this chunk only"
+    )
+    tool: t.Optional[str] = Field(
+        default=None, 
+        description="Partial tool call arguments (JSON fragment) for this chunk"
+    )
+    finish_reason: t.Optional[str] = Field(
+        default=None, 
+        description="Reason generation stopped - set only when streaming completes"
+    )
+    usage: t.Optional[t.Dict[str, t.Any]] = Field(
+        default=None, 
+        description="Per-chunk token usage statistics for this specific chunk"
+    )
 
 
 class BaseDialog(pydantic.BaseModel, Renderable):
     """A Dialog stores the interactions between the system/user and the assistant
     (i.e. the prompts and the responses)
     """
-
     _renderer: typing.Callable[[typing.List[Msg]], str] = pydantic.PrivateAttr(
         default=None
     )
@@ -510,7 +424,6 @@ class BaseDialog(pydantic.BaseModel, Renderable):
 
         Args:
             message (Msg): The message to add
-            replace (bool, optional): Whether to replace at the index. Defaults to False.
 
         Raises:
             ValueError: If the index is not correct
@@ -519,23 +432,24 @@ class BaseDialog(pydantic.BaseModel, Renderable):
             message=message, ind=None
         )
 
-    def add(self, message: Msg | Resp) -> Msg:
+    def add(self, message: t.Union[Msg, Resp]) -> Msg:
         """Alias for append to add a message to the end of the current path."""
         if isinstance(message, Resp):
-            message = message.msg
+            # Since Resp is now a Msg, we can add it directly
+            self.append(message)
+            return message
         self.append(message)
         return message
 
     @abstractmethod
     def replace(
-        self, message: Msg | Resp, ind: int
+        self, message: t.Union[Msg, Resp], ind: int
     ) -> 'BaseDialog':
         """Add a message to the dialog
 
         Args:
             message (Msg): The message to add
-            ind (typing.Optional[int], optional): The index to add. Defaults to None.
-            replace (bool, optional): Whether to replace at the index. Defaults to False.
+            ind (int): The index to add at
 
         Raises:
             ValueError: If the index is not correct
@@ -548,8 +462,7 @@ class BaseDialog(pydantic.BaseModel, Renderable):
 
         Args:
             message (Msg): The message to add
-            ind (typing.Optional[int], optional): The index to add. Defaults to None.
-            replace (bool, optional): Whether to replace at the index. Defaults to False.
+            ind (int): The index to add at
 
         Raises:
             ValueError: If the index is not correct
@@ -558,13 +471,13 @@ class BaseDialog(pydantic.BaseModel, Renderable):
 
     @abstractmethod
     def extend(
-        self, dialog: typing.Union['BaseDialog', typing.Iterable[Msg | Resp]], 
+        self, dialog: t.Union['BaseDialog', t.Iterable[t.Union[Msg, Resp]]], 
         _inplace: bool=False
     ) -> 'BaseDialog':
         """Extend the dialog with another dialog or a list of messages
 
         Args:
-            dialog (typing.Union[&#39;Dialog&#39;, typing.List[Msg]]): _description_
+            dialog: The dialog or list of messages to extend with
         """
         pass
 
@@ -582,7 +495,7 @@ class BaseDialog(pydantic.BaseModel, Renderable):
             for message in self
         )
 
-    def aslist(self) -> typing.List['Msg']:
+    def aslist(self) -> t.List['Msg']:
         """Retrieve the message list
 
         Returns:
@@ -598,7 +511,6 @@ class BaseDialog(pydantic.BaseModel, Renderable):
             int: the number of turns in the dialog
         """
         pass
-        # return len(self.messages)
         
     def clone(self) -> 'BaseDialog':
         """Clones the dialog
@@ -613,9 +525,9 @@ class ListDialog(BaseDialog):
     """A Dialog that uses a list data structure.
     """
 
-    messages: typing.List[Msg] = pydantic.Field(default_factory=list)
+    messages: t.List[Msg] = pydantic.Field(default_factory=list)
 
-    def __iter__(self) -> typing.Iterator[Msg]:
+    def __iter__(self) -> t.Iterator[Msg]:
         """Iterate over each message in the dialog
 
         Yields:
@@ -662,7 +574,7 @@ class ListDialog(BaseDialog):
             messages=[*self.messages]
         )
 
-    def pop(self, index: int=-1, get_msg: bool=False) -> typing.Union['ListDialog', Msg]:
+    def pop(self, index: int=-1, get_msg: bool=False) -> t.Union['ListDialog', Msg]:
         """Remove a value from the dialog
 
         Args:
@@ -681,11 +593,11 @@ class ListDialog(BaseDialog):
         """
         self.messages.remove(message)
 
-    def extend(self, dialog: typing.Iterable[Msg | Resp]):
+    def extend(self, dialog: t.Iterable[t.Union[Msg, Resp]]):
         """Extend the dialog with another dialog or a list of messages
 
         Args:
-            dialog (typing.Union[Dialog;, typing.List[Msg]]): The dialog or list of messages to extend with
+            dialog: The dialog or list of messages to extend with
         """
         if isinstance(dialog, BaseDialog):
             dialog = dialog.aslist()
@@ -693,12 +605,14 @@ class ListDialog(BaseDialog):
         validated = []
         for msg in dialog:
             if isinstance(msg, Resp):
-                msg = msg.msg
-            if not isinstance(msg, Msg):
+                # Since Resp is now a Msg, we can add it directly
+                validated.append(msg)
+            elif isinstance(msg, Msg):
+                validated.append(msg)
+            else:
                 raise ValueError(
                     "List dialog must only consist of messages."
                 )
-            validated.append(msg)
 
         self.messages.extend(validated)
         return self
@@ -711,23 +625,21 @@ class ListDialog(BaseDialog):
         """
         return len(self.messages)
         
-    def append(self, message: Msg | Resp) -> Self:
+    def append(self, message: t.Union[Msg, Resp]) -> Self:
         """Add a message to the end of the dialog
 
         Args:
             message (Msg): The message to add
-            replace (bool, optional): Whether to replace at the index. Defaults to False.
 
         Raises:
             ValueError: If the index is not correct
         """
-        if isinstance(message, Resp):
-            message = message.msg
-        if not isinstance(message, Msg):
+        if isinstance(message, (Msg, Resp)):  # Resp is now a Msg
+            self.messages.append(message)
+        else:
             raise ValueError(
                 "List dialog must only consist of messages."
             )
-        self.messages.append(message)
         return self
 
     def insert(self, ind: int, message: Msg) -> Self:
@@ -735,8 +647,7 @@ class ListDialog(BaseDialog):
 
         Args:
             message (Msg): The message to add
-            ind (typing.Optional[int], optional): The index to add. Defaults to None.
-            replace (bool, optional): Whether to replace at the index. Defaults to False.
+            ind (int): The index to add at
 
         Raises:
             ValueError: If the index is not correct
@@ -744,27 +655,28 @@ class ListDialog(BaseDialog):
         self.messages.insert(ind, message)
         return self
 
-    def replace(self, idx: int, message: Msg | Resp) -> 'BaseDialog':
-        """Add a message to the dialog
+    def replace(self, idx: int, message: t.Union[Msg, Resp]) -> 'BaseDialog':
+        """Replace a message in the dialog
 
         Args:
-            idx (typing.Optional[int], optional): The index to add. Defaults to None.
+            idx (int): The index to replace at
             message (Msg): The message to add
-            replace (bool, optional): Whether to replace at the index. Defaults to False.
 
         Raises:
             ValueError: If the index is not correct
         """
-        if isinstance(message, Resp):
-            message = message.msg
-
-        self.messages[idx] = message
+        if isinstance(message, (Msg, Resp)):  # Resp is now a Msg
+            self.messages[idx] = message
+        else:
+            raise ValueError(
+                "List dialog must only consist of messages."
+            )
         return self
 
 
 def exclude_messages(
     dialog: BaseDialog, 
-    val: typing.Union[typing.Any, typing.Set], 
+    val: t.Union[t.Any, t.Set], 
     field='role'
 ) -> ListDialog:
     """Exclude messages from the dialog
@@ -772,88 +684,70 @@ def exclude_messages(
     Args:
         dialog (BaseDialog): The dialog to filter
         val (typing.Union[typing.Any, typing.Set]): The value to exclude based on
-        field (str, optional): The field to exclude basd on. Defaults to 'role'.
+        field (str, optional): The field to exclude based on. Defaults to 'role'.
 
     Returns:
         ListDialog: The resulting dialog
     """
-    if not isinstance(val, typing.Set):
+    if not isinstance(val, t.Set):
         val = {val}
 
     return ListDialog(
-        [msg for msg in dialog if msg[field] not in val]
+        messages=[msg for msg in dialog if getattr(msg, field) not in val]
     )
 
             
 def include_messages(
     dialog: BaseDialog, 
-    val: typing.Union[typing.Any, typing.Set], 
+    val: t.Union[t.Any, t.Set], 
     field='role'
 ) -> ListDialog:
     """Include messages in the resulting dialog
 
     Args:
         dialog (BaseDialog): The dialog to filter
-        val (typing.Union[typing.Any, typing.Set]): The value to exclude based on
-        field (str, optional): The field to exclude basd on. Defaults to 'role'.
+        val (typing.Union[typing.Any, typing.Set]): The value to include based on
+        field (str, optional): The field to include based on. Defaults to 'role'.
 
     Returns:
         ListDialog: The resulting dialog
     """
-    if not isinstance(val, typing.Set):
+    if not isinstance(val, t.Set):
         val = {val}
 
     return ListDialog(
-        [msg for msg in dialog if msg[field] in val]
+        messages=[msg for msg in dialog if getattr(msg, field) in val]
     )
 
 
-def to_dialog(prompt: typing.Union[BaseDialog, Msg]) -> BaseDialog:
+def to_dialog(prompt: t.Union[BaseDialog, Msg]) -> BaseDialog:
     """Convert a prompt to a dialog
 
     Args:
         prompt (typing.Union[Dialog, Msg]): The prompt to convert
     """
     if isinstance(prompt, Msg):
-        prompt = ListDialog([prompt])
+        prompt = ListDialog(messages=[prompt])
 
     return prompt
 
 
-def to_list_input(
-    msg: typing.List | typing.Tuple | BaseDialog | Msg
-) -> typing.List:
-    """Convert a message or a list of messages to an input
-    Args:
-        msg (typing.List | typing.Tuple | BaseDialog | Msg): The message or messages to convert
-    Returns:
-        typing.List: A list of inputs
-    """
-    
-    if isinstance(msg, BaseDialog):
-        return msg.to_input()
-    elif isinstance(msg, Msg):
-        return [msg.to_input()]
-    return msg
-
-
 def exclude_role(
-    messages: typing.Iterable[Msg], 
+    messages: t.Iterable[Msg], 
     *role: str
-) -> typing.List[Msg]:
+) -> t.List[Msg]:
     """
     Filter messages by excluding specified roles.
-    This function takes an iterable of messages and one or more role strings, returning
-    a new list containing only messages whose roles are not in the specified roles to exclude.
+    
     Args:
         messages (typing.Iterable[Msg]): An iterable of message objects
         *role (str): Variable number of role strings to exclude
     Returns:
         typing.List[Msg]: A list of messages excluding those with specified roles
     Example:
-        >>> messages = [Msg(role="user", content="hi"), Msg(role="system", content="hello")]
+        >>> messages = [Msg(role="user", text="hi"), Msg(role="system", text="hello")]
         >>> exclude_role(messages, "system")
-        [Msg(role="user", content="hi")]
+        [Msg(role="user", text="hi")]
     """
     exclude = set(role)
     return [message for message in messages
@@ -861,16 +755,16 @@ def exclude_role(
 
 
 def include_role(
-    messages: typing.Iterable[Msg],
+    messages: t.Iterable[Msg],
     *role: str
-) -> typing.List[Msg]:
+) -> t.List[Msg]:
     """Filter the iterable of messages by a particular role
 
     Args:
-        messages (typing.Iterable[Msg]): 
+        messages (typing.Iterable[Msg]): Messages to filter
 
     Returns:
-        typing.List[Msg]: 
+        typing.List[Msg]: Filtered messages
     """
     include = set(role)
     return [message for message in messages
@@ -879,15 +773,15 @@ def include_role(
 
 class FieldRenderer(object):
 
-    def __init__(self, field: str='content'):
+    def __init__(self, field: str='text'):
         """Renderer to render a specific field in the message
 
         Args:
-            field (str, optional): The field name. Defaults to 'content'.
+            field (str, optional): The field name. Defaults to 'text'.
         """
         self.field = field
 
-    def __call__(self, msg: Msg | BaseDialog) -> str:
+    def __call__(self, msg: t.Union[Msg, BaseDialog]) -> str:
         """Render a message
 
         Args:
@@ -896,10 +790,13 @@ class FieldRenderer(object):
         Returns:
             str: The result
         """
-        messages = to_list_input(msg)
+        if isinstance(msg, BaseDialog):
+            messages = list(msg)
+        else:
+            messages = [msg]
         return '\n'.join(
-            f'{msg['role']}: {msg[self.field]}'
-            for msg in messages
+            f'{m.role}: {getattr(m, self.field, "")}'
+            for m in messages
         )
 
 
@@ -940,13 +837,13 @@ class TreeDialog(BaseDialog):
         for msg in dialog:
             print(msg.render())
     """
-    _root: str | None = PrivateAttr(default=None)
-    _messages: typing.Dict[str, Msg] = PrivateAttr(default_factory=dict)
-    _leaf: str | None = PrivateAttr(default=None)
-    _parent: typing.Dict[str, str] = PrivateAttr(default_factory=dict)
-    _children: typing.Dict[str, typing.List[str]] = PrivateAttr(default_factory=dict)
-    _indices: typing.List[int] = PrivateAttr(default_factory=list)
-    _counts: typing.List[int] = PrivateAttr(default_factory=list)
+    _root: t.Optional[str] = PrivateAttr(default=None)
+    _messages: t.Dict[str, Msg] = PrivateAttr(default_factory=dict)
+    _leaf: t.Optional[str] = PrivateAttr(default=None)
+    _parent: t.Dict[str, str] = PrivateAttr(default_factory=dict)
+    _children: t.Dict[str, t.List[str]] = PrivateAttr(default_factory=dict)
+    _indices: t.List[int] = PrivateAttr(default_factory=list)
+    _counts: t.List[int] = PrivateAttr(default_factory=list)
     _next_id: int = PrivateAttr(default=0)
         
     def model_post_init(self, __context) -> None:
@@ -959,7 +856,7 @@ class TreeDialog(BaseDialog):
         self._next_id += 1
         return node_id
         
-    def _get_path_to_leaf(self) -> typing.List[str]:
+    def _get_path_to_leaf(self) -> t.List[str]:
         """Get the path from root to current leaf as a list of node IDs."""
         if self._leaf is None:
             return []
@@ -1019,24 +916,24 @@ class TreeDialog(BaseDialog):
         self._update_counts()
         
     @property
-    def indices(self) -> typing.List[int]:
+    def indices(self) -> t.List[int]:
         """Get a copy of the current path indices."""
         return [*self._indices]
         
     @property
-    def counts(self) -> typing.List[int]:
+    def counts(self) -> t.List[int]:
         """Get a copy of the current level counts."""
         return [*self._counts]
         
     @property
-    def root(self) -> Msg | None:
+    def root(self) -> t.Optional[Msg]:
         """Get the root message."""
         if self._root is None:
             return None
         return self._messages[self._root]
         
     @property
-    def leaf(self) -> Msg | None:
+    def leaf(self) -> t.Optional[Msg]:
         """Get the current leaf message."""
         if self._leaf is None:
             return None
@@ -1084,7 +981,7 @@ class TreeDialog(BaseDialog):
             self._leaf = siblings[new_idx]
             self._update()
 
-    def __iter__(self) -> typing.Iterator[Msg]:
+    def __iter__(self) -> t.Iterator[Msg]:
         """Iterate over messages from root to current leaf."""
         if self._leaf is None:
             return
@@ -1218,7 +1115,7 @@ class TreeDialog(BaseDialog):
 
     def extend(
         self, 
-        dialog: typing.Union['BaseDialog', typing.Iterable[Msg | Resp]], 
+        dialog: t.Union['BaseDialog', t.Iterable[t.Union[Msg, Resp]]], 
         _inplace: bool = False
     ) -> 'BaseDialog':
         """Extend the dialog with messages from another dialog or iterable."""
@@ -1232,10 +1129,14 @@ class TreeDialog(BaseDialog):
             
         return self
 
-    def append(self, message: Msg | Resp) -> Self:
+    def append(self, message: t.Union[Msg, Resp]) -> Self:
         """Add a message to the end of the current path."""
         if isinstance(message, Resp):
-            message = message.msg
+            # Since Resp is now a Msg, we can use it directly
+            pass
+        elif not isinstance(message, Msg):
+            raise ValueError("Message must be a Msg or Resp instance")
+            
         node_id = self._generate_id()
         self._messages[node_id] = message
         
@@ -1254,12 +1155,12 @@ class TreeDialog(BaseDialog):
             self._leaf = node_id
             
         self._update()
-        return message
+        return self
 
     def insert(self, ind: int, message: Msg) -> Self:
         """Insert a message at the specified index in the current path."""
-        if not isinstance(message, Msg):
-            raise ValueError("Message must be a Msg instance")
+        if not isinstance(message, (Msg, Resp)):
+            raise ValueError("Message must be a Msg or Resp instance")
             
         if self._leaf is None:
             if ind != 0:
@@ -1312,10 +1213,13 @@ class TreeDialog(BaseDialog):
             
         return self
 
-    def replace(self, idx: int, message: Msg | Resp) -> 'BaseDialog':
+    def replace(self, idx: int, message: t.Union[Msg, Resp]) -> 'BaseDialog':
         """Replace the message at the specified index."""
-        if isinstance(message, Resp):
-            message = message.msg
+        if isinstance(message, (Msg, Resp)):
+            pass  # Both are fine since Resp is now a Msg
+        else:
+            raise ValueError("Message must be a Msg or Resp instance")
+            
         path = self._get_path_to_leaf()
         if not (0 <= idx < len(path)):
             raise ValueError(f"Index {idx} out of range for dialog of length {len(path)}")
@@ -1342,260 +1246,3 @@ class TreeDialog(BaseDialog):
         
         clone._update()
         return clone
-
-
-# class DialogTurn(pydantic.BaseModel):
-#     """A single tuurn in the dialog.
-#     """
-
-#     message: Msg
-#     children: typing.Union[typing.List['DialogTurn']] = pydantic.Field(default_factory=list)
-#     _parent: typing.Union['DialogTurn', None] = pydantic.PrivateAttr(default=None)
-
-#     def model_post_init(self, __context):
-#         for child in self.children:
-#             child._parent = self
-#             child.model_post_init(__context)
-
-#     def root(self) -> 'DialogTurn':
-
-#         node = self
-#         while node.parent is not None:
-#             node = node._parent
-#         return node
-
-#     def leaf(self) -> 'DialogTurn':
-#         """Get the leftmost leaf node below the current node
-
-#         Returns:
-#             DialogTurn: The leaf node
-#         """
-#         if len(self.children) == 0:
-#             return self
-#         return self.children[0].leaf()
-    
-#     @property
-#     def ancestors(self) -> typing.Iterator['DialogTurn']:
-
-#         turn = self
-#         while True:
-#             if turn._parent is None:
-#                 return
-#             turn = turn._parent
-#             yield turn
-    
-#     def prepend(self, message: 'Msg') -> 'DialogTurn':
-#         """
-
-#         Args:
-#             turn (DialogTurn): 
-
-#         Returns:
-#             DialogTurn: 
-#         """
-#         turn = DialogTurn(message=message)
-#         turn._parent = self._parent
-#         if turn._parent is not None:
-#             turn._parent.children.remove(self)
-#             turn._parent.children.append(turn)
-#         turn.children.append(self)
-#         self._parent = turn
-#         return turn
-    
-#     def append(self, message: 'Msg') -> 'DialogTurn':
-#         """
-
-#         Args:
-#             message (Msg): _description_
-
-#         Returns:
-#             DialogTurn: _description_
-#         """
-#         turn = DialogTurn(message=message)
-#         turn._parent = self
-#         self.children.append(turn)
-#         return turn
-
-#     def ancestor(self, count: int) -> 'DialogTurn':
-#         """Get an an answer
-
-#         Args:
-#             count (int): The number to ascend
-
-#         Returns:
-#             DialogTurn: The ancestor
-#         """
-
-#         i = 0
-#         turn = self
-#         while True:
-#             if i == count:
-#                 return turn.message
-#             if turn._parent is None:
-#                 raise RuntimeError(
-#                     "There are only "
-#                     f"{i} ancestors yet"
-#                     f"you passed {count}"
-#                 )
-#             turn = turn._parent
-#             i += 1
-
-#     def depth(self) -> int:
-#         """Calculate the depth of the current turn in the dialog tree.
-
-#         Returns:
-#             int: The number of turns to the root turn.
-#         """
-#         depth = 1
-#         turn = self
-#         while turn._parent is not None:
-#             depth += 1
-#             turn = turn._parent
-#         return depth
-    
-#     def child(self, idx: int) -> 'DialogTurn':
-#         """Get the child specified by index
-
-#         Args:
-#             idx (int): The index to retrieve
-
-#         Returns:
-#             DialogTurn: 
-#         """
-#         return self.children[idx]
-    
-#     def find_val(self, message: Msg) -> typing.Optional['DialogTurn']:
-#         """Search through all children to find the message.
-
-#         Args:
-#         message (Msg): The message to find.
-
-#         Returns:
-#         typing.Optional[DialogTurn]: The DialogTurn containing the message, or None if not found.
-#         """
-#         result = None
-#         if self.message == message:
-#             return self
-
-#         for child in self.children:
-#             result = child.find_val(message)
-
-#         return result
-
-#     def find(self, turn: 'DialogTurn') -> typing.Optional['DialogTurn']:
-#         """Search through all children to find the message.
-
-#         Args:
-#         message (Msg): The message to find.
-
-#         Returns:
-#         typing.Optional[DialogTurn]: The DialogTurn containing the message, or None if not found.
-#         """
-#         result = None
-#         if self == turn:
-#             return self
-
-#         for child in self.children:
-#             result = child.find(turn)
-#         return result
-
-#     def prune(self, idx: int) -> 'DialogTurn':
-#         """Remove the subtree specified by idx.
-
-#         Args:
-#             idx (int): The index of the child to prune.
-
-#         Returns:
-#             DialogTurn: The pruned subtree.
-#         """
-#         if idx < 0 or idx >= len(self.children):
-#             raise IndexError("Index out of range for pruning.")
-
-#         pruned_subtree = self.children.pop(idx)
-#         pruned_subtree._parent = None
-#         return pruned_subtree
-    
-#     def index(self, turn: 'DialogTurn') -> int:
-
-#         return self.children.index(turn)
-    
-#     def my_index(self) -> int | None:
-
-#         if self._parent is None:
-#             return None
-#         idx = self._parent.index(self)
-#         return idx
-
-#     def sibling(self, idx: int) -> int:
-#         """
-#         Returns:
-#             int: The index for the sibling
-#         """
-#         if self._parent is None:
-#             if idx != 0:
-#                 raise RuntimeError(
-#                     "There is no parent so must be 1."
-#                 )
-#             return self
-#         my_idx = self.my_index()
-#         if my_idx is None:
-#             raise IndexError(
-#                 f'Requesting sibling but no parent.'
-#             )
-#         sib_idx = idx + my_idx
-#         if sib_idx < 0:
-#             raise IndexError(
-#                 f"{idx} is invalid sibling index"
-#             )
-#         return self._parent.child(sib_idx)
-    
-#     def ancestor(self, count: int) -> 'DialogTurn':
-#         """
-
-#         Args:
-#             count (int): 
-
-#         Returns:
-#             DialogTurn: 
-#         """
-#         if not isinstance(count, int):
-#             raise TypeError(f"Count must be of type int not {type(count)}")
-#         turn = self
-#         i = 0
-#         while True:
-#             if i == count:
-#                 return turn
-#             turn = turn._parent
-#             if turn is None:
-#                 raise IndexError(
-#                     f"Cannot ascend {count}."
-#                     f"Only {i} parents."
-#                 )
-#             i += 1
-    
-#     @property
-#     def parent(self) -> typing.Union['DialogTurn', None]:
-#         """get the parent to this dialgo turn
-
-#         Returns:
-#             DIalogTurn: the parent dialog turn
-#         """
-#         return self._parent
-
-#     def n_children(self) -> int:
-#         """
-#         Returns:
-#             int: The number of children
-#         """
-#         return len(self.children)
-    
-#     def n_siblings(self) -> int:
-#         """The number of siblings for the turn
-
-#         Returns:
-#             int: 
-#         """
-#         if self._parent is None:
-#             return 1
-        
-#         return self._parent.n_children

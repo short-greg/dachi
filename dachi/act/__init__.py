@@ -1,4 +1,4 @@
-from ._core import (
+from ._bt._core import (
     Task, 
     TaskStatus,
     Router, 
@@ -13,19 +13,19 @@ from ._core import (
     loop_aslongas,
     loop_until,
 )
-from ._decorators import (
+from ._bt._decorators import (
     Not, 
     AsLongAs, 
     Until,
     Decorator,
 
 )
-from ._roots import (
+from ._bt._roots import (
     StateMachine,
     BT,
 
 )
-from ._serial import (
+from ._bt._serial import (
     Serial,
     Selector,
     Fallback,
@@ -33,7 +33,7 @@ from ._serial import (
     PreemptCond
     
 )
-from ._leafs import (
+from ._bt._leafs import (
     Condition,
     WaitCondition,
     CountLimit,
@@ -42,7 +42,7 @@ from ._leafs import (
     RandomTimer,
 
 )
-from ._parallel import (
+from ._bt._parallel import (
     Parallel,
     Multi
 )

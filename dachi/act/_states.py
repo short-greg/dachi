@@ -1,6 +1,6 @@
 import typing as t
 from typing import Iterable
-from ._core import Task, State, TaskStatus
+from ._bt._core import Task, State, TaskStatus
 from ..proc import Process, AsyncProcess
 from dachi.core import ModuleDict, AdaptModule, BaseModule, Attr
 

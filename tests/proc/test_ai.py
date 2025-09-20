@@ -1,4 +1,4 @@
-from dachi.core._msg import Msg, Resp
+from dachi.core._msg import Msg, Resp, DeltaResp
 from dachi.core import END_TOK, ModuleList, BaseDialog
 from dachi.proc import _ai
 from dachi.proc._resp import ToOut, TextOut
@@ -36,12 +36,15 @@ class DummyAIModel(_ai.LLM):
             typing.Dict: The result of the API call
         """
         resp = Resp(
-            msg=Msg(
             role='assistant', 
             text=self.target
-        ))
-        resp.data['response'] = self.target
-        resp.data['content'] = self.target
+        )
+        resp.raw['response'] = self.target
+        resp.raw['content'] = self.target
+        
+        # Process with out parameter
+        resp.out = _ai.get_resp_output(resp, out)
+            
         return resp
     
     def stream(
@@ -50,35 +53,47 @@ class DummyAIModel(_ai.LLM):
         out=None, 
         tools=None, 
         **kwargs
-    ) -> t.Iterator[Resp]:
+    ) -> t.Iterator[t.Tuple[Resp, DeltaResp]]:
 
         cur_out = ''
-        resp = Resp()
         
         for i, c in enumerate(self.target):
             cur_out += c
-            is_last = i == len(self.target) - 1
-        
-            resp = resp.spawn(
-                msg=Msg(
-                role='assistant', text=cur_out
-            ))
-            resp.data['response'] = c
-            resp.data['content'] = c
-            resp.delta.text = c  # Set the individual character as delta
-            yield resp
+            
+            resp = Resp(
+                role='assistant', 
+                text=cur_out  # Accumulated text
+            )
+            resp.raw['response'] = c
+            resp.raw['content'] = c
+            
+            # Process with out parameter
+            resp.out = _ai.get_resp_output(resp, out)
+            
+            # Create delta
+            delta_resp = DeltaResp(text=c)
+                
+            yield resp, delta_resp
     
-        resp = resp.spawn(msg=Msg(
-            role='assistant', text=self.target
-        ))
-        resp.data['response'] = END_TOK
-        resp.data['content'] = ''
-        resp.delta.text = None  # Explicitly set delta.text to None for END_TOK
+        # Final response with END_TOK
+        resp = Resp(
+            role='assistant', 
+            text=self.target,
+            finish_reason='stop'
+        )
+        resp.raw['response'] = END_TOK
+        resp.raw['content'] = ''
         
-        yield resp
+        # Process with out parameter
+        resp.out = _ai.get_resp_output(resp, out)
+        
+        # Final delta
+        delta_resp = DeltaResp(text=None, finish_reason='stop')
+            
+        yield resp, delta_resp
         
     async def aforward(self, dialog, **kwarg_overrides):
-        return self.delta(dialog, **kwarg_overrides)
+        return self.forward(dialog, **kwarg_overrides)
 
     async def astream(self, dialog, **kwarg_overrides):
         
@@ -150,45 +165,42 @@ class DeltaOut(ToOut):
 
 
 class TestLLM:
-
-    def test_llm_executes_forward(self):
-        res = _ai.llm_forward(forward, 'Jack')
-        assert res.data['response'] == {'content': 'Hi! Jack'}
-
-    def test_llm_executes_forward_with_processor(self):
-        res = _ai.llm_forward(
-            forward, 'Jack', 
-            out=TextOut()
-        )
-        assert res.data['response'] == {'content': 'Hi! Jack'}
-        assert res.out == 'Hi! Jack'
-
-    def test_llm_executes_stream_with_processor(self):
+    
+    def test_dummy_adapter_forward_works(self):
+        """Test that DummyAIModel works with new architecture"""
+        model = DummyAIModel(target="Hello World")
+        msg = Msg(role="user", text="Test")
+        
+        resp = model.forward(msg)
+        
+        assert resp.text == "Hello World"
+        assert resp.role == "assistant"
+    
+    def test_dummy_adapter_forward_with_processor(self):
+        """Test that DummyAIModel works with output processors"""
+        model = DummyAIModel(target="Hello World")
+        msg = Msg(role="user", text="Test")
+        
+        resp = model.forward(msg, out=TextOut())
+        
+        assert resp.text == "Hello World"
+        assert resp.out == "Hello World"
+    
+    def test_dummy_adapter_stream_with_processor(self):
+        """Test that DummyAIModel streaming works with output processors"""
+        model = DummyAIModel(target="Hi")
+        msg = Msg(role="user", text="Test")
+        
         responses = []
         contents = []
-        for r in _ai.llm_stream(
-            stream, 'Jack', out=TextOut()
-        ):
-            responses.append(r.data['response'])
-            contents.append(r.out)
+        for resp, delta in model.stream(msg, out=TextOut()):
+            responses.append(resp)
+            contents.append(resp.out)
+        
+        # Should get 'H', 'Hi', then final with END_TOK
+        assert len(responses) == 3
         assert contents[0] == 'H'
-        assert contents[-1] == ''
-
-    def test_llm_executes_stream_with_two_processors(self):
-        responses = []
-        contents = []
-        deltas = []
-        for r in _ai.llm_stream(
-            stream, 'Jack', out=(TextOut(), DeltaOut())
-        ):
-            print('R: ', type(r))
-            responses.append(r)
-            contents.append(r.msg.text)
-            deltas.append(r.out[1])
-        assert contents[0] == 'H'
-        assert contents[-1] == 'Hi! Jack'
-        assert deltas[-1] is ''
-        assert responses[-1].msg.text == 'Hi! Jack'
+        assert contents[1] == 'Hi'
 
 
 class MockOpenAI:
@@ -240,11 +252,12 @@ class TestOpenAIChat:
             }
         }
         
-        resp = adapter.to_output(openai_response)
+        msg = Msg(role="user", text="Test input")
+        resp = adapter.from_result(openai_response, msg)
         
         assert isinstance(resp, Resp)
-        assert resp.msg.text == "Hello there!"
-        assert resp.response_id == "chatcmpl-123"
+        assert resp.text == "Hello there!"
+        assert resp.id == "chatcmpl-123"
         assert resp.model == "gpt-4o"
         assert resp.finish_reason == "stop"
         assert resp.usage["total_tokens"] == 21
@@ -257,7 +270,7 @@ class TestOpenAIChat:
         assert resp.logprobs is not None
         assert resp.logprobs["content"][0]["token"] == "Hello"
 
-    def test_from_streamed_captures_deltas(self):
+    def test_from_streamed_result_captures_deltas(self):
         adapter = OpenAIChat()
         chunk = {
             "id": "chatcmpl-123",
@@ -271,12 +284,13 @@ class TestOpenAIChat:
                 "index": 0
             }]
         }
+        msg = Msg(role="user", text="Test")
         
-        resp = adapter.from_streamed(chunk)
+        resp, delta_resp = adapter.from_streamed_result(chunk, msg, None)
         
         assert isinstance(resp, Resp)
-        assert resp.delta.text == "Hello"
-        assert resp.delta.finish_reason is None
+        assert delta_resp.text == "Hello"
+        assert delta_resp.finish_reason is None
 
 
 class TestOpenAIResp:
@@ -328,11 +342,12 @@ class TestOpenAIResp:
             }
         }
         
-        resp = adapter.to_output(openai_response)
+        msg = Msg(role="user", text="Test input")
+        resp = adapter.from_result(openai_response, msg)
         
         assert resp.thinking == "The user is greeting me, so I should respond politely."
-        assert resp.msg.text == "Hello there!"
-        assert resp.response_id == "resp_123"
+        assert resp.text == "Hello there!"
+        assert resp.id == "resp_123"
         assert resp.model == "gpt-4o"
         assert resp.finish_reason == "stop"
         assert resp.usage["total_tokens"] == 25
@@ -344,9 +359,9 @@ class TestOpenAIResp:
         assert resp.meta["service_tier"] == "default"
         assert resp.logprobs is not None
         assert resp.logprobs["content"][0]["token"] == "Hello"
-        assert resp.msg.id == "resp_123"
+        assert resp.id == "resp_123"
 
-    def test_from_streamed_with_reasoning_deltas(self):
+    def test_from_streamed_result_with_reasoning_deltas(self):
         adapter = OpenAIResp()
         chunk = {
             "id": "resp_123",
@@ -364,11 +379,12 @@ class TestOpenAIResp:
             }]
         }
         
-        resp = adapter.from_streamed(chunk)
+        msg = Msg(role="user", text="Test")
+        resp, delta_resp = adapter.from_streamed_result(chunk, msg, None)
         
-        assert resp.delta.text == "Hello"
-        assert resp.delta.thinking == "The user greeted me"
-        assert resp.msg.id == "resp_123"
+        assert delta_resp.text == "Hello"
+        assert delta_resp.thinking == "The user greeted me"
+        assert resp.id == "resp_123"
 
 
 
@@ -391,14 +407,15 @@ class TestStreamingUsageStats:
                 "total_tokens": 11
             }
         }
+        msg = Msg(role="user", text="Test")
         
-        resp = adapter.from_streamed(chunk)
+        resp, delta_resp = adapter.from_streamed_result(chunk, msg, None)
         
-        assert resp.delta.text == "Hello"
-        assert resp.delta.usage is not None
-        assert resp.delta.usage["prompt_tokens"] == 10
-        assert resp.delta.usage["completion_tokens"] == 1
-        assert resp.delta.usage["total_tokens"] == 11
+        assert delta_resp.text == "Hello"
+        assert delta_resp.usage is not None
+        assert delta_resp.usage["prompt_tokens"] == 10
+        assert delta_resp.usage["completion_tokens"] == 1
+        assert delta_resp.usage["total_tokens"] == 11
 
     def test_resp_streaming_with_usage_stats(self):
         adapter = OpenAIResp()
@@ -418,13 +435,14 @@ class TestStreamingUsageStats:
                 "total_tokens": 17
             }
         }
+        msg = Msg(role="user", text="Test")
         
-        resp = adapter.from_streamed(chunk)
+        resp, delta_resp = adapter.from_streamed_result(chunk, msg, None)
         
-        assert resp.delta.text == "Hello"
-        assert resp.delta.thinking == "User greeting"
-        assert resp.delta.usage is not None
-        assert resp.delta.usage["total_tokens"] == 17
+        assert delta_resp.text == "Hello"
+        assert delta_resp.thinking == "User greeting"
+        assert delta_resp.usage is not None
+        assert delta_resp.usage["total_tokens"] == 17
 
 
 class TestMultipleCompletions:
@@ -453,10 +471,11 @@ class TestMultipleCompletions:
             "usage": {"total_tokens": 20}
         }
         
-        resp = adapter.to_output(openai_response)
+        msg = Msg(role="user", text="Test input")
+        resp = adapter.from_result(openai_response, msg)
         
         # Main response uses first choice by default
-        assert resp.msg.text == "First completion"
+        assert resp.text == "First completion"
         assert resp.finish_reason == "stop"
         
         # All choices metadata captured
@@ -491,10 +510,11 @@ class TestMultipleCompletions:
             "usage": {"total_tokens": 15}
         }
         
-        resp = adapter.to_output(openai_response)
+        msg = Msg(role="user", text="Test input")
+        resp = adapter.from_result(openai_response, msg)
         
         # Main response uses first choice
-        assert resp.msg.text == "Option A"
+        assert resp.text == "Option A"
         assert resp.finish_reason == "stop"
         assert resp.thinking == "Multiple ways to respond"
         
@@ -520,9 +540,10 @@ class TestMultipleCompletions:
             "usage": {"total_tokens": 10}
         }
         
-        resp = adapter.to_output(openai_response)
+        msg = Msg(role="user", text="Test input")
+        resp = adapter.from_result(openai_response, msg)
         
-        assert resp.msg.text == "Single response"
+        assert resp.text == "Single response"
         assert resp.choices is not None
         assert len(resp.choices) == 1
         assert resp.choices[0]["index"] == 0

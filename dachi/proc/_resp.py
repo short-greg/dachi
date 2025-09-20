@@ -1069,7 +1069,7 @@ class CSVOut(ToOut):
 
         # TODO: Response is not currently correct, it is
         # not treating it as a Resp class
-        # just get the data from resp.msg.text
+        # just get the data from resp.text
         resp = self.coalesce_resp(resp, '')
 
         val = utils.acc(delta_store, 'val', resp, '')

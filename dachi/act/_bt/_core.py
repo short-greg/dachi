@@ -4,13 +4,14 @@ from abc import abstractmethod
 import typing as t
 
 # local
-from ..core import Attr, BaseModule
-from ..proc import Process
+from ...core import Attr, BaseModule
+from ...proc import Process
 # TODO: Add in Action (For GOAP)
 from abc import ABC
 import typing as t
 from contextlib import contextmanager
 from asyncio import sleep as async_sleep
+
 
 class TaskStatus(Enum):
     """Status of a Behavior Tree task

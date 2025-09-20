@@ -397,7 +397,7 @@ class FuncDec(FuncDecBase):
         resp = engine(
             msg, **self.kwargs
         )
-        result = self.inst.out_conv.forward(resp.msg.text)
+        result = self.inst.out_conv.forward(resp.text)
         return result
 
     def spawn(self, instance=None) -> Self:
@@ -445,7 +445,7 @@ class AFuncDec(FuncDecBase):
         res_msg = await engine.aforward(
             cue.text, **self.kwargs
         )
-        result = self.inst.out_conv.forward(res_msg.msg.text)
+        result = self.inst.out_conv.forward(res_msg.text)
         return result
     
     async def __call__(self, *args, **kwargs):
@@ -513,11 +513,11 @@ class StreamDec(FuncDecBase, StreamProcess):
         )
 
         delta_store = {}
-        for resp in engine.stream(
+        for resp, delta_resp in engine.stream(
             msg, **self.kwargs
         ):  
-            is_last = resp.data['response'] == END_TOK
-            result = self.inst.out_conv.delta(resp.delta.text, delta_store, is_last)
+            is_last = resp.raw.get('response') == END_TOK
+            result = self.inst.out_conv.delta(delta_resp.text, delta_store, is_last)
             resp.out = result
             yield resp.out
 

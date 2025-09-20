@@ -1,9 +1,9 @@
-from dachi.act import _core
-from dachi.act._core import TaskStatus
+from dachi.act._bt import _core
+from dachi.act._bt._core import TaskStatus
 from .utils import ImmediateAction, SetStorageActionCounter
-from dachi.act._decorators import AsLongAs
+from dachi.act._bt._decorators import AsLongAs
 
-from dachi.act._core import loop_aslongas, loop_until
+from dachi.act._bt._core import loop_aslongas, loop_until
 
 class TestTaskStatus(object):
 
@@ -85,7 +85,7 @@ import asyncio
 import types
 import pytest
 
-from dachi.act import _core as core
+from dachi.act._bt import _core as core
 
 # ---------------------------------------------------------------------------
 # Helper stubs

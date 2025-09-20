@@ -13,8 +13,8 @@ import types
 import random
 import pytest
 from dachi.core import InitVar, Attr
-from dachi.act._core import TaskStatus
-from dachi.act._leafs import Action, Condition, WaitCondition, FixedTimer, RandomTimer, CountLimit
+from dachi.act._bt._core import TaskStatus
+from dachi.act._bt._leafs import Action, Condition, WaitCondition, FixedTimer, RandomTimer, CountLimit
 
 import time
 

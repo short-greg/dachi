@@ -7,10 +7,10 @@ import pydantic
 
 # local
 from ..core import (
-    Msg, END_TOK, Resp, BaseModule
+    Msg, Resp, BaseModule, DeltaResp, Prompt
 )
 from ._process import AsyncProcess
-from ._resp import RESPONSE_FIELD, ToOut
+from ._resp import ToOut
 
 # TODO: MOVE OUT OF HERE
 S = t.TypeVar('S', bound=pydantic.BaseModel)
@@ -55,242 +55,152 @@ def get_resp_output(resp: Resp, out: t.Union[t.Tuple[ToOut, ...], t.Dict[str, To
     if out is None:
         return None
     elif isinstance(out, dict):
-        return {key: processor.forward(resp.msg.text) for key, processor in out.items()}
+        return {key: processor.forward(resp.text) for key, processor in out.items()}
     elif isinstance(out, tuple):
-        return tuple(processor.forward(resp.msg.text) for processor in out)
+        return tuple(processor.forward(resp.text) for processor in out)
     elif isinstance(out, ToOut):
-        return out.forward(resp.msg.text)
+        return out.forward(resp.text)
     else:
         raise TypeError(f"Unsupported out type: {type(out)}")
 
 
-def get_delta_resp_output(
-    resp: Resp, 
-    out: t.Union[t.Tuple[ToOut, ...], t.Dict[str, ToOut], ToOut, None], 
-    is_last: bool
-):
-    """Process out parameter for streaming functions using delta() method.
-    
-    Uses resp.out_store for state management automatically. Keys are:
-    - Dict: uses the original dictionary keys  
-    - Tuple: uses numerical keys "0", "1", etc.
-    - Single: uses key "val"
+
+
+
+
+
+
+
+
+
+# Universal Helper Functions for Message Analysis
+
+def extract_tools_from_messages(messages: Msg | BaseDialog) -> t.List:
+    """Universal function that loops through ALL messages to build final tools list
     
     Args:
-        resp (Resp): The response object to process (uses resp.out_store for state)
-        out (Union[Dict[str, ToOut], Tuple[ToOut, ...], ToOut, None]): The output processors to apply
-        is_last (bool): Whether this is the final streaming chunk
+        messages: Single Msg or BaseDialog (list of messages)
         
     Returns:
-        Union[Dict, Tuple, Any, None]: Processed result matching input structure
+        Final accumulated tools list after processing override/extend logic
+    """
+    tools = []
+    
+    # Convert single message to list for uniform processing
+    msg_list = [messages] if isinstance(messages, Msg) else list(messages)
+    
+    for msg in msg_list:
+        if isinstance(msg, Prompt) and msg.tools is not None:
+            if msg.tool_override:
+                # Replace entire tools list
+                tools = msg.tools.copy()
+            else:
+                # Extend existing tools list
+                tools.extend(msg.tools)
+    
+    return tools
+
+
+def extract_format_override_from_messages(messages: Msg | BaseDialog) -> t.Union[bool, dict, pydantic.BaseModel, None]:
+    """Universal function that loops through ALL messages to find final format_override
+    
+    Args:
+        messages: Single Msg or BaseDialog (list of messages)
+        
+    Returns:
+        Final format_override (later Prompts override earlier ones)
+    """
+    format_override = None
+    
+    # Convert single message to list for uniform processing  
+    msg_list = [messages] if isinstance(messages, Msg) else list(messages)
+    
+    for msg in msg_list:
+        if isinstance(msg, Prompt) and msg.format_override is not None:
+            # Later Prompts override earlier ones
+            format_override = msg.format_override
             
-    Raises:
-        TypeError: If out parameter is not a supported type (dict, tuple, ToOut, or None)
+    return format_override
+
+
+class LLMAdapter(Process, AsyncProcess, StreamProcess, AsyncStreamProcess):
     """
-    if out is None:
-        return None
-    elif isinstance(out, dict):
-        result = {}
-        for key, processor in out.items():
-            if key not in resp.out_store:
-                resp.out_store[key] = {}
-            value = processor.delta(resp.delta.text, resp.out_store[key], is_last)
-            result[key] = value
-        return result
-    elif isinstance(out, tuple):
-        results = []
-        for i, processor in enumerate(out):
-            key = str(i)
-            if key not in resp.out_store:
-                resp.out_store[key] = {}
-            result = processor.delta(resp.delta.text, resp.out_store[key], is_last)
-            results.append(result)
-        return tuple(results)
-    elif isinstance(out, ToOut):
-        key = "val"
-        if key not in resp.out_store:
-            resp.out_store[key] = {}
-        return out.delta(resp.delta.text, resp.out_store[key], is_last)
-    else:
-        raise TypeError(f"Unsupported out type: {type(out)}")
-
-
-def llm_forward(
-    f: t.Callable, 
-    *args, 
-    _adapt: t.Union['AIAdapt', None] = None,
-    out: t.Union[t.Tuple[ToOut, ...], t.Dict[str, ToOut], ToOut, None] = None, 
-    _role: str='assistant',
-    **kwargs
-) -> Resp:
-    """
-    Executes a given function with specified arguments and processes the response.
-    Args:
-        f (t.Callable): The function to be executed.
-        *args: Variable length argument list to be passed to the function.
-        _resp_proc (t.List[Response], optional): A list of Response objects to process the function's response. Defaults to None.
-        _role (str, optional): The role to be assigned to the message. Defaults to 'assistant'.
-        **kwargs: Additional keyword arguments to be passed to the function.
-    Returns:
-        tuple: A tuple containing the final message (Msg) and the last value processed by the Response objects.
-    """
-    if _adapt is None:
-        _adapt = DefaultAdapter()
-
-    kwargs.update(_adapt.to_input(*args, **kwargs))
-    result = f(
-        *args, **kwargs
-    )
-    resp = _adapt.to_output(result)
-
-    # Process with out parameter
-    resp.out = get_resp_output(resp, out)
+    Base LLM adapter with function injection pattern.
     
-    return resp
-
-
-async def llm_aforward(
-    f, 
-    *args, 
-    _adapt: t.Union['AIAdapt', None] = None,
-    out: t.Union[t.Tuple[ToOut, ...], t.Dict[str, ToOut], ToOut, None] = None, 
-    _role: str='assistant',
-    **kwargs
-) -> Resp:
-    """
-    Asynchronously forwards a function call with additional response processing.
-    Args:
-        f (Callable): The function to be called.
-        *args: Positional arguments to pass to the function.
-        _resp_proc (List[Response], optional): A list of Response objects to process the function's response. Defaults to None.
-        _role (str, optional): The role to be assigned to the message. Defaults to 'assistant'.
-        **kwargs: Additional keyword arguments to pass to the function.
-    Returns:
-        Tuple[Msg, Any]: A tuple containing the processed message and the final value from the response processing.
-    """
-    if _adapt is None:
-        _adapt = DefaultAdapter()
-
-    kwargs.update(_adapt.to_input(*args, **kwargs))
-    result = await f(
-        *args, **kwargs
-    )
-    resp = _adapt.to_output(result)
-
-    # Process with out parameter
-    resp.out = get_resp_output(resp, out)
-
-    return resp
-
-
-def llm_stream(
-    f: t.Callable, 
-    *args, 
-    _adapt: t.Union['AIAdapt', None] = None,
-    out: t.Union[t.Tuple[ToOut, ...], t.Dict[str, ToOut], ToOut, None] = None, 
-    _role: str='assistant',
-    **kwargs
-) -> t.Iterator[Resp]:
-    """
-    Streams responses from a language model function, allowing for intermediate processing.
-    Args:
-        f (t.Callable): The language model function to call.
-        *args: Positional arguments to pass to the language model function.
-        _resp_proc (t.List[Response], optional): A list of Response objects for processing the model's output. Defaults to None.
-        _role (str, optional): The role to assign to the message. Defaults to 'assistant'.
-        **kwargs: Additional keyword arguments to pass to the language model function.
-    Yields:
-        Tuple[Msg, Any]: A tuple containing the message object and the processed value from the response.
-    """
-    prev_message: Msg | None = None
-    resp = None
+    This class provides a unified interface for LLM adapters that handle format conversion
+    and execution coordination. Subclasses implement specific format conversion logic.
     
-    if _adapt is None:
-        _adapt = DefaultAdapter()
+    Key features:
+        - Function injection: Pass LLM functions as parameters instead of inheritance
+        - Format conversion: Convert between Dachi and LLM-specific formats
+        - Streaming support: Handle streaming responses without complex state management
+        - Modular design: Separate conversion logic from execution logic
+    """
+    
+    @abstractmethod
+    def to_input(self, messages: Msg | BaseDialog, **kwargs) -> t.Dict:
+        """Convert Dachi messages to LLM-specific input format"""
+        pass
         
-    kwargs.update(_adapt.to_input(*args, **kwargs))
-    
-    for response in f(
-        *args, **kwargs
-    ):
-        resp = _adapt.from_streamed(response, resp)
-        resp.data[RESPONSE_FIELD] = response
-
-        # Process with out parameter for streaming
-        is_last = response == END_TOK
-        resp.out = get_delta_resp_output(resp, out, is_last)
+    @abstractmethod  
+    def from_result(self, result: t.Dict, messages: Msg | BaseDialog) -> Resp:
+        """Convert LLM response to Dachi Resp"""
+        pass
         
-        prev_message = resp
-        yield resp
+    @abstractmethod
+    def from_streamed_result(self, result: t.Dict, messages: Msg | BaseDialog, prev_resp: Resp | None) -> t.Tuple[Resp, DeltaResp]:
+        """Convert streaming LLM response to Dachi Resp + DeltaResp"""
+        pass
     
-    msg = Msg(role=_role)
-    if prev_message is not None:
-        msg.delta = prev_message.delta
-    resp.data[RESPONSE_FIELD] = END_TOK
-    
-    # For END_TOK, set delta.text to None to indicate no new content
-    resp.delta.text = None
-
-    # Process END_TOK with processors to get final accumulated results
-    resp.out = get_delta_resp_output(resp, out, True)
-
-    yield resp
-
-
-async def llm_astream(
-    f: t.Callable, 
-    *args, 
-    _adapt: t.Union['AIAdapt', None] = None,
-    out: t.Union[t.Tuple[ToOut, ...], t.Dict[str, ToOut], ToOut, None] = None, 
-    _role: str='assistant',
-    **kwargs
-) -> t.AsyncIterator[Resp]:
-    """
-
-    Args:
-        f (t.Callable): The function to run
-        _resp_proc (t.List[Response], optional): The processes to use for responding
-        _role (str, optional): The role for message. Defaults to 'assistant'.
-
-    Returns:
-        t.AsyncIterator: 
-
-    Yields:
-        t.AsyncIterator: The Message and the results
-    """
-    prev_message: Msg | None = None
-    resp = None
-    
-    if _adapt is None:
-        _adapt = DefaultAdapter()
+    def forward(self, llm_func: t.Callable, messages: Msg | BaseDialog, out: t.Union[t.Tuple[ToOut, ...], t.Dict[str, ToOut], ToOut, None] = None, *args, **kwargs) -> Resp:
+        """Execute LLM function with format conversion"""
+        api_input = self.to_input(messages, **kwargs)
+        result = llm_func(**api_input)
+        resp = self.from_result(result, messages)
         
-    kwargs.update(_adapt.to_input(*args, **kwargs))
+        # Process with out parameter
+        resp.out = get_resp_output(resp, out)
+        return resp
     
-    async for response in await f(
-        *args, **kwargs
-    ):
-        resp = _adapt.from_streamed(response, resp)
-        resp.data[RESPONSE_FIELD] = response
-
-        # Process with out parameter for streaming
-        is_last = response == END_TOK
-        resp.out = get_delta_resp_output(resp, out, is_last)
-
-        prev_message = resp
-        yield resp
+    async def aforward(self, llm_func: t.Callable, messages: Msg | BaseDialog, out: t.Union[t.Tuple[ToOut, ...], t.Dict[str, ToOut], ToOut, None] = None, *args, **kwargs) -> Resp:
+        """Execute LLM function asynchronously with format conversion"""
+        api_input = self.to_input(messages, **kwargs)
+        result = await llm_func(**api_input)
+        resp = self.from_result(result, messages)
+        
+        # Process with out parameter
+        resp.out = get_resp_output(resp, out)
+        return resp
+        
+    def stream(self, llm_func: t.Callable, messages: Msg | BaseDialog, out: t.Union[t.Tuple[ToOut, ...], t.Dict[str, ToOut], ToOut, None] = None, *args, **kwargs) -> t.Iterator[t.Tuple[Resp, DeltaResp]]:
+        """Execute streaming LLM function with format conversion"""
+        api_input = self.to_input(messages, **kwargs)
+        api_input['stream'] = True
+        
+        prev_resp = None
+        for chunk in llm_func(**api_input):
+            resp, delta_resp = self.from_streamed_result(chunk, messages, prev_resp)
+            
+            # Process with out parameter using accumulated text (simplified approach)
+            resp.out = get_resp_output(resp, out)
+            
+            prev_resp = resp
+            yield resp, delta_resp
     
-    msg = Msg(role=_role)
-    if prev_message is not None:
-        msg.delta = prev_message.delta
-    resp.data[RESPONSE_FIELD] = END_TOK
-    
-    # For END_TOK, set delta.text to None to indicate no new content
-    resp.delta.text = None
-
-    # Process END_TOK with processors to get final accumulated results
-    resp.out = get_delta_resp_output(resp, out, True)
-
-    yield resp
+    async def astream(self, llm_func: t.Callable, messages: Msg | BaseDialog, out: t.Union[t.Tuple[ToOut, ...], t.Dict[str, ToOut], ToOut, None] = None, *args, **kwargs) -> t.AsyncIterator[t.Tuple[Resp, DeltaResp]]:
+        """Execute streaming LLM function asynchronously with format conversion"""
+        api_input = self.to_input(messages, **kwargs)
+        api_input['stream'] = True
+        
+        prev_resp = None
+        async for chunk in await llm_func(**api_input):
+            resp, delta_resp = self.from_streamed_result(chunk, messages, prev_resp)
+            
+            # Process with out parameter using accumulated text (simplified approach)
+            resp.out = get_resp_output(resp, out)
+            
+            prev_resp = resp
+            yield resp, delta_resp
 
 
 class AIAdapt(BaseModule):
@@ -346,60 +256,14 @@ class LLM(Process, AsyncProcess, StreamProcess, AsyncStreamProcess):
     ) -> Resp:
         raise NotImplementedError
 
-    def stream(self, inp: Msg | BaseDialog, out=None, tools=None, **kwargs) -> t.Iterator[Resp]:
+    def stream(self, inp: Msg | BaseDialog, out=None, tools=None, **kwargs) -> t.Iterator[t.Tuple[Resp, DeltaResp]]:
         raise NotImplementedError
 
-    def astream(self, inp: Msg | BaseDialog, out=None, tools=None, **kwargs) -> t.AsyncIterator[Resp]:
+    def astream(self, inp: Msg | BaseDialog, out=None, tools=None, **kwargs) -> t.AsyncIterator[t.Tuple[Resp, DeltaResp]]:
         raise NotImplementedError
 
 
-class DefaultAdapter(AIAdapt):
-    """
-    Default/Null adapter that passes data through without transformation.
     
-    Used when no specific adapter is needed, providing minimal processing
-    while maintaining the AIAdapt interface.
-    """
-    
-    def to_input(self, inp: Msg | BaseDialog, **kwargs) -> t.Dict:
-        """Pass through kwargs without transformation."""
-        return kwargs
-    
-    def to_output(self, output: t.Dict) -> Resp:
-        """Create a basic Resp object from the output."""
-        # Extract text content from common patterns
-        text_content = None
-        if isinstance(output, dict):
-            text_content = output.get('content') or output.get('text') or output.get('message')
-        elif isinstance(output, str):
-            text_content = output
-            
-        resp = Resp(msg=Msg(role='assistant', text=text_content))
-        resp.data['response'] = output
-        return resp
-    
-    def from_streamed(self, output: t.Dict, prev_resp: Resp | None = None) -> Resp:
-        """Handle streaming by creating or updating Resp objects."""
-        if prev_resp is None:
-            accumulated_text = ''
-        else:
-            accumulated_text = prev_resp.msg.text or ''
-        
-        # Get delta content for this chunk
-        delta_content = ''
-        if isinstance(output, dict) and 'content' in output:
-            delta_content = output['content']
-            accumulated_text += delta_content
-        
-        if prev_resp is None:
-            resp = Resp(msg=Msg(role='assistant', text=accumulated_text))
-        else:
-            resp = prev_resp.spawn(msg=Msg(role='assistant', text=accumulated_text))
-        
-        # Set delta text for this chunk
-        resp.delta.text = delta_content
-        resp.data['response'] = output
-        return resp
 
 
 class Op(AsyncProcess, Process, StreamProcess, AsyncStreamProcess):
