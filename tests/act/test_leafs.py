@@ -282,3 +282,92 @@ class TestWaitCondition:
         cond = ToggleWait()
         assert await cond.tick() is TaskStatus.WAITING
         assert await cond.tick() is TaskStatus.SUCCESS
+
+
+class TestPortSystem:
+    """Test the port declaration and processing system for leaf classes"""
+    
+    def test_process_ports_extracts_annotations_from_simple_class(self):
+        from dachi.act._bt._core import Leaf
+        
+        class TestInputs:
+            param1: int
+            param2: str
+        
+        result = Leaf._process_ports(TestInputs)
+        
+        assert "param1" in result
+        assert result["param1"]["type"] == int
+        assert "param2" in result  
+        assert result["param2"]["type"] == str
+    
+    def test_process_ports_extracts_defaults_from_class(self):
+        from dachi.act._bt._core import Leaf
+        
+        class TestInputs:
+            param1: int = 5
+            param2: str = "default"
+            param3: float
+        
+        result = Leaf._process_ports(TestInputs)
+        
+        assert result["param1"]["default"] == 5
+        assert result["param2"]["default"] == "default"
+        assert "default" not in result["param3"]  # No default provided
+    
+    def test_action_with_inputs_creates_ports(self):
+        class TestAction(Action):
+            class inputs:
+                param1: int
+                param2: str = "default"
+        
+        assert hasattr(TestAction, '__ports__')
+        assert "inputs" in TestAction.__ports__
+        assert "param1" in TestAction.__ports__["inputs"]
+        assert TestAction.__ports__["inputs"]["param1"]["type"] == int
+        assert TestAction.__ports__["inputs"]["param2"]["default"] == "default"
+    
+    def test_action_with_outputs_creates_ports(self):
+        from typing import TypedDict
+        
+        class TestAction(Action):
+            class outputs(TypedDict):
+                result: int
+                success: bool
+        
+        assert hasattr(TestAction, '__ports__')
+        assert "outputs" in TestAction.__ports__
+        assert "result" in TestAction.__ports__["outputs"]
+        assert TestAction.__ports__["outputs"]["result"]["type"] == int
+        assert TestAction.__ports__["outputs"]["success"]["type"] == bool
+    
+    def test_action_without_ports_has_empty_ports(self):
+        class TestAction(Action):
+            pass
+        
+        assert hasattr(TestAction, '__ports__')
+        assert TestAction.__ports__["inputs"] == {}
+        assert TestAction.__ports__["outputs"] == {}
+    
+    def test_condition_with_ports_works(self):
+        class TestCondition(Condition):
+            class inputs:
+                threshold: float = 0.5
+        
+        ports = TestCondition.__ports__
+        assert "threshold" in ports["inputs"]
+        assert ports["inputs"]["threshold"]["default"] == 0.5
+    
+    def test_inheritance_preserves_port_processing(self):
+        class BaseAction(Action):
+            class inputs:
+                base_param: int
+        
+        class DerivedAction(BaseAction):
+            class inputs:
+                derived_param: str
+        
+        # Each class should have its own ports
+        assert "base_param" in BaseAction.__ports__["inputs"]
+        assert "base_param" not in DerivedAction.__ports__["inputs"]
+        assert "derived_param" in DerivedAction.__ports__["inputs"]

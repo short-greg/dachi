@@ -1,24 +1,100 @@
-from __future__ import annotations
+# 1st Party
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Union, Literal, TypedDict
+from abc import ABC
+from typing import Any, Dict, List, Optional, Union, Literal, TypedDict, Callable
+import typing as t
+from collections import deque
+from dachi.proc import AsyncProcess
 
-JSON = Union[Dict[str, Any], List[Any], str, int, float, bool, None]
+
+class Payload(TypedDict, ABC, total=False):
+    pass
 
 
 class Event(TypedDict, total=False):
     type: str
-    payload: JSON
-    correlation_id: Optional[str]
+    payload: Payload
     port: Optional[str]
+    scope: Literal["chart", "parent", "self"] = "chart"
+    source_region: Optional[str] = None
+    source_state: Optional[str] = None
+    epoch: Optional[int] = None
     meta: Dict[str, Any]
+    ts: float
+    
+    # port: Optional[str] = None,
+    # correlation_id: Optional[str]
 
 
-from __future__ import annotations
-from typing import Any, Optional, Union, Literal
+class EventQueue:
+    """
+    A queue for events, supporting various enqueue and dequeue strategies.
 
-JSON = Union[dict, list, str, int, float, bool, None]
+    """
+
+    def __init__(
+        self,
+        maxsize: int = 1024,
+        overflow: Literal["drop_newest", "drop_oldest", "block"] = "drop_newest",
+    ):
+        self.queue: deque[Event] = deque(maxlen=maxsize)
+        self.overflow = overflow
+
+    # Non-blocking enqueue. Returns False if dropped/rejected.
+    def post_nowait(
+        self,
+        event: Event | str,
+    ) -> bool:
+        """Add an event to the queue. Returns True if added, False if dropped."""
+        if isinstance(event, str):
+            event = Event(type=event)
+        if len(self.queue) >= self.queue.maxlen:
+            if self.overflow == "drop_newest":
+                return False
+            elif self.overflow == "drop_oldest":
+                self.queue.popleft()
+            elif self.overflow == "block":
+                return False
+        
+        self.queue.append(event)
+        return True
+
+    # Blocking/awaiting enqueue (only meaningful if overflow="block").
+    async def post(
+        self,
+        event: Event | str
+    ) -> bool:
+        """Add an event to the queue. Returns True if added, False if dropped."""
+        return self.post_nowait(event)
+
+    # Dequeue next envelope (FIFO).
+    async def pop(self) -> Event:
+        """Remove and return the next event from the queue. Raises IndexError if empty."""
+        if not self.queue:
+            raise IndexError("pop from an empty queue")
+        return self.queue.popleft()
+
+    def size(self) -> int:
+        """Return the number of events in the queue."""
+        return len(self.queue)
+    
+    def empty(self) -> bool:
+        """Return True if the queue is empty."""
+        return len(self.queue) == 0
+    
+    def capacity(self) -> int:
+        """Return the maximum size of the queue."""
+        return self.queue.maxlen
+
+    def clear(self) -> None:
+        """Clear all events from the queue."""
+        self.queue.clear()
+
 
 class Post:
+    """Post an event to the event queue.
+    """
+
     def __init__(
         self,
         queue: "EventQueue",
@@ -26,86 +102,43 @@ class Post:
         source_region: Optional[str],
         source_state: Optional[str],
         epoch: Optional[int],
-        quiescing: "Callable[[], bool]",
-    ) -> None: ...
+        quiescing: Callable[[], bool],
+    ) -> None:
+        self.queue = queue
+        self.source_region = source_region
+        self.source_state = source_state
+        self.epoch = epoch
+        self.quiescing = quiescing
 
-    async def post(
+    async def aforward(
         self,
-        type_or_event: Union[str, "Event"],
-        payload: JSON = None,
+        event: str,
+        payload: Optional[Payload] = None,
         *,
         scope: Literal["chart", "parent"] = "chart",
         port: Optional[str] = None,
-    ) -> bool: ...
+    ) -> bool:
+        
+        self.queue.post({
+            "type": event,
+            "payload": payload or {},
+            "scope": scope,
+            "port": port,
+            "source_region": self.source_region,
+            "source_state": self.source_state,
+            "epoch": self.epoch,
+            "meta": {},
+            "ts": 0.0,  # TODO: timestamp
+        })
 
-    async def post_up(
-        self,
-        type_or_event: Union[str, "Event"],
-        payload: JSON = None,
-    ) -> bool: ...
-
-
-
-@dataclass
-class Envelope:
-    id: int
-    ts: float
-    event: Event
-    scope: Literal["chart", "parent", "self"]
-    source_region: Optional[str]
-    source_state: Optional[str]
-    epoch: Optional[int]
+    async def __call__(self, *args, **kwds):
+        return await self.aforward(*args, **kwds)
 
 
-class EventQueue:
-    def __init__(
-        self,
-        maxsize: int = 1024,
-        overflow: Literal["drop_newest", "drop_oldest", "block"] = "drop_newest",
-    ) -> None: ...
-
-    # Non-blocking enqueue. Returns False if dropped/rejected.
-    def post_nowait(
-        self,
-        type_or_event: Union[str, Event],
-        payload: JSON = None,
-        *,
-        scope: Literal["chart", "parent", "self"] = "chart",
-        port: Optional[str] = None,
-        source_region: Optional[str] = None,
-        source_state: Optional[str] = None,
-        epoch: Optional[int] = None,
-    ) -> bool: ...
-
-    # Blocking/awaiting enqueue (only meaningful if overflow="block").
-    async def post(
-        self,
-        type_or_event: Union[str, Event],
-        payload: JSON = None,
-        *,
-        scope: Literal["chart", "parent", "self"] = "chart",
-        port: Optional[str] = None,
-        source_region: Optional[str] = None,
-        source_state: Optional[str] = None,
-        epoch: Optional[int] = None,
-    ) -> bool: ...
-
-    # Dequeue next envelope (FIFO).
-    async def get(self) -> Envelope: ...
-
-    # ---- Introspection / testing / snapshots ----
-    def qsize(self) -> int: ...
-    def empty(self) -> bool: ...
-    def capacity(self) -> int: ...
-    def snapshot(self) -> List[Envelope]: ...
-    def load_snapshot(self, items: List[Envelope]) -> None: ...
-    def drain(self, limit: Optional[int] = None) -> List[Envelope]: ...
-    def clear(self) -> None: ...
-
-from __future__ import annotations
-from typing import Any, Dict, List, Optional, Literal
 
 class Timer:
+    """A timer for scheduling events with delays.
+    """
     def __init__(self, queue: "EventQueue", clock: "MonotonicClock") -> None: ...
 
     def start(
@@ -129,18 +162,4 @@ class Timer:
 class MonotonicClock:
     def now(self) -> float: ...
     async def sleep_until(self, when: float) -> None: ...
-
-
-from enum import Enum, auto
-from dataclasses import dataclass
-from typing import List, Optional
-
-
-@dataclass
-class RegionStatus:
-    name: str
-    current_state: str
-    is_final: bool
-    quiescing: bool
-    pending_target: Optional[str]
 

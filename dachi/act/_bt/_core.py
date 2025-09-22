@@ -256,7 +256,53 @@ class Composite(Task):
 class Leaf(Task):
     """A task that is composed of other tasks
     """
-    pass
+    
+    class inputs:
+        pass
+    
+    class outputs:
+        pass
+    
+    @classmethod
+    def _process_ports(cls, port_class):
+        """Extract port information from inputs or outputs class"""
+        import inspect
+        
+        if port_class is None:
+            return {}
+        
+        # Get annotations from the class
+        annotations = getattr(port_class, '__annotations__', {})
+        
+        port_info = {}
+        for name, type_hint in annotations.items():
+            # Skip private attributes
+            if name.startswith('_'):
+                continue
+                
+            info = {"type": type_hint}
+            
+            # Check if there's a default value
+            if hasattr(port_class, name):
+                default_value = getattr(port_class, name)
+                info["default"] = default_value
+            
+            port_info[name] = info
+        
+        return port_info
+    
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        
+        ports = {"inputs": {}, "outputs": {}}
+        
+        if hasattr(cls, 'inputs'):
+            ports["inputs"] = cls._process_ports(cls.inputs)
+        
+        if hasattr(cls, 'outputs'):
+            ports["outputs"] = cls._process_ports(cls.outputs)
+        
+        cls.__ports__ = ports
 
 
 class FTask(Task):

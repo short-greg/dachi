@@ -70,3 +70,7 @@ from ._render import (
     DEFAULT_STYLE,
     struct_template
 )
+from ._scope import (
+    Scope,
+    Ctx
+)

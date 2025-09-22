@@ -1,8 +1,23 @@
-from __future__ import annotations
-from typing import Any, Dict, List, Optional, Union, Literal
+# 1st Party
+from typing import Any, Dict, List, Optional, Union
+from dataclasses import dataclass
+
+# Local
+from dachi.core import BaseModule
+from ._state import State
+from ._event import Event
 
 JSON = Union[Dict[str, Any], List[Any], str, int, float, bool, None]
-StateRef = Union[str, "State"]  # name or instance
+StateRef = Union[str, State]  # name or instance
+
+
+@dataclass
+class RegionStatus:
+    name: str
+    current_state: str
+    is_final: bool
+    quiescing: bool
+    pending_target: Optional[str]
 
 
 class Region(BaseModule):
@@ -32,16 +47,14 @@ class Region(BaseModule):
     def list_rules(self) -> List["Rule"]: ...
 
     # --- Decision & preemption ---
-    def decide(self, event: "Event") -> "Decision": ...
+    def decide(self, event: Event) -> "Decision": ...
     def begin_quiesce(self, target: StateRef, reason: str) -> None: ...
     def end_quiesce(self) -> None: ...
     def commit(self, target: Optional[StateRef]) -> None: ...
 
     # --- Introspection / status ---
-    def to_status(self) -> "RegionStatus": ...
+    def to_status(self) -> RegionStatus: ...
 
-
-# --------- Forward-declared helper types (names only; no definitions here) ---------
 
 class Rule(BaseModule):
     event_type: str

@@ -2,6 +2,11 @@ from dachi.core import BaseModule
 from enum import Enum, auto
 from dataclasses import dataclass
 import typing as t
+from ._region import Region, RegionStatus
+from ._event import Event, EventQueue, Envelope, Timer
+
+from dataclasses import dataclass
+
 
 class ChartLifecycle(Enum):
     IDLE = auto()       # constructed, never started
@@ -9,6 +14,7 @@ class ChartLifecycle(Enum):
     FINISHED = auto()   # reached final (all top-level regions final, none quiescing)
     STOPPED = auto()    # manually stopped before finish
     ERROR = auto()      # loop crashed
+
 
 @dataclass
 class ChartStatus:
@@ -70,35 +76,13 @@ class StateChart(BaseModule):
     def queue_size(self) -> int: ...
     def list_timers(self) -> t.List[t.Dict[str, t.Any]]: ...
 
-from __future__ import annotations
-from typing import Any, Dict, List, Optional
-from dataclasses import dataclass
 
 
-@dataclass
-class ChartStatus:
-    lifecycle: ChartLifecycle
-    running: bool
-    finished: bool
-    started_at: Optional[float]
-    finished_at: Optional[float]
-    queue_size: int
-    regions: List[RegionStatus]
-
-
-class ChartLifecycle(Enum):
-    IDLE = auto()
-    RUNNING = auto()
-    FINISHED = auto()
-    STOPPED = auto()
-    ERROR = auto()
-
-@dataclass
-class Snapshot:
-    lifecycle: "ChartLifecycle"
-    started_at: Optional[float]
-    finished_at: Optional[float]
-    queue_items: List["Envelope"]
-    regions: List[Dict[str, Any]]      # per-region runtime flags (current, last, quiescing, pending_target, pending_reason)
-    timers: List[Dict[str, Any]]       # Timer.snapshot()
-
+# @dataclass
+# class Snapshot:
+#     lifecycle: "ChartLifecycle"
+#     started_at: Optional[float]
+#     finished_at: Optional[float]
+#     queue_items: List["Envelope"]
+#     regions: List[Dict[str, Any]]      # per-region runtime flags (current, last, quiescing, pending_target, pending_reason)
+#     timers: List[Dict[str, Any]]       # Timer.snapshot()
