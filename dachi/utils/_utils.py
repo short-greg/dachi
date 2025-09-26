@@ -2,6 +2,7 @@
 import typing
 import string
 import re
+import inspect
 import pydantic
 from enum import Enum
 
@@ -295,4 +296,92 @@ def singleton(cls):
 
     Wrapped.obj = _ObjDescriptor()
     return Wrapped
+
+
+def resolve_fields(ctx, cls) -> dict:
+    """Resolve fields from a context dict based on class definition.
+    
+    Takes a dictionary of context data and a class definition, returns only 
+    the fields the class defines, with defaults applied.
+    
+    Args:
+        ctx: Dictionary of context data (may contain extra fields) or dict-like object
+        cls: Class definition with annotations and/or attributes as defaults
+        
+    Returns:
+        dict: Dictionary containing only the fields defined by cls, with defaults
+        
+    Raises:
+        TypeError: If ctx is not dict-like
+        KeyError: If required field (no default) is missing from ctx
+    """
+    # Support dict-like objects (like Ctx) with __getitem__ and __contains__
+    if not (hasattr(ctx, '__getitem__') and hasattr(ctx, '__contains__')):
+        raise TypeError("ctx must be dict-like (support __getitem__ and __contains__)")
+
+    # Gather declared keys: annotations + simple attributes
+    ann = getattr(cls, "__annotations__", {})
+    keys = set(ann.keys())
+    for k, v in cls.__dict__.items():
+        if k.startswith("__"):
+            continue
+        if callable(v) or isinstance(v, (staticmethod, classmethod, property)):
+            continue
+        keys.add(k)
+
+    out = {}
+    for k in keys:
+        if k in ctx:
+            out[k] = ctx[k]
+        elif k in cls.__dict__:
+            out[k] = cls.__dict__[k]
+        else:
+            raise KeyError(f"Missing required key: {k}")
+    return out
+
+
+def resolve_from_signature(ctx, func) -> dict:
+    """Resolve function parameters from context data using function signature.
+    
+    Extracts parameters from function signature and resolves their values
+    from the context dictionary, applying defaults where available.
+    
+    Args:
+        ctx: Dictionary of context data (may contain extra fields) or dict-like object
+        func: Function whose signature to inspect for parameters
+        
+    Returns:
+        dict: Dictionary of resolved parameters ready for **kwargs
+        
+    Raises:
+        TypeError: If ctx is not dict-like
+        KeyError: If required parameter (no default) is missing from ctx
+    """
+    # Support dict-like objects (like Ctx) with __getitem__ and __contains__
+    if not (hasattr(ctx, '__getitem__') and hasattr(ctx, '__contains__')):
+        raise TypeError("ctx must be dict-like (support __getitem__ and __contains__)")
+    
+    sig = inspect.signature(func)
+    out = {}
+    
+    for param_name, param in sig.parameters.items():
+        # Skip 'self' parameter for methods
+        if param_name == 'self':
+            continue
+            
+        # Skip *args and **kwargs
+        if param.kind in (param.VAR_POSITIONAL, param.VAR_KEYWORD):
+            continue
+        
+        if param_name in ctx:
+            # Use value from context
+            out[param_name] = ctx[param_name]
+        elif param.default is not param.empty:
+            # Use default value from function signature
+            out[param_name] = param.default
+        else:
+            # Required parameter missing
+            raise KeyError(f"Missing required parameter: {param_name}")
+    
+    return out
 

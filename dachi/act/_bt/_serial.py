@@ -1,17 +1,11 @@
 # 1st party
 from abc import abstractmethod
 import typing as t
-import time
-import random
-import asyncio
-import threading
 from dataclasses import InitVar
 
 # local
-from dachi.core import BaseModule, AdaptModule
-from ._core import Task, TaskStatus, State, Composite, Leaf
-from contextlib import contextmanager
-from dachi.core import ModuleDict, Attr, ModuleList
+from ._core import Task, TaskStatus, Composite
+from dachi.core import Attr, ModuleList
 from ._leafs import Condition
 
 
@@ -24,7 +18,6 @@ class Serial(Composite):
     @abstractmethod
     def cascaded(self) -> bool:
         pass
-
 
 
 class Sequence(Serial):
@@ -89,8 +82,11 @@ class Sequence(Serial):
             
         return self.status
 
-    async def tick(self) -> TaskStatus:
-        """Update the task
+    async def tick(self, ctx) -> TaskStatus:
+        """Update the task with context support
+
+        Args:
+            ctx: Context for data flow and input resolution
 
         Returns:
             TaskStatus: The status
@@ -104,16 +100,21 @@ class Sequence(Serial):
             return self.status
 
         if self.cascaded:
-            for task in self.tasks[self._idx.data:]:
-                await task.tick()
+            for i, task in enumerate(self.tasks[self._idx.data:], self._idx.data):
+                child_ctx = ctx.child(i)
+                status = await task.tick(ctx=child_ctx)
+                
                 await self.update_status()
                 if task.status.running or self.status.is_done:
-                    return self.status
+                    break
         else:
             task = self.tasks[self._idx.data]
-            await task.tick()
+            child_ctx = ctx.child(self._idx.data)
+            status = await task.tick(ctx=child_ctx)
             await self.update_status()
-        return self.status        
+        
+        return self.status
+    
     
     def reset(self):
         
@@ -189,8 +190,12 @@ class Selector(Serial):
 
         return self.status
 
-    async def tick(self) -> TaskStatus:
-        """Update the task 
+    async def tick(self, ctx) -> TaskStatus:
+        """Update the task with context support
+        
+        Args:
+            ctx: Context for data flow and input resolution
+            
         Returns:
             TaskStatus: The status
         """
@@ -205,15 +210,30 @@ class Selector(Serial):
         if self.cascaded:
             while self._idx.data < len(self.tasks) and not self.status.is_done:
                 task = self.tasks[self._idx.data]
-                await task.tick()
+                child_ctx = ctx.child(self._idx.data)
+                res = await task.tick(ctx=child_ctx)
+                
+                if isinstance(res, tuple):
+                    status, outputs = res
+                    child_ctx.update(outputs)
+                
                 await self.update_status()
                 if task.status.running or self.status.is_done:
                     return self.status
         else:
-            await self.tasks[self._idx.data].tick()
+            task = self.tasks[self._idx.data]
+            child_ctx = ctx.child(self._idx.data)
+            
+            res = await task.tick(ctx=child_ctx)
+            
+            if isinstance(res, tuple):
+                status, outputs = res
+                child_ctx.update(outputs)
+            
             await self.update_status()
+        
         return self.status
-
+    
     def reset(self):
         super().reset()
         self._idx.data = 0
@@ -223,7 +243,6 @@ class Selector(Serial):
 
 
 Fallback = Selector
-
 
 
 class PreemptCond(Serial):
@@ -274,7 +293,7 @@ class PreemptCond(Serial):
             self._status.set(TaskStatus.FAILURE)
         return self.status
 
-    async def tick(self) -> TaskStatus:
+    async def tick(self, ctx) -> TaskStatus:
         """
 
         Args:
@@ -286,7 +305,7 @@ class PreemptCond(Serial):
         status = TaskStatus.SUCCESS
         for cond in self.cond:
             cond.reset()
-            status = await cond.tick() & status
+            status = await cond.tick(ctx) & status
         
         if status.failure:
             self._status.set(
@@ -295,7 +314,7 @@ class PreemptCond(Serial):
         
         else:
             self._status.set(
-                await self.task.tick()
+                await self.task.tick(ctx)
             )
         return self.status
     

@@ -13,7 +13,7 @@ from dachi.core import ModuleList
 from dachi.act._bt._core import TaskStatus
 
 from dachi.act._bt._parallel import Multi
-from .utils import ImmediateAction
+from .utils import ImmediateAction, create_test_ctx
 
 
 class TestParallelValidate:
@@ -43,18 +43,18 @@ class TestParallelValidate:
 class TestParallel:
     async def test_all_success(self):
         par = Multi(tasks=[ImmediateAction(status_val=TaskStatus.SUCCESS) for _ in range(3)], succeeds_on=-1, fails_on=1)
-        assert await par.tick() is TaskStatus.SUCCESS
+        assert await par.tick(create_test_ctx()) is TaskStatus.SUCCESS
 
     async def test_failure_threshold(self):
         par = Multi(tasks=[ImmediateAction(status_val=TaskStatus.FAILURE), ImmediateAction(status_val=TaskStatus.RUNNING)], fails_on=1, succeeds_on=2)
-        assert await par.tick() is TaskStatus.RUNNING
+        assert await par.tick(create_test_ctx()) is TaskStatus.RUNNING
 
     async def test_running_until_quorum(self):
         tasks = [ImmediateAction(status_val=TaskStatus.SUCCESS), ImmediateAction(status_val=TaskStatus.FAILURE), ImmediateAction(status_val=TaskStatus.RUNNING)]
         par = Multi(tasks=tasks, fails_on=2, succeeds_on=2)
-        assert await par.tick() is TaskStatus.RUNNING
+        assert await par.tick(create_test_ctx()) is TaskStatus.RUNNING
 
     async def test_fails_on_1_failure(self):
         tasks = [ImmediateAction(status_val=TaskStatus.SUCCESS), ImmediateAction(status_val=TaskStatus.FAILURE)]
         par = Multi(tasks=tasks, fails_on=1, succeeds_on=2)
-        assert await par.tick() is TaskStatus.FAILURE
+        assert await par.tick(create_test_ctx()) is TaskStatus.FAILURE

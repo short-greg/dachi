@@ -3,15 +3,10 @@ from abc import abstractmethod
 import typing as t
 import time
 import random
-import asyncio
-import threading
-from dataclasses import InitVar
 
 # local
-from dachi.core import BaseModule, AdaptModule
-from ._core import Task, TaskStatus, State, Composite, Leaf
-from contextlib import contextmanager
-from dachi.core import ModuleDict, Attr, ModuleList
+from ._core import TaskStatus, Leaf
+from dachi.core import Attr
 
 
 class Condition(Leaf):
@@ -19,54 +14,75 @@ class Condition(Leaf):
     """
 
     @abstractmethod
-    async def condition(self) -> bool:
-        """Execute between
+    async def execute(self, *args, **kwargs) -> bool | t.Tuple[bool, t.Dict]:
+        """Execute the condition logic
 
         Returns:
-            bool: The result of the condition
+            bool or (bool, outputs_dict): The result of the condition, optionally with outputs
         """
         pass
 
-    async def tick(self) -> TaskStatus:
+    async def tick(self, ctx) -> TaskStatus:
         """Check the condition
 
         Returns:
-            SangoStatus: Whether the condition failed or succeeded
+            TaskStatus or (TaskStatus, outputs_dict): Whether the condition failed or succeeded
         """
-        self._status.set(
-            TaskStatus.SUCCESS 
-            if await self.condition() 
-            else TaskStatus.FAILURE
-        )
-        return self.status
+        if self.status.is_done:
+            return self.status
+        try:
+            inputs = self.build_inputs(ctx)
+        except KeyError as e:
+            self._status.set(TaskStatus.FAILURE)
+            return self.status
+        result = await self.execute(**inputs)
+        if isinstance(result, tuple):
+            cond, outputs = result
+            ctx.update(outputs)
+        else:
+            cond = result
+        status = TaskStatus.SUCCESS if cond else TaskStatus.FAILURE
+        self._status.set(status)
+        return status
     
 
+# TODO: Update the WaitCondition class tick
+# to use ctx
 class WaitCondition(Leaf):
     """A task that waits for a condition to be met
     """
     
     @abstractmethod
-    async def condition(self) -> bool:
-        """Execute between
+    async def execute(self, *args, **kwargs) -> bool | t.Tuple[bool, t.Dict]:
+        """Execute the condition
 
         Returns:
             bool: The result of the condition
         """
         pass
 
-    async def tick(self) -> TaskStatus:
+    async def tick(self, ctx) -> TaskStatus:
         """Check the condition
 
         Returns:
-            SangoStatus: Whether the condition failed or succeeded
+            TaskStatus: Whether the condition failed or succeeded
         """
+
+        try:
+            inputs = self.build_inputs(ctx)
+        except KeyError as e:
+            self._status.set(TaskStatus.FAILURE)
+            return self.status
+        res = await self.execute(**inputs)
+        if isinstance(res, t.Tuple):
+            res, outputs = res
+            ctx.update(outputs)
         self._status.set(
-            TaskStatus.SUCCESS 
-            if await self.condition() 
+            TaskStatus.SUCCESS
+            if res
             else TaskStatus.WAITING
         )
         return self.status
-
 
 
 class Action(Leaf):
@@ -74,28 +90,35 @@ class Action(Leaf):
     """
 
     @abstractmethod
-    async def act(self) -> TaskStatus:
-        """Commit an action
-
-        Raises:
-            NotImplementedError: 
+    async def execute(self, *args, **kwargs) -> TaskStatus | t.Tuple[TaskStatus, t.Dict]:
+        """Execute the action logic
 
         Returns:
-            TaskStatus: The status of after executing
+            TaskStatus or (TaskStatus, outputs_dict): The status after executing, optionally with outputs
         """
         raise NotImplementedError
 
-    async def tick(self) -> TaskStatus:
+    async def tick(self, ctx) -> TaskStatus:
         """Execute the action
 
         Returns:
-            TaskStatus: The resulting status
+            TaskStatus or (TaskStatus, outputs_dict): The resulting status
         """
         if self.status.is_done:
             return self.status
-        status = await self.act()
+        try:
+            inputs = self.build_inputs(ctx)
+        except KeyError as e:
+            self._status.set(TaskStatus.FAILURE)
+            return self.status
+        result = await self.execute(**inputs)
+        if isinstance(result, tuple):
+            status, outputs = result
+            ctx.update(outputs)
+        else:
+            status = result
         self._status.set(status)
-        return self.status
+        return status
 
 
 class FixedTimer(Action):
@@ -107,7 +130,7 @@ class FixedTimer(Action):
         super().__post_init__()
         self._start = Attr[float | None](data=None)
 
-    async def act(self) -> TaskStatus:
+    async def execute(self) -> TaskStatus:
         """Execute the timer
 
         Returns:
@@ -120,7 +143,6 @@ class FixedTimer(Action):
         if elapsed >= self.seconds:
             return TaskStatus.SUCCESS
         return TaskStatus.RUNNING
-
 
 
 # HERE
@@ -136,16 +158,18 @@ class RandomTimer(Action):
         super().__post_init__()
         self._start = Attr[None | float](data=None)
         self._target = Attr[None | float](data=None)
+
+    def reset(self):
+        super().reset()
+        self._start.set(None)
+        self._target.set(None)
     
-    async def act(self, reset: bool=False) -> TaskStatus:
+    async def execute(self) -> TaskStatus:
         """Execute the Timer
 
         Returns:
             TaskStatus: The status of the task
         """
-        if reset:
-            self._start.set(None)
-            self._target.set(None)
         cur = time.time()
         if self._start.get() is None:
             self._start.set(cur)
@@ -155,7 +179,6 @@ class RandomTimer(Action):
         if elapsed >= self._target:
             return TaskStatus.SUCCESS
         return TaskStatus.RUNNING
-
 
 
 class CountLimit(Action):
@@ -169,7 +192,7 @@ class CountLimit(Action):
         super().__post_init__()
         self._i = Attr[int](data=0)
 
-    async def act(self):
+    async def execute(self):
         
         self._i.data += 1
         print(f"Count: {self._i.data}, Limit: {self.count}")
@@ -181,31 +204,3 @@ class CountLimit(Action):
         super().reset()
         self._i.set(0)
 
-
-
-class WaitCondition(Leaf):
-    """Check whether a condition is satisfied before
-    running a task.
-    """
-
-    @abstractmethod
-    async def condition(self) -> bool:
-        """Execute between
-
-        Returns:
-            bool: The result of the condition
-        """
-        pass
-
-    async def tick(self) -> TaskStatus:
-        """Check the condition
-
-        Returns:
-            SangoStatus: Whether the condition failed or succeeded
-        """
-        self._status.set(
-            TaskStatus.SUCCESS 
-            if await self.condition() 
-            else TaskStatus.WAITING
-        )
-        return self.status

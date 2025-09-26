@@ -1,12 +1,10 @@
 import pytest
 from pydantic import ValidationError
-
 from dachi.core import (
     Msg, Resp, 
     ListDialog, 
     TreeDialog
 )
-
 
 # Helpers
 def _sample_msg(**overrides):
@@ -120,8 +118,6 @@ class TestResp:
         # Note: implementation bug uses list, but we assert interface behaves like dict
         assert isinstance(resp._raw, dict)  # type: ignore[attr-defined]
         assert resp._raw == {}
-
-#     # --------------------------- data() & set_data() ---------------------------
 
     def test_set_and_get_data(self):
         resp = self._new_resp()

@@ -134,7 +134,7 @@ class TestAction:
     async def test_load_state_dict_sets_state(self):
         action = SetStorageActionCounter(value=3)
         action2 = SetStorageActionCounter(value=2)
-        await action.tick(create_test_ctx())
+        await action.tick()
         action2.load_state_dict(action.state_dict())
         assert action2.value.data == 3
 
@@ -145,9 +145,9 @@ class TestTimers:
     async def test_fixed_timer(self, monkeypatch):
         start = 0.0; monkeypatch.setattr(time, "time", lambda: start)
         timer = FixedTimer(seconds=5)
-        assert await timer.tick(create_test_ctx()) is TaskStatus.RUNNING
+        assert await timer.tick() is TaskStatus.RUNNING
         monkeypatch.setattr(time, "time", lambda: start + 6)
-        assert await timer.tick(create_test_ctx()) is TaskStatus.SUCCESS
+        assert await timer.tick() is TaskStatus.SUCCESS
 
     async def test_random_timer(self, monkeypatch):
         monkeypatch.setattr(random, "random", lambda: 0.5)  # deterministic
@@ -155,29 +155,29 @@ class TestTimers:
             time, "time", lambda: t0
         )
         rt = RandomTimer(seconds_lower=2, seconds_upper=4)
-        assert await rt.tick(create_test_ctx()) is TaskStatus.RUNNING
+        assert await rt.tick() is TaskStatus.RUNNING
         monkeypatch.setattr(time, "time", lambda: t0 + 3.5)
-        assert await rt.tick(create_test_ctx()) is TaskStatus.SUCCESS
+        assert await rt.tick() is TaskStatus.SUCCESS
 
 
 @pytest.mark.asyncio
 class TestCondition:
     async def test_condition_returns_success(self):
         condition = SampleCondition(x=1)
-        assert await condition.tick(create_test_ctx()) == TaskStatus.SUCCESS
+        assert await condition.tick() == TaskStatus.SUCCESS
 
     async def test_condition_returns_failure(self):
         condition = SampleCondition(x=-1)
-        assert await condition.tick(create_test_ctx()) == TaskStatus.FAILURE
+        assert await condition.tick() == TaskStatus.FAILURE
 
     async def test_condition_status_is_success(self):
         condition = SampleCondition(x=-1)
-        await condition.tick(create_test_ctx())
+        await condition.tick()
         assert condition.status == TaskStatus.FAILURE
 
     async def test_condition_status_is_ready_after_reset(self):
         condition = SampleCondition(x=-1)
-        await condition.tick(create_test_ctx())
+        await condition.tick()
         condition.reset()
         assert condition.status == TaskStatus.READY
 
@@ -188,17 +188,17 @@ class TestWaitCondition:
 
     async def test_waiting_when_false(self):
         cond = _FlagWaitCond(flag=False)
-        assert await cond.tick(create_test_ctx()) is TaskStatus.WAITING
+        assert await cond.tick() is TaskStatus.WAITING
         assert cond.status is TaskStatus.WAITING
 
     async def test_success_when_true(self):
         cond = _FlagWaitCond(flag=True)
-        assert await cond.tick(create_test_ctx()) is TaskStatus.SUCCESS
+        assert await cond.tick() is TaskStatus.SUCCESS
         assert cond.status is TaskStatus.SUCCESS
 
     async def test_reset_restores_ready(self):
         cond = _FlagWaitCond(flag=False)
-        await cond.tick(create_test_ctx())
+        await cond.tick()
         cond.reset()
         assert cond.status is TaskStatus.READY
 
@@ -221,24 +221,24 @@ class ToggleWait(WaitCondition):
 class TestToggleWaitCondition:
     async def test_wait_condition_wait_then_success(self):
         cond = ToggleWait()
-        assert await cond.tick(create_test_ctx()) is TaskStatus.WAITING
-        assert await cond.tick(create_test_ctx()) is TaskStatus.SUCCESS
+        assert await cond.tick() is TaskStatus.WAITING
+        assert await cond.tick() is TaskStatus.SUCCESS
 
 
 @pytest.mark.asyncio
 class TestCountLimit:
     async def test_runs_until_count_then_success(self):
         cl = CountLimit(count=3)
-        assert await cl.tick(create_test_ctx()) is TaskStatus.RUNNING
-        assert await cl.tick(create_test_ctx()) is TaskStatus.RUNNING
-        assert await cl.tick(create_test_ctx()) is TaskStatus.SUCCESS
+        assert await cl.tick() is TaskStatus.RUNNING
+        assert await cl.tick() is TaskStatus.RUNNING
+        assert await cl.tick() is TaskStatus.SUCCESS
 
     async def test_countlimit_reset(self):
         cl = CountLimit(count=2)
-        await cl.tick(create_test_ctx()); await cl.tick(create_test_ctx())
+        await cl.tick(); await cl.tick()
         cl.reset()
         assert cl.status is TaskStatus.READY
-        assert await cl.tick(create_test_ctx()) is TaskStatus.RUNNING
+        assert await cl.tick() is TaskStatus.RUNNING
 
 
 class TestPortSystem:

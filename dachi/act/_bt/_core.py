@@ -4,13 +4,15 @@ from abc import abstractmethod
 import typing as t
 
 # local
-from ...core import Attr, BaseModule
+from ...core import Attr, BaseModule, InitVar, Scope
 from ...proc import Process
+from ...utils._utils import resolve_fields, resolve_from_signature
 # TODO: Add in Action (For GOAP)
 from abc import ABC
 import typing as t
 from contextlib import contextmanager
 from asyncio import sleep as async_sleep
+import asyncio
 
 
 class TaskStatus(Enum):
@@ -188,11 +190,16 @@ class Task(BaseModule):
         self._id = id(self)
 
     @abstractmethod    
-    async def tick(self) -> TaskStatus:
+    async def tick(self, ctx) -> TaskStatus:
         raise NotImplementedError
 
     def sync_tick(self) -> TaskStatus:
-        raise NotImplementedError
+        """Synchronous tick for non-async contexts
+
+        Returns:
+            TaskStatus: The status after executing the task
+        """
+        return asyncio.run(self.tick({}))
 
     async def __call__(self) -> TaskStatus:
         """Execute the task
@@ -200,7 +207,8 @@ class Task(BaseModule):
         Returns:
             TaskStatus: The status of the task after execution
         """
-        return await self.tick()
+        scope = Scope()
+        return await self.tick(scope.ctx())
     
     @property
     def status(self) -> TaskStatus:
@@ -222,8 +230,15 @@ class Task(BaseModule):
         return self._id
     
     def reset(self):
-
         self._status.set(TaskStatus.READY)
+    
+    def fail(self):
+        """Set the task status to FAILURE without executing"""
+        self._status.set(TaskStatus.FAILURE)
+    
+    def succeed(self):
+        """Set the task status to SUCCESS without executing"""
+        self._status.set(TaskStatus.SUCCESS)
 
 
 class Composite(Task):
@@ -256,11 +271,21 @@ class Composite(Task):
 class Leaf(Task):
     """A task that is composed of other tasks
     """
-    
-    class inputs:
-        pass
+
+    # Define input ports if you do not want to use the function signature
+    # class inputs:
+    #    pass
     
     class outputs:
+        pass
+    
+    @abstractmethod
+    async def execute(self, *args, **kwargs):
+        """Execute the leaf's logic with resolved inputs
+        
+        For Action: returns TaskStatus or (TaskStatus, outputs_dict)
+        For Condition: returns bool or (bool, outputs_dict)
+        """
         pass
     
     @classmethod
@@ -303,46 +328,41 @@ class Leaf(Task):
             ports["outputs"] = cls._process_ports(cls.outputs)
         
         cls.__ports__ = ports
-
-
-class FTask(Task):
-    """A task that executes a function
-    """
-    name: str
-    args: t.List[t.Any]
-    kwargs: t.Dict[str, t.Any]
-
-    def __post_init__(self):
-        """Initialize the FTask"""
-        super().__post_init__()
-        self.obj = None
-        self._task = None
-
-    async def tick(self) -> TaskStatus:
-        """Execute the task
-
-        Returns:
-            TaskStatus: The status after executing the task
-        """
-
-        if self.status.is_done:
-            return self.status
-        
-        if self.obj is None:
-            raise ValueError(
-                "Task object is not set. "
-                "Please set the object before calling tick."
-            )
-
-        status = await self.func_tick()
-        self._status.set(status)
-        return status
     
-    def reset(self):
-        """Reset the task
+    def build_inputs(self, ctx: dict) -> dict:
+        """Build inputs from context data using class definition or function signature"""
+        if hasattr(self.__class__, 'inputs'):
+            # Use inputs class if defined
+            return resolve_fields(ctx, self.__class__.inputs)
+        else:
+            # Use function signature inspection based on execute method
+            return resolve_from_signature(ctx, self.execute)
+    
+    def build_outputs(self, output_data: dict) -> dict:
+        """Build outputs using resolve_fields"""
+        return resolve_fields(output_data, self.outputs)
+    
+    @abstractmethod
+    async def tick(self, ctx) -> TaskStatus:
+        """Tick with context-aware input resolution
+        
+        Handles input resolution and failure automatically.
+        If required inputs are missing, fails the task.
+        
+        Args:
+            ctx: Context for input resolution
+            
+        Returns:
+            TaskStatus or (TaskStatus, outputs_dict): The result after execution
         """
-        super().reset()
-        self._task = None
+        pass
+        # try:
+        #     inputs = self.build_inputs(ctx)
+        #     return await self.tick(**inputs)
+        # except KeyError:
+        #     # Missing required inputs - fail the task
+        #     self.fail()
+        #     return self.status
 
 
 
@@ -376,40 +396,6 @@ def from_bool(status: bool) -> TaskStatus:
         TaskStatus: The task status
     """
     return TaskStatus.from_bool(status)
-
-
-class State(BaseModule):
-    """Use State creating a state machine
-    SubClasses must return a literal 
-            string or type TaskStatus
-    """
-    @abstractmethod
-    async def update(self) -> None:
-        """Update the state
-
-        Returns:
-            # SubClasses must return a literal 
-            of type TaskStatus or 
-            None
-        """
-        pass
-
-    async def __call__(self, reset: bool=False):
-        return await self.update(reset)
-
-
-STATE_CALL = State | t.Callable[[], State | TaskStatus]
-
-class Router(Process, ABC):
-    """Use to route a value to a Task
-    """
-
-    @abstractmethod
-    def delta(self, val) -> TaskStatus | State:
-        pass
-
-
-ROUTE = Router | t.Callable[[t.Any], TaskStatus | State]
 
 
 
@@ -485,6 +471,83 @@ async def loop_until(
                 task.reset()
     
         cur_status = await task()
+
+
+# TODO: Define this. I think we need one for Action and one for Condition
+class FTask(Task):
+    """A task that executes a function
+    """
+    name: str
+    args: t.List[t.Any]
+    kwargs: t.Dict[str, t.Any]
+
+    def __post_init__(self):
+        """Initialize the FTask"""
+        super().__post_init__()
+        self.obj = None
+        self._task = None
+
+    async def tick(self) -> TaskStatus:
+        """Execute the task
+
+        Returns:
+            TaskStatus: The status after executing the task
+        """
+
+        if self.status.is_done:
+            return self.status
+        
+        if self.obj is None:
+            raise ValueError(
+                "Task object is not set. "
+                "Please set the object before calling tick."
+            )
+
+        status = await self.func_tick()
+        self._status.set(status)
+        return status
+    
+    def reset(self):
+        """Reset the task
+        """
+        super().reset()
+        self._task = None
+
+
+
+# TODO: Remove the State and Router
+# class State(BaseModule):
+#     """Use State creating a state machine
+#     SubClasses must return a literal 
+#             string or type TaskStatus
+#     """
+#     @abstractmethod
+#     async def update(self) -> None:
+#         """Update the state
+
+#         Returns:
+#             # SubClasses must return a literal 
+#             of type TaskStatus or 
+#             None
+#         """
+#         pass
+
+#     async def __call__(self, reset: bool=False):
+#         return await self.update(reset)
+
+
+# STATE_CALL = State | t.Callable[[], State | TaskStatus]
+
+# class Router(Process, ABC):
+#     """Use to route a value to a Task
+#     """
+
+#     @abstractmethod
+#     def delta(self, val) -> TaskStatus | State:
+#         pass
+
+
+# ROUTE = Router | t.Callable[[t.Any], TaskStatus | State]
 
 
 

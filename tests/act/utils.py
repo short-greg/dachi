@@ -1,4 +1,4 @@
-from dachi.core import InitVar, Attr, ModuleList
+from dachi.core import InitVar, Attr, ModuleList, Scope
 from dachi.act._bt._core import TaskStatus, Task
 
 from typing import Any
@@ -11,7 +11,7 @@ class _ToggleTask(Task):
     def __post_init__(self):
         super().__post_init__()
         self.calls = 0
-    async def tick(self):
+    async def tick(self, ctx):
         self.calls += 1
         if self.calls == 1:
             self._status.set(TaskStatus.RUNNING)
@@ -33,11 +33,11 @@ class _ABoolProc(AsyncProcess):
 
 
 class AlwaysTrueCond(Condition):
-    async def condition(self):
+    async def execute(self):
         return True
 
 class AlwaysFalseCond(Condition):
-    async def condition(self):
+    async def execute(self):
         return False
 
 
@@ -50,7 +50,7 @@ class ImmediateAction(Action):
         super().__post_init__()
         self._ret = status_val
 
-    async def act(self) -> TaskStatus:
+    async def execute(self) -> TaskStatus:
         return self._ret
 
 
@@ -58,7 +58,7 @@ class ATask(Action):
     """Always succeeds – used to stub out generic actions."""
     x: int = 1
 
-    async def act(self) -> TaskStatus:  # noqa: D401
+    async def execute(self) -> TaskStatus:  # noqa: D401
         return TaskStatus.SUCCESS
 
 
@@ -72,7 +72,7 @@ class SetStorageAction(Action):
         super().__post_init__()
         self.value = Attr[int](value)
 
-    async def act(self) -> TaskStatus:  # noqa: D401
+    async def execute(self) -> TaskStatus:  # noqa: D401
         print('Acting!')
         return TaskStatus.FAILURE if self.value.data < 0 else TaskStatus.SUCCESS
 
@@ -82,7 +82,7 @@ class SampleCondition(Condition):
 
     x: int = 1
 
-    async def condition(self) -> bool:  # noqa: D401
+    async def execute(self) -> bool:  # noqa: D401
         return self.x >= 0
 
 
@@ -97,7 +97,7 @@ class SetStorageActionCounter(Action):
         self._count = 0
         self.value = Attr[int](value)
 
-    async def act(self) -> TaskStatus:  # noqa: D401
+    async def execute(self) -> TaskStatus:  # noqa: D401
         if self.value.data == 0:
             return TaskStatus.FAILURE
         self._count += 1
@@ -113,7 +113,7 @@ class FlagWaitCond(WaitCondition):
 
     flag: bool = True
 
-    async def condition(self) -> bool:
+    async def execute(self) -> bool:
         return self.flag
 
 
@@ -141,7 +141,13 @@ class _ImmediateTask(Task):
         super().__init__()
         self._status_to_return = status
 
-    async def tick(self) -> TaskStatus:  # noqa: D401
+    async def tick(self, ctx) -> TaskStatus:  # noqa: D401
         return self._status_to_return
+
+
+def create_test_ctx():
+    """Helper to create test context"""
+    scope = Scope()
+    return scope.ctx()
 
 

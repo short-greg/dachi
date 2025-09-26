@@ -77,7 +77,7 @@ class Multi(Parallel):
                 'must be greater than 0'
             )
         
-    async def run(self, task: Task) -> TaskStatus:
+    async def run(self, task: Task, ctx) -> TaskStatus:
         """Run the task until it is done
 
         Args:
@@ -89,7 +89,7 @@ class Multi(Parallel):
         if task.status.is_done:
             return task.status
         
-        status = await task.tick()
+        status = await task.tick(ctx)
         return status
     
     async def update_status(self):
@@ -136,7 +136,7 @@ class Multi(Parallel):
             self._status.set(TaskStatus.RUNNING)
         return self.status
     
-    async def tick(self) -> TaskStatus:
+    async def tick(self, ctx) -> TaskStatus:
         """Execute the Parallel task
         It runs all tasks in parallel and waits for the response. Once all tasks are done, it checks the results and sets the status according to the values set by
         fails_on and succeeds_on.
@@ -147,13 +147,13 @@ class Multi(Parallel):
         tasks = []
         async with asyncio.TaskGroup() as tg:
             
-            for task in self.tasks:
+            for i, task in enumerate(self.tasks):
                 if task.status.is_done:
                     tasks.append(task.status)
                 else:
                     tasks.append(
                         tg.create_task(
-                            self.run(task)
+                            self.run(task, ctx.child(i))
                         )
                     )
 

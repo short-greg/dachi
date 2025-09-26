@@ -1,6 +1,6 @@
 from dachi.act._bt import _core
 from dachi.act._bt._core import TaskStatus
-from .utils import ImmediateAction, SetStorageActionCounter
+from .utils import ImmediateAction, SetStorageActionCounter, create_test_ctx
 from dachi.act._bt._decorators import AsLongAs
 
 from dachi.act._bt._core import loop_aslongas, loop_until
@@ -98,7 +98,7 @@ class _DummyTask(core.Task):
         super().__init__()
         self._ret_status = ret_status
 
-    async def tick(self) -> core.TaskStatus:  # noqa: D401 – trivial impl
+    async def tick(self, ctx) -> core.TaskStatus:  # noqa: D401 – trivial impl
         self._status.set(self._ret_status)
         return self._ret_status
 
@@ -167,7 +167,7 @@ class TestAsLongAs:
         action1 = SetStorageActionCounter(value=0)
         action1._count = -1
         while_ = AsLongAs(task=action1, target_status=TaskStatus.FAILURE)
-        await while_.tick()
+        await while_.tick(create_test_ctx())
         action1.value = 1
         assert while_.status == TaskStatus.RUNNING
 
@@ -176,9 +176,9 @@ class TestAsLongAs:
         action1._count = 1
         action1.value.data = 4
         aslongas = AsLongAs(task=action1)
-        await aslongas.tick()
+        await aslongas.tick(create_test_ctx())
         action1.value.data = 0
-        assert await aslongas.tick() == TaskStatus.FAILURE
+        assert await aslongas.tick(create_test_ctx()) == TaskStatus.FAILURE
 
 class TestFromBoolHelper:
     """:pyfunc:`~core.from_bool` mirrors :pyfunc:`TaskStatus.from_bool`."""
@@ -232,7 +232,7 @@ class TestTaskLifecycle:
 
     async def test_tick_updates_status_and_returns(self):
         t = _DummyTask(core.TaskStatus.SUCCESS)
-        out = await t.tick()
+        out = await t.tick(create_test_ctx())
         assert out is core.TaskStatus.SUCCESS
         assert t.status is core.TaskStatus.SUCCESS
 
@@ -243,7 +243,7 @@ class TestTaskLifecycle:
 
     async def test_reset_restores_ready(self):
         t = _DummyTask(core.TaskStatus.SUCCESS)
-        await t.tick()
+        await t.tick(create_test_ctx())
         t.reset()
         assert t.status is core.TaskStatus.READY
 
@@ -259,24 +259,24 @@ class TestTaskLifecycle:
 #     async def test_tick_without_obj_raises(self):
 #         task = core.FTask(name="ft", args=[], kwargs={})
 #         with pytest.raises(ValueError):
-#             await task.tick()
+#             await task.tick(create_test_ctx())
 
 #     async def test_tick_executes_and_caches_result(self):
 #         task = _CountingFTask()
-#         out = await task.tick()
+#         out = await task.tick(create_test_ctx())
 #         assert out is core.TaskStatus.SUCCESS
 #         assert task.calls == 1
 #         # second call – should short-circuit and *not* call func_tick again
-#         out2 = await task.tick()
+#         out2 = await task.tick(create_test_ctx())
 #         assert out2 is core.TaskStatus.SUCCESS
 #         assert task.calls == 1
 
 #     async def test_reset_clears_done_state(self):
 #         task = _CountingFTask()
-#         await task.tick()
+#         await task.tick(create_test_ctx())
 #         task.reset()
 #         assert task.status is core.TaskStatus.READY
 #         # after reset, func_tick should execute again
-#         await task.tick()
+#         await task.tick(create_test_ctx())
 #         assert task.calls == 2
 

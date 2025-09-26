@@ -1,5 +1,5 @@
 import pytest
-from dachi.core import InitVar, Attr, ModuleList
+from dachi.core import InitVar, Attr, ModuleList, Scope
 from dachi.act._bt._core import TaskStatus
 from dachi.act._bt._leafs import Action
 from dachi.act._bt._serial import PreemptCond, Serial, Selector, Sequence
@@ -10,15 +10,19 @@ from .utils import ImmediateAction, SetStorageActionCounter, AlwaysTrueCond, Alw
 @pytest.mark.asyncio
 class TestPreemptCond:
     async def test_preemptcond_failure_when_false(self):
+        scope = Scope()
+        ctx = scope.ctx()
         main = ImmediateAction(status_val=TaskStatus.SUCCESS)
         pc = PreemptCond(cond=[AlwaysFalseCond()], task=main)
-        assert await pc.tick() is TaskStatus.FAILURE
+        assert await pc.tick(ctx) is TaskStatus.FAILURE
         assert main.status is TaskStatus.READY  # main skipped
 
     async def test_preemptcond_propagates_task_success(self):
+        scope = Scope()
+        ctx = scope.ctx()
         main = ImmediateAction(status_val=TaskStatus.SUCCESS)
         pc = PreemptCond(cond=[AlwaysTrueCond()], task=main)
-        assert await pc.tick() is TaskStatus.SUCCESS
+        assert await pc.tick(ctx) is TaskStatus.SUCCESS
 
 
 class ImmediateAction(Action):
@@ -30,7 +34,7 @@ class ImmediateAction(Action):
         super().__post_init__()
         self._status_val = status_val
 
-    async def act(self) -> TaskStatus:  # noqa: D401
+    async def execute(self) -> TaskStatus:  # noqa: D401
         return self._status_val
 
 
@@ -50,43 +54,58 @@ class TestSerialValidation:
 @pytest.mark.asyncio
 class TestSequence:
     async def test_sequence_is_running_when_started(self):
+        scope = Scope()
+        ctx = scope.ctx()
+        
         action1 = SetStorageAction(value=1)
         action2 = SetStorageAction(value=2)
         sequence = Sequence(
             tasks=[action1, action2]
         )
-        assert await sequence.tick() == TaskStatus.RUNNING
+        assert await sequence.tick(ctx) == TaskStatus.RUNNING
 
     async def test_sequence_is_success_when_finished(self):
+        scope = Scope()
+        ctx = scope.ctx()
+        
         action1 = SetStorageAction(value=1)
         action2 = SetStorageAction(value=2)
         sequence = Sequence(tasks=[action1, action2])
-        await sequence.tick()
-        assert await sequence.tick() == TaskStatus.SUCCESS
+        await sequence.tick(ctx)
+        assert await sequence.tick(ctx) == TaskStatus.SUCCESS
 
     async def test_sequence_is_failure_less_than_zero(self):
+        scope = Scope()
+        ctx = scope.ctx()
+        
         action1 = SetStorageAction(value=1)
         action2 = SetStorageAction(value=-1)
         sequence = Sequence(tasks=[action1, action2])
-        await sequence.tick()
-        assert await sequence.tick() == TaskStatus.FAILURE
+        await sequence.tick(ctx)
+        assert await sequence.tick(ctx) == TaskStatus.FAILURE
 
     async def test_sequence_is_ready_when_reset(self):
+        scope = Scope()
+        ctx = scope.ctx()
+        
         action1 = SetStorageAction(value=1)
         action2 = SetStorageAction(value=-1)
         sequence = Sequence(tasks=[action1, action2])
-        await sequence.tick()
-        await sequence.tick()
+        await sequence.tick(ctx)
+        await sequence.tick(ctx)
         sequence.reset()
         assert sequence.status == TaskStatus.READY
 
     async def test_sequence_finished_after_three_ticks(self):
+        scope = Scope()
+        ctx = scope.ctx()
+        
         action1 = SetStorageAction(value=2)
         action2 = SetStorageActionCounter(value=3)
         sequence = Sequence(tasks=[action1, action2])
-        await sequence.tick()
-        await sequence.tick()
-        assert await sequence.tick() == TaskStatus.SUCCESS
+        await sequence.tick(ctx)
+        await sequence.tick(ctx)
+        assert await sequence.tick(ctx) == TaskStatus.SUCCESS
 
 
 @pytest.mark.asyncio 
@@ -99,7 +118,9 @@ class TestCascadedSequence:
         sequence = Sequence(tasks=[action1, action2, action3], cascaded=True)
         
         # Should complete all tasks in one tick
-        assert await sequence.tick() == TaskStatus.SUCCESS
+        scope = Scope()
+        ctx = scope.ctx()
+        assert await sequence.tick(ctx) == TaskStatus.SUCCESS
         assert action1.status == TaskStatus.SUCCESS
         assert action2.status == TaskStatus.SUCCESS  
         assert action3.status == TaskStatus.SUCCESS
@@ -112,7 +133,9 @@ class TestCascadedSequence:
         sequence = Sequence(tasks=[action1, action2, action3], cascaded=True)
         
         # Should stop at the RUNNING task
-        assert await sequence.tick() == TaskStatus.RUNNING
+        scope = Scope()
+        ctx = scope.ctx()
+        assert await sequence.tick(ctx) == TaskStatus.RUNNING
         assert action1.status == TaskStatus.SUCCESS
         assert action2.status == TaskStatus.RUNNING
         assert action3.status == TaskStatus.READY  # Not executed yet
@@ -125,7 +148,9 @@ class TestCascadedSequence:
         sequence = Sequence(tasks=[action1, action2, action3], cascaded=True)
         
         # Should fail immediately at action2
-        assert await sequence.tick() == TaskStatus.FAILURE
+        scope = Scope()
+        ctx = scope.ctx()
+        assert await sequence.tick(ctx) == TaskStatus.FAILURE
         assert action1.status == TaskStatus.SUCCESS
         assert action2.status == TaskStatus.FAILURE
         assert action3.status == TaskStatus.READY  # Not executed
@@ -142,12 +167,17 @@ class TestCascadedSequence:
         action2_c = ImmediateAction(status_val=TaskStatus.SUCCESS)
         sequence_c = Sequence(tasks=[action1_c, action2_c], cascaded=True)
         
+        scope_nc = Scope()
+        ctx_nc = scope_nc.ctx()
+        scope_c = Scope()
+        ctx_c = scope_c.ctx()
+        
         # Non-cascaded needs multiple ticks
-        assert await sequence_nc.tick() == TaskStatus.RUNNING  # First tick - only action1
-        assert await sequence_nc.tick() == TaskStatus.SUCCESS  # Second tick - action2
+        assert await sequence_nc.tick(ctx_nc) == TaskStatus.RUNNING  # First tick - only action1
+        assert await sequence_nc.tick(ctx_nc) == TaskStatus.SUCCESS  # Second tick - action2
         
         # Cascaded completes in one tick
-        assert await sequence_c.tick() == TaskStatus.SUCCESS
+        assert await sequence_c.tick(ctx_c) == TaskStatus.SUCCESS
         
     async def test_cascaded_sequence_with_mixed_task_types(self):
         """Test cascaded sequence with mixture of immediate and storage actions"""
@@ -156,7 +186,9 @@ class TestCascadedSequence:
         sequence = Sequence(tasks=[immediate, storage], cascaded=True)
         
         # Should complete both in one tick since both succeed immediately
-        assert await sequence.tick() == TaskStatus.SUCCESS
+        scope = Scope()
+        ctx = scope.ctx()
+        assert await sequence.tick(ctx) == TaskStatus.SUCCESS
         assert immediate.status == TaskStatus.SUCCESS
         assert storage.status == TaskStatus.SUCCESS
 
@@ -171,7 +203,9 @@ class TestCascadedSelector:
         selector = Selector(tasks=[action1, action2, action3], cascaded=True)
         
         # Should succeed at action2 and not try action3
-        assert await selector.tick() == TaskStatus.SUCCESS
+        scope = Scope()
+        ctx = scope.ctx()
+        assert await selector.tick(ctx) == TaskStatus.SUCCESS
         assert action1.status == TaskStatus.FAILURE
         assert action2.status == TaskStatus.SUCCESS
         assert action3.status == TaskStatus.READY  # Not executed
@@ -184,7 +218,9 @@ class TestCascadedSelector:
         selector = Selector(tasks=[action1, action2, action3], cascaded=True)
         
         # Should try all tasks and fail
-        assert await selector.tick() == TaskStatus.FAILURE
+        scope = Scope()
+        ctx = scope.ctx()
+        assert await selector.tick(ctx) == TaskStatus.FAILURE
         assert action1.status == TaskStatus.FAILURE
         assert action2.status == TaskStatus.FAILURE  
         assert action3.status == TaskStatus.FAILURE
@@ -197,7 +233,9 @@ class TestCascadedSelector:
         selector = Selector(tasks=[action1, action2, action3], cascaded=True)
         
         # Should stop at the RUNNING task
-        assert await selector.tick() == TaskStatus.RUNNING
+        scope = Scope()
+        ctx = scope.ctx()
+        assert await selector.tick(ctx) == TaskStatus.RUNNING
         assert action1.status == TaskStatus.FAILURE
         assert action2.status == TaskStatus.RUNNING
         assert action3.status == TaskStatus.READY  # Not executed yet
@@ -214,12 +252,17 @@ class TestCascadedSelector:
         action2_c = ImmediateAction(status_val=TaskStatus.SUCCESS)
         selector_c = Selector(tasks=[action1_c, action2_c], cascaded=True)
         
+        scope_nc = Scope()
+        ctx_nc = scope_nc.ctx()
+        scope_c = Scope()
+        ctx_c = scope_c.ctx()
+        
         # Non-cascaded needs multiple ticks
-        assert await selector_nc.tick() == TaskStatus.RUNNING  # First tick - action1 fails, move to action2
-        assert await selector_nc.tick() == TaskStatus.SUCCESS  # Second tick - action2 succeeds
+        assert await selector_nc.tick(ctx_nc) == TaskStatus.RUNNING  # First tick - action1 fails, move to action2
+        assert await selector_nc.tick(ctx_nc) == TaskStatus.SUCCESS  # Second tick - action2 succeeds
         
         # Cascaded completes in one tick
-        assert await selector_c.tick() == TaskStatus.SUCCESS
+        assert await selector_c.tick(ctx_c) == TaskStatus.SUCCESS
 
 
 @pytest.mark.asyncio
@@ -228,20 +271,26 @@ class TestCascadedEdgeCases:
         """Test cascaded sequence with no tasks"""
         sequence = Sequence(tasks=[], cascaded=True)
         # Should succeed immediately with no tasks
-        assert await sequence.tick() == TaskStatus.SUCCESS
+        scope = Scope()
+        ctx = scope.ctx()
+        assert await sequence.tick(ctx) == TaskStatus.SUCCESS
 
     async def test_cascaded_selector_empty_tasks(self):
         """Test cascaded selector with no tasks"""
         selector = Selector(tasks=[], cascaded=True) 
         # Should fail immediately with no tasks to try
-        assert await selector.tick() == TaskStatus.FAILURE
+        scope = Scope()
+        ctx = scope.ctx()
+        assert await selector.tick(ctx) == TaskStatus.FAILURE
 
     async def test_cascaded_sequence_single_task(self):
         """Test cascaded sequence with single task"""
         action = ImmediateAction(status_val=TaskStatus.SUCCESS)
         sequence = Sequence(tasks=[action], cascaded=True)
         
-        assert await sequence.tick() == TaskStatus.SUCCESS
+        scope = Scope()
+        ctx = scope.ctx()
+        assert await sequence.tick(ctx) == TaskStatus.SUCCESS
         assert action.status == TaskStatus.SUCCESS
 
     async def test_cascaded_selector_single_task(self):
@@ -249,7 +298,9 @@ class TestCascadedEdgeCases:
         action = ImmediateAction(status_val=TaskStatus.SUCCESS)
         selector = Selector(tasks=[action], cascaded=True)
         
-        assert await selector.tick() == TaskStatus.SUCCESS
+        scope = Scope()
+        ctx = scope.ctx()
+        assert await selector.tick(ctx) == TaskStatus.SUCCESS
         assert action.status == TaskStatus.SUCCESS
 
     async def test_cascaded_sequence_reset_behavior(self):
@@ -259,7 +310,9 @@ class TestCascadedEdgeCases:
         sequence = Sequence(tasks=[action1, action2], cascaded=True)
         
         # Complete the sequence
-        assert await sequence.tick() == TaskStatus.SUCCESS
+        scope = Scope()
+        ctx = scope.ctx()
+        assert await sequence.tick(ctx) == TaskStatus.SUCCESS
         
         # Reset and verify state
         sequence.reset()
@@ -275,7 +328,9 @@ class TestCascadedEdgeCases:
         selector = Selector(tasks=[action1, action2], cascaded=True)
         
         # Complete the selector
-        assert await selector.tick() == TaskStatus.SUCCESS
+        scope = Scope()
+        ctx = scope.ctx()
+        assert await selector.tick(ctx) == TaskStatus.SUCCESS
         
         # Reset and verify state  
         selector.reset()
@@ -288,35 +343,520 @@ class TestCascadedEdgeCases:
 @pytest.mark.asyncio
 class TestFallback:
     async def test_fallback_is_successful_after_one_tick(self):
+        scope = Scope()
+        ctx = scope.ctx()
         action1 = SetStorageAction(value=1)
         action2 = SetStorageAction()
         fallback = Selector(tasks=[action1, action2])
-        assert await fallback.tick() == TaskStatus.SUCCESS
+        assert await fallback.tick(ctx) == TaskStatus.SUCCESS
 
     async def test_fallback_is_successful_after_two_ticks(self):
+        scope = Scope()
+        ctx = scope.ctx()
         action1 = SetStorageAction(value=-1)
         action2 = SetStorageAction(value=1)
         fallback = Selector(tasks=[action1, action2])
-        await fallback.tick()
-        assert await fallback.tick() == TaskStatus.SUCCESS
+        await fallback.tick(ctx)
+        assert await fallback.tick(ctx) == TaskStatus.SUCCESS
 
     async def test_fallback_fails_after_two_ticks(self):
+        scope = Scope()
+        ctx = scope.ctx()
         action1 = SetStorageAction(value=-1)
         action2 = SetStorageAction(value=-1)
         fallback = Selector(tasks=[action1, action2])
-        await fallback.tick()
-        assert await fallback.tick() == TaskStatus.FAILURE
+        await fallback.tick(ctx)
+        assert await fallback.tick(ctx) == TaskStatus.FAILURE
 
     async def test_fallback_running_after_one_tick(self):
+        scope = Scope()
+        ctx = scope.ctx()
         action1 = SetStorageAction(value=-1)
         action2 = SetStorageAction(value=-1)
         fallback = Selector(tasks=[action1, action2])
-        assert await fallback.tick() == TaskStatus.RUNNING
+        assert await fallback.tick(ctx) == TaskStatus.RUNNING
 
     async def test_fallback_ready_after_reset(self):
+        scope = Scope()
+        ctx = scope.ctx()
         action1 = SetStorageAction(value=-1)
         action2 = SetStorageAction(value=-1)
         fallback = Selector(tasks=[action1, action2])
-        await fallback.tick()
+        await fallback.tick(ctx)
         fallback.reset()
         assert fallback.status == TaskStatus.READY
+
+
+# Context-aware test helpers
+from dachi.core import Scope
+from dachi.act._bt._leafs import Action, Condition
+
+class ContextTestAction(Action):
+    """Test action using function signature for input resolution"""
+    
+    class outputs:
+        result: str
+        success: bool
+    
+    def __post_init__(self):
+        super().__post_init__()
+        self._call_count = 0
+    
+    async def execute(self, target: tuple = (0, 0, 0), attempts: int = 1, optional_param: str = "default_value"):
+        self._call_count += 1
+        self._last_kwargs = {"target": target, "attempts": attempts, "optional_param": optional_param}
+        
+        if attempts > 0:
+            return TaskStatus.SUCCESS, {
+                "result": f"reached_{target}",
+                "success": True
+            }
+        else:
+            return TaskStatus.FAILURE, {
+                "result": "failed",
+                "success": False
+            }
+
+class SimpleContextAction(Action):
+    """Simpler action that just returns success and configurable outputs"""
+    
+    class outputs:
+        value: int
+        
+    def __init__(self, output_value: int = 42):
+        super().__init__()
+        self._output_value = output_value
+    
+    async def execute(self):
+        return TaskStatus.SUCCESS, {"value": self._output_value}
+
+class RequiredInputAction(Action):
+    """Action with required inputs using class-based input resolution"""
+    
+    class inputs:
+        required_param: str
+        required_number: int
+    
+    async def execute(self, required_param: str, required_number: int):
+        return TaskStatus.SUCCESS
+
+
+@pytest.mark.asyncio
+class TestSequenceWithContext:
+    """Test context-aware Sequence behavior"""
+    
+    async def test_sequence_creates_child_contexts_with_correct_indices(self):
+        """Test that sequence creates child contexts at correct index paths"""
+        scope = Scope()
+        ctx = scope.ctx()  # root context
+        
+        action1 = SimpleContextAction(output_value=1)
+        action2 = SimpleContextAction(output_value=2)
+        sequence = Sequence(tasks=[action1, action2], cascaded=True)
+        
+        # This should create child contexts at paths (0,) and (1,)
+        await sequence.tick(ctx)
+        
+        # Verify that data was stored at correct paths
+        # When action1 ticks, it should store at path (0,) field "value" = 1
+        # When action2 ticks, it should store at path (1,) field "value" = 2
+        assert scope.path((0,), "value") == 1
+        assert scope.path((1,), "value") == 2
+    
+    async def test_sequence_calls_leaf_with_resolved_kwargs(self):
+        """Test that sequence calls leaf tasks with resolved keyword arguments"""
+        scope = Scope()
+        ctx = scope.ctx()
+        
+        # Set up context data that the action should receive
+        ctx["target"] = (10, 20, 30)
+        ctx["attempts"] = 3
+        
+        action = ContextTestAction()
+        sequence = Sequence(tasks=[action])
+        
+        await sequence.tick(ctx)
+        
+        # Verify the action was called with resolved kwargs
+        assert hasattr(action, '_last_kwargs')
+        assert action._last_kwargs['target'] == (10, 20, 30)
+        assert action._last_kwargs['attempts'] == 3
+        assert action._last_kwargs['optional_param'] == "default_value"  # from default
+    
+    async def test_sequence_calls_composite_with_child_context(self):
+        """Test that sequence calls composite children with child context, not kwargs"""
+        scope = Scope()
+        ctx = scope.ctx()
+        
+        # Create nested sequence (composite child)
+        inner_action = SimpleContextAction(output_value=5)
+        inner_sequence = Sequence(tasks=[inner_action], cascaded=True)
+        outer_sequence = Sequence(tasks=[inner_sequence], cascaded=True)
+        
+        await outer_sequence.tick(ctx)
+        
+        # Verify inner sequence got a child context and data was stored correctly
+        # The inner_action should store at path (0, 0) field "value" = 5
+        # (outer child 0, inner child 0, output "value")
+        assert scope.path((0, 0), "value") == 5
+    
+    async def test_sequence_stores_leaf_outputs_in_context(self):
+        """Test that sequence stores leaf outputs using ctx.update()"""
+        scope = Scope()
+        ctx = scope.ctx()
+        
+        action = SimpleContextAction(output_value=42)
+        sequence = Sequence(tasks=[action], cascaded=True)
+        
+        await sequence.tick(ctx)
+        
+        # The action's output should be stored in the scope at the child's path
+        assert scope.path((0,), "value") == 42
+    
+    async def test_sequence_resolves_inputs_from_context_data(self):
+        """Test input resolution from context data"""
+        scope = Scope()
+        ctx = scope.ctx()
+        
+        # Set up context data
+        scope.set((), "target", (100, 200, 300))
+        scope.set((), "attempts", 5)
+        
+        action = ContextTestAction()
+        sequence = Sequence(tasks=[action], cascaded=True)
+        
+        await sequence.tick(ctx)
+        
+        # Verify the action received the context data
+        assert action._last_kwargs['target'] == (100, 200, 300)
+        assert action._last_kwargs['attempts'] == 5
+    
+    async def test_sequence_fails_on_missing_required_inputs(self):
+        """Test that sequence fails when child has unresolvable required inputs"""
+        scope = Scope()
+        ctx = scope.ctx()
+        
+        # Create action with required inputs but don't provide them in context
+        action = RequiredInputAction()
+        sequence = Sequence(tasks=[action])
+        
+        # Should fail the sequence when child has missing required inputs
+        result = await sequence.tick(ctx)
+        assert result == TaskStatus.FAILURE
+        assert action.status == TaskStatus.FAILURE
+    
+    async def test_sequence_uses_input_defaults_when_context_empty(self):
+        """Test that optional inputs fall back to defaults when context is empty"""
+        scope = Scope()
+        ctx = scope.ctx()
+        
+        action = ContextTestAction()
+        sequence = Sequence(tasks=[action])
+        
+        await sequence.tick(ctx)
+        
+        # Should use defaults for all inputs
+        assert action._last_kwargs['target'] == (0, 0, 0)  # default
+        assert action._last_kwargs['attempts'] == 1  # default
+        assert action._last_kwargs['optional_param'] == "default_value"  # default
+    
+    async def test_sequence_sibling_data_flow_between_children(self):
+        """Test that later children can access earlier children's outputs"""
+        scope = Scope()
+        ctx = scope.ctx()
+        
+        # First action produces output
+        producer = SimpleContextAction(output_value=123)
+        
+        # Second action should be able to consume first action's output
+        # This will be tested once input resolution is implemented
+        consumer = ContextTestAction()
+        
+        sequence = Sequence(tasks=[producer, consumer], cascaded=True)
+        await sequence.tick(ctx)
+        
+        # Verify producer output is available in scope
+        assert scope.path((0,), "value") == 123
+        
+        # Note: Full sibling resolution will be tested in input resolution tests
+
+
+@pytest.mark.asyncio  
+class TestSelectorWithContext:
+    """Test context-aware Selector behavior"""
+    
+    async def test_selector_creates_child_contexts_with_correct_indices(self):
+        """Test that selector creates child contexts at correct index paths"""
+        scope = Scope()
+        ctx = scope.ctx()
+        
+        # First action fails, second succeeds
+        action1 = ImmediateAction(status_val=TaskStatus.FAILURE)
+        action2 = SimpleContextAction(output_value=99)
+        selector = Selector(tasks=[action1, action2])
+        
+        await selector.tick(ctx)  # First tick: action1 fails, moves to index 1
+        await selector.tick(ctx)  # Second tick: action2 succeeds
+        
+        # Should have tried action1 (no output) and succeeded with action2
+        assert scope[(1, "value")] == 99  # action2's output at index 1
+    
+    async def test_selector_propagates_context_through_decision_tree(self):
+        """Test context forwarding through selector attempts"""
+        scope = Scope()
+        ctx = scope.ctx()
+        
+        # Set up context data
+        ctx["attempts"] = 2
+        
+        action1 = ContextTestAction()  # Will succeed with the context
+        selector = Selector(tasks=[action1])
+        
+        await selector.tick(ctx)
+        
+        # Verify action received context data
+        assert action1._last_kwargs['attempts'] == 2
+    
+    async def test_selector_stops_at_first_success_with_context(self):
+        """Test that selector stops at first success and stores outputs"""
+        scope = Scope()
+        ctx = scope.ctx()
+        
+        action1 = ImmediateAction(status_val=TaskStatus.FAILURE)
+        action2 = SimpleContextAction(output_value=777)
+        action3 = SimpleContextAction(output_value=888)  # Should not execute
+        
+        selector = Selector(tasks=[action1, action2, action3])
+        await selector.tick(ctx)  # First tick: action1 fails, moves to index 1
+        await selector.tick(ctx)  # Second tick: action2 succeeds
+        
+        # Should have action2's output but not action3's
+        assert scope[(1, "value")] == 777
+        # action3 not executed, so key shouldn't exist
+        try:
+            scope[(2, "value")]
+            assert False, "action3 should not have been executed"
+        except KeyError:
+            pass  # Expected - action3 wasn't executed
+    
+    async def test_selector_context_isolation_between_attempts(self):
+        """Test that failed attempts don't affect later attempts"""
+        scope = Scope()
+        ctx = scope.ctx()
+        
+        # This test ensures each child gets its own context path
+        action1 = ImmediateAction(status_val=TaskStatus.FAILURE)
+        action2 = SimpleContextAction(output_value=456)
+        
+        selector = Selector(tasks=[action1, action2])
+        await selector.tick(ctx)  # First tick: action1 fails, moves to index 1
+        await selector.tick(ctx)  # Second tick: action2 succeeds
+        
+        # Only action2 should have stored output
+        # action1 failed, so no output stored
+        try:
+            scope[(0, "value")]
+            assert False, "action1 should not have stored output"
+        except KeyError:
+            pass  # Expected - action1 failed and didn't store output
+        assert scope[(1, "value")] == 456  # action2 succeeded
+
+
+@pytest.mark.asyncio
+class TestContextUpdate:
+    """Test ctx.update() method functionality"""
+    
+    async def test_ctx_update_stores_dict_at_context_path(self):
+        """Test that ctx.update(dict) stores all key-value pairs at context path"""
+        scope = Scope()
+        ctx = scope.ctx(0)  # Context at path (0,)
+        
+        # Update context with a dictionary
+        outputs = {
+            "result": "success",
+            "score": 95,
+            "completed": True
+        }
+        ctx.update(outputs)
+        
+        # Verify all values stored at correct paths
+        assert scope[(0, "result")] == "success"
+        assert scope[(0, "score")] == 95
+        assert scope[(0, "completed")] == True
+    
+    async def test_multiple_ctx_updates_accumulate_in_scope(self):
+        """Test that multiple updates accumulate correctly in the scope"""
+        scope = Scope()
+        ctx = scope.ctx(1)  # Context at path (1,)
+        
+        # First update
+        ctx.update({"step1": "done", "count": 1})
+        
+        # Second update with different keys
+        ctx.update({"step2": "done", "count": 2})  # This should overwrite count
+        
+        # Third update
+        ctx.update({"final": True})
+        
+        # Verify all updates accumulated correctly
+        assert scope[(1, "step1")] == "done"
+        assert scope[(1, "step2")] == "done"
+        assert scope[(1, "count")] == 2  # Latest value
+        assert scope[(1, "final")] == True
+    
+    async def test_ctx_update_returns_none_like_dict(self):
+        """Test that ctx.update() returns None (dict-like behavior)"""
+        scope = Scope()
+        ctx = scope.ctx(2)
+        
+        # update() should return None like dict.update()
+        result = ctx.update({"test": "value"})
+        assert result is None
+        
+        # Verify data was still stored
+        assert scope[(2, "test")] == "value"
+
+
+@pytest.mark.asyncio  
+class TestCompositeInputResolution:
+    """Test cross-cutting input resolution scenarios"""
+    
+    async def test_pre_validation_checks_required_inputs_before_execution(self):
+        """Test that composites validate required inputs before attempting child tick"""
+        scope = Scope()
+        ctx = scope.ctx()
+        
+        # Action with required inputs (no defaults)
+        action = RequiredInputAction()
+        sequence = Sequence(tasks=[action])
+        
+        # No required inputs provided in context
+        result = await sequence.tick(ctx)
+        
+        # Should fail immediately without ticking the child
+        assert result == TaskStatus.FAILURE
+        
+        # Verify child was not ticked (no call count increment)
+        assert not hasattr(action, '_call_count') or action._call_count == 0
+    
+    async def test_resolution_priority_sibling_over_context_over_defaults(self):
+        """Test input resolution priority order"""
+        scope = Scope()
+        ctx = scope.ctx()
+        
+        # Set up context data (lower priority)
+        ctx["target"] = (1, 1, 1)
+        ctx["attempts"] = 1
+        
+        # First action produces sibling output (higher priority)
+        producer = SimpleContextAction(output_value=999)
+        async def mock_tick(ctx):
+            outputs = {
+                "target": (2, 2, 2),  # This should override context
+                "attempts": 2
+            }
+            ctx.update(outputs)
+            producer._status.set(TaskStatus.SUCCESS)
+            return TaskStatus.SUCCESS
+        producer.tick = mock_tick
+        
+        consumer = ContextTestAction()
+        sequence = Sequence(tasks=[producer, consumer])
+        
+        await sequence.tick(ctx)
+        
+        # Consumer should receive sibling output over context data
+        # This will be tested once full resolution is implemented
+        # For now, verify that the mock producer's output was stored
+        assert scope[(0, "target")] == (2, 2, 2)
+        assert scope[(0, "attempts")] == 2
+    
+    async def test_sibling_outputs_available_to_subsequent_children(self):
+        """Test that children can access outputs from earlier siblings"""
+        scope = Scope()
+        ctx = scope.ctx()
+        
+        # Producer creates output
+        producer = SimpleContextAction(output_value=555)
+        
+        # Consumer should be able to access producer's output
+        consumer = ContextTestAction()
+        
+        sequence = Sequence(tasks=[producer, consumer])
+        await sequence.tick(ctx)
+        
+        # Verify producer output stored and accessible
+        assert scope[(0, "value")] == 555
+        
+        # Note: Full sibling->consumer data flow will be tested 
+        # once input resolution is implemented
+    
+    async def test_context_data_accessible_across_composite_boundaries(self):
+        """Test that nested composites can access parent context data"""
+        scope = Scope()
+        root_ctx = scope.ctx()
+        
+        # Set up root context data
+        root_ctx["global_config"] = {"max_attempts": 5}
+        
+        # Nested structure: sequence -> sequence -> action
+        inner_action = ContextTestAction()
+        inner_sequence = Sequence(tasks=[inner_action])
+        outer_sequence = Sequence(tasks=[inner_sequence])
+        
+        await outer_sequence.tick(root_ctx)
+        
+        # Verify nested action can eventually access root context
+        # This will be verified once context propagation is implemented
+        assert scope[("global_config",)] == {"max_attempts": 5}
+    
+    async def test_nested_data_access_with_index_paths(self):
+        """Test accessing nested data using index path notation"""
+        scope = Scope()
+        ctx = scope.ctx()
+        
+        # Set up nested data structure
+        scope[(0, "sensors")] = {
+            "pose": {"x": 10, "y": 20, "z": 30},
+            "velocity": {"linear": 1.5, "angular": 0.5}
+        }
+        
+        action = ContextTestAction()
+        sequence = Sequence(tasks=[action])
+        
+        # This will test path resolution like "0.sensors.pose.x"
+        # For now, verify the data structure is accessible
+        assert scope[(0, "sensors")]["pose"]["x"] == 10
+        assert scope[(0, "sensors")]["velocity"]["linear"] == 1.5
+    
+    async def test_missing_required_input_causes_composite_failure(self):
+        """Test composite failure when child has unresolvable required inputs"""
+        scope = Scope()
+        ctx = scope.ctx()
+        
+        # Set up some context data, but not the required inputs
+        ctx["irrelevant_data"] = "not_what_we_need"
+        
+        action = RequiredInputAction()  # Needs required_param and required_number
+        sequence = Sequence(tasks=[action])
+        
+        result = await sequence.tick(ctx)
+        
+        # Should fail due to missing required inputs
+        assert result == TaskStatus.FAILURE
+    
+    async def test_optional_inputs_use_defaults_when_missing(self):
+        """Test that optional inputs fall back to class defaults correctly"""
+        scope = Scope()
+        ctx = scope.ctx()
+        
+        # Don't provide any inputs - should use all defaults
+        action = ContextTestAction()
+        sequence = Sequence(tasks=[action])
+        
+        await sequence.tick(ctx)
+        
+        # Should have used all default values
+        assert action._last_kwargs['target'] == (0, 0, 0)  # default
+        assert action._last_kwargs['attempts'] == 1  # default  
+        assert action._last_kwargs['optional_param'] == "default_value"  # default

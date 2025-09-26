@@ -3,7 +3,7 @@ from abc import abstractmethod
 import typing as t
 
 # local
-from ._core import Task, TaskStatus, Composite
+from ._core import Task, TaskStatus, Composite, Leaf, InitVar
 
 
 class Decorator(Composite):
@@ -40,19 +40,18 @@ class Decorator(Composite):
     async def decorate(self, status: TaskStatus, reset: bool=False) -> bool:
         pass
 
-    async def tick(self) -> TaskStatus:
+    async def tick(self, ctx) -> TaskStatus:
         """Decorate the tick for the decorated task
 
         Args:
-            terminal (Terminal): The terminal for the task
+            ctx: Context for data flow and input resolution
 
         Returns:
-            SangoStatus: The decorated status
+            TaskStatus: The decorated status
         """
-        await self.task.tick()
+        res = await self.task.tick(ctx=ctx)
         await self.update_status()
         return self.status
-
 
 
 class Until(Decorator):
@@ -121,3 +120,28 @@ class Not(Decorator):
             SangoStatus: The decorated status
         """
         return status.invert()
+
+
+class Bind(Task):
+    """Bind will map variables in the context to
+    the inputs of the decorated task
+    """
+
+    leaf: Leaf
+    bindings: t.Dict[str, str]
+
+    async def tick(self, ctx) -> TaskStatus:
+        """Tick the task and bind outputs to context
+
+        Args:
+            ctx: Context for data flow and input resolution
+
+        Returns:
+            Union[TaskStatus, Tuple[TaskStatus, dict]]: The status and outputs
+        """
+        if self.status.is_done:
+            return self.status
+        ctx = ctx.bind(self.bindings)
+        result = await self.leaf.tick(ctx)
+        self._status.set(result)
+        return self.status
