@@ -228,6 +228,13 @@ class Scope:
         if index is not None:
             return scope.full_path[key][index]
         return scope.full_path[key]
+    
+    def get(self, key: Union[str, Tuple], default: Any = None) -> Any:
+        """Get value by key, returning default if not found"""
+        try:
+            return self.__getitem__(key)
+        except KeyError:
+            return default
         # """Support both indexed and unindexed data access"""
         # if isinstance(key, tuple):
         #     # Handle indexed access - key is tuple like (0, "goal") or ('./', 0, "goal")
@@ -499,6 +506,13 @@ class BoundScope(Scope):
 
         return self.base_scope[key]
     
+    def get(self, key: Union[str, Tuple], default: Any = None) -> Any:
+        """Get value by key, returning default if not found"""
+        try:
+            return self.__getitem__(key)
+        except KeyError:
+            return default
+    
     def __setitem__(self, key: Union[str, Tuple], value: Any):
         """Store data with bindings applied
         
@@ -561,6 +575,13 @@ class Ctx:
         if key.startswith('/'):
             return self.scope[key]
         return self.scope[key]
+    
+    def get(self, key: str, default: Any = None) -> Any:
+        """Get value by key, returning default if not found"""
+        try:
+            return self.__getitem__(key)
+        except KeyError:
+            return default
     
     def path(self, field: str, index: Union[str, int] = None) -> Any:
         """Get value from indexed location at this context's path"""
@@ -625,6 +646,13 @@ class BoundCtx(Ctx):
             bound_key = self.bindings[key]
             return self.base_ctx[bound_key]
         return self.base_ctx[key]
+    
+    def get(self, key: str, default: Any = None) -> Any:
+        """Get value by key, returning default if not found"""
+        try:
+            return self.__getitem__(key)
+        except KeyError:
+            return default
     
     def path(self, field: str, index: Union[str, int] = None) -> Any:
         """Get the value specified by the path. Since the 

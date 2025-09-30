@@ -340,7 +340,7 @@ def resolve_fields(ctx, cls) -> dict:
     return out
 
 
-def resolve_from_signature(ctx, func) -> dict:
+def resolve_from_signature(ctx, func, exclude_params=None) -> dict:
     """Resolve function parameters from context data using function signature.
     
     Extracts parameters from function signature and resolves their values
@@ -349,6 +349,7 @@ def resolve_from_signature(ctx, func) -> dict:
     Args:
         ctx: Dictionary of context data (may contain extra fields) or dict-like object
         func: Function whose signature to inspect for parameters
+        exclude_params: Set of parameter names to exclude from resolution
         
     Returns:
         dict: Dictionary of resolved parameters ready for **kwargs
@@ -361,12 +362,19 @@ def resolve_from_signature(ctx, func) -> dict:
     if not (hasattr(ctx, '__getitem__') and hasattr(ctx, '__contains__')):
         raise TypeError("ctx must be dict-like (support __getitem__ and __contains__)")
     
+    if exclude_params is None:
+        exclude_params = set()
+    
     sig = inspect.signature(func)
     out = {}
     
     for param_name, param in sig.parameters.items():
         # Skip 'self' parameter for methods
         if param_name == 'self':
+            continue
+            
+        # Skip excluded parameters
+        if param_name in exclude_params:
             continue
             
         # Skip *args and **kwargs

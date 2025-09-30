@@ -12,7 +12,9 @@ from ._region import (
     RuleBuilder
 )
 from ._state import (
+    BaseState,
     State,
+    StreamState,
     FinalState,
-    StepState,
+    StateStatus,
 )
