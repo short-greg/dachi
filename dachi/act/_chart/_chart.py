@@ -3,7 +3,7 @@ from enum import Enum, auto
 from dataclasses import dataclass
 import typing as t
 from ._region import Region, RegionStatus
-from ._event import Event, EventQueue, Envelope, Timer
+from ._event import Event, EventQueue, Timer
 
 from dataclasses import dataclass
 

@@ -1,4 +1,5 @@
 # 1st Party
+from __future__ import annotations
 from typing import Any, Dict, List, Optional, Union
 from dataclasses import dataclass
 
@@ -20,11 +21,21 @@ class RegionStatus:
     pending_target: Optional[str]
 
 
+class Rule(BaseModule):
+    event_type: str
+    target: Optional[StateRef]
+    when_in: Optional[StateRef]
+    when_prev: Optional[StateRef]
+    port: Optional[str]
+    priority: Optional[int]
+    def __post_init__(self) -> None: ...
+
+
 class Region(BaseModule):
     # ----- Spec fields (serialized) -----
     name: str
     initial: StateRef
-    rules: List["Rule"]
+    rules: List[Rule]
 
     # ----- Runtime fields (non-serialized/internal) -----
     current_state: StateRef
@@ -56,16 +67,6 @@ class Region(BaseModule):
     def to_status(self) -> RegionStatus: ...
 
 
-class Rule(BaseModule):
-    event_type: str
-    target: Optional[StateRef]
-    when_in: Optional[StateRef]
-    when_prev: Optional[StateRef]
-    port: Optional[str]
-    priority: Optional[int]
-    def __post_init__(self) -> None: ...
-
-
 class RuleBuilder:
     def when_in(self, state: StateRef) -> "RuleBuilder": ...
     def when_prev(self, state: StateRef) -> "RuleBuilder": ...
@@ -76,9 +77,7 @@ class RuleBuilder:
     def ignore(self) -> "Rule": ...
 
 
-class Decision: ...
-class Stay(Decision): ...
-class TransitionNow(Decision):
-    target: StateRef
-class Preempt(Decision):
-    target: StateRef
+class Decision:
+    # TODO: implement
+    pass
+

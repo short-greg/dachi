@@ -1,13 +1,17 @@
 # 1st Party
-from dataclasses import dataclass
 from abc import ABC
-from typing import Any, Dict, List, Optional, Union, Literal, TypedDict, Callable
-import typing as t
+from typing import Any, Dict, List, Optional, Literal, TypedDict, Callable
 from collections import deque
+import time
+import asyncio
+
+import pydantic
+
+# Local
 from dachi.proc import AsyncProcess
 
 
-class Payload(TypedDict, ABC, total=False):
+class Payload(TypedDict, total=False):
     pass
 
 
@@ -27,18 +31,12 @@ class Event(TypedDict, total=False):
 
 
 class EventQueue:
-    """
-    A queue for events, supporting various enqueue and dequeue strategies.
-
-    """
-
-    def __init__(
-        self,
-        maxsize: int = 1024,
-        overflow: Literal["drop_newest", "drop_oldest", "block"] = "drop_newest",
-    ):
-        self.queue: deque[Event] = deque(maxlen=maxsize)
+    """Event queue with serializable state."""
+    
+    def __init__(self, maxsize: int = 1024, overflow: Literal["drop_newest", "drop_oldest", "block"] = "drop_newest"):
+        self.maxsize = maxsize
         self.overflow = overflow
+        self.queue: deque[Event] = deque()
 
     # Non-blocking enqueue. Returns False if dropped/rejected.
     def post_nowait(
@@ -47,8 +45,9 @@ class EventQueue:
     ) -> bool:
         """Add an event to the queue. Returns True if added, False if dropped."""
         if isinstance(event, str):
-            event = Event(type=event)
-        if len(self.queue) >= self.queue.maxlen:
+            event = Event(type=event, ts=time.monotonic())
+        
+        if len(self.queue) >= self.maxsize:
             if self.overflow == "drop_newest":
                 return False
             elif self.overflow == "drop_oldest":
@@ -67,8 +66,7 @@ class EventQueue:
         """Add an event to the queue. Returns True if added, False if dropped."""
         return self.post_nowait(event)
 
-    # Dequeue next envelope (FIFO).
-    async def pop(self) -> Event:
+    def pop_nowait(self) -> Event:
         """Remove and return the next event from the queue. Raises IndexError if empty."""
         if not self.queue:
             raise IndexError("pop from an empty queue")
@@ -84,32 +82,51 @@ class EventQueue:
     
     def capacity(self) -> int:
         """Return the maximum size of the queue."""
-        return self.queue.maxlen
+        return self.maxsize
 
     def clear(self) -> None:
         """Clear all events from the queue."""
         self.queue.clear()
+    
+    def state_dict(self) -> Dict[str, Any]:
+        """Return serializable state."""
+        return {
+            "maxsize": self.maxsize,
+            "overflow": self.overflow,
+            "events": list(self.queue)  # Convert deque to list
+        }
+    
+    def load_state_dict(self, state: Dict[str, Any]) -> None:
+        """Load state from dict."""
+        self.maxsize = state["maxsize"]
+        self.overflow = state["overflow"]
+        self.queue = deque(state["events"])
 
 
-class Post:
+class Post(AsyncProcess):
     """Post an event to the event queue.
     """
 
-    def __init__(
-        self,
-        queue: "EventQueue",
-        *,
-        source_region: Optional[str],
-        source_state: Optional[str],
-        epoch: Optional[int],
-        quiescing: Callable[[], bool],
-    ) -> None:
-        self.queue = queue
-        self.source_region = source_region
-        self.source_state = source_state
-        self.epoch = epoch
-        self.quiescing = quiescing
+    queue: "EventQueue"
+    source_region: Optional[str] = None
+    source_state: Optional[str] = None
+    epoch: Optional[int] = None
 
+    def __post_init__(self):
+        super().__post_init__()
+        self.preempting = lambda: False
+        self._finish_callbacks: List[Callable] = []
+    
+    def register_finish_callback(self, callback: Callable) -> None:
+        """Register a callback to be called when finish() is invoked."""
+        if callback not in self._finish_callbacks:
+            self._finish_callbacks.append(callback)
+    
+    def unregister_finish_callback(self, callback: Callable) -> None:
+        """Unregister a finish callback."""
+        if callback in self._finish_callbacks:
+            self._finish_callbacks.remove(callback)
+    
     async def aforward(
         self,
         event: str,
@@ -119,7 +136,7 @@ class Post:
         port: Optional[str] = None,
     ) -> bool:
         
-        self.queue.post({
+        result = self.queue.post_nowait({
             "type": event,
             "payload": payload or {},
             "scope": scope,
@@ -128,18 +145,34 @@ class Post:
             "source_state": self.source_state,
             "epoch": self.epoch,
             "meta": {},
-            "ts": 0.0,  # TODO: timestamp
+            "ts": time.monotonic(),
         })
+        return result
+
+    async def finish(self) -> None:
+        """Signal that the current state has finished its work."""
+        # 1. Notify parent region through callbacks for internal bookkeeping
+        for callback in self._finish_callbacks:
+            if asyncio.iscoroutinefunction(callback):
+                await callback()
+            else:
+                callback()
+        
+        # 2. Post Finished event for core transition processing
+        await self.aforward("Finished")
 
     async def __call__(self, *args, **kwds):
         return await self.aforward(*args, **kwds)
 
 
-
 class Timer:
-    """A timer for scheduling events with delays.
-    """
-    def __init__(self, queue: "EventQueue", clock: "MonotonicClock") -> None: ...
+    """Runtime timer manager with serializable metadata."""
+    
+    def __init__(self, queue: "EventQueue", clock: "MonotonicClock"):
+        self.queue = queue
+        self.clock = clock
+        self._timers: Dict[str, Dict[str, Any]] = {}
+        self._next_id = 0
 
     def start(
         self,
@@ -150,16 +183,92 @@ class Timer:
         owner_state: Optional[str],
         scope: Literal["chart", "parent"] = "chart",
         payload: Optional[Dict[str, Any]] = None,
-    ) -> str: ...
+    ) -> str:
+        timer_id = f"timer_{self._next_id}"
+        self._next_id += 1
+        
+        when = self.clock.now() + delay
+        
+        async def _fire():
+            await self.clock.sleep_until(when)
+            if timer_id in self._timers:
+                event = Event(
+                    type="Timer",
+                    payload={"tag": tag, "timer_id": timer_id, **(payload or {})},
+                    scope=scope,
+                    source_region=owner_region,
+                    source_state=owner_state,
+                    ts=self.clock.now()
+                )
+                await self.queue.post(event)
+                del self._timers[timer_id]
+        
+        self._timers[timer_id] = {
+            "tag": tag,
+            "when": when,
+            "owner_region": owner_region,
+            "owner_state": owner_state,
+            "task": asyncio.create_task(_fire())
+        }
+        
+        return timer_id
 
-    def cancel(self, timer_id: str) -> bool: ...
-    def cancel_owned(self, owner_region: str, owner_state: str) -> int: ...
-    def list(self) -> List[Dict[str, Any]]: ...
-    def snapshot(self) -> List[Dict[str, Any]]: ...
-    def restore(self, items: List[Dict[str, Any]]) -> None: ...
+    def cancel(self, timer_id: str) -> bool:
+        timer_info = self._timers.pop(timer_id, None)
+        if timer_info:
+            timer_info["task"].cancel()
+            return True
+        return False
+
+    def cancel_owned(self, owner_region: str, owner_state: str) -> int:
+        to_cancel = [
+            tid for tid, info in self._timers.items()
+            if info["owner_region"] == owner_region and info["owner_state"] == owner_state
+        ]
+        return sum(1 for tid in to_cancel if self.cancel(tid))
+
+    def list(self) -> List[Dict[str, Any]]:
+        return [
+            {
+                "id": timer_id,
+                "tag": info["tag"],
+                "remaining": max(0, info["when"] - self.clock.now())
+            }
+            for timer_id, info in self._timers.items()
+        ]
+
+    def state_dict(self) -> Dict[str, Any]:
+        """Return serializable timer metadata (no active tasks)."""
+        return {
+            "next_id": self._next_id,
+            "timer_metadata": {
+                tid: {k: v for k, v in info.items() if k != "task"}
+                for tid, info in self._timers.items()
+            }
+        }
+    
+    def load_state_dict(self, state: Dict[str, Any]) -> None:
+        """Load timer metadata (tasks will need to be restarted)."""
+        self._next_id = state["next_id"]
+        # Note: Active tasks are not restored - they're runtime-only
+        self._timers = {}  # Empty - timers need manual restart
+    
+    def snapshot(self) -> List[Dict[str, Any]]:
+        """Legacy method - use state_dict() instead."""
+        return []
+
+    def restore(self, items: List[Dict[str, Any]]) -> None:
+        """Legacy method - use load_state_dict() instead."""
+        pass
 
 
 class MonotonicClock:
-    def now(self) -> float: ...
-    async def sleep_until(self, when: float) -> None: ...
+
+    def now(self) -> float:
+        return time.monotonic()
+    
+    async def sleep_until(self, when: float) -> None:
+        delay = when - self.now()
+        if delay > 0:
+            await asyncio.sleep(delay)
 

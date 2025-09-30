@@ -1,6 +1,163 @@
 from __future__ import annotations
 from typing import Dict, Tuple, Any, Union
 
+"""
+Hierarchical Data Storage and Context Management System
+
+This module provides a sophisticated hierarchical data storage system designed for complex
+AI frameworks, particularly behavior trees and state machines. It supports multiple access
+patterns, scope navigation, variable bindings, and automatic field aliasing.
+
+## Core Concepts
+
+### Scope Hierarchy
+Scopes form a tree structure where each scope can have:
+- A parent scope (None for root)
+- Named child scopes accessible via navigation
+- Independent data storage with automatic field aliasing
+
+### Index-Based Storage
+Data is stored using tuple keys representing hierarchical paths:
+- `(0, "goal")` - Data at index 0, field "goal"  
+- `(0, 1, "status")` - Nested data at index 0, sub-index 1, field "status"
+
+### Context (Ctx) System
+Contexts provide scoped access to data at specific index paths:
+- Each context knows its position in the hierarchy
+- Automatic field aliasing for convenient access
+- Support for child context creation
+
+## Access Patterns
+
+### 1. Direct Tuple Access
+```python
+scope[(0, "field")] = "value"
+result = scope[(0, "field")]
+```
+
+### 2. String Path Access (Explicit Navigation)
+```python
+scope["/target/0.field"] = "value"      # Absolute path
+scope["../0.field"] = "value"           # Relative path (parent)
+scope["../../0.field"] = "value"        # Relative path (grandparent)
+```
+
+### 3. Lexical Scoping (Automatic Field Resolution)
+```python
+# Field automatically resolved up the scope chain
+scope["field"] = "value"
+child_scope["field"]  # Finds field in parent scope
+```
+
+### 4. Bound Access (Variable Bindings)
+```python
+# BoundCtx with variable bindings
+bound_ctx = ctx.bind({"input": "sensor_data"})
+bound_ctx["input"]  # Resolves to bound variable
+
+# BoundScope with @ prefix bindings  
+bound_scope = scope.bind(ctx, {"mission": "external_goal"})
+bound_scope["@mission"]  # Accesses external data via binding
+```
+
+## Navigation Syntax
+
+### Scope Navigation
+- `/` - Absolute path to root scope
+- `/target/` - Absolute path to named child scope "target"
+- `../` - Relative path to parent scope
+- `../../` - Relative path to grandparent scope
+- `./` - Current scope (identity)
+
+### Index Navigation  
+- `0.field` - Access field at index 0
+- `0.1.field` - Access field at nested index (0, 1)
+- `field.0` - Access index 0 of field (for structured data)
+
+### Combined Examples
+```python
+# Set data in target scope from current scope
+scope["/target/0.config"] = {"mode": "auto"}
+
+# Access parent data from child scope
+child_scope[("../", 0, "parent_field")]
+
+# Lexical scoping automatically finds fields in parent chain
+child_scope["parent_field"]  # No explicit navigation needed
+```
+
+## Binding System
+
+### BoundCtx (Leaf Node Bindings)
+Used by modular components to bind input variables to scope data:
+```python
+# Component binds its "input" parameter to scope's "sensor_data" field
+bound_ctx = ctx.bind({"input": "sensor_data"})
+value = bound_ctx["input"]  # Resolves via lexical scoping
+```
+
+### BoundScope (Root Node Bindings)  
+Used by behavior tree roots to bind external context into internal scope:
+```python
+# BT binds external context with @ prefix access
+bound_scope = bt_scope.bind(external_ctx, {"goal": "mission_target"})
+target = bound_scope["@goal"]  # Accesses external data
+```
+
+## Key Features
+
+### Automatic Field Aliasing
+When data is stored via Context, automatic aliases are created:
+```python
+ctx["field"] = value
+# Creates both:
+# - scope.full_path[(0, "field")] = value  
+# - scope.aliases["field"] = (0, "field")
+```
+
+### Lexical Scoping
+Field resolution automatically searches up the parent chain:
+```python
+root["global_config"] = config
+child_scope["global_config"]  # Automatically finds in root scope
+```
+
+### Path/Scope Resolution
+Three distinct resolution mechanisms:
+1. **Explicit paths**: Use scope navigation (`/target/field`, `../field`)
+2. **Lexical scoping**: Simple field names resolved up parent chain  
+3. **Bound aliases**: Variable bindings with @ prefix or bound contexts
+
+### Error Handling
+- `KeyError` for unknown fields/aliases
+- `ValueError` for invalid navigation (e.g., `..` from root)
+- Clear error messages distinguishing between missing fields and scope issues
+
+## Usage in AI Systems
+
+### Behavior Trees
+- Root nodes use BoundScope to bind external mission context
+- Leaf nodes use BoundCtx to bind inputs to tree data
+- Hierarchical scopes for different behavior tree regions
+
+### State Machines  
+- Each state can have its own scope for local data
+- Parent-child relationships for hierarchical state machines
+- Automatic context inheritance and field resolution
+
+### Multi-Agent Systems
+- Each agent gets its own scope hierarchy
+- Shared data accessible via explicit scope navigation
+- Isolated execution contexts with controlled data sharing
+
+## Classes
+
+- `Scope`: Core hierarchical data storage with navigation
+- `Ctx`: Context proxy for index-based data access  
+- `BoundCtx`: Context with variable bindings for components
+- `BoundScope`: Scope with external context bindings for roots
+"""
+
 
 class Scope:
     """Hierarchical data storage with index and tag-based access patterns"""
@@ -135,28 +292,6 @@ class Scope:
         
         self[key] = value
         return value
-        
-        #     scope, key_parts = self._resolve_scope(key)
-        #     key = '.'.join(key_parts)
-        #     resolved_key = scope._resolve_path(key)
-        # else:
-        #     # Tuple path
-
-        #     resolved_key = path + (field,)
-        #     scope, resolved_key = self._resolve_scope(resolved_key)
-        
-        # # Store indexed version
-        # if index is not None:
-        #     # Handle sub-field setting
-        #     if resolved_key not in scope.full_path:
-        #         raise KeyError(f"Cannot set sub-field on non-existent field: {resolved_key}")
-        #     scope._set_subfield(scope.full_path[resolved_key], index, value)
-        # else:
-        #     scope.full_path[resolved_key] = value
-        #     # Store unindexed version (always set the full value for unindexed)
-        #     scope.fields[field] = value
-        #     scope.aliases[field] = resolved_key
-        # return value
     
     def path(self, path: Union[Tuple, str], field: str, index: Union[str, int] = None) -> Any:
         """Get value from indexed location with a full path
@@ -263,58 +398,6 @@ class Scope:
             except KeyError:
                 raise KeyError(f"Unknown scope part: {part}")
         return scope, tuple(field_part)
-
-
-            # # Handle string paths for explicit navigation only
-            # parts = key.split('/')
-            # if len(parts) > 1:
-            #     # Has explicit scope path like "/target/0.field" or "../0.field"
-            #     if parts[0] == '':
-            #         # Absolute path: starts with /
-            #         scope = self.base_scope()
-            #         scope_parts = [p for p in parts[1:-1] if p]  # Remove empty first and last field part
-            #     else:
-            #         # Relative path: starts with .. or scope name
-            #         scope = self
-            #         scope_parts = parts[:-1]  # All except last field part
-                
-            #     # Navigate through scope parts
-            #     for step in scope_parts:
-            #         scope = scope.change_scope(step)
-                
-            #     # Parse field part
-            #     field_part = parts[-1]
-            #     field_key = tuple(field_part.split('.')) if field_part else ()
-            #    return scope, field_key
-            # else:
-            #     # No explicit scope path - this should use lexical scoping (handled elsewhere)
-            #     return self, tuple(key.split('.'))
-        
-        # # Handle tuple input for explicit scope navigation
-        # if not key or not isinstance(key[0], str) or '/' not in key[0]:
-        #     return self, key
-        
-        # # Tuple scope references like ('../', 0, 'field')
-        # scope_ref = key[0]
-        # remaining_key = key[1:]
-        
-        # if scope_ref == './':
-        #     return self, remaining_key
-        # elif scope_ref.startswith('../'):
-        #     levels = scope_ref.count('../')
-        #     scope = self
-        #     for _ in range(levels):
-        #         scope = scope.change_scope('..')
-        #     return scope, remaining_key
-        # elif scope_ref.startswith('/'):
-        #     scope = self.base_scope()
-        #     if len(scope_ref) > 1:  # More than just '/'
-        #         path_parts = [p for p in scope_ref[1:].split('/') if p]
-        #         for part in path_parts:
-        #             scope = scope.change_scope(part)
-        #     return scope, remaining_key
-        # else:
-        #     raise ValueError(f"Invalid scope reference: {scope_ref}")
     
     def _resolve_path(self, path: str) -> Tuple[Union[int, str], ...]:
         """Convert string path to tuple key, handling tags and indices"""
@@ -348,30 +431,6 @@ class Scope:
             resolved_parts.extend((tag, index))
         else:
             raise KeyError(f"Invalid path structure: {path}")
-
-        # elif i == len(parts) - 2:  # then second to last item  
-        #     # Tag followed by member name
-        #     tag = parts[i]
-        #     if tag in self.aliases:
-        #         tag_path = self.aliases[tag]
-        #         # Only extend with the part not already covered
-        #         uncovered_path = tag_path[len(resolved_parts):]
-        #         resolved_parts.extend(uncovered_path)
-        #     else:
-        #         raise KeyError(f"Unknown tag: {tag}")
-        #     # Add final member
-        #     final_part = parts[i + 1]
-        #     if final_part.isdigit():
-        #         resolved_parts.append(int(final_part))
-        #     else:
-        #         resolved_parts.append(final_part)
-        # else:
-        #     raise KeyError(f"Invalid path structure: {path}")
-        
-        # if len(path) > 1:
-        #     scope = '/'.join(path[:-1])
-        #     scope += '/'
-        #     return (scope, *resolved_parts)
 
         return tuple(resolved_parts)
     
@@ -551,8 +610,6 @@ class Ctx:
         
         return Ctx(self, index_path)
 
-
-# bound_ctx.path("")
 
 class BoundCtx(Ctx):
     """A context that has bindings applied"""
