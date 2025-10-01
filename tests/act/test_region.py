@@ -1,0 +1,68 @@
+from __future__ import annotations
+import pytest
+
+from dachi.act._chart._region import (
+    Decision,
+    Region, Rule,
+)
+from dachi.act._chart._state import State
+from dachi.act._chart._event import Event
+
+
+class TestDecision:
+    
+    def test_stay_decision_created(self):
+        decision: Decision = {"type": "stay"}
+        assert decision["type"] == "stay"
+    
+    def test_preempt_decision_has_target(self):
+        decision: Decision = {"type": "preempt", "target": "next_state"}
+        assert decision["target"] == "next_state"
+    
+    def test_immediate_decision_has_target(self):
+        decision: Decision = {"type": "immediate", "target": "emergency_state"}
+        assert decision["target"] == "emergency_state"
+
+
+class SimpleState(State):
+    async def execute(self, post, **inputs):
+        pass
+
+
+class TestRegionDecide:
+    
+    def test_decide_returns_stay_when_no_rules(self):
+        region = Region(name="test", initial="idle", rules=[])
+        event = Event(type="unknown")
+        
+        decision = region.decide(event)
+        
+        assert decision["type"] == "stay"
+    
+    def test_decide_matches_event_type(self):
+        rule = Rule(event_type="go", target="active")
+        region = Region(name="test", initial="idle", rules=[rule])
+        event = Event(type="go")
+        
+        decision = region.decide(event)
+        
+        assert decision["type"] != "stay"
+    
+    def test_decide_ignores_wrong_event_type(self):
+        rule = Rule(event_type="go", target="active")
+        region = Region(name="test", initial="idle", rules=[rule])
+        event = Event(type="stop")
+        
+        decision = region.decide(event)
+        
+        assert decision["type"] == "stay"
+    
+    def test_decide_matches_when_in_correct_state(self):
+        rule = Rule(event_type="advance", target="next", when_in="waiting")
+        region = Region(name="test", initial="idle", rules=[rule])
+        region._current_state.set("waiting")  # Set via Attr
+        event = Event(type="advance")
+        
+        decision = region.decide(event)
+        
+        assert decision["type"] != "stay"

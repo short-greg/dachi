@@ -418,3 +418,14 @@ class TestFinalState:
         assert queue.size() == 1
         event = queue.pop_nowait()
         assert event["type"] == "Finished"
+
+
+class TestRunResult:
+    
+    def test_completed_exists(self):
+        from dachi.act._chart._state import RunResult
+        assert RunResult.COMPLETED is not None
+        
+    def test_preempted_exists(self):
+        from dachi.act._chart._state import RunResult
+        assert RunResult.PREEMPTED is not None

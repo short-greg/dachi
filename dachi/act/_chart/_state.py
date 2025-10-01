@@ -3,13 +3,18 @@ from typing import Any, AsyncIterator, Dict, List, Union, Optional
 import inspect
 from dachi.core import Attr, Ctx
 from abc import abstractmethod
-from enum import Enum
+from enum import Enum, auto
 
 from dachi.core import BaseModule
 from ._event import Post
 from dachi.utils._utils import resolve_fields, resolve_from_signature
 
 JSON = Union[Dict[str, Any], List[Any], str, int, float, bool, None]
+
+
+class RunResult(Enum):
+    COMPLETED = auto()   # State finished normally
+    PREEMPTED = auto()   # State was cancelled/preempted
 
 
 class StateStatus(Enum):
@@ -22,6 +27,7 @@ class StateStatus(Enum):
 
 class BaseState(BaseModule):
     """Base class for all state types."""
+    name: Optional[str] = None
         
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
@@ -68,6 +74,10 @@ class BaseState(BaseModule):
         
     def __post_init__(self):
         super().__post_init__()
+        # Auto-generate name from class if not provided
+        if self.name is None:
+            self.name = self.__class__.__name__
+            
         self._status = Attr[StateStatus](data=StateStatus.WAITING)
         self._termination_requested = Attr[bool](data=False)
         self._run_completed = Attr[bool](data=False)

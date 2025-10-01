@@ -1,83 +1,113 @@
 # 1st Party
 from __future__ import annotations
-from typing import Any, Dict, List, Optional, Union
-from dataclasses import dataclass
+from typing import Any, Dict, List, Optional, Union, TypedDict, Literal, Tuple
+from enum import Enum, auto
 
 # Local
-from dachi.core import BaseModule
+from dachi.core import BaseModule, Attr, ModuleDict
 from ._state import State
 from ._event import Event
 
 JSON = Union[Dict[str, Any], List[Any], str, int, float, bool, None]
-StateRef = Union[str, State]  # name or instance
 
 
-@dataclass
-class RegionStatus:
-    name: str
-    current_state: str
-    is_final: bool
-    quiescing: bool
-    pending_target: Optional[str]
+class RegionStatus(Enum):
+    """Status of a Region in the state chart"""
+    IDLE = "idle"           # Region not started
+    ACTIVE = "active"       # Region running normally  
+    FINAL = "final"         # Region reached final state
+    PREEMPTING = "preempting"  # Region transitioning between states
 
 
-class Rule(BaseModule):
-    event_type: str
-    target: Optional[StateRef]
-    when_in: Optional[StateRef]
-    when_prev: Optional[StateRef]
+class Rule(TypedDict, total=False):
+    event_type: str  # Required
+    target: str  # Required - state name
+    when_in: Optional[str]  # State-dependent constraint - state name
     port: Optional[str]
-    priority: Optional[int]
-    def __post_init__(self) -> None: ...
+    priority: int
+
+
+class RegionSnapshot(TypedDict, total=False):
+    """Serializable snapshot of region state"""
+    name: str  # Required
+    current_state: str  # Required  
+    status: RegionStatus  # Required
+    pending_target: Optional[str]
 
 
 class Region(BaseModule):
     # ----- Spec fields (serialized) -----
     name: str
-    initial: StateRef
+    initial: str  # Initial state name
     rules: List[Rule]
 
-    # ----- Runtime fields (non-serialized/internal) -----
-    current_state: StateRef
-    last_active_state: Optional[StateRef]
-    quiescing: bool = False
-    pending_target: Optional[StateRef] = None
-    pending_reason: Optional[str] = None
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        
+        # Store State instances in module hierarchy (managed by StateChart)
+        self.states = ModuleDict(items={})
+        
+        # Track current state with just string keys (simple data in Attr)
+        self._current_state = Attr(data=self.initial)
+        self._last_active_state = Attr(data=None)
+        self._pending_target = Attr(data=None)
+        self._pending_reason = Attr(data=None)
+        self._status = Attr(data=RegionStatus.IDLE)
+        
+        # Build efficient rule lookup table
+        self._rule_lookup: Dict[Tuple, Rule] = {}
+        self._build_rule_lookup()
+    
+    def _build_rule_lookup(self) -> None:
+        """Build efficient O(1) rule lookup table"""
+        for rule in self.rules:
+            if rule.get("when_in"):  # State-dependent rule
+                key = (rule["when_in"], rule["event_type"])
+            else:  # State-independent rule
+                key = (rule["event_type"],)
+            self._rule_lookup[key] = rule
+    @property
+    def status(self) -> RegionStatus:
+        """Get current region status"""
+        return self._status.data
+    
+    @property 
+    def current_state(self) -> str:
+        """Get current state name"""
+        return self._current_state.data
+    
+    def is_final(self) -> bool:
+        """Check if region is in final state"""
+        return self.status == RegionStatus.FINAL
+    
+    def decide(self, event: "Event") -> "Decision":
+        """Make routing decision based on event and current state"""
+        current_state = self.current_state
+        event_type = event["type"]
+        
+        # Check state-dependent rules first (higher precedence)
+        state_dependent_key = (current_state, event_type)
+        if state_dependent_key in self._rule_lookup:
+            rule = self._rule_lookup[state_dependent_key]
+            return {"type": "immediate", "target": rule["target"]}
+            
+        # Fall back to state-independent rules  
+        state_independent_key = (event_type,)
+        if state_independent_key in self._rule_lookup:
+            rule = self._rule_lookup[state_independent_key]
+            return {"type": "immediate", "target": rule["target"]}
+            
+        # No matching rule - stay in current state
+        return {"type": "stay"}
 
-    def __post_init__(self) -> None: ...
-    def is_final(self) -> bool: ...
-    def current_state_name(self) -> str: ...
-    def last_state_name(self) -> Optional[str]: ...
-    def pending_target_name(self) -> Optional[str]: ...
-
-    # --- Routing API (builder + management) ---
-    def on(self, event_type: str) -> "RuleBuilder": ...
-    def add_rule(self, rule: "Rule") -> None: ...
-    def remove_rule(self, rule: "Rule") -> None: ...
-    def clear_rules(self) -> None: ...
-    def list_rules(self) -> List["Rule"]: ...
-
-    # --- Decision & preemption ---
-    def decide(self, event: Event) -> "Decision": ...
-    def begin_quiesce(self, target: StateRef, reason: str) -> None: ...
-    def end_quiesce(self) -> None: ...
-    def commit(self, target: Optional[StateRef]) -> None: ...
-
-    # --- Introspection / status ---
-    def to_status(self) -> RegionStatus: ...
 
 
 class RuleBuilder:
-    def when_in(self, state: StateRef) -> "RuleBuilder": ...
-    def when_prev(self, state: StateRef) -> "RuleBuilder": ...
-    def on_port(self, port: str) -> "RuleBuilder": ...
-    def with_priority(self, n: int) -> "RuleBuilder": ...
-    def to(self, target: StateRef) -> "Rule": ...
-    def to_final(self) -> "Rule": ...
-    def ignore(self) -> "Rule": ...
-
-
-class Decision:
-    # TODO: implement
+    # TODO: Implement fluent API for rule building
     pass
+
+
+class Decision(TypedDict, total=False):
+    type: Literal["stay", "preempt", "immediate"]
+    target: Optional[StateRef]
 

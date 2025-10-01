@@ -8,7 +8,6 @@ from ._region import (
     RegionStatus,
     Region,
     Rule,
-    StateRef,
     RuleBuilder
 )
 from ._state import (
