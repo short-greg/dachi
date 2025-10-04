@@ -165,11 +165,11 @@ class TestPost:
     
     def test_register_finish_callback_adds_callback(self):
         queue = EventQueue()
-        post = _event.Post(queue=queue, source_region="region1", source_state="state1", epoch=1)
-        
+        post = _event.Post(queue=queue, source=[("region1", "state1")], epoch=1)
+
         callback = lambda: None
         post.register_finish_callback(callback)
-        
+
         assert callback in post._finish_callbacks
     
     def test_register_finish_callback_prevents_duplicates(self):
@@ -195,18 +195,17 @@ class TestPost:
     @pytest.mark.asyncio
     async def test_aforward_posts_event_with_source_info(self):
         queue = EventQueue()
-        post = _event.Post(queue=queue, source_region="region1", source_state="state1", epoch=42)
-        
+        post = _event.Post(queue=queue, source=[("region1", "state1")], epoch=42)
+
         result = await post.aforward("TestEvent", {"key": "value"})
-        
+
         assert result is True
         assert queue.size() == 1
-        
+
         event = queue.pop_nowait()
         assert event["type"] == "TestEvent"
         assert event["payload"] == {"key": "value"}
-        assert event["source_region"] == "region1"
-        assert event["source_state"] == "state1"
+        assert event["source"] == [("region1", "state1")]
         assert event["epoch"] == 42
         assert event["scope"] == "chart"  # default
     
@@ -223,53 +222,127 @@ class TestPost:
     @pytest.mark.asyncio
     async def test_finish_calls_registered_callbacks_and_posts_event(self):
         queue = EventQueue()
-        post = _event.Post(queue=queue, source_region="region1", source_state="state1")
-        
+        post = _event.Post(queue=queue, source=[("region1", "state1")])
+
         callback_called = False
         def callback():
             nonlocal callback_called
             callback_called = True
-        
+
         post.register_finish_callback(callback)
         await post.finish()
-        
+
         # Check callback was called
         assert callback_called is True
-        
+
         # Check Finished event was posted
         assert queue.size() == 1
         event = queue.pop_nowait()
         assert event["type"] == "Finished"
-        assert event["source_region"] == "region1"
-        assert event["source_state"] == "state1"
+        assert event["source"] == [("region1", "state1")]
     
     @pytest.mark.asyncio
     async def test_finish_calls_async_callbacks(self):
         queue = EventQueue()
-        post = _event.Post(queue=queue, source_region="region1", source_state="state1")
-        
+        post = _event.Post(queue=queue, source=[("region1", "state1")])
+
         callback_called = False
         async def async_callback():
             nonlocal callback_called
             callback_called = True
-        
+
         post.register_finish_callback(async_callback)
         await post.finish()
-        
+
         assert callback_called is True
     
     @pytest.mark.asyncio
     async def test_call_delegates_to_aforward(self):
         queue = EventQueue()
         post = _event.Post(queue=queue)
-        
+
         result = await post("TestEvent", {"data": "test"})
-        
+
         assert result is True
         assert queue.size() == 1
         event = queue.pop_nowait()
         assert event["type"] == "TestEvent"
         assert event["payload"] == {"data": "test"}
+
+
+class TestPostChild:
+
+    def test_child_extends_parent_source_list(self):
+        queue = EventQueue()
+        post = _event.Post(queue=queue, source=[("region1", "state1")])
+
+        child_post = post.child("child_region_0", "child_state_0")
+
+        assert child_post.source == [("region1", "state1"), ("child_region_0", "child_state_0")]
+
+    def test_child_creates_deeply_nested_source(self):
+        queue = EventQueue()
+        post = _event.Post(queue=queue, source=[("region1", "composite1")])
+
+        child_0 = post.child("child_region_0", "state0")
+        child_0_1 = child_0.child("child_region_1", "state1")
+
+        assert child_0_1.source == [("region1", "composite1"), ("child_region_0", "state0"), ("child_region_1", "state1")]
+
+    def test_child_with_multiple_names_creates_distinct_sources(self):
+        queue = EventQueue()
+        post = _event.Post(queue=queue, source=[("main", "root")])
+
+        child_a = post.child("child_a", "state_a")
+        child_b = post.child("child_b", "state_b")
+        child_c = post.child("child_c", "state_c")
+
+        assert child_a.source == [("main", "root"), ("child_a", "state_a")]
+        assert child_b.source == [("main", "root"), ("child_b", "state_b")]
+        assert child_c.source == [("main", "root"), ("child_c", "state_c")]
+
+    def test_child_has_empty_finish_callbacks(self):
+        queue = EventQueue()
+        post = _event.Post(queue=queue, source=[("main", "root")])
+
+        parent_callback = lambda: None
+        post.register_finish_callback(parent_callback)
+
+        child_post = post.child("child", "state")
+
+        assert len(child_post._finish_callbacks) == 0
+
+    def test_child_shares_parent_event_queue(self):
+        queue = EventQueue()
+        post = _event.Post(queue=queue, source=[("main", "root")])
+
+        child_post = post.child("child", "state")
+
+        assert child_post.queue is queue
+
+    def test_post_stores_source_list(self):
+        queue = EventQueue()
+        post = _event.Post(queue=queue, source=[("region1", "state1")])
+
+        assert post.source == [("region1", "state1")]
+
+    @pytest.mark.asyncio
+    async def test_aforward_includes_source_in_event(self):
+        queue = EventQueue()
+        post = _event.Post(queue=queue, source=[("region1", "state1")])
+
+        await post.aforward("TestEvent", {"data": "test"})
+
+        event = queue.pop_nowait()
+        assert event["source"] == [("region1", "state1")]
+
+    def test_child_from_empty_source_list(self):
+        queue = EventQueue()
+        post = _event.Post(queue=queue, source=[])
+
+        child_post = post.child("child_name", "child_state")
+
+        assert child_post.source == [("child_name", "child_state")]
 
 
 @pytest.mark.asyncio
@@ -302,8 +375,7 @@ class TestTimer:
         assert event["type"] == "Timer"
         assert event["payload"]["tag"] == "test_tag"
         assert event["payload"]["timer_id"] == timer_id
-        assert event["source_region"] == "region1"
-        assert event["source_state"] == "state1"
+        assert event["source"] == [("region1", "state1")]
         
         # Timer should be cleaned up
         assert timer_id not in timer._timers

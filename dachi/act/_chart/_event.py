@@ -1,11 +1,9 @@
 # 1st Party
 from abc import ABC
-from typing import Any, Dict, List, Optional, Literal, TypedDict, Callable
+from typing import Any, Dict, List, Optional, Literal, TypedDict, Tuple
 from collections import deque
 import time
 import asyncio
-
-import pydantic
 
 # Local
 from dachi.proc import AsyncProcess
@@ -20,12 +18,11 @@ class Event(TypedDict, total=False):
     payload: Payload
     port: Optional[str]
     scope: Literal["chart", "parent", "self"] = "chart"
-    source_region: Optional[str] = None
-    source_state: Optional[str] = None
+    source: List[Tuple[str, str]]  # List of (region_name, state_name) pairs
     epoch: Optional[int] = None
     meta: Dict[str, Any]
     ts: float
-    
+
     # port: Optional[str] = None,
     # correlation_id: Optional[str]
 
@@ -108,25 +105,13 @@ class Post(AsyncProcess):
     """
 
     queue: "EventQueue"
-    source_region: Optional[str] = None
-    source_state: Optional[str] = None
+    source: List[Tuple[str, str]] = []  # List of (region_name, state_name) pairs
     epoch: Optional[int] = None
 
     def __post_init__(self):
         super().__post_init__()
         self.preempting = lambda: False
-        self._finish_callbacks: List[Callable] = []
-    
-    def register_finish_callback(self, callback: Callable) -> None:
-        """Register a callback to be called when finish() is invoked."""
-        if callback not in self._finish_callbacks:
-            self._finish_callbacks.append(callback)
-    
-    def unregister_finish_callback(self, callback: Callable) -> None:
-        """Unregister a finish callback."""
-        if callback in self._finish_callbacks:
-            self._finish_callbacks.remove(callback)
-    
+
     async def aforward(
         self,
         event: str,
@@ -135,31 +120,52 @@ class Post(AsyncProcess):
         scope: Literal["chart", "parent"] = "chart",
         port: Optional[str] = None,
     ) -> bool:
-        
+
         result = self.queue.post_nowait({
             "type": event,
             "payload": payload or {},
             "scope": scope,
             "port": port,
-            "source_region": self.source_region,
-            "source_state": self.source_state,
+            "source": self.source,
             "epoch": self.epoch,
             "meta": {},
             "ts": time.monotonic(),
         })
         return result
 
-    async def finish(self) -> None:
-        """Signal that the current state has finished its work."""
-        # 1. Notify parent region through callbacks for internal bookkeeping
-        for callback in self._finish_callbacks:
-            if asyncio.iscoroutinefunction(callback):
-                await callback()
-            else:
-                callback()
-        
-        # 2. Post Finished event for core transition processing
-        await self.aforward("Finished")
+    # TODO: Figure out how to effectively incorporate region and state in the source
+    def child(self, region_name: str) -> "Post":
+        """Create a child Post with extended source hierarchy.
+
+        Args:
+            state_name: Name of the state
+
+        Returns:
+            New Post with extended source list and shared queue
+        """
+        return Post(
+            queue=self.queue,
+            source=self.source + [(region_name, None)],
+            epoch=self.epoch
+        )
+    
+    def state(self, state_name: str) -> "Post":
+        """Create a child Post with extended source hierarchy.
+
+        Args:
+            state_name: Name of the state
+
+        Returns:
+            New Post with extended source list and shared queue
+        """
+        if not self.source:
+            raise ValueError("Cannot add state without a region in the source")
+        region_name, _ = self.source[-1]
+        return Post(
+            queue=self.queue,
+            source=self.source[:-1] + [(region_name, state_name)],
+            epoch=self.epoch
+        )
 
     async def __call__(self, *args, **kwds):
         return await self.aforward(*args, **kwds)
@@ -186,9 +192,9 @@ class Timer:
     ) -> str:
         timer_id = f"timer_{self._next_id}"
         self._next_id += 1
-        
+
         when = self.clock.now() + delay
-        
+
         async def _fire():
             await self.clock.sleep_until(when)
             if timer_id in self._timers:
@@ -196,13 +202,12 @@ class Timer:
                     type="Timer",
                     payload={"tag": tag, "timer_id": timer_id, **(payload or {})},
                     scope=scope,
-                    source_region=owner_region,
-                    source_state=owner_state,
+                    source=[(owner_region, owner_state)] if owner_region and owner_state else [],
                     ts=self.clock.now()
                 )
                 await self.queue.post(event)
                 del self._timers[timer_id]
-        
+
         self._timers[timer_id] = {
             "tag": tag,
             "when": when,
@@ -210,7 +215,7 @@ class Timer:
             "owner_state": owner_state,
             "task": asyncio.create_task(_fire())
         }
-        
+
         return timer_id
 
     def cancel(self, timer_id: str) -> bool:

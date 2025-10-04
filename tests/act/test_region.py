@@ -5,7 +5,7 @@ from dachi.act._chart._region import (
     Decision,
     Region, Rule,
 )
-from dachi.act._chart._state import State
+from dachi.act._chart._state import State, StreamState
 from dachi.act._chart._event import Event
 
 
@@ -62,7 +62,35 @@ class TestRegionDecide:
         region = Region(name="test", initial="idle", rules=[rule])
         region._current_state.set("waiting")  # Set via Attr
         event = Event(type="advance")
-        
+
         decision = region.decide(event)
-        
+
         assert decision["type"] != "stay"
+
+    def test_decide_returns_preempt_for_stream_state_transition(self):
+        class SimpleStreamState(StreamState):
+            async def astream(self, post, **inputs):
+                yield
+
+        rule = Rule(event_type="cancel", target="cancelled")
+        region = Region(name="test", initial="streaming", rules=[rule])
+        region._states["streaming"] = SimpleStreamState()
+        region._current_state.set("streaming")
+        event = Event(type="cancel")
+
+        decision = region.decide(event)
+
+        assert decision["type"] == "preempt"
+        assert decision["target"] == "cancelled"
+
+    def test_decide_returns_immediate_for_regular_state_transition(self):
+        rule = Rule(event_type="next", target="done")
+        region = Region(name="test", initial="idle", rules=[rule])
+        region._states["idle"] = SimpleState()
+        region._current_state.set("idle")
+        event = Event(type="next")
+
+        decision = region.decide(event)
+
+        assert decision["type"] == "immediate"
+        assert decision["target"] == "done"

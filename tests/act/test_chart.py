@@ -39,7 +39,7 @@ class TestChartLifecycle:
 
     def test_chart_initializes_in_idle(self):
         region = Region(name="main", initial="idle", rules=[])
-        region.states["idle"] = IdleState()
+        region._states["idle"] = IdleState()
 
         chart = StateChart(name="test", regions=[region])
 
@@ -50,7 +50,7 @@ class TestChartLifecycle:
     @pytest.mark.asyncio
     async def test_start_sets_lifecycle_to_running(self):
         region = Region(name="main", initial="idle", rules=[])
-        region.states["idle"] = IdleState()
+        region._states["idle"] = IdleState()
 
         chart = StateChart(name="test", regions=[region])
         await chart.start()
@@ -63,10 +63,10 @@ class TestChartLifecycle:
     @pytest.mark.asyncio
     async def test_start_enters_initial_states_in_all_regions(self):
         region1 = Region(name="r1", initial="idle", rules=[])
-        region1.states["idle"] = IdleState()
+        region1._states["idle"] = IdleState()
 
         region2 = Region(name="r2", initial="idle", rules=[])
-        region2.states["idle"] = IdleState()
+        region2._states["idle"] = IdleState()
 
         chart = StateChart(name="test", regions=[region1, region2])
         await chart.start()
@@ -81,7 +81,7 @@ class TestChartLifecycle:
     @pytest.mark.asyncio
     async def test_stop_sets_lifecycle_to_stopped(self):
         region = Region(name="main", initial="idle", rules=[])
-        region.states["idle"] = IdleState()
+        region._states["idle"] = IdleState()
 
         chart = StateChart(name="test", regions=[region])
         await chart.start()
@@ -93,7 +93,7 @@ class TestChartLifecycle:
     @pytest.mark.asyncio
     async def test_stop_cancels_running_tasks(self):
         region = Region(name="main", initial="slow", rules=[])
-        region.states["slow"] = SlowStreamState()
+        region._states["slow"] = SlowStreamState()
 
         chart = StateChart(name="test", regions=[region])
         await chart.start()
@@ -108,8 +108,8 @@ class TestChartLifecycle:
         region = Region(name="main", initial="idle", rules=[
             Rule(event_type="finish", target="done")
         ])
-        region.states["idle"] = IdleState()
-        region.states["done"] = DoneState()
+        region._states["idle"] = IdleState()
+        region._states["done"] = DoneState()
 
         chart = StateChart(name="test", regions=[region], auto_finish=True)
         await chart.start()
@@ -125,8 +125,8 @@ class TestChartLifecycle:
         region = Region(name="main", initial="idle", rules=[
             Rule(event_type="finish", target="done")
         ])
-        region.states["idle"] = IdleState()
-        region.states["done"] = DoneState()
+        region._states["idle"] = IdleState()
+        region._states["done"] = DoneState()
 
         chart = StateChart(name="test", regions=[region], auto_finish=True)
         await chart.start()
@@ -142,7 +142,7 @@ class TestChartEventProcessing:
 
     def test_post_adds_event_to_queue(self):
         region = Region(name="main", initial="idle", rules=[])
-        region.states["idle"] = IdleState()
+        region._states["idle"] = IdleState()
 
         chart = StateChart(name="test", regions=[region])
 
@@ -153,7 +153,7 @@ class TestChartEventProcessing:
 
     def test_post_returns_false_when_queue_full(self):
         region = Region(name="main", initial="idle", rules=[])
-        region.states["idle"] = IdleState()
+        region._states["idle"] = IdleState()
 
         chart = StateChart(name="test", regions=[region], queue_maxsize=2, queue_overflow="drop_newest")
 
@@ -169,8 +169,8 @@ class TestChartEventProcessing:
         region = Region(name="main", initial="idle", rules=[
             Rule(event_type="go", target="active")
         ])
-        region.states["idle"] = IdleState()
-        region.states["active"] = ActiveState()
+        region._states["idle"] = IdleState()
+        region._states["active"] = ActiveState()
 
         chart = StateChart(name="test", regions=[region])
         await chart.start()
@@ -185,7 +185,7 @@ class TestChartEventProcessing:
     @pytest.mark.asyncio
     async def test_step_with_no_events_does_nothing(self):
         region = Region(name="main", initial="idle", rules=[])
-        region.states["idle"] = IdleState()
+        region._states["idle"] = IdleState()
 
         chart = StateChart(name="test", regions=[region])
         await chart.start()
@@ -202,8 +202,8 @@ class TestChartEventProcessing:
         region = Region(name="main", initial="idle", rules=[
             Rule(event_type="activate", target="active")
         ])
-        region.states["idle"] = IdleState()
-        region.states["active"] = ActiveState()
+        region._states["idle"] = IdleState()
+        region._states["active"] = ActiveState()
 
         chart = StateChart(name="test", regions=[region])
         await chart.start()
@@ -220,7 +220,7 @@ class TestChartRegionCoordination:
     @pytest.mark.asyncio
     async def test_enter_state_creates_run_task(self):
         region = Region(name="main", initial="active", rules=[])
-        region.states["active"] = ActiveState()
+        region._states["active"] = ActiveState()
 
         chart = StateChart(name="test", regions=[region])
         await chart.start()
@@ -235,9 +235,9 @@ class TestChartRegionCoordination:
         region = Region(name="main", initial="idle", rules=[
             Rule(event_type="go", target="active")
         ])
-        region.states["idle"] = IdleState()
+        region._states["idle"] = IdleState()
         active = ActiveState()
-        region.states["active"] = active
+        region._states["active"] = active
 
         chart = StateChart(name="test", regions=[region])
         await chart.start()
@@ -256,14 +256,14 @@ class TestChartRegionCoordination:
         region1 = Region(name="r1", initial="idle", rules=[
             Rule(event_type="go1", target="active")
         ])
-        region1.states["idle"] = IdleState()
-        region1.states["active"] = ActiveState()
+        region1._states["idle"] = IdleState()
+        region1._states["active"] = ActiveState()
 
         region2 = Region(name="r2", initial="idle", rules=[
             Rule(event_type="go2", target="active")
         ])
-        region2.states["idle"] = IdleState()
-        region2.states["active"] = ActiveState()
+        region2._states["idle"] = IdleState()
+        region2._states["active"] = ActiveState()
 
         chart = StateChart(name="test", regions=[region1, region2])
         await chart.start()
@@ -285,8 +285,8 @@ class TestChartPreemption:
             Rule(event_type="stop", target="idle")
         ])
         slow = SlowStreamState()
-        region.states["slow"] = slow
-        region.states["idle"] = IdleState()
+        region._states["slow"] = slow
+        region._states["idle"] = IdleState()
 
         chart = StateChart(name="test", regions=[region])
         await chart.start()
@@ -306,8 +306,8 @@ class TestChartPreemption:
         region = Region(name="main", initial="slow", rules=[
             Rule(event_type="cancel", target="idle")
         ])
-        region.states["slow"] = SlowStreamState()
-        region.states["idle"] = IdleState()
+        region._states["slow"] = SlowStreamState()
+        region._states["idle"] = IdleState()
 
         chart = StateChart(name="test", regions=[region])
         await chart.start()
@@ -326,7 +326,7 @@ class TestChartStatus:
 
     def test_snapshot_returns_status(self):
         region = Region(name="main", initial="idle", rules=[])
-        region.states["idle"] = IdleState()
+        region._states["idle"] = IdleState()
 
         chart = StateChart(name="test", regions=[region])
         snapshot = chart.snapshot()
@@ -339,7 +339,7 @@ class TestChartStatus:
     @pytest.mark.asyncio
     async def test_snapshot_includes_region_data(self):
         region = Region(name="main", initial="idle", rules=[])
-        region.states["idle"] = IdleState()
+        region._states["idle"] = IdleState()
 
         chart = StateChart(name="test", regions=[region])
         await chart.start()
@@ -354,7 +354,7 @@ class TestChartStatus:
 
     def test_is_running_convenience_method(self):
         region = Region(name="main", initial="idle", rules=[])
-        region.states["idle"] = IdleState()
+        region._states["idle"] = IdleState()
 
         chart = StateChart(name="test", regions=[region])
 
@@ -362,7 +362,7 @@ class TestChartStatus:
 
     def test_is_finished_convenience_method(self):
         region = Region(name="main", initial="idle", rules=[])
-        region.states["idle"] = IdleState()
+        region._states["idle"] = IdleState()
 
         chart = StateChart(name="test", regions=[region])
 
@@ -370,10 +370,10 @@ class TestChartStatus:
 
     def test_active_states_returns_region_map(self):
         region1 = Region(name="r1", initial="idle", rules=[])
-        region1.states["idle"] = IdleState()
+        region1._states["idle"] = IdleState()
 
         region2 = Region(name="r2", initial="active", rules=[])
-        region2.states["active"] = ActiveState()
+        region2._states["active"] = ActiveState()
 
         chart = StateChart(name="test", regions=[region1, region2])
 
@@ -383,7 +383,7 @@ class TestChartStatus:
 
     def test_queue_size_tracking(self):
         region = Region(name="main", initial="idle", rules=[])
-        region.states["idle"] = IdleState()
+        region._states["idle"] = IdleState()
 
         chart = StateChart(name="test", regions=[region])
 
