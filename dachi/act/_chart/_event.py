@@ -133,12 +133,11 @@ class Post(AsyncProcess):
         })
         return result
 
-    # TODO: Figure out how to effectively incorporate region and state in the source
     def child(self, region_name: str) -> "Post":
-        """Create a child Post with extended source hierarchy.
+        """Create a child Post with extended source hierarchy for a new region.
 
         Args:
-            state_name: Name of the state
+            region_name: Name of the child region
 
         Returns:
             New Post with extended source list and shared queue
@@ -148,15 +147,15 @@ class Post(AsyncProcess):
             source=self.source + [(region_name, None)],
             epoch=self.epoch
         )
-    
-    def state(self, state_name: str) -> "Post":
-        """Create a child Post with extended source hierarchy.
+
+    def sibling(self, state_name: str) -> "Post":
+        """Create a sibling Post by setting the state name in the last source tuple.
 
         Args:
             state_name: Name of the state
 
         Returns:
-            New Post with extended source list and shared queue
+            New Post with updated state in the last source tuple
         """
         if not self.source:
             raise ValueError("Cannot add state without a region in the source")
@@ -276,4 +275,3 @@ class MonotonicClock:
         delay = when - self.now()
         if delay > 0:
             await asyncio.sleep(delay)
-

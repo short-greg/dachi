@@ -1,8 +1,8 @@
 import typing as t
 import asyncio
 
-from ._state import BaseState, State, StateStatus
-from ._event import Event, Post
+from ._state import BaseState, StateStatus
+from ._event import Post
 from ._region import Region
 from dachi.core import Ctx, ModuleList
 
