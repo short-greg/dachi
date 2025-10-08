@@ -6,7 +6,6 @@ from dataclasses import dataclass
 
 from dachi.core import Attr, ModuleList
 from dachi.core._scope import Scope
-from ._region import Region
 from ._event import Event, EventQueue, Timer, MonotonicClock, Post
 
 
@@ -26,7 +25,7 @@ JSON = Union[Dict[str, Any], List[Any], str, int, float, bool, None]
 
 class StateChart(ChartBase):
     name: str
-    regions: ModuleList
+    regions: ModuleList  # ModuleList[Region]
     checkpoint_policy: Literal["yield", "hard"] = "yield"
     queue_maxsize: int = 1024
     queue_overflow: Literal["drop_newest", "drop_oldest", "block"] = "drop_newest"
@@ -34,15 +33,20 @@ class StateChart(ChartBase):
     auto_finish: bool = True
 
     def __post_init__(self) -> None:
+        """Initialize the state chart and its status.
+        Raises:
+            ValueError: If no regions are defined.
+        """
         super().__post_init__()
 
-        self._status = Attr[ChartStatus](data=ChartStatus.IDLE)
+        self._status = Attr[ChartStatus](data=ChartStatus.WAITING)
         self._started_at = Attr[Optional[float]](data=None)
         self._finished_at = Attr[Optional[float]](data=None)
+        self._stopping = Attr[bool](data=False)
 
-        self._modules_completed = {
+        self._regions_completed = Attr[Dict[str, bool]](data={
             region.name: region.is_completed() for region in self.regions
-        }
+        })
         self._queue = EventQueue(
             maxsize=self.queue_maxsize, 
             overflow=self.queue_overflow
@@ -52,58 +56,105 @@ class StateChart(ChartBase):
         self._timer = Timer(queue=self._queue, clock=self._clock)
         self._scope = Scope(name=self.name)
         self._event_loop_task: Optional[asyncio.Task] = None
-        self._region_tasks: Dict[str, asyncio.Task] = {}
-        self._post = Post(queue=self._queue, source=(self.name, None))
+
+    def reset(self):
+        """
+        Reset the chart to its initial state.
+        """
+        if not self.can_reset():
+            raise RuntimeError(f"Cannot reset chart in {self._status.get()} state")
+        super().reset()
+        self._status.set(ChartStatus.WAITING)
+        self._started_at.set(None)
+        self._finished_at.set(None)
+        self._regions_completed.set({
+            region.name: region.is_completed() for region in self.regions
+        })
+        self._queue.clear()
+        self._timer.clear()
+        for region in self.regions:
+            region.reset()
+
+    def can_reset(self):
+        return self._status.get().is_completed()
+    
+    def can_start(self):
+        return self._status.get().is_waiting()
+    
+    def can_stop(self):
+        return self._status.get().is_running()
 
     async def finish_region(self, region: str) -> None:
-        """Handle completion of a region's task."""
+        """Handle completion of a region. This is a callback registered with each region.
+        Check if all regions are completed and finish the chart if so.
+        """
         # get the region
-        if region not in self._regions_completed:
-            # TODO: Decide whether to raise error or just log
-            return 
+        if region not in self._regions_completed.get():
+            raise ValueError(f"Unknown region '{region}' finished")
         region_obj = None
         for r in self.regions:
             if r.name == region:
                 region_obj = r
                 break
-        
+
         if region_obj is None:
-            # TODO: Decide whether to raise error or just log
-            return
+            raise ValueError(f"Unknown region '{region}' finished")
+
         region_obj.unregister_finish_callback(self.finish_region)
-        self._regions_completed[region] = True
-        if all(self._modules_completed.values()):
-            self._status.set(ChartStatus.COMPLETED)
-            self._region_tasks = {}
+        completed = self._regions_completed.get()
+        completed[region] = True
+        self._regions_completed.set(completed)
+        if all(self._regions_completed.get().values()):
+            self._finished_at.set(self._clock.now())
+            if self._stopping.get():
+                self._status.set(ChartStatus.CANCELED)
+            else:
+                self._status.set(ChartStatus.SUCCESS)
             await self.finish()
 
     async def start(self) -> None:
-        if self._status.get() != ChartStatus.IDLE:
+        """Start the state chart by starting all regions."""
+        if not self.can_start():
             raise RuntimeError(f"Cannot start chart in {self._status.get()} state")
 
         self._status.set(ChartStatus.RUNNING)
         self._started_at.set(self._clock.now())
 
-        self._region_tasks = {}
         for i, region in enumerate(self.regions):
-            region.register_finish_callback(self.finish_region, region.name)
-            task = asyncio.create_task(region.start(self._post.child(region.name), self._scope.child(i)))
-            self._region_tasks[region.name] = task
+            region.register_finish_callback(
+                self.finish_region, region.name
+            )
+            post = self._queue.child(region.name)
+            ctx = self._scope.ctx(i)
+            await region.start(post, ctx)
 
     async def handle_event(self, event: Event) -> None:
+        """
+        Handle an incoming event by dispatching it to all running regions.
+        """
         if self._status.get() == ChartStatus.RUNNING:
             for region in self.regions:
-                if region.status != RegionStatus.FINAL:
+                if region.status.is_completed():
                     await region.handle_event(event)
 
     async def stop(self) -> None:
-        if self._status.get() not in {ChartStatus.RUNNING, ChartStatus.ERROR}:
-            return
+        """Stop the state chart by stopping all running regions.
 
-        for region in self.regions:
-            if region.status == RegionStatus.ACTIVE:
-                await region.stop()
-        
+        This initiates stopping but returns immediately. The chart will complete
+        asynchronously via finish_region() callbacks.
+        """
+        if not self.can_stop():
+            raise RuntimeError(
+                f"Cannot stop chart in {self._status.get()} state"
+            )
+
+        self._stopping.set(True)
+        for i, region in enumerate(self.regions):
+            if region.can_stop():
+                post = self._queue.child(region.name)
+                ctx = self._scope.ctx(i)
+                await region.stop(post, ctx, preempt=True)
+
     def post(
         self,
         type_or_event: Union[str, Event],
@@ -131,19 +182,13 @@ class StateChart(ChartBase):
         payload: JSON = None,
     ) -> bool:
         return self.post(type_or_event, payload, scope="parent")
-
-    def is_running(self) -> bool:
-        return self._status.get() == ChartStatus.RUNNING
-
-    def is_finished(self) -> bool:
-        return self._status.get() == ChartStatus.FINISHED
-
+    
     def snapshot(self) -> ChartSnapshot:
         status = self._status.get()
         return ChartSnapshot(
             status=status,
             running=status == ChartStatus.RUNNING,
-            finished=status == ChartStatus.FINISHED,
+            finished=status.is_completed(),
             started_at=self._started_at.get(),
             finished_at=self._finished_at.get(),
             queue_size=self._queue.size(),
@@ -159,97 +204,13 @@ class StateChart(ChartBase):
         )
 
     def active_states(self) -> Dict[str, str]:
-        return {r.name: r.current_state for r in self.regions}
+        return {r.name: r.status.is_running() for r in self.regions}
 
     def queue_size(self) -> int:
         return self._queue.size()
 
     def list_timers(self) -> List[Dict[str, Any]]:
         return self._timer.list()
-
-    def _check_all_final(self) -> bool:
-        if not self.auto_finish:
-            return False
-        return all(r.is_final() for r in self.regions)
-
-    async def _enter_state(self, region: Region, state_name: str) -> None:
-        try:
-            state = region._states[state_name]
-        except (KeyError, IndexError):
-            raise ValueError(f"State {state_name} not found in region {region.name}")
-
-        region._current_state.set(state_name)
-        state.enter()
-
-        post = Post(
-            queue=self._queue,
-            source=(region.name, state_name)
-        )
-        ctx = self._scope.ctx()
-
-        task = asyncio.create_task(state.run(post, ctx))
-        task_key = f"{region.name}:{state_name}"
-        self._region_tasks[task_key] = task
-
-        if state.is_final():
-            region._status.set(RegionStatus.FINAL)
-
-    async def _transition_region(self, region: Region, target_state: str) -> None:
-        current_state_name = region.current_state
-        try:
-            current_state = region._states[current_state_name]
-        except (KeyError, IndexError):
-            current_state = None
-
-        if current_state:
-            task_key = f"{region.name}:{current_state_name}"
-            if task_key in self._region_tasks:
-                task = self._region_tasks[task_key]
-                if not task.done():
-                    try:
-                        await task
-                    except asyncio.CancelledError:
-                        pass
-                del self._region_tasks[task_key]
-
-            current_state.exit()
-            self._timer.cancel_owned(region.name, current_state_name)
-
-        region._last_active_state.set(current_state_name)
-
-        await self._enter_state(region, target_state)
-
-    async def _preempt_region(self, region: Region, target_state: str) -> None:
-        region._status.set(RegionStatus.PREEMPTING)
-        region._pending_target.set(target_state)
-
-        current_state_name = region.current_state
-        try:
-            current_state = region._states[current_state_name]
-        except (KeyError, IndexError):
-            current_state = None
-
-        if current_state:
-            current_state.request_termination()
-
-            task_key = f"{region.name}:{current_state_name}"
-            if task_key in self._region_tasks:
-                task = self._region_tasks[task_key]
-                try:
-                    await task
-                except asyncio.CancelledError:
-                    pass
-                del self._region_tasks[task_key]
-
-            current_state.exit()
-            self._timer.cancel_owned(region.name, current_state_name)
-
-        region._status.set(RegionStatus.ACTIVE)
-        region._last_active_state.set(current_state_name)
-        region._pending_target.set(None)
-
-        await self._enter_state(region, target_state)
-
 
 # @dataclass
 # class Snapshot:

@@ -7,6 +7,11 @@ from ._chart import (
 )
 from ._event import (
     EventQueue,
+    Post,
+    Payload,
+    Timer,
+    MonotonicClock,
+    Event,
 )
 from ._region import (
     Region,

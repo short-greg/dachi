@@ -1,6 +1,6 @@
 # 1st Party
 from abc import ABC
-from typing import Any, Dict, List, Optional, Literal, TypedDict, Tuple
+from typing import Any, Dict, List, Optional, Literal, TypedDict, Tuple, Callable
 from collections import deque
 import time
 import asyncio
@@ -34,6 +34,8 @@ class EventQueue:
         self.maxsize = maxsize
         self.overflow = overflow
         self.queue: deque[Event] = deque()
+        self._callbacks: Dict[Callable, Tuple[Any, Any]] = {}
+        self._posts = {}
 
     # Non-blocking enqueue. Returns False if dropped/rejected.
     def post_nowait(
@@ -53,6 +55,8 @@ class EventQueue:
                 return False
         
         self.queue.append(event)
+        for callback, (args, kwargs) in self._callbacks.items():
+            callback(event, *args, **kwargs)
         return True
 
     # Blocking/awaiting enqueue (only meaningful if overflow="block").
@@ -98,6 +102,29 @@ class EventQueue:
         self.maxsize = state["maxsize"]
         self.overflow = state["overflow"]
         self.queue = deque(state["events"])
+
+    def register_callback(self, callback: Any, *args, **kwargs) -> None:
+        """Register a callback to be called when an event is posted.
+        Note: This is a placeholder for actual event loop integration.
+        """
+        self._callbacks[callback] = (args, kwargs)
+    
+    def unregister_callback(self, callback: Any) -> None:
+        """Unregister a previously registered callback."""
+        if callback in self._callbacks:
+            del self._callbacks[callback]
+
+    def child(self, region_name: str) -> 'Post':
+        """Create a Post object for this queue."""
+        if region_name in self._posts:
+            return self._posts[region_name]
+        post = Post(queue=self).child(region_name)
+        self._posts[region_name] = post
+        return post
+    
+    def clear_children(self) -> None:
+        """Clear all events from the queue."""
+        self.queue.clear()
 
 
 class Post(AsyncProcess):
@@ -230,6 +257,11 @@ class Timer:
             if info["owner_region"] == owner_region and info["owner_state"] == owner_state
         ]
         return sum(1 for tid in to_cancel if self.cancel(tid))
+
+    def clear(self) -> None:
+        """Cancel all active timers."""
+        for timer_id in list(self._timers.keys()):
+            self.cancel(timer_id)
 
     def list(self) -> List[Dict[str, Any]]:
         return [

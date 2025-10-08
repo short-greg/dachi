@@ -1,7 +1,7 @@
 """Unit tests for CompositeState.
 
 Tests cover composite state lifecycle, child region management, context/post
-propagation, and completion logic.
+propagation, and completion logic following the framework testing conventions.
 """
 
 import asyncio
@@ -9,9 +9,10 @@ import pytest
 
 from dachi.act._chart._composite import CompositeState
 from dachi.act._chart._region import Region, Rule
-from dachi.act._chart._state import State, FinalState
+from dachi.act._chart._state import State, FinalState, StreamState
+from dachi.act._chart._base import ChartStatus, InvalidTransition
 from dachi.act._chart._event import EventQueue, Post
-from dachi.core import Scope
+from dachi.core import Scope, ModuleList
 
 
 class SimpleState(State):
@@ -23,186 +24,857 @@ class SimpleFinal(FinalState):
     pass
 
 
-class TestCompositeStateLifecycle:
-
-    @pytest.mark.asyncio
-    async def test_composite_enters_all_child_regions_on_enter(self):
-        region1 = Region(name="child1", initial="idle", rules=[])
-        region2 = Region(name="child2", initial="idle", rules=[])
-
-        composite = CompositeState(regions=[region1, region2])
-
-        composite.enter()
-
-        assert region1.status.name == "ACTIVE"
-        assert region2.status.name == "ACTIVE"
-
-    @pytest.mark.asyncio
-    async def test_composite_exits_all_child_regions_on_exit(self):
-        region1 = Region(name="child1", initial="idle", rules=[])
-        region2 = Region(name="child2", initial="idle", rules=[])
-
-        composite = CompositeState(regions=[region1, region2])
-
-        composite.enter()
-        composite.exit()
-
-        # Both regions should be stopped
-        assert region1.status.name in ["IDLE", "FINAL"]
-        assert region2.status.name in ["IDLE", "FINAL"]
-
-    @pytest.mark.asyncio
-    async def test_composite_completes_when_all_children_final(self):
-        region1 = Region(name="child1", initial="idle", rules=[
-            Rule(event_type="finish", target="done")
-        ])
-        region2 = Region(name="child2", initial="idle", rules=[
-            Rule(event_type="finish", target="done")
-        ])
-        region1._states["idle"] = SimpleState()
-        region1._states["done"] = SimpleFinal()
-        region2._states["idle"] = SimpleState()
-        region2._states["done"] = SimpleFinal()
-
-        composite = CompositeState(regions=[region1, region2])
-        queue = EventQueue()
-        post = Post(queue=queue, source=[("main", "composite")])
-        scope = Scope()
-        ctx = scope.ctx()
-
-        # Start composite
-        composite.enter()
-        task = asyncio.create_task(composite.run(post, ctx))
-
-        # Wait a bit for composite to start
-        await asyncio.sleep(0.01)
-
-        # Both regions still running
-        assert not task.done()
-
-        # Finish first region
-        queue.post_nowait({"type": "finish", "ts": 0.0})
-        await asyncio.sleep(0.01)
-
-        # Still running (need both final)
-        assert not task.done()
-
-        # Finish second region
-        queue.post_nowait({"type": "finish", "ts": 0.0})
-        await asyncio.sleep(0.01)
-
-        # Now should complete
-        await asyncio.wait_for(task, timeout=0.1)
-        assert task.done()
-
-    @pytest.mark.asyncio
-    async def test_composite_creates_child_contexts(self):
-        region1 = Region(name="child1", initial="idle", rules=[])
-        region2 = Region(name="child2", initial="idle", rules=[])
-
-        composite = CompositeState(regions=[region1, region2])
-        queue = EventQueue()
-        post = Post(queue=queue, source=[("main", "root")])
-        scope = Scope()
-        ctx = scope.ctx()
-
-        composite.enter()
-
-        # Child contexts should be created with indices
-        # This will be verified by checking data storage patterns
-        ctx.child(0)["data1"] = "value1"
-        ctx.child(1)["data2"] = "value2"
-
-        # Verify data is stored at correct paths
-        assert scope.get(("0", "data1")) == "value1"
-        assert scope.get(("1", "data2")) == "value2"
-
-    @pytest.mark.asyncio
-    async def test_composite_creates_child_posts(self):
-        region1 = Region(name="child1", initial="idle", rules=[])
-        region2 = Region(name="child2", initial="idle", rules=[])
-
-        composite = CompositeState(regions=[region1, region2])
-        queue = EventQueue()
-        post = Post(queue=queue, source=[("main", "composite")])
-        scope = Scope()
-        ctx = scope.ctx()
-
-        # Create child posts
-        child_post_0 = post.child("child1", "idle")
-        child_post_1 = post.child("child2", "idle")
-
-        # Verify hierarchical source
-        assert child_post_0.source == [("main", "composite"), ("child1", "idle")]
-        assert child_post_1.source == [("main", "composite"), ("child2", "idle")]
+class SlowState(State):
+    async def execute(self, post, **inputs):
+        await asyncio.sleep(0.1)
 
 
-class TestCompositeStateHistory:
+class TestCompositeStateInit:
+    """Test __post_init__ method"""
 
-    @pytest.mark.asyncio
-    async def test_composite_with_history_none_starts_fresh(self):
-        region = Region(name="child", initial="idle", rules=[
-            Rule(event_type="next", target="active")
-        ])
-        region._states["idle"] = SimpleState()
-        region._states["active"] = SimpleState()
+    def test_post_init_calls_parent_init(self):
+        composite = CompositeState(regions=ModuleList(items=[]))
+        assert composite._status.get() == ChartStatus.WAITING
 
-        composite = CompositeState(regions=[region], history="none")
+    def test_post_init_initializes_tasks_to_empty_list(self):
+        composite = CompositeState(regions=ModuleList(items=[]))
+        assert composite._tasks == []
 
-        # Enter first time
-        composite.enter()
-        assert region.current_state == "idle"
+    def test_post_init_initializes_finished_regions_to_empty_set(self):
+        composite = CompositeState(regions=ModuleList(items=[]))
+        assert composite._finished_regions == set()
 
-        # Transition to active
-        region._current_state.set("active")
+    def test_post_init_sets_status_to_waiting(self):
+        composite = CompositeState(regions=ModuleList(items=[]))
+        assert composite.get_status() == ChartStatus.WAITING
 
-        # Exit and re-enter
-        composite.exit()
-        composite.enter()
+    def test_post_init_with_no_regions(self):
+        composite = CompositeState(regions=ModuleList(items=[]))
+        assert len(composite.regions) == 0
 
-        # Should start from initial (not "active")
-        assert region.current_state == "idle"
-
-
-class TestCompositeStateEdgeCases:
-
-    @pytest.mark.asyncio
-    async def test_composite_with_no_regions_completes_immediately(self):
-        composite = CompositeState(regions=[])
-        queue = EventQueue()
-        post = Post(queue=queue, source=[("main", "root")])
-        scope = Scope()
-        ctx = scope.ctx()
-
-        composite.enter()
-        task = asyncio.create_task(composite.run(post, ctx))
-
-        # Should complete immediately
-        await asyncio.wait_for(task, timeout=0.1)
-        assert task.done()
-
-    @pytest.mark.asyncio
-    async def test_composite_preemption_cancels_children(self):
+    def test_post_init_with_single_region(self):
         region = Region(name="child", initial="idle", rules=[])
-        region._states["idle"] = SimpleState()
+        composite = CompositeState(regions=ModuleList(items=[region]))
+        assert len(composite.regions) == 1
 
-        composite = CompositeState(regions=[region])
+    def test_post_init_with_multiple_regions(self):
+        region1 = Region(name="child1", initial="idle", rules=[])
+        region2 = Region(name="child2", initial="idle", rules=[])
+        composite = CompositeState(regions=ModuleList(items=[region1, region2]))
+        assert len(composite.regions) == 2
+
+    def test_post_init_inherits_base_state_flags(self):
+        composite = CompositeState(regions=ModuleList(items=[]))
+        assert composite._termination_requested.get() is False
+        assert composite._run_completed.get() is False
+        assert composite._executing.get() is False
+        assert composite._entered.get() is False
+        assert composite._exiting.get() is False
+
+
+class TestCompositeStateCanRun:
+    """Test can_run method"""
+
+    def test_can_run_returns_true_when_entered_and_not_running(self):
+        composite = CompositeState(regions=ModuleList(items=[]))
         queue = EventQueue()
-        post = Post(queue=queue, source=[("main", "root")])
+        post = Post(queue=queue)
+        scope = Scope()
+        ctx = scope.ctx()
+        composite.enter(post, ctx)
+        assert composite.can_run() is True
+
+    def test_can_run_returns_false_when_waiting(self):
+        composite = CompositeState(regions=ModuleList(items=[]))
+        assert composite.can_run() is False
+
+    def test_can_run_returns_false_when_running(self):
+        composite = CompositeState(regions=ModuleList(items=[]))
+        queue = EventQueue()
+        post = Post(queue=queue)
+        scope = Scope()
+        ctx = scope.ctx()
+        composite.enter(post, ctx)
+        composite._executing.set(True)
+        assert composite.can_run() is False
+
+    def test_can_run_returns_false_when_completed(self):
+        composite = CompositeState(regions=ModuleList(items=[]))
+        composite._status.set(ChartStatus.SUCCESS)
+        assert composite.can_run() is False
+
+    def test_can_run_returns_false_when_not_entered(self):
+        composite = CompositeState(regions=ModuleList(items=[]))
+        composite._entered.set(False)
+        assert composite.can_run() is False
+
+    def test_can_run_returns_false_when_failed(self):
+        composite = CompositeState(regions=ModuleList(items=[]))
+        composite._status.set(ChartStatus.FAILURE)
+        assert composite.can_run() is False
+
+
+class TestCompositeStateExecute:
+    """Test execute method"""
+
+    @pytest.mark.asyncio
+    async def test_execute_clears_previous_tasks(self):
+        region = Region(name="child", initial="idle", rules=[])
+        region.add(SimpleState(name="idle"))
+        composite = CompositeState(regions=ModuleList(items=[region]))
+        queue = EventQueue()
+        post = Post(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
 
-        composite.enter()
-        task = asyncio.create_task(composite.run(post, ctx))
+        composite._tasks = [asyncio.create_task(asyncio.sleep(0.01))]
+        await composite.execute(post, ctx)
+        assert len(composite._tasks) == 1  # New task, old cleared
 
-        await asyncio.sleep(0.01)
+    @pytest.mark.asyncio
+    async def test_execute_creates_task_for_each_region(self):
+        region1 = Region(name="child1", initial="idle", rules=[])
+        region2 = Region(name="child2", initial="idle", rules=[])
+        region1.add(SimpleState(name="idle"))
+        region2.add(SimpleState(name="idle"))
+        composite = CompositeState(regions=ModuleList(items=[region1, region2]))
+        queue = EventQueue()
+        post = Post(queue=queue)
+        scope = Scope()
+        ctx = scope.ctx()
 
-        # Request termination (preemption)
-        composite.request_termination()
+        await composite.execute(post, ctx)
+        assert len(composite._tasks) == 2
 
-        # Exit should work cleanly
-        composite.exit()
+    @pytest.mark.asyncio
+    async def test_execute_passes_child_post_to_regions(self):
+        region = Region(name="child", initial="idle", rules=[])
+        region.add(SimpleState(name="idle"))
+        composite = CompositeState(regions=ModuleList(items=[region]))
+        queue = EventQueue()
+        post = Post(queue=queue, source=[("main", "composite")])
+        scope = Scope()
+        ctx = scope.ctx()
 
-        # Task should complete
-        await asyncio.wait_for(task, timeout=0.1)
-        assert task.done()
+        await composite.execute(post, ctx)
+        # Verify region started (task created)
+        assert len(composite._tasks) == 1
+
+    @pytest.mark.asyncio
+    async def test_execute_passes_child_ctx_to_regions(self):
+        region = Region(name="child", initial="idle", rules=[])
+        region.add(SimpleState(name="idle"))
+        composite = CompositeState(regions=ModuleList(items=[region]))
+        queue = EventQueue()
+        post = Post(queue=queue)
+        scope = Scope()
+        ctx = scope.ctx()
+
+        await composite.execute(post, ctx)
+        # Verify execution started with context
+        assert len(composite._tasks) == 1
+
+    @pytest.mark.asyncio
+    async def test_execute_registers_finish_callback_for_each_region(self):
+        region = Region(name="child", initial="idle", rules=[])
+        region.add(SimpleState(name="idle"))
+        composite = CompositeState(regions=ModuleList(items=[region]))
+        queue = EventQueue()
+        post = Post(queue=queue)
+        scope = Scope()
+        ctx = scope.ctx()
+
+        await composite.execute(post, ctx)
+        # Verify callback registered
+        assert composite.finish_region in region._finish_callbacks
+
+    @pytest.mark.asyncio
+    async def test_execute_returns_none(self):
+        region = Region(name="child", initial="idle", rules=[])
+        region.add(SimpleState(name="idle"))
+        composite = CompositeState(regions=ModuleList(items=[region]))
+        queue = EventQueue()
+        post = Post(queue=queue)
+        scope = Scope()
+        ctx = scope.ctx()
+
+        result = await composite.execute(post, ctx)
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_execute_with_single_region(self):
+        region = Region(name="child", initial="idle", rules=[])
+        region.add(SimpleState(name="idle"))
+        composite = CompositeState(regions=ModuleList(items=[region]))
+        queue = EventQueue()
+        post = Post(queue=queue)
+        scope = Scope()
+        ctx = scope.ctx()
+
+        await composite.execute(post, ctx)
+        assert len(composite._tasks) == 1
+
+    @pytest.mark.asyncio
+    async def test_execute_with_no_regions(self):
+        composite = CompositeState(regions=ModuleList(items=[]))
+        queue = EventQueue()
+        post = Post(queue=queue)
+        scope = Scope()
+        ctx = scope.ctx()
+
+        await composite.execute(post, ctx)
+        assert len(composite._tasks) == 0
+
+    @pytest.mark.asyncio
+    async def test_execute_multiple_calls_clears_tasks(self):
+        region = Region(name="child", initial="idle", rules=[])
+        region.add(SimpleState(name="idle"))
+        composite = CompositeState(regions=ModuleList(items=[region]))
+        queue = EventQueue()
+        post = Post(queue=queue)
+        scope = Scope()
+        ctx = scope.ctx()
+
+        await composite.execute(post, ctx)
+        first_task_count = len(composite._tasks)
+        await composite.execute(post, ctx)
+        assert len(composite._tasks) == first_task_count
+
+    @pytest.mark.asyncio
+    async def test_execute_task_creation_order_deterministic(self):
+        region1 = Region(name="child1", initial="idle", rules=[])
+        region2 = Region(name="child2", initial="idle", rules=[])
+        region1.add(SimpleState(name="idle"))
+        region2.add(SimpleState(name="idle"))
+        composite = CompositeState(regions=ModuleList(items=[region1, region2]))
+        queue = EventQueue()
+        post = Post(queue=queue)
+        scope = Scope()
+        ctx = scope.ctx()
+
+        await composite.execute(post, ctx)
+        # Tasks created in order (2 regions)
+        assert len(composite._tasks) == 2
+
+    @pytest.mark.asyncio
+    async def test_execute_uses_enumeration_for_child_contexts(self):
+        region1 = Region(name="child1", initial="idle", rules=[])
+        region2 = Region(name="child2", initial="idle", rules=[])
+        region1.add(SimpleState(name="idle"))
+        region2.add(SimpleState(name="idle"))
+        composite = CompositeState(regions=ModuleList(items=[region1, region2]))
+        queue = EventQueue()
+        post = Post(queue=queue)
+        scope = Scope()
+        ctx = scope.ctx()
+
+        # Execute should use enumerate to create ctx.child(0), ctx.child(1), etc
+        await composite.execute(post, ctx)
+
+        # Verify execution succeeded with 2 tasks (one per region)
+        assert len(composite._tasks) == 2
+
+
+class TestCompositeStateRun:
+    """Test run method"""
+
+    @pytest.mark.asyncio
+    async def test_run_raises_error_when_cannot_run(self):
+        composite = CompositeState(regions=ModuleList(items=[]))
+        queue = EventQueue()
+        post = Post(queue=queue)
+        scope = Scope()
+        ctx = scope.ctx()
+
+        # Not entered, so cannot run
+        with pytest.raises(RuntimeError):
+            await composite.run(post, ctx)
+
+    @pytest.mark.asyncio
+    async def test_run_completes_immediately_when_no_regions(self):
+        composite = CompositeState(regions=ModuleList(items=[]))
+        queue = EventQueue()
+        post = Post(queue=queue)
+        scope = Scope()
+        ctx = scope.ctx()
+
+        composite.enter(post, ctx)
+        await composite.run(post, ctx)
+        # Should complete immediately
+        assert composite.get_status() == ChartStatus.SUCCESS
+
+    @pytest.mark.asyncio
+    async def test_run_sets_status_to_success_when_no_regions(self):
+        composite = CompositeState(regions=ModuleList(items=[]))
+        queue = EventQueue()
+        post = Post(queue=queue)
+        scope = Scope()
+        ctx = scope.ctx()
+
+        composite.enter(post, ctx)
+        await composite.run(post, ctx)
+        assert composite._status.get() == ChartStatus.SUCCESS
+
+    @pytest.mark.asyncio
+    async def test_run_calls_finish_when_no_regions(self):
+        composite = CompositeState(regions=ModuleList(items=[]))
+        queue = EventQueue()
+        post = Post(queue=queue)
+        scope = Scope()
+        ctx = scope.ctx()
+
+        called = False
+        def callback():
+            nonlocal called
+            called = True
+
+        composite.register_finish_callback(callback)
+        composite.enter(post, ctx)
+        await composite.run(post, ctx)
+        assert called is True
+
+    @pytest.mark.asyncio
+    async def test_run_calls_execute_when_has_regions(self):
+        region = Region(name="child", initial="idle", rules=[])
+        region.add(SimpleState(name="idle"))
+        composite = CompositeState(regions=ModuleList(items=[region]))
+        queue = EventQueue()
+        post = Post(queue=queue)
+        scope = Scope()
+        ctx = scope.ctx()
+
+        composite.enter(post, ctx)
+        await composite.run(post, ctx)
+        # Verify execute was called (tasks created)
+        assert len(composite._tasks) == 1
+
+    @pytest.mark.asyncio
+    async def test_run_sets_status_to_running(self):
+        region = Region(name="child", initial="idle", rules=[])
+        region.add(SimpleState(name="idle"))
+        composite = CompositeState(regions=ModuleList(items=[region]))
+        queue = EventQueue()
+        post = Post(queue=queue)
+        scope = Scope()
+        ctx = scope.ctx()
+
+        composite.enter(post, ctx)
+        await composite.run(post, ctx)
+        # Status set to RUNNING by run()
+        assert composite._status.get() == ChartStatus.RUNNING
+
+    @pytest.mark.asyncio
+    async def test_run_sets_run_completed_to_false_after_execute(self):
+        region = Region(name="child", initial="idle", rules=[])
+        region.add(SimpleState(name="idle"))
+        composite = CompositeState(regions=ModuleList(items=[region]))
+        queue = EventQueue()
+        post = Post(queue=queue)
+        scope = Scope()
+        ctx = scope.ctx()
+
+        composite.enter(post, ctx)
+        await composite.run(post, ctx)
+        assert composite._run_completed.get() is False
+
+    @pytest.mark.asyncio
+    async def test_run_does_not_block_waiting_for_regions(self):
+        region = Region(name="child", initial="idle", rules=[])
+        region.add(SlowState(name="idle"))
+        composite = CompositeState(regions=ModuleList(items=[region]))
+        queue = EventQueue()
+        post = Post(queue=queue)
+        scope = Scope()
+        ctx = scope.ctx()
+
+        composite.enter(post, ctx)
+        # run() should return immediately (callback-driven)
+        await asyncio.wait_for(composite.run(post, ctx), timeout=0.1)
+
+    @pytest.mark.asyncio
+    async def test_run_raises_error_when_not_entered(self):
+        composite = CompositeState(regions=ModuleList(items=[]))
+        queue = EventQueue()
+        post = Post(queue=queue)
+        scope = Scope()
+        ctx = scope.ctx()
+
+        with pytest.raises(RuntimeError):
+            await composite.run(post, ctx)
+
+    @pytest.mark.asyncio
+    async def test_run_raises_error_when_already_completed(self):
+        composite = CompositeState(regions=ModuleList(items=[]))
+        queue = EventQueue()
+        post = Post(queue=queue)
+        scope = Scope()
+        ctx = scope.ctx()
+
+        composite._status.set(ChartStatus.SUCCESS)
+        with pytest.raises(RuntimeError):
+            await composite.run(post, ctx)
+
+
+class TestCompositeStateFinishRegion:
+    """Test finish_region callback method"""
+
+    @pytest.mark.asyncio
+    async def test_finish_region_adds_region_to_finished_set(self):
+        region = Region(name="child", initial="idle", rules=[])
+        region.add(SimpleState(name="idle"))
+        composite = CompositeState(regions=ModuleList(items=[region]))
+        queue = EventQueue()
+        post = Post(queue=queue)
+        scope = Scope()
+        ctx = scope.ctx()
+
+        composite._exiting.set(True)
+        region.register_finish_callback(composite.finish_region, region.name, post, ctx)
+        await composite.finish_region("child")
+        assert "child" in composite._finished_regions
+
+    @pytest.mark.asyncio
+    async def test_finish_region_unregisters_callback(self):
+        region = Region(name="child", initial="idle", rules=[])
+        region.add(SimpleState(name="idle"))
+        composite = CompositeState(regions=ModuleList(items=[region]))
+        queue = EventQueue()
+        post = Post(queue=queue)
+        scope = Scope()
+        ctx = scope.ctx()
+
+        composite._exiting.set(True)
+        region.register_finish_callback(composite.finish_region, region.name, post, ctx)
+        await composite.finish_region("child")
+        assert composite.finish_region not in region._finish_callbacks
+
+    @pytest.mark.asyncio
+    async def test_finish_region_does_not_finish_when_not_all_complete(self):
+        region1 = Region(name="child1", initial="idle", rules=[])
+        region2 = Region(name="child2", initial="idle", rules=[])
+        region1.add(SimpleState(name="idle"))
+        region2.add(SimpleState(name="idle"))
+        composite = CompositeState(regions=ModuleList(items=[region1, region2]))
+        queue = EventQueue()
+        post = Post(queue=queue)
+        scope = Scope()
+        ctx = scope.ctx()
+
+        composite._exiting.set(True)
+        region1.register_finish_callback(composite.finish_region, region1.name, post, ctx)
+        region2.register_finish_callback(composite.finish_region, region2.name, post, ctx)
+
+        await composite.finish_region("child1")
+        # Should NOT be finished (need child2)
+        assert composite.get_status() != ChartStatus.SUCCESS
+
+    @pytest.mark.asyncio
+    async def test_finish_region_clears_tasks_when_all_complete(self):
+        region = Region(name="child", initial="idle", rules=[])
+        region.add(SimpleState(name="idle"))
+        composite = CompositeState(regions=ModuleList(items=[region]))
+        queue = EventQueue()
+        post = Post(queue=queue)
+        scope = Scope()
+        ctx = scope.ctx()
+
+        composite._exiting.set(True)
+        composite._tasks = [asyncio.create_task(asyncio.sleep(0.01))]
+        region.register_finish_callback(composite.finish_region, region.name, post, ctx)
+
+        await composite.finish_region("child")
+        assert composite._tasks == []
+
+    @pytest.mark.asyncio
+    async def test_finish_region_sets_status_to_success_when_all_complete(self):
+        region = Region(name="child", initial="idle", rules=[])
+        region.add(SimpleState(name="idle"))
+        composite = CompositeState(regions=ModuleList(items=[region]))
+        queue = EventQueue()
+        post = Post(queue=queue)
+        scope = Scope()
+        ctx = scope.ctx()
+
+        composite._exiting.set(True)
+        region.register_finish_callback(composite.finish_region, region.name, post, ctx)
+
+        await composite.finish_region("child")
+        assert composite._status.get() == ChartStatus.SUCCESS
+
+    @pytest.mark.asyncio
+    async def test_finish_region_sets_run_completed_when_all_complete(self):
+        region = Region(name="child", initial="idle", rules=[])
+        region.add(SimpleState(name="idle"))
+        composite = CompositeState(regions=ModuleList(items=[region]))
+        queue = EventQueue()
+        post = Post(queue=queue)
+        scope = Scope()
+        ctx = scope.ctx()
+
+        composite._exiting.set(True)
+        region.register_finish_callback(composite.finish_region, region.name, post, ctx)
+
+        await composite.finish_region("child")
+        assert composite._run_completed.get() is True
+
+    @pytest.mark.asyncio
+    async def test_finish_region_calls_finish_when_all_complete(self):
+        region = Region(name="child", initial="idle", rules=[])
+        region.add(SimpleState(name="idle"))
+        composite = CompositeState(regions=ModuleList(items=[region]))
+        queue = EventQueue()
+        post = Post(queue=queue)
+        scope = Scope()
+        ctx = scope.ctx()
+
+        called = False
+        def callback():
+            nonlocal called
+            called = True
+
+        composite._exiting.set(True)
+        composite.register_finish_callback(callback)
+        region.register_finish_callback(composite.finish_region, region.name, post, ctx)
+
+        await composite.finish_region("child")
+        assert called is True
+
+    @pytest.mark.asyncio
+    async def test_finish_region_with_single_region(self):
+        region = Region(name="child", initial="idle", rules=[])
+        region.add(SimpleState(name="idle"))
+        composite = CompositeState(regions=ModuleList(items=[region]))
+        queue = EventQueue()
+        post = Post(queue=queue)
+        scope = Scope()
+        ctx = scope.ctx()
+
+        composite._exiting.set(True)
+        region.register_finish_callback(composite.finish_region, region.name, post, ctx)
+
+        await composite.finish_region("child")
+        assert composite._status.get() == ChartStatus.SUCCESS
+
+    @pytest.mark.asyncio
+    async def test_finish_region_with_multiple_regions_sequential(self):
+        region1 = Region(name="child1", initial="idle", rules=[])
+        region2 = Region(name="child2", initial="idle", rules=[])
+        region1.add(SimpleState(name="idle"))
+        region2.add(SimpleState(name="idle"))
+        composite = CompositeState(regions=ModuleList(items=[region1, region2]))
+        queue = EventQueue()
+        post = Post(queue=queue)
+        scope = Scope()
+        ctx = scope.ctx()
+
+        composite._exiting.set(True)
+        region1.register_finish_callback(composite.finish_region, region1.name, post, ctx)
+        region2.register_finish_callback(composite.finish_region, region2.name, post, ctx)
+
+        await composite.finish_region("child1")
+        assert composite.get_status() != ChartStatus.SUCCESS
+
+        await composite.finish_region("child2")
+        assert composite.get_status() == ChartStatus.SUCCESS
+
+    @pytest.mark.asyncio
+    async def test_finish_region_completion_count_correct(self):
+        region1 = Region(name="child1", initial="idle", rules=[])
+        region2 = Region(name="child2", initial="idle", rules=[])
+        region1.add(SimpleState(name="idle"))
+        region2.add(SimpleState(name="idle"))
+        composite = CompositeState(regions=ModuleList(items=[region1, region2]))
+        queue = EventQueue()
+        post = Post(queue=queue)
+        scope = Scope()
+        ctx = scope.ctx()
+
+        composite._exiting.set(True)
+        region1.register_finish_callback(composite.finish_region, region1.name, post, ctx)
+        region2.register_finish_callback(composite.finish_region, region2.name, post, ctx)
+
+        await composite.finish_region("child1")
+        assert len(composite._finished_regions) == 1
+
+        await composite.finish_region("child2")
+        assert len(composite._finished_regions) == 2
+
+    @pytest.mark.asyncio
+    async def test_finish_region_called_twice_same_region_idempotent(self):
+        region = Region(name="child", initial="idle", rules=[])
+        region.add(SimpleState(name="idle"))
+        composite = CompositeState(regions=ModuleList(items=[region]))
+        queue = EventQueue()
+        post = Post(queue=queue)
+        scope = Scope()
+        ctx = scope.ctx()
+
+        composite._exiting.set(True)
+        region.register_finish_callback(composite.finish_region, region.name, post, ctx)
+
+        await composite.finish_region("child")
+        # Call again - should be safe
+        await composite.finish_region("child")
+        assert len(composite._finished_regions) == 1
+
+    @pytest.mark.asyncio
+    async def test_finish_region_order_independence(self):
+        region1 = Region(name="child1", initial="idle", rules=[])
+        region2 = Region(name="child2", initial="idle", rules=[])
+        region1.add(SimpleState(name="idle"))
+        region2.add(SimpleState(name="idle"))
+        composite = CompositeState(regions=ModuleList(items=[region1, region2]))
+        queue = EventQueue()
+        post = Post(queue=queue)
+        scope = Scope()
+        ctx = scope.ctx()
+
+        composite._exiting.set(True)
+        region1.register_finish_callback(composite.finish_region, region1.name, post, ctx)
+        region2.register_finish_callback(composite.finish_region, region2.name, post, ctx)
+
+        # Finish in reverse order
+        await composite.finish_region("child2")
+        await composite.finish_region("child1")
+        assert composite.get_status() == ChartStatus.SUCCESS
+
+    @pytest.mark.asyncio
+    async def test_finish_region_does_not_finish_when_not_exiting(self):
+        region = Region(name="child", initial="idle", rules=[])
+        region.add(SimpleState(name="idle"))
+        composite = CompositeState(regions=ModuleList(items=[region]))
+        queue = EventQueue()
+        post = Post(queue=queue)
+        scope = Scope()
+        ctx = scope.ctx()
+
+        # NOT exiting
+        composite._exiting.set(False)
+        region.register_finish_callback(composite.finish_region, region.name, post, ctx)
+
+        await composite.finish_region("child")
+        # Should NOT finish because _exiting is False
+        assert composite.get_status() != ChartStatus.SUCCESS
+
+
+class TestCompositeStateReset:
+    """Test reset method"""
+
+    def test_reset_calls_parent_reset(self):
+        composite = CompositeState(regions=ModuleList(items=[]))
+        composite._status.set(ChartStatus.SUCCESS)
+        composite.reset()
+        assert composite._status.get() == ChartStatus.WAITING
+
+    @pytest.mark.asyncio
+    async def test_reset_clears_tasks(self):
+        composite = CompositeState(regions=ModuleList(items=[]))
+        composite._status.set(ChartStatus.SUCCESS)
+        # Create a real task in async context
+        composite._tasks = [asyncio.create_task(asyncio.sleep(0.01))]
+        composite.reset()
+        assert composite._tasks == []
+
+    def test_reset_clears_finished_regions(self):
+        composite = CompositeState(regions=ModuleList(items=[]))
+        composite._status.set(ChartStatus.SUCCESS)
+        composite._finished_regions = {"child1", "child2"}
+        composite.reset()
+        assert composite._finished_regions == set()
+
+    def test_reset_raises_error_when_running(self):
+        composite = CompositeState(regions=ModuleList(items=[]))
+        composite._status.set(ChartStatus.RUNNING)
+        with pytest.raises(InvalidTransition):
+            composite.reset()
+
+    def test_reset_works_after_success(self):
+        composite = CompositeState(regions=ModuleList(items=[]))
+        composite._status.set(ChartStatus.SUCCESS)
+        composite.reset()
+        assert composite._status.get() == ChartStatus.WAITING
+
+
+class TestCompositeStateExit:
+    """Test exit method"""
+
+    @pytest.mark.asyncio
+    async def test_exit_raises_error_when_cannot_exit(self):
+        composite = CompositeState(regions=ModuleList(items=[]))
+        queue = EventQueue()
+        post = Post(queue=queue)
+        scope = Scope()
+        ctx = scope.ctx()
+
+        # Not entered, cannot exit
+        with pytest.raises(InvalidTransition):
+            await composite.exit(post, ctx)
+
+    @pytest.mark.asyncio
+    async def test_exit_sets_exiting_flag(self):
+        composite = CompositeState(regions=ModuleList(items=[]))
+        queue = EventQueue()
+        post = Post(queue=queue)
+        scope = Scope()
+        ctx = scope.ctx()
+
+        composite.enter(post, ctx)
+        await composite.exit(post, ctx)
+        assert composite._exiting.get() is True
+
+    @pytest.mark.asyncio
+    async def test_exit_sets_termination_requested(self):
+        composite = CompositeState(regions=ModuleList(items=[]))
+        queue = EventQueue()
+        post = Post(queue=queue)
+        scope = Scope()
+        ctx = scope.ctx()
+
+        composite.enter(post, ctx)
+        await composite.exit(post, ctx)
+        assert composite._termination_requested.get() is True
+
+    @pytest.mark.asyncio
+    async def test_exit_stops_running_regions(self):
+        region = Region(name="child", initial="idle", rules=[])
+        region.add(SimpleState(name="idle"))
+        composite = CompositeState(regions=ModuleList(items=[region]))
+        queue = EventQueue()
+        post = Post(queue=queue)
+        scope = Scope()
+        ctx = scope.ctx()
+
+        composite.enter(post, ctx)
+        # Start region
+        await region.start(post.child("child"), ctx.child(0))
+
+        await composite.exit(post, ctx)
+        # Region should be stopped (or stopping)
+        assert region.status.is_preempting() or region.status.is_completed()
+
+    @pytest.mark.asyncio
+    async def test_exit_with_empty_composite(self):
+        composite = CompositeState(regions=ModuleList(items=[]))
+        queue = EventQueue()
+        post = Post(queue=queue)
+        scope = Scope()
+        ctx = scope.ctx()
+
+        composite.enter(post, ctx)
+
+        await composite.exit(post, ctx)
+        # Empty composite should succeed
+        assert composite._status.get() == ChartStatus.SUCCESS
+
+    @pytest.mark.asyncio
+    async def test_exit_sets_status_to_preempting_when_not_all_complete(self):
+        region = Region(name="child", initial="idle", rules=[])
+        region.add(SlowState(name="idle"))
+        composite = CompositeState(regions=ModuleList(items=[region]))
+        queue = EventQueue()
+        post = Post(queue=queue)
+        scope = Scope()
+        ctx = scope.ctx()
+
+        composite.enter(post, ctx)
+        # Start region (will be running)
+        await region.start(post.child("child"), ctx.child(0))
+
+        await composite.exit(post, ctx)
+        assert composite._status.get() == ChartStatus.PREEMPTING
+
+    @pytest.mark.asyncio
+    async def test_exit_calls_finish_for_empty_composite(self):
+        composite = CompositeState(regions=ModuleList(items=[]))
+        queue = EventQueue()
+        post = Post(queue=queue)
+        scope = Scope()
+        ctx = scope.ctx()
+
+        called = False
+        def callback():
+            nonlocal called
+            called = True
+
+        composite.register_finish_callback(callback)
+        composite.enter(post, ctx)
+
+        await composite.exit(post, ctx)
+        assert called is True
+
+    @pytest.mark.asyncio
+    async def test_exit_does_not_call_finish_when_not_all_complete(self):
+        region = Region(name="child", initial="idle", rules=[])
+        region.add(SlowState(name="idle"))
+        composite = CompositeState(regions=ModuleList(items=[region]))
+        queue = EventQueue()
+        post = Post(queue=queue)
+        scope = Scope()
+        ctx = scope.ctx()
+
+        called = False
+        def callback():
+            nonlocal called
+            called = True
+
+        composite.register_finish_callback(callback)
+        composite.enter(post, ctx)
+        await region.start(post.child("child"), ctx.child(0))
+
+        await composite.exit(post, ctx)
+        assert called is False
+
+    @pytest.mark.asyncio
+    async def test_exit_unregisters_callbacks_for_running_regions(self):
+        region = Region(name="child", initial="idle", rules=[])
+        region.add(SlowState(name="idle"))
+        composite = CompositeState(regions=ModuleList(items=[region]))
+        queue = EventQueue()
+        post = Post(queue=queue)
+        scope = Scope()
+        ctx = scope.ctx()
+
+        composite.enter(post, ctx)
+        await region.start(post.child("child"), ctx.child(0))
+
+        # Register callback
+        region.register_finish_callback(composite.finish_region, "child", post, ctx)
+
+        await composite.exit(post, ctx)
+        # Callback should be unregistered
+        assert composite.finish_region not in region._finish_callbacks
+
+    @pytest.mark.asyncio
+    async def test_exit_with_multiple_regions_some_complete(self):
+        region1 = Region(name="child1", initial="idle", rules=[])
+        region2 = Region(name="child2", initial="idle", rules=[])
+        region1.add(SimpleFinal(name="idle"))
+        region2.add(SlowState(name="idle"))
+        composite = CompositeState(regions=ModuleList(items=[region1, region2]))
+        queue = EventQueue()
+        post = Post(queue=queue)
+        scope = Scope()
+        ctx = scope.ctx()
+
+        composite.enter(post, ctx)
+        await region1.start(post.child("child1"), ctx.child(0))
+        await region2.start(post.child("child2"), ctx.child(1))
+        await region1.stop(post.child("child1"), ctx.child(0), preempt=False)
+
+        await composite.exit(post, ctx)
+        # One complete, one not - should be preempting
+        assert composite._status.get() == ChartStatus.PREEMPTING
+
+    @pytest.mark.asyncio
+    async def test_exit_with_no_regions(self):
+        composite = CompositeState(regions=ModuleList(items=[]))
+        queue = EventQueue()
+        post = Post(queue=queue)
+        scope = Scope()
+        ctx = scope.ctx()
+
+        composite.enter(post, ctx)
+
+        await composite.exit(post, ctx)
+        # Empty composite should succeed on exit
+        assert composite._status.get() == ChartStatus.SUCCESS

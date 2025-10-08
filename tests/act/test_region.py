@@ -9,7 +9,7 @@ from dachi.act._chart._region import (
 from dachi.act._chart._state import State, StreamState, FinalState
 from dachi.act._chart._event import Event, EventQueue, Post
 from dachi.act._chart._base import ChartStatus, InvalidTransition
-from dachi.core import ModuleDict, Scope
+from dachi.core import ModuleDict, Scope, Ctx
 
 
 class SimpleState(State):
@@ -248,11 +248,16 @@ class TestRegionStart:
 
 class TestRegionStop:
 
-    def test_stop_raises_error_when_cannot_stop(self):
+    @pytest.mark.asyncio
+    async def test_stop_raises_error_when_cannot_stop(self):
         region = Region(name="test", initial="idle", rules=[])
+        queue = EventQueue()
+        scope = Scope(name="test")
+        post = queue.child("test")
+        ctx = scope.ctx(0)
 
         with pytest.raises(InvalidTransition):
-            region.stop()
+            await region.stop(post, ctx)
 
     @pytest.mark.asyncio
     async def test_stop_with_preempt_false_cancels_cur_task(self):
@@ -260,36 +265,56 @@ class TestRegionStop:
         region._started.set(True)
         mock_task = asyncio.create_task(asyncio.sleep(0.1))
         region._cur_task = mock_task
+        queue = EventQueue()
+        scope = Scope(name="test")
+        post = queue.child("test")
+        ctx = scope.ctx(0)
 
-        region.stop(preempt=False)
+        await region.stop(post, ctx, preempt=False)
 
         await asyncio.sleep(0)
         assert mock_task.cancelled() or mock_task.done()
 
-    def test_stop_with_preempt_false_handles_none_task(self):
+    @pytest.mark.asyncio
+    async def test_stop_with_preempt_false_handles_none_task(self):
         region = Region(name="test", initial="idle", rules=[])
         region._started.set(True)
+        queue = EventQueue()
+        scope = Scope(name="test")
+        post = queue.child("test")
+        ctx = scope.ctx(0)
 
-        region.stop(preempt=False)
+        await region.stop(post, ctx, preempt=False)
 
-    def test_stop_with_preempt_true_requests_termination(self):
+    @pytest.mark.asyncio
+    async def test_stop_with_preempt_true_requests_termination(self):
         region = Region(name="test", initial="idle", rules=[])
         region._started.set(True)
         state = SimpleState(name="active")
         region.add(state)
         region._current_state.set("active")
+        state._entered.set(True)
+        queue = EventQueue()
+        scope = Scope(name="test")
+        post = queue.child("test")
+        ctx = scope.ctx(0)
 
-        region.stop(preempt=True)
+        await region.stop(post, ctx, preempt=True)
 
         assert state._termination_requested.get() is True
 
-    def test_stop_with_preempt_true_raises_when_state_not_found(self):
+    @pytest.mark.asyncio
+    async def test_stop_with_preempt_true_raises_when_state_not_found(self):
         region = Region(name="test", initial="idle", rules=[])
         region._started.set(True)
         region._current_state.set("missing")
+        queue = EventQueue()
+        scope = Scope(name="test")
+        post = queue.child("test")
+        ctx = scope.ctx(0)
 
         with pytest.raises(RuntimeError):
-            region.stop(preempt=True)
+            await region.stop(post, ctx, preempt=True)
 
 
 class TestRegionReset:
@@ -719,6 +744,7 @@ class TestRegionHandleEvent:
         region.add(state)
         region._current_state.set("idle")
         region._status.set(ChartStatus.RUNNING)
+        state._entered.set(True)
         state._status.set(ChartStatus.SUCCESS)
         state._run_completed.set(True)
         event = Event(type="go")

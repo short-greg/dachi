@@ -48,8 +48,7 @@ class BaseState(ChartBase, ABC):
 
     def can_exit(self) -> bool:
         """Check if state can exit."""
-        return (not self._exiting.get() and
-                (self._executing.get() or self._run_completed.get()))
+        return (self._entered.get() and not self._exiting.get())
 
     def enter(self, post: Post, ctx: Ctx) -> None:
         """Called when entering the state.
@@ -78,28 +77,6 @@ class BaseState(ChartBase, ABC):
     @abstractmethod
     async def run(self, post: "Post", ctx: Ctx) -> None:
         pass
-
-    async def exit(self, post: Post, ctx: Ctx) -> None:
-        """Called when exiting the state. Sets final status.
-
-        Raises:
-            InvalidStateTransition: If state cannot be exited.
-        """
-        if not self.can_exit():
-            raise InvalidTransition(
-                f"Cannot exit state '{self.name}' from status {self._status.get()}. "
-                f"Must be entered and RUNNING, and not already exiting."
-            )
-
-        self._exiting.set(True)
-
-        if self._run_completed.get():
-            if self._status.get() != ChartStatus.FAILURE:
-                self._status.set(ChartStatus.SUCCESS)
-            await self.finish()
-        else:
-            self._status.set(ChartStatus.PREEMPTING)
-            self._termination_requested.set(True)
 
     def is_final(self) -> bool:
         """Return True if this is a final state."""
@@ -191,6 +168,28 @@ class LeafState(BaseState, ABC):
         else:
             # Use function signature inspection, excluding 'post' parameter
             return resolve_from_signature(ctx, self.execute, exclude_params={'post'})
+
+    async def exit(self, post: Post, ctx: Ctx) -> None:
+        """Called when exiting the state. Sets final status.
+
+        Raises:
+            InvalidStateTransition: If state cannot be exited.
+        """
+        if not self.can_exit():
+            raise InvalidTransition(
+                f"Cannot exit state '{self.name}' from status {self._status.get()}. "
+                f"Must be entered and RUNNING, and not already exiting."
+            )
+
+        self._exiting.set(True)
+
+        if self._run_completed.get():
+            if self._status.get().is_running():
+                self._status.set(ChartStatus.SUCCESS)
+            await self.finish()
+        else:
+            self._status.set(ChartStatus.PREEMPTING)
+            self._termination_requested.set(True)
 
 
 class State(LeafState):

@@ -67,6 +67,20 @@ class ChartBase(BaseModule):
         self._status = Attr[ChartStatus](data=ChartStatus.WAITING)
         self._finish_callbacks: Dict[Callable, Tuple[tuple, dict]] = {}
 
+    @property
+    def status(self) -> ChartStatus:
+        """Get current state status."""
+        return self._status.get()
+
+    def is_running(self) -> bool:
+        return self._status.get().is_running()
+
+    def is_completed(self) -> bool:
+        return self._status.get().is_completed()
+    
+    def is_waiting(self) -> bool:
+        return self._status.get().is_waiting()
+
     @abstractmethod
     def reset(self) -> None:
         """Reset state to WAITING. Must be implemented by subclasses."""
@@ -78,7 +92,7 @@ class ChartBase(BaseModule):
 
     async def finish(self) -> None:
         """Mark as finished and invoke finish callbacks"""
-        for callback, (args, kwargs) in self._finish_callbacks.items():
+        for callback, (args, kwargs) in list(self._finish_callbacks.items()):
             if asyncio.iscoroutinefunction(callback):
                 await callback(*args, **kwargs)
             else:

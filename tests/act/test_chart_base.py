@@ -14,7 +14,7 @@ import _base
 
 ChartStatus = _base.ChartStatus
 ChartBase = _base.ChartBase
-InvalidStateTransition = _base.InvalidStateTransition
+InvalidTransition = _base.InvalidTransition
 
 
 class TestChartStatus:

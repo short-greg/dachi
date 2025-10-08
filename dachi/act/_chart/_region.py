@@ -128,28 +128,43 @@ class Region(ChartBase):
         self._pending_reason.set("Starting region")
         await self.transition(post, ctx)
 
-    def stop(self, preempt: bool=False) -> None:
+    async def stop(self, post: Post, ctx: Ctx, preempt: bool=False) -> None:
         """Stop the region and its current state activity"""
         if not self.can_stop():
             raise InvalidTransition(
                 f"Cannot stop region '{self.name}' as it is not running."
             )
+
+        self._stopping.set(True)
+
         if preempt:
             try:
-                current_state = self._chart_states[self.current_state]
-                current_state.request_termination()
+                current_state_name = self.current_state
+                current_state_obj = self._chart_states[current_state_name]
+                current_state_obj.request_termination()
+                await current_state_obj.exit(
+                    post.sibling(current_state_name),
+                    ctx.child(
+                        self._state_idx_map[
+                            current_state_name
+                        ]
+                    )
+                )
+                await self.finish_activity(current_state_name, post, ctx)
             except KeyError:
                 raise RuntimeError(f"Cannot stop region '{self.name}' as current state '{self.current_state}' not found.")
-        else:        
+        else:
             if self._cur_task:
                 self._cur_task.cancel()
 
+
     def reset(self):
-        super().reset()
         if not self.can_reset():
             raise InvalidTransition(
                 f"Cannot reset region '{self.name}' as it is not stopped."
             )
+        
+        super().reset()
         self._stopped.set(False)
         self._started.set(False)
 
@@ -158,7 +173,6 @@ class Region(ChartBase):
         
         This is executed after a State completes. If the state is final or the region is stopping, then it marks the region as completed. Otherwise, it transitions to the next state if a pending target is set.
         """
-
         try:
             state_obj = self._chart_states[state_name]
         except KeyError:
@@ -176,6 +190,7 @@ class Region(ChartBase):
             self._current_state.set(None)
             self._pending_target.set(None)
             self._pending_reason.set(None)
+            await self.finish()
         elif state_obj.is_final():
             self._status.set(ChartStatus.SUCCESS)
             self._stopping.set(False)
@@ -184,6 +199,7 @@ class Region(ChartBase):
             self._current_state.set(None)
             self._pending_target.set(None)
             self._pending_reason.set(None)
+            await self.finish()
         else: # transition to next state if defined
             self._last_active_state.set(self._current_state.data)
             self._cur_task = None
@@ -191,7 +207,9 @@ class Region(ChartBase):
                 raise RuntimeError(f"Region '{self.name}' has no pending target to transition to after state '{state_name}' finished.")
 
     # TODO: Complete the transition function
-    async def transition(self, post: "Post", ctx: Ctx) -> None | str:
+    async def transition(
+        self, post: "Post", ctx: Ctx
+    ) -> None | str:
         """Handle state transitions based on pending targets"""
         if not self._pending_target.get():
             return None  # No pending transition
