@@ -48,10 +48,10 @@ class StateChart(ChartBase):
             region.name: region.is_completed() for region in self.regions
         })
         self._queue = EventQueue(
-            maxsize=self.queue_maxsize, 
+            maxsize=self.queue_maxsize,
             overflow=self.queue_overflow
         )
-        self._queue.register_callback(self.handle_event)
+        self._queue.register_callback(self._process_event_callback)
         self._clock = MonotonicClock()
         self._timer = Timer(queue=self._queue, clock=self._clock)
         self._scope = Scope(name=self.name)
@@ -83,6 +83,23 @@ class StateChart(ChartBase):
     
     def can_stop(self):
         return self._status.get().is_running()
+
+    def __getitem__(self, region_name: str) -> "Region":
+        """Get region by name.
+
+        Args:
+            region_name: Name of the region to retrieve
+
+        Returns:
+            The region instance
+
+        Raises:
+            KeyError: If region not found
+        """
+        for region in self.regions:
+            if region.name == region_name:
+                return region
+        raise KeyError(f"Region '{region_name}' not found in chart '{self.name}'")
 
     async def finish_region(self, region: str) -> None:
         """Handle completion of a region. This is a callback registered with each region.
@@ -128,14 +145,33 @@ class StateChart(ChartBase):
             ctx = self._scope.ctx(i)
             await region.start(post, ctx)
 
+    def _process_event_callback(self, event: Event) -> None:
+        """Sync callback that schedules async event processing.
+
+        Called when an event is posted to the queue. If there's a running event
+        loop, pops the event and schedules it for async processing. Otherwise,
+        leaves it in the queue to be processed later (e.g., when chart.start()
+        is called in an async context).
+        """
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            # No running event loop - defer processing until chart is started
+            return
+
+        event_to_process = self._queue.pop_nowait()
+        loop.create_task(self.handle_event(event_to_process))
+
     async def handle_event(self, event: Event) -> None:
         """
         Handle an incoming event by dispatching it to all running regions.
         """
         if self._status.get() == ChartStatus.RUNNING:
-            for region in self.regions:
-                if region.status.is_completed():
-                    await region.handle_event(event)
+            for i, region in enumerate(self.regions):
+                if region.status.is_running():
+                    post = self._queue.child(region.name)
+                    ctx = self._scope.ctx(i)
+                    await region.handle_event(event, post, ctx)
 
     async def stop(self) -> None:
         """Stop the state chart by stopping all running regions.

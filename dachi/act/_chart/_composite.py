@@ -14,10 +14,27 @@ class CompositeState(BaseState):
     regions: ModuleList
 
     def __post_init__(self):
-        
+
         super().__post_init__()
         self._tasks = []
         self._finished_regions = set()
+
+    def __getitem__(self, region_name: str) -> Region:
+        """Get region by name.
+
+        Args:
+            region_name: Name of the region to retrieve
+
+        Returns:
+            The region instance
+
+        Raises:
+            KeyError: If region not found
+        """
+        for region in self.regions:
+            if region.name == region_name:
+                return region
+        raise KeyError(f"Region '{region_name}' not found in composite state '{self.name}'")
 
     async def finish_region(self, region_name: str) -> None:
         """Handle completion of a region's task."""

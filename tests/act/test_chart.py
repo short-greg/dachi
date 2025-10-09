@@ -860,7 +860,7 @@ class TestChartFinishRegion:
 
         # Chart should auto-finish when region reaches final state
         assert chart._status.get() in [ChartStatus.SUCCESS, ChartStatus.RUNNING]
-        await chart.stop()
+        # Chart completes naturally, no need to stop
 
     @pytest.mark.asyncio
     async def test_finish_region_does_not_finish_chart_when_some_running(self):

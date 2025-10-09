@@ -35,6 +35,7 @@ class BaseState(ChartBase, ABC):
         self._executing = Attr[bool](data=False)
         self._entered = Attr[bool](data=False)
         self._exiting = Attr[bool](data=False)
+        self._finishing = False  # Guard against double-finish
 
     def can_enter(self) -> bool:
         """Check if state can be entered."""
@@ -86,6 +87,10 @@ class BaseState(ChartBase, ABC):
         """Return True if state is in a completed status."""
         return self._status.get().is_completed()
 
+    def run_completed(self) -> bool:
+        """Return True if state has completed its run."""
+        return self._run_completed.get()
+
     def request_termination(self) -> None:
         """Request termination for preemptible states."""
         self._termination_requested.set(True)
@@ -112,8 +117,23 @@ class BaseState(ChartBase, ABC):
         self._executing.set(False)
         self._entered.set(False)
         self._exiting.set(False)
-    
-        
+        self._finishing = False
+
+    def _check_execute_finish(self):
+        """Check if state is ready to finish and schedule if so.
+
+        State is ready to finish when BOTH:
+        - _run_completed is True
+        - _exiting is True
+
+        Uses _finishing flag to prevent double-finish race condition.
+        """
+        if self._run_completed.get() and self._exiting.get() and not self._finishing:
+            self._finishing = True
+            loop = asyncio.get_running_loop()
+            loop.create_task(self.finish())
+
+
 class LeafState(BaseState, ABC):
     """Leaf state that does not contain nested regions."""
         
@@ -169,7 +189,7 @@ class LeafState(BaseState, ABC):
             # Use function signature inspection, excluding 'post' parameter
             return resolve_from_signature(ctx, self.execute, exclude_params={'post'})
 
-    async def exit(self, post: Post, ctx: Ctx) -> None:
+    def exit(self, post: Post, ctx: Ctx) -> None:
         """Called when exiting the state. Sets final status.
 
         Raises:
@@ -186,7 +206,7 @@ class LeafState(BaseState, ABC):
         if self._run_completed.get():
             if self._status.get().is_running():
                 self._status.set(ChartStatus.SUCCESS)
-            await self.finish()
+            self._check_execute_finish()
         else:
             self._status.set(ChartStatus.PREEMPTING)
             self._termination_requested.set(True)
@@ -229,6 +249,7 @@ class State(LeafState):
             self._run_completed.set(True)
             self._executing.set(False)
             if self._termination_requested.get() or self._status.get() is ChartStatus.CANCELED:
+                # Direct finish for termination/cancellation (not via exit flow)
                 await self.finish()
 
 
@@ -279,18 +300,36 @@ class StreamState(LeafState, ABC):
         finally:
             self._run_completed.set(True)
             self._executing.set(False)
-        
+
             if self._termination_requested.get() or self._status.get() is ChartStatus.CANCELED:
+                # Direct finish for termination/cancellation (not via exit flow)
                 await self.finish()
             
 
 
-class FinalState(State):
+class FinalState(LeafState):
     """Final state that marks region completion."""
     
     async def execute(self, post: "Post", **inputs: Any) -> Optional[Any]:
         """FinalState has no work to do."""
         return None
+    
+    async def run(self, post: "Post", ctx: Ctx) -> None:
+        """FinalState immediately completes upon run."""
+        if not self.can_run():
+            raise InvalidTransition(
+                f"Cannot run FinalState '{self.name}' from status {self._status.get()}. "
+                f"State must be RUNNING, not executing, and not completed."
+            )
+        
+        self._executing.set(True)
+        self._run_completed.set(True)
+        self._executing.set(False)
+        self._status.set(ChartStatus.SUCCESS)
+        await self.finish()
+
+    def can_exit(self):
+        return False
     
     def is_final(self) -> bool:
         """FinalState is always final."""

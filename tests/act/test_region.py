@@ -47,9 +47,6 @@ class TestRegionInit:
         region = Region(name="test", initial="idle", rules=[])
         assert region._state_idx_map == {}
 
-    def test_post_init_sets_current_state_to_initial(self):
-        region = Region(name="test", initial="idle", rules=[])
-        assert region._current_state.get() == "idle"
 
     def test_post_init_sets_status_to_waiting(self):
         region = Region(name="test", initial="idle", rules=[])
@@ -81,9 +78,6 @@ class TestRegionProperties:
         region = Region(name="test", initial="idle", rules=[])
         assert region.status == ChartStatus.WAITING
 
-    def test_current_state_returns_state_name(self):
-        region = Region(name="test", initial="idle", rules=[])
-        assert region.current_state == "idle"
 
 
 class TestRegionLifecycleChecks:

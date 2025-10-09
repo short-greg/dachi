@@ -188,9 +188,9 @@ class TrackingState(State):
         self.calls.append('execute')
         return {"executed": True}
 
-    async def exit(self, post, ctx):
+    def exit(self, post, ctx):
         self.calls.append('exit')
-        await super().exit(post, ctx)
+        super().exit(post, ctx)
 
     def reset(self):
         self.calls.append('reset')
@@ -354,7 +354,7 @@ class TestBaseState:
         state = ConcreteState()
         state.enter(post, ctx)
         state._executing.set(True)
-        await state.exit(post, ctx)
+        state.exit(post, ctx)
         assert state._status.get() == ChartStatus.PREEMPTING
 
     @pytest.mark.asyncio
@@ -366,7 +366,7 @@ class TestBaseState:
         state = ConcreteState()
         state.enter(post, ctx)
         state._executing.set(True)
-        await state.exit(post, ctx)
+        state.exit(post, ctx)
         assert state._termination_requested.get() is True
 
     @pytest.mark.asyncio
@@ -378,7 +378,7 @@ class TestBaseState:
         state = ConcreteState()
         state.enter(post, ctx)
         state._run_completed.set(True)
-        await state.exit(post, ctx)
+        state.exit(post, ctx)
         assert state._status.get() == ChartStatus.SUCCESS
 
     @pytest.mark.asyncio
@@ -389,7 +389,7 @@ class TestBaseState:
         ctx = scope.ctx()
         state = ConcreteState()
         with pytest.raises(InvalidTransition):
-            await state.exit(post, ctx)
+            state.exit(post, ctx)
 
     @pytest.mark.asyncio
     async def test_exit_sets_exiting_flag(self):
@@ -400,7 +400,7 @@ class TestBaseState:
         state = ConcreteState()
         state.enter(post, ctx)
         state._executing.set(True)
-        await state.exit(post, ctx)
+        state.exit(post, ctx)
         assert state._exiting.get() is True
 
     @pytest.mark.asyncio
@@ -413,7 +413,7 @@ class TestBaseState:
         state.enter(post, ctx)
         state._run_completed.set(True)
         state._status.set(ChartStatus.FAILURE)
-        await state.exit(post, ctx)
+        state.exit(post, ctx)
         assert state._status.get() == ChartStatus.FAILURE
 
     @pytest.mark.asyncio
@@ -433,7 +433,8 @@ class TestBaseState:
         state.enter(post, ctx)
         state._run_completed.set(True)
         state._status.set(ChartStatus.FAILURE)
-        await state.exit(post, ctx)
+        state.exit(post, ctx)
+        await asyncio.sleep(0)  # Yield to allow finish() task to run
         assert called is True
 
     @pytest.mark.asyncio
@@ -447,7 +448,7 @@ class TestBaseState:
         state._executing.set(True)
         state._exiting.set(True)
         with pytest.raises(InvalidTransition):
-            await state.exit(post, ctx)
+            state.exit(post, ctx)
 
     @pytest.mark.asyncio
     async def test_exit_raises_exception_when_not_entered(self):
@@ -457,7 +458,7 @@ class TestBaseState:
         ctx = scope.ctx()
         state = ConcreteState()
         with pytest.raises(InvalidTransition):
-            await state.exit(post, ctx)
+            state.exit(post, ctx)
 
     def test_reset_sets_status_to_waiting_when_success(self):
         state = ConcreteState()
@@ -1135,7 +1136,7 @@ class TestFinalState:
         state = FinalState()
         state.enter(post, ctx)
         await state.run(post, ctx)
-        assert state._status.get() == ChartStatus.RUNNING
+        assert state._status.get() == ChartStatus.SUCCESS
 
 
 class TestStateLifecycle:
@@ -1149,7 +1150,7 @@ class TestStateLifecycle:
         state = ConcreteState()
         state.enter(post, ctx)
         await state.run(post, ctx)
-        await state.exit(post, ctx)
+        state.exit(post, ctx)
         assert state._status.get() == ChartStatus.SUCCESS
 
     @pytest.mark.asyncio
@@ -1161,7 +1162,7 @@ class TestStateLifecycle:
         state = ConcreteState()
         state.enter(post, ctx)
         state._executing.set(True)
-        await state.exit(post, ctx)
+        state.exit(post, ctx)
         assert state._status.get() == ChartStatus.PREEMPTING
 
     @pytest.mark.asyncio
@@ -1200,7 +1201,7 @@ class TestStateLifecycle:
         state = TrackingState()
         state.enter(post, ctx)
         await state.run(post, ctx)
-        await state.exit(post, ctx)
+        state.exit(post, ctx)
         state.reset()
         assert 'enter' in state.calls
         assert 'execute' in state.calls
@@ -1264,7 +1265,8 @@ class TestStateFinishCallbacks:
         state.register_finish_callback(callback)
         state.enter(post, ctx)
         await state.run(post, ctx)
-        await state.exit(post, ctx)
+        state.exit(post, ctx)
+        await asyncio.sleep(0)  # Yield to allow finish() task to run
         assert called is True
 
     @pytest.mark.asyncio
@@ -1286,7 +1288,7 @@ class TestStateFinishCallbacks:
         task = asyncio.create_task(state.run(post, ctx))
         await asyncio.sleep(0.01)  # Let it start executing
         # Now exit before run completes
-        await state.exit(post, ctx)
+        state.exit(post, ctx)
         assert called is False  # finish() not called yet because run not completed
         await task  # Wait for run to finish
     

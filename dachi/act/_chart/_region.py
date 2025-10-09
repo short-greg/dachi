@@ -43,7 +43,7 @@ class Region(ChartBase):
         self._state_idx_map = {}
         
         # Track current state with just string keys (simple data in Attr)
-        self._current_state = Attr[str | None](data=self.initial)
+        self._current_state = Attr[str | None](data=None)
         self._last_active_state = Attr[str | None](data=None)
         self._pending_target = Attr[str | None](data=None)
         self._pending_reason = Attr[str | None](data=None)
@@ -88,6 +88,30 @@ class Region(ChartBase):
         """
         self._chart_states[state.name] = state
         self._state_idx_map[state.name] = len(self._state_idx_map)
+
+    def __getitem__(self, state_name: str) -> BaseState:
+        """Get state by name.
+
+        Args:
+            state_name: Name of the state to retrieve
+
+        Returns:
+            The state instance
+
+        Raises:
+            KeyError: If state not found
+        """
+        return self._chart_states[state_name]
+
+    def __setitem__(self, state_name: str, state: BaseState) -> None:
+        """Set state by name. Calls add() internally to maintain indices.
+
+        Args:
+            state_name: Name to assign to the state
+            state: The state instance to add
+        """
+        state.name = state_name
+        self.add(state)
 
     @property
     def status(self) -> ChartStatus:
@@ -142,14 +166,14 @@ class Region(ChartBase):
                 current_state_name = self.current_state
                 current_state_obj = self._chart_states[current_state_name]
                 current_state_obj.request_termination()
-                await current_state_obj.exit(
-                    post.sibling(current_state_name),
-                    ctx.child(
-                        self._state_idx_map[
-                            current_state_name
-                        ]
-                    )
-                )
+                # await current_state_obj.exit(
+                #     post.sibling(current_state_name),
+                #     ctx.child(
+                #         self._state_idx_map[
+                #             current_state_name
+                #         ]
+                #     )
+                # )
                 await self.finish_activity(current_state_name, post, ctx)
             except KeyError:
                 raise RuntimeError(f"Cannot stop region '{self.name}' as current state '{self.current_state}' not found.")
@@ -170,31 +194,31 @@ class Region(ChartBase):
 
     async def finish_activity(self, state_name: str, post: Post, ctx: Ctx) -> None:
         """Finish the specified state
-        
+
         This is executed after a State completes. If the state is final or the region is stopping, then it marks the region as completed. Otherwise, it transitions to the next state if a pending target is set.
         """
         try:
             state_obj = self._chart_states[state_name]
         except KeyError:
             raise RuntimeError(f"Cannot finish activity as State '{state_name}' not found in region '{self.name}'")
-        
+
         if state_name != self._current_state.data:
             return
-        
-        if self._stopping.get():
+
+        if state_obj.is_final():
+            self._status.set(ChartStatus.SUCCESS)
+            self._stopping.set(False)
+            self._stopped.set(True)
+            self._cur_task = None
+            # Don't set current_state to None - stay in final state
+            self._pending_target.set(None)
+            self._pending_reason.set(None)
+            await self.finish()
+        elif self._stopping.get():
             self._stopped.set(True)
             self._last_active_state.set(self._current_state.data)
             self._status.set(ChartStatus.CANCELED)
             self._stopping.set(False)
-            self._cur_task = None
-            self._current_state.set(None)
-            self._pending_target.set(None)
-            self._pending_reason.set(None)
-            await self.finish()
-        elif state_obj.is_final():
-            self._status.set(ChartStatus.SUCCESS)
-            self._stopping.set(False)
-            self._stopped.set(True)
             self._cur_task = None
             self._current_state.set(None)
             self._pending_target.set(None)
@@ -213,13 +237,18 @@ class Region(ChartBase):
         """Handle state transitions based on pending targets"""
         if not self._pending_target.get():
             return None  # No pending transition
-        
+
         target = self._pending_target.data
         if self._current_state.data is not None:
             current_state_name = self._current_state.data
             try:
                 current_state_obj = self._chart_states[current_state_name]
                 current_state_obj.unregister_finish_callback(self.finish_activity)
+
+                # await current_state_obj.exit(
+                #     post.sibling(current_state_name),
+                #     ctx.child(self._state_idx_map[current_state_name])
+                # )
             except KeyError:
                 raise RuntimeError(f"Cannot transition as current state '{current_state_name}' not found in region '{self.name}'")
         self._last_active_state.set(self._current_state.data)
@@ -239,7 +268,7 @@ class Region(ChartBase):
             self._current_state.set(target)
             state_obj.enter(child_post, child_ctx)
             self._status.set(ChartStatus.RUNNING)
-            
+
             self._cur_task = asyncio.create_task(
                 state_obj.run(child_post, child_ctx)
             )
@@ -291,7 +320,7 @@ class Region(ChartBase):
         if decision_type == "stay":
             # No state change
             return
-        
+
         target = decision.get("target")
         if target is None:
             # Invalid rule - no target specified
@@ -301,12 +330,12 @@ class Region(ChartBase):
             cur_state = self._chart_states[self.current_state]
         except KeyError:
             cur_state = None
-        if cur_state and cur_state.completed():
-            # Current state already completed - can 
+        if cur_state and cur_state.run_completed():
+            # Current state already completed - can
             # transition right away
             self._pending_target.set(target)
             self._pending_reason.set(event["type"])
-            await cur_state.exit(post.sibling(cur_state.name), ctx.child(self._state_idx_map[cur_state.name]))
+            cur_state.exit(post.sibling(cur_state.name), ctx.child(self._state_idx_map[cur_state.name]))
             # await self.transition(post, ctx)
             # return
         elif decision_type in ("immediate", "preempt"):
@@ -314,7 +343,7 @@ class Region(ChartBase):
             self._pending_target.set(target)
             self._pending_reason.set(event["type"])
             self._status.set(ChartStatus.PREEMPTING)
-            await cur_state.exit(post.sibling(cur_state.name), ctx.child(self._state_idx_map[cur_state.name]))
+            cur_state.exit(post.sibling(cur_state.name), ctx.child(self._state_idx_map[cur_state.name]))
             if decision_type == "immediate":
                 if self._cur_task:
                     self._cur_task.cancel()

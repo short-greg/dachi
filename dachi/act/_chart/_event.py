@@ -147,7 +147,6 @@ class Post(AsyncProcess):
         scope: Literal["chart", "parent"] = "chart",
         port: Optional[str] = None,
     ) -> bool:
-
         result = self.queue.post_nowait({
             "type": event,
             "payload": payload or {},
