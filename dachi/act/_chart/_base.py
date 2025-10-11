@@ -4,8 +4,11 @@ from typing import Any, Dict, List, Union, Optional, Callable, Tuple
 from enum import Enum
 from abc import abstractmethod
 import asyncio
+import logging
 
 from dachi.core import BaseModule, Attr
+
+logger = logging.getLogger("dachi.statechart")
 
 
 JSON = Union[Dict[str, Any], List[Any], str, int, float, bool, None]
@@ -91,12 +94,29 @@ class ChartBase(BaseModule):
         return self._status.get().is_completed()
 
     async def finish(self) -> None:
-        """Mark as finished and invoke finish callbacks"""
-        for callback, (args, kwargs) in list(self._finish_callbacks.items()):
-            if asyncio.iscoroutinefunction(callback):
-                await callback(*args, **kwargs)
-            else:
-                callback(*args, **kwargs)
+        """Mark as finished and invoke finish callbacks.
+
+        Exceptions in callbacks are logged but don't prevent other callbacks
+        from running. This ensures one broken callback doesn't break the
+        entire finish process.
+        """
+        callbacks_copy = list(self._finish_callbacks.items())
+        for callback, (args, kwargs) in callbacks_copy:
+            try:
+                if asyncio.iscoroutinefunction(callback):
+                    await callback(*args, **kwargs)
+                else:
+                    callback(*args, **kwargs)
+            except Exception as e:
+                logger.error(
+                    f"Finish callback failed for '{self.name}': {e}",
+                    exc_info=True,
+                    extra={
+                        "callback": callback.__name__ if hasattr(callback, "__name__") else str(callback),
+                        "name": self.name
+                    }
+                )
+                # Continue with remaining callbacks
 
     def register_finish_callback(self, callback: Callable, *args, **kwargs) -> None:
         """Register a callback to be called when finish() is invoked.

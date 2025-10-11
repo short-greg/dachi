@@ -6,7 +6,8 @@ from dataclasses import dataclass
 
 from dachi.core import Attr, ModuleList
 from dachi.core._scope import Scope
-from ._event import Event, EventQueue, Timer, MonotonicClock, Post
+from ._event import Event, EventQueue, Timer, MonotonicClock
+from ._region import Region
 
 
 @dataclass

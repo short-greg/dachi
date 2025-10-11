@@ -6,11 +6,14 @@ import typing as t
 from abc import abstractmethod
 from enum import Enum, auto
 import asyncio
+import logging
 
-from dachi.core import Attr, Ctx
+from dachi.core import Attr, Ctx, BaseModule
 from ._event import Post
 from dachi.utils._utils import resolve_fields, resolve_from_signature
 from ._base import ChartBase, ChartStatus, InvalidTransition
+
+logger = logging.getLogger("dachi.statechart")
 
 JSON = Union[Dict[str, Any], List[Any], str, int, float, bool, None]
 
@@ -18,6 +21,39 @@ JSON = Union[Dict[str, Any], List[Any], str, int, float, bool, None]
 class RunResult(Enum):
     COMPLETED = auto()   # State finished normally
     PREEMPTED = auto()   # State was cancelled/preempted
+
+
+class PseudoState(BaseModule):
+    """Final state that marks region completion."""
+
+    name: str = "FINAL"
+    status: Attr[ChartStatus] = Attr(ChartStatus.SUCCESS)
+
+
+class FinalState(PseudoState):
+    """Final state that marks region completion."""
+
+    name: str = "FINAL"
+    status: Attr[ChartStatus] = Attr(ChartStatus.SUCCESS)
+
+
+class ReadyState(PseudoState):
+    """Built-in ready state. Region begins here before starting.
+
+    READY is a marker state that does no work. It exists to ensure
+    regions are always in a defined state, even at initialization.
+    When region.start() is called, it automatically transitions from
+    READY to the initial state. Follows the same lifecycle as other
+    states (enter → run → exit) but execute() completes immediately.
+    """
+
+    @property
+    def name(self) -> str:
+        return "READY"
+
+    @property
+    def status(self) -> ChartStatus:
+        return ChartStatus.WAITING
 
 
 class BaseState(ChartBase, ABC):
@@ -134,7 +170,7 @@ class BaseState(ChartBase, ABC):
             loop.create_task(self.finish())
 
 
-class LeafState(BaseState, ABC):
+class AtomState(BaseState, ABC):
     """Leaf state that does not contain nested regions."""
         
     def __init_subclass__(cls, **kwargs):
@@ -212,7 +248,7 @@ class LeafState(BaseState, ABC):
             self._termination_requested.set(True)
 
 
-class State(LeafState):
+class State(AtomState):
     """Single-shot state that runs execute() to completion."""
 
     async def run(self, post: "Post", ctx: Ctx) -> None:
@@ -233,17 +269,33 @@ class State(LeafState):
             result = await self.execute(post, **inputs)
             if result is not None:
                 ctx.update(result)
-            if self._exiting.get():
-                self._status.set(ChartStatus.SUCCESS)
+
+            # Normal completion
+            self._status.set(ChartStatus.SUCCESS)
 
         except asyncio.CancelledError:
             self._status.set(ChartStatus.CANCELED)
 
-        except Exception:
-            self._run_completed.set(True)
-            self._executing.set(False)
+        except Exception as e:
+            # Log the exception with full traceback
+            logger.error(
+                f"State '{self.name}' failed with {type(e).__name__}: {e}",
+                exc_info=True,
+                extra={
+                    "state": self.name,
+                    "exception_type": type(e).__name__,
+                }
+            )
+
+            # Store exception details in context
+            ctx["__exception__"] = {
+                "message": str(e),
+                "type": type(e).__name__,
+                "state": self.name,
+            }
+
+            # Mark state as failed (don't re-raise)
             self._status.set(ChartStatus.FAILURE)
-            raise
 
         finally:
             self._run_completed.set(True)
@@ -253,7 +305,7 @@ class State(LeafState):
                 await self.finish()
 
 
-class StreamState(LeafState, ABC):
+class StreamState(AtomState, ABC):
     """Streaming state with preemption at yield points."""
 
     @abstractmethod
@@ -274,10 +326,14 @@ class StreamState(LeafState, ABC):
             )
 
         self._executing.set(True)
+        yielded_count = 0
+
         try:
             inputs = self.build_inputs(ctx)
 
             async for result in self.execute(post, **inputs):
+                yielded_count += 1
+
                 if result is not None:
                     ctx.update(result)
 
@@ -287,15 +343,34 @@ class StreamState(LeafState, ABC):
             # Only mark completed if we finished naturally (not terminated)
             if self._termination_requested.get():
                 self._status.set(ChartStatus.CANCELED)
+            else:
+                self._status.set(ChartStatus.SUCCESS)
 
         except asyncio.CancelledError:
             self._status.set(ChartStatus.CANCELED)
 
-        except Exception:
+        except Exception as e:
+            # Log the exception with yield count for debugging
+            logger.error(
+                f"StreamState '{self.name}' failed after {yielded_count} yields: {e}",
+                exc_info=True,
+                extra={
+                    "state": self.name,
+                    "exception_type": type(e).__name__,
+                    "yielded_count": yielded_count,
+                }
+            )
+
+            # Store exception details with progress tracking
+            ctx["__exception__"] = {
+                "message": str(e),
+                "type": type(e).__name__,
+                "state": self.name,
+                "yielded_count": yielded_count,  # Track progress before failure
+            }
+
+            # Mark state as failed (don't re-raise)
             self._status.set(ChartStatus.FAILURE)
-            self._run_completed.set(True)
-            self._executing.set(False)
-            raise
 
         finally:
             self._run_completed.set(True)
@@ -306,31 +381,45 @@ class StreamState(LeafState, ABC):
                 await self.finish()
             
 
+# class ReadyState(State):
+#     """Built-in ready state. Region begins here before starting.
 
-class FinalState(LeafState):
-    """Final state that marks region completion."""
-    
-    async def execute(self, post: "Post", **inputs: Any) -> Optional[Any]:
-        """FinalState has no work to do."""
-        return None
-    
-    async def run(self, post: "Post", ctx: Ctx) -> None:
-        """FinalState immediately completes upon run."""
-        if not self.can_run():
-            raise InvalidTransition(
-                f"Cannot run FinalState '{self.name}' from status {self._status.get()}. "
-                f"State must be RUNNING, not executing, and not completed."
-            )
-        
-        self._executing.set(True)
-        self._run_completed.set(True)
-        self._executing.set(False)
-        self._status.set(ChartStatus.SUCCESS)
-        await self.finish()
+#     READY is a marker state that does no work. It exists to ensure
+#     regions are always in a defined state, even at initialization.
+#     When region.start() is called, it automatically transitions from
+#     READY to the initial state. Follows the same lifecycle as other
+#     states (enter → run → exit) but execute() completes immediately.
+#     """
 
-    def can_exit(self):
-        return False
-    
-    def is_final(self) -> bool:
-        """FinalState is always final."""
-        return True
+#     async def execute(self, post: Post, **inputs) -> None:
+#         """READY does nothing - it exists only as a marker."""
+#         return None
+
+
+# class FinalState(LeafState):
+#     """Final state that marks region completion."""
+
+#     async def execute(self, post: "Post", **inputs: Any) -> Optional[Any]:
+#         """FinalState has no work to do."""
+#         return None
+
+#     async def run(self, post: "Post", ctx: Ctx) -> None:
+#         """FinalState immediately completes upon run."""
+#         if not self.can_run():
+#             raise InvalidTransition(
+#                 f"Cannot run FinalState '{self.name}' from status {self._status.get()}. "
+#                 f"State must be RUNNING, not executing, and not completed."
+#             )
+
+#         self._executing.set(True)
+#         self._run_completed.set(True)
+#         self._executing.set(False)
+#         self._status.set(ChartStatus.SUCCESS)
+#         await self.finish()
+
+#     def can_exit(self):
+#         return False
+
+#     def is_final(self) -> bool:
+#         """FinalState is always final."""
+#         return True

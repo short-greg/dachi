@@ -1,14 +1,16 @@
 # 1st Party
 from __future__ import annotations
-from typing import Any, Dict, List, Optional, Union, TypedDict, Literal, Tuple, Callable
-from enum import Enum
+from typing import Any, Dict, List, Optional, Union, TypedDict, Literal, Tuple
 import asyncio
 from ._base import ChartBase, ChartStatus, InvalidTransition
 
 # Local
 from dachi.core import Attr, ModuleDict, Ctx
-from ._state import State, StreamState, BaseState
+from ._state import State, StreamState, BaseState, PseudoState, ReadyState, FinalState
 from ._event import Event, Post
+import logging
+
+logger = logging.getLogger("dachi.statechart")
 
 JSON = Union[Dict[str, Any], List[Any], str, int, float, bool, None]
 
@@ -37,13 +39,20 @@ class Region(ChartBase):
 
     def __post_init__(self) -> None:
         super().__post_init__()
-        
-        # Store State instances in module hierarchy (managed by StateChart)
+
+        # Store State instances in module hierarchy
         self._chart_states = ModuleDict(items={})
         self._state_idx_map = {}
-        
+
+        # Create and register built-in states (cannot be overridden by user)
+        self._chart_states["READY"] = ReadyState(name="READY")
+        self._chart_states["SUCCESS"] = FinalState(name="SUCCESS")
+        self._chart_states["FAILURE"] = FinalState(name="FAILURE")
+        self._chart_states["CANCELED"] = FinalState(name="CANCELED")
+
         # Track current state with just string keys (simple data in Attr)
-        self._current_state = Attr[str | None](data=None)
+        # Initialize to READY (always start here before start() is called)
+        self._current_state = Attr[str | None](data="READY")
         self._last_active_state = Attr[str | None](data=None)
         self._pending_target = Attr[str | None](data=None)
         self._pending_reason = Attr[str | None](data=None)
@@ -109,7 +118,15 @@ class Region(ChartBase):
         Args:
             state_name: Name to assign to the state
             state: The state instance to add
+
+        Raises:
+            ValueError: If state_name is a reserved name (READY, SUCCESS, FAILURE, CANCELED)
         """
+        if state_name in ("READY", "SUCCESS", "FAILURE", "CANCELED"):
+            raise ValueError(
+                f"'{state_name}' is a reserved state name. "
+                f"Use region.{state_name} to access the built-in state."
+            )
         state.name = state_name
         self.add(state)
 
@@ -118,14 +135,50 @@ class Region(ChartBase):
         """Get current region status"""
         return self._status.get()
     
-    @property 
+    @property
     def current_state(self) -> str:
         """Get current state name"""
         return self._current_state.get()
-    
+
+    @property
+    def READY(self) -> ReadyState:
+        """Built-in ready state. Region begins here before starting."""
+        return self._chart_states["READY"]
+
+    @property
+    def SUCCESS(self) -> FinalState:
+        """Built-in success state. Use for successful completion."""
+        return self._chart_states["SUCCESS"]
+
+    @property
+    def FAILURE(self) -> FinalState:
+        """Built-in failure state. Reached on exception or explicit transition."""
+        return self._chart_states["FAILURE"]
+
+    @property
+    def CANCELED(self) -> FinalState:
+        """Built-in canceled state. Reached on preemption or explicit transition."""
+        return self._chart_states["CANCELED"]
+
     def is_final(self) -> bool:
-        """Check if region is in final state"""
-        return self.status.is_completed()
+        """Check if region is in any final state (SUCCESS, FAILURE, or CANCELED)"""
+        return self._current_state.get() in ("SUCCESS", "FAILURE", "CANCELED")
+
+    # def is_at_ready(self) -> bool:
+    #     """Check if region is in READY state"""
+    #     return self._current_state.get() == "READY"
+
+    # def is_at_success(self) -> bool:
+    #     """Check if region is in SUCCESS state"""
+    #     return self._current_state.get() == "SUCCESS"
+
+    # def is_at_failure(self) -> bool:
+    #     """Check if region is in FAILURE state"""
+    #     return self._current_state.get() == "FAILURE"
+
+    # def is_at_canceled(self) -> bool:
+    #     """Check if region is in CANCELED state"""
+    #     return self._current_state.get() == "CANCELED"
     
     def can_start(self) -> bool:
         """Check if region can be started"""
@@ -139,17 +192,21 @@ class Region(ChartBase):
         return self._stopped.get() is True
 
     async def start(self, post: "Post", ctx: Ctx) -> None:
-        """Start the region by activating the initial state
-        TODO: Make it so it will pick up if current_state already set
+        """Start the region. Transitions from READY to initial state.
+
+        The region always starts in READY state. When start() is called,
+        it automatically transitions READY → initial (following UML semantics).
         """
         if not self.can_start():
             raise InvalidTransition(
                 f"Cannot start region '{self.name}' as it is already started or completed."
-            )       
+            )
         self._status.set(ChartStatus.RUNNING)
         self._started.set(True)
+
+        # Transition from READY to initial state (automatic, following UML)
         self._pending_target.set(self.initial)
-        self._pending_reason.set("Starting region")
+        self._pending_reason.set("Auto-transition from READY to initial state")
         await self.transition(post, ctx)
 
     async def stop(self, post: Post, ctx: Ctx, preempt: bool=False) -> None:
@@ -183,97 +240,135 @@ class Region(ChartBase):
 
 
     def reset(self):
+        """Reset region back to READY state.
+
+        Returns region to initial READY state, clearing all runtime flags.
+        Can only be called when region is stopped.
+        """
         if not self.can_reset():
             raise InvalidTransition(
                 f"Cannot reset region '{self.name}' as it is not stopped."
             )
-        
+
         super().reset()
+
+        # Cancel any running tasks
+        if self._cur_task and not self._cur_task.done():
+            self._cur_task.cancel()
+        self._cur_task = None
+
+        # Reset to READY state (not None)
+        self._current_state.set("READY")
+        self._last_active_state.set(None)
+        self._pending_target.set(None)
+        self._pending_reason.set(None)
         self._stopped.set(False)
         self._started.set(False)
+        self._stopping.set(False)
+        self._finished.set(False)
 
-    async def finish_activity(self, state_name: str, post: Post, ctx: Ctx) -> None:
-        """Finish the specified state
+    # async def finish_activity(
+    #     self, state_name: str, post: Post, ctx: Ctx
+    # ) -> None:
+    #     """Called when a state finishes executing.
 
-        This is executed after a State completes. If the state is final or the region is stopping, then it marks the region as completed. Otherwise, it transitions to the next state if a pending target is set.
-        """
-        try:
-            state_obj = self._chart_states[state_name]
-        except KeyError:
-            raise RuntimeError(f"Cannot finish activity as State '{state_name}' not found in region '{self.name}'")
+    #     Simplified logic:
+    #     1. If state failed with exception, set pending_target to FAILURE
+    #     2. Call transition() to move to next state
+    #     3. transition() handles final state detection and region completion
+    #     """
+    #     try:
+    #         state_obj = self._chart_states[state_name]
+    #     except KeyError:
+    #         raise RuntimeError(f"Cannot finish activity as State '{state_name}' not found in region '{self.name}'")
 
-        if state_name != self._current_state.data:
-            return
+    #     if state_name != self._current_state.data:
+    #         return
 
-        if state_obj.is_final():
-            self._status.set(ChartStatus.SUCCESS)
-            self._stopping.set(False)
-            self._stopped.set(True)
-            self._cur_task = None
-            # Don't set current_state to None - stay in final state
-            self._pending_target.set(None)
-            self._pending_reason.set(None)
-            await self.finish()
-        elif self._stopping.get():
-            self._stopped.set(True)
-            self._last_active_state.set(self._current_state.data)
-            self._status.set(ChartStatus.CANCELED)
-            self._stopping.set(False)
-            self._cur_task = None
-            self._current_state.set(None)
-            self._pending_target.set(None)
-            self._pending_reason.set(None)
-            await self.finish()
-        else: # transition to next state if defined
-            self._last_active_state.set(self._current_state.data)
-            self._cur_task = None
-            if not await self.transition(post, ctx):
-                raise RuntimeError(f"Region '{self.name}' has no pending target to transition to after state '{state_name}' finished.")
+    #     # # If state failed with exception, transition to FAILURE state
+    #     # if state_obj.status == ChartStatus.FAILURE:
+    #     #     self._pending_target.set("FAILURE")
+    #     #     self._pending_reason.set(f"State '{state_name}' failed with exception")
 
-    # TODO: Complete the transition function
+    #     # # Clean up
+    #     # self._last_active_state.set(self._current_state.data)
+    #     # self._cur_task = None
+
+    #     # # If we're already in a final state, nothing more to do
+    #     # # (Final states are entered via transition(), which already called finish())
+    #     # if state_obj.is_final():
+    #     #     return
+
+    #     # Transition to next state (transition() handles final state completion)
+    #     if not await self.transition(post, ctx):
+    #         raise RuntimeError(
+    #             f"Region '{self.name}' has no pending target to transition to "
+    #             f"after state '{state_name}' finished."
+    #         )
+
     async def transition(
         self, post: "Post", ctx: Ctx
     ) -> None | str:
-        """Handle state transitions based on pending targets"""
+        """Handle state transitions based on pending targets.
+
+        Transitions to the pending target state, then checks if it's a final state.
+        If final, completes the region by calling finish().
+        """
         if not self._pending_target.get():
             return None  # No pending transition
 
         target = self._pending_target.data
+
+        # Unregister finish callback from current state
         if self._current_state.data is not None:
             current_state_name = self._current_state.data
             try:
                 current_state_obj = self._chart_states[current_state_name]
-                current_state_obj.unregister_finish_callback(self.finish_activity)
-
-                # await current_state_obj.exit(
-                #     post.sibling(current_state_name),
-                #     ctx.child(self._state_idx_map[current_state_name])
-                # )
+                current_state_obj.unregister_finish_callback(self.transition)
             except KeyError:
                 raise RuntimeError(f"Cannot transition as current state '{current_state_name}' not found in region '{self.name}'")
+
         self._last_active_state.set(self._current_state.data)
-        self._status.set(ChartStatus.RUNNING)
         self._pending_target.set(None)
         self._pending_reason.set(None)
-        # Optionally, could log or trigger entry actions here
-        try:
-            state_obj: BaseState = self._chart_states[target]
 
-            state_obj.register_finish_callback(
-                self.finish_activity, target, post, ctx
-            )
+        # Get target state object
+        try:
+            state_obj: BaseState | PseudoState = self._chart_states[target]
+        except KeyError:
+            raise RuntimeError(f"Cannot transition as State '{target}' not found in region '{self.name}'")
+
+        # Enter new state
+        self._current_state.set(target)
+
+        # Check if new state is final
+        if isinstance(state_obj, FinalState):
+            self._status.set(state_obj.status)
+            # Determine status based on which final state
+            if target == "SUCCESS":
+                self._status.set(ChartStatus.SUCCESS)
+            elif target == "FAILURE":
+                self._status.set(ChartStatus.FAILURE)
+            elif target == "CANCELED":
+                self._status.set(ChartStatus.CANCELED)
+
+            # Complete the region
+            self._stopped.set(True)
+            self._stopping.set(False)
+            self._finished.set(True)
+            await self.finish()
+        else:
+            state_obj.register_finish_callback(self.transition, target, post, ctx)
+
             child_post = post.sibling(target)
             child_ctx = ctx.child(self._state_idx_map[target])
-
-            self._current_state.set(target)
+            # Run non-final state
             state_obj.enter(child_post, child_ctx)
             self._status.set(ChartStatus.RUNNING)
-
             self._cur_task = asyncio.create_task(
                 state_obj.run(child_post, child_ctx)
             )
-        except KeyError:
-            raise RuntimeError(f"Cannot transition as State '{target}' not found in region '{self.name}'")
+
         return self._current_state.get()
 
     def decide(self, event: "Event") -> "Decision":

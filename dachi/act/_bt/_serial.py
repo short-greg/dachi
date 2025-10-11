@@ -14,25 +14,33 @@ class Serial(Composite):
     after the other
     """
 
-    @property
-    @abstractmethod
-    def cascaded(self) -> bool:
-        pass
+    def __post_init__(self):
+        super().__post_init__()
+        self._cascaded = Attr[bool](data=False)
 
+    @property
+    def cascaded(self) -> bool:
+        return self._cascaded.data
+
+    def cascade(self, cascaded: bool = True):
+        """Set whether the task is cascaded or not
+
+        Args:
+            cascaded (bool, optional): Whether the task is cascaded or not. Defaults to True.
+        """
+        self._cascaded.data = cascaded
 
 class Sequence(Serial):
     """Create a sequence of tasks to execute
     """
 
     tasks: ModuleList | None = None
-    cascaded: InitVar[bool] = False
 
-    def __post_init__(self, cascaded):
-        """
+    def __post_init__(self):
+        """Initialize the Sequence. A Sequence will execute its tasks in order. If one fails then it will Fail. If cascaded is True, it will try to execute all tasks in order until one fails
 
-        Args:
-            tasks (t.List[Task], optional): The tasks. Defaults to None.
-            context (Context, optional): . Defaults to None.
+        Raises:
+            ValueError: If tasks is not a list of Task objects.
         """
         super().__post_init__()
         if self.tasks is None:
@@ -44,12 +52,7 @@ class Sequence(Serial):
                 f"Tasks must be of type ModuleList not {type(self.tasks)}"
             )
         self._idx = Attr[int](data=0)
-        self._cascaded = cascaded
 
-    @property
-    def cascaded(self) -> bool:
-        return self._cascaded
-                
     def sub_tasks(self) -> t.Iterator[Task]:
         """Get the sub-tasks of the composite task
         
@@ -115,7 +118,6 @@ class Sequence(Serial):
         
         return self.status
     
-    
     def reset(self):
         
         super().reset()
@@ -131,16 +133,15 @@ class Selector(Serial):
     """
     
     tasks: ModuleList | None = None
-    cascaded: InitVar[bool] = False
 
-    def __post_init__(
-        self, cascaded: bool
-    ):
-        """
+    def __post_init__(self):
+        """Initialize the selector. A Selector will try to execute
+        each task in order until one succeeds. If none succeed, the
+        selector fails. If cascaded is True, it will try to execute
+        all tasks in order until one succeeds or all fail.
 
-        Args:
-            tasks (t.List[Task], optional): The tasks. Defaults to None.
-            context (Context, optional): . Defaults to None.
+        Raises:
+            ValueError: If tasks is not a list of Task objects.
         """
         super().__post_init__()
         if self.tasks is None:
@@ -152,11 +153,6 @@ class Selector(Serial):
                 f"Tasks must be of type ModuleList not {type(self.tasks)}"
             )
         self._idx = Attr[int](data=0)
-        self._cascaded = cascaded
-
-    @property
-    def cascaded(self) -> bool:
-        return self._cascaded
 
     def sub_tasks(self) -> t.Iterator[Task]:
         """Get the sub-tasks of the composite task
@@ -253,15 +249,24 @@ class PreemptCond(Serial):
     cond: Condition
     task: Task
 
-    @property
-    def cascaded(self) -> bool:
-        """Whether the task is cascaded or not
+    def __post_init__(self):
+        """Initialize the PreemptCond. A PreemptCond will first evaluate the condition. If the condition succeeds, it will execute the task. If the condition fails, it will fail the PreemptCond.
 
-        Returns:
-            bool: Whether the task is cascaded or not
+        Raises:
+            ValueError: If cond is not a Condition or task is not a Task.
         """
-        return True
-    
+        super().__post_init__()
+        self.cascade(cascaded=True)
+        if not isinstance(self.cond, Condition):
+            raise ValueError(
+                f"Condition must be of type Condition not {type(self.cond)}"
+            )
+        if not isinstance(self.task, Task):
+            raise ValueError(
+                f"Task must be of type Task not {type(self.task)}"
+            )
+        self._status.set(TaskStatus.RUNNING)
+
     def update_loop(self) -> t.Iterator[Task]:
         """Get the sub-tasks of the composite task
 
