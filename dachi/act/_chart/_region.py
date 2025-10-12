@@ -210,7 +210,11 @@ class Region(ChartBase):
         await self.transition(post, ctx)
 
     async def stop(self, post: Post, ctx: Ctx, preempt: bool=False) -> None:
-        """Stop the region and its current state activity"""
+        """Stop the region and its current state activity
+
+        When preempt=True, requests termination and transitions to CANCELED state.
+        When preempt=False, immediately cancels the running task.
+        """
         if not self.can_stop():
             raise InvalidTransition(
                 f"Cannot stop region '{self.name}' as it is not running."
@@ -222,19 +226,19 @@ class Region(ChartBase):
             try:
                 current_state_name = self.current_state
                 current_state_obj = self._chart_states[current_state_name]
-                current_state_obj.request_termination()
-                # await current_state_obj.exit(
-                #     post.sibling(current_state_name),
-                #     ctx.child(
-                #         self._state_idx_map[
-                #             current_state_name
-                #         ]
-                #     )
-                # )
-                await self.finish_activity(current_state_name, post, ctx)
+
+                # Only request termination for BaseState instances (not PseudoState)
+                if isinstance(current_state_obj, BaseState):
+                    current_state_obj.request_termination()
+
+                # Set pending target to CANCELED and transition
+                self._pending_target.set("CANCELED")
+                self._pending_reason.set("Region stopped with preemption")
+                await self.transition(post, ctx)
             except KeyError:
                 raise RuntimeError(f"Cannot stop region '{self.name}' as current state '{self.current_state}' not found.")
         else:
+            # Immediate cancellation
             if self._cur_task:
                 self._cur_task.cancel()
 
@@ -319,12 +323,14 @@ class Region(ChartBase):
 
         target = self._pending_target.data
 
-        # Unregister finish callback from current state
+        # Unregister finish callback from current state (if it's a BaseState, not a PseudoState)
         if self._current_state.data is not None:
             current_state_name = self._current_state.data
             try:
                 current_state_obj = self._chart_states[current_state_name]
-                current_state_obj.unregister_finish_callback(self.transition)
+                # Only unregister callback for BaseState instances (not PseudoState)
+                if isinstance(current_state_obj, BaseState):
+                    current_state_obj.unregister_finish_callback(self.transition)
             except KeyError:
                 raise RuntimeError(f"Cannot transition as current state '{current_state_name}' not found in region '{self.name}'")
 
@@ -358,10 +364,12 @@ class Region(ChartBase):
             self._finished.set(True)
             await self.finish()
         else:
-            state_obj.register_finish_callback(self.transition, target, post, ctx)
-
             child_post = post.sibling(target)
             child_ctx = ctx.child(self._state_idx_map[target])
+
+            # Register transition as callback (it will be called when state finishes)
+            state_obj.register_finish_callback(self.transition, post, ctx)
+
             # Run non-final state
             state_obj.enter(child_post, child_ctx)
             self._status.set(ChartStatus.RUNNING)

@@ -246,7 +246,7 @@ class PreemptCond(Serial):
     each tick in order to stop the execution
     of other tasks
     """
-    cond: Condition
+    cond: Condition | ModuleList
     task: Task
 
     def __post_init__(self):
@@ -256,6 +256,9 @@ class PreemptCond(Serial):
             ValueError: If cond is not a Condition or task is not a Task.
         """
         super().__post_init__()
+        if isinstance(self.cond, t.List):
+            self.cond = ModuleList(items=self.cond)
+        
         self.cascade(cascaded=True)
         if not isinstance(self.cond, Condition):
             raise ValueError(
@@ -307,10 +310,13 @@ class PreemptCond(Serial):
         Returns:
             TaskStatus: 
         """
-        status = TaskStatus.SUCCESS
-        for cond in self.cond:
-            cond.reset()
-            status = await cond.tick(ctx) & status
+        if isinstance(self.cond, ModuleList):
+            status = TaskStatus.SUCCESS
+            for cond in self.cond:
+                cond.reset()
+                status = await cond.tick(ctx) & status
+        else:
+            status = await self.cond.tick(ctx)
         
         if status.failure:
             self._status.set(

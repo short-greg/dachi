@@ -24,10 +24,14 @@ class RunResult(Enum):
 
 
 class PseudoState(BaseModule):
-    """Final state that marks region completion."""
+    """Marker state that is entered but not executed.
 
-    name: str = "FINAL"
-    status: Attr[ChartStatus] = Attr(ChartStatus.SUCCESS)
+    PseudoStates include initial states (READY) and final states.
+    They are entered as part of the region lifecycle but do not
+    have executable behavior.
+    """
+
+    name: str
 
 
 class FinalState(PseudoState):
@@ -46,10 +50,7 @@ class ReadyState(PseudoState):
     READY to the initial state. Follows the same lifecycle as other
     states (enter → run → exit) but execute() completes immediately.
     """
-
-    @property
-    def name(self) -> str:
-        return "READY"
+    name: str = "READY"
 
     @property
     def status(self) -> ChartStatus:
@@ -271,7 +272,8 @@ class State(AtomState):
                 ctx.update(result)
 
             # Normal completion
-            self._status.set(ChartStatus.SUCCESS)
+            if self._exiting.get() and self._status.get().is_running():
+                self._status.set(ChartStatus.SUCCESS)
 
         except asyncio.CancelledError:
             self._status.set(ChartStatus.CANCELED)
@@ -300,7 +302,7 @@ class State(AtomState):
         finally:
             self._run_completed.set(True)
             self._executing.set(False)
-            if self._termination_requested.get() or self._status.get() is ChartStatus.CANCELED:
+            if self._termination_requested.get() or self._status.get().is_completed():
                 # Direct finish for termination/cancellation (not via exit flow)
                 await self.finish()
 
@@ -340,12 +342,6 @@ class StreamState(AtomState, ABC):
                 if self._termination_requested.get():
                     break
 
-            # Only mark completed if we finished naturally (not terminated)
-            if self._termination_requested.get():
-                self._status.set(ChartStatus.CANCELED)
-            else:
-                self._status.set(ChartStatus.SUCCESS)
-
         except asyncio.CancelledError:
             self._status.set(ChartStatus.CANCELED)
 
@@ -375,8 +371,12 @@ class StreamState(AtomState, ABC):
         finally:
             self._run_completed.set(True)
             self._executing.set(False)
+            if self._termination_requested.get():
+                self._status.set(ChartStatus.CANCELED)
+            elif self._exiting.get() and self._status.get().is_running():
+                self._status.set(ChartStatus.SUCCESS)
 
-            if self._termination_requested.get() or self._status.get() is ChartStatus.CANCELED:
+            if self._status.get().is_completed():
                 # Direct finish for termination/cancellation (not via exit flow)
                 await self.finish()
             

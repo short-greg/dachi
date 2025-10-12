@@ -340,9 +340,10 @@ class TestRegionReset:
 
 class TestRegionStateManagement:
 
-    def test_is_final_returns_true_when_status_completed(self):
+    def test_is_final_returns_true_when_in_final_state(self):
         region = Region(name="test", initial="idle", rules=[])
-        region._status.set(ChartStatus.SUCCESS)
+        # Set current_state to one of the built-in final states
+        region._current_state.set("SUCCESS")
 
         assert region.is_final() is True
 
@@ -408,9 +409,10 @@ class TestRegionTransition:
         post = Post(queue=queue, source=[("test", "")])
         scope = Scope(name="test")
         ctx = scope.ctx()
-        
-        callback = region.finish_activity
-        state1.register_finish_callback(callback, "idle", post, ctx)
+
+        # transition() is now the callback (not finish_activity)
+        callback = region.transition
+        state1.register_finish_callback(callback, post, ctx)
         assert callback in state1._finish_callbacks
 
         await region.transition(post, ctx)
@@ -496,7 +498,8 @@ class TestRegionTransition:
 
         await region.transition(post, ctx)
 
-        assert region.finish_activity in state._finish_callbacks
+        # transition() is now the callback (not finish_activity)
+        assert region.transition in state._finish_callbacks
 
     @pytest.mark.asyncio
     async def test_transition_sets_current_state_to_target(self):
@@ -575,119 +578,6 @@ class TestRegionTransition:
         result = await region.transition(post, ctx)
 
         assert result == "active"
-
-
-class TestRegionFinishActivity:
-
-    @pytest.mark.asyncio
-    async def test_finish_activity_raises_when_state_not_found(self):
-        region = Region(name="test", initial="idle", rules=[])
-        queue = EventQueue(maxsize=10)
-        post = Post(queue=queue, source=[("test", "")])
-        scope = Scope(name="test")
-        ctx = scope.ctx()
-
-        with pytest.raises(RuntimeError, match="State 'missing' not found"):
-            await region.finish_activity("missing", post, ctx)
-
-    @pytest.mark.asyncio
-    async def test_finish_activity_returns_early_when_wrong_state(self):
-        region = Region(name="test", initial="idle", rules=[])
-        state = SimpleState(name="active")
-        region.add(state)
-        region._current_state.set("idle")
-        queue = EventQueue(maxsize=10)
-        post = Post(queue=queue, source=[("test", "")])
-        scope = Scope(name="test")
-        ctx = scope.ctx()
-
-        await region.finish_activity("active", post, ctx)
-
-    @pytest.mark.asyncio
-    async def test_finish_activity_handles_stopping_state(self):
-        region = Region(name="test", initial="idle", rules=[])
-        state = SimpleState(name="idle")
-        region.add(state)
-        region._current_state.set("idle")
-        region._stopping.set(True)
-        queue = EventQueue(maxsize=10)
-        post = Post(queue=queue, source=[("test", "")])
-        scope = Scope(name="test")
-        ctx = scope.ctx()
-
-        await region.finish_activity("idle", post, ctx)
-
-        assert region._stopped.get() is True
-        assert region.status == ChartStatus.CANCELED
-        assert region._cur_task is None
-        assert region._current_state.get() is None
-
-    @pytest.mark.asyncio
-    async def test_finish_activity_handles_final_state(self):
-        region = Region(name="test", initial="idle", rules=[])
-        final_state = FinalState(name="done")
-        region.add(final_state)
-        region._current_state.set("done")
-        queue = EventQueue(maxsize=10)
-        post = Post(queue=queue, source=[("test", "")])
-        scope = Scope(name="test")
-        ctx = scope.ctx()
-
-        await region.finish_activity("done", post, ctx)
-
-        assert region._stopped.get() is True
-        assert region.status == ChartStatus.SUCCESS
-        assert region._cur_task is None
-
-    @pytest.mark.asyncio
-    async def test_finish_activity_calls_transition_for_normal_completion(self):
-        region = Region(name="test", initial="idle", rules=[])
-        state1 = SimpleState(name="idle")
-        state2 = SimpleState(name="active")
-        region.add(state1)
-        region.add(state2)
-        region._current_state.set("idle")
-        region._pending_target.set("active")
-        queue = EventQueue(maxsize=10)
-        post = Post(queue=queue, source=[("test", "")])
-        scope = Scope(name="test")
-        ctx = scope.ctx()
-
-        await region.finish_activity("idle", post, ctx)
-
-        assert region.current_state == "active"
-
-    @pytest.mark.asyncio
-    async def test_finish_activity_clears_cur_task_when_stopping(self):
-        region = Region(name="test", initial="idle", rules=[])
-        state = SimpleState(name="idle")
-        region.add(state)
-        region._current_state.set("idle")
-        region._stopping.set(True)
-        region._cur_task = asyncio.create_task(asyncio.sleep(0.1))
-        queue = EventQueue(maxsize=10)
-        post = Post(queue=queue, source=[("test", "")])
-        scope = Scope(name="test")
-        ctx = scope.ctx()
-
-        await region.finish_activity("idle", post, ctx)
-
-        assert region._cur_task is None
-
-    @pytest.mark.asyncio
-    async def test_finish_activity_raises_when_no_pending_target(self):
-        region = Region(name="test", initial="idle", rules=[])
-        state = SimpleState(name="idle")
-        region.add(state)
-        region._current_state.set("idle")
-        region._pending_target.set(None)
-        queue = EventQueue(maxsize=10)
-        post = Post(queue=queue, source=[("test", "")])
-        scope = Scope(name="test")
-        ctx = scope.ctx()
-
-        with pytest.raises(RuntimeError, match="no pending target"):
-            await region.finish_activity("idle", post, ctx)
 
 
 class TestRegionHandleEvent:

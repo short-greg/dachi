@@ -13,7 +13,7 @@ class TestPreemptCond:
         scope = Scope()
         ctx = scope.ctx()
         main = ImmediateAction(status_val=TaskStatus.SUCCESS)
-        pc = PreemptCond(cond=[AlwaysFalseCond()], task=main)
+        pc = PreemptCond(cond=AlwaysFalseCond(), task=main)
         assert await pc.tick(ctx) is TaskStatus.FAILURE
         assert main.status is TaskStatus.READY  # main skipped
 
@@ -21,7 +21,8 @@ class TestPreemptCond:
         scope = Scope()
         ctx = scope.ctx()
         main = ImmediateAction(status_val=TaskStatus.SUCCESS)
-        pc = PreemptCond(cond=[AlwaysTrueCond()], task=main)
+        pc = PreemptCond(cond=AlwaysTrueCond(), task=main)
+        print('Cascaded: ', pc.cascaded)
         assert await pc.tick(ctx) is TaskStatus.SUCCESS
 
 
@@ -115,7 +116,8 @@ class TestCascadedSequence:
         action1 = ImmediateAction(status_val=TaskStatus.SUCCESS)
         action2 = ImmediateAction(status_val=TaskStatus.SUCCESS) 
         action3 = ImmediateAction(status_val=TaskStatus.SUCCESS)
-        sequence = Sequence(tasks=[action1, action2, action3], cascaded=True)
+        sequence = Sequence(tasks=[action1, action2, action3])
+        sequence.cascade()
         
         # Should complete all tasks in one tick
         scope = Scope()
@@ -130,7 +132,8 @@ class TestCascadedSequence:
         action1 = ImmediateAction(status_val=TaskStatus.SUCCESS)
         action2 = ImmediateAction(status_val=TaskStatus.RUNNING)
         action3 = ImmediateAction(status_val=TaskStatus.SUCCESS)
-        sequence = Sequence(tasks=[action1, action2, action3], cascaded=True)
+        sequence = Sequence(tasks=[action1, action2, action3])
+        sequence.cascade()
         
         # Should stop at the RUNNING task
         scope = Scope()
@@ -145,7 +148,8 @@ class TestCascadedSequence:
         action1 = ImmediateAction(status_val=TaskStatus.SUCCESS)
         action2 = ImmediateAction(status_val=TaskStatus.FAILURE)
         action3 = ImmediateAction(status_val=TaskStatus.SUCCESS)
-        sequence = Sequence(tasks=[action1, action2, action3], cascaded=True)
+        sequence = Sequence(tasks=[action1, action2, action3])
+        sequence.cascade()
         
         # Should fail immediately at action2
         scope = Scope()
@@ -160,12 +164,14 @@ class TestCascadedSequence:
         # Non-cascaded sequence
         action1_nc = ImmediateAction(status_val=TaskStatus.SUCCESS)
         action2_nc = ImmediateAction(status_val=TaskStatus.SUCCESS)
-        sequence_nc = Sequence(tasks=[action1_nc, action2_nc], cascaded=False)
+        sequence_nc = Sequence(tasks=[action1_nc, action2_nc])
+        sequence_nc.cascade(cascaded=False)
         
         # Cascaded sequence  
         action1_c = ImmediateAction(status_val=TaskStatus.SUCCESS)
         action2_c = ImmediateAction(status_val=TaskStatus.SUCCESS)
-        sequence_c = Sequence(tasks=[action1_c, action2_c], cascaded=True)
+        sequence_c = Sequence(tasks=[action1_c, action2_c])
+        sequence_c.cascade()
         
         scope_nc = Scope()
         ctx_nc = scope_nc.ctx()
@@ -183,7 +189,8 @@ class TestCascadedSequence:
         """Test cascaded sequence with mixture of immediate and storage actions"""
         immediate = ImmediateAction(status_val=TaskStatus.SUCCESS)
         storage = SetStorageAction(value=1)  # Will succeed
-        sequence = Sequence(tasks=[immediate, storage], cascaded=True)
+        sequence = Sequence(tasks=[immediate, storage])
+        sequence.cascade()
         
         # Should complete both in one tick since both succeed immediately
         scope = Scope()
@@ -200,7 +207,8 @@ class TestCascadedSelector:
         action1 = ImmediateAction(status_val=TaskStatus.FAILURE)
         action2 = ImmediateAction(status_val=TaskStatus.SUCCESS) 
         action3 = ImmediateAction(status_val=TaskStatus.SUCCESS)
-        selector = Selector(tasks=[action1, action2, action3], cascaded=True)
+        selector = Selector(tasks=[action1, action2, action3])
+        selector.cascade()
         
         # Should succeed at action2 and not try action3
         scope = Scope()
@@ -215,7 +223,8 @@ class TestCascadedSelector:
         action1 = ImmediateAction(status_val=TaskStatus.FAILURE)
         action2 = ImmediateAction(status_val=TaskStatus.FAILURE)
         action3 = ImmediateAction(status_val=TaskStatus.FAILURE)
-        selector = Selector(tasks=[action1, action2, action3], cascaded=True)
+        selector = Selector(tasks=[action1, action2, action3])
+        selector.cascade()
         
         # Should try all tasks and fail
         scope = Scope()
@@ -230,7 +239,8 @@ class TestCascadedSelector:
         action1 = ImmediateAction(status_val=TaskStatus.FAILURE)
         action2 = ImmediateAction(status_val=TaskStatus.RUNNING)
         action3 = ImmediateAction(status_val=TaskStatus.SUCCESS)
-        selector = Selector(tasks=[action1, action2, action3], cascaded=True)
+        selector = Selector(tasks=[action1, action2, action3])
+        selector.cascade()
         
         # Should stop at the RUNNING task
         scope = Scope()
@@ -245,12 +255,14 @@ class TestCascadedSelector:
         # Non-cascaded selector
         action1_nc = ImmediateAction(status_val=TaskStatus.FAILURE)
         action2_nc = ImmediateAction(status_val=TaskStatus.SUCCESS)
-        selector_nc = Selector(tasks=[action1_nc, action2_nc], cascaded=False)
+        selector_nc = Selector(tasks=[action1_nc, action2_nc])
+        selector_nc.cascade(cascaded=False)
         
         # Cascaded selector
         action1_c = ImmediateAction(status_val=TaskStatus.FAILURE) 
         action2_c = ImmediateAction(status_val=TaskStatus.SUCCESS)
-        selector_c = Selector(tasks=[action1_c, action2_c], cascaded=True)
+        selector_c = Selector(tasks=[action1_c, action2_c])
+        selector_c.cascade()
         
         scope_nc = Scope()
         ctx_nc = scope_nc.ctx()
@@ -269,7 +281,8 @@ class TestCascadedSelector:
 class TestCascadedEdgeCases:
     async def test_cascaded_sequence_empty_tasks(self):
         """Test cascaded sequence with no tasks"""
-        sequence = Sequence(tasks=[], cascaded=True)
+        sequence = Sequence(tasks=[])
+        sequence.cascade()
         # Should succeed immediately with no tasks
         scope = Scope()
         ctx = scope.ctx()
@@ -277,7 +290,8 @@ class TestCascadedEdgeCases:
 
     async def test_cascaded_selector_empty_tasks(self):
         """Test cascaded selector with no tasks"""
-        selector = Selector(tasks=[], cascaded=True) 
+        selector = Selector(tasks=[])
+        selector.cascade()
         # Should fail immediately with no tasks to try
         scope = Scope()
         ctx = scope.ctx()
@@ -286,7 +300,8 @@ class TestCascadedEdgeCases:
     async def test_cascaded_sequence_single_task(self):
         """Test cascaded sequence with single task"""
         action = ImmediateAction(status_val=TaskStatus.SUCCESS)
-        sequence = Sequence(tasks=[action], cascaded=True)
+        sequence = Sequence(tasks=[action])
+        sequence.cascade()
         
         scope = Scope()
         ctx = scope.ctx()
@@ -296,7 +311,8 @@ class TestCascadedEdgeCases:
     async def test_cascaded_selector_single_task(self):
         """Test cascaded selector with single task"""
         action = ImmediateAction(status_val=TaskStatus.SUCCESS)
-        selector = Selector(tasks=[action], cascaded=True)
+        selector = Selector(tasks=[action])
+        selector.cascade()
         
         scope = Scope()
         ctx = scope.ctx()
@@ -307,7 +323,8 @@ class TestCascadedEdgeCases:
         """Test that cascaded sequence resets properly"""
         action1 = ImmediateAction(status_val=TaskStatus.SUCCESS)
         action2 = ImmediateAction(status_val=TaskStatus.SUCCESS)
-        sequence = Sequence(tasks=[action1, action2], cascaded=True)
+        sequence = Sequence(tasks=[action1, action2])
+        sequence.cascade()
         
         # Complete the sequence
         scope = Scope()
@@ -325,7 +342,8 @@ class TestCascadedEdgeCases:
         """Test that cascaded selector resets properly"""
         action1 = ImmediateAction(status_val=TaskStatus.FAILURE)
         action2 = ImmediateAction(status_val=TaskStatus.SUCCESS)
-        selector = Selector(tasks=[action1, action2], cascaded=True)
+        selector = Selector(tasks=[action1, action2])
+        selector.cascade()
         
         # Complete the selector
         scope = Scope()
@@ -452,7 +470,8 @@ class TestSequenceWithContext:
         
         action1 = SimpleContextAction(output_value=1)
         action2 = SimpleContextAction(output_value=2)
-        sequence = Sequence(tasks=[action1, action2], cascaded=True)
+        sequence = Sequence(tasks=[action1, action2])
+        sequence.cascade()
         
         # This should create child contexts at paths (0,) and (1,)
         await sequence.tick(ctx)
@@ -490,9 +509,11 @@ class TestSequenceWithContext:
         
         # Create nested sequence (composite child)
         inner_action = SimpleContextAction(output_value=5)
-        inner_sequence = Sequence(tasks=[inner_action], cascaded=True)
-        outer_sequence = Sequence(tasks=[inner_sequence], cascaded=True)
-        
+        inner_sequence = Sequence(tasks=[inner_action])
+        inner_sequence.cascade()
+        outer_sequence = Sequence(tasks=[inner_sequence])
+        outer_sequence.cascade()
+
         await outer_sequence.tick(ctx)
         
         # Verify inner sequence got a child context and data was stored correctly
@@ -506,8 +527,9 @@ class TestSequenceWithContext:
         ctx = scope.ctx()
         
         action = SimpleContextAction(output_value=42)
-        sequence = Sequence(tasks=[action], cascaded=True)
-        
+        sequence = Sequence(tasks=[action])
+        sequence.cascade()
+
         await sequence.tick(ctx)
         
         # The action's output should be stored in the scope at the child's path
@@ -523,8 +545,9 @@ class TestSequenceWithContext:
         scope.set((), "attempts", 5)
         
         action = ContextTestAction()
-        sequence = Sequence(tasks=[action], cascaded=True)
-        
+        sequence = Sequence(tasks=[action])
+        sequence.cascade()
+
         await sequence.tick(ctx)
         
         # Verify the action received the context data
@@ -571,8 +594,9 @@ class TestSequenceWithContext:
         # Second action should be able to consume first action's output
         # This will be tested once input resolution is implemented
         consumer = ContextTestAction()
-        
-        sequence = Sequence(tasks=[producer, consumer], cascaded=True)
+
+        sequence = Sequence(tasks=[producer, consumer])
+        sequence.cascade()
         await sequence.tick(ctx)
         
         # Verify producer output is available in scope

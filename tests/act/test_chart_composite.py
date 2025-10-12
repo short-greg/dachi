@@ -846,10 +846,12 @@ class TestCompositeStateExit:
 
     @pytest.mark.asyncio
     async def test_exit_with_multiple_regions_some_complete(self):
+        # Use SimpleState for region1 instead of FinalState
+        # Region1 will complete quickly, region2 will still be running
         region1 = Region(name="child1", initial="idle", rules=[])
         region2 = Region(name="child2", initial="idle", rules=[])
-        region1.add(SimpleFinal(name="idle"))
-        region2.add(SlowState(name="idle"))
+        region1.add(SimpleState(name="idle"))  # Quick to complete
+        region2.add(SlowState(name="idle"))     # Still running
         composite = CompositeState(regions=ModuleList(items=[region1, region2]))
         queue = EventQueue()
         post = Post(queue=queue)
@@ -859,8 +861,11 @@ class TestCompositeStateExit:
         composite.enter(post, ctx)
         await region1.start(post.child("child1"), ctx.child(0))
         await region2.start(post.child("child2"), ctx.child(1))
-        await region1.stop(post.child("child1"), ctx.child(0), preempt=False)
 
+        # Wait for region1 to complete naturally
+        await asyncio.sleep(0.01)
+
+        # Now region1 should be completed, region2 still running
         await composite.exit(post, ctx)
         # One complete, one not - should be preempting
         assert composite._status.get() == ChartStatus.PREEMPTING

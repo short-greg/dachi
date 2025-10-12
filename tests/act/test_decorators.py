@@ -239,7 +239,8 @@ class TestDecoratorWithContext:
         
         # Create composite wrapped in decorator
         inner_action = SimpleContextAction(output_value=99)
-        inner_sequence = Sequence(tasks=[inner_action], cascaded=True)
+        inner_sequence = Sequence(tasks=[inner_action])
+        inner_sequence.cascade()
         decorator = MockTestDecorator(task=inner_sequence)
         
         await decorator.tick(ctx)

@@ -10,7 +10,7 @@ import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
-from dachi.act._chart._state import BaseState, AtomState, State, StreamState, FinalState
+from dachi.act._chart._state import BaseState, AtomState, State, StreamState, FinalState, PseudoState, ReadyState
 from dachi.act._chart._base import ChartStatus, InvalidTransition
 from dachi.act._chart._event import EventQueue, Post
 from dachi.core import Scope
@@ -753,9 +753,11 @@ class TestState:
         ctx = scope.ctx()
         state = FailingState()
         state.enter(post, ctx)
-        with pytest.raises(ValueError):
-            await state.run(post, ctx)
+        await state.run(post, ctx)
         assert state._status.get() == ChartStatus.FAILURE
+        assert "__exception__" in ctx
+        assert ctx["__exception__"]["type"] == "ValueError"
+        assert ctx["__exception__"]["message"] == "Test error"
 
     @pytest.mark.asyncio
     async def test_run_sets_run_completed_on_exception(self):
@@ -765,20 +767,20 @@ class TestState:
         ctx = scope.ctx()
         state = FailingState()
         state.enter(post, ctx)
-        with pytest.raises(ValueError):
-            await state.run(post, ctx)
+        await state.run(post, ctx)
         assert state._run_completed.get() is True
 
     @pytest.mark.asyncio
-    async def test_run_reraises_exception_after_setting_status(self):
+    async def test_run_stores_exception_in_context(self):
         queue = EventQueue()
         post = Post(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
         state = FailingState()
         state.enter(post, ctx)
-        with pytest.raises(ValueError, match="Test error"):
-            await state.run(post, ctx)
+        await state.run(post, ctx)
+        assert "__exception__" in ctx
+        assert "Test error" in ctx["__exception__"]["message"]
 
     @pytest.mark.asyncio
     async def test_run_sets_status_to_canceled_on_cancelled_error(self):
@@ -810,8 +812,7 @@ class TestState:
         ctx = scope.ctx()
         state = FailingState()
         state.enter(post, ctx)
-        with pytest.raises(ValueError):
-            await state.run(post, ctx)
+        await state.run(post, ctx)
         assert state._executing.get() is False
 
     @pytest.mark.asyncio
@@ -1003,9 +1004,10 @@ class TestStreamState:
         ctx = scope.ctx()
         state = FailingStreamState()
         state.enter(post, ctx)
-        with pytest.raises(ValueError):
-            await state.run(post, ctx)
+        await state.run(post, ctx)
         assert state._status.get() == ChartStatus.FAILURE
+        assert "__exception__" in ctx
+        assert ctx["__exception__"]["type"] == "ValueError"
 
     @pytest.mark.asyncio
     async def test_run_sets_run_completed_on_exception(self):
@@ -1015,8 +1017,7 @@ class TestStreamState:
         ctx = scope.ctx()
         state = FailingStreamState()
         state.enter(post, ctx)
-        with pytest.raises(ValueError):
-            await state.run(post, ctx)
+        await state.run(post, ctx)
         assert state._run_completed.get() is True
 
     @pytest.mark.asyncio
@@ -1027,20 +1028,20 @@ class TestStreamState:
         ctx = scope.ctx()
         state = FailingStreamState()
         state.enter(post, ctx)
-        with pytest.raises(ValueError):
-            await state.run(post, ctx)
+        await state.run(post, ctx)
         assert ctx["start"] is True
 
     @pytest.mark.asyncio
-    async def test_run_reraises_exception_after_setting_status(self):
+    async def test_run_stores_exception_with_yield_count(self):
         queue = EventQueue()
         post = Post(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
         state = FailingStreamState()
         state.enter(post, ctx)
-        with pytest.raises(ValueError, match="Test error"):
-            await state.run(post, ctx)
+        await state.run(post, ctx)
+        assert "__exception__" in ctx
+        assert "yielded_count" in ctx["__exception__"]
 
     @pytest.mark.asyncio
     async def test_run_sets_status_to_canceled_on_cancelled_error(self):
@@ -1072,8 +1073,7 @@ class TestStreamState:
         ctx = scope.ctx()
         state = FailingStreamState()
         state.enter(post, ctx)
-        with pytest.raises(ValueError):
-            await state.run(post, ctx)
+        await state.run(post, ctx)
         assert state._executing.get() is False
 
     @pytest.mark.asyncio
@@ -1113,30 +1113,69 @@ class TestStreamState:
         assert state._status.get() == ChartStatus.RUNNING
 
 
+class TestPseudoState:
+    """Test PseudoState base class."""
+
+    def test_pseudostate_has_name_attribute(self):
+        # PseudoState is abstract, so test via FinalState
+        state = FinalState()
+        assert hasattr(state, 'name')
+        assert state.name == "FINAL"
+
+    def test_pseudostate_is_base_module(self):
+        from dachi.core import BaseModule
+        state = FinalState()
+        assert isinstance(state, BaseModule)
+
+
 class TestFinalState:
+    """Test FinalState - a PseudoState that marks region completion."""
 
-    def test_is_final_returns_true(self):
+    def test_finalstate_is_pseudostate(self):
         state = FinalState()
-        assert state.is_final() is True
+        assert isinstance(state, PseudoState)
 
-    @pytest.mark.asyncio
-    async def test_execute_returns_none(self):
-        queue = EventQueue()
-        post = Post(queue=queue)
+    def test_finalstate_has_name_attribute(self):
         state = FinalState()
-        result = await state.execute(post)
-        assert result is None
+        assert state.name == "FINAL"
 
-    @pytest.mark.asyncio
-    async def test_run_completes_successfully(self):
-        queue = EventQueue()
-        post = Post(queue=queue)
-        scope = Scope()
-        ctx = scope.ctx()
+    def test_finalstate_has_status_attribute(self):
         state = FinalState()
-        state.enter(post, ctx)
-        await state.run(post, ctx)
-        assert state._status.get() == ChartStatus.SUCCESS
+        assert hasattr(state, 'status')
+        # status is an Attr, get its value
+        assert state.status.get() == ChartStatus.SUCCESS
+
+    def test_finalstate_does_not_have_run_method(self):
+        state = FinalState()
+        # FinalState is a PseudoState, not a State, so it doesn't have run()
+        assert not hasattr(state, 'run') or not callable(getattr(state, 'run', None))
+
+    def test_finalstate_does_not_have_execute_method(self):
+        state = FinalState()
+        # FinalState is a PseudoState, not a State, so it doesn't have execute()
+        assert not hasattr(state, 'execute') or not callable(getattr(state, 'execute', None))
+
+
+class TestReadyState:
+    """Test ReadyState - the built-in initial PseudoState."""
+
+    def test_readystate_is_pseudostate(self):
+        state = ReadyState()
+        assert isinstance(state, PseudoState)
+
+    def test_readystate_has_name_attribute(self):
+        state = ReadyState()
+        assert state.name == "READY"
+
+    def test_readystate_status_is_waiting(self):
+        state = ReadyState()
+        # ReadyState.status is a property that returns WAITING
+        assert state.status == ChartStatus.WAITING
+
+    def test_readystate_status_is_property(self):
+        state = ReadyState()
+        # Verify it's a property, not an Attr
+        assert isinstance(type(state).status, property)
 
 
 class TestStateLifecycle:
@@ -1187,8 +1226,8 @@ class TestStateLifecycle:
         ctx = scope.ctx()
         state = FailingState()
         state.enter(post, ctx)
-        with pytest.raises(ValueError):
-            await state.run(post, ctx)
+        await state.run(post, ctx)
+        assert state._status.get() == ChartStatus.FAILURE
         state.reset()
         assert state._status.get() == ChartStatus.WAITING
 
