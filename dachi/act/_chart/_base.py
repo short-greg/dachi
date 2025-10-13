@@ -84,10 +84,9 @@ class ChartBase(BaseModule):
     def is_waiting(self) -> bool:
         return self._status.get().is_waiting()
 
-    @abstractmethod
     def reset(self) -> None:
         """Reset state to WAITING. Must be implemented by subclasses."""
-        pass
+        self._status.set(ChartStatus.WAITING)
 
     def can_reset(self) -> bool:
         """Check if state can be reset."""

@@ -4,12 +4,12 @@ import asyncio
 
 from ._state import BaseState
 from ._base import ChartStatus, InvalidTransition
-from ._event import Post
+from ._event import Post, ChartEventHandler
 from ._region import Region
 from dachi.core import Ctx, ModuleList
 
 
-class CompositeState(BaseState):
+class CompositeState(BaseState, ChartEventHandler):
     """Composite state containing nested regions."""
     regions: ModuleList
 
@@ -97,6 +97,17 @@ class CompositeState(BaseState):
         await self.execute(post, ctx)
         self._run_completed.set(False)
         # don't call finish until all regions have completed
+
+    async def handle_event(self, event: "Event", post: "Post", ctx: Ctx) -> None:
+        """Handle events by dispatching to all running child regions."""
+        if self._status.get() != ChartStatus.RUNNING:
+            return
+
+        for i, region in enumerate(self.regions):
+            if region.status.is_running():
+                child_post = post.child(region.name)
+                child_ctx = ctx.child(i)
+                await region.handle_event(event, child_post, child_ctx)
 
     async def exit(self, post: Post, ctx: Ctx) -> None:
         """Called when exiting the state. Sets final status.

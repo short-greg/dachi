@@ -1,5 +1,5 @@
 # 1st Party
-from abc import ABC
+from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional, Literal, TypedDict, Tuple, Callable
 from collections import deque
 import time
@@ -11,6 +11,21 @@ from dachi.proc import AsyncProcess
 
 class Payload(TypedDict, total=False):
     pass
+
+
+class ChartEventHandler(ABC):
+    """Mixin for components that can handle events (StateChart, Region, CompositeState)."""
+
+    @abstractmethod
+    async def handle_event(self, event: "Event", post: "Post", ctx: Any) -> None:
+        """Handle an incoming event.
+
+        Args:
+            event: The event to handle
+            post: Post object for sending new events
+            ctx: Context for this component
+        """
+        pass
 
 
 class Event(TypedDict, total=False):

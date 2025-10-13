@@ -261,6 +261,17 @@ class ModuleDict(BaseModule):
             else:
                 raise TypeError(f"Expected BaseSpec values in dict, got {type(v)}")
         return out
+    
+    def get(self, key: str, default: Optional[V] = None) -> Optional[V]:
+        """Get an item from the module dict, returning a default if not found.
+        Args:
+            key (str): The key of the item to retrieve.
+            default (Optional[V], optional): The default value to return if the key is not found
+                Defaults to None.
+        Returns:
+            Optional[V]: The item associated with the key, or the default value if not found.
+        """
+        return self._module_dict.get(key, default)
 
 
 class SerialDict(BaseModule):

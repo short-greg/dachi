@@ -7,7 +7,7 @@ from ._base import ChartBase, ChartStatus, InvalidTransition
 # Local
 from dachi.core import Attr, ModuleDict, Ctx
 from ._state import State, StreamState, BaseState, PseudoState, ReadyState, FinalState
-from ._event import Event, Post
+from ._event import Event, Post, ChartEventHandler
 import logging
 
 logger = logging.getLogger("dachi.statechart")
@@ -31,7 +31,7 @@ class RegionSnapshot(TypedDict, total=False):
     pending_target: Optional[str]
 
 
-class Region(ChartBase):
+class Region(ChartBase, ChartEventHandler):
     # ----- Spec fields (serialized) -----
     name: str
     initial: str  # Initial state name
@@ -135,10 +135,10 @@ class Region(ChartBase):
         """Get current region status"""
         return self._status.get()
     
-    @property
-    def current_state(self) -> str:
-        """Get current state name"""
-        return self._current_state.get()
+    # @property
+    # def current_state(self) -> str:
+    #     """Get current state name"""
+    #     return self._current_state.get()
 
     @property
     def READY(self) -> ReadyState:
@@ -224,7 +224,7 @@ class Region(ChartBase):
 
         if preempt:
             try:
-                current_state_name = self.current_state
+                current_state_name = self.current_state_name
                 current_state_obj = self._chart_states[current_state_name]
 
                 # Only request termination for BaseState instances (not PseudoState)
@@ -236,7 +236,7 @@ class Region(ChartBase):
                 self._pending_reason.set("Region stopped with preemption")
                 await self.transition(post, ctx)
             except KeyError:
-                raise RuntimeError(f"Cannot stop region '{self.name}' as current state '{self.current_state}' not found.")
+                raise RuntimeError(f"Cannot stop region '{self.name}' as current state '{self.current_state_name}' not found.")
         else:
             # Immediate cancellation
             if self._cur_task:
@@ -310,6 +310,22 @@ class Region(ChartBase):
     #             f"after state '{state_name}' finished."
     #         )
 
+    @property
+    def current_state(self) -> BaseState | PseudoState | None:
+        """Get current state instance, or None if not set"""
+        state_name = self._current_state.get()
+        if state_name is None:
+            return None
+        try:
+            return self._chart_states[state_name]
+        except KeyError:
+            return None
+        
+    @property
+    def current_state_name(self) -> Optional[str]:
+        """Get current state name, or None if not set"""
+        return self._current_state.get()
+
     async def transition(
         self, post: "Post", ctx: Ctx
     ) -> None | str:
@@ -317,7 +333,22 @@ class Region(ChartBase):
 
         Transitions to the pending target state, then checks if it's a final state.
         If final, completes the region by calling finish().
+
+        Automatically transitions to FAILURE if current state failed with exception.
         """
+        # Auto-detect state failure/cancellation and transition to appropriate built-in state
+        current_state_name = self.current_state_name
+
+        current_state_obj = self._chart_states.get(current_state_name) if current_state_name is not None else None
+        if not self._pending_target.get() and isinstance(current_state_obj, BaseState):
+
+            if current_state_obj.status == ChartStatus.FAILURE:
+                self._pending_target.set("FAILURE")
+                self._pending_reason.set(f"State '{current_state_name}' failed with exception")
+            elif current_state_obj.status == ChartStatus.CANCELED:
+                self._pending_target.set("CANCELED")
+                self._pending_reason.set(f"State '{current_state_name}' was canceled")
+
         if not self._pending_target.get():
             return None  # No pending transition
 
@@ -343,6 +374,10 @@ class Region(ChartBase):
             state_obj: BaseState | PseudoState = self._chart_states[target]
         except KeyError:
             raise RuntimeError(f"Cannot transition as State '{target}' not found in region '{self.name}'")
+
+        # Reset state if re-entering (was previously completed)
+        if isinstance(state_obj, BaseState) and state_obj.status.is_completed():
+            state_obj.reset()
 
         # Enter new state
         self._current_state.set(target)
@@ -416,6 +451,14 @@ class Region(ChartBase):
         """Handle an incoming event and update region state accordingly"""
         if self.status != ChartStatus.RUNNING:
             return # Ignore events if not running
+        
+        cur_state = self.current_state
+        if isinstance(cur_state, ChartEventHandler):
+            await cur_state.handle_event(
+                event, 
+                post.sibling(cur_state.name), 
+                ctx.child(self._state_idx_map[cur_state.name])
+            )
 
         decision = self.decide(event)
         decision_type = decision["type"]
@@ -429,10 +472,6 @@ class Region(ChartBase):
             # Invalid rule - no target specified
             return
 
-        try:
-            cur_state = self._chart_states[self.current_state]
-        except KeyError:
-            cur_state = None
         if cur_state and cur_state.run_completed():
             # Current state already completed - can
             # transition right away

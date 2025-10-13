@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 from dachi.core import Attr, ModuleList
 from dachi.core._scope import Scope
-from ._event import Event, EventQueue, Timer, MonotonicClock
+from ._event import Event, EventQueue, Timer, MonotonicClock, ChartEventHandler
 from ._region import Region
 
 
@@ -24,7 +24,7 @@ class ChartSnapshot:
 JSON = Union[Dict[str, Any], List[Any], str, int, float, bool, None]
 
 
-class StateChart(ChartBase):
+class StateChart(ChartBase, ChartEventHandler):
     name: str
     regions: ModuleList  # ModuleList[Region]
     checkpoint_policy: Literal["yield", "hard"] = "yield"
