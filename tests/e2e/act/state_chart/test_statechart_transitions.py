@@ -122,7 +122,7 @@ class TestConditionalTransition:
         completed = await wait_for_chart(chart, timeout=1.0)
 
         assert completed is True
-        assert region.current_state == "success"
+        assert region.current_state_name == "success"
         assert ctx.get("result") == 100
 
     @pytest.mark.asyncio
@@ -152,7 +152,7 @@ class TestConditionalTransition:
         completed = await wait_for_chart(chart, timeout=1.0)
 
         assert completed is True
-        assert region.current_state == "failure"
+        assert region.current_state_name == "failure"
         assert ctx.get("error") == "Invalid input"
 
 
@@ -202,7 +202,7 @@ class TestAutomaticTransition:
         completed = await wait_for_chart(chart, timeout=1.0)
 
         assert completed is True
-        assert region.current_state == "complete"
+        assert region.current_state_name == "complete"
 
 
 # ============================================================================
@@ -251,7 +251,7 @@ class TestSelfTransition:
         completed = await wait_for_chart(chart, timeout=2.0)
 
         assert completed is True
-        assert region.current_state == "done"
+        assert region.current_state_name == "done"
 
         scope = chart._scope
         ctx = scope.ctx(0)
@@ -314,7 +314,7 @@ class TestMultipleEventHandlers:
         completed = await wait_for_chart(chart, timeout=1.0)
 
         assert completed is True
-        assert region.current_state == "rejected"
+        assert region.current_state_name == "rejected"
 
 
 # ============================================================================
@@ -362,7 +362,7 @@ class TestEventFiltering:
         completed = await wait_for_chart(chart, timeout=1.0)
 
         assert completed is True
-        assert region.current_state == "timeout"
+        assert region.current_state_name == "timeout"
 
 
 # ============================================================================
@@ -420,7 +420,7 @@ class TestRulePrecedence:
         assert completed is True
         # Should follow state-dependent rules: a → b → c
         # Not state-independent rule: a → d
-        assert region.current_state == "c"
+        assert region.current_state_name == "c"
 
 
 # ============================================================================
@@ -476,7 +476,7 @@ class TestTransitionChain:
         completed = await wait_for_chart(chart, timeout=1.0)
 
         assert completed is True
-        assert region.current_state == "complete"
+        assert region.current_state_name == "complete"
 
         # Verify all states executed
         scope = chart._scope
@@ -548,7 +548,7 @@ class TestDataTransformationPipeline:
         completed = await wait_for_chart(chart, timeout=1.0)
 
         assert completed is True
-        assert region.current_state == "complete"
+        assert region.current_state_name == "complete"
 
         scope = chart._scope
         ctx = scope.ctx(0)

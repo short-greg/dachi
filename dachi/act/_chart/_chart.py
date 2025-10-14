@@ -5,8 +5,8 @@ from ._base import ChartBase, ChartStatus
 from dataclasses import dataclass
 
 from dachi.core import Attr, ModuleList
-from dachi.core._scope import Scope
-from ._event import Event, EventQueue, Timer, MonotonicClock, ChartEventHandler
+from dachi.core._scope import Scope, Ctx
+from ._event import Event, EventQueue, Timer, MonotonicClock, ChartEventHandler, Post
 from ._region import Region
 
 
@@ -163,10 +163,11 @@ class StateChart(ChartBase, ChartEventHandler):
         event_to_process = self._queue.pop_nowait()
         loop.create_task(self.handle_event(event_to_process))
 
-    async def handle_event(self, event: Event) -> None:
+    async def handle_event(self, event: Event, post: Optional[Post]=None, ctx: Optional[Ctx]=None) -> None:
         """
         Handle an incoming event by dispatching it to all running regions.
         """
+        # TODO: use 
         if self._status.get() == ChartStatus.RUNNING:
             for i, region in enumerate(self.regions):
                 if region.status.is_running():

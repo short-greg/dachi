@@ -91,7 +91,7 @@ class TestSimpleSequentialStateMachine:
         chart = StateChart(name="sequential", regions=[region], auto_finish=True)
 
         # Verify region starts in READY before start()
-        assert region.current_state == "READY"
+        assert region.current_state_name == "READY"
 
         await chart.start()
 
@@ -100,7 +100,7 @@ class TestSimpleSequentialStateMachine:
 
         assert completed is True
         assert chart._status.get() == ChartStatus.SUCCESS
-        assert region.current_state == "complete"
+        assert region.current_state_name == "complete"
 
 
 # ============================================================================
@@ -163,7 +163,7 @@ class TestEventDrivenStateMachine:
         completed = await wait_for_chart(chart, timeout=1.0)
 
         assert completed is True
-        assert region.current_state == "approved"
+        assert region.current_state_name == "approved"
 
 
 # ============================================================================
@@ -211,7 +211,7 @@ class TestBuiltInSuccessState:
 
         assert completed is True
         assert chart._status.get() == ChartStatus.SUCCESS
-        assert region.current_state == "SUCCESS"
+        assert region.current_state_name == "SUCCESS"
         assert region.is_final() is True
 
 
@@ -254,7 +254,7 @@ class TestBuiltInFailureState:
 
         assert completed is True
         assert chart._status.get() == ChartStatus.SUCCESS  # Chart completes
-        assert region.current_state == "FAILURE"  # Region reached FAILURE state
+        assert region.current_state_name == "FAILURE"  # Region reached FAILURE state
         assert region.is_final() is True
 
         # Verify exception details stored in context
@@ -307,7 +307,7 @@ class TestBuiltInCanceledState:
         completed = await wait_for_chart(chart, timeout=1.0)
 
         assert completed is True
-        assert region.current_state == "CANCELED"
+        assert region.current_state_name == "CANCELED"
         assert region.is_final() is True
 
 
@@ -374,7 +374,7 @@ class TestContextDataFlow:
         completed = await wait_for_chart(chart, timeout=1.0)
 
         assert completed is True
-        assert region.current_state == "complete"
+        assert region.current_state_name == "complete"
 
         # Verify context accumulated data from all states
         scope = chart._scope
@@ -426,7 +426,7 @@ class TestResetAndRerun:
         completed = await wait_for_chart(chart, timeout=1.0)
 
         assert completed is True
-        assert region.current_state == "done"
+        assert region.current_state_name == "done"
 
         scope = chart._scope
         ctx = scope.ctx(0)
@@ -435,7 +435,7 @@ class TestResetAndRerun:
 
         # Reset region back to READY state
         region.reset()
-        assert region.current_state == "READY"
+        assert region.current_state_name == "READY"
         assert region.can_start() is True
         assert region.status == ChartStatus.WAITING
 
@@ -477,7 +477,7 @@ class TestStateWithNoOutput:
         completed = await wait_for_chart(chart, timeout=1.0)
 
         assert completed is True
-        assert region.current_state == "final"
+        assert region.current_state_name == "final"
 
         # Context should not have undefined keys from None return
         scope = chart._scope

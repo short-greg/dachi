@@ -128,7 +128,7 @@ class TestMultiStateWorkflow:
 
         assert completed is True
         assert chart._status.get() == ChartStatus.SUCCESS
-        assert region.current_state == "success"
+        assert region.current_state_name == "success"
 
         # Chart completed naturally, no need to stop
 
@@ -153,7 +153,7 @@ class TestMultiStateWorkflow:
         completed = await wait_for_chart_completion(chart, timeout=1.0)
 
         assert completed is True
-        assert region.current_state == "failure"  # Should fail due to counter=0
+        assert region.current_state_name == "failure"  # Should fail due to counter=0
 
         # Chart completed naturally, no need to stop
 
@@ -180,7 +180,7 @@ class TestMultiStateWorkflow:
         completed = await wait_for_chart_completion(chart, timeout=2.0)
 
         assert completed is True
-        assert region.current_state == "success"
+        assert region.current_state_name == "success"
 
         # Chart completed naturally, no need to stop
 
@@ -234,8 +234,8 @@ class TestConcurrentRegions:
         completed = await wait_for_chart_completion(chart, timeout=2.0)
 
         assert completed is True
-        assert region1.current_state == "done"
-        assert region2.current_state == "done"
+        assert region1.current_state_name == "done"
+        assert region2.current_state_name == "done"
 
         # Chart completed naturally, no need to stop
 
@@ -261,14 +261,14 @@ class TestConcurrentRegions:
         chart.post("event1")
         await asyncio.sleep(0.05)
 
-        assert region1.current_state == "done"
-        assert region2.current_state == "init"
+        assert region1.current_state_name == "done"
+        assert region2.current_state_name == "init"
 
         # Send event2 - now region2 should transition
         chart.post("event2")
         await asyncio.sleep(0.05)
 
-        assert region2.current_state == "done"
+        assert region2.current_state_name == "done"
 
         # Both regions reached FinalState, chart completes automatically
 
@@ -318,7 +318,7 @@ class TestPreemptionFlows:
         await asyncio.sleep(0.2)
 
         # Should have transitioned to quick state
-        assert region.current_state == "quick"
+        assert region.current_state_name == "quick"
 
         await chart.stop()
 
@@ -344,7 +344,7 @@ class TestPreemptionFlows:
         # Wait for preemption to complete
         await asyncio.sleep(0.2)
 
-        assert region.current_state == "done"
+        assert region.current_state_name == "done"
 
         # Region reached FinalState, chart completes automatically
 
@@ -381,7 +381,7 @@ class TestEventQueueIntegration:
         completed = await wait_for_chart_completion(chart, timeout=1.0)
 
         assert completed is True
-        assert region.current_state == "done"
+        assert region.current_state_name == "done"
 
         # Chart completed naturally, no need to stop
 

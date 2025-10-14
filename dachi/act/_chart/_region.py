@@ -236,7 +236,9 @@ class Region(ChartBase, ChartEventHandler):
                 self._pending_reason.set("Region stopped with preemption")
                 await self.transition(post, ctx)
             except KeyError:
-                raise RuntimeError(f"Cannot stop region '{self.name}' as current state '{self.current_state_name}' not found.")
+                raise RuntimeError(
+                    f"Cannot stop region '{self.name}' as current state '{self.current_state_name}' not found."
+                )
         else:
             # Immediate cancellation
             if self._cur_task:
@@ -416,7 +418,7 @@ class Region(ChartBase, ChartEventHandler):
 
     def decide(self, event: "Event") -> "Decision":
         """Make routing decision based on event and current state"""
-        current_state = self.current_state
+        current_state = self.current_state_name
         event_type = event["type"]
 
         # Check state-dependent rules first (higher precedence)
@@ -434,7 +436,7 @@ class Region(ChartBase, ChartEventHandler):
 
         # Found a rule - determine decision type based on current state
         target = rule["target"]
-
+        
         try:
             state_instance = self._chart_states[current_state]
             if isinstance(state_instance, StreamState):

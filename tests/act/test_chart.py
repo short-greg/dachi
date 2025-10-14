@@ -701,7 +701,7 @@ class TestChartStart:
         await chart.start()
         await asyncio.sleep(0.01)  # Give time for transition
 
-        assert region.current_state == "idle"
+        assert region.current_state_name == "idle"
         await chart.stop()
 
     @pytest.mark.asyncio

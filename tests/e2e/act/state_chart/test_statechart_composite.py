@@ -90,21 +90,31 @@ class TestBasicParallelRegions:
         )
 
         # Wrapper region to hold composite
-        main_region = Region(name="main", initial="parallel_tasks", rules=[])
+        # Add rule to transition composite to SUCCESS when both tasks done
+        main_region = Region(name="main", initial="parallel_tasks", rules=[
+            Rule(event_type="all_tasks_done", target="SUCCESS"),
+        ])
         main_region["parallel_tasks"] = composite
 
         chart = StateChart(name="parallel_test", regions=[main_region])
         await chart.start()
 
-        # Wait for composite to complete
-        await asyncio.sleep(0.2)
+        # Wait for both regions to complete
+        await asyncio.sleep(0.1)
 
-        # Both regions should have completed
-        assert region_a.current_state == "SUCCESS"
-        assert region_b.current_state == "SUCCESS"
-        assert composite.status == ChartStatus.SUCCESS
+        # Both child regions should have completed
+        assert region_a.current_state_name == "SUCCESS"
+        assert region_b.current_state_name == "SUCCESS"
 
-        await chart.stop()
+        # Composite should be done running (but still waiting for transition event)
+        assert composite._run_completed.get() == True
+
+        # Post event to transition composite
+        chart.post("all_tasks_done")
+        await asyncio.sleep(0.05)
+
+        # Now main region should have transitioned to SUCCESS
+        assert main_region.current_state_name == "SUCCESS"
 
 
 # ============================================================================
@@ -159,7 +169,7 @@ class TestSequentialChildWorkflow:
 
         await asyncio.sleep(0.1)
 
-        assert workflow_region.current_state == "complete"
+        assert workflow_region.current_state_name == "complete"
 
         await chart.stop()
 
@@ -226,7 +236,9 @@ class TestParallelDataCollection:
             regions=ModuleList(items=[region_a, region_b, region_c])
         )
 
-        main_region = Region(name="main", initial="composite", rules=[])
+        main_region = Region(name="main", initial="composite", rules=[
+            Rule(event_type="all_done", target="SUCCESS"),
+        ])
         main_region["composite"] = composite
 
         chart = StateChart(name="data_collection", regions=[main_region])
@@ -239,9 +251,12 @@ class TestParallelDataCollection:
         await asyncio.sleep(0.1)
 
         # Check each region completed
-        assert region_a.current_state == "done"
-        assert region_b.current_state == "done"
-        assert region_c.current_state == "done"
+        assert region_a.current_state_name == "done"
+        assert region_b.current_state_name == "done"
+        assert region_c.current_state_name == "done"
+
+        # Check composite is done running
+        assert composite._run_completed.get() == True
 
         # Check data is in separate child contexts
         ctx_a = composite_ctx.child(0)
@@ -252,7 +267,12 @@ class TestParallelDataCollection:
         assert ctx_b.get("data_b") == [4, 5, 6]
         assert ctx_c.get("data_c") == [7, 8, 9]
 
-        await chart.stop()
+        # Post event to transition composite
+        chart.post("all_done")
+        await asyncio.sleep(0.05)
+
+        # Main region should have transitioned to SUCCESS
+        assert main_region.current_state_name == "SUCCESS"
 
 
 # ============================================================================
@@ -306,7 +326,9 @@ class TestCompositeCompletion:
             regions=ModuleList(items=[fast_region, slow_region])
         )
 
-        main_region = Region(name="main", initial="composite", rules=[])
+        main_region = Region(name="main", initial="composite", rules=[
+            Rule(event_type="all_complete", target="SUCCESS"),
+        ])
         main_region["composite"] = composite
 
         chart = StateChart(name="completion_test", regions=[main_region])
@@ -314,17 +336,21 @@ class TestCompositeCompletion:
 
         # Check fast completes first
         await asyncio.sleep(0.03)
-        assert fast_region.current_state == "complete"
-        assert slow_region.current_state == "task"  # Still running
+        assert fast_region.current_state_name == "complete"
+        assert slow_region.current_state_name == "task"  # Still running
+        assert composite._run_completed.get() == False  # Not all done yet
 
         # Wait for slow to complete
         await asyncio.sleep(0.1)
-        assert slow_region.current_state == "complete"
+        assert slow_region.current_state_name == "complete"
+        assert composite._run_completed.get() == True  # Now all done
 
-        # Composite should now be complete
-        assert composite.status == ChartStatus.SUCCESS
+        # Post event to transition composite
+        chart.post("all_complete")
+        await asyncio.sleep(0.05)
 
-        await chart.stop()
+        # Main region should have transitioned
+        assert main_region.current_state_name == "SUCCESS"
 
 
 # ============================================================================
@@ -413,19 +439,24 @@ class TestCompositeInStateMachine:
         chart = StateChart(name="workflow_with_composite", regions=[main_region])
         await chart.start()
 
-        # Wait for workflow
-        await asyncio.sleep(0.15)
+        # Wait for prepare to complete
+        await asyncio.sleep(0.02)
+        assert main_region.current_state_name == "parallel"
 
-        # Composite should complete, triggering parallel_done event
-        # But we need composite to post this event - it doesn't automatically!
-        # This is a design question: should composite post completion event?
+        # Wait for composite children to complete
+        await asyncio.sleep(0.1)
+        assert work1_region.current_state_name == "done"
+        assert work2_region.current_state_name == "done"
+        assert composite._run_completed.get() == True
 
-        # For now, just verify composite completed
-        assert work1_region.current_state == "done"
-        assert work2_region.current_state == "done"
-        assert composite.status == ChartStatus.SUCCESS
+        # Post event to transition from composite to finalize
+        chart.post("parallel_done")
+        await asyncio.sleep(0.05)
+        assert main_region.current_state_name == "finalize"
 
-        await chart.stop()
+        # Wait for finalize and final transition
+        await asyncio.sleep(0.05)
+        assert main_region.current_state_name == "complete"
 
 
 # ============================================================================
@@ -529,8 +560,8 @@ class TestMultipleIndependentWorkflows:
         await asyncio.sleep(0.1)
 
         # Both workflows should complete
-        assert workflow_a.current_state == "complete"
-        assert workflow_b.current_state == "complete"
+        assert workflow_a.current_state_name == "complete"
+        assert workflow_b.current_state_name == "complete"
 
         await chart.stop()
 
@@ -574,7 +605,9 @@ class TestCompositeReset:
             regions=ModuleList(items=[region1, region2])
         )
 
-        main_region = Region(name="main", initial="composite", rules=[])
+        main_region = Region(name="main", initial="composite", rules=[
+            Rule(event_type="completed", target="SUCCESS"),
+        ])
         main_region["composite"] = composite
 
         chart = StateChart(name="reset_test", regions=[main_region])
@@ -582,15 +615,18 @@ class TestCompositeReset:
 
         await asyncio.sleep(0.05)
 
-        # Composite and regions complete
-        assert composite.status == ChartStatus.SUCCESS
-        assert region1.current_state == "complete"
-        assert region2.current_state == "complete"
+        # Child regions complete
+        assert region1.current_state_name == "complete"
+        assert region2.current_state_name == "complete"
+        assert composite._run_completed.get() == True
 
-        # Reset composite
+        # Post event to transition composite
+        chart.post("completed")
+        await asyncio.sleep(0.05)
+
+        # Main region should have transitioned
+        assert main_region.current_state_name == "SUCCESS"
+
+        # Reset composite (for testing reset functionality)
         composite.reset()
-
         assert composite.status == ChartStatus.WAITING
-        # Child regions maintain their state (reset happens at re-entry)
-
-        await chart.stop()

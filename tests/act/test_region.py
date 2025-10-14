@@ -150,6 +150,7 @@ class TestRegionDecide:
     def test_decide_matches_when_in_correct_state(self):
         rule = Rule(event_type="advance", target="next", when_in="waiting")
         region = Region(name="test", initial="idle", rules=[rule])
+        region._chart_states["waiting"] = SimpleState()  # Register the state
         region._current_state.set("waiting")  # Set via Attr
         event = Event(type="advance")
 
@@ -158,12 +159,9 @@ class TestRegionDecide:
         assert decision["type"] != "stay"
 
     def test_decide_returns_preempt_for_stream_state_transition(self):
-        class SimpleStreamState(StreamState):
-            async def execute(self, post, **inputs):
-                yield
-
         rule = Rule(event_type="cancel", target="cancelled")
         region = Region(name="test", initial="streaming", rules=[rule])
+        # Use the module-level SimpleStreamState
         region._chart_states["streaming"] = SimpleStreamState()
         region._current_state.set("streaming")
         event = Event(type="cancel")
@@ -236,7 +234,7 @@ class TestRegionStart:
 
         await region.start(post, ctx)
 
-        assert region.current_state == "idle"
+        assert region.current_state_name == "idle"
         assert region._cur_task is not None
 
 
@@ -515,7 +513,7 @@ class TestRegionTransition:
 
         await region.transition(post, ctx)
 
-        assert region.current_state == "active"
+        assert region.current_state_name == "active"
 
     @pytest.mark.asyncio
     async def test_transition_calls_enter_on_new_state(self):
