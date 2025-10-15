@@ -258,6 +258,7 @@ class TestParallelDataCollection:
         # Check composite is done running
         assert composite._run_completed.get() == True
 
+        print("Scope data:", scope.full_path)
         # Check data is in separate child contexts
         ctx_a = composite_ctx.child(0)
         ctx_b = composite_ctx.child(1)
@@ -439,23 +440,45 @@ class TestCompositeInStateMachine:
         chart = StateChart(name="workflow_with_composite", regions=[main_region])
         await chart.start()
 
-        # Wait for prepare to complete
-        await asyncio.sleep(0.02)
+        # Poll for prepare to complete
+        for i in range(20):
+            print(f"[{i}] main_region: {main_region.current_state_name}")
+            if main_region.current_state_name == "parallel":
+                break
+            await asyncio.sleep(0.01)
         assert main_region.current_state_name == "parallel"
 
-        # Wait for composite children to complete
-        await asyncio.sleep(0.1)
+        # Poll for composite children to complete
+        for i in range(50):
+            print(f"[{i}] work1: {work1_region.current_state_name}, work2: {work2_region.current_state_name}, composite._run_completed: {composite._run_completed.get()}")
+            if (work1_region.current_state_name == "done" and
+                work2_region.current_state_name == "done" and
+                composite._run_completed.get() == True):
+                break
+            await asyncio.sleep(0.01)
         assert work1_region.current_state_name == "done"
         assert work2_region.current_state_name == "done"
         assert composite._run_completed.get() == True
 
         # Post event to transition from composite to finalize
+        print("Posting 'parallel_done' event")
         chart.post("parallel_done")
-        await asyncio.sleep(0.05)
+
+        # Poll for finalize state
+        for i in range(20):
+            print(f"[{i}] After parallel_done: main_region: {main_region.current_state_name}")
+            if main_region.current_state_name == "finalize":
+                break
+            await asyncio.sleep(0.01)
+        print(f"After waiting for finalize: main_region: {main_region.current_state_name}")
         assert main_region.current_state_name == "finalize"
 
-        # Wait for finalize and final transition
-        await asyncio.sleep(0.05)
+        # Poll for final transition to complete
+        for i in range(20):
+            print(f"[{i}] Waiting for complete: main_region: {main_region.current_state_name}")
+            if main_region.current_state_name == "complete":
+                break
+            await asyncio.sleep(0.01)
         assert main_region.current_state_name == "complete"
 
 
@@ -495,28 +518,28 @@ class TestEmptyComposite:
 class WorkflowAStep1(State):
     async def execute(self, post, **inputs):
         await asyncio.sleep(0.01)
-        await post.aforward("next")
+        await post.aforward("next_a")
         return {"workflow_a_step": 1}
 
 
 class WorkflowAStep2(State):
     async def execute(self, post, **inputs):
         await asyncio.sleep(0.01)
-        await post.aforward("done")
+        await post.aforward("done_a")
         return {"workflow_a_step": 2}
 
 
 class WorkflowBStep1(State):
     async def execute(self, post, **inputs):
         await asyncio.sleep(0.02)
-        await post.aforward("next")
+        await post.aforward("next_b")
         return {"workflow_b_step": 1}
 
 
 class WorkflowBStep2(State):
     async def execute(self, post, **inputs):
         await asyncio.sleep(0.02)
-        await post.aforward("done")
+        await post.aforward("done_b")
         return {"workflow_b_step": 2}
 
 
@@ -531,16 +554,16 @@ class TestMultipleIndependentWorkflows:
     async def test_two_independent_workflows_run_concurrently(self):
         """Test two complete workflows execute independently in parallel."""
         workflow_a = Region(name="workflow_a", initial="step1", rules=[
-            Rule(event_type="next", target="step2"),
-            Rule(event_type="done", target="complete"),
+            Rule(event_type="next_a", target="step2"),
+            Rule(event_type="done_a", target="complete"),
         ])
         workflow_a["step1"] = WorkflowAStep1()
         workflow_a["step2"] = WorkflowAStep2()
         workflow_a["complete"] = WorkflowDone()
 
         workflow_b = Region(name="workflow_b", initial="step1", rules=[
-            Rule(event_type="next", target="step2"),
-            Rule(event_type="done", target="complete"),
+            Rule(event_type="next_b", target="step2"),
+            Rule(event_type="done_b", target="complete"),
         ])
         workflow_b["step1"] = WorkflowBStep1()
         workflow_b["step2"] = WorkflowBStep2()
@@ -557,13 +580,18 @@ class TestMultipleIndependentWorkflows:
         chart = StateChart(name="multi_workflow", regions=[main_region])
         await chart.start()
 
-        await asyncio.sleep(0.1)
+        # Poll until composite completes or timeout
+        for i in range(50):  # 50 * 0.01 = 0.5s timeout
+            print(f"[{i}] workflow_a: {workflow_a.current_state_name}, workflow_b: {workflow_b.current_state_name}")
+            if (workflow_a.current_state_name == "complete" and
+                workflow_b.current_state_name == "complete"):
+                break
+            await asyncio.sleep(0.01)
 
         # Both workflows should complete
+        print(f"Final: workflow_a: {workflow_a.current_state_name}, workflow_b: {workflow_b.current_state_name}")
         assert workflow_a.current_state_name == "complete"
         assert workflow_b.current_state_name == "complete"
-
-        await chart.stop()
 
 
 # ============================================================================

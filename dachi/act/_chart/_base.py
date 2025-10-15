@@ -112,7 +112,8 @@ class ChartBase(BaseModule):
                     exc_info=True,
                     extra={
                         "callback": callback.__name__ if hasattr(callback, "__name__") else str(callback),
-                        "name": self.name
+                        "component_name": self.name,
+                        "component_type": self.__class__.__name__
                     }
                 )
                 # Continue with remaining callbacks

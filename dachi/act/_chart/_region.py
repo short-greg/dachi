@@ -386,7 +386,6 @@ class Region(ChartBase, ChartEventHandler):
 
         # Check if new state is final
         if isinstance(state_obj, FinalState):
-            self._status.set(state_obj.status)
             # Determine status based on which final state
             if target == "SUCCESS":
                 self._status.set(ChartStatus.SUCCESS)
@@ -394,6 +393,9 @@ class Region(ChartBase, ChartEventHandler):
                 self._status.set(ChartStatus.FAILURE)
             elif target == "CANCELED":
                 self._status.set(ChartStatus.CANCELED)
+            else:
+                # Custom FinalState - use its status field (call .get() to unwrap Attr)
+                self._status.set(state_obj.status.get())
 
             # Complete the region
             self._stopped.set(True)
@@ -437,15 +439,7 @@ class Region(ChartBase, ChartEventHandler):
         # Found a rule - determine decision type based on current state
         target = rule["target"]
         
-        try:
-            state_instance = self._chart_states[current_state]
-            if isinstance(state_instance, StreamState):
-                return {"type": "preempt", "target": target}
-            else:
-                return {"type": "immediate", "target": target}
-        except KeyError:
-            # State not registered yet, default to immediate
-            return {"type": "immediate", "target": target}
+        return {"type": "preempt", "target": target}
 
     async def handle_event(
         self, event: "Event", post: Post, ctx: Ctx
@@ -453,12 +447,12 @@ class Region(ChartBase, ChartEventHandler):
         """Handle an incoming event and update region state accordingly"""
         if self.status != ChartStatus.RUNNING:
             return # Ignore events if not running
-        
+
         cur_state = self.current_state
         if isinstance(cur_state, ChartEventHandler):
             await cur_state.handle_event(
-                event, 
-                post.sibling(cur_state.name), 
+                event,
+                post.sibling(cur_state.name),
                 ctx.child(self._state_idx_map[cur_state.name])
             )
 
