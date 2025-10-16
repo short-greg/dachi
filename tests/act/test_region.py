@@ -5,6 +5,7 @@ import asyncio
 from dachi.act._chart._region import (
     Decision,
     Region, Rule, RuleBuilder,
+    ValidationResult, ValidationIssue, RegionValidationError,
 )
 from dachi.act._chart._state import State, StreamState, FinalState
 from dachi.act._chart._event import Event, EventQueue, Post
@@ -172,6 +173,11 @@ class TestRegionDecide:
         assert decision["target"] == "cancelled"
 
     def test_decide_returns_immediate_for_regular_state_transition(self):
+        """Test decide returns preempt for regular state transitions.
+
+        Changed from 'immediate' to 'preempt' to prevent task cancellation
+        before states complete their execution.
+        """
         rule = Rule(event_type="next", target="done")
         region = Region(name="test", initial="idle", rules=[rule])
         region._chart_states["idle"] = SimpleState()
@@ -180,7 +186,7 @@ class TestRegionDecide:
 
         decision = region.decide(event)
 
-        assert decision["type"] == "immediate"
+        assert decision["type"] == "preempt"
         assert decision["target"] == "done"
 
 class TestRegionStart:
@@ -690,6 +696,12 @@ class TestRegionHandleEvent:
 
     @pytest.mark.asyncio
     async def test_handle_event_cancels_task_for_immediate(self):
+        """Test handle_event uses preempt (not immediate) for regular states.
+
+        Changed behavior: Regular states now use 'preempt' decision type,
+        which calls exit() but does NOT cancel the task. This allows states
+        to complete naturally and write their data to context before transitioning.
+        """
         region = Region(name="test", initial="idle", rules=[])
         rule = Rule(event_type="go", target="active")
         region.rules.append(rule)
@@ -712,7 +724,9 @@ class TestRegionHandleEvent:
         await region.handle_event(event, post, ctx)
         await asyncio.sleep(0)
 
-        assert task.cancelled() or task.done()
+        # With preempt, task is NOT cancelled - exit() is called instead
+        assert not task.cancelled()
+        assert state._exiting.get() is True
 
     @pytest.mark.asyncio
     async def test_handle_event_calls_exit_for_preempt(self):
@@ -856,3 +870,168 @@ class TestRuleBuilder:
         assert rule["target"] == "active"
         assert rule["when_in"] == "idle"
         assert rule["priority"] == 5
+
+
+class TestRegionValidation:
+    """Tests for Region.validate() graph validation"""
+
+    # Reachability tests (5 tests)
+    def test_validate_all_states_reachable_returns_valid_result(self):
+        """All states reachable via rules"""
+        region = Region(name="test", initial="a", rules=[
+            {"event_type": "next", "when_in": "a", "target": "b"},
+            {"event_type": "done", "when_in": "b", "target": "SUCCESS"}
+        ])
+        region["a"] = SimpleState(name="a")
+        region["b"] = SimpleState(name="b")
+
+        result = region.validate()
+        assert result.is_valid()
+        assert not result.has_warnings()
+
+    def test_validate_detects_single_orphaned_state(self):
+        """State with no incoming transition"""
+        region = Region(name="test", initial="a", rules=[
+            {"event_type": "done", "when_in": "a", "target": "SUCCESS"}
+        ])
+        region["a"] = SimpleState(name="a")
+        region["orphan"] = SimpleState(name="orphan")
+
+        result = region.validate()
+        assert not result.is_valid()
+        assert len(result.errors) == 1
+        assert "orphan" in result.errors[0].related_states
+
+    def test_validate_detects_multiple_orphaned_states(self):
+        """Multiple unreachable states"""
+        region = Region(name="test", initial="a", rules=[
+            {"event_type": "done", "when_in": "a", "target": "SUCCESS"}
+        ])
+        region["a"] = SimpleState(name="a")
+        region["orphan1"] = SimpleState(name="orphan1")
+        region["orphan2"] = SimpleState(name="orphan2")
+
+        result = region.validate()
+        assert not result.is_valid()
+        assert len(result.errors) == 1
+        assert "orphan1" in result.errors[0].related_states
+        assert "orphan2" in result.errors[0].related_states
+
+    def test_validate_state_reachable_via_indirect_path(self):
+        """State reachable through multiple hops"""
+        region = Region(name="test", initial="a", rules=[
+            {"event_type": "next", "when_in": "a", "target": "b"},
+            {"event_type": "next", "when_in": "b", "target": "c"},
+            {"event_type": "done", "when_in": "c", "target": "SUCCESS"}
+        ])
+        region["a"] = SimpleState(name="a")
+        region["b"] = SimpleState(name="b")
+        region["c"] = SimpleState(name="c")
+
+        result = region.validate()
+        assert result.is_valid()
+
+    def test_validate_state_independent_rule_makes_all_reachable(self):
+        """State-independent rule provides path to all states"""
+        region = Region(name="test", initial="a", rules=[
+            {"event_type": "jump", "target": "b"},  # No when_in
+            {"event_type": "done", "when_in": "b", "target": "SUCCESS"}
+        ])
+        region["a"] = SimpleState(name="a")
+        region["b"] = SimpleState(name="b")
+
+        result = region.validate()
+        assert result.is_valid()
+
+    # Termination tests (5 tests)
+    def test_validate_all_states_have_path_to_final(self):
+        """All states can reach a FinalState"""
+        region = Region(name="test", initial="a", rules=[
+            {"event_type": "next", "when_in": "a", "target": "b"},
+            {"event_type": "done", "when_in": "b", "target": "SUCCESS"}
+        ])
+        region["a"] = SimpleState(name="a")
+        region["b"] = SimpleState(name="b")
+
+        result = region.validate()
+        assert result.is_valid()
+        assert not result.has_warnings()
+
+    def test_validate_detects_infinite_loop_with_no_escape(self):
+        """State that only transitions to itself"""
+        region = Region(name="test", initial="a", rules=[
+            {"event_type": "loop", "when_in": "a", "target": "a"}
+        ])
+        region["a"] = SimpleState(name="a")
+
+        result = region.validate()
+        assert result.is_valid()  # No errors
+        assert result.has_warnings()
+        assert len(result.warnings) == 1
+        assert "a" in result.warnings[0].related_states
+
+    def test_validate_loop_with_escape_path_is_valid(self):
+        """Loop is OK if there's an escape to final"""
+        region = Region(name="test", initial="a", rules=[
+            {"event_type": "loop", "when_in": "a", "target": "a"},
+            {"event_type": "exit", "when_in": "a", "target": "SUCCESS"}
+        ])
+        region["a"] = SimpleState(name="a")
+
+        result = region.validate()
+        assert result.is_valid()
+        assert not result.has_warnings()
+
+    def test_validate_cycle_with_no_escape_detected(self):
+        """Cycle A→B→C→A with no exit"""
+        region = Region(name="test", initial="a", rules=[
+            {"event_type": "next", "when_in": "a", "target": "b"},
+            {"event_type": "next", "when_in": "b", "target": "c"},
+            {"event_type": "next", "when_in": "c", "target": "a"}
+        ])
+        region["a"] = SimpleState(name="a")
+        region["b"] = SimpleState(name="b")
+        region["c"] = SimpleState(name="c")
+
+        result = region.validate()
+        assert result.is_valid()  # No errors
+        assert result.has_warnings()
+        assert "a" in result.warnings[0].related_states
+        assert "b" in result.warnings[0].related_states
+        assert "c" in result.warnings[0].related_states
+
+    def test_validate_state_independent_rule_provides_escape(self):
+        """State-independent rule to final allows all states to terminate"""
+        region = Region(name="test", initial="a", rules=[
+            {"event_type": "loop", "when_in": "a", "target": "a"},
+            {"event_type": "abort", "target": "FAILURE"}  # No when_in
+        ])
+        region["a"] = SimpleState(name="a")
+
+        result = region.validate()
+        assert result.is_valid()
+        assert not result.has_warnings()
+
+    # raise_if_invalid tests (2 tests)
+    def test_validate_raise_if_invalid_raises_on_failure(self):
+        """raise_if_invalid() raises RegionValidationError on errors"""
+        region = Region(name="test", initial="a", rules=[])
+        region["a"] = SimpleState(name="a")
+        region["orphan"] = SimpleState(name="orphan")
+
+        result = region.validate()
+        with pytest.raises(RegionValidationError) as exc_info:
+            result.raise_if_invalid()
+
+        assert "test" in str(exc_info.value)
+        assert "orphan" in str(exc_info.value)
+
+    def test_validate_raise_if_invalid_does_not_raise_on_success(self):
+        """raise_if_invalid() does not raise when valid"""
+        region = Region(name="test", initial="a", rules=[
+            {"event_type": "done", "when_in": "a", "target": "SUCCESS"}
+        ])
+        region["a"] = SimpleState(name="a")
+
+        result = region.validate()
+        result.raise_if_invalid()  # Should not raise

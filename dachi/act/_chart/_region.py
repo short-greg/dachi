@@ -1,6 +1,7 @@
 # 1st Party
 from __future__ import annotations
-from typing import Any, Dict, List, Optional, Union, TypedDict, Literal, Tuple
+from typing import Any, Dict, List, Optional, Union, TypedDict, Literal, Tuple, Set
+from dataclasses import dataclass, field
 import asyncio
 from ._base import ChartBase, ChartStatus, InvalidTransition
 
@@ -13,6 +14,68 @@ import logging
 logger = logging.getLogger("dachi.statechart")
 
 JSON = Union[Dict[str, Any], List[Any], str, int, float, bool, None]
+
+
+@dataclass
+class ValidationIssue:
+    """A single validation issue."""
+    message: str
+    related_states: List[str] = field(default_factory=list)
+
+    def __str__(self) -> str:
+        return self.message
+
+
+@dataclass
+class ValidationResult:
+    """Result of graph validation."""
+    region_name: str
+    errors: List[ValidationIssue] = field(default_factory=list)
+    warnings: List[ValidationIssue] = field(default_factory=list)
+
+    def is_valid(self) -> bool:
+        """Check if validation passed (no errors)."""
+        return len(self.errors) == 0
+
+    def has_warnings(self) -> bool:
+        """Check if there are any warnings."""
+        return len(self.warnings) > 0
+
+    def raise_if_invalid(self) -> None:
+        """Raise RegionValidationError if validation failed (has errors)."""
+        if not self.is_valid():
+            raise RegionValidationError(self._format_issues())
+
+    def _format_issues(self) -> str:
+        """Format errors and warnings for display."""
+        parts = []
+
+        if self.errors:
+            parts.append(f"Validation failed for region '{self.region_name}':")
+            parts.append("Errors:")
+            for i, error in enumerate(self.errors, 1):
+                parts.append(f"  {i}. {error.message}")
+
+        if self.warnings:
+            if not self.errors:
+                parts.append(f"Region '{self.region_name}' validation warnings:")
+            parts.append("Warnings:")
+            for i, warning in enumerate(self.warnings, 1):
+                parts.append(f"  {i}. {warning.message}")
+
+        return "\n".join(parts)
+
+    def __str__(self) -> str:
+        if self.is_valid() and not self.has_warnings():
+            return f"Region '{self.region_name}' validation: PASSED"
+        elif self.is_valid():
+            return f"Region '{self.region_name}' validation: PASSED with warnings\n{self._format_issues()}"
+        return self._format_issues()
+
+
+class RegionValidationError(Exception):
+    """Raised when region validation fails."""
+    pass
 
 
 class Rule(TypedDict, total=False):
@@ -77,17 +140,111 @@ class Region(ChartBase, ChartEventHandler):
                 key = (rule["event_type"],)
             self._rule_lookup[key] = rule
 
-    def validate(self):
-        """Validate region configuration"""
-        pass
-        # TODO: Implement validation to ensure the region's states and rules are consistent. All paths must lead to a final state.
-        # if self.initial not in self._states:
-        #     raise ValueError(f"Initial state '{self.initial}' not found in region '{self.name}'")
-        # for rule in self.rules:
-        #     if rule["target"] not in self._states:
-        #         raise ValueError(f"Rule target state '{rule['target']}' not found in region '{self.name}'")
-        #     if rule.get("when_in") and rule["when_in"] not in self._states:
-        #         raise ValueError(f"Rule when_in state '{rule['when_in']}' not found in region '{self.name}'")
+    def _check_reachability(self) -> List[str]:
+        """Find unreachable states using BFS from initial state.
+
+        Returns:
+            List of unreachable state names (sorted)
+        """
+        reachable: Set[str] = {self.initial}
+        queue: List[str] = [self.initial]
+
+        while queue:
+            current = queue.pop(0)
+
+            for rule in self.rules:
+                target = rule["target"]
+
+                # Skip if already processed or not a real state
+                if target in reachable or target not in self._chart_states:
+                    continue
+
+                # Can transition from current state?
+                if rule.get("when_in") == current or not rule.get("when_in"):
+                    reachable.add(target)
+                    queue.append(target)
+
+        # Exclude built-in states from validation
+        built_in = {'READY', 'SUCCESS', 'FAILURE', 'CANCELED'}
+        all_user_states = set(self._chart_states.keys()) - built_in
+
+        return sorted(all_user_states - reachable)
+
+    def _check_termination(self) -> List[str]:
+        """Find states with no path to final using backward propagation.
+
+        Note: This checks if states can reach final through the state machine's
+        own transition rules. External stop() is not considered since it's an
+        external interruption, not part of the state machine logic.
+
+        Returns:
+            List of non-terminating state names (sorted)
+        """
+        final_states = {'SUCCESS', 'FAILURE', 'CANCELED'}
+        can_terminate: Set[str] = set(final_states)
+
+        # Quick check: state-independent rule to final means ALL states can terminate
+        for rule in self.rules:
+            if not rule.get("when_in") and rule["target"] in final_states:
+                return []  # All states have escape path
+
+        # Backward propagation from final states
+        changed = True
+        while changed:
+            changed = False
+            for rule in self.rules:
+                if rule["target"] in can_terminate:
+                    # State-independent rule: ALL states can reach target (which reaches final)
+                    if not rule.get("when_in"):
+                        for state_name in self._chart_states:
+                            if state_name not in can_terminate:
+                                can_terminate.add(state_name)
+                                changed = True
+                    # State-dependent rule: only source state can reach final
+                    else:
+                        source = rule["when_in"]
+                        if source not in can_terminate:
+                            can_terminate.add(source)
+                            changed = True
+
+        # Exclude built-in states
+        built_in = {'READY', 'SUCCESS', 'FAILURE', 'CANCELED'}
+        all_user_states = set(self._chart_states.keys()) - built_in
+
+        return sorted(all_user_states - can_terminate)
+
+    def validate(self) -> ValidationResult:
+        """Validate state graph properties.
+
+        Checks:
+        1. All states are reachable from initial state (ERROR if not)
+        2. All states have a path to a FinalState (WARNING if not)
+
+        Returns:
+            ValidationResult with errors and warnings
+
+        Raises:
+            RegionValidationError: If raise_if_invalid() is called and validation failed
+        """
+        result = ValidationResult(region_name=self.name)
+
+        # Check reachability (ERROR)
+        unreachable = self._check_reachability()
+        if unreachable:
+            result.errors.append(ValidationIssue(
+                message=f"Unreachable states: {', '.join(unreachable)}",
+                related_states=unreachable
+            ))
+
+        # Check termination (WARNING)
+        non_terminating = self._check_termination()
+        if non_terminating:
+            result.warnings.append(ValidationIssue(
+                message=f"States with no path to final: {', '.join(non_terminating)}",
+                related_states=non_terminating
+            ))
+
+        return result
 
     def add(self, state: State) -> None:
         """Add a State instance to the region

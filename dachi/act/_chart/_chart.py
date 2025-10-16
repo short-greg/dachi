@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from dachi.core import Attr, ModuleList
 from dachi.core._scope import Scope, Ctx
 from ._event import Event, EventQueue, Timer, MonotonicClock, ChartEventHandler, Post
-from ._region import Region
+from ._region import Region, ValidationResult
 
 
 @dataclass
@@ -249,6 +249,28 @@ class StateChart(ChartBase, ChartEventHandler):
 
     def list_timers(self) -> List[Dict[str, Any]]:
         return self._timer.list()
+
+    def validate(self, raise_on_error: bool = True) -> List[ValidationResult]:
+        """Validate all regions in the chart.
+
+        Delegates validation to each region and optionally raises on first error.
+
+        Args:
+            raise_on_error: If True, raise RegionValidationError on first failure
+
+        Returns:
+            List of ValidationResult, one per region
+
+        Raises:
+            RegionValidationError: If raise_on_error=True and any region is invalid
+        """
+        results = []
+        for region in self.regions:
+            result = region.validate()
+            results.append(result)
+            if raise_on_error and not result.is_valid():
+                result.raise_if_invalid()
+        return results
 
 # @dataclass
 # class Snapshot:

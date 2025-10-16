@@ -5,7 +5,7 @@ import asyncio
 from ._state import BaseState
 from ._base import ChartStatus, InvalidTransition
 from ._event import Post, ChartEventHandler, Event
-from ._region import Region
+from ._region import Region, ValidationResult
 from dachi.core import Ctx, ModuleList
 
 
@@ -163,3 +163,16 @@ class CompositeState(BaseState, ChartEventHandler):
         else:
             # Regions still running - will complete via finish_region callback
             self._status.set(ChartStatus.PREEMPTING)
+
+    def validate(self) -> t.List[ValidationResult]:
+        """Validate all child regions.
+
+        Delegates validation to each child region and collects results.
+
+        Returns:
+            List of ValidationResult, one per child region
+        """
+        results = []
+        for region in self.regions:
+            results.append(region.validate())
+        return results

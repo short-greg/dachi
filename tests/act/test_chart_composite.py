@@ -331,6 +331,9 @@ class TestCompositeStateRun:
         composite.register_finish_callback(callback)
         composite.enter(post, ctx)
         await composite.run(post, ctx)
+        # Finish only called after exit() when exiting=True
+        composite.exit(post, ctx)
+        await asyncio.sleep(0.01)  # Wait for finish callback
         assert called is True
 
     @pytest.mark.asyncio
@@ -708,7 +711,7 @@ class TestCompositeStateExit:
 
         # Not entered, cannot exit
         with pytest.raises(InvalidTransition):
-            await composite.exit(post, ctx)
+            composite.exit(post, ctx)
 
     @pytest.mark.asyncio
     async def test_exit_sets_exiting_flag(self):
@@ -719,7 +722,7 @@ class TestCompositeStateExit:
         ctx = scope.ctx()
 
         composite.enter(post, ctx)
-        await composite.exit(post, ctx)
+        composite.exit(post, ctx)
         assert composite._exiting.get() is True
 
     @pytest.mark.asyncio
@@ -731,7 +734,7 @@ class TestCompositeStateExit:
         ctx = scope.ctx()
 
         composite.enter(post, ctx)
-        await composite.exit(post, ctx)
+        composite.exit(post, ctx)
         assert composite._termination_requested.get() is True
 
     @pytest.mark.asyncio
@@ -748,7 +751,9 @@ class TestCompositeStateExit:
         # Start region
         await region.start(post.child("child"), ctx.child(0))
 
-        await composite.exit(post, ctx)
+        composite.exit(post, ctx)
+        # Wait for async stop task to execute
+        await asyncio.sleep(0.01)
         # Region should be stopped (or stopping)
         assert region.status.is_preempting() or region.status.is_completed()
 
@@ -762,7 +767,7 @@ class TestCompositeStateExit:
 
         composite.enter(post, ctx)
 
-        await composite.exit(post, ctx)
+        composite.exit(post, ctx)
         # Empty composite should succeed
         assert composite._status.get() == ChartStatus.SUCCESS
 
@@ -780,7 +785,7 @@ class TestCompositeStateExit:
         # Start region (will be running)
         await region.start(post.child("child"), ctx.child(0))
 
-        await composite.exit(post, ctx)
+        composite.exit(post, ctx)
         assert composite._status.get() == ChartStatus.PREEMPTING
 
     @pytest.mark.asyncio
@@ -799,7 +804,9 @@ class TestCompositeStateExit:
         composite.register_finish_callback(callback)
         composite.enter(post, ctx)
 
-        await composite.exit(post, ctx)
+        composite.exit(post, ctx)
+        # Wait for finish callback to be called (scheduled as task)
+        await asyncio.sleep(0.01)
         assert called is True
 
     @pytest.mark.asyncio
@@ -821,7 +828,7 @@ class TestCompositeStateExit:
         composite.enter(post, ctx)
         await region.start(post.child("child"), ctx.child(0))
 
-        await composite.exit(post, ctx)
+        composite.exit(post, ctx)
         assert called is False
 
     @pytest.mark.asyncio
@@ -840,7 +847,7 @@ class TestCompositeStateExit:
         # Register callback
         region.register_finish_callback(composite.finish_region, "child", post, ctx)
 
-        await composite.exit(post, ctx)
+        composite.exit(post, ctx)
         # Callback should be unregistered
         assert composite.finish_region not in region._finish_callbacks
 
@@ -866,7 +873,7 @@ class TestCompositeStateExit:
         await asyncio.sleep(0.01)
 
         # Now region1 should be completed, region2 still running
-        await composite.exit(post, ctx)
+        composite.exit(post, ctx)
         # One complete, one not - should be preempting
         assert composite._status.get() == ChartStatus.PREEMPTING
 
@@ -880,6 +887,6 @@ class TestCompositeStateExit:
 
         composite.enter(post, ctx)
 
-        await composite.exit(post, ctx)
+        composite.exit(post, ctx)
         # Empty composite should succeed on exit
         assert composite._status.get() == ChartStatus.SUCCESS
