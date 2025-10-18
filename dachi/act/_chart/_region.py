@@ -419,6 +419,8 @@ class Region(ChartBase, ChartEventHandler):
         if self._cur_task and not self._cur_task.done():
             self._cur_task.cancel()
         self._cur_task = None
+        for state in self._chart_states.values():
+            state.reset()
 
         # Reset to READY state (not None)
         self._current_state.set("READY")
@@ -429,45 +431,6 @@ class Region(ChartBase, ChartEventHandler):
         self._started.set(False)
         self._stopping.set(False)
         self._finished.set(False)
-
-    # async def finish_activity(
-    #     self, state_name: str, post: Post, ctx: Ctx
-    # ) -> None:
-    #     """Called when a state finishes executing.
-
-    #     Simplified logic:
-    #     1. If state failed with exception, set pending_target to FAILURE
-    #     2. Call transition() to move to next state
-    #     3. transition() handles final state detection and region completion
-    #     """
-    #     try:
-    #         state_obj = self._chart_states[state_name]
-    #     except KeyError:
-    #         raise RuntimeError(f"Cannot finish activity as State '{state_name}' not found in region '{self.name}'")
-
-    #     if state_name != self._current_state.data:
-    #         return
-
-    #     # # If state failed with exception, transition to FAILURE state
-    #     # if state_obj.status == ChartStatus.FAILURE:
-    #     #     self._pending_target.set("FAILURE")
-    #     #     self._pending_reason.set(f"State '{state_name}' failed with exception")
-
-    #     # # Clean up
-    #     # self._last_active_state.set(self._current_state.data)
-    #     # self._cur_task = None
-
-    #     # # If we're already in a final state, nothing more to do
-    #     # # (Final states are entered via transition(), which already called finish())
-    #     # if state_obj.is_final():
-    #     #     return
-
-    #     # Transition to next state (transition() handles final state completion)
-    #     if not await self.transition(post, ctx):
-    #         raise RuntimeError(
-    #             f"Region '{self.name}' has no pending target to transition to "
-    #             f"after state '{state_name}' finished."
-    #         )
 
     @property
     def current_state(self) -> BaseState | PseudoState | None:

@@ -28,6 +28,8 @@ class CompositeState(BaseState, ChartEventHandler):
     def __post_init__(self):
 
         super().__post_init__()
+        if isinstance(self.regions, list):
+            self.regions = ModuleList(self.regions)
         self._tasks = []
         self._finished_regions = set()
 
@@ -77,6 +79,8 @@ class CompositeState(BaseState, ChartEventHandler):
                 task.cancel()
 
         super().reset()
+        for region in self.regions:
+            region.reset()
         self._tasks = []
         self._finished_regions = set()
         

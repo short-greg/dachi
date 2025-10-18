@@ -162,3 +162,138 @@ class EvaluationBatch(pydantic.BaseModel):
 #     values = zip(*kwargs.values())
 #     return [dict(zip(keys, value)) for value in values]
 
+
+from pydantic import ConfigDict, PrivateAttr, Field, create_model
+from typing import Type, List
+
+
+class BaseCriterion(pydantic.BaseModel):
+    """Base criterion that generates evaluation schemas in model_post_init.
+
+    Subclasses must implement _create_evaluation_schema() to define the structure
+    of evaluations for this criterion.
+    """
+    model_config = ConfigDict(frozen=True)
+
+    name: str
+    description: str | None = None
+
+    _evaluation_schema: Type[pydantic.BaseModel] | None = PrivateAttr(default=None)
+    _batch_evaluation_schema: Type[pydantic.BaseModel] | None = PrivateAttr(default=None)
+
+    @property
+    def evaluation_schema(self) -> Type[pydantic.BaseModel]:
+        """Get the single evaluation schema."""
+        if self._evaluation_schema is None:
+            raise RuntimeError("evaluation_schema not initialized")
+        return self._evaluation_schema
+
+    @property
+    def batch_evaluation_schema(self) -> Type[pydantic.BaseModel]:
+        """Get the batch evaluation schema."""
+        if self._batch_evaluation_schema is None:
+            raise RuntimeError("batch_evaluation_schema not initialized")
+        return self._batch_evaluation_schema
+
+    def model_post_init(self, __context):
+        """Generate evaluation schemas after initialization."""
+        single_schema = self._create_evaluation_schema()
+        object.__setattr__(self, '_evaluation_schema', single_schema)
+
+        batch_schema = self._create_batch_evaluation_schema(single_schema)
+        object.__setattr__(self, '_batch_evaluation_schema', batch_schema)
+
+    def _create_evaluation_schema(self) -> Type[pydantic.BaseModel]:
+        """Override in subclasses to create single evaluation schema."""
+        raise NotImplementedError("Subclasses must implement _create_evaluation_schema")
+
+    def _create_batch_evaluation_schema(self, single_schema: Type[pydantic.BaseModel]) -> Type[pydantic.BaseModel]:
+        """Create batch schema (default: wraps single schema in list with criterion_name)."""
+        return create_model(
+            f'{self.name.replace(" ", "_")}BatchEvaluation',
+            criterion_name=(str, Field(default=self.name)),
+            evaluations=(List[single_schema], Field(
+                description="List of evaluations, one per output"
+            )),
+            __base__=pydantic.BaseModel
+        )
+
+    def render(self) -> str:
+        """Render criterion for prompt (override in subclasses)."""
+        if self.description:
+            return f"{self.name}: {self.description}"
+        return self.name
+
+
+class PassFailCriterion(BaseCriterion):
+    """Dichotomous judgment criterion (meets standard or doesn't)."""
+
+    passing_criteria: str | None = None
+
+    def _create_evaluation_schema(self) -> Type[pydantic.BaseModel]:
+        """Create PassFail evaluation schema."""
+        return create_model(
+            f'{self.name.replace(" ", "_")}PassFailEvaluation',
+            criterion_name=(str, Field(default=self.name)),
+            passed=(bool, Field(description="Whether output passes")),
+            reason=(str, Field(description="Reason for pass or fail")),
+            __base__=pydantic.BaseModel
+        )
+
+    def render(self) -> str:
+        """Render criterion for prompt."""
+        base = super().render()
+        if self.passing_criteria:
+            return f"{base}\nPassing criteria: {self.passing_criteria}"
+        return base
+
+
+class LikertCriterion(BaseCriterion):
+    """Ordinal rating scale criterion for attitudes/opinions."""
+
+    scale: List[LikertItem]
+
+    def _create_evaluation_schema(self) -> Type[pydantic.BaseModel]:
+        """Create Likert evaluation schema with rating constraints."""
+        # Get min and max from scale
+        scale_values = [item.val for item in self.scale]
+        min_val = min(scale_values)
+        max_val = max(scale_values)
+
+        return create_model(
+            f'{self.name.replace(" ", "_")}LikertEvaluation',
+            criterion_name=(str, Field(default=self.name)),
+            rating=(int, Field(description="Rating value", ge=min_val, le=max_val)),
+            explanation=(str, Field(description="Explanation for rating")),
+            __base__=pydantic.BaseModel
+        )
+
+    def render(self) -> str:
+        """Render criterion for prompt including scale items."""
+        base = super().render()
+        scale_text = "\n".join(
+            f"  {item.val}: {item.description}" for item in self.scale
+        )
+        return f"{base}\nScale:\n{scale_text}"
+
+
+class NumericalRatingCriterion(BaseCriterion):
+    """Numerical rating scale criterion with continuous values."""
+
+    min_value: float
+    max_value: float
+
+    def _create_evaluation_schema(self) -> Type[pydantic.BaseModel]:
+        """Create numerical rating evaluation schema."""
+        return create_model(
+            f'{self.name.replace(" ", "_")}NumericalEvaluation',
+            criterion_name=(str, Field(default=self.name)),
+            score=(float, Field(description="Numerical score", ge=self.min_value, le=self.max_value)),
+            explanation=(str, Field(description="Explanation for score")),
+            __base__=pydantic.BaseModel
+        )
+
+    def render(self) -> str:
+        """Render criterion for prompt including rating range."""
+        base = super().render()
+        return f"{base}\nRating range: {self.min_value} to {self.max_value}"

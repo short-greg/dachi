@@ -27,11 +27,11 @@ JSON = Union[Dict[str, Any], List[Any], str, int, float, bool, None]
 class StateChart(ChartBase, ChartEventHandler):
     name: str
     regions: ModuleList  # ModuleList[Region]
-    checkpoint_policy: Literal["yield", "hard"] = "yield"
+    checkpoint_policy: Literal["yield", "hard"] = "yield" # currently not used
     queue_maxsize: int = 1024
     queue_overflow: Literal["drop_newest", "drop_oldest", "block"] = "drop_newest"
-    emit_enforcement: Literal["none", "warn", "error"] = "warn"
-    auto_finish: bool = True
+    emit_enforcement: Literal["none", "warn", "error"] = "warn" # currently not used
+    auto_finish: bool = True # currently not used
 
     def __post_init__(self) -> None:
         """Initialize the state chart and its status.
@@ -39,6 +39,9 @@ class StateChart(ChartBase, ChartEventHandler):
             ValueError: If no regions are defined.
         """
         super().__post_init__()
+
+        if isinstance(self.regions, list):
+            self.regions = ModuleList(self.regions)
 
         self._status = Attr[ChartStatus](data=ChartStatus.WAITING)
         self._started_at = Attr[Optional[float]](data=None)
@@ -65,6 +68,7 @@ class StateChart(ChartBase, ChartEventHandler):
         if not self.can_reset():
             raise RuntimeError(f"Cannot reset chart in {self._status.get()} state")
         super().reset()
+        
         self._status.set(ChartStatus.WAITING)
         self._started_at.set(None)
         self._finished_at.set(None)
