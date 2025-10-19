@@ -12,7 +12,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
 from dachi.act._chart._state import BaseState, AtomState, State, StreamState, FinalState, PseudoState, ReadyState, BoundState, BoundStreamState
 from dachi.act._chart._base import ChartStatus, InvalidTransition
-from dachi.act._chart._event import EventQueue, Post
+from dachi.act._chart._event import EventQueue, EventPost
 from dachi.core import Scope
 
 
@@ -221,7 +221,7 @@ class TestBaseState:
 
     def test_can_enter_returns_false_when_already_entered(self):
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
         state = ConcreteState()
@@ -230,7 +230,7 @@ class TestBaseState:
 
     def test_can_run_returns_true_when_running_and_not_executing(self):
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
         state = ConcreteState()
@@ -243,7 +243,7 @@ class TestBaseState:
 
     def test_can_run_returns_false_when_is_executing(self):
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
         state = ConcreteState()
@@ -253,7 +253,7 @@ class TestBaseState:
 
     def test_can_run_returns_false_when_run_completed(self):
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
         state = ConcreteState()
@@ -263,7 +263,7 @@ class TestBaseState:
 
     def test_can_exit_returns_true_when_executing(self):
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
         state = ConcreteState()
@@ -273,7 +273,7 @@ class TestBaseState:
 
     def test_can_exit_returns_true_when_run_completed(self):
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
         state = ConcreteState()
@@ -283,7 +283,7 @@ class TestBaseState:
 
     def test_can_exit_returns_false_when_already_exiting(self):
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
         state = ConcreteState()
@@ -298,7 +298,7 @@ class TestBaseState:
 
     def test_enter_sets_status_to_running_when_waiting(self):
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
         state = ConcreteState()
@@ -307,7 +307,7 @@ class TestBaseState:
 
     def test_enter_resets_termination_requested_flag(self):
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
         state = ConcreteState()
@@ -317,7 +317,7 @@ class TestBaseState:
 
     def test_enter_resets_run_completed_flag(self):
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
         state = ConcreteState()
@@ -327,7 +327,7 @@ class TestBaseState:
 
     def test_enter_resets_is_executing_flag(self):
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
         state = ConcreteState()
@@ -337,7 +337,7 @@ class TestBaseState:
 
     def test_enter_raises_exception_when_already_entered(self):
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
         state = ConcreteState()
@@ -348,7 +348,7 @@ class TestBaseState:
     @pytest.mark.asyncio
     async def test_exit_sets_status_to_preempting_when_not_run_completed(self):
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
         state = ConcreteState()
@@ -360,7 +360,7 @@ class TestBaseState:
     @pytest.mark.asyncio
     async def test_exit_sets_termination_requested_when_not_run_completed(self):
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
         state = ConcreteState()
@@ -372,7 +372,7 @@ class TestBaseState:
     @pytest.mark.asyncio
     async def test_exit_sets_status_to_success_when_run_completed(self):
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
         state = ConcreteState()
@@ -384,7 +384,7 @@ class TestBaseState:
     @pytest.mark.asyncio
     async def test_exit_raises_exception_when_waiting(self):
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
         state = ConcreteState()
@@ -394,7 +394,7 @@ class TestBaseState:
     @pytest.mark.asyncio
     async def test_exit_sets_exiting_flag(self):
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
         state = ConcreteState()
@@ -406,7 +406,7 @@ class TestBaseState:
     @pytest.mark.asyncio
     async def test_exit_does_not_change_status_when_failure(self):
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
         state = ConcreteState()
@@ -419,7 +419,7 @@ class TestBaseState:
     @pytest.mark.asyncio
     async def test_exit_calls_finish_when_run_completed_and_failure(self):
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
         state = ConcreteState()
@@ -440,7 +440,7 @@ class TestBaseState:
     @pytest.mark.asyncio
     async def test_exit_raises_exception_when_already_exiting(self):
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
         state = ConcreteState()
@@ -453,7 +453,7 @@ class TestBaseState:
     @pytest.mark.asyncio
     async def test_exit_raises_exception_when_not_entered(self):
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
         state = ConcreteState()
@@ -586,7 +586,7 @@ class TestLeafState:
     @pytest.mark.asyncio
     async def test_execute_can_return_dict(self):
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         state = ConcreteLeafState()
         result = await state.execute(post)
         assert result == {"leaf": True}
@@ -599,7 +599,7 @@ class TestLeafState:
             async def run(self, post, ctx):
                 pass
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         state = NoneLeafState()
         result = await state.execute(post)
         assert result is None
@@ -612,7 +612,7 @@ class TestLeafState:
             async def run(self, post, ctx):
                 pass
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         state = PostCheckingLeafState()
         result = await state.execute(post)
         assert result["has_post"] is True
@@ -627,7 +627,7 @@ class TestLeafState:
             async def run(self, post, ctx):
                 pass
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         state = InputCheckingLeafState()
         result = await state.execute(post, test_param="value")
         assert result["received"] == "value"
@@ -644,7 +644,7 @@ class TestLeafState:
 
     def test_run_is_abstract_method(self):
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
         state = ConcreteLeafState()
@@ -656,7 +656,7 @@ class TestState:
     @pytest.mark.asyncio
     async def test_run_sets_is_executing_flag_during_execution(self):
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
         state = SlowState()
@@ -669,7 +669,7 @@ class TestState:
     @pytest.mark.asyncio
     async def test_run_clears_is_executing_flag_after_execution(self):
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
         state = ConcreteState()
@@ -680,7 +680,7 @@ class TestState:
     @pytest.mark.asyncio
     async def test_run_sets_run_completed_flag_on_success(self):
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
         state = ConcreteState()
@@ -691,7 +691,7 @@ class TestState:
     @pytest.mark.asyncio
     async def test_run_keeps_status_running_when_not_exiting(self):
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
         state = ConcreteState()
@@ -702,7 +702,7 @@ class TestState:
     @pytest.mark.asyncio
     async def test_run_updates_context_with_execute_result(self):
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
         state = ConcreteState()
@@ -713,7 +713,7 @@ class TestState:
     @pytest.mark.asyncio
     async def test_run_builds_inputs_from_context(self):
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
         ctx["param1"] = "hello"
@@ -725,7 +725,7 @@ class TestState:
     @pytest.mark.asyncio
     async def test_run_does_not_update_context_when_result_is_none(self):
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
         state = EmptyOutputState()
@@ -738,7 +738,7 @@ class TestState:
     @pytest.mark.asyncio
     async def test_run_raises_exception_when_not_can_run(self):
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
         state = ConcreteState()
@@ -748,7 +748,7 @@ class TestState:
     @pytest.mark.asyncio
     async def test_run_sets_status_to_failure_on_exception(self):
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
         state = FailingState()
@@ -762,7 +762,7 @@ class TestState:
     @pytest.mark.asyncio
     async def test_run_sets_run_completed_on_exception(self):
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
         state = FailingState()
@@ -773,7 +773,7 @@ class TestState:
     @pytest.mark.asyncio
     async def test_run_stores_exception_in_context(self):
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
         state = FailingState()
@@ -785,7 +785,7 @@ class TestState:
     @pytest.mark.asyncio
     async def test_run_sets_status_to_canceled_on_cancelled_error(self):
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
         state = CancelledState()
@@ -796,7 +796,7 @@ class TestState:
     @pytest.mark.asyncio
     async def test_run_sets_run_completed_on_cancelled_error(self):
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
         state = CancelledState()
@@ -807,7 +807,7 @@ class TestState:
     @pytest.mark.asyncio
     async def test_run_clears_is_executing_flag_on_exception(self):
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
         state = FailingState()
@@ -818,7 +818,7 @@ class TestState:
     @pytest.mark.asyncio
     async def test_run_clears_is_executing_flag_on_cancelled_error(self):
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
         state = CancelledState()
@@ -829,7 +829,7 @@ class TestState:
     @pytest.mark.asyncio
     async def test_run_prevents_concurrent_execution(self):
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
         state = SlowState()
@@ -846,7 +846,7 @@ class TestStreamState:
     @pytest.mark.asyncio
     async def test_run_sets_is_executing_flag_during_execution(self):
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
         state = SlowStreamState()
@@ -859,7 +859,7 @@ class TestStreamState:
     @pytest.mark.asyncio
     async def test_run_clears_is_executing_flag_after_execution(self):
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
         state = ConcreteStreamState()
@@ -870,7 +870,7 @@ class TestStreamState:
     @pytest.mark.asyncio
     async def test_run_sets_run_completed_flag_when_not_terminated(self):
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
         state = ConcreteStreamState()
@@ -886,7 +886,7 @@ class TestStreamState:
                     yield {"count": i}
                     await asyncio.sleep(0.01)
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
         state = TerminatingStreamState()
@@ -900,7 +900,7 @@ class TestStreamState:
     @pytest.mark.asyncio
     async def test_run_keeps_status_running_when_completed_naturally(self):
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
         state = ConcreteStreamState()
@@ -916,7 +916,7 @@ class TestStreamState:
                     yield {"count": i}
                     await asyncio.sleep(0.01)
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
         state = TerminatingStreamState()
@@ -930,7 +930,7 @@ class TestStreamState:
     @pytest.mark.asyncio
     async def test_run_updates_context_with_each_yield(self):
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
         state = ConcreteStreamState()
@@ -941,7 +941,7 @@ class TestStreamState:
     @pytest.mark.asyncio
     async def test_run_builds_inputs_from_context(self):
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
         ctx["count"] = 2
@@ -959,7 +959,7 @@ class TestStreamState:
                 yield None
                 yield {"step": 2}
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
         state = NoneYieldStreamState()
@@ -970,7 +970,7 @@ class TestStreamState:
     @pytest.mark.asyncio
     async def test_run_raises_exception_when_not_can_run(self):
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
         state = ConcreteStreamState()
@@ -985,7 +985,7 @@ class TestStreamState:
                     yield {"count": i}
                     await asyncio.sleep(0.01)
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
         state = TerminatingStreamState()
@@ -999,7 +999,7 @@ class TestStreamState:
     @pytest.mark.asyncio
     async def test_run_sets_status_to_failure_on_exception(self):
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
         state = FailingStreamState()
@@ -1012,7 +1012,7 @@ class TestStreamState:
     @pytest.mark.asyncio
     async def test_run_sets_run_completed_on_exception(self):
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
         state = FailingStreamState()
@@ -1023,7 +1023,7 @@ class TestStreamState:
     @pytest.mark.asyncio
     async def test_run_processes_yields_before_exception(self):
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
         state = FailingStreamState()
@@ -1034,7 +1034,7 @@ class TestStreamState:
     @pytest.mark.asyncio
     async def test_run_stores_exception_with_yield_count(self):
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
         state = FailingStreamState()
@@ -1046,7 +1046,7 @@ class TestStreamState:
     @pytest.mark.asyncio
     async def test_run_sets_status_to_canceled_on_cancelled_error(self):
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
         state = CancelledStreamState()
@@ -1057,7 +1057,7 @@ class TestStreamState:
     @pytest.mark.asyncio
     async def test_run_sets_run_completed_on_cancelled_error(self):
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
         state = CancelledStreamState()
@@ -1068,7 +1068,7 @@ class TestStreamState:
     @pytest.mark.asyncio
     async def test_run_clears_is_executing_flag_on_exception(self):
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
         state = FailingStreamState()
@@ -1079,7 +1079,7 @@ class TestStreamState:
     @pytest.mark.asyncio
     async def test_run_clears_is_executing_flag_on_cancelled_error(self):
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
         state = CancelledStreamState()
@@ -1090,7 +1090,7 @@ class TestStreamState:
     @pytest.mark.asyncio
     async def test_run_prevents_concurrent_execution(self):
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
         state = SlowStreamState()
@@ -1104,7 +1104,7 @@ class TestStreamState:
     @pytest.mark.asyncio
     async def test_run_handles_empty_stream(self):
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
         state = EmptyStreamState()
@@ -1183,7 +1183,7 @@ class TestStateLifecycle:
     @pytest.mark.asyncio
     async def test_enter_run_exit_completes_successfully(self):
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
         state = ConcreteState()
@@ -1195,7 +1195,7 @@ class TestStateLifecycle:
     @pytest.mark.asyncio
     async def test_enter_exit_without_run_sets_preempting(self):
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
         state = ConcreteState()
@@ -1207,7 +1207,7 @@ class TestStateLifecycle:
     @pytest.mark.asyncio
     async def test_reset_after_success_allows_reentry(self):
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
         state = ConcreteState()
@@ -1221,7 +1221,7 @@ class TestStateLifecycle:
     @pytest.mark.asyncio
     async def test_reset_after_failure_allows_reentry(self):
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
         state = FailingState()
@@ -1234,7 +1234,7 @@ class TestStateLifecycle:
     @pytest.mark.asyncio
     async def test_tracking_state_records_lifecycle_calls(self):
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
         state = TrackingState()
@@ -1250,7 +1250,7 @@ class TestStateLifecycle:
     @pytest.mark.asyncio
     async def test_cannot_enter_after_enter_without_reset(self):
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
         state = ConcreteState()
@@ -1261,7 +1261,7 @@ class TestStateLifecycle:
     @pytest.mark.asyncio
     async def test_cannot_run_twice_without_reset(self):
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
         state = ConcreteState()
@@ -1273,7 +1273,7 @@ class TestStateLifecycle:
     @pytest.mark.asyncio
     async def test_state_reusable_after_reset(self):
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
         state = ConcreteState()
@@ -1291,7 +1291,7 @@ class TestStateFinishCallbacks:
     @pytest.mark.asyncio
     async def test_exit_calls_finish_when_run_completed(self):
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
         state = ConcreteState()
@@ -1311,7 +1311,7 @@ class TestStateFinishCallbacks:
     @pytest.mark.asyncio
     async def test_exit_does_not_call_finish_when_preempting(self):
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
         state = SlowState()
@@ -1334,7 +1334,7 @@ class TestStateFinishCallbacks:
     @pytest.mark.asyncio
     async def test_state_run_calls_finish_on_cancellation(self):
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
         state = CancelledState()
@@ -1357,7 +1357,7 @@ class TestStateFinishCallbacks:
                     yield {"count": i}
                     await asyncio.sleep(0.01)
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
         state = TerminatingStreamState()
@@ -1378,7 +1378,7 @@ class TestStateFinishCallbacks:
     @pytest.mark.asyncio
     async def test_streamstate_run_calls_finish_on_cancellation(self):
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
         state = CancelledStreamState()
@@ -1421,10 +1421,10 @@ class MultiInputState(State):
         return {"processed": data, "mode": config.get("mode"), "enabled": flag}
 
 
-class FailingState(State):
-    """State that raises an exception."""
-    async def execute(self, post):
-        raise ValueError("Intentional failure")
+# class FailingState(State):
+#     """State that raises an exception."""
+#     async def execute(self, post):
+#         raise ValueError("Intentional failure")
 
 
 class SimpleStreamState(StreamState):
@@ -1466,7 +1466,7 @@ class TestBoundStateInputResolution:
             bindings={"x": "data"}  # x -> data
         )
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
 
         # Act
         bound.enter(post, ctx)
@@ -1490,7 +1490,7 @@ class TestBoundStateInputResolution:
             bindings={"data": "sensor_data", "config": "global_config", "flag": "enabled"}
         )
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
 
         # Act
         bound.enter(post, ctx)
@@ -1514,7 +1514,7 @@ class TestBoundStateInputResolution:
             bindings={}  # Empty bindings
         )
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
 
         # Act
         bound.enter(post, ctx)
@@ -1535,7 +1535,7 @@ class TestBoundStateInputResolution:
             bindings={"x": "missing_key"}
         )
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
 
         # Act & Assert
         bound.enter(post, ctx)
@@ -1567,7 +1567,7 @@ class TestBoundStateOutputPropagation:
             bindings={"x": "data"}
         )
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
 
         # Act
         bound.enter(post, ctx)
@@ -1593,7 +1593,7 @@ class TestBoundStateOutputPropagation:
             bindings={"data": "sensor", "config": "cfg"}
         )
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
 
         # Act
         bound.enter(post, ctx)
@@ -1623,7 +1623,7 @@ class TestBoundStateLifecycle:
 
         bound = BoundState(state=SimpleState(), bindings={})
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
 
         # Act & Assert
         assert bound.can_enter() == True
@@ -1640,7 +1640,7 @@ class TestBoundStateLifecycle:
 
         bound = BoundState(state=SimpleState(), bindings={})
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
 
         # Act
         bound.enter(post, ctx)
@@ -1660,7 +1660,7 @@ class TestBoundStateLifecycle:
 
         bound = BoundState(state=SimpleState(), bindings={})
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
 
         # Act - proper lifecycle: enter → run → exit
         bound.enter(post, ctx)
@@ -1680,7 +1680,7 @@ class TestBoundStateLifecycle:
 
         bound = BoundState(state=SimpleState(), bindings={})
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
 
         # Act - proper lifecycle: enter → run → exit
         bound.enter(post, ctx)
@@ -1702,7 +1702,7 @@ class TestBoundStateLifecycle:
 
         bound = BoundState(state=SimpleState(), bindings={})
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
 
         # Act
         bound.enter(post, ctx)
@@ -1729,7 +1729,7 @@ class TestBoundStateExceptionHandling:
 
         bound = BoundState(state=FailingState(), bindings={})
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
 
         # Act
         bound.enter(post, ctx)
@@ -1746,7 +1746,7 @@ class TestBoundStateExceptionHandling:
 
         bound = BoundState(state=FailingState(), bindings={})
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
 
         # Act
         bound.enter(post, ctx)
@@ -1754,7 +1754,7 @@ class TestBoundStateExceptionHandling:
 
         # Assert
         assert "__exception__" in ctx
-        assert ctx["__exception__"]["message"] == "Intentional failure"
+        assert ctx["__exception__"]["message"] == "Test error"
         assert ctx["__exception__"]["type"] == "ValueError"
 
 
@@ -1778,7 +1778,7 @@ class TestBoundStreamStateInputResolution:
             bindings={"count": "num_iterations"}
         )
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
 
         # Act - proper lifecycle: enter → run → exit
         bound.enter(post, ctx)
@@ -1810,7 +1810,7 @@ class TestBoundStreamStateOutputAccumulation:
             bindings={}
         )
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
 
         # Act - proper lifecycle: enter → run → exit
         bound.enter(post, ctx)
@@ -1833,7 +1833,7 @@ class TestBoundStreamStateOutputAccumulation:
             bindings={"count": "num"}
         )
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
 
         # Act - proper lifecycle: enter → run → exit
         bound.enter(post, ctx)
@@ -1866,7 +1866,7 @@ class TestBoundStreamStatePreemption:
             bindings={}
         )
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
 
         # Act
         bound.enter(post, ctx)
@@ -1895,7 +1895,7 @@ class TestBoundStreamStatePreemption:
             bindings={}
         )
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
 
         # Act
         bound.enter(post, ctx)
@@ -1934,7 +1934,7 @@ class TestBoundStateEdgeCases:
             bindings={}
         )
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
 
         # Act
         bound.enter(post, ctx)

@@ -9,7 +9,7 @@ import asyncio
 import logging
 
 from dachi.core import Attr, Ctx, BaseModule
-from ._event import Post
+from ._event import EventPost
 from dachi.utils._utils import resolve_fields, resolve_from_signature
 from ._base import ChartBase, ChartStatus, InvalidTransition
 
@@ -88,7 +88,7 @@ class BaseState(ChartBase, ABC):
         """Check if state can exit."""
         return (self._entered.get() and not self._exiting.get())
 
-    def enter(self, post: Post, ctx: Ctx) -> None:
+    def enter(self, post: EventPost, ctx: Ctx) -> None:
         """Called when entering the state.
 
         Raises:
@@ -108,12 +108,12 @@ class BaseState(ChartBase, ABC):
         self._exiting.set(False)
 
     @abstractmethod
-    async def execute(self, post: "Post", **inputs: Any) -> t.Iterator[t.Dict | None] | Optional[t.Dict]:
+    async def execute(self, post: "EventPost", **inputs: Any) -> t.Iterator[t.Dict | None] | Optional[t.Dict]:
         """Execute the state's main logic. Return optional output."""
         pass
 
     @abstractmethod
-    async def run(self, post: "Post", ctx: Ctx) -> None:
+    async def run(self, post: "EventPost", ctx: Ctx) -> None:
         pass
 
     def is_final(self) -> bool:
@@ -156,7 +156,7 @@ class BaseState(ChartBase, ABC):
         self._exiting.set(False)
         self._finishing = False
 
-    def _check_execute_finish(self):
+    def _check_execute_finish(self, post: "EventPost", ctx: Ctx) -> None:
         """Check if state is ready to finish and schedule if so.
 
         State is ready to finish when BOTH:
@@ -164,11 +164,16 @@ class BaseState(ChartBase, ABC):
         - _exiting is True
 
         Uses _finishing flag to prevent double-finish race condition.
+
+        Args:
+            post: Post object for this state
+            ctx: Ctx object for this state
+
         """
         if self._run_completed.get() and self._exiting.get() and not self._finishing:
             self._finishing = True
             loop = asyncio.get_running_loop()
-            loop.create_task(self.finish())
+            loop.create_task(self.finish(post, ctx))
 
 
 class AtomState(BaseState, ABC):
@@ -226,7 +231,7 @@ class AtomState(BaseState, ABC):
             # Use function signature inspection, excluding 'post' parameter
             return resolve_from_signature(ctx, self.execute, exclude_params={'post'})
 
-    def exit(self, post: Post, ctx: Ctx) -> None:
+    def exit(self, post: EventPost, ctx: Ctx) -> None:
         """Called when exiting the state. Sets final status.
 
         Raises:
@@ -243,7 +248,7 @@ class AtomState(BaseState, ABC):
         if self._run_completed.get():
             if self._status.get().is_running():
                 self._status.set(ChartStatus.SUCCESS)
-            self._check_execute_finish()
+            self._check_execute_finish(post, ctx)
         else:
             self._status.set(ChartStatus.PREEMPTING)
             self._termination_requested.set(True)
@@ -252,7 +257,7 @@ class AtomState(BaseState, ABC):
 class State(AtomState):
     """Single-shot state that runs execute() to completion."""
 
-    async def run(self, post: "Post", ctx: Ctx) -> None:
+    async def run(self, post: "EventPost", ctx: Ctx) -> None:
         """Execute state with inputs built from context.
 
         Raises:
@@ -304,7 +309,7 @@ class State(AtomState):
             self._executing.set(False)
             if self._termination_requested.get() or self._status.get().is_completed():
                 # Direct finish for termination/cancellation (not via exit flow)
-                await self.finish()
+                await self.finish(post, ctx)
 
 
 class BoundState(BaseState):
@@ -342,17 +347,17 @@ class BoundState(BaseState):
         """Check if state can exit."""
         return self.state.can_exit()
 
-    def enter(self, post: Post, ctx: Ctx) -> None:
+    def enter(self, post: EventPost, ctx: Ctx) -> None:
         """Delegate enter to wrapped state."""
         self.state.enter(post, ctx)
         self._status.set(self.state._status.get())
         self._entered.set(self.state._entered.get())
 
-    async def execute(self, post: Post, **inputs: Any) -> Optional[Dict]:
+    async def execute(self, post: EventPost, **inputs: Any) -> Optional[Dict]:
         """Not used - run() delegates directly."""
         pass
 
-    async def run(self, post: Post, ctx: Ctx) -> None:
+    async def run(self, post: EventPost, ctx: Ctx) -> None:
         """Run wrapped state with bound context for input resolution."""
         bound_ctx = ctx.bind(self.bindings)
         await self.state.run(post, bound_ctx)
@@ -364,7 +369,7 @@ class BoundState(BaseState):
         self._exiting.set(self.state._exiting.get())
         self._termination_requested.set(self.state._termination_requested.get())
 
-    def exit(self, post: Post, ctx: Ctx) -> None:
+    def exit(self, post: EventPost, ctx: Ctx) -> None:
         """Delegate exit to wrapped state."""
         self.state.exit(post, ctx)
         self._status.set(self.state._status.get())
@@ -385,11 +390,11 @@ class StreamState(AtomState, ABC):
     """Streaming state with preemption at yield points."""
 
     @abstractmethod
-    async def execute(self, post: "Post", **inputs: Any) -> t.Iterator[Optional[Any]]:
+    async def execute(self, post: "EventPost", **inputs: Any) -> t.Iterator[Optional[Any]]:
         """Execute with preemption checks at each yield."""
         pass
 
-    async def run(self, post: "Post", ctx: Ctx) -> None:
+    async def run(self, post: "EventPost", ctx: Ctx) -> None:
         """Execute streaming state with context updates.
 
         Raises:
@@ -452,7 +457,7 @@ class StreamState(AtomState, ABC):
 
             if self._status.get().is_completed():
                 # Direct finish for termination/cancellation (not via exit flow)
-                await self.finish()
+                await self.finish(post, ctx)
 
 
 class BoundStreamState(BaseState):
@@ -480,17 +485,17 @@ class BoundStreamState(BaseState):
         """Check if state can exit."""
         return self.state.can_exit()
 
-    def enter(self, post: Post, ctx: Ctx) -> None:
+    def enter(self, post: EventPost, ctx: Ctx) -> None:
         """Delegate enter to wrapped state."""
         self.state.enter(post, ctx)
         self._status.set(self.state._status.get())
         self._entered.set(self.state._entered.get())
 
-    async def execute(self, post: Post, **inputs: Any) -> t.Iterator[Optional[Dict]]:
+    async def execute(self, post: EventPost, **inputs: Any) -> t.Iterator[Optional[Dict]]:
         """Not used - run() delegates directly."""
         pass
 
-    async def run(self, post: Post, ctx: Ctx) -> None:
+    async def run(self, post: EventPost, ctx: Ctx) -> None:
         """Run wrapped streaming state with bound context."""
         bound_ctx = ctx.bind(self.bindings)
         await self.state.run(post, bound_ctx)
@@ -502,7 +507,7 @@ class BoundStreamState(BaseState):
         self._exiting.set(self.state._exiting.get())
         self._termination_requested.set(self.state._termination_requested.get())
 
-    def exit(self, post: Post, ctx: Ctx) -> None:
+    def exit(self, post: EventPost, ctx: Ctx) -> None:
         """Delegate exit to wrapped state."""
         self.state.exit(post, ctx)
         self._status.set(self.state._status.get())

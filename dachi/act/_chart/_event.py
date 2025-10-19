@@ -17,7 +17,7 @@ class ChartEventHandler(ABC):
     """Mixin for components that can handle events (StateChart, Region, CompositeState)."""
 
     @abstractmethod
-    async def handle_event(self, event: "Event", post: "Post", ctx: Any) -> None:
+    async def handle_event(self, event: "Event", post: "EventPost", ctx: Any) -> None:
         """Handle an incoming event.
 
         Args:
@@ -129,11 +129,11 @@ class EventQueue:
         if callback in self._callbacks:
             del self._callbacks[callback]
 
-    def child(self, region_name: str) -> 'Post':
+    def child(self, region_name: str) -> 'EventPost':
         """Create a Post object for this queue."""
         if region_name in self._posts:
             return self._posts[region_name]
-        post = Post(queue=self).child(region_name)
+        post = EventPost(queue=self).child(region_name)
         self._posts[region_name] = post
         return post
     
@@ -142,7 +142,7 @@ class EventQueue:
         self.queue.clear()
 
 
-class Post(AsyncProcess):
+class EventPost(AsyncProcess):
     """Post an event to the event queue.
     """
 
@@ -153,6 +153,8 @@ class Post(AsyncProcess):
     def __post_init__(self):
         super().__post_init__()
         self.preempting = lambda: False
+        self._timers: Dict[str, asyncio.Task] = {}
+        self._next_timer_id = 0
 
     async def aforward(
         self,
@@ -161,20 +163,88 @@ class Post(AsyncProcess):
         *,
         scope: Literal["chart", "parent"] = "chart",
         port: Optional[str] = None,
-    ) -> bool:
-        result = self.queue.post_nowait({
-            "type": event,
-            "payload": payload or {},
-            "scope": scope,
-            "port": port,
-            "source": self.source,
-            "epoch": self.epoch,
-            "meta": {},
-            "ts": time.monotonic(),
-        })
-        return result
+        delay: Optional[float] = None,
+    ) -> Optional[str]:
+        """Post an event to the queue, optionally delayed.
 
-    def child(self, region_name: str) -> "Post":
+        Args:
+            event: Event type string
+            payload: Optional event payload
+            scope: Event scope ("chart" or "parent")
+            port: Optional port identifier
+            delay: Optional delay in seconds (must be >= 0.0)
+
+        Returns:
+            Timer ID if delay is provided and > 0, None otherwise
+
+        Raises:
+            ValueError: If delay is negative
+        """
+        if not delay:
+            self.queue.post_nowait({
+                "type": event,
+                "payload": payload or {},
+                "scope": scope,
+                "port": port,
+                "source": self.source,
+                "epoch": self.epoch,
+                "meta": {},
+                "ts": time.monotonic(),
+            })
+            return None
+
+        if delay < 0.0:
+            raise ValueError(f"delay must be >= 0.0, got {delay}")
+
+        timer_id = f"timer_{self._next_timer_id}"
+        self._next_timer_id += 1
+
+        async def _fire():
+            await asyncio.sleep(delay)
+            if timer_id in self._timers:
+                self.queue.post_nowait({
+                    "type": event,
+                    "payload": payload or {},
+                    "scope": scope,
+                    "port": port,
+                    "source": self.source,
+                    "epoch": self.epoch,
+                    "meta": {"timer_id": timer_id},
+                    "ts": time.monotonic(),
+                })
+                del self._timers[timer_id]
+
+        self._timers[timer_id] = asyncio.create_task(_fire())
+        return timer_id
+
+    def cancel(self, timer_id: str) -> bool:
+        """Cancel a specific timer by ID.
+
+        Args:
+            timer_id: The timer ID returned by aforward()
+
+        Returns:
+            True if timer was found and cancelled, False otherwise
+        """
+        timer = self._timers.pop(timer_id, None)
+        if timer:
+            timer.cancel()
+            return True
+        return False
+
+    def cancel_all(self) -> int:
+        """Cancel all timers created by this Post instance.
+
+        Returns:
+            Number of timers cancelled
+        """
+        count = len(self._timers)
+        for timer in self._timers.values():
+            timer.cancel()
+        self._timers.clear()
+        return count
+
+    def child(self, region_name: str) -> "EventPost":
         """Create a child Post with extended source hierarchy for a new region.
 
         Args:
@@ -183,13 +253,13 @@ class Post(AsyncProcess):
         Returns:
             New Post with extended source list and shared queue
         """
-        return Post(
+        return EventPost(
             queue=self.queue,
             source=self.source + [(region_name, None)],
             epoch=self.epoch
         )
 
-    def sibling(self, state_name: str) -> "Post":
+    def sibling(self, state_name: str) -> "EventPost":
         """Create a sibling Post by setting the state name in the last source tuple.
 
         Args:
@@ -201,7 +271,7 @@ class Post(AsyncProcess):
         if not self.source:
             raise ValueError("Cannot add state without a region in the source")
         region_name, _ = self.source[-1]
-        return Post(
+        return EventPost(
             queue=self.queue,
             source=self.source[:-1] + [(region_name, state_name)],
             epoch=self.epoch

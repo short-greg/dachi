@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 from dachi.core import Attr, ModuleList
 from dachi.core._scope import Scope, Ctx
-from ._event import Event, EventQueue, Timer, MonotonicClock, ChartEventHandler, Post
+from ._event import Event, EventQueue, Timer, MonotonicClock, ChartEventHandler, EventPost
 from ._region import Region, ValidationResult
 
 
@@ -109,6 +109,13 @@ class StateChart(ChartBase, ChartEventHandler):
     async def finish_region(self, region: str) -> None:
         """Handle completion of a region. This is a callback registered with each region.
         Check if all regions are completed and finish the chart if so.
+
+        Args:
+            region (str): The name of the region that finished
+            post: Post object for this StateChart
+            ctx: Ctx object for this StateChart
+        Raises:
+            ValueError: If the region is unknown
         """
         # get the region
         if region not in self._regions_completed.get():
@@ -126,6 +133,7 @@ class StateChart(ChartBase, ChartEventHandler):
         completed = self._regions_completed.get()
         completed[region] = True
         self._regions_completed.set(completed)
+        
         if all(self._regions_completed.get().values()):
             self._finished_at.set(self._clock.now())
             if self._stopping.get():
@@ -144,7 +152,8 @@ class StateChart(ChartBase, ChartEventHandler):
 
         for i, region in enumerate(self.regions):
             region.register_finish_callback(
-                self.finish_region, region.name
+                self.finish_region, 
+                region.name,
             )
             post = self._queue.child(region.name)
             ctx = self._scope.ctx(i)
@@ -167,7 +176,7 @@ class StateChart(ChartBase, ChartEventHandler):
         event_to_process = self._queue.pop_nowait()
         loop.create_task(self.handle_event(event_to_process))
 
-    async def handle_event(self, event: Event, post: Optional[Post]=None, ctx: Optional[Ctx]=None) -> None:
+    async def handle_event(self, event: Event, post: Optional[EventPost]=None, ctx: Optional[Ctx]=None) -> None:
         """
         Handle an incoming event by dispatching it to all running regions.
         """

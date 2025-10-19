@@ -10,14 +10,10 @@ import time
 import sys
 import os
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'dachi', 'act', '_chart'))
-import _event
+from dachi.act._chart import _event
+from dachi.act._chart._event import EventQueue, Event, EventPost, Timer, MonotonicClock
 
-EventQueue = _event.EventQueue
-Event = _event.Event
-Post = _event.Post
-Timer = _event.Timer
-MonotonicClock = _event.MonotonicClock
+Post = EventPost  # Alias for backward compatibility in tests
 
 
 class TestEventQueue:
@@ -304,23 +300,23 @@ class TestPost:
 
     def test_post_init_sets_preempting_lambda(self):
         queue = EventQueue()
-        post = _event.Post(queue=queue)
+        post = _event.EventPost(queue=queue)
         assert callable(post.preempting)
         assert post.preempting() is False
 
     def test_post_init_with_empty_source(self):
         queue = EventQueue()
-        post = _event.Post(queue=queue, source=[])
+        post = _event.EventPost(queue=queue, source=[])
         assert post.source == []
 
     def test_post_init_with_source_list(self):
         queue = EventQueue()
-        post = _event.Post(queue=queue, source=[("region1", "state1")])
+        post = _event.EventPost(queue=queue, source=[("region1", "state1")])
         assert post.source == [("region1", "state1")]
 
     def test_post_init_with_epoch(self):
         queue = EventQueue()
-        post = _event.Post(queue=queue, epoch=42)
+        post = _event.EventPost(queue=queue, epoch=42)
         assert post.epoch == 42
 
 
@@ -329,64 +325,64 @@ class TestPostAforward:
 
     async def test_aforward_posts_event_with_empty_source(self):
         queue = EventQueue()
-        post = _event.Post(queue=queue, source=[])
+        post = _event.EventPost(queue=queue, source=[])
         result = await post.aforward("TestEvent")
-        assert result is True
+        assert result is None
         event = queue.pop_nowait()
         assert event["source"] == []
 
     async def test_aforward_posts_event_with_hierarchical_source(self):
         queue = EventQueue()
-        post = _event.Post(queue=queue, source=[("r1", "s1"), ("r2", "s2")])
+        post = _event.EventPost(queue=queue, source=[("r1", "s1"), ("r2", "s2")])
         await post.aforward("TestEvent")
         event = queue.pop_nowait()
         assert event["source"] == [("r1", "s1"), ("r2", "s2")]
 
     async def test_aforward_with_payload_includes_data(self):
         queue = EventQueue()
-        post = _event.Post(queue=queue)
+        post = _event.EventPost(queue=queue)
         await post.aforward("TestEvent", {"key": "value"})
         event = queue.pop_nowait()
         assert event["payload"] == {"key": "value"}
 
     async def test_aforward_with_none_payload_creates_empty_dict(self):
         queue = EventQueue()
-        post = _event.Post(queue=queue)
+        post = _event.EventPost(queue=queue)
         await post.aforward("TestEvent", None)
         event = queue.pop_nowait()
         assert event["payload"] == {}
 
     async def test_aforward_with_port_includes_port(self):
         queue = EventQueue()
-        post = _event.Post(queue=queue)
+        post = _event.EventPost(queue=queue)
         await post.aforward("TestEvent", port="output1")
         event = queue.pop_nowait()
         assert event["port"] == "output1"
 
     async def test_aforward_with_scope_chart_sets_scope(self):
         queue = EventQueue()
-        post = _event.Post(queue=queue)
+        post = _event.EventPost(queue=queue)
         await post.aforward("TestEvent", scope="chart")
         event = queue.pop_nowait()
         assert event["scope"] == "chart"
 
     async def test_aforward_with_scope_parent_sets_scope(self):
         queue = EventQueue()
-        post = _event.Post(queue=queue)
+        post = _event.EventPost(queue=queue)
         await post.aforward("TestEvent", scope="parent")
         event = queue.pop_nowait()
         assert event["scope"] == "parent"
 
     async def test_aforward_includes_epoch_in_event(self):
         queue = EventQueue()
-        post = _event.Post(queue=queue, epoch=42)
+        post = _event.EventPost(queue=queue, epoch=42)
         await post.aforward("TestEvent")
         event = queue.pop_nowait()
         assert event["epoch"] == 42
 
     async def test_aforward_includes_timestamp_in_event(self):
         queue = EventQueue()
-        post = _event.Post(queue=queue)
+        post = _event.EventPost(queue=queue)
         before = time.monotonic()
         await post.aforward("TestEvent")
         after = time.monotonic()
@@ -396,27 +392,27 @@ class TestPostAforward:
 
     async def test_aforward_includes_empty_meta_in_event(self):
         queue = EventQueue()
-        post = _event.Post(queue=queue)
+        post = _event.EventPost(queue=queue)
         await post.aforward("TestEvent")
         event = queue.pop_nowait()
         assert event["meta"] == {}
 
-    async def test_aforward_returns_true_when_posted(self):
+    async def test_aforward_returns_none_when_no_delay(self):
         queue = EventQueue()
-        post = _event.Post(queue=queue)
+        post = _event.EventPost(queue=queue)
         result = await post.aforward("TestEvent")
-        assert result is True
+        assert result is None
 
-    async def test_aforward_returns_false_when_queue_full(self):
+    async def test_aforward_returns_none_when_queue_full(self):
         queue = EventQueue(maxsize=1, overflow="drop_newest")
-        post = _event.Post(queue=queue)
+        post = _event.EventPost(queue=queue)
         await post.aforward("Event1")
         result = await post.aforward("Event2")
-        assert result is False
+        assert result is None
 
     async def test_aforward_posts_complete_event_structure(self):
         queue = EventQueue()
-        post = _event.Post(queue=queue, source=[("region1", "state1")], epoch=42)
+        post = _event.EventPost(queue=queue, source=[("region1", "state1")], epoch=42)
         await post.aforward("TestEvent", {"key": "value"}, scope="parent", port="output")
         event = queue.pop_nowait()
         assert event["type"] == "TestEvent"
@@ -430,7 +426,7 @@ class TestPostAforward:
 
     async def test_aforward_default_scope_is_chart(self):
         queue = EventQueue()
-        post = _event.Post(queue=queue)
+        post = _event.EventPost(queue=queue)
         await post.aforward("TestEvent")
         event = queue.pop_nowait()
         assert event["scope"] == "chart"
@@ -440,50 +436,50 @@ class TestPostChild:
 
     def test_child_adds_region_with_none_state_to_source(self):
         queue = EventQueue()
-        post = _event.Post(queue=queue, source=[])
+        post = _event.EventPost(queue=queue, source=[])
         child = post.child("region1")
         assert child.source == [("region1", None)]
 
     def test_child_from_empty_source_creates_single_tuple(self):
         queue = EventQueue()
-        post = _event.Post(queue=queue, source=[])
+        post = _event.EventPost(queue=queue, source=[])
         child = post.child("region1")
         assert child.source == [("region1", None)]
 
     def test_child_from_existing_source_extends_hierarchy(self):
         queue = EventQueue()
-        post = _event.Post(queue=queue, source=[("r1", "s1")])
+        post = _event.EventPost(queue=queue, source=[("r1", "s1")])
         child = post.child("r2")
         assert child.source == [("r1", "s1"), ("r2", None)]
 
     def test_child_preserves_queue_reference(self):
         queue = EventQueue()
-        post = _event.Post(queue=queue)
+        post = _event.EventPost(queue=queue)
         child = post.child("region1")
         assert child.queue is queue
 
     def test_child_preserves_epoch(self):
         queue = EventQueue()
-        post = _event.Post(queue=queue, epoch=42)
+        post = _event.EventPost(queue=queue, epoch=42)
         child = post.child("region1")
         assert child.epoch == 42
 
     def test_child_creates_new_post_instance(self):
         queue = EventQueue()
-        post = _event.Post(queue=queue)
+        post = _event.EventPost(queue=queue)
         child = post.child("region1")
         assert child is not post
 
     def test_child_with_deep_hierarchy_extends_correctly(self):
         queue = EventQueue()
-        post = _event.Post(queue=queue, source=[("r1", "s1")])
+        post = _event.EventPost(queue=queue, source=[("r1", "s1")])
         child1 = post.child("r2")
         child2 = child1.child("r3")
         assert child2.source == [("r1", "s1"), ("r2", None), ("r3", None)]
 
     def test_child_multiple_children_from_same_parent(self):
         queue = EventQueue()
-        post = _event.Post(queue=queue, source=[("main", "root")])
+        post = _event.EventPost(queue=queue, source=[("main", "root")])
         child_a = post.child("child_a")
         child_b = post.child("child_b")
         assert child_a.source == [("main", "root"), ("child_a", None)]
@@ -494,43 +490,43 @@ class TestPostSibling:
 
     def test_sibling_replaces_none_with_state_name(self):
         queue = EventQueue()
-        post = _event.Post(queue=queue, source=[("r1", None)])
+        post = _event.EventPost(queue=queue, source=[("r1", None)])
         sibling = post.sibling("state1")
         assert sibling.source == [("r1", "state1")]
 
     def test_sibling_replaces_existing_state_name(self):
         queue = EventQueue()
-        post = _event.Post(queue=queue, source=[("r1", "s1")])
+        post = _event.EventPost(queue=queue, source=[("r1", "s1")])
         sibling = post.sibling("s2")
         assert sibling.source == [("r1", "s2")]
 
     def test_sibling_updates_only_last_tuple(self):
         queue = EventQueue()
-        post = _event.Post(queue=queue, source=[("r1", "s1"), ("r2", None)])
+        post = _event.EventPost(queue=queue, source=[("r1", "s1"), ("r2", None)])
         sibling = post.sibling("state")
         assert sibling.source == [("r1", "s1"), ("r2", "state")]
 
     def test_sibling_raises_valueerror_when_source_empty(self):
         queue = EventQueue()
-        post = _event.Post(queue=queue, source=[])
+        post = _event.EventPost(queue=queue, source=[])
         with pytest.raises(ValueError, match="Cannot add state without a region in the source"):
             post.sibling("state1")
 
     def test_sibling_preserves_queue_reference(self):
         queue = EventQueue()
-        post = _event.Post(queue=queue, source=[("r1", None)])
+        post = _event.EventPost(queue=queue, source=[("r1", None)])
         sibling = post.sibling("state1")
         assert sibling.queue is queue
 
     def test_sibling_preserves_epoch(self):
         queue = EventQueue()
-        post = _event.Post(queue=queue, source=[("r1", None)], epoch=42)
+        post = _event.EventPost(queue=queue, source=[("r1", None)], epoch=42)
         sibling = post.sibling("state1")
         assert sibling.epoch == 42
 
     def test_sibling_creates_new_post_instance(self):
         queue = EventQueue()
-        post = _event.Post(queue=queue, source=[("r1", None)])
+        post = _event.EventPost(queue=queue, source=[("r1", None)])
         sibling = post.sibling("state1")
         assert sibling is not post
 
@@ -540,14 +536,291 @@ class TestPostCall:
 
     async def test_call_delegates_to_aforward(self):
         queue = EventQueue()
-        post = _event.Post(queue=queue, source=[("r1", "s1")])
+        post = _event.EventPost(queue=queue, source=[("r1", "s1")])
         result = await post("TestEvent", {"data": "test"})
-        assert result is True
+        assert result is None
         assert queue.size() == 1
         event = queue.pop_nowait()
         assert event["type"] == "TestEvent"
         assert event["payload"] == {"data": "test"}
         assert event["source"] == [("r1", "s1")]
+
+
+@pytest.mark.asyncio
+class TestPostTimerDelay:
+
+    async def test_aforward_with_delay_returns_timer_id(self):
+        queue = EventQueue()
+        post = _event.EventPost(queue=queue)
+        timer_id = await post.aforward("TestEvent", delay=0.01)
+        assert timer_id is not None
+        assert timer_id.startswith("timer_")
+
+    async def test_aforward_with_delay_zero_returns_none(self):
+        queue = EventQueue()
+        post = _event.EventPost(queue=queue)
+        timer_id = await post.aforward("TestEvent", delay=0)
+        assert timer_id is None
+        assert queue.size() == 1
+
+    async def test_aforward_with_delay_none_returns_none(self):
+        queue = EventQueue()
+        post = _event.EventPost(queue=queue)
+        timer_id = await post.aforward("TestEvent", delay=None)
+        assert timer_id is None
+        assert queue.size() == 1
+
+    async def test_aforward_with_negative_delay_raises_valueerror(self):
+        queue = EventQueue()
+        post = _event.EventPost(queue=queue)
+        with pytest.raises(ValueError, match="delay must be >= 0.0"):
+            await post.aforward("TestEvent", delay=-1.0)
+
+    async def test_aforward_with_delay_fires_after_duration(self):
+        queue = EventQueue()
+        post = _event.EventPost(queue=queue, source=[("region1", "state1")])
+        timer_id = await post.aforward("DelayedEvent", {"key": "value"}, delay=0.01)
+
+        assert queue.empty()
+        await asyncio.sleep(0.02)
+
+        assert queue.size() == 1
+        event = queue.pop_nowait()
+        assert event["type"] == "DelayedEvent"
+        assert event["payload"] == {"key": "value"}
+        assert event["source"] == [("region1", "state1")]
+        assert event["meta"]["timer_id"] == timer_id
+
+    async def test_aforward_with_delay_includes_timer_id_in_meta(self):
+        queue = EventQueue()
+        post = _event.EventPost(queue=queue)
+        timer_id = await post.aforward("TestEvent", delay=0.01)
+
+        await asyncio.sleep(0.02)
+
+        event = queue.pop_nowait()
+        assert "timer_id" in event["meta"]
+        assert event["meta"]["timer_id"] == timer_id
+
+    async def test_aforward_with_delay_respects_scope(self):
+        queue = EventQueue()
+        post = _event.EventPost(queue=queue)
+        await post.aforward("TestEvent", delay=0.01, scope="parent")
+
+        await asyncio.sleep(0.02)
+
+        event = queue.pop_nowait()
+        assert event["scope"] == "parent"
+
+    async def test_aforward_with_delay_respects_port(self):
+        queue = EventQueue()
+        post = _event.EventPost(queue=queue)
+        await post.aforward("TestEvent", delay=0.01, port="output1")
+
+        await asyncio.sleep(0.02)
+
+        event = queue.pop_nowait()
+        assert event["port"] == "output1"
+
+    async def test_aforward_with_delay_includes_epoch(self):
+        queue = EventQueue()
+        post = _event.EventPost(queue=queue, epoch=42)
+        await post.aforward("TestEvent", delay=0.01)
+
+        await asyncio.sleep(0.02)
+
+        event = queue.pop_nowait()
+        assert event["epoch"] == 42
+
+    async def test_multiple_delayed_events_fire_independently(self):
+        queue = EventQueue()
+        post = _event.EventPost(queue=queue)
+
+        id1 = await post.aforward("Event1", delay=0.01)
+        id2 = await post.aforward("Event2", delay=0.01)
+        id3 = await post.aforward("Event3", delay=0.01)
+
+        assert id1 != id2 != id3
+        await asyncio.sleep(0.02)
+
+        assert queue.size() == 3
+
+
+@pytest.mark.asyncio
+class TestPostTimerCancel:
+
+    async def test_cancel_stops_delayed_event(self):
+        queue = EventQueue()
+        post = _event.EventPost(queue=queue)
+        timer_id = await post.aforward("TestEvent", delay=0.1)
+
+        result = post.cancel(timer_id)
+
+        assert result is True
+        await asyncio.sleep(0.02)
+        assert queue.empty()
+
+    async def test_cancel_nonexistent_timer_returns_false(self):
+        queue = EventQueue()
+        post = _event.EventPost(queue=queue)
+
+        result = post.cancel("nonexistent_timer")
+
+        assert result is False
+
+    async def test_cancel_removes_timer_from_tracking(self):
+        queue = EventQueue()
+        post = _event.EventPost(queue=queue)
+        timer_id = await post.aforward("TestEvent", delay=0.1)
+
+        post.cancel(timer_id)
+
+        assert timer_id not in post._timers
+
+    async def test_cancel_already_fired_timer_returns_false(self):
+        queue = EventQueue()
+        post = _event.EventPost(queue=queue)
+        timer_id = await post.aforward("TestEvent", delay=0.01)
+
+        await asyncio.sleep(0.02)
+        result = post.cancel(timer_id)
+
+        assert result is False
+
+    async def test_cancel_one_timer_does_not_affect_others(self):
+        queue = EventQueue()
+        post = _event.EventPost(queue=queue)
+
+        id1 = await post.aforward("Event1", delay=0.1)
+        id2 = await post.aforward("Event2", delay=0.1)
+
+        post.cancel(id1)
+        await asyncio.sleep(0.02)
+
+        assert id1 not in post._timers
+        assert id2 in post._timers
+
+        post.cancel_all()
+
+
+@pytest.mark.asyncio
+class TestPostTimerCancelAll:
+
+    async def test_cancel_all_stops_all_timers(self):
+        queue = EventQueue()
+        post = _event.EventPost(queue=queue)
+
+        await post.aforward("Event1", delay=0.1)
+        await post.aforward("Event2", delay=0.1)
+        await post.aforward("Event3", delay=0.1)
+
+        count = post.cancel_all()
+
+        assert count == 3
+        await asyncio.sleep(0.02)
+        assert queue.empty()
+
+    async def test_cancel_all_clears_timers_dict(self):
+        queue = EventQueue()
+        post = _event.EventPost(queue=queue)
+
+        await post.aforward("Event1", delay=0.1)
+        await post.aforward("Event2", delay=0.1)
+
+        post.cancel_all()
+
+        assert len(post._timers) == 0
+
+    async def test_cancel_all_returns_zero_when_no_timers(self):
+        queue = EventQueue()
+        post = _event.EventPost(queue=queue)
+
+        count = post.cancel_all()
+
+        assert count == 0
+
+    async def test_cancel_all_after_some_timers_fired(self):
+        queue = EventQueue()
+        post = _event.EventPost(queue=queue)
+
+        await post.aforward("Event1", delay=0.01)
+        await post.aforward("Event2", delay=0.1)
+        await post.aforward("Event3", delay=0.1)
+
+        await asyncio.sleep(0.02)
+
+        count = post.cancel_all()
+
+        assert count == 2
+        assert queue.size() == 1
+
+    async def test_cancel_all_does_not_affect_child_post_timers(self):
+        queue = EventQueue()
+        post = _event.EventPost(queue=queue)
+        child = post.child("region1")
+
+        await post.aforward("ParentEvent", delay=0.1)
+        await child.aforward("ChildEvent", delay=0.1)
+
+        post.cancel_all()
+
+        assert len(post._timers) == 0
+        assert len(child._timers) == 1
+
+
+@pytest.mark.asyncio
+class TestPostTimerEdgeCases:
+
+    async def test_timer_id_increments_correctly(self):
+        queue = EventQueue()
+        post = _event.EventPost(queue=queue)
+
+        id1 = await post.aforward("Event1", delay=0.1)
+        id2 = await post.aforward("Event2", delay=0.1)
+        id3 = await post.aforward("Event3", delay=0.1)
+
+        assert id1 == "timer_0"
+        assert id2 == "timer_1"
+        assert id3 == "timer_2"
+
+    async def test_timer_cleanup_after_firing(self):
+        queue = EventQueue()
+        post = _event.EventPost(queue=queue)
+
+        timer_id = await post.aforward("TestEvent", delay=0.01)
+
+        await asyncio.sleep(0.02)
+
+        assert timer_id not in post._timers
+
+    async def test_delay_with_zero_point_zero_returns_none(self):
+        queue = EventQueue()
+        post = _event.EventPost(queue=queue)
+
+        result = await post.aforward("TestEvent", delay=0.0)
+
+        assert result is None
+        assert queue.size() == 1
+
+    async def test_very_small_positive_delay_creates_timer(self):
+        queue = EventQueue()
+        post = _event.EventPost(queue=queue)
+
+        result = await post.aforward("TestEvent", delay=0.001)
+
+        assert result is not None
+        assert result.startswith("timer_")
+
+
+@pytest.fixture
+async def timer_fixture():
+    """Fixture that creates a Timer and cleans it up after the test."""
+    queue = EventQueue()
+    clock = MonotonicClock()
+    timer = _event.Timer(queue=queue, clock=clock)
+    yield timer
+    timer.clear()
+    await asyncio.sleep(0.01)
 
 
 @pytest.mark.asyncio
@@ -558,6 +831,7 @@ class TestTimer:
         clock = MonotonicClock()
         timer = _event.Timer(queue=queue, clock=clock)
         assert timer._timers == {}
+        timer.clear()
 
     async def test_init_sets_next_id_to_zero(self):
         queue = EventQueue()
@@ -600,6 +874,8 @@ class TestTimer:
         assert id1 == "timer_0"
         assert id2 == "timer_1"
         assert id3 == "timer_2"
+
+        timer.clear()
 
     async def test_start_with_none_owner_creates_empty_source(self):
         queue = EventQueue()
@@ -692,25 +968,29 @@ class TestTimer:
         timer3 = timer.start("tag3", 0.1, owner_region="region2", owner_state="state2")
         
         count = timer.cancel_owned("region1", "state1")
-        
+
         assert count == 2
         assert timer1 not in timer._timers
         assert timer2 not in timer._timers
         assert timer3 in timer._timers
+
+        timer.clear()
     
     async def test_list_returns_timer_info(self):
         queue = EventQueue()
         clock = MonotonicClock()
         timer = _event.Timer(queue=queue, clock=clock)
-        
+
         timer_id = timer.start("test_tag", 1.0, owner_region="region1", owner_state="state1")
-        
+
         timers = timer.list()
-        
+
         assert len(timers) == 1
         assert timers[0]["id"] == timer_id
         assert timers[0]["tag"] == "test_tag"
         assert timers[0]["remaining"] > 0.9  # Should be close to 1.0
+
+        timer.clear()
     
     async def test_timer_with_custom_payload(self):
         queue = EventQueue()
@@ -747,22 +1027,24 @@ class TestTimer:
         queue = EventQueue()
         clock = MonotonicClock()
         timer = _event.Timer(queue=queue, clock=clock)
-        
+
         # Start some timers
         timer1_id = timer.start("tag1", 1.0, owner_region="region1", owner_state="state1")
         timer2_id = timer.start("tag2", 2.0, owner_region="region2", owner_state="state2")
-        
+
         state = timer.state_dict()
-        
+
         assert state["next_id"] == 2  # Should have incremented
         assert len(state["timer_metadata"]) == 2
-        
+
         # Check timer metadata (should not include 'task')
         timer1_meta = state["timer_metadata"][timer1_id]
         assert timer1_meta["tag"] == "tag1"
         assert timer1_meta["owner_region"] == "region1"
         assert timer1_meta["owner_state"] == "state1"
         assert "task" not in timer1_meta  # Runtime task should be excluded
+
+        timer.clear()
     
     async def test_load_state_dict_restores_timer_metadata(self):
         queue = EventQueue()
@@ -798,6 +1080,8 @@ class TestTimer:
 
         assert count == 0
 
+        timer.clear()
+
     async def test_cancel_owned_with_partial_owner_match_does_not_cancel(self):
         queue = EventQueue()
         clock = MonotonicClock()
@@ -811,6 +1095,8 @@ class TestTimer:
         assert count == 1
         assert timer1 not in timer._timers
         assert timer2 in timer._timers
+
+        timer.clear()
 
     async def test_list_returns_empty_list_when_no_timers(self):
         queue = EventQueue()
@@ -831,6 +1117,8 @@ class TestTimer:
 
         timers = timer.list()
         assert 0.4 < timers[0]["remaining"] < 0.5
+
+        timer.clear()
 
     async def test_state_dict_with_no_active_timers(self):
         queue = EventQueue()

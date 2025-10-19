@@ -11,7 +11,7 @@ from dachi.act._chart._composite import CompositeState
 from dachi.act._chart._region import Region, Rule
 from dachi.act._chart._state import State, FinalState, StreamState
 from dachi.act._chart._base import ChartStatus, InvalidTransition
-from dachi.act._chart._event import EventQueue, Post
+from dachi.act._chart._event import EventQueue, EventPost
 from dachi.core import Scope, ModuleList
 
 
@@ -78,7 +78,7 @@ class TestCompositeStateCanRun:
     def test_can_run_returns_true_when_entered_and_not_running(self):
         composite = CompositeState(regions=ModuleList(items=[]))
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
         composite.enter(post, ctx)
@@ -91,7 +91,7 @@ class TestCompositeStateCanRun:
     def test_can_run_returns_false_when_running(self):
         composite = CompositeState(regions=ModuleList(items=[]))
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
         composite.enter(post, ctx)
@@ -123,7 +123,7 @@ class TestCompositeStateExecute:
         region.add(SimpleState(name="idle"))
         composite = CompositeState(regions=ModuleList(items=[region]))
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
 
@@ -139,7 +139,7 @@ class TestCompositeStateExecute:
         region2.add(SimpleState(name="idle"))
         composite = CompositeState(regions=ModuleList(items=[region1, region2]))
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
 
@@ -152,7 +152,7 @@ class TestCompositeStateExecute:
         region.add(SimpleState(name="idle"))
         composite = CompositeState(regions=ModuleList(items=[region]))
         queue = EventQueue()
-        post = Post(queue=queue, source=[("main", "composite")])
+        post = EventPost(queue=queue, source=[("main", "composite")])
         scope = Scope()
         ctx = scope.ctx()
 
@@ -166,7 +166,7 @@ class TestCompositeStateExecute:
         region.add(SimpleState(name="idle"))
         composite = CompositeState(regions=ModuleList(items=[region]))
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
 
@@ -180,7 +180,7 @@ class TestCompositeStateExecute:
         region.add(SimpleState(name="idle"))
         composite = CompositeState(regions=ModuleList(items=[region]))
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
 
@@ -194,7 +194,7 @@ class TestCompositeStateExecute:
         region.add(SimpleState(name="idle"))
         composite = CompositeState(regions=ModuleList(items=[region]))
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
 
@@ -207,7 +207,7 @@ class TestCompositeStateExecute:
         region.add(SimpleState(name="idle"))
         composite = CompositeState(regions=ModuleList(items=[region]))
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
 
@@ -218,7 +218,7 @@ class TestCompositeStateExecute:
     async def test_execute_with_no_regions(self):
         composite = CompositeState(regions=ModuleList(items=[]))
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
 
@@ -231,7 +231,7 @@ class TestCompositeStateExecute:
         region.add(SimpleState(name="idle"))
         composite = CompositeState(regions=ModuleList(items=[region]))
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
 
@@ -248,7 +248,7 @@ class TestCompositeStateExecute:
         region2.add(SimpleState(name="idle"))
         composite = CompositeState(regions=ModuleList(items=[region1, region2]))
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
 
@@ -264,7 +264,7 @@ class TestCompositeStateExecute:
         region2.add(SimpleState(name="idle"))
         composite = CompositeState(regions=ModuleList(items=[region1, region2]))
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
 
@@ -282,7 +282,7 @@ class TestCompositeStateRun:
     async def test_run_raises_error_when_cannot_run(self):
         composite = CompositeState(regions=ModuleList(items=[]))
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
 
@@ -294,7 +294,7 @@ class TestCompositeStateRun:
     async def test_run_completes_immediately_when_no_regions(self):
         composite = CompositeState(regions=ModuleList(items=[]))
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
 
@@ -307,7 +307,7 @@ class TestCompositeStateRun:
     async def test_run_sets_status_to_success_when_no_regions(self):
         composite = CompositeState(regions=ModuleList(items=[]))
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
 
@@ -319,7 +319,7 @@ class TestCompositeStateRun:
     async def test_run_calls_finish_when_no_regions(self):
         composite = CompositeState(regions=ModuleList(items=[]))
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
 
@@ -342,7 +342,7 @@ class TestCompositeStateRun:
         region.add(SimpleState(name="idle"))
         composite = CompositeState(regions=ModuleList(items=[region]))
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
 
@@ -357,7 +357,7 @@ class TestCompositeStateRun:
         region.add(SimpleState(name="idle"))
         composite = CompositeState(regions=ModuleList(items=[region]))
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
 
@@ -372,7 +372,7 @@ class TestCompositeStateRun:
         region.add(SimpleState(name="idle"))
         composite = CompositeState(regions=ModuleList(items=[region]))
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
 
@@ -386,7 +386,7 @@ class TestCompositeStateRun:
         region.add(SlowState(name="idle"))
         composite = CompositeState(regions=ModuleList(items=[region]))
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
 
@@ -398,7 +398,7 @@ class TestCompositeStateRun:
     async def test_run_raises_error_when_not_entered(self):
         composite = CompositeState(regions=ModuleList(items=[]))
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
 
@@ -409,7 +409,7 @@ class TestCompositeStateRun:
     async def test_run_raises_error_when_already_completed(self):
         composite = CompositeState(regions=ModuleList(items=[]))
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
 
@@ -427,13 +427,13 @@ class TestCompositeStateFinishRegion:
         region.add(SimpleState(name="idle"))
         composite = CompositeState(regions=ModuleList(items=[region]))
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
 
         composite._exiting.set(True)
         region.register_finish_callback(composite.finish_region, region.name, post, ctx)
-        await composite.finish_region("child")
+        await composite.finish_region("child", post, ctx)
         assert "child" in composite._finished_regions
 
     @pytest.mark.asyncio
@@ -442,13 +442,13 @@ class TestCompositeStateFinishRegion:
         region.add(SimpleState(name="idle"))
         composite = CompositeState(regions=ModuleList(items=[region]))
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
 
         composite._exiting.set(True)
         region.register_finish_callback(composite.finish_region, region.name, post, ctx)
-        await composite.finish_region("child")
+        await composite.finish_region("child", post, ctx)
         assert composite.finish_region not in region._finish_callbacks
 
     @pytest.mark.asyncio
@@ -459,7 +459,7 @@ class TestCompositeStateFinishRegion:
         region2.add(SimpleState(name="idle"))
         composite = CompositeState(regions=ModuleList(items=[region1, region2]))
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
 
@@ -467,7 +467,7 @@ class TestCompositeStateFinishRegion:
         region1.register_finish_callback(composite.finish_region, region1.name, post, ctx)
         region2.register_finish_callback(composite.finish_region, region2.name, post, ctx)
 
-        await composite.finish_region("child1")
+        await composite.finish_region("child1", post, ctx)
         # Should NOT be finished (need child2)
         assert composite.get_status() != ChartStatus.SUCCESS
 
@@ -477,7 +477,7 @@ class TestCompositeStateFinishRegion:
         region.add(SimpleState(name="idle"))
         composite = CompositeState(regions=ModuleList(items=[region]))
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
 
@@ -485,7 +485,7 @@ class TestCompositeStateFinishRegion:
         composite._tasks = [asyncio.create_task(asyncio.sleep(0.01))]
         region.register_finish_callback(composite.finish_region, region.name, post, ctx)
 
-        await composite.finish_region("child")
+        await composite.finish_region("child", post, ctx)
         assert composite._tasks == []
 
     @pytest.mark.asyncio
@@ -494,14 +494,14 @@ class TestCompositeStateFinishRegion:
         region.add(SimpleState(name="idle"))
         composite = CompositeState(regions=ModuleList(items=[region]))
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
 
         composite._exiting.set(True)
         region.register_finish_callback(composite.finish_region, region.name, post, ctx)
 
-        await composite.finish_region("child")
+        await composite.finish_region("child", post, ctx)
         assert composite._status.get() == ChartStatus.SUCCESS
 
     @pytest.mark.asyncio
@@ -510,14 +510,14 @@ class TestCompositeStateFinishRegion:
         region.add(SimpleState(name="idle"))
         composite = CompositeState(regions=ModuleList(items=[region]))
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
 
         composite._exiting.set(True)
         region.register_finish_callback(composite.finish_region, region.name, post, ctx)
 
-        await composite.finish_region("child")
+        await composite.finish_region("child", post, ctx)
         assert composite._run_completed.get() is True
 
     @pytest.mark.asyncio
@@ -526,7 +526,7 @@ class TestCompositeStateFinishRegion:
         region.add(SimpleState(name="idle"))
         composite = CompositeState(regions=ModuleList(items=[region]))
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
 
@@ -539,7 +539,7 @@ class TestCompositeStateFinishRegion:
         composite.register_finish_callback(callback)
         region.register_finish_callback(composite.finish_region, region.name, post, ctx)
 
-        await composite.finish_region("child")
+        await composite.finish_region("child", post, ctx)
         assert called is True
 
     @pytest.mark.asyncio
@@ -548,14 +548,14 @@ class TestCompositeStateFinishRegion:
         region.add(SimpleState(name="idle"))
         composite = CompositeState(regions=ModuleList(items=[region]))
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
 
         composite._exiting.set(True)
         region.register_finish_callback(composite.finish_region, region.name, post, ctx)
 
-        await composite.finish_region("child")
+        await composite.finish_region("child", post, ctx)
         assert composite._status.get() == ChartStatus.SUCCESS
 
     @pytest.mark.asyncio
@@ -566,7 +566,7 @@ class TestCompositeStateFinishRegion:
         region2.add(SimpleState(name="idle"))
         composite = CompositeState(regions=ModuleList(items=[region1, region2]))
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
 
@@ -574,10 +574,10 @@ class TestCompositeStateFinishRegion:
         region1.register_finish_callback(composite.finish_region, region1.name, post, ctx)
         region2.register_finish_callback(composite.finish_region, region2.name, post, ctx)
 
-        await composite.finish_region("child1")
+        await composite.finish_region("child1", post, ctx)
         assert composite.get_status() != ChartStatus.SUCCESS
 
-        await composite.finish_region("child2")
+        await composite.finish_region("child2", post, ctx)
         assert composite.get_status() == ChartStatus.SUCCESS
 
     @pytest.mark.asyncio
@@ -588,7 +588,7 @@ class TestCompositeStateFinishRegion:
         region2.add(SimpleState(name="idle"))
         composite = CompositeState(regions=ModuleList(items=[region1, region2]))
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
 
@@ -596,10 +596,10 @@ class TestCompositeStateFinishRegion:
         region1.register_finish_callback(composite.finish_region, region1.name, post, ctx)
         region2.register_finish_callback(composite.finish_region, region2.name, post, ctx)
 
-        await composite.finish_region("child1")
+        await composite.finish_region("child1", post, ctx)
         assert len(composite._finished_regions) == 1
 
-        await composite.finish_region("child2")
+        await composite.finish_region("child2", post, ctx)
         assert len(composite._finished_regions) == 2
 
     @pytest.mark.asyncio
@@ -608,16 +608,16 @@ class TestCompositeStateFinishRegion:
         region.add(SimpleState(name="idle"))
         composite = CompositeState(regions=ModuleList(items=[region]))
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
 
         composite._exiting.set(True)
         region.register_finish_callback(composite.finish_region, region.name, post, ctx)
 
-        await composite.finish_region("child")
+        await composite.finish_region("child", post, ctx)
         # Call again - should be safe
-        await composite.finish_region("child")
+        await composite.finish_region("child", post, ctx)
         assert len(composite._finished_regions) == 1
 
     @pytest.mark.asyncio
@@ -628,7 +628,7 @@ class TestCompositeStateFinishRegion:
         region2.add(SimpleState(name="idle"))
         composite = CompositeState(regions=ModuleList(items=[region1, region2]))
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
 
@@ -637,8 +637,8 @@ class TestCompositeStateFinishRegion:
         region2.register_finish_callback(composite.finish_region, region2.name, post, ctx)
 
         # Finish in reverse order
-        await composite.finish_region("child2")
-        await composite.finish_region("child1")
+        await composite.finish_region("child2", post, ctx)
+        await composite.finish_region("child1", post, ctx)
         assert composite.get_status() == ChartStatus.SUCCESS
 
     @pytest.mark.asyncio
@@ -647,7 +647,7 @@ class TestCompositeStateFinishRegion:
         region.add(SimpleState(name="idle"))
         composite = CompositeState(regions=ModuleList(items=[region]))
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
 
@@ -655,7 +655,7 @@ class TestCompositeStateFinishRegion:
         composite._exiting.set(False)
         region.register_finish_callback(composite.finish_region, region.name, post, ctx)
 
-        await composite.finish_region("child")
+        await composite.finish_region("child", post, ctx)
         # Should NOT finish because _exiting is False
         assert composite.get_status() != ChartStatus.SUCCESS
 
@@ -705,7 +705,7 @@ class TestCompositeStateExit:
     async def test_exit_raises_error_when_cannot_exit(self):
         composite = CompositeState(regions=ModuleList(items=[]))
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
 
@@ -717,7 +717,7 @@ class TestCompositeStateExit:
     async def test_exit_sets_exiting_flag(self):
         composite = CompositeState(regions=ModuleList(items=[]))
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
 
@@ -729,7 +729,7 @@ class TestCompositeStateExit:
     async def test_exit_sets_termination_requested(self):
         composite = CompositeState(regions=ModuleList(items=[]))
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
 
@@ -743,7 +743,7 @@ class TestCompositeStateExit:
         region.add(SimpleState(name="idle"))
         composite = CompositeState(regions=ModuleList(items=[region]))
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
 
@@ -761,7 +761,7 @@ class TestCompositeStateExit:
     async def test_exit_with_empty_composite(self):
         composite = CompositeState(regions=ModuleList(items=[]))
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
 
@@ -777,7 +777,7 @@ class TestCompositeStateExit:
         region.add(SlowState(name="idle"))
         composite = CompositeState(regions=ModuleList(items=[region]))
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
 
@@ -792,7 +792,7 @@ class TestCompositeStateExit:
     async def test_exit_calls_finish_for_empty_composite(self):
         composite = CompositeState(regions=ModuleList(items=[]))
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
 
@@ -815,7 +815,7 @@ class TestCompositeStateExit:
         region.add(SlowState(name="idle"))
         composite = CompositeState(regions=ModuleList(items=[region]))
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
 
@@ -837,7 +837,7 @@ class TestCompositeStateExit:
         region.add(SlowState(name="idle"))
         composite = CompositeState(regions=ModuleList(items=[region]))
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
 
@@ -861,7 +861,7 @@ class TestCompositeStateExit:
         region2.add(SlowState(name="idle"))     # Still running
         composite = CompositeState(regions=ModuleList(items=[region1, region2]))
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
 
@@ -881,7 +881,7 @@ class TestCompositeStateExit:
     async def test_exit_with_no_regions(self):
         composite = CompositeState(regions=ModuleList(items=[]))
         queue = EventQueue()
-        post = Post(queue=queue)
+        post = EventPost(queue=queue)
         scope = Scope()
         ctx = scope.ctx()
 

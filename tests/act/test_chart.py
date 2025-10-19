@@ -10,6 +10,8 @@ from dataclasses import fields
 
 from dachi.act._chart._chart import StateChart, ChartSnapshot
 from dachi.act._chart._base import ChartStatus
+from dachi.act._chart._event import EventPost, EventQueue
+from dachi.core import Scope
 from dachi.act._chart._region import Region, Rule
 from dachi.act._chart._state import State, StreamState, FinalState
 
@@ -602,7 +604,11 @@ class TestChartInheritedMethods:
             callback_called.append(arg)
 
         chart.register_finish_callback(my_callback, "test_arg")
-        await chart.finish()
+
+        queue = EventQueue()
+        post = EventPost(queue=queue)
+        ctx = Scope().child(0)
+        await chart.finish(post, ctx)
 
         assert callback_called == ["test_arg"]
 
@@ -637,7 +643,11 @@ class TestChartInheritedMethods:
 
         chart.register_finish_callback(callback1)
         chart.register_finish_callback(callback2)
-        await chart.finish()
+
+        queue = EventQueue()
+        post = EventPost(queue=queue)
+        ctx = Scope().child(0)
+        await chart.finish(post, ctx)
 
         assert 1 in results
         assert 2 in results

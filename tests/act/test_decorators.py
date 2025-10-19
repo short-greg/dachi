@@ -13,7 +13,7 @@ import pytest
 from dachi.core import InitVar, Attr, Scope
 from .utils import create_test_ctx
 from dachi.act._bt._core import TaskStatus, Leaf
-from dachi.act._bt._decorators import Not, Until, Bind
+from dachi.act._bt._decorators import Not, Until, BoundTask
 
 from dachi.act._bt._leafs import Action, Condition
 
@@ -307,7 +307,7 @@ class TestBindDecorator:
         
         action = ContextTestAction()
         # Bind constant values
-        bind_decorator = Bind(leaf=action, bindings={"target": "target_base", "attempts": "attempts_base"})
+        bind_decorator = BoundTask(leaf=action, bindings={"target": "target_base", "attempts": "attempts_base"})
         ctx['target_base'] = (1, 2, 3)
         ctx['attempts_base'] = 5
         ctx['optional_param'] = "bound_value"
@@ -331,7 +331,7 @@ class TestBindDecorator:
         
         action = ContextTestAction()
         # This syntax will be implemented - string keys resolve to context values
-        bind_decorator = Bind(leaf=action, bindings={"target": "goal", "attempts": "retry_count"})
+        bind_decorator = BoundTask(leaf=action, bindings={"target": "goal", "attempts": "retry_count"})
         
         await bind_decorator.tick(ctx)
         
@@ -350,7 +350,7 @@ class TestBindDecorator:
         
         action = ContextTestAction()
         # This syntax will be implemented - nested path resolution
-        bind_decorator = Bind(leaf=action, bindings={"target": "0.pose.x"})
+        bind_decorator = BoundTask(leaf=action, bindings={"target": "0.pose.x"})
         
         await bind_decorator.tick(ctx)
         
@@ -366,7 +366,7 @@ class TestBindDecorator:
         
         action = ContextTestAction()
         # Mix constants and context keys
-        bind_decorator = Bind(
+        bind_decorator = BoundTask(
             leaf=action, 
             bindings={
             "target": "dynamic_target",  # from context
@@ -389,7 +389,7 @@ class TestBindDecorator:
         
         action = ContextTestAction()
         # Bind to non-existent context key
-        bind_decorator = Bind(leaf=action, bindings={"target": "nonexistent_key"})
+        bind_decorator = BoundTask(leaf=action, bindings={"target": "nonexistent_key"})
         
         # This should fail gracefully when resolution is implemented
         # For now, verify the binding is set up
@@ -408,7 +408,7 @@ class TestBindDecorator:
         
         action = ContextTestAction()
         # This path resolution will be implemented
-        bind_decorator = Bind(leaf=action, bindings={"target": "0.1.deep_value"})
+        bind_decorator = BoundTask(leaf=action, bindings={"target": "0.1.deep_value"})
         
         await bind_decorator.tick(ctx)
         

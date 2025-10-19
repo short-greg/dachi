@@ -8,7 +8,7 @@ from ._base import ChartBase, ChartStatus, InvalidTransition
 # Local
 from dachi.core import Attr, ModuleDict, Ctx
 from ._state import State, StreamState, BaseState, PseudoState, ReadyState, FinalState
-from ._event import Event, Post, ChartEventHandler
+from ._event import Event, EventPost, ChartEventHandler
 import logging
 
 logger = logging.getLogger("dachi.statechart")
@@ -348,7 +348,7 @@ class Region(ChartBase, ChartEventHandler):
     def can_reset(self) -> bool:
         return self._stopped.get() is True
 
-    async def start(self, post: "Post", ctx: Ctx) -> None:
+    async def start(self, post: "EventPost", ctx: Ctx) -> None:
         """Start the region. Transitions from READY to initial state.
 
         The region always starts in READY state. When start() is called,
@@ -366,7 +366,7 @@ class Region(ChartBase, ChartEventHandler):
         self._pending_reason.set("Auto-transition from READY to initial state")
         await self.transition(post, ctx)
 
-    async def stop(self, post: Post, ctx: Ctx, preempt: bool=False) -> None:
+    async def stop(self, post: EventPost, ctx: Ctx, preempt: bool=False) -> None:
         """Stop the region and its current state activity
 
         When preempt=True, requests termination and transitions to CANCELED state.
@@ -450,7 +450,7 @@ class Region(ChartBase, ChartEventHandler):
         return self._current_state.get()
 
     async def transition(
-        self, post: "Post", ctx: Ctx
+        self, post: "EventPost", ctx: Ctx
     ) -> None | str:
         """Handle state transitions based on pending targets.
 
@@ -522,7 +522,7 @@ class Region(ChartBase, ChartEventHandler):
             self._stopped.set(True)
             self._stopping.set(False)
             self._finished.set(True)
-            await self.finish()
+            await self.finish(post, ctx)
         else:
             child_post = post.sibling(target)
             child_ctx = ctx.child(self._state_idx_map[target])
@@ -563,7 +563,7 @@ class Region(ChartBase, ChartEventHandler):
         return {"type": "preempt", "target": target}
 
     async def handle_event(
-        self, event: "Event", post: Post, ctx: Ctx
+        self, event: "Event", post: EventPost, ctx: Ctx
     ) -> None:
         """Handle an incoming event and update region state accordingly"""
         if self.status != ChartStatus.RUNNING:

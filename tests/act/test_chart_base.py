@@ -6,15 +6,10 @@ testing conventions.
 
 import asyncio
 import pytest
-import sys
-import os
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'dachi', 'act', '_chart'))
-import _base
-
-ChartStatus = _base.ChartStatus
-ChartBase = _base.ChartBase
-InvalidTransition = _base.InvalidTransition
+from dachi.core import Scope
+from dachi.act._chart._base import ChartStatus, ChartBase
+from dachi.act._chart._event import EventPost, EventQueue
 
 
 class TestChartStatus:
@@ -189,7 +184,10 @@ class TestChartBaseFinish:
     @pytest.mark.asyncio
     async def test_finish_does_not_change_status(self):
         base = ChartBase()
-        await base.finish()
+        queue = EventQueue()
+        post = EventPost(queue=queue)
+        ctx = Scope().child(0)
+        await base.finish(post, ctx)
         assert base.get_status() == ChartStatus.WAITING
 
     @pytest.mark.asyncio
@@ -201,8 +199,11 @@ class TestChartBaseFinish:
             nonlocal called
             called = True
 
+        queue = EventQueue()
+        post = EventPost(queue=queue)
+        ctx = Scope().child(0)
         base.register_finish_callback(callback)
-        await base.finish()
+        await base.finish(post, ctx)
         assert called is True
 
     @pytest.mark.asyncio
@@ -214,7 +215,11 @@ class TestChartBaseFinish:
             result.append(value)
 
         base.register_finish_callback(callback, "test_value")
-        await base.finish()
+
+        queue = EventQueue()
+        post = EventPost(queue=queue)
+        ctx = Scope().child(0)
+        await base.finish(post, ctx)
         assert result == ["test_value"]
 
     @pytest.mark.asyncio
@@ -225,8 +230,11 @@ class TestChartBaseFinish:
         def callback(key=None):
             result["key"] = key
 
+        queue = EventQueue()
+        post = EventPost(queue=queue)
+        ctx = Scope().child(0)
         base.register_finish_callback(callback, key="value")
-        await base.finish()
+        await base.finish(post, ctx)
         assert result == {"key": "value"}
 
     @pytest.mark.asyncio
@@ -238,8 +246,11 @@ class TestChartBaseFinish:
             result["arg"] = arg
             result["key"] = key
 
+        queue = EventQueue()
+        post = EventPost(queue=queue)
+        ctx = Scope().child(0)
         base.register_finish_callback(callback, "arg_value", key="kwarg_value")
-        await base.finish()
+        await base.finish(post, ctx)
         assert result == {"arg": "arg_value", "key": "kwarg_value"}
 
     @pytest.mark.asyncio
@@ -255,7 +266,11 @@ class TestChartBaseFinish:
 
         base.register_finish_callback(callback1)
         base.register_finish_callback(callback2)
-        await base.finish()
+
+        queue = EventQueue()
+        post = EventPost(queue=queue)
+        ctx = Scope().child(0)
+        await base.finish(post, ctx)
         assert 1 in results
         assert 2 in results
         assert len(results) == 2
@@ -263,5 +278,9 @@ class TestChartBaseFinish:
     @pytest.mark.asyncio
     async def test_finish_with_no_callbacks_completes(self):
         base = ChartBase()
-        await base.finish()
+
+        queue = EventQueue()
+        post = EventPost(queue=queue)
+        ctx = Scope().child(0)
+        await base.finish(post, ctx)
         assert base.get_status() == ChartStatus.WAITING

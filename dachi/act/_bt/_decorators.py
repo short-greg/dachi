@@ -122,7 +122,7 @@ class Not(Decorator):
         return status.invert()
 
 
-class Bind(Task):
+class BoundTask(Task):
     """Bind will map variables in the context to
     the inputs of the decorated task
     """

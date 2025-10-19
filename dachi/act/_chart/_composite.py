@@ -4,7 +4,7 @@ import asyncio
 
 from ._state import BaseState
 from ._base import ChartStatus, InvalidTransition
-from ._event import Post, ChartEventHandler, Event
+from ._event import EventPost, ChartEventHandler, Event
 from ._region import Region, ValidationResult
 from dachi.core import Ctx, ModuleList
 
@@ -50,8 +50,16 @@ class CompositeState(BaseState, ChartEventHandler):
                 return region
         raise KeyError(f"Region '{region_name}' not found in composite state '{self.name}'")
 
-    async def finish_region(self, region_name: str) -> None:
-        """Handle completion of a region's task."""
+    async def finish_region(self, region_name: str, post: 'EventPost', ctx: 'Ctx') -> None:
+        """Handle completion of a region's task.
+        
+        Args:
+            region_name (str): The name of the region that finished
+            post: Post object for this state
+            ctx: Ctx object for this state
+        Raises:
+            ValueError: If the region is unknown
+        """
         self._finished_regions.add(region_name)
 
         # Find region by name and unregister callback
@@ -66,7 +74,7 @@ class CompositeState(BaseState, ChartEventHandler):
             self._run_completed.set(True)
             if self._exiting.get():
                 self._status.set(ChartStatus.SUCCESS)
-                await self.finish()
+                await self.finish(post, ctx)
 
     def reset(self):
         """Reset composite state to initial state.
@@ -84,7 +92,7 @@ class CompositeState(BaseState, ChartEventHandler):
         self._tasks = []
         self._finished_regions = set()
         
-    async def execute(self, post: "Post", ctx: Ctx) -> None:
+    async def execute(self, post: "EventPost", ctx: Ctx) -> None:
         """Composite states do not have direct execution logic."""
         self._tasks = []
         for i, region in enumerate(self.regions):
@@ -93,7 +101,7 @@ class CompositeState(BaseState, ChartEventHandler):
                     region.start(post.child(region.name), ctx.child(i))
                 )
             )
-            region.register_finish_callback(self.finish_region, region.name)
+            region.register_finish_callback(self.finish_region, region.name, post, ctx)
         return None
 
     def can_run(self) -> bool:
@@ -102,7 +110,7 @@ class CompositeState(BaseState, ChartEventHandler):
                 not self._executing.get() and
                 not self._run_completed.get())
 
-    async def run(self, post: "Post", ctx: Ctx) -> None:
+    async def run(self, post: "EventPost", ctx: Ctx) -> None:
         """Run all regions and wait for them to complete."""
         if not self.can_run():
             raise RuntimeError(f"Cannot run state '{self.name}' in {self._status.get()} state")
@@ -111,13 +119,13 @@ class CompositeState(BaseState, ChartEventHandler):
             self._status.set(ChartStatus.SUCCESS)
             self._run_completed.set(True)
             if self._exiting.get():
-                await self.finish()
+                await self.finish(post, ctx)
             return
         await self.execute(post, ctx)
         self._run_completed.set(False)
         # don't call finish until all regions have completed
 
-    async def handle_event(self, event: Event, post: "Post", ctx: Ctx) -> None:
+    async def handle_event(self, event: Event, post: "EventPost", ctx: Ctx) -> None:
         """Handle events by dispatching to all running child regions."""
         if self._status.get() != ChartStatus.RUNNING:
             return
@@ -128,7 +136,7 @@ class CompositeState(BaseState, ChartEventHandler):
                 child_ctx = ctx.child(i)
                 await region.handle_event(event, child_post, child_ctx)
 
-    def exit(self, post: Post, ctx: Ctx) -> None:
+    def exit(self, post: EventPost, ctx: Ctx) -> None:
         """Called when exiting the state. Sets final status.
 
         Exit is synchronous - it initiates stopping of child regions but doesn't
@@ -163,7 +171,7 @@ class CompositeState(BaseState, ChartEventHandler):
             # All regions already completed - trigger finish via _check_execute_finish
             self._run_completed.set(True)
             self._status.set(ChartStatus.SUCCESS)
-            self._check_execute_finish()
+            self._check_execute_finish(post, ctx)
         else:
             # Regions still running - will complete via finish_region callback
             self._status.set(ChartStatus.PREEMPTING)

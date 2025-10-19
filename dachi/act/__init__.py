@@ -15,7 +15,7 @@ from ._bt._decorators import (
     AsLongAs, 
     Until,
     Decorator,
-    Bind
+    BoundTask
 
 )
 from ._bt._roots import (

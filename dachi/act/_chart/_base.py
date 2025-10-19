@@ -6,7 +6,8 @@ from abc import abstractmethod
 import asyncio
 import logging
 
-from dachi.core import BaseModule, Attr
+from dachi.core import BaseModule, Attr, Ctx, Scope
+from ._event import EventPost, EventQueue
 
 logger = logging.getLogger("dachi.statechart")
 
@@ -92,13 +93,20 @@ class ChartBase(BaseModule):
         """Check if state can be reset."""
         return self._status.get().is_completed()
 
-    async def finish(self) -> None:
+    async def finish(self, post: EventPost | None=None, ctx: Ctx | None=None) -> None:
         """Mark as finished and invoke finish callbacks.
 
-        Exceptions in callbacks are logged but don't prevent other callbacks
-        from running. This ensures one broken callback doesn't break the
-        entire finish process.
+        Cancels all timers created by this component's Post instance,
+        then invokes registered callbacks. Exceptions in callbacks are
+        logged but don't prevent other callbacks from running.
+
+        Args:
+            post: Post object for event posting
+            ctx: Context object for this component
         """
+        if post is not None:
+            post.cancel_all()
+
         callbacks_copy = list(self._finish_callbacks.items())
         for callback, (args, kwargs) in callbacks_copy:
             try:
