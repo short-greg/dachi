@@ -5,6 +5,9 @@ from ._chart import (
     ChartSnapshot,
     StateChart,
 )
+from ._composite import (
+    CompositeState,
+)
 from ._event import (
     EventQueue,
     EventPost,

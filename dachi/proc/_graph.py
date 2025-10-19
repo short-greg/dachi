@@ -460,18 +460,25 @@ class DAG(AdaptModule, AsyncProcess):
         by[name] = res
         return res
 
-    async def aforward(self, by: typing.Dict=None):
+    async def aforward(
+        self, 
+        by: typing.Dict=None,
+        outputs: typing.List[str]|str=None
+    ):
         """Forward the data through the graph, resolving all nodes and their arguments
         Args:
             by (typing.Dict, optional): A dictionary to store resolved nodes. Defaults to None.
         Returns:
             tuple: A tuple of resolved outputs from the graph
         """
-        if self._outputs.data is None:
+        if outputs is None:
+            outputs = self._outputs.data
+        if outputs is None:
             return None
+    
         by = by if by is not None else {}
         res = []
-        for name in self._outputs.data:
+        for name in outputs:
             if name in by:
                 res.append(by[name])
             else:
