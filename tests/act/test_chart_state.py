@@ -10,7 +10,7 @@ import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
-from dachi.act._chart._state import BaseState, AtomState, State, StreamState, FinalState, PseudoState, ReadyState
+from dachi.act._chart._state import BaseState, AtomState, State, StreamState, FinalState, PseudoState, ReadyState, BoundState, BoundStreamState
 from dachi.act._chart._base import ChartStatus, InvalidTransition
 from dachi.act._chart._event import EventQueue, Post
 from dachi.core import Scope
@@ -1383,12 +1383,572 @@ class TestStateFinishCallbacks:
         ctx = scope.ctx()
         state = CancelledStreamState()
         called = False
-        
+
         def callback():
             nonlocal called
             called = True
-        
+
         state.register_finish_callback(callback)
         state.enter(post, ctx)
         await state.run(post, ctx)
         assert called is True
+
+
+# ============================================================================
+# BoundState & BoundStreamState Tests
+# ============================================================================
+
+# Test helper states
+
+class SimpleState(State):
+    """State with simple inputs and outputs."""
+    class inputs:
+        x: int
+        y: int = 10
+
+    async def execute(self, post, x, y=10):
+        return {"result": x + y, "doubled": x * 2}
+
+
+class MultiInputState(State):
+    """State with multiple input types."""
+    class inputs:
+        data: int
+        config: dict
+        flag: bool = True
+
+    async def execute(self, post, data, config, flag=True):
+        return {"processed": data, "mode": config.get("mode"), "enabled": flag}
+
+
+class FailingState(State):
+    """State that raises an exception."""
+    async def execute(self, post):
+        raise ValueError("Intentional failure")
+
+
+class SimpleStreamState(StreamState):
+    """Streaming state with multiple yields."""
+    class inputs:
+        count: int
+
+    async def execute(self, post, count):
+        for i in range(count):
+            yield {"iteration": i, "value": i * 10}
+
+
+class LongRunningStreamState(StreamState):
+    """Streaming state for testing preemption."""
+    async def execute(self, post):
+        for i in range(5):
+            yield {"count": i}
+            await asyncio.sleep(0.01)
+
+
+# ============================================================================
+# TestBoundStateInputResolution
+# ============================================================================
+
+@pytest.mark.asyncio
+class TestBoundStateInputResolution:
+    """Verify bindings map context data to state inputs correctly."""
+
+    async def test_bound_state_resolves_simple_binding(self):
+        """Test that input 'x' bound to context key 'data' resolves correctly."""
+        # Arrange
+        scope = Scope()
+        ctx = scope.ctx()
+        ctx["data"] = 42
+        ctx["y"] = 100
+
+        bound = BoundState(
+            state=SimpleState(),
+            bindings={"x": "data"}  # x -> data
+        )
+        queue = EventQueue()
+        post = Post(queue=queue)
+
+        # Act
+        bound.enter(post, ctx)
+        await bound.run(post, ctx)
+
+        # Assert
+        assert ctx["result"] == 142  # data(42) + y(100)
+        assert ctx["doubled"] == 84  # data(42) * 2
+
+    async def test_bound_state_resolves_multiple_bindings(self):
+        """Test that multiple inputs bound to different context keys all resolve."""
+        # Arrange
+        scope = Scope()
+        ctx = scope.ctx()
+        ctx["sensor_data"] = 999
+        ctx["global_config"] = {"mode": "auto"}
+        ctx["enabled"] = False
+
+        bound = BoundState(
+            state=MultiInputState(),
+            bindings={"data": "sensor_data", "config": "global_config", "flag": "enabled"}
+        )
+        queue = EventQueue()
+        post = Post(queue=queue)
+
+        # Act
+        bound.enter(post, ctx)
+        await bound.run(post, ctx)
+
+        # Assert
+        assert ctx["processed"] == 999
+        assert ctx["mode"] == "auto"
+        assert ctx["enabled"] == False
+
+    async def test_bound_state_uses_unbound_name_when_not_in_bindings(self):
+        """Test that input 'y' not in bindings resolves directly from context['y']."""
+        # Arrange
+        scope = Scope()
+        ctx = scope.ctx()
+        ctx["x"] = 50  # Not bound, resolves directly
+        ctx["y"] = 25  # Not bound, resolves directly
+
+        bound = BoundState(
+            state=SimpleState(),
+            bindings={}  # Empty bindings
+        )
+        queue = EventQueue()
+        post = Post(queue=queue)
+
+        # Act
+        bound.enter(post, ctx)
+        await bound.run(post, ctx)
+
+        # Assert
+        assert ctx["result"] == 75  # 50 + 25
+
+    async def test_bound_state_raises_error_when_bound_key_missing(self):
+        """Test that input bound to missing key raises KeyError."""
+        # Arrange
+        scope = Scope()
+        ctx = scope.ctx()
+        ctx["y"] = 10  # 'x' is missing
+
+        bound = BoundState(
+            state=SimpleState(),
+            bindings={"x": "missing_key"}
+        )
+        queue = EventQueue()
+        post = Post(queue=queue)
+
+        # Act & Assert
+        bound.enter(post, ctx)
+        await bound.run(post, ctx)
+
+        # State should fail and store exception
+        assert bound._status.get() == ChartStatus.FAILURE
+        assert "__exception__" in ctx
+
+
+# ============================================================================
+# TestBoundStateOutputPropagation
+# ============================================================================
+
+@pytest.mark.asyncio
+class TestBoundStateOutputPropagation:
+    """Verify outputs write to original context, not bound paths."""
+
+    async def test_bound_state_writes_output_to_original_context(self):
+        """Test that state output writes to ctx['result'], not bound path."""
+        # Arrange
+        scope = Scope()
+        ctx = scope.ctx()
+        ctx["data"] = 10
+        ctx["y"] = 5
+
+        bound = BoundState(
+            state=SimpleState(),
+            bindings={"x": "data"}
+        )
+        queue = EventQueue()
+        post = Post(queue=queue)
+
+        # Act
+        bound.enter(post, ctx)
+        await bound.run(post, ctx)
+
+        # Assert - outputs go to original context keys
+        assert ctx["result"] == 15
+        assert ctx["doubled"] == 20
+        # Verify bound input key still exists
+        assert ctx["data"] == 10
+
+    async def test_bound_state_writes_multiple_outputs_to_original_context(self):
+        """Test that multiple outputs all propagate to original context."""
+        # Arrange
+        scope = Scope()
+        ctx = scope.ctx()
+        ctx["sensor"] = 123
+        ctx["cfg"] = {"mode": "manual"}
+        ctx["flag"] = True
+
+        bound = BoundState(
+            state=MultiInputState(),
+            bindings={"data": "sensor", "config": "cfg"}
+        )
+        queue = EventQueue()
+        post = Post(queue=queue)
+
+        # Act
+        bound.enter(post, ctx)
+        await bound.run(post, ctx)
+
+        # Assert - all outputs in original context
+        assert ctx["processed"] == 123
+        assert ctx["mode"] == "manual"
+        assert ctx["enabled"] == True
+
+
+# ============================================================================
+# TestBoundStateLifecycle
+# ============================================================================
+
+@pytest.mark.asyncio
+class TestBoundStateLifecycle:
+    """Verify state lifecycle (enter/run/exit/reset) works correctly."""
+
+    async def test_bound_state_can_enter_when_waiting(self):
+        """Test that fresh BoundState can enter successfully."""
+        # Arrange
+        scope = Scope()
+        ctx = scope.ctx()
+        ctx["x"] = 1
+        ctx["y"] = 1
+
+        bound = BoundState(state=SimpleState(), bindings={})
+        queue = EventQueue()
+        post = Post(queue=queue)
+
+        # Act & Assert
+        assert bound.can_enter() == True
+        bound.enter(post, ctx)
+        assert bound._status.get() == ChartStatus.RUNNING
+
+    async def test_bound_state_cannot_enter_when_already_entered(self):
+        """Test that state cannot be entered twice."""
+        # Arrange
+        scope = Scope()
+        ctx = scope.ctx()
+        ctx["x"] = 1
+        ctx["y"] = 1
+
+        bound = BoundState(state=SimpleState(), bindings={})
+        queue = EventQueue()
+        post = Post(queue=queue)
+
+        # Act
+        bound.enter(post, ctx)
+
+        # Assert
+        assert bound.can_enter() == False
+        with pytest.raises(InvalidTransition):
+            bound.enter(post, ctx)
+
+    async def test_bound_state_completes_successfully_after_run(self):
+        """Test that after run() completes, status is SUCCESS."""
+        # Arrange
+        scope = Scope()
+        ctx = scope.ctx()
+        ctx["x"] = 1
+        ctx["y"] = 1
+
+        bound = BoundState(state=SimpleState(), bindings={})
+        queue = EventQueue()
+        post = Post(queue=queue)
+
+        # Act - proper lifecycle: enter → run → exit
+        bound.enter(post, ctx)
+        await bound.run(post, ctx)
+        bound.exit(post, ctx)
+
+        # Assert
+        assert bound._status.get() == ChartStatus.SUCCESS
+
+    async def test_bound_state_can_be_reset_after_completion(self):
+        """Test that after SUCCESS, state can be reset to WAITING."""
+        # Arrange
+        scope = Scope()
+        ctx = scope.ctx()
+        ctx["x"] = 1
+        ctx["y"] = 1
+
+        bound = BoundState(state=SimpleState(), bindings={})
+        queue = EventQueue()
+        post = Post(queue=queue)
+
+        # Act - proper lifecycle: enter → run → exit
+        bound.enter(post, ctx)
+        await bound.run(post, ctx)
+        bound.exit(post, ctx)
+
+        # Assert state can be reset
+        assert bound.can_reset() == True
+        bound.reset()
+        assert bound._status.get() == ChartStatus.WAITING
+
+    async def test_bound_state_cannot_be_reset_while_running(self):
+        """Test that reset during execution is prevented."""
+        # Arrange
+        scope = Scope()
+        ctx = scope.ctx()
+        ctx["x"] = 1
+        ctx["y"] = 1
+
+        bound = BoundState(state=SimpleState(), bindings={})
+        queue = EventQueue()
+        post = Post(queue=queue)
+
+        # Act
+        bound.enter(post, ctx)
+
+        # Assert - cannot reset while running
+        assert bound.can_reset() == False
+        with pytest.raises(InvalidTransition):
+            bound.reset()
+
+
+# ============================================================================
+# TestBoundStateExceptionHandling
+# ============================================================================
+
+@pytest.mark.asyncio
+class TestBoundStateExceptionHandling:
+    """Verify error handling behavior."""
+
+    async def test_bound_state_sets_failure_status_when_execute_raises(self):
+        """Test that exception in execute() sets status to FAILURE."""
+        # Arrange
+        scope = Scope()
+        ctx = scope.ctx()
+
+        bound = BoundState(state=FailingState(), bindings={})
+        queue = EventQueue()
+        post = Post(queue=queue)
+
+        # Act
+        bound.enter(post, ctx)
+        await bound.run(post, ctx)
+
+        # Assert
+        assert bound._status.get() == ChartStatus.FAILURE
+
+    async def test_bound_state_stores_exception_info_in_context(self):
+        """Test that exception details are stored in ctx['__exception__']."""
+        # Arrange
+        scope = Scope()
+        ctx = scope.ctx()
+
+        bound = BoundState(state=FailingState(), bindings={})
+        queue = EventQueue()
+        post = Post(queue=queue)
+
+        # Act
+        bound.enter(post, ctx)
+        await bound.run(post, ctx)
+
+        # Assert
+        assert "__exception__" in ctx
+        assert ctx["__exception__"]["message"] == "Intentional failure"
+        assert ctx["__exception__"]["type"] == "ValueError"
+
+
+# ============================================================================
+# TestBoundStreamStateInputResolution
+# ============================================================================
+
+@pytest.mark.asyncio
+class TestBoundStreamStateInputResolution:
+    """Verify bindings work for StreamState."""
+
+    async def test_bound_stream_state_resolves_bindings_before_streaming(self):
+        """Test that bound input resolves correctly before streaming begins."""
+        # Arrange
+        scope = Scope()
+        ctx = scope.ctx()
+        ctx["num_iterations"] = 3
+
+        bound = BoundStreamState(
+            state=SimpleStreamState(),
+            bindings={"count": "num_iterations"}
+        )
+        queue = EventQueue()
+        post = Post(queue=queue)
+
+        # Act - proper lifecycle: enter → run → exit
+        bound.enter(post, ctx)
+        await bound.run(post, ctx)
+        bound.exit(post, ctx)
+
+        # Assert - should have yielded 3 times (0, 1, 2)
+        assert ctx["iteration"] == 2  # Last iteration
+        assert ctx["value"] == 20  # 2 * 10
+
+
+# ============================================================================
+# TestBoundStreamStateOutputAccumulation
+# ============================================================================
+
+@pytest.mark.asyncio
+class TestBoundStreamStateOutputAccumulation:
+    """Verify streaming outputs accumulate in context."""
+
+    async def test_bound_stream_state_accumulates_yielded_outputs(self):
+        """Test that multiple yields update context with latest value."""
+        # Arrange
+        scope = Scope()
+        ctx = scope.ctx()
+        ctx["count"] = 3
+
+        bound = BoundStreamState(
+            state=SimpleStreamState(),
+            bindings={}
+        )
+        queue = EventQueue()
+        post = Post(queue=queue)
+
+        # Act - proper lifecycle: enter → run → exit
+        bound.enter(post, ctx)
+        await bound.run(post, ctx)
+        bound.exit(post, ctx)
+
+        # Assert - last yield wins
+        assert ctx["iteration"] == 2
+        assert ctx["value"] == 20
+
+    async def test_bound_stream_state_writes_to_original_context_not_bound_path(self):
+        """Test that yields write to original context, not bound paths."""
+        # Arrange
+        scope = Scope()
+        ctx = scope.ctx()
+        ctx["num"] = 2
+
+        bound = BoundStreamState(
+            state=SimpleStreamState(),
+            bindings={"count": "num"}
+        )
+        queue = EventQueue()
+        post = Post(queue=queue)
+
+        # Act - proper lifecycle: enter → run → exit
+        bound.enter(post, ctx)
+        await bound.run(post, ctx)
+        bound.exit(post, ctx)
+
+        # Assert - outputs go to original context keys
+        assert ctx["iteration"] == 1
+        assert ctx["value"] == 10
+        # Bound input key still exists
+        assert ctx["num"] == 2
+
+
+# ============================================================================
+# TestBoundStreamStatePreemption
+# ============================================================================
+
+@pytest.mark.asyncio
+class TestBoundStreamStatePreemption:
+    """Verify preemption behavior for streaming states."""
+
+    async def test_bound_stream_state_returns_canceled_status_when_preempted(self):
+        """Test that request_termination() during run() results in CANCELED status."""
+        # Arrange
+        scope = Scope()
+        ctx = scope.ctx()
+
+        bound = BoundStreamState(
+            state=LongRunningStreamState(),
+            bindings={}
+        )
+        queue = EventQueue()
+        post = Post(queue=queue)
+
+        # Act
+        bound.enter(post, ctx)
+
+        # Start run in background
+        run_task = asyncio.create_task(bound.run(post, ctx))
+
+        # Request termination after first yield
+        await asyncio.sleep(0.02)
+        bound.request_termination()
+
+        # Wait for run to complete
+        await run_task
+
+        # Assert
+        assert bound._status.get() == ChartStatus.CANCELED
+
+    async def test_bound_stream_state_stops_at_next_yield_when_terminated(self):
+        """Test that termination stops execution at next checkpoint."""
+        # Arrange
+        scope = Scope()
+        ctx = scope.ctx()
+
+        bound = BoundStreamState(
+            state=LongRunningStreamState(),
+            bindings={}
+        )
+        queue = EventQueue()
+        post = Post(queue=queue)
+
+        # Act
+        bound.enter(post, ctx)
+
+        # Start run in background
+        run_task = asyncio.create_task(bound.run(post, ctx))
+
+        # Terminate after 1-2 yields
+        await asyncio.sleep(0.02)
+        bound.request_termination()
+
+        await run_task
+
+        # Assert - should not have completed all 5 yields
+        assert ctx["count"] < 4  # Stopped early
+
+
+# ============================================================================
+# TestBoundStateEdgeCases
+# ============================================================================
+
+@pytest.mark.asyncio
+class TestBoundStateEdgeCases:
+    """Unusual but valid scenarios."""
+
+    async def test_bound_state_with_empty_bindings_dict_works(self):
+        """Test that bindings={} resolves inputs directly from context."""
+        # Arrange
+        scope = Scope()
+        ctx = scope.ctx()
+        ctx["x"] = 11
+        ctx["y"] = 22
+
+        bound = BoundState(
+            state=SimpleState(),
+            bindings={}
+        )
+        queue = EventQueue()
+        post = Post(queue=queue)
+
+        # Act
+        bound.enter(post, ctx)
+        await bound.run(post, ctx)
+
+        # Assert
+        assert ctx["result"] == 33
+
+    async def test_bound_state_can_have_explicit_name(self):
+        """Test that BoundState can be given an explicit name."""
+        # Arrange
+        state = SimpleState()
+
+        bound = BoundState(state=state, bindings={}, name="CustomBound")
+
+        # Assert
+        assert bound.name == "CustomBound"

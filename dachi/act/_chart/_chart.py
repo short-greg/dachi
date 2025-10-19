@@ -41,7 +41,7 @@ class StateChart(ChartBase, ChartEventHandler):
         super().__post_init__()
 
         if isinstance(self.regions, list):
-            self.regions = ModuleList(self.regions)
+            self.regions = ModuleList(items=self.regions)
 
         self._status = Attr[ChartStatus](data=ChartStatus.WAITING)
         self._started_at = Attr[Optional[float]](data=None)

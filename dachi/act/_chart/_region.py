@@ -420,7 +420,8 @@ class Region(ChartBase, ChartEventHandler):
             self._cur_task.cancel()
         self._cur_task = None
         for state in self._chart_states.values():
-            state.reset()
+            if isinstance(state, BaseState):
+                state.reset()
 
         # Reset to READY state (not None)
         self._current_state.set("READY")

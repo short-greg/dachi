@@ -29,7 +29,7 @@ class CompositeState(BaseState, ChartEventHandler):
 
         super().__post_init__()
         if isinstance(self.regions, list):
-            self.regions = ModuleList(self.regions)
+            self.regions = ModuleList(items=self.regions)
         self._tasks = []
         self._finished_regions = set()
 

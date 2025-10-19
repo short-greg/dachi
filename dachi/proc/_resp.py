@@ -819,7 +819,7 @@ class TupleOut(ToOut):
                 return int(s.strip())
         
         tuple_out = TupleOut(
-            processors=ModuleList([StrProcessor(), IntProcessor()]),
+            processors=ModuleList(items=[StrProcessor(), IntProcessor()]),
             parser=LineParser()
         )
         resp = Resp(msg=Msg(role='assistant', text='Hello\n42'))

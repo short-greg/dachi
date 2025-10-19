@@ -307,6 +307,80 @@ class State(AtomState):
                 await self.finish()
 
 
+class BoundState(BaseState):
+    """Wrap a State with variable bindings for input resolution.
+
+    Bindings remap context variables when building inputs:
+        {"local_name": "context_path"}
+
+    Example:
+        state = BoundState(
+            state=ProcessingState(),
+            bindings={"input": "sensor_data", "config": "../global_config"}
+        )
+
+    The wrapped state reads inputs from bound paths but writes outputs
+    to the original context automatically (BoundCtx handles this).
+    """
+    state: State
+    bindings: Dict[str, str]
+
+    def __post_init__(self):
+        super().__post_init__()
+        if self.name is None:
+            self.name = self.state.name
+
+    def can_enter(self) -> bool:
+        """Check if state can be entered."""
+        return self.state.can_enter()
+
+    def can_run(self) -> bool:
+        """Check if state can run."""
+        return self.state.can_run()
+
+    def can_exit(self) -> bool:
+        """Check if state can exit."""
+        return self.state.can_exit()
+
+    def enter(self, post: Post, ctx: Ctx) -> None:
+        """Delegate enter to wrapped state."""
+        self.state.enter(post, ctx)
+        self._status.set(self.state._status.get())
+        self._entered.set(self.state._entered.get())
+
+    async def execute(self, post: Post, **inputs: Any) -> Optional[Dict]:
+        """Not used - run() delegates directly."""
+        pass
+
+    async def run(self, post: Post, ctx: Ctx) -> None:
+        """Run wrapped state with bound context for input resolution."""
+        bound_ctx = ctx.bind(self.bindings)
+        await self.state.run(post, bound_ctx)
+
+        # Sync all status flags from wrapped state
+        self._status.set(self.state._status.get())
+        self._run_completed.set(self.state._run_completed.get())
+        self._executing.set(self.state._executing.get())
+        self._exiting.set(self.state._exiting.get())
+        self._termination_requested.set(self.state._termination_requested.get())
+
+    def exit(self, post: Post, ctx: Ctx) -> None:
+        """Delegate exit to wrapped state."""
+        self.state.exit(post, ctx)
+        self._status.set(self.state._status.get())
+        self._exiting.set(self.state._exiting.get())
+
+    def request_termination(self) -> None:
+        """Delegate termination to wrapped state."""
+        self.state.request_termination()
+        self._termination_requested.set(True)
+
+    def reset(self) -> None:
+        """Reset both wrapper and wrapped state."""
+        self.state.reset()
+        super().reset()
+
+
 class StreamState(AtomState, ABC):
     """Streaming state with preemption at yield points."""
 
@@ -379,7 +453,71 @@ class StreamState(AtomState, ABC):
             if self._status.get().is_completed():
                 # Direct finish for termination/cancellation (not via exit flow)
                 await self.finish()
-            
+
+
+class BoundStreamState(BaseState):
+    """Wrap a StreamState with variable bindings for input resolution.
+
+    Like BoundState but for streaming states with preemption support.
+    """
+    state: StreamState
+    bindings: Dict[str, str]
+
+    def __post_init__(self):
+        super().__post_init__()
+        if self.name is None:
+            self.name = self.state.name
+
+    def can_enter(self) -> bool:
+        """Check if state can be entered."""
+        return self.state.can_enter()
+
+    def can_run(self) -> bool:
+        """Check if state can run."""
+        return self.state.can_run()
+
+    def can_exit(self) -> bool:
+        """Check if state can exit."""
+        return self.state.can_exit()
+
+    def enter(self, post: Post, ctx: Ctx) -> None:
+        """Delegate enter to wrapped state."""
+        self.state.enter(post, ctx)
+        self._status.set(self.state._status.get())
+        self._entered.set(self.state._entered.get())
+
+    async def execute(self, post: Post, **inputs: Any) -> t.Iterator[Optional[Dict]]:
+        """Not used - run() delegates directly."""
+        pass
+
+    async def run(self, post: Post, ctx: Ctx) -> None:
+        """Run wrapped streaming state with bound context."""
+        bound_ctx = ctx.bind(self.bindings)
+        await self.state.run(post, bound_ctx)
+
+        # Sync all status flags
+        self._status.set(self.state._status.get())
+        self._run_completed.set(self.state._run_completed.get())
+        self._executing.set(self.state._executing.get())
+        self._exiting.set(self.state._exiting.get())
+        self._termination_requested.set(self.state._termination_requested.get())
+
+    def exit(self, post: Post, ctx: Ctx) -> None:
+        """Delegate exit to wrapped state."""
+        self.state.exit(post, ctx)
+        self._status.set(self.state._status.get())
+        self._exiting.set(self.state._exiting.get())
+
+    def request_termination(self) -> None:
+        """Delegate termination to wrapped state."""
+        self.state.request_termination()
+        self._termination_requested.set(True)
+
+    def reset(self) -> None:
+        """Reset both wrapper and wrapped state."""
+        self.state.reset()
+        super().reset()
+
 
 # class ReadyState(State):
 #     """Built-in ready state. Region begins here before starting.

@@ -23,4 +23,6 @@ from ._state import (
     State,
     StreamState,
     FinalState,
+    BoundState,
+    BoundStreamState,
 )
