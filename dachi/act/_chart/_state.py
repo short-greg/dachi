@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Union, Optional, Callable, Tuple
+from typing import Any, Dict, List, Union, Optional, Callable, Tuple, Literal
 from abc import ABC
 import typing as t
 from abc import abstractmethod
@@ -55,6 +55,38 @@ class ReadyState(PseudoState):
     @property
     def status(self) -> ChartStatus:
         return ChartStatus.WAITING
+
+
+class HistoryState(PseudoState):
+    """Base class for history pseudostates.
+
+    History pseudostates are special transition targets that restore
+    a region's previous configuration instead of taking the initial transition.
+
+    When a transition targets a history pseudostate:
+    - If the region has a stored history, it restores that configuration
+    - If no history exists yet, it takes the default_target transition
+    """
+    default_target: str
+    history_type: Literal["shallow", "deep"]
+
+
+class ShallowHistoryState(HistoryState):
+    """Shallow history (H) pseudostate.
+
+    Restores the last active immediate substate only.
+    Nested substates within that state will take their initial transitions.
+    """
+    history_type: Literal["shallow"] = "shallow"
+
+
+class DeepHistoryState(HistoryState):
+    """Deep history (H*) pseudostate.
+
+    Recursively restores the full nested configuration.
+    All levels of nesting are restored to their last active states.
+    """
+    history_type: Literal["deep"] = "deep"
 
 
 class BaseState(ChartBase, ABC):

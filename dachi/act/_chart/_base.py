@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Union, Optional, Callable, Tuple
+from typing import Any, Dict, List, Union, Optional, Callable, Tuple, Literal
 from enum import Enum
-from abc import abstractmethod
+from abc import ABC, abstractmethod
 import asyncio
 import logging
 
@@ -58,6 +58,47 @@ class ChartStatus(Enum):
 class InvalidTransition(Exception):
     """Raised when an invalid state transition is attempted."""
     pass
+
+
+class Recoverable(ABC):
+    """Protocol for objects that can recover their internal state.
+
+    Implemented by:
+    - Region: Recovers to last active state
+    - CompositeState: Recovers child regions
+
+    NOT implemented by:
+    - StateChart: Top-level, never recovered (just calls recover on children)
+    """
+
+    @abstractmethod
+    def can_recover(self) -> bool:
+        """Check if recovery is possible.
+
+        Returns:
+            True if this object has state that can be recovered
+
+        Examples:
+            - Region: True if _last_active_state is not None
+            - CompositeState: True if any child region can recover
+        """
+        pass
+
+    @abstractmethod
+    def recover(self, policy: Literal["shallow", "deep"]) -> None:
+        """Recover internal state using the given policy.
+
+        MUST call can_recover() first and raise error if False.
+
+        Args:
+            policy: Recovery policy
+                - "shallow": Restore to last active immediate substate only
+                - "deep": Recursively restore entire nested state tree
+
+        Raises:
+            RuntimeError: If can_recover() is False
+        """
+        pass
 
 
 class ChartBase(BaseModule):

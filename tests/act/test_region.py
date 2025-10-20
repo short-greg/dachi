@@ -1035,3 +1035,65 @@ class TestRegionValidation:
 
         result = region.validate()
         result.raise_if_invalid()  # Should not raise
+
+
+class TestRegionRecovery:
+
+    def test_can_recover_returns_true_when_last_active_state_exists(self):
+        region = Region(name="test", initial="idle", rules=[])
+        region._last_active_state.set("active")
+        assert region.can_recover() is True
+
+    def test_can_recover_returns_false_when_no_last_active_state(self):
+        region = Region(name="test", initial="idle", rules=[])
+        assert region.can_recover() is False
+
+    def test_restore_sets_pending_target_before_start(self):
+        region = Region(name="test", initial="idle", rules=[])
+        region["idle"] = SimpleState(name="idle")
+        region.restore("idle")
+        assert region._pending_target.get() == "idle"
+
+    def test_restore_validates_state_exists(self):
+        region = Region(name="test", initial="idle", rules=[])
+        with pytest.raises(ValueError, match="unknown state"):
+            region.restore("nonexistent")
+
+    def test_restore_after_start_raises_error(self):
+        region = Region(name="test", initial="idle", rules=[])
+        region._started.set(True)
+        with pytest.raises(InvalidTransition, match="already started"):
+            region.restore("idle")
+
+    @pytest.mark.asyncio
+    async def test_start_uses_restored_state_instead_of_initial(self):
+        region = Region(name="test", initial="idle", rules=[])
+        region["idle"] = SimpleState(name="idle")
+        region["active"] = SimpleState(name="active")
+
+        region.restore("active")
+
+        queue = EventQueue()
+        scope = Scope(name="test")
+        post = EventPost(queue=queue, source=[("test", "")])
+        ctx = scope.ctx(0)
+
+        await region.start(post, ctx)
+        await asyncio.sleep(0.1)
+
+        assert region.current_state_name == "active"
+
+    def test_recover_raises_error_if_cannot_recover(self):
+        region = Region(name="test", initial="idle", rules=[])
+        with pytest.raises(RuntimeError, match="no last active state"):
+            region.recover("shallow")
+
+    def test_recover_calls_restore_with_last_active_state(self):
+        region = Region(name="test", initial="idle", rules=[])
+        region["idle"] = SimpleState(name="idle")
+        region["active"] = SimpleState(name="active")
+        region._last_active_state.set("active")
+
+        region.recover("shallow")
+
+        assert region._pending_target.get() == "active"

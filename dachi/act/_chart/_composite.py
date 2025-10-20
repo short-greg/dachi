@@ -1,15 +1,19 @@
 from __future__ import annotations
 import typing as t
 import asyncio
+import logging
 
+from typing import Literal
 from ._state import BaseState
-from ._base import ChartStatus, InvalidTransition
+from ._base import ChartStatus, InvalidTransition, Recoverable
 from ._event import EventPost, ChartEventHandler, Event
 from ._region import Region, ValidationResult
 from dachi.core import Ctx, ModuleList
 
+logger = logging.getLogger("dachi.statechart")
 
-class CompositeState(BaseState, ChartEventHandler):
+
+class CompositeState(BaseState, ChartEventHandler, Recoverable):
     """Composite state containing nested regions.
 
     Lifecycle:
@@ -136,6 +140,7 @@ class CompositeState(BaseState, ChartEventHandler):
                 child_ctx = ctx.child(i)
                 await region.handle_event(event, child_post, child_ctx)
 
+
     def exit(self, post: EventPost, ctx: Ctx) -> None:
         """Called when exiting the state. Sets final status.
 
@@ -175,6 +180,20 @@ class CompositeState(BaseState, ChartEventHandler):
         else:
             # Regions still running - will complete via finish_region callback
             self._status.set(ChartStatus.PREEMPTING)
+
+    def can_recover(self) -> bool:
+        """Check if any child regions can recover."""
+        return any(region.can_recover() for region in self.regions)
+
+    def recover(self, policy: Literal["shallow", "deep"]) -> None:
+        """Recover child regions using the given policy."""
+        if not self.can_recover():
+            raise RuntimeError(
+                f"Cannot recover composite '{self.name}' - no children can recover"
+            )
+
+        for region in self.regions:
+            region.recover(policy)
 
     def validate(self) -> t.List[ValidationResult]:
         """Validate all child regions.

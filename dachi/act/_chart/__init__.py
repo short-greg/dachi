@@ -1,5 +1,6 @@
 from ._base import (
     ChartStatus,
+    Recoverable,
 )
 from ._chart import (
     ChartSnapshot,
@@ -28,4 +29,7 @@ from ._state import (
     FinalState,
     BoundState,
     BoundStreamState,
+    HistoryState,
+    ShallowHistoryState,
+    DeepHistoryState,
 )

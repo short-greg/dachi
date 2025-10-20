@@ -3,11 +3,11 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional, Union, TypedDict, Literal, Tuple, Set
 from dataclasses import dataclass, field
 import asyncio
-from ._base import ChartBase, ChartStatus, InvalidTransition
+from ._base import ChartBase, ChartStatus, InvalidTransition, Recoverable
 
 # Local
 from dachi.core import Attr, ModuleDict, Ctx
-from ._state import State, StreamState, BaseState, PseudoState, ReadyState, FinalState
+from ._state import State, StreamState, BaseState, PseudoState, ReadyState, FinalState, HistoryState
 from ._event import Event, EventPost, ChartEventHandler
 import logging
 
@@ -94,7 +94,7 @@ class RegionSnapshot(TypedDict, total=False):
     pending_target: Optional[str]
 
 
-class Region(ChartBase, ChartEventHandler):
+class Region(ChartBase, ChartEventHandler, Recoverable):
     # ----- Spec fields (serialized) -----
     name: str
     initial: str  # Initial state name
@@ -348,11 +348,37 @@ class Region(ChartBase, ChartEventHandler):
     def can_reset(self) -> bool:
         return self._stopped.get() is True
 
+    def restore(self, state: str) -> None:
+        """Prepare region to start at specific state (for history restoration).
+
+        Must be called BEFORE start(). Validates state exists.
+
+        Args:
+            state: State name to restore to
+
+        Raises:
+            InvalidTransition: If region already started
+            ValueError: If state not found
+        """
+        if self._started.get():
+            raise InvalidTransition(
+                f"Cannot restore region '{self.name}' - already started"
+            )
+
+        if state not in self._chart_states:
+            raise ValueError(
+                f"Cannot restore region '{self.name}' to unknown state '{state}'"
+            )
+
+        self._pending_target.set(state)
+        self._pending_reason.set(f"Restored to {state} from history")
+
     async def start(self, post: "EventPost", ctx: Ctx) -> None:
         """Start the region. Transitions from READY to initial state.
 
         The region always starts in READY state. When start() is called,
         it automatically transitions READY → initial (following UML semantics).
+        If restore() was called before start(), uses that state instead of initial.
         """
         if not self.can_start():
             raise InvalidTransition(
@@ -361,9 +387,13 @@ class Region(ChartBase, ChartEventHandler):
         self._status.set(ChartStatus.RUNNING)
         self._started.set(True)
 
-        # Transition from READY to initial state (automatic, following UML)
-        self._pending_target.set(self.initial)
-        self._pending_reason.set("Auto-transition from READY to initial state")
+        # Check if restore() was called (for history restoration)
+        if self._pending_target.get() is None:
+            # No restoration - use initial state
+            self._pending_target.set(self.initial)
+            self._pending_reason.set("Auto-transition from READY to initial state")
+        # else: restore() already set _pending_target, use that
+
         await self.transition(post, ctx)
 
     async def stop(self, post: EventPost, ctx: Ctx, preempt: bool=False) -> None:
@@ -449,6 +479,32 @@ class Region(ChartBase, ChartEventHandler):
         """Get current state name, or None if not set"""
         return self._current_state.get()
 
+    def can_recover(self) -> bool:
+        """Check if region has a last active state to recover to."""
+        return self._last_active_state.get() is not None
+
+    def recover(self, policy: Literal["shallow", "deep"]) -> None:
+        """Recover to last active state using the specified policy.
+
+        Args:
+            policy: "shallow" restores immediate child only, "deep" restores full nested configuration
+        """
+        if not self.can_recover():
+            raise RuntimeError(
+                f"Cannot recover region '{self.name}' - no last active state"
+            )
+
+        last_state = self._last_active_state.get()
+        self.restore(last_state)
+
+        if policy == "deep":
+            try:
+                state_obj = self._chart_states.get(last_state)
+                if isinstance(state_obj, Recoverable) and state_obj.can_recover():
+                    state_obj.recover(policy)
+            except (KeyError, AttributeError) as e:
+                logger.warning(f"Cannot recover nested state '{last_state}': {e}")
+
     async def transition(
         self, post: "EventPost", ctx: Ctx
     ) -> None | str:
@@ -497,6 +553,16 @@ class Region(ChartBase, ChartEventHandler):
             state_obj: BaseState | PseudoState = self._chart_states[target]
         except KeyError:
             raise RuntimeError(f"Cannot transition as State '{target}' not found in region '{self.name}'")
+
+        # Handle history pseudostates
+        if isinstance(state_obj, HistoryState):
+            if self.can_recover():
+                self.recover(state_obj.history_type)
+                return await self.transition(post, ctx)
+            else:
+                self._pending_target.set(state_obj.default_target)
+                self._pending_reason.set(f"History pseudostate has no history, using default")
+                return await self.transition(post, ctx)
 
         # Reset state if re-entering (was previously completed)
         if isinstance(state_obj, BaseState) and state_obj.status.is_completed():
