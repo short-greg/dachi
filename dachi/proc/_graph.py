@@ -379,11 +379,40 @@ class RefT:
 
 
 class DataFlow(AdaptModule, AsyncProcess):
-    """DataFlow Directed Acyclic Graph (DAG) for processing data.
-    This class allows for the creation of a DAG where nodes can be processes or async processes.
-    It supports the addition of nodes, setting of outputs, and forwarding of data through the graph
+    """DataFlow: Directed Acyclic Graph (DAG) for processing data pipelines.
 
-    RefT is used to reference nodes in the graph by name
+    DataFlow is a declarative container for defining data processing pipelines using named
+    nodes and references (RefT). The architecture prevents cycles by design - nodes can only
+    reference nodes that already exist in the graph.
+
+    Key Features:
+        - Named nodes with RefT references for serialization
+        - Parallel execution of independent nodes via asyncio.TaskGroup
+        - Memoization - nodes evaluated once per execution
+        - Support for both sync (Process) and async (AsyncProcess) nodes
+        - String nodes for dynamic method dispatch
+        - Output override for flexible execution
+        - Sub-graph creation and node replacement
+
+    Node Types:
+        - Process/AsyncProcess: Computation nodes that execute logic
+        - Var: Input/variable nodes (root nodes)
+        - String: Method names on the DataFlow instance (called dynamically)
+
+    Example:
+        >>> from dachi.proc import DataFlow, RefT
+        >>>
+        >>> dag = DataFlow()
+        >>> inp_ref = dag.add_inp('input', val=5)
+        >>> square_ref = dag.link('square', Square(), x=inp_ref)
+        >>> result_ref = dag.link('result', Add(), a=square_ref, b=inp_ref)
+        >>> dag.set_out('result')
+        >>>
+        >>> output = await dag.aforward()  # Returns 30 (5^2 + 5)
+
+    Note:
+        This is a DAG (Directed Acyclic Graph) implementation. Circular references
+        are prevented by the architecture and will cause runtime errors if forced.
     """
 
     def __post_init__(self):
@@ -490,13 +519,29 @@ class DataFlow(AdaptModule, AsyncProcess):
         return res
     
     def link(self, name: str, node: Process | AsyncProcess, **kwargs: RefT | typing.Any) -> RefT:
-        """Link a node to the DAG
+        """Link a computation node to the DataFlow.
+
+        Adds a Process or AsyncProcess node to the graph with the given name. Arguments
+        can be either literal values or RefT references to other nodes. When the DataFlow
+        is executed, dependencies will be resolved automatically.
 
         Args:
-            name (str): The name of the node
-            node (Process | AsyncProcess): The node to link
+            name (str): Unique name for this node. Must not already exist in the DataFlow.
+            node (Process | AsyncProcess): The computation node to execute.
+            **kwargs: Arguments to pass to the node. Can be literal values or RefT references
+                     to other nodes in the graph.
+
         Returns:
-            RefT: A reference to the linked node
+            RefT: A reference to this node that can be used in other node arguments.
+
+        Raises:
+            ValueError: If a node with this name already exists.
+
+        Example:
+            >>> dag = DataFlow()
+            >>> inp = dag.add_inp('x', val=10)
+            >>> doubled = dag.link('double', Multiply(), value=inp, factor=2)
+            >>> dag.link('result', Add(), a=doubled, b=5)
         """
         if name in self._nodes:
             raise ValueError(f"Node '{name}' already exists in DAG")
@@ -505,12 +550,29 @@ class DataFlow(AdaptModule, AsyncProcess):
         return RefT(name=name)
     
     def add_inp(self, name: str, val: typing.Any) -> RefT:
-        """Add an input variable to the DAG
+        """Add an input variable (root node) to the DataFlow.
+
+        Input variables are root nodes that provide initial values to the graph.
+        They can be overridden at execution time via the `by` parameter in aforward().
+
         Args:
-            name (str): The name of the variable
-            val (typing.Any): The value of the variable
+            name (str): Unique name for this input. Must not already exist in the DataFlow.
+            val (typing.Any): The default value for this input.
+
         Returns:
-            RefT: A reference to the input variable
+            RefT: A reference to this input that can be used in other node arguments.
+
+        Raises:
+            ValueError: If a node with this name already exists.
+
+        Example:
+            >>> dag = DataFlow()
+            >>> x_ref = dag.add_inp('x', val=5)
+            >>> y_ref = dag.add_inp('y', val=10)
+            >>> result = dag.link('sum', Add(), a=x_ref, b=y_ref)
+            >>> dag.set_out('sum')
+            >>> await dag.aforward()  # Uses default values: 5 + 10 = 15
+            >>> await dag.aforward(by={dag._nodes['x']: 20})  # Override x: 20 + 10 = 30
         """
         if name in self._nodes:
             raise ValueError(f"Node {name} already exists in DAG")
@@ -519,10 +581,30 @@ class DataFlow(AdaptModule, AsyncProcess):
         return RefT(name=name)
 
     def set_out(self, outputs: typing.List[str]|str) -> None:
-        """Set the outputs of the DAG
+        """Set the output nodes of the DataFlow.
+
+        Specifies which nodes should be returned when executing the DataFlow.
+        If a single string is provided, aforward() returns that node's value directly.
+        If a list is provided, aforward() returns a tuple of values.
+
         Args:
-            outputs (typing.List[str]|str): The names of the output nodes
+            outputs (typing.List[str]|str): Names of nodes to output. Can be a single
+                                           node name or a list of node names.
+
+        Raises:
+            ValueError: If any specified node doesn't exist in the DataFlow.
+
+        Example:
+            >>> dag.set_out('result')  # Single output
+            >>> await dag.aforward()  # Returns single value
+            >>>
+            >>> dag.set_out(['x', 'y', 'z'])  # Multiple outputs
+            >>> await dag.aforward()  # Returns tuple (x_val, y_val, z_val)
         """
+        output_list = outputs if isinstance(outputs, list) else [outputs]
+        for output in output_list:
+            if output not in self._nodes:
+                raise ValueError(f"Output node '{output}' does not exist in DataFlow")
         self._outputs.data = outputs
 
     def __contains__(self, item: str) -> bool:
@@ -566,12 +648,31 @@ class DataFlow(AdaptModule, AsyncProcess):
         by: typing.Dict=None,
         out_override: typing.List[str]|str|RefT=None
     ):
-        """Forward the data through the graph, resolving all nodes and their arguments
+        """Execute the DataFlow and return the output values.
+
+        Resolves all dependencies and executes nodes in the correct order. Independent
+        nodes are executed in parallel using asyncio.TaskGroup. Each node is evaluated
+        only once per execution (memoization via the `by` dict).
+
         Args:
-            by (typing.Dict, optional): A dictionary to store resolved nodes. Defaults to None.
-            out_override (typing.List[str]|str|RefT, optional): Override outputs. Defaults to None.
+            by (typing.Dict, optional): Dictionary mapping Var nodes to override values.
+                                       Use to provide different inputs at execution time.
+            out_override (typing.List[str]|str|RefT, optional): Override the default outputs
+                                                                for this execution only.
+
         Returns:
-            tuple: A tuple of resolved outputs from the graph
+            Single value if outputs is a string, tuple of values if outputs is a list,
+            None if no outputs are set.
+
+        Example:
+            >>> dag = DataFlow()
+            >>> x = dag.add_inp('x', val=5)
+            >>> result = dag.link('square', Square(), x=x)
+            >>> dag.set_out('square')
+            >>>
+            >>> await dag.aforward()  # Returns 25
+            >>> await dag.aforward(by={dag._nodes['x']: 10})  # Returns 100
+            >>> await dag.aforward(out_override='x')  # Returns 5 (outputs x instead)
         """
         outputs = out_override if out_override is not None else self._outputs.data
 

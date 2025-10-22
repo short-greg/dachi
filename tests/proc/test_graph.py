@@ -816,6 +816,17 @@ class TestDAGSetOut:
         dag.set_out(['b'])
         assert dag._outputs.data == ['b']
 
+    async def test_set_out_validates_node_exists(self):
+        """set_out() should raise ValueError if node doesn't exist"""
+        dag = DataFlow()
+        dag.link('a', _Const(1))
+
+        with pytest.raises(ValueError, match="does not exist"):
+            dag.set_out('nonexistent')
+
+        with pytest.raises(ValueError, match="does not exist"):
+            dag.set_out(['a', 'nonexistent'])
+
 
 @pytest.mark.asyncio
 class TestDAGSub:
@@ -1153,6 +1164,53 @@ class TestDAGIntegration:
 
         with pytest.raises(ValueError, match="Test error"):
             await dag.aforward()
+
+
+@pytest.mark.asyncio
+class TestDAGEdgeCases:
+    """Edge case tests for DataFlow"""
+
+    async def test_empty_dataflow_aforward_returns_none(self):
+        """Empty DataFlow with no outputs should return None"""
+        dag = DataFlow()
+        result = await dag.aforward()
+        assert result is None
+
+    async def test_dataflow_with_only_inputs(self):
+        """DataFlow with only inputs should work"""
+        dag = DataFlow()
+        dag.add_inp('x', val=10)
+        dag.set_out('x')
+        result = await dag.aforward()
+        assert result == 10
+
+    async def test_link_with_no_arguments(self):
+        """Nodes can be linked without any arguments"""
+        dag = DataFlow()
+        dag.link('const', _Const(42))
+        dag.set_out('const')
+        result = await dag.aforward()
+        assert result == 42
+
+    async def test_multiple_independent_branches(self):
+        """Multiple independent computation branches should work"""
+        dag = DataFlow()
+        dag.link('a', _Const(1))
+        dag.link('b', _Const(2))
+        dag.link('c', _Const(3))
+        dag.set_out(['a', 'b', 'c'])
+        result = await dag.aforward()
+        assert result == (1, 2, 3)
+
+    async def test_out_override_preserves_original_outputs(self):
+        """out_override should not modify the DataFlow's _outputs"""
+        dag = DataFlow()
+        dag.link('a', _Const(1))
+        dag.link('b', _Const(2))
+        dag.set_out('a')
+
+        await dag.aforward(out_override='b')
+        assert dag._outputs.data == 'a'  # Should not be modified
 
 
 async def _async_fn(**kwargs):  # simple async callable
