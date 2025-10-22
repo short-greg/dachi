@@ -33,9 +33,8 @@ from ._graph import (
     Var,
     T,
     Idx,
-    CircularReferenceError,
     RefT,
-    DAG,
+    DataFlow,
     t,
     async_t,
 )

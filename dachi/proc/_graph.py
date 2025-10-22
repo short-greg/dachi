@@ -221,7 +221,6 @@ class T(BaseNode):
             val = by[self] = await self.src(**kwargs)
         else:
             val = by[self] = self.src(**kwargs)
-            print('Setting by[self]', by[self], self)
 
         if val is UNDEFINED:
             raise RuntimeError("Source returned UNDEFINED")
@@ -373,19 +372,14 @@ class Idx(Process):
         return val[self.idx]
 
 
-class CircularReferenceError(Exception):
-    """Raised when a circular reference is detected in the DAG"""
-    pass
-
-
 @dataclass
 class RefT:
     """Reference to a node in the DAG by name"""
     name: str
 
 
-class DAG(AdaptModule, AsyncProcess):
-    """Directed Acyclic Graph (DAG) for processing data.
+class DataFlow(AdaptModule, AsyncProcess):
+    """DataFlow Directed Acyclic Graph (DAG) for processing data.
     This class allows for the creation of a DAG where nodes can be processes or async processes.
     It supports the addition of nodes, setting of outputs, and forwarding of data through the graph
 
@@ -394,9 +388,9 @@ class DAG(AdaptModule, AsyncProcess):
 
     def __post_init__(self):
         """Initialize the DAG with an empty set of nodes and outputs
-        
+
         The args specify the args that get input into a node.
-        They can be a reference (RefT) or a value. 
+        They can be a reference (RefT) or a value.
         If it is a reference, the node that is referenced will be resolved
         when the node is processed.
 
@@ -407,8 +401,31 @@ class DAG(AdaptModule, AsyncProcess):
         self._nodes = ModuleDict()
         self._args = Attr[typing.Dict[str, typing.Dict[str, RefT | typing.Any]]](data={})
         self._outputs = Attr[typing.List[str] | str](data=None)
+        self._node_counter = Attr[int](data=0)
+        self._var_counter = Attr[int](data=0)
 
-    async def _sub(self, name: str, by: typing.Dict, visited: typing.Set[str]=None):
+    def _generate_node_name(self, prefix: str = "node") -> str:
+        """Generate unique node name with given prefix
+
+        Args:
+            prefix (str): The prefix for the generated name
+        Returns:
+            str: A unique node name
+        """
+        if prefix == "node":
+            name = f"{prefix}_{self._node_counter.data}"
+            self._node_counter.data += 1
+        elif prefix == "var":
+            name = f"{prefix}_{self._var_counter.data}"
+            self._var_counter.data += 1
+        else:
+            counter = 0
+            while f"{prefix}_{counter}" in self._nodes:
+                counter += 1
+            name = f"{prefix}_{counter}"
+        return name
+
+    async def _sub(self, name: str, by: typing.Dict, visited: typing.Dict[str, asyncio.Task] | None = None):
         """Subroutine to get the value of a node by name, resolving any references
         Args:
             name (str): The name of the node to resolve
@@ -417,27 +434,35 @@ class DAG(AdaptModule, AsyncProcess):
             typing.Any: The resolved value of the node
         """
         if visited is None:
-            visited = set()
-        
-        if name in visited:
-            raise CircularReferenceError(f"Circular reference detected for node {name}")
-        visited.add(name)
-        node = self._nodes[name]
-        args = self._args.data[name]
+            visited = dict()
 
         if name in by:
-            cur = by[name]
-            return cur
+            return by[name]
+
+        if name in visited:
+            task = visited[name]
+            current_task = asyncio.current_task()
+            if task is not current_task:
+                if not task.done():
+                    await task
+                return task.result()
+            elif name in by:
+                return by[name]
+
+        node = self._nodes[name]
+        args = self._args.data[name]
 
         kwargs = {}
 
         async with asyncio.TaskGroup() as tg:
             for key, arg in args.items():
                 if isinstance(arg, RefT):
-                    # check
-                    kwargs[key] = tg.create_task(
+                    task = tg.create_task(
                         self._sub(arg.name, by, visited)
                     )
+                    if arg.name not in visited:
+                        visited[arg.name] = task
+                    kwargs[key] = task
                 else:
                     kwargs[key] = arg
 
@@ -447,46 +472,193 @@ class DAG(AdaptModule, AsyncProcess):
         }
         if isinstance(node, Process):
             res = node(**kwargs)
-        elif isinstance(node, str):
-            node = getattr(self, node, None)
-            if node is None:
-                raise ValueError(f"Node {node} not found in DAG")
-            
-            res = await node(**kwargs)
         elif isinstance(node, AsyncProcess):
             res = await node.aforward(**kwargs)
-        else: 
-            raise ValueError(f"Node {node} is not a Process or AsyncProcess")
+        elif isinstance(node, str):
+            method = getattr(self, node, None)
+            if method is None:
+                raise ValueError(
+                    f"Method {node} not found in {type(self).__name__}"
+                )
+            res = await method(**kwargs)
+        else:
+            raise ValueError(
+                f"Node {name} is not a Process or AsyncProcess"
+            )
+        
         by[name] = res
         return res
+    
+    def link(self, name: str, node: Process | AsyncProcess, **kwargs: RefT | typing.Any) -> RefT:
+        """Link a node to the DAG
+
+        Args:
+            name (str): The name of the node
+            node (Process | AsyncProcess): The node to link
+        Returns:
+            RefT: A reference to the linked node
+        """
+        if name in self._nodes:
+            raise ValueError(f"Node '{name}' already exists in DAG")
+        self._nodes[name] = node
+        self._args.data[name] = kwargs
+        return RefT(name=name)
+    
+    def add_inp(self, name: str, val: typing.Any) -> RefT:
+        """Add an input variable to the DAG
+        Args:
+            name (str): The name of the variable
+            val (typing.Any): The value of the variable
+        Returns:
+            RefT: A reference to the input variable
+        """
+        if name in self._nodes:
+            raise ValueError(f"Node {name} already exists in DAG")
+        self._nodes[name] = Var(val=val, name=name)
+        self._args.data[name] = {}
+        return RefT(name=name)
+
+    def set_out(self, outputs: typing.List[str]|str) -> None:
+        """Set the outputs of the DAG
+        Args:
+            outputs (typing.List[str]|str): The names of the output nodes
+        """
+        self._outputs.data = outputs
+
+    def __contains__(self, item: str) -> bool:
+        """Check if the DAG contains a node with the given name
+        Args:
+            item (str): The name of the node to check
+        Returns:
+            bool: True if the node exists, False otherwise
+        """
+        return item in self._nodes
+    
+    def sub(self, outputs: typing.List[str], by: typing.Dict[str, typing.Any]) -> 'DataFlow':
+        """Create a sub-DAG with the given outputs
+        Args:
+            outputs (typing.List[str]): The names of the output nodes
+            by (typing.Dict[str, typing.Any]): A dictionary to store resolved nodes
+        Returns:
+            DAG: The sub-DAG
+        """
+        sub_dag = DataFlow()
+        for name in outputs:
+            if name not in self._nodes:
+                raise ValueError(f"Node {name} does not exist in DAG")
+            sub_dag._nodes[name] = self._nodes[name]
+            sub_dag._args.data[name] = self._args.data[name]
+        sub_dag.set_out(outputs)
+        return sub_dag
+        
+    def replace(self, name: str, node: Process | AsyncProcess) -> None:
+        """Replace a node in the DAG
+        Args:
+            name (str): The name of the node to replace
+            node (Process | AsyncProcess): The new node
+        """
+        if name not in self._nodes:
+            raise ValueError(f"Node {name} does not exist in DAG")
+        self._nodes[name] = node
 
     async def aforward(
-        self, 
+        self,
         by: typing.Dict=None,
-        outputs: typing.List[str]|str=None
+        out_override: typing.List[str]|str|RefT=None
     ):
         """Forward the data through the graph, resolving all nodes and their arguments
         Args:
             by (typing.Dict, optional): A dictionary to store resolved nodes. Defaults to None.
+            out_override (typing.List[str]|str|RefT, optional): Override outputs. Defaults to None.
         Returns:
             tuple: A tuple of resolved outputs from the graph
         """
-        if outputs is None:
-            outputs = self._outputs.data
+        outputs = out_override if out_override is not None else self._outputs.data
+
         if outputs is None:
             return None
-    
+
+        if isinstance(outputs, (str, RefT)):
+            outputs = [outputs]
+            single = True
+        else:
+            single = False
+
         by = by if by is not None else {}
         res = []
-        for name in outputs:
+
+        for output in outputs:
+            if isinstance(output, RefT):
+                name = output.name
+            else:
+                name = output
+
             if name in by:
                 res.append(by[name])
             else:
                 res.append(await self._sub(name, by))
 
-        if isinstance(self._outputs.data, str):
+        if single:
             return res[0]
         return tuple(res)
+    
+    @classmethod
+    def from_node_graph(cls, nodes: typing.List[BaseNode]):
+        """Create a DAG from a list of nodes
+
+        Args:
+            nodes (typing.List[BaseNode]): The nodes to create the DAG from 
+        Returns:
+            DAG: The created DAG
+        """
+        dag = cls()
+        for node in nodes:
+            if node.name is None:
+                raise ValueError("Node must have a name to be added to DAG")
+            if isinstance(node, Var):
+                dag.add_inp(name=node.name, val=node.val)
+            elif isinstance(node, T):
+                args = {}
+                for k, arg in node.args.items():
+                    if isinstance(arg, BaseNode):
+                        args[k] = RefT(name=arg.name)
+                    else:
+                        args[k] = arg
+                dag.link(name=node.name, node=node.src, **args)
+            else:
+                raise ValueError("Node must be a Var or T to be added to DAG")
+        return dag
+    
+    def to_node_graph(self) -> typing.List[BaseNode]:
+        """Convert the DAG to a list of nodes
+
+        Returns:
+            typing.List[BaseNode]: The list of nodes
+        """
+        nodes = []
+        for name, node in self._nodes.items():
+            if isinstance(node, Var):
+                nodes.append(Var(val=node.val, name=name))
+            elif isinstance(node, (Process, AsyncProcess)):
+                args = {}
+                for k, arg in self._args.data[name].items():
+                    if isinstance(arg, RefT):
+                        ref_node = self._nodes[arg.name]
+                        args[k] = ref_node
+                    else:
+                        args[k] = arg
+                is_async = isinstance(node, AsyncProcess)
+                nodes.append(
+                    T(
+                        src=node,
+                        args=SerialDict(data=args),
+                        name=name,
+                        is_async=is_async
+                    )
+                )
+            else:
+                raise ValueError("Node must be a Var or T to be converted from DAG")
+        return nodes
 
 
 # TODO: Set up DAG deserialization to set

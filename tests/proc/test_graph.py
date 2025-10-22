@@ -488,7 +488,7 @@ class TestProcNodeHelpers:
 import asyncio
 import pytest
 
-from dachi.proc._graph import DAG, RefT
+from dachi.proc._graph import DataFlow, RefT
 from dachi.core import ModuleDict, Attr
 from dachi.proc import _process as P
 
@@ -534,7 +534,7 @@ class _AsyncConst(P.AsyncProcess):
 # A DAG subclass exposing an async method for the “string-node” pathway       #
 # --------------------------------------------------------------------------- #
 
-class _MethodDAG(DAG):
+class _MethodDAG(DataFlow):
     async def five(self):
         return 5
 
@@ -549,7 +549,7 @@ class TestDAG:
 
     async def test_defaults(self):
 
-        dag = DAG()
+        dag = DataFlow()
         assert isinstance(dag._nodes, ModuleDict)
         assert dag._nodes._module_dict == {}
         assert isinstance(dag._args, Attr)
@@ -557,7 +557,7 @@ class TestDAG:
 
 
     async def test_resolve_process_chain(self):
-        dag = DAG()
+        dag = DataFlow()
         dag._nodes = ModuleDict(
             items={
                 "a": _Const(1),
@@ -581,7 +581,7 @@ class TestDAG:
         assert dag._nodes["sum"].calls == 1
 
     async def test_resolve_async_process(self):
-        dag = DAG()
+        dag = DataFlow()
         dag._nodes = ModuleDict(
             items={"x": _AsyncConst(7)}
         )
@@ -595,28 +595,21 @@ class TestDAG:
         assert await dag._sub("foo", {}) == 5
 
     async def test_missing_node_raises_keyerror(self):
-        dag = DAG()
+        dag = DataFlow()
         dag._nodes = ModuleDict(items={})
         dag._args.data = {}
         with pytest.raises(KeyError):
             await dag._sub("ghost", {})
 
     async def test_missing_method_raises_valueerror(self):
-        dag = DAG()
+        dag = DataFlow()
         dag._nodes = ModuleDict(items={"foo": "bar"})
         dag._args.data = {"foo": {}}
         with pytest.raises(ValueError):
             await dag._sub("foo", {})
 
-    async def test_circular_reference_recursion_error(self):
-        dag = DAG()
-        dag._nodes = ModuleDict(items={"a": _Const(0)})
-        dag._args.data = {"a": {"loop": RefT("a")}}
-        with pytest.raises(ExceptionGroup):
-            await dag._sub("a", {})
-
     async def test_single_output_tuple(self):
-        dag = DAG()
+        dag = DataFlow()
         dag._nodes = ModuleDict(
             items={
                 "x": _Const(10),
@@ -629,7 +622,7 @@ class TestDAG:
         assert out == (10,)
 
     async def test_multiple_outputs_order_preserved(self):
-        dag = DAG()
+        dag = DataFlow()
         dag._nodes = ModuleDict(
             items={
                 "a": _Const(1),
@@ -643,13 +636,13 @@ class TestDAG:
         assert out == (2, 1)
 
     async def test_empty_outputs_returns_empty_tuple(self):
-        dag = DAG()
+        dag = DataFlow()
         dag._outputs.set([])
         assert await dag.aforward() == ()
 
     async def test_probe_dict_short_circuits(self):
         c = _Const(99)
-        dag = DAG()
+        dag = DataFlow()
         dag._nodes = ModuleDict(items={"x": c})
         dag._args.data = {"x": {}}
         dag._outputs.set(["x"])
@@ -660,6 +653,506 @@ class TestDAG:
         # underlying process never called
         assert c.calls == 0
 
+    async def test_link_prevents_duplicate_names(self):
+        """link() should raise ValueError when adding a node with a duplicate name"""
+        dag = DataFlow()
+        dag.link('node1', _Const(1))
+        with pytest.raises(ValueError, match="already exists"):
+            dag.link('node1', _Const(2))
+
+    async def test_circular_reference_detection_stateless(self):
+        """visited set should not leak between calls to _sub()"""
+        dag = DataFlow()
+        dag._nodes = ModuleDict(items={"a": _Const(1)})
+        dag._args.data = {"a": {}}
+
+        await dag._sub("a", {})
+
+        await dag._sub("a", {})
+
+    async def test_to_node_graph_handles_unsupported_types(self):
+        """to_node_graph() should raise ValueError for unsupported node types"""
+        dag = DataFlow()
+        dag._nodes = ModuleDict(items={"bad": "string_node"})
+        dag._args.data = {"bad": {}}
+
+        with pytest.raises(ValueError, match="Node must be"):
+            dag.to_node_graph()
+
+
+@pytest.mark.asyncio
+class TestDAGLink:
+    """Tests for DAG.link() method"""
+
+    async def test_link_adds_process_node(self):
+        """link() should add a Process node and return RefT"""
+        dag = DataFlow()
+        proc = _Const(42)
+        ref = dag.link('test', proc)
+
+        assert isinstance(ref, RefT)
+        assert ref.name == 'test'
+        assert 'test' in dag._nodes
+        assert dag._nodes['test'] is proc
+
+    async def test_link_adds_asyncprocess_node(self):
+        """link() should add an AsyncProcess node"""
+        dag = DataFlow()
+        proc = _AsyncConst(7)
+        ref = dag.link('async_test', proc)
+
+        assert 'async_test' in dag._nodes
+        assert dag._nodes['async_test'] is proc
+
+    async def test_link_with_reft_arguments(self):
+        """link() should store RefT arguments correctly"""
+        dag = DataFlow()
+        inp_ref = dag.add_inp('input', val=5)
+        proc_ref = dag.link('proc', _Const(10), x=inp_ref)
+
+        assert dag._args.data['proc']['x'] is inp_ref
+
+    async def test_link_with_mixed_arguments(self):
+        """link() should handle both RefT and literal arguments"""
+        dag = DataFlow()
+        inp_ref = dag.add_inp('input', val=5)
+        proc_ref = dag.link('proc', _Add(), a=inp_ref, b=10)
+
+        assert dag._args.data['proc']['a'] is inp_ref
+        assert dag._args.data['proc']['b'] == 10
+
+    async def test_link_returns_reft(self):
+        """link() should return a RefT with the correct name"""
+        dag = DataFlow()
+        ref = dag.link('test', _Const(1))
+
+        assert isinstance(ref, RefT)
+        assert ref.name == 'test'
+
+
+@pytest.mark.asyncio
+class TestDAGAddInp:
+    """Tests for DAG.add_inp() method"""
+
+    async def test_add_inp_creates_var_node(self):
+        """add_inp() should create a Var node with the given value"""
+        dag = DataFlow()
+        ref = dag.add_inp('input', val=42)
+
+        assert isinstance(ref, RefT)
+        assert ref.name == 'input'
+        assert 'input' in dag._nodes
+        assert isinstance(dag._nodes['input'], G.Var)
+        assert dag._nodes['input'].val == 42
+
+    async def test_add_inp_with_undefined(self):
+        """add_inp() should handle UNDEFINED values"""
+        dag = DataFlow()
+        ref = dag.add_inp('undef', val=UNDEFINED)
+
+        assert dag._nodes['undef'].val is UNDEFINED
+
+    async def test_add_inp_returns_reft(self):
+        """add_inp() should return a RefT reference"""
+        dag = DataFlow()
+        ref = dag.add_inp('test', val=5)
+
+        assert isinstance(ref, RefT)
+        assert ref.name == 'test'
+
+    async def test_add_inp_multiple_inputs(self):
+        """add_inp() should allow adding multiple input nodes"""
+        dag = DataFlow()
+        ref1 = dag.add_inp('input1', val=1)
+        ref2 = dag.add_inp('input2', val=2)
+        ref3 = dag.add_inp('input3', val=3)
+
+        assert 'input1' in dag._nodes
+        assert 'input2' in dag._nodes
+        assert 'input3' in dag._nodes
+        assert dag._nodes['input1'].val == 1
+        assert dag._nodes['input2'].val == 2
+        assert dag._nodes['input3'].val == 3
+
+    async def test_add_inp_prevents_duplicates(self):
+        """add_inp() should raise ValueError for duplicate names"""
+        dag = DataFlow()
+        dag.add_inp('input', val=1)
+
+        with pytest.raises(ValueError, match="already exists"):
+            dag.add_inp('input', val=2)
+
+
+@pytest.mark.asyncio
+class TestDAGSetOut:
+    """Tests for DAG.set_out() method"""
+
+    async def test_set_out_with_list(self):
+        """set_out() should accept a list of output names"""
+        dag = DataFlow()
+        dag.link('a', _Const(1))
+        dag.link('b', _Const(2))
+        dag.set_out(['a', 'b'])
+
+        assert dag._outputs.data == ['a', 'b']
+
+    async def test_set_out_with_string(self):
+        """set_out() should accept a single string output"""
+        dag = DataFlow()
+        dag.link('single', _Const(42))
+        dag.set_out('single')
+
+        assert dag._outputs.data == 'single'
+
+    async def test_set_out_updates_outputs(self):
+        """set_out() should allow updating outputs multiple times"""
+        dag = DataFlow()
+        dag.link('a', _Const(1))
+        dag.link('b', _Const(2))
+
+        dag.set_out(['a'])
+        assert dag._outputs.data == ['a']
+
+        dag.set_out(['b'])
+        assert dag._outputs.data == ['b']
+
+
+@pytest.mark.asyncio
+class TestDAGSub:
+    """Tests for DAG.sub() method"""
+
+    async def test_sub_creates_independent_dag(self):
+        """sub() should create an independent DAG instance"""
+        dag = DataFlow()
+        dag.link('a', _Const(1))
+        dag.link('b', _Const(2))
+
+        sub = dag.sub(outputs=['a'], by={})
+
+        sub.link('c', _Const(3))
+        assert 'c' not in dag._nodes
+        assert 'c' in sub._nodes
+
+    async def test_sub_includes_specified_nodes(self):
+        """sub() should include only the specified output nodes"""
+        dag = DataFlow()
+        dag.link('a', _Const(1))
+        dag.link('b', _Const(2))
+
+        sub = dag.sub(outputs=['a'], by={})
+
+        assert 'a' in sub._nodes
+        assert 'b' not in sub._nodes
+
+    async def test_sub_with_invalid_node_raises(self):
+        """sub() should raise ValueError for non-existent nodes"""
+        dag = DataFlow()
+        dag.link('a', _Const(1))
+
+        with pytest.raises(ValueError, match="does not exist"):
+            dag.sub(outputs=['nonexistent'], by={})
+
+    async def test_sub_preserves_args(self):
+        """sub() should preserve node arguments"""
+        dag = DataFlow()
+        inp_ref = dag.add_inp('input', val=5)
+        dag.link('proc', _Add(), a=inp_ref, b=10)
+
+        sub = dag.sub(outputs=['proc'], by={})
+
+        assert 'proc' in sub._args.data
+        assert sub._args.data['proc']['a'] is inp_ref
+        assert sub._args.data['proc']['b'] == 10
+
+    async def test_sub_sets_outputs(self):
+        """sub() should set the outputs to the specified nodes"""
+        dag = DataFlow()
+        dag.link('a', _Const(1))
+        dag.link('b', _Const(2))
+
+        sub = dag.sub(outputs=['a', 'b'], by={})
+
+        assert sub._outputs.data == ['a', 'b']
+
+
+@pytest.mark.asyncio
+class TestDAGReplace:
+    """Tests for DAG.replace() method"""
+
+    async def test_replace_updates_node(self):
+        """replace() should update a node and affect execution"""
+        dag = DataFlow()
+        dag.link('a', _Const(1))
+        dag.set_out('a')
+
+        result1 = await dag.aforward()
+        assert result1 == 1
+
+        dag.replace('a', _Const(42))
+        result2 = await dag.aforward()
+        assert result2 == 42
+
+    async def test_replace_preserves_connections(self):
+        """replace() should preserve connections to other nodes"""
+        dag = DataFlow()
+        dag.link('a', _Const(5))
+        dag.link('b', _Add(), a=RefT('a'), b=10)
+        dag.set_out('b')
+
+        dag.replace('a', _Const(20))
+        result = await dag.aforward()
+        assert result == 30
+
+    async def test_replace_nonexistent_raises(self):
+        """replace() should raise ValueError for non-existent nodes"""
+        dag = DataFlow()
+
+        with pytest.raises(ValueError, match="does not exist"):
+            dag.replace('nonexistent', _Const(1))
+
+    async def test_replace_affects_execution(self):
+        """replace() should immediately affect subsequent executions"""
+        dag = DataFlow()
+        dag.link('x', _Const(10))
+        dag.set_out('x')
+
+        await dag.aforward()
+
+        dag.replace('x', _Const(99))
+        result = await dag.aforward()
+        assert result == 99
+
+
+@pytest.mark.asyncio
+class TestDAGOutOverride:
+    """Tests for out_override parameter in aforward()"""
+
+    async def test_out_override_changes_outputs(self):
+        """out_override should override the default outputs"""
+        dag = DataFlow()
+        dag.link('a', _Const(1))
+        dag.link('b', _Const(2))
+        dag.set_out(['a'])
+
+        result = await dag.aforward(out_override=['b'])
+        assert result == (2,)
+
+    async def test_out_override_with_string(self):
+        """out_override should accept a single string"""
+        dag = DataFlow()
+        dag.link('a', _Const(10))
+        dag.link('b', _Const(20))
+        dag.set_out(['a'])
+
+        result = await dag.aforward(out_override='b')
+        assert result == 20
+
+    async def test_out_override_with_list(self):
+        """out_override should accept a list of outputs"""
+        dag = DataFlow()
+        dag.link('a', _Const(1))
+        dag.link('b', _Const(2))
+        dag.link('c', _Const(3))
+        dag.set_out(['a'])
+
+        result = await dag.aforward(out_override=['b', 'c'])
+        assert result == (2, 3)
+
+    async def test_out_override_doesnt_modify_dag(self):
+        """out_override should not modify the DAG's outputs"""
+        dag = DataFlow()
+        dag.link('a', _Const(1))
+        dag.link('b', _Const(2))
+        dag.set_out(['a'])
+
+        await dag.aforward(out_override=['b'])
+
+        assert dag._outputs.data == ['a']
+
+    async def test_out_override_none_uses_default(self):
+        """out_override=None should use the default outputs"""
+        dag = DataFlow()
+        dag.link('a', _Const(5))
+        dag.set_out(['a'])
+
+        result = await dag.aforward(out_override=None)
+        assert result == (5,)
+
+
+@pytest.mark.asyncio
+class TestDAGOutputTypes:
+    """Tests for output type handling in aforward()"""
+
+    async def test_string_output_returns_single_value(self):
+        """String output should return a single value, not a tuple"""
+        dag = DataFlow()
+        dag.link('a', _Const(42))
+        dag.set_out('a')
+
+        result = await dag.aforward()
+        assert result == 42
+        assert not isinstance(result, tuple)
+
+    async def test_list_output_returns_tuple(self):
+        """List output should return a tuple"""
+        dag = DataFlow()
+        dag.link('a', _Const(1))
+        dag.link('b', _Const(2))
+        dag.set_out(['a', 'b'])
+
+        result = await dag.aforward()
+        assert result == (1, 2)
+        assert isinstance(result, tuple)
+
+    async def test_empty_output_returns_none(self):
+        """Empty or None output should return None"""
+        dag = DataFlow()
+        dag.link('a', _Const(1))
+
+        result = await dag.aforward()
+        assert result is None
+
+
+@pytest.mark.asyncio
+class TestDAGGraphConversion:
+    """Tests for from_node_graph() and to_node_graph() methods"""
+
+    async def test_from_node_graph_simple(self):
+        """from_node_graph() should create a DAG from a simple graph"""
+        var = G.Var(val=5, name='input')
+        t1 = G.t(_Const(10), _name='proc1', x=var)
+
+        dag = DataFlow.from_node_graph([var, t1])
+
+        assert 'input' in dag._nodes
+        assert 'proc1' in dag._nodes
+
+    async def test_from_node_graph_complex(self):
+        """from_node_graph() should handle complex dependencies"""
+        var1 = G.Var(val=1, name='a')
+        var2 = G.Var(val=2, name='b')
+        t1 = G.t(_Add(), _name='sum', a=var1, b=var2)
+
+        dag = DataFlow.from_node_graph([var1, var2, t1])
+
+        assert 'a' in dag._nodes
+        assert 'b' in dag._nodes
+        assert 'sum' in dag._nodes
+        assert isinstance(dag._args.data['sum']['a'], RefT)
+        assert isinstance(dag._args.data['sum']['b'], RefT)
+
+    async def test_from_node_graph_requires_names(self):
+        """from_node_graph() should raise ValueError if nodes lack names"""
+        var = G.Var(val=5)
+
+        with pytest.raises(ValueError, match="must have a name"):
+            DataFlow.from_node_graph([var])
+
+    async def test_to_node_graph_creates_var_nodes(self):
+        """to_node_graph() should create Var nodes"""
+        dag = DataFlow()
+        dag.add_inp('input', val=10)
+
+        nodes = dag.to_node_graph()
+
+        assert len(nodes) == 1
+        assert isinstance(nodes[0], G.Var)
+        assert nodes[0].name == 'input'
+        assert nodes[0].val == 10
+
+    async def test_to_node_graph_creates_t_nodes(self):
+        """to_node_graph() should create T nodes"""
+        dag = DataFlow()
+        inp_ref = dag.add_inp('input', val=5)
+        dag.link('proc', _Const(10), x=inp_ref)
+
+        nodes = dag.to_node_graph()
+
+        t_nodes = [n for n in nodes if isinstance(n, G.T)]
+        assert len(t_nodes) == 1
+        assert t_nodes[0].name == 'proc'
+
+    async def test_roundtrip_preserves_structure(self):
+        """Converting DAG -> nodes -> DAG should preserve structure"""
+        var = G.Var(val=5, name='input')
+        t1 = G.t(_Const(10), _name='proc1', x=var)
+
+        dag1 = DataFlow.from_node_graph([var, t1])
+        dag1.set_out('proc1')
+
+        nodes = dag1.to_node_graph()
+
+        dag2 = DataFlow.from_node_graph(nodes)
+        dag2.set_out('proc1')
+
+        names1 = set(dag1._nodes.keys())
+        names2 = set(dag2._nodes.keys())
+        assert names1 == names2
+
+
+@pytest.mark.asyncio
+class TestDAGIntegration:
+    """Integration tests for complex DAG scenarios"""
+
+    async def test_dag_with_parallel_branches(self):
+        """DAG should handle multiple independent branches"""
+        dag = DataFlow()
+        dag.add_inp('x', val=5)
+        dag.link('double', _Add(), a=RefT('x'), b=RefT('x'))
+        dag.link('triple', _Add(), a=RefT('double'), b=RefT('x'))
+        dag.set_out(['double', 'triple'])
+
+        result = await dag.aforward()
+        assert result == (10, 15)
+
+    async def test_dag_with_deep_nesting(self):
+        """DAG should handle deep dependency chains"""
+        dag = DataFlow()
+        dag.add_inp('start', val=1)
+        dag.link('step1', _Add(), a=RefT('start'), b=1)
+        dag.link('step2', _Add(), a=RefT('step1'), b=1)
+        dag.link('step3', _Add(), a=RefT('step2'), b=1)
+        dag.set_out('step3')
+
+        result = await dag.aforward()
+        assert result == 4
+
+    async def test_dag_execution_memoization(self):
+        """DAG should memoize node results during execution"""
+        dag = DataFlow()
+        shared = _Const(5)
+        dag.add_inp('x', val=1)
+        dag.link('shared', shared)
+        dag.link('a', _Add(), a=RefT('shared'), b=RefT('x'))
+        dag.link('b', _Add(), a=RefT('shared'), b=2)
+        dag.set_out(['a', 'b'])
+
+        await dag.aforward()
+
+        assert shared.calls == 1
+
+    async def test_dag_with_mixed_sync_async(self):
+        """DAG should handle both sync and async processes"""
+        dag = DataFlow()
+        dag.link('sync', _Const(10))
+        dag.link('async', _AsyncConst(20))
+        dag.set_out(['sync', 'async'])
+
+        result = await dag.aforward()
+        assert result == (10, 20)
+
+    async def test_dag_error_propagation(self):
+        """Errors in nodes should propagate properly"""
+        class ErrorProc(P.Process):
+            def forward(self):
+                raise ValueError("Test error")
+
+        dag = DataFlow()
+        dag.link('error', ErrorProc())
+        dag.set_out('error')
+
+        with pytest.raises(ValueError, match="Test error"):
+            await dag.aforward()
 
 
 async def _async_fn(**kwargs):  # simple async callable
