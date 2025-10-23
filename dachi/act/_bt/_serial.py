@@ -30,11 +30,12 @@ class Serial(Composite):
         """
         self._cascaded.data = cascaded
 
+
 class Sequence(Serial):
     """Create a sequence of tasks to execute
     """
 
-    tasks: ModuleList | None = None
+    tasks: ModuleList[Task] | None = None
 
     def __post_init__(self):
         """Initialize the Sequence. A Sequence will execute its tasks in order. If one fails then it will Fail. If cascaded is True, it will try to execute all tasks in order until one fails
@@ -131,8 +132,7 @@ class Sequence(Serial):
 class Selector(Serial):
     """Create a set of tasks to select from
     """
-    
-    tasks: ModuleList | None = None
+    tasks: ModuleList[Task] | None = None
 
     def __post_init__(self):
         """Initialize the selector. A Selector will try to execute

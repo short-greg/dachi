@@ -27,7 +27,7 @@ class CompositeState(BaseState, ChartEventHandler, Recoverable):
     even though run() returns immediately. This avoids busy-waiting loops
     by using callbacks (finish_region) to track completion.
     """
-    regions: ModuleList
+    regions: ModuleList[Region]
 
     def __post_init__(self):
 

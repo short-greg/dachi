@@ -603,7 +603,7 @@ class BaseModule:
         )
 
     def __init_subclass__(cls, **__kwd):
-        super(cls).__init_subclass__(**__kwd)
+        super().__init_subclass__(**__kwd)
         if cls is BaseModule:
             return
         

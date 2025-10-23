@@ -42,7 +42,7 @@ class TestRegionInit:
 
     def test_post_init_creates_chart_states_module_dict(self):
         region = Region(name="test", initial="idle", rules=[])
-        assert isinstance(region._chart_states, ModuleDict)
+        assert isinstance(region.states, ModuleDict)
 
     def test_post_init_creates_state_idx_map(self):
         region = Region(name="test", initial="idle", rules=[])
@@ -151,7 +151,7 @@ class TestRegionDecide:
     def test_decide_matches_when_in_correct_state(self):
         rule = Rule(event_type="advance", target="next", when_in="waiting")
         region = Region(name="test", initial="idle", rules=[rule])
-        region._chart_states["waiting"] = SimpleState()  # Register the state
+        region.states["waiting"] = SimpleState()  # Register the state
         region._current_state.set("waiting")  # Set via Attr
         event = Event(type="advance")
 
@@ -163,7 +163,7 @@ class TestRegionDecide:
         rule = Rule(event_type="cancel", target="cancelled")
         region = Region(name="test", initial="streaming", rules=[rule])
         # Use the module-level SimpleStreamState
-        region._chart_states["streaming"] = SimpleStreamState()
+        region.states["streaming"] = SimpleStreamState()
         region._current_state.set("streaming")
         event = Event(type="cancel")
 
@@ -180,7 +180,7 @@ class TestRegionDecide:
         """
         rule = Rule(event_type="next", target="done")
         region = Region(name="test", initial="idle", rules=[rule])
-        region._chart_states["idle"] = SimpleState()
+        region.states["idle"] = SimpleState()
         region._current_state.set("idle")
         event = Event(type="next")
 
@@ -363,7 +363,7 @@ class TestRegionStateManagement:
 
         region.add(state)
 
-        assert region._chart_states["active"] == state
+        assert region.states["active"] == state
 
     def test_add_updates_state_idx_map(self):
         region = Region(name="test", initial="idle", rules=[])

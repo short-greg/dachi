@@ -19,7 +19,7 @@ class Multi(Parallel):
     """A composite task for running multiple tasks in parallel
     """
 
-    tasks: ModuleList
+    tasks: ModuleList[Task]
     fails_on: int=1
     succeeds_on: int=-1
     success_priority: bool = True

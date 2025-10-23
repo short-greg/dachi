@@ -836,7 +836,7 @@ class TupleOut(ToOut):
         # Output: [42]
     """
 
-    processors: ModuleList # a list of the ToOut processors to use
+    processors: ModuleList[ToOut] # a list of the ToOut processors to use
     parser: Parser
 
     def forward(self, resp: str | None) -> typing.Any:

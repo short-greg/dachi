@@ -26,7 +26,7 @@ JSON = Union[Dict[str, Any], List[Any], str, int, float, bool, None]
 
 class StateChart(ChartBase, ChartEventHandler):
     name: str
-    regions: ModuleList  # ModuleList[Region]
+    regions: ModuleList[Region]  # ModuleList[Region]
     checkpoint_policy: Literal["yield", "hard"] = "yield" # currently not used
     queue_maxsize: int = 1024
     queue_overflow: Literal["drop_newest", "drop_oldest", "block"] = "drop_newest"

@@ -99,19 +99,21 @@ class Region(ChartBase, ChartEventHandler, Recoverable):
     name: str
     initial: str  # Initial state name
     rules: List[Rule]
+    states: ModuleDict[str, BaseState] = None
 
     def __post_init__(self) -> None:
         super().__post_init__()
 
         # Store State instances in module hierarchy
-        self._chart_states = ModuleDict(items={})
         self._state_idx_map = {}
 
         # Create and register built-in states (cannot be overridden by user)
-        self._chart_states["READY"] = ReadyState(name="READY")
-        self._chart_states["SUCCESS"] = FinalState(name="SUCCESS")
-        self._chart_states["FAILURE"] = FinalState(name="FAILURE")
-        self._chart_states["CANCELED"] = FinalState(name="CANCELED")
+        if self.states is None:
+            self.states = ModuleDict(items={})
+        self.states["READY"] = ReadyState(name="READY")
+        self.states["SUCCESS"] = FinalState(name="SUCCESS")
+        self.states["FAILURE"] = FinalState(name="FAILURE")
+        self.states["CANCELED"] = FinalState(name="CANCELED")
 
         # Track current state with just string keys (simple data in Attr)
         # Initialize to READY (always start here before start() is called)
@@ -156,7 +158,7 @@ class Region(ChartBase, ChartEventHandler, Recoverable):
                 target = rule["target"]
 
                 # Skip if already processed or not a real state
-                if target in reachable or target not in self._chart_states:
+                if target in reachable or target not in self.states:
                     continue
 
                 # Can transition from current state?
@@ -166,7 +168,7 @@ class Region(ChartBase, ChartEventHandler, Recoverable):
 
         # Exclude built-in states from validation
         built_in = {'READY', 'SUCCESS', 'FAILURE', 'CANCELED'}
-        all_user_states = set(self._chart_states.keys()) - built_in
+        all_user_states = set(self.states.keys()) - built_in
 
         return sorted(all_user_states - reachable)
 
@@ -196,7 +198,7 @@ class Region(ChartBase, ChartEventHandler, Recoverable):
                 if rule["target"] in can_terminate:
                     # State-independent rule: ALL states can reach target (which reaches final)
                     if not rule.get("when_in"):
-                        for state_name in self._chart_states:
+                        for state_name in self.states:
                             if state_name not in can_terminate:
                                 can_terminate.add(state_name)
                                 changed = True
@@ -209,7 +211,7 @@ class Region(ChartBase, ChartEventHandler, Recoverable):
 
         # Exclude built-in states
         built_in = {'READY', 'SUCCESS', 'FAILURE', 'CANCELED'}
-        all_user_states = set(self._chart_states.keys()) - built_in
+        all_user_states = set(self.states.keys()) - built_in
 
         return sorted(all_user_states - can_terminate)
 
@@ -252,7 +254,7 @@ class Region(ChartBase, ChartEventHandler, Recoverable):
         Args:
             state (State): The state instance to add
         """
-        self._chart_states[state.name] = state
+        self.states[state.name] = state
         self._state_idx_map[state.name] = len(self._state_idx_map)
 
     def __getitem__(self, state_name: str) -> BaseState:
@@ -267,7 +269,7 @@ class Region(ChartBase, ChartEventHandler, Recoverable):
         Raises:
             KeyError: If state not found
         """
-        return self._chart_states[state_name]
+        return self.states[state_name]
 
     def __setitem__(self, state_name: str, state: BaseState) -> None:
         """Set state by name. Calls add() internally to maintain indices.
@@ -300,22 +302,22 @@ class Region(ChartBase, ChartEventHandler, Recoverable):
     @property
     def READY(self) -> ReadyState:
         """Built-in ready state. Region begins here before starting."""
-        return self._chart_states["READY"]
+        return self.states["READY"]
 
     @property
     def SUCCESS(self) -> FinalState:
         """Built-in success state. Use for successful completion."""
-        return self._chart_states["SUCCESS"]
+        return self.states["SUCCESS"]
 
     @property
     def FAILURE(self) -> FinalState:
         """Built-in failure state. Reached on exception or explicit transition."""
-        return self._chart_states["FAILURE"]
+        return self.states["FAILURE"]
 
     @property
     def CANCELED(self) -> FinalState:
         """Built-in canceled state. Reached on preemption or explicit transition."""
-        return self._chart_states["CANCELED"]
+        return self.states["CANCELED"]
 
     def is_final(self) -> bool:
         """Check if region is in any final state (SUCCESS, FAILURE, or CANCELED)"""
@@ -365,7 +367,7 @@ class Region(ChartBase, ChartEventHandler, Recoverable):
                 f"Cannot restore region '{self.name}' - already started"
             )
 
-        if state not in self._chart_states:
+        if state not in self.states:
             raise ValueError(
                 f"Cannot restore region '{self.name}' to unknown state '{state}'"
             )
@@ -412,7 +414,7 @@ class Region(ChartBase, ChartEventHandler, Recoverable):
         if preempt:
             try:
                 current_state_name = self.current_state_name
-                current_state_obj = self._chart_states[current_state_name]
+                current_state_obj = self.states[current_state_name]
 
                 # Only request termination for BaseState instances (not PseudoState)
                 if isinstance(current_state_obj, BaseState):
@@ -449,7 +451,7 @@ class Region(ChartBase, ChartEventHandler, Recoverable):
         if self._cur_task and not self._cur_task.done():
             self._cur_task.cancel()
         self._cur_task = None
-        for state in self._chart_states.values():
+        for state in self.states.values():
             if isinstance(state, BaseState):
                 state.reset()
 
@@ -470,7 +472,7 @@ class Region(ChartBase, ChartEventHandler, Recoverable):
         if state_name is None:
             return None
         try:
-            return self._chart_states[state_name]
+            return self.states[state_name]
         except KeyError:
             return None
         
@@ -499,7 +501,7 @@ class Region(ChartBase, ChartEventHandler, Recoverable):
 
         if policy == "deep":
             try:
-                state_obj = self._chart_states.get(last_state)
+                state_obj = self.states.get(last_state)
                 if isinstance(state_obj, Recoverable) and state_obj.can_recover():
                     state_obj.recover(policy)
             except (KeyError, AttributeError) as e:
@@ -518,7 +520,7 @@ class Region(ChartBase, ChartEventHandler, Recoverable):
         # Auto-detect state failure/cancellation and transition to appropriate built-in state
         current_state_name = self.current_state_name
 
-        current_state_obj = self._chart_states.get(current_state_name) if current_state_name is not None else None
+        current_state_obj = self.states.get(current_state_name) if current_state_name is not None else None
         if not self._pending_target.get() and isinstance(current_state_obj, BaseState):
 
             if current_state_obj.status == ChartStatus.FAILURE:
@@ -537,7 +539,7 @@ class Region(ChartBase, ChartEventHandler, Recoverable):
         if self._current_state.data is not None:
             current_state_name = self._current_state.data
             try:
-                current_state_obj = self._chart_states[current_state_name]
+                current_state_obj = self.states[current_state_name]
                 # Only unregister callback for BaseState instances (not PseudoState)
                 if isinstance(current_state_obj, BaseState):
                     current_state_obj.unregister_finish_callback(self.transition)
@@ -550,7 +552,7 @@ class Region(ChartBase, ChartEventHandler, Recoverable):
 
         # Get target state object
         try:
-            state_obj: BaseState | PseudoState = self._chart_states[target]
+            state_obj: BaseState | PseudoState = self.states[target]
         except KeyError:
             raise RuntimeError(f"Cannot transition as State '{target}' not found in region '{self.name}'")
 
@@ -688,9 +690,9 @@ class Region(ChartBase, ChartEventHandler, Recoverable):
             when_in (Optional[str], optional): The state name condition. Defaults to None.
             priority (int, optional): The priority of the rule. Defaults to 0.
         """
-        if when_in is not None and when_in not in self._chart_states:
+        if when_in is not None and when_in not in self.states:
             raise ValueError(f"Cannot add rule with when_in='{when_in}' as state not found in region '{self.name}'")
-        if to_state not in self._chart_states:
+        if to_state not in self.states:
             raise ValueError(f"Cannot add rule with target='{to_state}' as state not found in region '{self.name}'")
         rule: Rule = {
             "event_type": on_event,
