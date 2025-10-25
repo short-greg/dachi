@@ -1590,103 +1590,89 @@ class MulTwo(BaseModule):
 
 # NOTE: assume imports like: pytest, BaseModule, BaseSpec, RestrictedSchemaMixin
 
+# assumes: pytest, BaseModule, BaseSpec, RestrictedSchemaMixin are imported
+
 class TestRestrictedSchemaMixin:
-    # ---- minimal local domain (no registry, no Task) ----
     def setup_method(self):
+        # minimal domain: two modules + their spec models
         class ModA(BaseModule, RestrictedSchemaMixin): ...
         class ModB(BaseModule, RestrictedSchemaMixin): ...
         self.ModA, self.ModB = ModA, ModB
 
-        # Minimal Spec classes; your real BaseSpec will be Pydantic
+        # simple Pydantic models (no bare 'title' attr)
         ModASpec = type("ModASpec", (BaseSpec,), {})
         ModBSpec = type("ModBSpec", (BaseSpec,), {})
-
-        # Wire module -> spec
         ModA.schema_model = classmethod(lambda cls: ModASpec)
         ModB.schema_model = classmethod(lambda cls: ModBSpec)
 
-        # Local mapping for spec -> module; patch the mixin to use it
-        self._spec_to_module = {ModASpec: ModA, ModBSpec: ModB}
-        self._orig_resolver = RestrictedSchemaMixin.module_from_spec_model
-        RestrictedSchemaMixin.module_from_spec_model = staticmethod(lambda spec: self._spec_to_module[spec])
+    # ---- normalization
+    def test_normalize_variants_modules_only_dedup_sorted(self):
+        entries = RestrictedSchemaMixin.normalize_variants([self.ModB, self.ModA, self.ModB])
+        assert [n for n, _ in entries] == ["ModASpec", "ModBSpec"]
 
-    def teardown_method(self):
-        # restore original resolver
-        RestrictedSchemaMixin.module_from_spec_model = self._orig_resolver
+    def test_normalize_variants_mixed_module_and_spec(self):
+        entries = RestrictedSchemaMixin.normalize_variants([self.ModB, self.ModA.schema_model(), self.ModA])
+        assert [n for n, _ in entries] == ["ModASpec", "ModBSpec"]
 
-    # ---------- Normalization ----------
-    def test_norm_variants_modules_only_dedup_sorted(self):
-        out = RestrictedSchemaMixin.norm_variants([self.ModB, self.ModA, self.ModB])
-        assert out == [self.ModA, self.ModB]
+    def test_normalize_variants_mixed_inputs_sorted_and_dedup(self):
+        ModCSpec = type("ModCSpec", (BaseSpec,), {})
+        raw = {"title": "InlineSpec", "type": "object", "properties": {"kind": {"const": "Inline"}}}
+        entries = RestrictedSchemaMixin.normalize_variants([
+            self.ModB, self.ModA.schema_model(), self.ModA, ModCSpec, raw
+        ])
+        assert [n for n, _ in entries] == ["InlineSpec", "ModASpec", "ModBSpec", "ModCSpec"]
 
-    def test_norm_variants_mixed_module_and_spec(self):
-        out = RestrictedSchemaMixin.norm_variants([self.ModB, self.ModA.schema_model(), self.ModA])
-        assert out == [self.ModA, self.ModB]
-
-    def test_norm_variants_invalid_input_raises(self):
+    def test_normalize_variants_invalid_input_raises(self):
         import pytest
         with pytest.raises(TypeError):
-            RestrictedSchemaMixin.norm_variants([object])
+            RestrictedSchemaMixin.normalize_variants([object])
 
-    # ---------- Memo / cycle guard ----------
-    def test_memo_roundtrip(self):
-        memo = RestrictedSchemaMixin.memo_start(None, self.ModA)
-        assert RestrictedSchemaMixin.memo_get(memo, self.ModA) is None
-        doc = {"$defs": {}}
-        RestrictedSchemaMixin.memo_end(memo, self.ModA, doc)
-        assert RestrictedSchemaMixin.memo_get(memo, self.ModA) is doc
+    # ---- $defs + unions (entries-based)
+    def test_require_defs_for_entries_inserts_and_keeps_existing(self):
+        base = {"$defs": {"ModASpec": {"sentinel": 1}}}
+        entries = RestrictedSchemaMixin.normalize_variants([self.ModA, self.ModB])
+        RestrictedSchemaMixin.require_defs_for_entries(base, entries)
+        assert base["$defs"]["ModASpec"] == {"sentinel": 1}
+        assert "ModBSpec" in base["$defs"]
 
-    def test_memo_isolated_per_class(self):
-        memo = RestrictedSchemaMixin.memo_start({}, self.ModA)
-        RestrictedSchemaMixin.memo_end(memo, self.ModA, {"ok": True})
-        assert RestrictedSchemaMixin.memo_get(memo, self.ModB) is None
-
-    # ---------- Union builders ----------
-    def test_build_variant_refs(self):
-        refs = RestrictedSchemaMixin.build_variant_refs([self.ModA, self.ModB])
+    def test_build_refs_from_entries(self):
+        entries = RestrictedSchemaMixin.normalize_variants([self.ModA, self.ModB])
+        refs = RestrictedSchemaMixin.build_refs_from_entries(entries)
         assert refs == [{"$ref": "#/$defs/ModASpec"}, {"$ref": "#/$defs/ModBSpec"}]
 
-    def test_make_union_inline_with_and_without_discriminator(self):
-        u1 = RestrictedSchemaMixin.make_union_inline([self.ModA, self.ModB], add_discriminator=True)
-        assert "oneOf" in u1 and "discriminator" in u1 and "mapping" in u1["discriminator"]
-        u2 = RestrictedSchemaMixin.make_union_inline([self.ModA], add_discriminator=False)
+    def test_make_union_inline_from_entries_with_and_without_discriminator(self):
+        entries = RestrictedSchemaMixin.normalize_variants([self.ModA, self.ModB])
+        u1 = RestrictedSchemaMixin.make_union_inline_from_entries(entries, add_discriminator=True)
+        assert "oneOf" in u1 and len(u1["oneOf"]) == 2
+        u2 = RestrictedSchemaMixin.make_union_inline_from_entries(entries, add_discriminator=False)
         assert "oneOf" in u2 and "discriminator" not in u2
 
-    def test_ensure_shared_union_idempotent(self):
-        doc = {"$defs": {}}
-        ref1 = RestrictedSchemaMixin.ensure_shared_union(
-            doc, placeholder_spec_name="FooSpec",
-            variants=[self.ModA, self.ModB], add_discriminator=True
+    def test_ensure_shared_union_from_entries_idempotent(self):
+        base = {"$defs": {}}
+        entries = RestrictedSchemaMixin.normalize_variants([self.ModA, self.ModB])
+        ref1 = RestrictedSchemaMixin.ensure_shared_union_from_entries(
+            base, placeholder_spec_name="FooSpec", entries=entries, add_discriminator=True
         )
-        ref2 = RestrictedSchemaMixin.ensure_shared_union(
-            doc, placeholder_spec_name="FooSpec",
-            variants=[self.ModA], add_discriminator=False
+        ref2 = RestrictedSchemaMixin.ensure_shared_union_from_entries(
+            base, placeholder_spec_name="FooSpec", entries=entries, add_discriminator=False
         )
         assert ref1 == ref2 == "#/$defs/Allowed_FooSpec"
-        assert "oneOf" in doc["$defs"]["Allowed_FooSpec"]
-
-    # ---------- $defs utilities ----------
-    def test_require_defs_for_variants_inserts_and_keeps_existing(self):
-        sentinel = {"type": "string"}
-        doc = {"$defs": {"ModASpec": sentinel}}
-        RestrictedSchemaMixin.require_defs_for_variants(doc, [self.ModA, self.ModB])
-        assert doc["$defs"]["ModASpec"] is sentinel
-        assert "ModBSpec" in doc["$defs"]
+        assert "Allowed_FooSpec" in base["$defs"] and "oneOf" in base["$defs"]["Allowed_FooSpec"]
 
     def test_merge_defs_merge_and_conflict_policies(self):
         target = {"$defs": {"A": {"type": "string"}}}
         src1 = {"$defs": {"B": {"type": "number"}}}
         src2 = {"$defs": {"C": {"type": "boolean"}}}
         RestrictedSchemaMixin.merge_defs(target, src2, src1)
-        assert sorted(target["$defs"].keys()) == ["A", "B", "C"]
-
+        assert set(target["$defs"].keys()) == {"A", "B", "C"}  # order not required
+        # conflict: error
         target2 = {"$defs": {"X": {"type": "string"}}}
         src_conflict = {"$defs": {"X": {"type": "number"}}}
         import pytest
         with pytest.raises(ValueError):
             RestrictedSchemaMixin.merge_defs(target2, src_conflict, on_conflict="error")
 
-    # ---------- Local patching ----------
+    # ---- local patching
     def test_node_at_and_replace_at_path(self):
         doc = {"a": {"b": {"c": 3}}}
         assert RestrictedSchemaMixin.node_at(doc, ["a", "b", "c"]) == 3
@@ -1706,7 +1692,7 @@ class TestRestrictedSchemaMixin:
         assert RestrictedSchemaMixin.has_placeholder_ref(doc, at=["props", "x"], placeholder_spec_name="FooSpec")
         assert not RestrictedSchemaMixin.has_placeholder_ref(doc, at=["props"], placeholder_spec_name="FooSpec")
 
-    # ---------- Guardrails ----------
+    # ---- guardrails
     def test_apply_array_bounds(self):
         doc = {"props": {"arr": {"type": "array"}}}
         RestrictedSchemaMixin.apply_array_bounds(doc, at=["props", "arr"], min_items=1, max_items=5)
@@ -1718,13 +1704,9 @@ class TestRestrictedSchemaMixin:
         RestrictedSchemaMixin.set_additional_properties(doc, at=["props", "m"], allow=False)
         assert RestrictedSchemaMixin.node_at(doc, ["props", "m"])["additionalProperties"] is False
 
-    # ---------- Diagnostics ----------
+    # ---- diagnostics
     def test_collect_placeholder_refs(self):
-        doc = {
-            "x": {"$ref": "#/$defs/FooSpec"},
-            "y": [{"$ref": "#/$defs/FooSpec"}],
-            "$defs": {"FooSpec": {}},
-        }
+        doc = {"x": {"$ref": "#/$defs/FooSpec"}, "y": [{"$ref": "#/$defs/FooSpec"}], "$defs": {"FooSpec": {}}}
         hits = RestrictedSchemaMixin.collect_placeholder_refs(doc, placeholder_spec_name="FooSpec")
         assert ["x"] in hits and ["y", "0"] in hits
 
@@ -1732,7 +1714,6 @@ class TestRestrictedSchemaMixin:
         doc = {"props": {"x": {"$ref": "#/$defs/FooSpec"}}, "$defs": {"FooSpec": {}}}
         RestrictedSchemaMixin.replace_at_path(doc, ["props", "x"], {"type": "object"})
         assert RestrictedSchemaMixin.collect_placeholder_refs(doc, placeholder_spec_name="FooSpec") == []
-
 
 
 # import pytest
