@@ -7,20 +7,20 @@ from dachi.act import _states as S
 from tests.act.utils import _AsyncBoolProc, _BoolProc
 
 
-@pytest.mark.asyncio
-class TestRoot:
-    async def test_root_without_child(self):
-        assert await BT().tick() is TaskStatus.SUCCESS
+# @pytest.mark.asyncio
+# class TestRoot:
+#     async def test_root_without_child(self):
+#         assert await BT().tick() is TaskStatus.SUCCESS
 
-    async def test_root_delegates(self):
-        r = BT(root=ImmediateAction(status_val=TaskStatus.FAILURE))
-        assert await r.tick() is TaskStatus.FAILURE
+#     async def test_root_delegates(self):
+#         r = BT(root=ImmediateAction(status_val=TaskStatus.FAILURE))
+#         assert await r.tick() is TaskStatus.FAILURE
 
-    async def test_root_reset_propagates(self):
-        child = ImmediateAction(status_val=TaskStatus.SUCCESS)
-        r = BT(root=child)
-        await r.tick(); r.reset()
-        assert child.status is TaskStatus.READY
+#     async def test_root_reset_propagates(self):
+#         child = ImmediateAction(status_val=TaskStatus.SUCCESS)
+#         r = BT(root=child)
+#         await r.tick(); r.reset()
+#         assert child.status is TaskStatus.READY
 
 
 

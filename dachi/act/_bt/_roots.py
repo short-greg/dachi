@@ -4,11 +4,11 @@ from dataclasses import InitVar
 from dachi.core import Ctx, Scope
 
 # local
-from dachi.core import AdaptModule
+# from dachi.core import AdaptModule
 from ._core import Task, TaskStatus
 
 
-class BT(AdaptModule, Task):
+class BT(Task):
     """The root task for a behavior tree
     """
     root: InitVar[Task | None] = None

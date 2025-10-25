@@ -16,7 +16,7 @@ from ._base import (
     Registry,
     Checkpoint,
     registry,
-    AdaptModule,
+    # AdaptModule,
     ParamSet,
     RestrictedSchemaMixin
 )

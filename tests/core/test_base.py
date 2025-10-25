@@ -12,8 +12,8 @@ import pytest
 
 
 from dachi.core._base import (
-    BaseModule, BaseModule, Param, Attr, Shared, BaseSpec, Checkpoint, AdaptModule, registry, Registry,
-    ParamSet
+    BaseModule, BaseModule, Param, Attr, Shared, BaseSpec, Checkpoint, registry, Registry,
+    ParamSet, RestrictedSchemaMixin
 )
 
 from pydantic import ValidationError
@@ -1359,152 +1359,152 @@ class MulTwo(BaseModule):
 
 # -------------------------------------------------------------------------
 # Test class (single, cohesive as requested)
-# -------------------------------------------------------------------------
-class TestAdaptedModule:
-    """Full behavioural surface for :class:`AdaptModule`."""
+# # -------------------------------------------------------------------------
+# class TestAdaptedModule:
+#     """Full behavioural surface for :class:`AdaptModule`."""
 
-    # --------------------------------------------------
-    # helpers / fixtures
-    # --------------------------------------------------
-    @staticmethod
-    def _make(bias: int = 3, allow: list[type[BaseModule]] | None = None,
-               train_submods: bool = True) -> AdaptModule:
-        """Factory returning a fresh, *unfixed* wrapper around AddOne."""
-        leaf = AddOne(bias=bias)
-        adapted =  AdaptModule()
-        adapted.adapted = leaf
-        adapted.allowed = allow
-        adapted.train_submods = train_submods
-        return adapted
+#     # --------------------------------------------------
+#     # helpers / fixtures
+#     # --------------------------------------------------
+#     @staticmethod
+#     def _make(bias: int = 3, allow: list[type[BaseModule]] | None = None,
+#                train_submods: bool = True) -> AdaptModule:
+#         """Factory returning a fresh, *unfixed* wrapper around AddOne."""
+#         leaf = AddOne(bias=bias)
+#         adapted =  AdaptModule()
+#         adapted.adapted = leaf
+#         adapted.allowed = allow
+#         adapted.train_submods = train_submods
+#         return adapted
 
-    # =====================================================================
-    ### Construction & basic wiring
-    # =====================================================================
-    def test_init_creates_spec_param_and_callback(self):
-        mod = self._make()
-        assert isinstance(mod.adapted_param, Param)
+#     # =====================================================================
+#     ### Construction & basic wiring
+#     # =====================================================================
+#     def test_init_creates_spec_param_and_callback(self):
+#         mod = self._make()
+#         assert isinstance(mod.adapted_param, Param)
 
-        spec1 = {
-            key: val for key, val in mod.adapted_param.data.dict().items()
-            if key != 'id'
-        }
-        spec2 = {
-            key: val for key, val in mod.adapted.spec(to_dict=True).items()
-            if key != 'id'
-        }
+#         spec1 = {
+#             key: val for key, val in mod.adapted_param.data.dict().items()
+#             if key != 'id'
+#         }
+#         spec2 = {
+#             key: val for key, val in mod.adapted.spec(to_dict=True).items()
+#             if key != 'id'
+#         }
 
-        assert spec1 == spec2
+#         assert spec1 == spec2
         
-        old_id = id(mod.adapted)
-        new_spec = MulTwo(factor=5).spec()
-        mod.adapted_param.set(new_spec)  # triggers callback path
-        assert id(mod.adapted) != old_id
-        assert mod.adapted.forward(2) == 10  # 2*5
+#         old_id = id(mod.adapted)
+#         new_spec = MulTwo(factor=5).spec()
+#         mod.adapted_param.set(new_spec)  # triggers callback path
+#         assert id(mod.adapted) != old_id
+#         assert mod.adapted.forward(2) == 10  # 2*5
 
 
-    def test_parameters_modes_and_no_duplicates(self):
-        mod = self._make()
-        # unfixed, train_submods True → spec + inner param
-        ids_unfixed = [id(p) for p in mod.parameters()]
-        assert len(ids_unfixed) == len(set(ids_unfixed))  # no duplicates
-        assert mod.adapted_param in list(mod.parameters())
-        # freeze → only spec remains
-        mod.fix()
-        ids_fixed = [id(p) for p in mod.parameters()]
-        assert mod.adapted_param not in list(mod.parameters())
-        # unfreeze but train_submods False → spec only
-        mod.unfix()
-        mod.train_submods = False
-        ids_no_train = [id(p) for p in mod.parameters()]
-        assert all(id_ != id(mod.adapted.bias) for id_ in ids_no_train)
+#     def test_parameters_modes_and_no_duplicates(self):
+#         mod = self._make()
+#         # unfixed, train_submods True → spec + inner param
+#         ids_unfixed = [id(p) for p in mod.parameters()]
+#         assert len(ids_unfixed) == len(set(ids_unfixed))  # no duplicates
+#         assert mod.adapted_param in list(mod.parameters())
+#         # freeze → only spec remains
+#         mod.fix()
+#         ids_fixed = [id(p) for p in mod.parameters()]
+#         assert mod.adapted_param not in list(mod.parameters())
+#         # unfreeze but train_submods False → spec only
+#         mod.unfix()
+#         mod.train_submods = False
+#         ids_no_train = [id(p) for p in mod.parameters()]
+#         assert all(id_ != id(mod.adapted.bias) for id_ in ids_no_train)
 
-    # def test_fix_unfix_idempotent_and_grad_flow(self):
-    #     mod = self._make()
-    #     p_inner = mod.adapted.bias
-    #     mod.fix(); mod.fix()  # double‑call no error
-    #     assert p_inner.requires_grad is False
-    #     mod.unfix(); mod.unfix()
-    #     assert p_inner.requires_grad is True
+#     # def test_fix_unfix_idempotent_and_grad_flow(self):
+#     #     mod = self._make()
+#     #     p_inner = mod.adapted.bias
+#     #     mod.fix(); mod.fix()  # double‑call no error
+#     #     assert p_inner.requires_grad is False
+#     #     mod.unfix(); mod.unfix()
+#     #     assert p_inner.requires_grad is True
 
-    def test_update_with_whitelist_and_rollback(self):
-        allowed = [AddOne]
-        mod = self._make(allow=allowed)
-        good_spec = AddOne(bias=9).spec()
-        mod.update_adapted(good_spec)  # should succeed
-        assert mod.adapted.bias.data == 9
-        # bad_spec = MulTwo(factor=4).spec()
-        # with pytest.raises(ValueError):
-        #     mod.update_adapted(bad_spec)
-        assert isinstance(mod.adapted, AddOne)
-        assert mod.adapted.bias.data == 9
+#     def test_update_with_whitelist_and_rollback(self):
+#         allowed = [AddOne]
+#         mod = self._make(allow=allowed)
+#         good_spec = AddOne(bias=9).spec()
+#         mod.update_adapted(good_spec)  # should succeed
+#         assert mod.adapted.bias.data == 9
+#         # bad_spec = MulTwo(factor=4).spec()
+#         # with pytest.raises(ValueError):
+#         #     mod.update_adapted(bad_spec)
+#         assert isinstance(mod.adapted, AddOne)
+#         assert mod.adapted.bias.data == 9
 
-    # def test_on_swap_fires_with_old_and_new(self):
-    #     events: list[tuple[int, int]] = []
+#     # def test_on_swap_fires_with_old_and_new(self):
+#     #     events: list[tuple[int, int]] = []
 
-    #     class _Watcher(AdaptModule):
-    #         def on_swap(self, old, new):  # type: ignore[override]
-    #             events.append((id(old), id(new)))
+#     #     class _Watcher(AdaptModule):
+#     #         def on_swap(self, old, new):  # type: ignore[override]
+#     #             events.append((id(old), id(new)))
 
-    #     mod = _Watcher()
-    #     mod.adapted = AddOne(bias=1)
-    #     spec2 = AddOne(bias=2).spec()
-    #     spec3 = AddOne(bias=3).spec()
-    #     mod.update_adapted(spec2)
-    #     mod.update_adapted(spec3)
-    #     # three events, ids strictly increasing chain
-    #     assert len(events) == 3
-    #     assert events[0][1] == events[1][0]  # new of first == old of second
+#     #     mod = _Watcher()
+#     #     mod.adapted = AddOne(bias=1)
+#     #     spec2 = AddOne(bias=2).spec()
+#     #     spec3 = AddOne(bias=3).spec()
+#     #     mod.update_adapted(spec2)
+#     #     mod.update_adapted(spec3)
+#     #     # three events, ids strictly increasing chain
+#     #     assert len(events) == 3
+#     #     assert events[0][1] == events[1][0]  # new of first == old of second
 
-    def test_state_dict_round_trip(self):
-        mod = self._make(bias=7)
-        sd = mod.state_dict()
-        # print(sd[])
-        clone = self._make(bias=1)  # different initial value
-        clone.load_state_dict(sd)
-        assert clone.adapted.bias.data == 7
-        # keys check
-        assert "_adapted_param" in sd
-        assert any(k.startswith("_adapted.") for k in sd)
+#     def test_state_dict_round_trip(self):
+#         mod = self._make(bias=7)
+#         sd = mod.state_dict()
+#         # print(sd[])
+#         clone = self._make(bias=1)  # different initial value
+#         clone.load_state_dict(sd)
+#         assert clone.adapted.bias.data == 7
+#         # keys check
+#         assert "_adapted_param" in sd
+#         assert any(k.startswith("_adapted.") for k in sd)
 
-    def test_state_dict_non_recursive(self):
-        mod = self._make()
-        sd = mod.state_dict(recurse=False)
-        assert '_adapted_param' in set(sd.keys())
+#     def test_state_dict_non_recursive(self):
+#         mod = self._make()
+#         sd = mod.state_dict(recurse=False)
+#         assert '_adapted_param' in set(sd.keys())
 
-    def test_schema_mapping_patches_refs(self):
-        mapping = {Task: [AddOne], State: [MulTwo]}
-        schema = AdaptModule.schema(mapping)  # classmethod
-        dumped = json.dumps(schema)
-        # Generic refs must be gone
-        assert "TaskSpec" not in dumped and "StateSpec" not in dumped
-        # allowed specs present
-        assert "AddOneSpec" in dumped and "MulTwoSpec" in dumped
+#     def test_schema_mapping_patches_refs(self):
+#         mapping = {Task: [AddOne], State: [MulTwo]}
+#         schema = AdaptModule.schema(mapping)  # classmethod
+#         dumped = json.dumps(schema)
+#         # Generic refs must be gone
+#         assert "TaskSpec" not in dumped and "StateSpec" not in dumped
+#         # allowed specs present
+#         assert "AddOneSpec" in dumped and "MulTwoSpec" in dumped
 
-    def test_schema_cache_key_independent_of_order(self):
-        map1 = {Task: [AddOne, MulTwo]}
-        map2 = {Task: [MulTwo, AddOne]}  # same set diff order
-        s1 = AdaptModule.schema(map1)
-        s2 = AdaptModule.schema(map2)
-        assert s1 == s2
+#     def test_schema_cache_key_independent_of_order(self):
+#         map1 = {Task: [AddOne, MulTwo]}
+#         map2 = {Task: [MulTwo, AddOne]}  # same set diff order
+#         s1 = AdaptModule.schema(map1)
+#         s2 = AdaptModule.schema(map2)
+#         assert s1 == s2
 
-    def test_parameters_no_infinite_recursion(self):
-        mod = self._make()
-        parent = AddOne(bias=Param(0))  # dummy composite
-        # manually create a loop for test purposes
-        parent.child1 = mod  # type: ignore[attr-defined]
-        parent.child2 = mod  # duplicate reference
-        # Should not raise RecursionError
-        list(parent.parameters())
+#     def test_parameters_no_infinite_recursion(self):
+#         mod = self._make()
+#         parent = AddOne(bias=Param(0))  # dummy composite
+#         # manually create a loop for test purposes
+#         parent.child1 = mod  # type: ignore[attr-defined]
+#         parent.child2 = mod  # duplicate reference
+#         # Should not raise RecursionError
+#         list(parent.parameters())
 
-    def test_callback_blocked_when_fixed(self):
-        mod = self._make()
-        mod.fix()
-        bad_spec = AddOne(bias=Param(10)).spec()
-        with pytest.raises(RuntimeError):
-            mod.update_adapted(bad_spec)
-        # mutating adapted_param directly also fails
-        with pytest.raises(RuntimeError):
-            mod.adapted_param.set(bad_spec)
+#     def test_callback_blocked_when_fixed(self):
+#         mod = self._make()
+#         mod.fix()
+#         bad_spec = AddOne(bias=Param(10)).spec()
+#         with pytest.raises(RuntimeError):
+#             mod.update_adapted(bad_spec)
+#         # mutating adapted_param directly also fails
+#         with pytest.raises(RuntimeError):
+#             mod.adapted_param.set(bad_spec)
 
 #     # def test_no_gradients_for_inner_when_train_submods_false(self):
 #     #     mod = self._make(train_submods=False)
@@ -1519,61 +1519,220 @@ class TestAdaptedModule:
 # registry.register()(MulTwo)
 
 
-class TestAdaptedModule2:
-    """Full behavioural surface for :class:`AdaptModule` (extended).
-    Missing gaps from the earlier suite are now covered.
-    """
+# class TestAdaptedModule2:
+#     """Full behavioural surface for :class:`AdaptModule` (extended).
+#     Missing gaps from the earlier suite are now covered.
+#     """
 
-    # --------------------------------------------------
-    # helpers / fixtures
-    # --------------------------------------------------
-    @staticmethod
-    def _make(bias: int = 3, allow: list[type[BaseModule]] | None = None,
-               train_submods: bool = True) -> AdaptModule:
-        """Factory returning a fresh, *unfixed* wrapper around AddOne."""
-        leaf = AddOne(bias=bias)
-        adapted = AdaptModule()
-        adapted.adapted = leaf
-        adapted.allowed = allow
-        adapted.train_submods = train_submods
-        return adapted
+#     # --------------------------------------------------
+#     # helpers / fixtures
+#     # --------------------------------------------------
+#     @staticmethod
+#     def _make(bias: int = 3, allow: list[type[BaseModule]] | None = None,
+#                train_submods: bool = True) -> AdaptModule:
+#         """Factory returning a fresh, *unfixed* wrapper around AddOne."""
+#         leaf = AddOne(bias=bias)
+#         adapted = AdaptModule()
+#         adapted.adapted = leaf
+#         adapted.allowed = allow
+#         adapted.train_submods = train_submods
+#         return adapted
 
-    def test_rebuild_on_hyperparam_change(self):
-        mod = self._make(bias=1)
-        id_before = id(mod.adapted)
-        # same class, different hyper‑param
-        mod.update_adapted(AddOne(bias=99).spec())
-        assert id(mod.adapted) != id_before
-        assert mod.adapted.bias.data == 99
+#     def test_rebuild_on_hyperparam_change(self):
+#         mod = self._make(bias=1)
+#         id_before = id(mod.adapted)
+#         # same class, different hyper‑param
+#         mod.update_adapted(AddOne(bias=99).spec())
+#         assert id(mod.adapted) != id_before
+#         assert mod.adapted.bias.data == 99
 
-    def test_load_state_dict_missing_key_strict_raises(self):
-        mod = self._make(bias=4)
-        sd = mod.state_dict()
-        sd.pop("_adapted_param")  # remove critical key
-        clone = self._make(bias=0)
+#     def test_load_state_dict_missing_key_strict_raises(self):
+#         mod = self._make(bias=4)
+#         sd = mod.state_dict()
+#         sd.pop("_adapted_param")  # remove critical key
+#         clone = self._make(bias=0)
+#         with pytest.raises(KeyError):
+#             clone.load_state_dict(sd, strict=True)
+
+#     def test_load_state_dict_extra_key_strict_raises(self):
+#         mod = self._make(bias=5)
+#         sd = mod.state_dict()
+#         sd["unexpected"] = 123
+#         clone = self._make(bias=0)
+#         with pytest.raises(KeyError):
+#             clone.load_state_dict(sd, strict=True)
+
+#     def test_whitelist_mixed_types_dedup(self):
+#         # duplicates across string & class should collapse silently
+#         allowed = [AddOne, "AddOne", AddOne]
+
+#         mod = self._make(allow=allowed)
+#         # whitelist set should have length 1 internally
+#         assert len(mod.allowed) == 1
+
+#     def test_schema_size_under_threshold(self):
+#         many = [AddOne] * 150  # duplicates collapse, but still sizable
+#         schema = AdaptModule.restricted_schema({Task: many})
+#         assert len(json.dumps(schema)) < 200_000  # 200 KB guard
+
+
+# NOTE: Imports are assumed (e.g., pytest, your BaseModule/BaseSpec/registry/RestrictedSchemaMixin).
+# This test suite defines minimal test-only classes (Task, Task1, Task2, ActionList)
+# and uses the public helpers on RestrictedSchemaMixin.
+#
+# Conventions:
+# - We create/register simple BaseModule subclasses for variants.
+# - We monkeypatch ActionList.schema() to expose a placeholder site: tasks.items → #/$defs/TaskSpec
+# - Each test focuses on a single helper’s behavior (positive, negative, edge).
+
+# NOTE: Imports are assumed (pytest, your BaseModule/BaseSpec/registry/RestrictedSchemaMixin).
+
+
+# NOTE: assume imports like: pytest, BaseModule, BaseSpec, RestrictedSchemaMixin
+
+class TestRestrictedSchemaMixin:
+    # ---- minimal local domain (no registry, no Task) ----
+    def setup_method(self):
+        class ModA(BaseModule, RestrictedSchemaMixin): ...
+        class ModB(BaseModule, RestrictedSchemaMixin): ...
+        self.ModA, self.ModB = ModA, ModB
+
+        # Minimal Spec classes; your real BaseSpec will be Pydantic
+        ModASpec = type("ModASpec", (BaseSpec,), {})
+        ModBSpec = type("ModBSpec", (BaseSpec,), {})
+
+        # Wire module -> spec
+        ModA.schema_model = classmethod(lambda cls: ModASpec)
+        ModB.schema_model = classmethod(lambda cls: ModBSpec)
+
+        # Local mapping for spec -> module; patch the mixin to use it
+        self._spec_to_module = {ModASpec: ModA, ModBSpec: ModB}
+        self._orig_resolver = RestrictedSchemaMixin.module_from_spec_model
+        RestrictedSchemaMixin.module_from_spec_model = staticmethod(lambda spec: self._spec_to_module[spec])
+
+    def teardown_method(self):
+        # restore original resolver
+        RestrictedSchemaMixin.module_from_spec_model = self._orig_resolver
+
+    # ---------- Normalization ----------
+    def test_norm_variants_modules_only_dedup_sorted(self):
+        out = RestrictedSchemaMixin.norm_variants([self.ModB, self.ModA, self.ModB])
+        assert out == [self.ModA, self.ModB]
+
+    def test_norm_variants_mixed_module_and_spec(self):
+        out = RestrictedSchemaMixin.norm_variants([self.ModB, self.ModA.schema_model(), self.ModA])
+        assert out == [self.ModA, self.ModB]
+
+    def test_norm_variants_invalid_input_raises(self):
+        import pytest
+        with pytest.raises(TypeError):
+            RestrictedSchemaMixin.norm_variants([object])
+
+    # ---------- Memo / cycle guard ----------
+    def test_memo_roundtrip(self):
+        memo = RestrictedSchemaMixin.memo_start(None, self.ModA)
+        assert RestrictedSchemaMixin.memo_get(memo, self.ModA) is None
+        doc = {"$defs": {}}
+        RestrictedSchemaMixin.memo_end(memo, self.ModA, doc)
+        assert RestrictedSchemaMixin.memo_get(memo, self.ModA) is doc
+
+    def test_memo_isolated_per_class(self):
+        memo = RestrictedSchemaMixin.memo_start({}, self.ModA)
+        RestrictedSchemaMixin.memo_end(memo, self.ModA, {"ok": True})
+        assert RestrictedSchemaMixin.memo_get(memo, self.ModB) is None
+
+    # ---------- Union builders ----------
+    def test_build_variant_refs(self):
+        refs = RestrictedSchemaMixin.build_variant_refs([self.ModA, self.ModB])
+        assert refs == [{"$ref": "#/$defs/ModASpec"}, {"$ref": "#/$defs/ModBSpec"}]
+
+    def test_make_union_inline_with_and_without_discriminator(self):
+        u1 = RestrictedSchemaMixin.make_union_inline([self.ModA, self.ModB], add_discriminator=True)
+        assert "oneOf" in u1 and "discriminator" in u1 and "mapping" in u1["discriminator"]
+        u2 = RestrictedSchemaMixin.make_union_inline([self.ModA], add_discriminator=False)
+        assert "oneOf" in u2 and "discriminator" not in u2
+
+    def test_ensure_shared_union_idempotent(self):
+        doc = {"$defs": {}}
+        ref1 = RestrictedSchemaMixin.ensure_shared_union(
+            doc, placeholder_spec_name="FooSpec",
+            variants=[self.ModA, self.ModB], add_discriminator=True
+        )
+        ref2 = RestrictedSchemaMixin.ensure_shared_union(
+            doc, placeholder_spec_name="FooSpec",
+            variants=[self.ModA], add_discriminator=False
+        )
+        assert ref1 == ref2 == "#/$defs/Allowed_FooSpec"
+        assert "oneOf" in doc["$defs"]["Allowed_FooSpec"]
+
+    # ---------- $defs utilities ----------
+    def test_require_defs_for_variants_inserts_and_keeps_existing(self):
+        sentinel = {"type": "string"}
+        doc = {"$defs": {"ModASpec": sentinel}}
+        RestrictedSchemaMixin.require_defs_for_variants(doc, [self.ModA, self.ModB])
+        assert doc["$defs"]["ModASpec"] is sentinel
+        assert "ModBSpec" in doc["$defs"]
+
+    def test_merge_defs_merge_and_conflict_policies(self):
+        target = {"$defs": {"A": {"type": "string"}}}
+        src1 = {"$defs": {"B": {"type": "number"}}}
+        src2 = {"$defs": {"C": {"type": "boolean"}}}
+        RestrictedSchemaMixin.merge_defs(target, src2, src1)
+        assert sorted(target["$defs"].keys()) == ["A", "B", "C"]
+
+        target2 = {"$defs": {"X": {"type": "string"}}}
+        src_conflict = {"$defs": {"X": {"type": "number"}}}
+        import pytest
+        with pytest.raises(ValueError):
+            RestrictedSchemaMixin.merge_defs(target2, src_conflict, on_conflict="error")
+
+    # ---------- Local patching ----------
+    def test_node_at_and_replace_at_path(self):
+        doc = {"a": {"b": {"c": 3}}}
+        assert RestrictedSchemaMixin.node_at(doc, ["a", "b", "c"]) == 3
+        RestrictedSchemaMixin.replace_at_path(doc, ["a", "b", "c"], {"ok": True})
+        assert doc["a"]["b"]["c"] == {"ok": True}
+
+    def test_replace_at_path_invalid_path_raises(self):
+        doc = {"a": {"b": {}}}
+        import pytest
         with pytest.raises(KeyError):
-            clone.load_state_dict(sd, strict=True)
+            RestrictedSchemaMixin.replace_at_path(doc, ["a", "missing", "c"], 1)
+        with pytest.raises(ValueError):
+            RestrictedSchemaMixin.replace_at_path(doc, [], 1)
 
-    def test_load_state_dict_extra_key_strict_raises(self):
-        mod = self._make(bias=5)
-        sd = mod.state_dict()
-        sd["unexpected"] = 123
-        clone = self._make(bias=0)
-        with pytest.raises(KeyError):
-            clone.load_state_dict(sd, strict=True)
+    def test_has_placeholder_ref_true_and_false(self):
+        doc = {"$defs": {"FooSpec": {}}, "props": {"x": {"$ref": "#/$defs/FooSpec"}}}
+        assert RestrictedSchemaMixin.has_placeholder_ref(doc, at=["props", "x"], placeholder_spec_name="FooSpec")
+        assert not RestrictedSchemaMixin.has_placeholder_ref(doc, at=["props"], placeholder_spec_name="FooSpec")
 
-    def test_whitelist_mixed_types_dedup(self):
-        # duplicates across string & class should collapse silently
-        allowed = [AddOne, "AddOne", AddOne]
+    # ---------- Guardrails ----------
+    def test_apply_array_bounds(self):
+        doc = {"props": {"arr": {"type": "array"}}}
+        RestrictedSchemaMixin.apply_array_bounds(doc, at=["props", "arr"], min_items=1, max_items=5)
+        node = RestrictedSchemaMixin.node_at(doc, ["props", "arr"])
+        assert node["minItems"] == 1 and node["maxItems"] == 5
 
-        mod = self._make(allow=allowed)
-        # whitelist set should have length 1 internally
-        assert len(mod.allowed) == 1
+    def test_set_additional_properties(self):
+        doc = {"props": {"m": {"type": "object"}}}
+        RestrictedSchemaMixin.set_additional_properties(doc, at=["props", "m"], allow=False)
+        assert RestrictedSchemaMixin.node_at(doc, ["props", "m"])["additionalProperties"] is False
 
-    def test_schema_size_under_threshold(self):
-        many = [AddOne] * 150  # duplicates collapse, but still sizable
-        schema = AdaptModule.schema({Task: many})
-        assert len(json.dumps(schema)) < 200_000  # 200 KB guard
+    # ---------- Diagnostics ----------
+    def test_collect_placeholder_refs(self):
+        doc = {
+            "x": {"$ref": "#/$defs/FooSpec"},
+            "y": [{"$ref": "#/$defs/FooSpec"}],
+            "$defs": {"FooSpec": {}},
+        }
+        hits = RestrictedSchemaMixin.collect_placeholder_refs(doc, placeholder_spec_name="FooSpec")
+        assert ["x"] in hits and ["y", "0"] in hits
+
+    def test_collect_placeholder_refs_empty_when_replaced(self):
+        doc = {"props": {"x": {"$ref": "#/$defs/FooSpec"}}, "$defs": {"FooSpec": {}}}
+        RestrictedSchemaMixin.replace_at_path(doc, ["props", "x"], {"type": "object"})
+        assert RestrictedSchemaMixin.collect_placeholder_refs(doc, placeholder_spec_name="FooSpec") == []
+
 
 
 # import pytest

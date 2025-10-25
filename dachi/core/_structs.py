@@ -52,10 +52,10 @@ class ModuleList(BaseModule, t.Generic[V]):
     def __len__(self) -> int:  # Positive test: len reflects number added
         return len(self._module_list)
 
-    def __iter__(self) -> Iterator[T]:  # Positive test: order preserved
+    def __iter__(self) -> Iterator[V]:  # Positive test: order preserved
         return iter(self._module_list)
 
-    def __getitem__(self, idx: int) -> T:  # Edge test: negative index ok
+    def __getitem__(self, idx: int) -> V:  # Edge test: negative index ok
         return self._module_list[idx]
 
     def __setitem__(self, idx: int, value: V):

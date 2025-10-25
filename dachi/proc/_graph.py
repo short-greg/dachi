@@ -49,7 +49,7 @@ from ..utils import (
 from ._process import Process, AsyncProcess
 from ..core import SerialDict
 from dachi.core import ModuleDict, Attr
-from dachi.core import AdaptModule
+# from dachi.core import AdaptModule
 from dataclasses import dataclass
 import typing as t
 
@@ -378,7 +378,7 @@ class RefT:
     name: str
 
 
-class DataFlow(AdaptModule, AsyncProcess):
+class DataFlow(AsyncProcess):
     """DataFlow: Directed Acyclic Graph (DAG) for processing data pipelines.
 
     DataFlow is a declarative container for defining data processing pipelines using named
