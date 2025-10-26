@@ -25,8 +25,7 @@ from ._criterion import (
     HolisticRubricCriterion,
     AnalyticRubricCriterion,
     NarrativeCriterion,
-    ComparativeCriterion,
-    Critic,
+    ComparativeCriterion
 )
 from ._lang import (
     Term, Glossary

@@ -1595,9 +1595,14 @@ class MulTwo(BaseModule):
 class TestRestrictedSchemaMixin:
     def setup_method(self):
         # minimal domain: two modules + their spec models
-        class ModA(BaseModule, RestrictedSchemaMixin): ...
-        class ModB(BaseModule, RestrictedSchemaMixin): ...
+        class ModA(BaseModule, RestrictedSchemaMixin): 
+            def restricted_schema(self, *, _profile = "shared", _seen = None, **kwargs):
+                return self.schema()
+        class ModB(BaseModule, RestrictedSchemaMixin):
+            def restricted_schema(self, *, _profile = "shared", _seen = None, **kwargs):
+                return self.schema()
         self.ModA, self.ModB = ModA, ModB
+        self.mod_a, self.mod_b = ModA(), ModB()
 
         # simple Pydantic models (no bare 'title' attr)
         ModASpec = type("ModASpec", (BaseSpec,), {})
@@ -1660,6 +1665,7 @@ class TestRestrictedSchemaMixin:
         assert "Allowed_FooSpec" in base["$defs"] and "oneOf" in base["$defs"]["Allowed_FooSpec"]
 
     def test_merge_defs_merge_and_conflict_policies(self):
+
         target = {"$defs": {"A": {"type": "string"}}}
         src1 = {"$defs": {"B": {"type": "number"}}}
         src2 = {"$defs": {"C": {"type": "boolean"}}}

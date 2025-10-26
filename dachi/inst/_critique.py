@@ -2,6 +2,9 @@ import typing
 import typing
 
 import pydantic
+from pydantic import ConfigDict, PrivateAttr, Field, create_model
+from typing import Type, List
+
 from ..core import Renderable
 
 # Hypothesis
@@ -162,9 +165,6 @@ class EvaluationBatch(pydantic.BaseModel):
 #     values = zip(*kwargs.values())
 #     return [dict(zip(keys, value)) for value in values]
 
-
-from pydantic import ConfigDict, PrivateAttr, Field, create_model
-from typing import Type, List
 
 
 class BaseCriterion(pydantic.BaseModel):

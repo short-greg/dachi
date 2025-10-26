@@ -51,7 +51,7 @@ from ._ai import (
 )
 from .openai import (
     OpenAIChat,
-    OpenAIResp
+    OpenAIResp,
 )
 from ._resp import (
     JSONObj,
@@ -86,4 +86,9 @@ from ._inst import (
     instructmethod,
     signaturefunc,
     signaturemethod,
+)
+from ._optim import (
+    Optim,
+    LLMOptim,
+    Critic
 )
