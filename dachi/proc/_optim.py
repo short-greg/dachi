@@ -9,6 +9,7 @@ from dachi.core import Prompt, ParamSet, BaseModule, Msg
 from ._ai import LLM
 from abc import ABC
 from dachi.proc import Process, AsyncProcess
+from dachi.core import render
 
 
 class Optim(BaseModule, ABC):
@@ -32,7 +33,7 @@ class LLMOptim(Optim):
 Update the parameters to optimize objective and satisfy constraints.
 
 Objective:
-{objective
+{objective}
 
 Constraints:
 {constraints}
@@ -69,16 +70,26 @@ Constraints:
         pass
     
     def step(self, evaluations: Evaluation | BatchEvaluation):
-        
+
         evaluations = self.param_evaluations(evaluations)
         objective = self.objective()
         constraints = self.constraints()
         prompt_text = self.prompt_template.format(
             objective=objective,
-            constraints=constraints,
-            evaluations=evaluations
+            constraints=constraints
         )
-        updated_params = self.llm.forward(prompt_text, out=self.params.schema())
+        system_msg = Prompt(
+            role="system",
+            content=prompt_text,
+            format_override=self.params.schema()
+        )
+        user_msg = Prompt(
+            role="user",
+            content=render(evaluations)
+        )
+        updated_params = self.llm.forward(
+            [system_msg, *self.thread, user_msg]
+        )
         self.params.update(updated_params)
 
     @property
@@ -95,16 +106,16 @@ Constraints:
             constraints=constraints
         )
         system_msg = Prompt(
-            role="system", 
+            role="system",
             content=prompt_text,
             format_override=self.params.schema()
         )
         user_msg = Prompt(
             role="user",
-            content=evaluations
+            content=render(evaluations)
         )
         updated_params = await self.llm.aforward(
-            [system_msg, *self.thread, user_msg], out=self.params.schema()
+            [system_msg, *self.thread, user_msg]
         )
         self.params.update(updated_params)
 

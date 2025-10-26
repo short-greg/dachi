@@ -109,8 +109,8 @@ def test_spec_class_name_collision_unique():
     """Two Leaf classes in distinct modules must yield *different* Spec classes."""
     LeafA = _make_dynamic_leaf("a")
     LeafB = _make_dynamic_leaf("b")
-    assert LeafA.schema() is not LeafB.schema()
-    assert LeafA.schema().__name__ == LeafB.schema().__name__
+    assert LeafA.schema_model() is not LeafB.schema_model()
+    assert LeafA.schema_model().__name__ == LeafB.schema_model().__name__
 
 
 def test_initvar_without_post_init_raises():
@@ -197,8 +197,8 @@ def test_initvar_preserved_in_spec():
 
 
 def test_schema_cached():
-    s1 = WithParams.schema()
-    s2 = WithParams.schema()
+    s1 = WithParams.schema_model()
+    s2 = WithParams.schema_model()
     assert s1 is s2
     assert issubclass(s1, BaseSpec)
 
@@ -349,7 +349,7 @@ def test_initvar_override():
 
 
 def test_schema_kind_field():
-    sch = WithParams.schema()
+    sch = WithParams.schema_model()
     assert "kind" in sch.model_fields
 
 
@@ -1597,10 +1597,10 @@ class TestRestrictedSchemaMixin:
         # minimal domain: two modules + their spec models
         class ModA(BaseModule, RestrictedSchemaMixin): 
             def restricted_schema(self, *, _profile = "shared", _seen = None, **kwargs):
-                return self.schema()
+                return self.schema_model()
         class ModB(BaseModule, RestrictedSchemaMixin):
             def restricted_schema(self, *, _profile = "shared", _seen = None, **kwargs):
-                return self.schema()
+                return self.schema_model()
         self.ModA, self.ModB = ModA, ModB
         self.mod_a, self.mod_b = ModA(), ModB()
 

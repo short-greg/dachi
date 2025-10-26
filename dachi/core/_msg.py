@@ -180,10 +180,10 @@ class Prompt(Msg):
         description="Available tools for LLM. If None, uses sequence priority"
     )
     
-    # Output format control  
-    format_override: t.Optional[t.Union[Literal["json", "text"], t.Type[pydantic.BaseModel]]] = Field(
-        default=None, 
-        description="Override output format: 'json'/'text' or Pydantic model class for structured output"
+    # Output format control
+    format_override: t.Optional[t.Union[Literal["json", "text"], t.Type[pydantic.BaseModel], dict]] = Field(
+        default=None,
+        description="Override output format: 'json'/'text', Pydantic model class, or JSON schema dict for structured output"
     )
     
     # LLM Sampling parameters (commonly passed via **kwargs)

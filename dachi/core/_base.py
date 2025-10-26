@@ -30,7 +30,7 @@ except ImportError:  # 3.8–3.11
 from pydantic import BaseModel, Field, ConfigDict, create_model, field_validator, TypeAdapter
 
 # Local
-from dachi.utils import resolve_name
+from dachi.utils import resolve_name, python_type_to_json_schema_type
 
 
 # from ._restricted_schema import RestrictedSchemaMixin  # mix‑in defined in previous patch
@@ -146,7 +146,9 @@ class ShareableItem(t.Generic[J]):
         if isinstance(self._data, BaseModel):
             return self._data.model_json_schema()
         else:
-            return {"type": type(self._data).__name__}
+            python_type = type(self._data).__name__
+            json_type = python_type_to_json_schema_type(python_type)
+            return {"type": json_type}
         
     def has_callback(self, callback: Callable[[T], None]) -> bool:
         return callback in self._callbacks
@@ -593,7 +595,7 @@ class BaseModule:
                 cls.__build_schema_hook__(n, typ, dflt)
                 if n in cls.__spec_hooks__
                 else (
-                    typ.schema()
+                    typ.schema_model()
                     if isinstance(typ, type) and issubclass(typ, BaseModule)
                     else typ
                 )
@@ -666,13 +668,13 @@ class BaseModule:
             )
 
     @classmethod
-    def schema_dict(cls) -> dict:
+    def schema(cls) -> dict:
         """Return the Pydantic schema dict for the Spec."""
-        return cls.schema().model_json_schema()
+        return cls.schema_model().model_json_schema()
 
     # schema & spec helpers
     @classmethod
-    def schema(cls) -> type[BaseSpec]:
+    def schema_model(cls) -> type[BaseSpec]:
         return cls.__spec__
 
     # ---- sub-module traversal ----------------------------------------
@@ -1749,7 +1751,7 @@ class AdaptModule(
                 _seen=_seen,
                 **kwargs
             )
-        return self._adapted.schema()
+        return self._adapted.schema_model()
 
     # @classmethod
     # def restricted_schema(
@@ -1892,7 +1894,13 @@ class ParamSet(object):
         """
         Return the JSON schema for all parameters in the set.
         """
-        return {f"param_{i}": param.schema() for i, param in enumerate(self.params)}
+        properties = {f"param_{i}": param.schema() for i, param in enumerate(self.params)}
+        return {
+            "type": "object",
+            "properties": properties,
+            "required": list(properties.keys()),
+            "additionalProperties": False
+        }
 
     def to_dict(self) -> dict:
         """

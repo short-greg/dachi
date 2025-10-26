@@ -5,6 +5,7 @@ from abc import abstractmethod
 from typing import Type, List
 from pydantic import BaseModel, Field, ConfigDict, PrivateAttr, create_model
 from ..core import Renderable
+from ..utils import create_strict_model
 
 
 class EvalField(BaseModel):
@@ -108,8 +109,20 @@ class BaseCriterion(BaseModel, Renderable):
         object.__setattr__(self, '_batch_evaluation_schema', batch)
 
     def _create_single(self) -> Type[BaseModel]:
-        """Create single evaluation schema by introspecting EvalFields."""
-        fields = {'criterion_name': (str, Field(default=self.name))}
+        """Create single evaluation schema by introspecting EvalFields.
+
+        Note: criterion_name uses Optional[str] with default to support OpenAI strict mode.
+        OpenAI strict mode requires all properties in 'required' array but doesn't support
+        traditional defaults. Instead, we use nullable types (str | None) and apply the
+        default after validation if the LLM returns null.
+        """
+        from typing import Optional
+        fields = {
+            'criterion_name': (
+                Optional[str],
+                Field(default=self.name, description="Name of the criterion")
+            )
+        }
 
         # Use model_fields to find EvalField annotations
         for field_name, field_info in self.model_fields.items():
@@ -126,10 +139,14 @@ class BaseCriterion(BaseModel, Renderable):
         )
 
     def _create_batch(self, single_schema: Type[BaseModel]) -> Type[BaseModel]:
-        """Create batch evaluation schema."""
+        """Create batch evaluation schema.
+
+        Note: criterion_name uses Optional[str] with default to support OpenAI strict mode.
+        """
+        from typing import Optional
         return create_model(
             f'{self.name.replace(" ", "_")}BatchEvaluation',
-            criterion_name=(str, Field(default=self.name)),
+            criterion_name=(Optional[str], Field(default=self.name, description="Name of the criterion")),
             evaluations=(List[single_schema], Field(description="List of evaluations")),
             __base__=BatchEvaluation
         )
@@ -237,6 +254,7 @@ class Evaluation(BaseModel):
     A evaluation is a function that takes in a set of parameters and returns a value.
     This value is used to evaluate the performance of the parameters.
     """
+    model_config = ConfigDict(extra='forbid')
 
     def to_record(self) -> typing.Dict:
         """
@@ -260,6 +278,7 @@ class BatchEvaluation(BaseModel):
     A evaluation is a function that takes in a set of parameters and returns a value.
     This value is used to evaluate the performance of the parameters.
     """
+    model_config = ConfigDict(extra='forbid')
     evaluations: typing.List[Evaluation]
 
     def to_records(self) -> typing.List[typing.Dict]:
@@ -269,7 +288,7 @@ class BatchEvaluation(BaseModel):
             typing.List[typing.Dict]: A list of records
         """
         return [
-            self.evaluations[i].to_record() 
+            self.evaluations[i].to_record()
             for i in self.evaluations.keys()
         ]
 

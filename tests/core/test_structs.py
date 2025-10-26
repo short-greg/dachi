@@ -160,7 +160,7 @@ class TestModuleList:
     # # ---------- Negative: calling schema() on raw class raises ----------
 
     def test_modulelist_schema_on_raw_class_raises(self):
-        schema = ModuleList.schema()
+        schema = ModuleList.schema_model()
         assert issubclass(schema, BaseSpec)
 
 

@@ -44,8 +44,40 @@ def convert_tools_to_openai_format(tools: list[BaseTool]) -> list[dict]:
     return openai_tools
 
 
-def build_openai_response_format(format_override) -> dict:
-    """Convert format_override to OpenAI response_format (Chat API)"""
+def _fix_schema_for_strict_mode(schema_dict: dict) -> None:
+    """Recursively ensure all properties are in required array for OpenAI strict mode.
+
+    OpenAI strict mode requires ALL properties to be in the 'required' array,
+    even those with defaults. This function modifies the schema in-place.
+
+    Args:
+        schema_dict: JSON schema dictionary to fix
+    """
+    if not isinstance(schema_dict, dict):
+        return
+
+    # Fix this level
+    if 'properties' in schema_dict:
+        schema_dict['required'] = list(schema_dict['properties'].keys())
+
+    # Recursively fix nested schemas in $defs
+    if '$defs' in schema_dict:
+        for def_schema in schema_dict['$defs'].values():
+            _fix_schema_for_strict_mode(def_schema)
+
+
+def build_openai_response_format(format_override, use_strict: bool = True) -> dict:
+    """Convert format_override to OpenAI response_format (Chat API).
+
+    Args:
+        format_override: The format specification (Pydantic model, dict, bool, etc.)
+        use_strict: Whether to use OpenAI's strict mode for Pydantic models.
+                   When True (default), ensures schema compatibility with strict mode
+                   by adding all properties to the 'required' array.
+
+    Returns:
+        dict: OpenAI response_format configuration
+    """
     if format_override is None or format_override is False:
         return {}
     elif format_override is True or format_override == "json":
@@ -53,16 +85,49 @@ def build_openai_response_format(format_override) -> dict:
     elif format_override == "text":
         return {}  # Default text format
     elif isinstance(format_override, dict):
-        return {"response_format": format_override}
+        # Dict is assumed to be a JSON schema
+        # Check if it looks like a complete response_format or just a schema
+        if 'type' in format_override and format_override.get('type') in ['json_object', 'json_schema']:
+            # Already a response_format dict, pass through
+            return {"response_format": format_override}
+        else:
+            # Treat as a JSON schema, wrap it for strict mode
+            schema = format_override.copy()  # Don't modify original
+
+            if use_strict:
+                # Fix schema to meet OpenAI strict mode requirements
+                _fix_schema_for_strict_mode(schema)
+
+                # Need a name for the schema - use a generic one
+                schema_name = schema.get('title', 'CustomSchema')
+
+                return {
+                    "response_format": {
+                        "type": "json_schema",
+                        "json_schema": {
+                            "name": schema_name,
+                            "strict": True,
+                            "schema": schema
+                        }
+                    }
+                }
+            else:
+                # Non-strict mode - use json_object
+                return {"response_format": {"type": "json_object"}}
     elif isinstance(format_override, type) and issubclass(format_override, pydantic.BaseModel):
-        # Convert Pydantic model class to JSON schema with strict mode
+        # Convert Pydantic model class to JSON schema
         schema = format_override.model_json_schema()
+
+        if use_strict:
+            # Fix schema to meet OpenAI strict mode requirements (recursively)
+            _fix_schema_for_strict_mode(schema)
+
         return {
             "response_format": {
-                "type": "json_schema", 
+                "type": "json_schema",
                 "json_schema": {
                     "name": format_override.__name__,
-                    "strict": True,
+                    "strict": use_strict,
                     "schema": schema
                 }
             }
@@ -130,10 +195,15 @@ class OpenAIChat(LLMAdapter):
     Unified kwargs (converted):
     - temperature, max_tokens, top_p, frequency_penalty, presence_penalty
     - stream, stop, seed, user
-    
+
     API-specific kwargs (passed through):
     - tools, tool_choice, response_format, logprobs, top_logprobs
     - parallel_tool_calls, service_tier, stream_options
+
+    Dachi-specific kwargs:
+    - use_strict (bool, default=True): Whether to use OpenAI's strict mode for
+      structured outputs. When True, ensures all Pydantic model properties are
+      marked as required in the schema, even if they have defaults.
     """
 
     def to_input(self, messages: Msg | BaseDialog, **kwargs) -> t.Dict:
@@ -173,9 +243,11 @@ class OpenAIChat(LLMAdapter):
         if tools:
             api_input["tools"] = convert_tools_to_openai_format(tools)
             
-        # Add response format if present  
+        # Add response format if present
         if format_override:
-            api_input.update(build_openai_response_format(format_override))
+            # Extract use_strict from kwargs if provided (default is True)
+            use_strict = kwargs.pop('use_strict', True)
+            api_input.update(build_openai_response_format(format_override, use_strict=use_strict))
         
         return api_input
     

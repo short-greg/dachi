@@ -390,6 +390,69 @@ def resolve_from_signature(ctx, func, exclude_params=None) -> dict:
         else:
             # Required parameter missing
             raise KeyError(f"Missing required parameter: {param_name}")
-    
+
     return out
+
+
+def python_type_to_json_schema_type(python_type: str) -> str:
+    """Convert Python type name to JSON Schema type.
+
+    Args:
+        python_type: Python type name (e.g., 'str', 'int', 'bool')
+
+    Returns:
+        Corresponding JSON Schema type (e.g., 'string', 'integer', 'boolean')
+
+    Example:
+        >>> python_type_to_json_schema_type('str')
+        'string'
+        >>> python_type_to_json_schema_type('int')
+        'integer'
+    """
+    type_mapping = {
+        'str': 'string',
+        'int': 'integer',
+        'float': 'number',
+        'bool': 'boolean',
+        'list': 'array',
+        'dict': 'object',
+        'NoneType': 'null'
+    }
+    return type_mapping.get(python_type, 'string')
+
+
+def create_strict_model(model_name: str, **field_definitions) -> typing.Type[pydantic.BaseModel]:
+    """Create a Pydantic model with strict schema for OpenAI structured outputs.
+
+    This utility creates models compatible with OpenAI's strict mode by ensuring
+    the generated JSON schema includes 'additionalProperties: false'.
+
+    Args:
+        model_name: Name for the created model
+        **field_definitions: Field definitions as (type, Field(...)) tuples
+
+    Returns:
+        A Pydantic model class with strict schema configuration
+
+    Example:
+        >>> from pydantic import Field
+        >>> MyModel = create_strict_model(
+        ...     'MyModel',
+        ...     name=(str, Field(description="User name")),
+        ...     age=(int, Field(description="User age", ge=0))
+        ... )
+        >>> schema = MyModel.model_json_schema()
+        >>> assert schema['additionalProperties'] == False
+    """
+    from pydantic import BaseModel, ConfigDict, create_model
+
+    class StrictBase(BaseModel):
+        """Base model with strict schema configuration."""
+        model_config = ConfigDict(extra='forbid')
+
+    return create_model(
+        model_name,
+        **field_definitions,
+        __base__=StrictBase
+    )
 
