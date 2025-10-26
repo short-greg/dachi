@@ -4,24 +4,23 @@ from abc import abstractmethod
 
 from pydantic import BaseModel
 
-from ._process import Process, AsyncProcess
-from dachi.inst import BaseCriterion, EvaluationBatch, Evaluation
-from dachi.core import Prompt, ParamSet, BaseModule
+from dachi.inst import BaseCriterion, BatchEvaluation, Evaluation
+from dachi.core import Prompt, ParamSet, BaseModule, Msg
 from ._ai import LLM
 from abc import ABC
+from dachi.proc import Process, AsyncProcess
 
 
 class Optim(BaseModule, ABC):
     """Executes optimization using an LLM optimizer and a criterion."""
 
     @abstractmethod
-    def forward(self, evaluations: Evaluation | EvaluationBatch):
+    def step(self, evaluations: Evaluation | BatchEvaluation):
         pass
 
     @abstractmethod
-    async def aforward(self, evaluations: Evaluation | EvaluationBatch):
+    async def astep(self, evaluations: Evaluation | BatchEvaluation):
         pass
-
 
 
 class LLMOptim(Optim):
@@ -58,7 +57,7 @@ Constraints:
         pass
 
     @abstractmethod
-    def param_evaluations(self, evaluations: Evaluation | EvaluationBatch) -> str:
+    def param_evaluations(self, evaluations: Evaluation | BatchEvaluation) -> str:
         """Formats the parameter evaluations for the prompt
 
         Args:
@@ -69,7 +68,7 @@ Constraints:
         """
         pass
     
-    def step(self, evaluations: Evaluation | EvaluationBatch):
+    def step(self, evaluations: Evaluation | BatchEvaluation):
         
         evaluations = self.param_evaluations(evaluations)
         objective = self.objective()
@@ -82,6 +81,10 @@ Constraints:
         updated_params = self.llm.forward(prompt_text, out=self.params.schema())
         self.params.update(updated_params)
 
+    @property
+    def thread(self) -> t.Optional[t.List[Msg]]:
+        return []
+
     async def astep(self, evaluations):
         
         evaluations = self.param_evaluations(evaluations)
@@ -89,11 +92,19 @@ Constraints:
         constraints = self.constraints()
         prompt_text = self.prompt_template.format(
             objective=objective,
-            constraints=constraints,
-            evaluations=evaluations
+            constraints=constraints
+        )
+        system_msg = Prompt(
+            role="system", 
+            content=prompt_text,
+            format_override=self.params.schema()
+        )
+        user_msg = Prompt(
+            role="user",
+            content=evaluations
         )
         updated_params = await self.llm.aforward(
-            prompt_text, out=self.params.schema()
+            [system_msg, *self.thread, user_msg], out=self.params.schema()
         )
         self.params.update(updated_params)
 

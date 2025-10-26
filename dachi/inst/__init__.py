@@ -1,15 +1,17 @@
 from ._data import (
     Description, Ref, Record
 )
-from ._critique import (
-    Evaluation,
-    EvaluationBatch,
-    Criterion,
-    LikertItem,
-    LikertScaleCriterion,
-    CompoundCriterion,
-)
+# from ._critique import (
+#     Evaluation,
+#     EvaluationBatch,
+#     Criterion,
+#     LikertItem,
+#     LikertScaleCriterion,
+#     CompoundCriterion,
+# )
 from ._criterion import (
+    Evaluation,
+    BatchEvaluation,
     EvalField,
     BoundInt,
     BoundFloat,

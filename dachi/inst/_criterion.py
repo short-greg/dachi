@@ -4,8 +4,7 @@ import typing
 from abc import abstractmethod
 from typing import Type, List
 from pydantic import BaseModel, Field, ConfigDict, PrivateAttr, create_model
-from ..core import Renderable, Prompt
-from ..proc import Process, AsyncProcess
+from ..core import Renderable
 
 
 class EvalField(BaseModel):
@@ -118,10 +117,12 @@ class BaseCriterion(BaseModel, Renderable):
             if isinstance(field_value, EvalField):
                 fields[field_name] = field_value.get_field()
 
+        # include eval_type in the model that is 
+        # "single" or "batch"
         return create_model(
             f'{self.name.replace(" ", "_")}Evaluation',
             **fields,
-            __base__=BaseModel
+            __base__=Evaluation,
         )
 
     def _create_batch(self, single_schema: Type[BaseModel]) -> Type[BaseModel]:
@@ -130,7 +131,7 @@ class BaseCriterion(BaseModel, Renderable):
             f'{self.name.replace(" ", "_")}BatchEvaluation',
             criterion_name=(str, Field(default=self.name)),
             evaluations=(List[single_schema], Field(description="List of evaluations")),
-            __base__=BaseModel
+            __base__=BatchEvaluation
         )
 
     @abstractmethod
@@ -229,3 +230,70 @@ class ComparativeCriterion(BaseCriterion):
     def render(self) -> str:
         base = f"{self.name}: {self.description}" if self.description else self.name
         return base
+
+
+class Evaluation(BaseModel):
+    """
+    A evaluation is a function that takes in a set of parameters and returns a value.
+    This value is used to evaluate the performance of the parameters.
+    """
+
+    def to_record(self) -> typing.Dict:
+        """
+        Convert the evaluation to a record.
+        Returns:
+            typing.Dict: A record
+        """
+        return self.model_dump()
+
+    def render(self) -> str:
+        """
+        Render the evaluation as a string.
+        Returns:
+            str: The rendered evaluation
+        """
+        return str(self.model_dump())
+
+
+class BatchEvaluation(BaseModel):
+    """
+    A evaluation is a function that takes in a set of parameters and returns a value.
+    This value is used to evaluate the performance of the parameters.
+    """
+    evaluations: typing.List[Evaluation]
+
+    def to_records(self) -> typing.List[typing.Dict]:
+        """
+        Convert the evaluations to a list of records.
+        Returns:
+            typing.List[typing.Dict]: A list of records
+        """
+        return [
+            self.evaluations[i].to_record() 
+            for i in self.evaluations.keys()
+        ]
+
+    def render(self) -> str:
+        return str({
+            "evaluations": [e.render() for e in self.evaluations]
+        })
+
+
+# def create_tuples(**kwargs: typing.List):
+#     """
+#     Create a list of dictionaries from keyword arguments.
+#     Each dictionary in the list will have keys corresponding to the keyword arguments
+#     and values corresponding to the values of those keyword arguments, grouped by their
+#     position in the input.
+#     Args:
+#         **kwargs: Arbitrary keyword arguments where each key is a string and each value is an iterable.
+#     Returns:
+#         List[Dict[str, Any]]: A list of dictionaries where each dictionary represents a combination
+#         of the input keyword arguments' values.
+#     """
+#     keys = kwargs.keys()
+#     values = zip(*kwargs.values())
+#     return [dict(zip(keys, value)) for value in values]
+
+
+

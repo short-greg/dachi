@@ -6,9 +6,10 @@ from dachi.core import Ctx, Scope
 # local
 # from dachi.core import AdaptModule
 from ._core import Task, TaskStatus
+from dachi.core._base import RestrictedSchemaMixin
 
 
-class BT(Task):
+class BT(Task, RestrictedSchemaMixin):
     """The root task for a behavior tree
     """
     root: InitVar[Task | None] = None
@@ -21,7 +22,7 @@ class BT(Task):
         """
         super().__post_init__()
         Task.__post_init__(self)
-        self.adapted = root
+        self.root = root
         self.scope = Scope()
         self.__method_tasks__ = {}
         for name in dir(self):
@@ -75,17 +76,38 @@ class BT(Task):
         else:
             scope = self.scope.bind(ctx, self.bindings)
         
-        status = await self._adapted.tick(scope.ctx())
+        status = await self.root.tick(scope.ctx())
         self._status.set(status)
         return status
 
-    def root(self) -> Task | None:
-        return self._adapted
-
     def reset(self):
         super().reset()
-        if self._adapted is not None:
-            self._adapted.reset()
+        if self.root is not None:
+            self.root.reset()
+
+    def restricted_schema(self, *, _profile = "shared", _seen = None, tasks: Task | None = None, **kwargs) -> t.Dict:
+
+        options = []
+        if self.root is None:
+            raise RuntimeError(
+                "BT root task is not set "
+            )
+
+        for task in tasks:
+            if isinstance(task, RestrictedSchemaMixin):
+                options.append(task.restricted_schema(
+                    _profile=_profile,
+                    _seen=_seen,
+                    **kwargs
+                ))
+            else:
+                options.append(
+                    task.schema_dict()
+                )
+
+        
+
+    
 
 
 # TODO: Remove this at a later time. Later we will add a State Chart

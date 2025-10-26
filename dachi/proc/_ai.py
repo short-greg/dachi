@@ -64,15 +64,6 @@ def get_resp_output(resp: Resp, out: t.Union[t.Tuple[ToOut, ...], t.Dict[str, To
         raise TypeError(f"Unsupported out type: {type(out)}")
 
 
-
-
-
-
-
-
-
-
-
 # Universal Helper Functions for Message Analysis
 
 def extract_tools_from_messages(messages: Msg | BaseDialog) -> t.List:
@@ -261,9 +252,6 @@ class LLM(Process, AsyncProcess, StreamProcess, AsyncStreamProcess):
 
     def astream(self, inp: Msg | BaseDialog, out=None, tools=None, **kwargs) -> t.AsyncIterator[t.Tuple[Resp, DeltaResp]]:
         raise NotImplementedError
-
-
-    
 
 
 class Op(AsyncProcess, Process, StreamProcess, AsyncStreamProcess):
