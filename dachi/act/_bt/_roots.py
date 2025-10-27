@@ -85,7 +85,7 @@ class BT(Task, RestrictedSchemaMixin):
         if self.root is not None:
             self.root.reset()
 
-    def restricted_schema(self, *, _profile = "shared", _seen = None, tasks: Task | None = None, **kwargs) -> t.Dict:
+    def restricted_schema(self, *, _profile = "shared", _seen = None, tasks: t.List[Task] | None = None, **kwargs) -> t.Dict:
 
         options = []
         if self.root is None:
@@ -104,10 +104,6 @@ class BT(Task, RestrictedSchemaMixin):
                 options.append(
                     task.schema_dict()
                 )
-
-        
-
-    
 
 
 # TODO: Remove this at a later time. Later we will add a State Chart

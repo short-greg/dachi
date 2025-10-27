@@ -2,11 +2,14 @@ from __future__ import annotations
 import asyncio
 from typing import Any, Dict, List, Optional, Union, Literal
 from ._base import ChartBase, ChartStatus
+from ._state import BaseState
 from dataclasses import dataclass
+from dachi.core import RestrictedSchemaMixin
 
 from dachi.core import Attr, ModuleList
 from dachi.core._scope import Scope, Ctx
 from ._event import Event, EventQueue, Timer, MonotonicClock, ChartEventHandler, EventPost
+
 from ._region import Region, ValidationResult
 
 
@@ -24,7 +27,7 @@ class ChartSnapshot:
 JSON = Union[Dict[str, Any], List[Any], str, int, float, bool, None]
 
 
-class StateChart(ChartBase, ChartEventHandler):
+class StateChart(ChartBase, ChartEventHandler, RestrictedSchemaMixin):
     name: str
     regions: ModuleList[Region]  # ModuleList[Region]
     checkpoint_policy: Literal["yield", "hard"] = "yield" # currently not used
@@ -187,6 +190,9 @@ class StateChart(ChartBase, ChartEventHandler):
                     post = self._queue.child(region.name)
                     ctx = self._scope.ctx(i)
                     await region.handle_event(event, post, ctx)
+
+    def restricted_schema(self, *, states: List[BaseState] | None=None, _profile = "shared", _seen = None, **kwargs):
+        raise NotImplementedError
 
     async def stop(self) -> None:
         """Stop the state chart by stopping all running regions.

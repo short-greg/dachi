@@ -1254,20 +1254,67 @@ class RestrictedSchemaMixin(ABC):
         raise TypeError("Schema dict must include 'title' or a usable '$id' to derive the spec name.")
 
     @classmethod
-    def normalize_variants(
+    def normalize_schema_type_variants(
         cls,
         objs: t.Iterable[t.Any],  # accepts: BaseModule subclass, BaseSpec subclass/instance, or schema dict
     ) -> list[tuple[str, dict]]:
         """
-        Normalize mixed variant inputs into a de-duplicated, name-sorted list of (spec_name, schema_dict).
+        Convert allowed type variants into standardized (name, schema_dict) entries for schema restriction.
 
-        Supports:
-          • Module class:        MyMod            -> (MyModSpec, MyModSpec.model_json_schema())
-          • Spec model class:    MyModSpec        -> (MyModSpec, MyModSpec.model_json_schema())
-          • Spec instance:       my_mod_spec_obj  -> (MyModSpec, MyModSpec.model_json_schema())
-          • Raw schema dict:     {'title': 'X'} or {'$id': '.../X'} -> (X, dict)
+        When creating a restricted schema, you specify which types are allowed as variants. This method
+        accepts those types in multiple convenient formats and normalizes them into a consistent
+        representation that other schema-building methods can use.
 
-        De-dupe policy: last occurrence wins. Sort is by spec_name for deterministic output.
+        Args:
+            objs: Iterable of allowed types in any supported format (see below)
+
+        Returns:
+            List of (spec_name, schema_dict) tuples, de-duplicated and sorted by name for determinism
+
+        Supported input formats:
+            • Module class:        MyTask            -> ("MyTaskSpec", {...schema...})
+            • Spec model class:    MyTaskSpec        -> ("MyTaskSpec", {...schema...})
+            • Spec instance:       my_task_spec_obj  -> ("MyTaskSpec", {...schema...})
+            • Raw schema dict:     {"title": "X", ...} or {"$id": ".../X", ...} -> ("X", {...schema...})
+
+        De-duplication policy:
+            If multiple entries have the same spec name, the last occurrence wins.
+
+        Usage in restricted_schema() implementation:
+            ```python
+            class MyBehaviorTree(BaseModule, RestrictedSchemaMixin):
+                def restricted_schema(self, *, tasks: list, **kwargs):
+                    # Step 1: Normalize the allowed tasks into (name, schema_dict) entries
+                    task_entries = self.normalize_schema_type_variants(tasks)
+
+                    # Step 2: Get base schema and add the entries to $defs
+                    schema = self.schema_model().model_json_schema()
+                    self.require_defs_for_entries(schema, task_entries)
+
+                    # Step 3: Replace placeholder with union of allowed tasks
+                    # ... (use other helper methods)
+
+                    return schema
+            ```
+
+        Example standalone usage:
+            ```python
+            # Define some task types
+            class ActionA(Task): pass
+            class ActionB(Task): pass
+
+            # Can pass module classes
+            entries = RestrictedSchemaMixin.normalize_schema_type_variants([ActionA, ActionB])
+            # Returns: [("ActionASpec", {...}), ("ActionBSpec", {...})]
+
+            # Can mix formats
+            entries = RestrictedSchemaMixin.normalize_schema_type_variants([
+                ActionA,                    # module class
+                ActionBSpec,                # spec class
+                action_c_spec_instance,     # spec instance
+                {"title": "ActionD", ...}   # raw schema dict
+            ])
+            ```
         """
         entries: list[tuple[str, dict]] = []
 

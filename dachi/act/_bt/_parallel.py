@@ -4,15 +4,18 @@ import time
 import asyncio
 
 # local
-from ._core import Task, TaskStatus, Composite
-from dachi.core import Attr, ModuleList
+from ._core import Task, TaskStatus, CompositeTask
+from dachi.core import Attr, ModuleList, RestrictedSchemaMixin
 
 
-class Parallel(Composite):
+class Parallel(CompositeTask, RestrictedSchemaMixin):
     """A task that runs multiple tasks in parallel
     """
     def update_loop(self) -> t.Iterator[Task]:
         yield from self.sub_tasks()
+
+    def restricted_schema(self, *, tasks: t.List[Task] | None=None, _profile = "shared", _seen = None, **kwargs):
+        raise NotImplementedError
 
 
 class Multi(Parallel):

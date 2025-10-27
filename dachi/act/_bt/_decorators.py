@@ -3,10 +3,10 @@ from abc import abstractmethod
 import typing as t
 
 # local
-from ._core import Task, TaskStatus, Composite, Leaf, InitVar
+from ._core import Task, TaskStatus, CompositeTask, Leaf, InitVar
 
 
-class Decorator(Composite):
+class Decorator(CompositeTask):
     """A task that decorates another task
     """
 

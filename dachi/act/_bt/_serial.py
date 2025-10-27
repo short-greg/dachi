@@ -4,12 +4,12 @@ import typing as t
 from dataclasses import InitVar
 
 # local
-from ._core import Task, TaskStatus, Composite
-from dachi.core import Attr, ModuleList
+from ._core import Task, TaskStatus, CompositeTask
+from dachi.core import Attr, ModuleList, RestrictedSchemaMixin
 from ._leafs import Condition
 
 
-class Serial(Composite):
+class Serial(CompositeTask):
     """A task consisting of other tasks executed one 
     after the other
     """
@@ -29,6 +29,9 @@ class Serial(Composite):
             cascaded (bool, optional): Whether the task is cascaded or not. Defaults to True.
         """
         self._cascaded.data = cascaded
+
+    def restricted_schema(self, *, tasks: t.List[Task] | None=None, _profile = "shared", _seen = None, **kwargs):
+        raise NotImplementedError
 
 
 class Sequence(Serial):

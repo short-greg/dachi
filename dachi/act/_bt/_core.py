@@ -241,7 +241,7 @@ class Task(BaseModule):
         self._status.set(TaskStatus.SUCCESS)
 
 
-class Composite(Task):
+class CompositeTask(Task):
     """A task that is composed of other tasks
     """
 

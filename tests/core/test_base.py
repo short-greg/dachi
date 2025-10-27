@@ -1612,17 +1612,17 @@ class TestRestrictedSchemaMixin:
 
     # ---- normalization
     def test_normalize_variants_modules_only_dedup_sorted(self):
-        entries = RestrictedSchemaMixin.normalize_variants([self.ModB, self.ModA, self.ModB])
+        entries = RestrictedSchemaMixin.normalize_schema_type_variants([self.ModB, self.ModA, self.ModB])
         assert [n for n, _ in entries] == ["ModASpec", "ModBSpec"]
 
     def test_normalize_variants_mixed_module_and_spec(self):
-        entries = RestrictedSchemaMixin.normalize_variants([self.ModB, self.ModA.schema_model(), self.ModA])
+        entries = RestrictedSchemaMixin.normalize_schema_type_variants([self.ModB, self.ModA.schema_model(), self.ModA])
         assert [n for n, _ in entries] == ["ModASpec", "ModBSpec"]
 
     def test_normalize_variants_mixed_inputs_sorted_and_dedup(self):
         ModCSpec = type("ModCSpec", (BaseSpec,), {})
         raw = {"title": "InlineSpec", "type": "object", "properties": {"kind": {"const": "Inline"}}}
-        entries = RestrictedSchemaMixin.normalize_variants([
+        entries = RestrictedSchemaMixin.normalize_schema_type_variants([
             self.ModB, self.ModA.schema_model(), self.ModA, ModCSpec, raw
         ])
         assert [n for n, _ in entries] == ["InlineSpec", "ModASpec", "ModBSpec", "ModCSpec"]
@@ -1630,23 +1630,23 @@ class TestRestrictedSchemaMixin:
     def test_normalize_variants_invalid_input_raises(self):
         import pytest
         with pytest.raises(TypeError):
-            RestrictedSchemaMixin.normalize_variants([object])
+            RestrictedSchemaMixin.normalize_schema_type_variants([object])
 
     # ---- $defs + unions (entries-based)
     def test_require_defs_for_entries_inserts_and_keeps_existing(self):
         base = {"$defs": {"ModASpec": {"sentinel": 1}}}
-        entries = RestrictedSchemaMixin.normalize_variants([self.ModA, self.ModB])
+        entries = RestrictedSchemaMixin.normalize_schema_type_variants([self.ModA, self.ModB])
         RestrictedSchemaMixin.require_defs_for_entries(base, entries)
         assert base["$defs"]["ModASpec"] == {"sentinel": 1}
         assert "ModBSpec" in base["$defs"]
 
     def test_build_refs_from_entries(self):
-        entries = RestrictedSchemaMixin.normalize_variants([self.ModA, self.ModB])
+        entries = RestrictedSchemaMixin.normalize_schema_type_variants([self.ModA, self.ModB])
         refs = RestrictedSchemaMixin.build_refs_from_entries(entries)
         assert refs == [{"$ref": "#/$defs/ModASpec"}, {"$ref": "#/$defs/ModBSpec"}]
 
     def test_make_union_inline_from_entries_with_and_without_discriminator(self):
-        entries = RestrictedSchemaMixin.normalize_variants([self.ModA, self.ModB])
+        entries = RestrictedSchemaMixin.normalize_schema_type_variants([self.ModA, self.ModB])
         u1 = RestrictedSchemaMixin.make_union_inline_from_entries(entries, add_discriminator=True)
         assert "oneOf" in u1 and len(u1["oneOf"]) == 2
         u2 = RestrictedSchemaMixin.make_union_inline_from_entries(entries, add_discriminator=False)
@@ -1654,7 +1654,7 @@ class TestRestrictedSchemaMixin:
 
     def test_ensure_shared_union_from_entries_idempotent(self):
         base = {"$defs": {}}
-        entries = RestrictedSchemaMixin.normalize_variants([self.ModA, self.ModB])
+        entries = RestrictedSchemaMixin.normalize_schema_type_variants([self.ModA, self.ModB])
         ref1 = RestrictedSchemaMixin.ensure_shared_union_from_entries(
             base, placeholder_spec_name="FooSpec", entries=entries, add_discriminator=True
         )

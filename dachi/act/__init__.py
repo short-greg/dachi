@@ -4,7 +4,7 @@ from ._bt._core import (
     TOSTATUS, 
     ToStatus, 
     from_bool,
-    Composite, 
+    CompositeTask, 
     Leaf,
     run_task,
     loop_aslongas,

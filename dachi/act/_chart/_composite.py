@@ -8,12 +8,12 @@ from ._state import BaseState
 from ._base import ChartStatus, InvalidTransition, Recoverable
 from ._event import EventPost, ChartEventHandler, Event
 from ._region import Region, ValidationResult
-from dachi.core import Ctx, ModuleList
+from dachi.core import Ctx, ModuleList, RestrictedSchemaMixin
 
 logger = logging.getLogger("dachi.statechart")
 
 
-class CompositeState(BaseState, ChartEventHandler, Recoverable):
+class CompositeState(BaseState, ChartEventHandler, Recoverable, RestrictedSchemaMixin):
     """Composite state containing nested regions.
 
     Lifecycle:
@@ -184,6 +184,9 @@ class CompositeState(BaseState, ChartEventHandler, Recoverable):
     def can_recover(self) -> bool:
         """Check if any child regions can recover."""
         return any(region.can_recover() for region in self.regions)
+
+    def restricted_schema(self, *, states: t.List[BaseState] | None=None, _profile = "shared", _seen = None, **kwargs):
+        raise NotImplementedError
 
     def recover(self, policy: Literal["shallow", "deep"]) -> None:
         """Recover child regions using the given policy."""

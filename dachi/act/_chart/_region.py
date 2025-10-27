@@ -6,7 +6,7 @@ import asyncio
 from ._base import ChartBase, ChartStatus, InvalidTransition, Recoverable
 
 # Local
-from dachi.core import Attr, ModuleDict, Ctx
+from dachi.core import Attr, ModuleDict, Ctx, RestrictedSchemaMixin
 from ._state import State, StreamState, BaseState, PseudoState, ReadyState, FinalState, HistoryState
 from ._event import Event, EventPost, ChartEventHandler
 import logging
@@ -94,7 +94,7 @@ class RegionSnapshot(TypedDict, total=False):
     pending_target: Optional[str]
 
 
-class Region(ChartBase, ChartEventHandler, Recoverable):
+class Region(ChartBase, ChartEventHandler, Recoverable, RestrictedSchemaMixin):
     # ----- Spec fields (serialized) -----
     name: str
     initial: str  # Initial state name
@@ -247,6 +247,9 @@ class Region(ChartBase, ChartEventHandler, Recoverable):
             ))
 
         return result
+
+    def restricted_schema(self, *, states: List[State] | None=None, _profile = "shared", _seen = None, **kwargs):
+        raise NotImplementedError
 
     def add(self, state: State) -> None:
         """Add a State instance to the region
