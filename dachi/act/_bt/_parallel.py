@@ -4,30 +4,65 @@ import time
 import asyncio
 
 # local
-from ._core import Task, TaskStatus, CompositeTask
-from dachi.core import Attr, ModuleList, RestrictedSchemaMixin
+from ._core import Task, TaskStatus, CompositeTask, RestrictedTaskSchemaMixin
+from dachi.core import Attr, ModuleList
 
 
-class Parallel(CompositeTask, RestrictedSchemaMixin):
+class Parallel(CompositeTask):
     """A task that runs multiple tasks in parallel
     """
     def update_loop(self) -> t.Iterator[Task]:
         yield from self.sub_tasks()
 
-    def restricted_schema(self, *, tasks: t.List[Task] | None=None, _profile = "shared", _seen = None, **kwargs):
-        raise NotImplementedError
 
-
-class Multi(Parallel):
+class Multi(Parallel, RestrictedTaskSchemaMixin):
     """A composite task for running multiple tasks in parallel
     """
 
-    tasks: ModuleList[Task]
+    tasks: ModuleList[Task] = None
     fails_on: int=1
     succeeds_on: int=-1
     success_priority: bool = True
     preempt: bool = False
     auto_run: bool = True
+
+    def restricted_schema(self, *, tasks=None, _profile="shared", _seen=None, **kwargs):
+        """
+        Generate restricted schema for Multi.
+
+        Pattern B: Direct Variants - processes task variants directly for the tasks field.
+
+        Args:
+            tasks: List of allowed task variants (Task classes, TaskSpec classes, instances, or dicts)
+            _profile: "shared" (default) or "inline"
+            _seen: Cycle detection dict
+            **kwargs: Passed to nested restricted_schema() calls
+
+        Returns:
+            Restricted schema dict with tasks field limited to specified variants
+        """
+        # If no tasks provided, return unrestricted schema
+        if tasks is None:
+            return self.schema()
+
+        # Process task variants (handles RestrictedTaskSchemaMixin recursion)
+        task_schemas = self._schema_process_variants(
+            tasks,
+            restricted_schema_cls=RestrictedTaskSchemaMixin,
+            _seen=_seen,
+            tasks=tasks,
+            **kwargs
+        )
+
+        # Update schema's tasks field (ModuleList)
+        schema = self.schema()
+        return self._schema_update_list_field(
+            schema,
+            field_name="tasks",
+            placeholder_name="TaskSpec",
+            variant_schemas=task_schemas,
+            profile=_profile
+        )
 
     def __post_init__(self):
         """Create a parallel task

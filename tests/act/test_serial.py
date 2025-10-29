@@ -882,5 +882,333 @@ class TestCompositeInputResolution:
         
         # Should have used all default values
         assert action._last_kwargs['target'] == (0, 0, 0)  # default
-        assert action._last_kwargs['attempts'] == 1  # default  
+        assert action._last_kwargs['attempts'] == 1  # default
         assert action._last_kwargs['optional_param'] == "default_value"  # default
+
+
+class TestSequenceRestrictedSchema:
+    """Test Sequence.restricted_schema() - Pattern B (Direct Variants)"""
+
+    def test_restricted_schema_returns_unrestricted_when_tasks_none(self):
+        """Test that tasks=None returns unrestricted schema"""
+        seq = Sequence()
+        restricted = seq.restricted_schema(tasks=None)
+        unrestricted = seq.schema()
+
+        # Should be identical
+        assert restricted == unrestricted
+
+    def test_restricted_schema_updates_tasks_field_with_variants(self):
+        """Test that tasks field is restricted to specified variants"""
+        seq = Sequence()
+
+        # Restrict to only ImmediateAction and SetStorageAction
+        restricted = seq.restricted_schema(
+            tasks=[ImmediateAction, SetStorageAction]
+        )
+
+        # Check that schema was updated
+        assert "$defs" in restricted
+        assert "Allowed_TaskSpec" in restricted["$defs"]
+
+        # Check that Allowed_TaskSpec contains our variants
+        allowed_union = restricted["$defs"]["Allowed_TaskSpec"]
+        assert "oneOf" in allowed_union
+        refs = allowed_union["oneOf"]
+        assert len(refs) == 2
+
+        # Extract spec names from refs
+        spec_names = {ref["$ref"].split("/")[-1] for ref in refs}
+        # Spec names include module path, so check if they contain the expected name
+        assert any("ImmediateActionSpec" in name for name in spec_names)
+        assert any("SetStorageActionSpec" in name for name in spec_names)
+
+    def test_restricted_schema_uses_shared_profile_by_default(self):
+        """Test that default profile is 'shared' (uses $defs/Allowed_*)"""
+        seq = Sequence()
+        restricted = seq.restricted_schema(tasks=[ImmediateAction])
+
+        # Should use shared union in $defs
+        assert "Allowed_TaskSpec" in restricted["$defs"]
+
+        # tasks field should reference the shared union
+        # Handle nullable field (anyOf with null)
+        tasks_schema = restricted["properties"]["tasks"]
+        if "anyOf" in tasks_schema:
+            # Nullable: find the array option
+            for option in tasks_schema["anyOf"]:
+                if isinstance(option, dict) and option.get("type") == "array":
+                    assert option["items"] == {"$ref": "#/$defs/Allowed_TaskSpec"}
+                    break
+        else:
+            # Non-nullable
+            assert tasks_schema["items"] == {"$ref": "#/$defs/Allowed_TaskSpec"}
+
+    def test_restricted_schema_inline_profile_creates_oneof(self):
+        """Test that _profile='inline' creates inline oneOf"""
+        seq = Sequence()
+        restricted = seq.restricted_schema(
+            tasks=[ImmediateAction, SetStorageAction],
+            _profile="inline"
+        )
+
+        # Should still have defs for the individual tasks (with full module path)
+        defs_keys = restricted["$defs"].keys()
+        assert any("ImmediateActionSpec" in key for key in defs_keys)
+        assert any("SetStorageActionSpec" in key for key in defs_keys)
+
+        # But tasks field should have inline oneOf (no Allowed_TaskSpec)
+        tasks_schema = restricted["properties"]["tasks"]
+        if "anyOf" in tasks_schema:
+            # Nullable: find the array option
+            for option in tasks_schema["anyOf"]:
+                if isinstance(option, dict) and option.get("type") == "array":
+                    assert "oneOf" in option["items"]
+                    break
+        else:
+            # Non-nullable
+            assert "oneOf" in tasks_schema["items"]
+
+    def test_restricted_schema_with_task_spec_class(self):
+        """Test that TaskSpec classes work as variants"""
+        seq = Sequence()
+
+        # Get the spec class
+        spec_class = ImmediateAction.schema_model()
+
+        restricted = seq.restricted_schema(tasks=[spec_class])
+
+        # Should work and include the task (with full module path)
+        defs_keys = restricted["$defs"].keys()
+        assert any("ImmediateActionSpec" in key for key in defs_keys)
+
+    def test_restricted_schema_with_mixed_formats(self):
+        """Test that mixed variant formats work together"""
+        seq = Sequence()
+
+        # Mix: Task class, TaskSpec class, and schema dict
+        action_spec = SetStorageAction.schema_model()
+        immediate_schema = ImmediateAction.schema()
+
+        restricted = seq.restricted_schema(
+            tasks=[
+                ImmediateAction,  # Task class
+                action_spec,       # Spec class
+                immediate_schema   # Schema dict (will be duplicate)
+            ]
+        )
+
+        # Should deduplicate and work correctly (with full module path)
+        defs_keys = restricted["$defs"].keys()
+        assert any("ImmediateActionSpec" in key for key in defs_keys)
+        assert any("SetStorageActionSpec" in key for key in defs_keys)
+
+
+class TestSelectorRestrictedSchema:
+    """Test Selector.restricted_schema() - Pattern B (Direct Variants)"""
+
+    def test_restricted_schema_returns_unrestricted_when_tasks_none(self):
+        """Test that tasks=None returns unrestricted schema"""
+        sel = Selector()
+        restricted = sel.restricted_schema(tasks=None)
+        unrestricted = sel.schema()
+
+        # Should be identical
+        assert restricted == unrestricted
+
+    def test_restricted_schema_updates_tasks_field_with_variants(self):
+        """Test that tasks field is restricted to specified variants"""
+        sel = Selector()
+
+        # Restrict to only ImmediateAction and SetStorageAction
+        restricted = sel.restricted_schema(
+            tasks=[ImmediateAction, SetStorageAction]
+        )
+
+        # Check that schema was updated
+        assert "$defs" in restricted
+        assert "Allowed_TaskSpec" in restricted["$defs"]
+
+        # Check that Allowed_TaskSpec contains our variants
+        allowed_union = restricted["$defs"]["Allowed_TaskSpec"]
+        assert "oneOf" in allowed_union
+        refs = allowed_union["oneOf"]
+        assert len(refs) == 2
+
+        # Extract spec names from refs
+        spec_names = {ref["$ref"].split("/")[-1] for ref in refs}
+        # Spec names include module path, so check if they contain the expected name
+        assert any("ImmediateActionSpec" in name for name in spec_names)
+        assert any("SetStorageActionSpec" in name for name in spec_names)
+
+    def test_restricted_schema_uses_shared_profile_by_default(self):
+        """Test that default profile is 'shared' (uses $defs/Allowed_*)"""
+        sel = Selector()
+        restricted = sel.restricted_schema(tasks=[ImmediateAction])
+
+        # Should use shared union in $defs
+        assert "Allowed_TaskSpec" in restricted["$defs"]
+
+        # tasks field should reference the shared union
+        # Handle nullable field (anyOf with null)
+        tasks_schema = restricted["properties"]["tasks"]
+        if "anyOf" in tasks_schema:
+            # Nullable: find the array option
+            for option in tasks_schema["anyOf"]:
+                if isinstance(option, dict) and option.get("type") == "array":
+                    assert option["items"] == {"$ref": "#/$defs/Allowed_TaskSpec"}
+                    break
+        else:
+            # Non-nullable
+            assert tasks_schema["items"] == {"$ref": "#/$defs/Allowed_TaskSpec"}
+
+    def test_restricted_schema_inline_profile_creates_oneof(self):
+        """Test that _profile='inline' creates inline oneOf"""
+        sel = Selector()
+        restricted = sel.restricted_schema(
+            tasks=[ImmediateAction, SetStorageAction],
+            _profile="inline"
+        )
+
+        # Should still have defs for the individual tasks (with full module path)
+        defs_keys = restricted["$defs"].keys()
+        assert any("ImmediateActionSpec" in key for key in defs_keys)
+        assert any("SetStorageActionSpec" in key for key in defs_keys)
+
+        # But tasks field should have inline oneOf (no Allowed_TaskSpec)
+        tasks_schema = restricted["properties"]["tasks"]
+        if "anyOf" in tasks_schema:
+            # Nullable: find the array option
+            for option in tasks_schema["anyOf"]:
+                if isinstance(option, dict) and option.get("type") == "array":
+                    assert "oneOf" in option["items"]
+                    break
+        else:
+            # Non-nullable
+            assert "oneOf" in tasks_schema["items"]
+
+    def test_restricted_schema_with_task_spec_class(self):
+        """Test that TaskSpec classes work as variants"""
+        sel = Selector()
+
+        # Get the spec class
+        spec_class = ImmediateAction.schema_model()
+
+        restricted = sel.restricted_schema(tasks=[spec_class])
+
+        # Should work and include the task (with full module path)
+        defs_keys = restricted["$defs"].keys()
+        assert any("ImmediateActionSpec" in key for key in defs_keys)
+
+    def test_restricted_schema_with_mixed_formats(self):
+        """Test that mixed variant formats work together"""
+        sel = Selector()
+
+        # Mix: Task class, TaskSpec class, and schema dict
+        action_spec = SetStorageAction.schema_model()
+        immediate_schema = ImmediateAction.schema()
+
+        restricted = sel.restricted_schema(
+            tasks=[
+                ImmediateAction,  # Task class
+                action_spec,       # Spec class
+                immediate_schema   # Schema dict (will be duplicate)
+            ]
+        )
+
+        # Should deduplicate and work correctly (with full module path)
+        defs_keys = restricted["$defs"].keys()
+        assert any("ImmediateActionSpec" in key for key in defs_keys)
+        assert any("SetStorageActionSpec" in key for key in defs_keys)
+
+
+class TestPreemptCondRestrictedSchema:
+    """Test PreemptCond.restricted_schema() - Pattern C × 2 with Condition filter"""
+
+    def test_restricted_schema_returns_unrestricted_when_tasks_none(self):
+        """Test that tasks=None returns unrestricted schema"""
+        pc = PreemptCond(cond=AlwaysTrueCond(), task=ImmediateAction(status_val=TaskStatus.SUCCESS))
+        restricted = pc.restricted_schema(tasks=None)
+        unrestricted = pc.schema()
+
+        # Should be identical
+        assert restricted == unrestricted
+
+    def test_restricted_schema_updates_both_fields(self):
+        """Test that both cond and task fields are updated"""
+        pc = PreemptCond(cond=AlwaysTrueCond(), task=ImmediateAction(status_val=TaskStatus.SUCCESS))
+
+        # Provide tasks with both Conditions and Actions
+        restricted = pc.restricted_schema(
+            tasks=[AlwaysTrueCond, AlwaysFalseCond, ImmediateAction, SetStorageAction]
+        )
+
+        # Both field schemas should be updated
+        assert "$defs" in restricted
+        assert "Allowed_ConditionSpec" in restricted["$defs"]  # For cond field
+        assert "Allowed_TaskSpec" in restricted["$defs"]       # For task field
+
+        # cond field should only have Conditions
+        cond_schema = restricted["properties"]["cond"]
+        assert cond_schema == {"$ref": "#/$defs/Allowed_ConditionSpec"}
+
+        # task field should have all tasks
+        task_schema = restricted["properties"]["task"]
+        assert task_schema == {"$ref": "#/$defs/Allowed_TaskSpec"}
+
+    def test_restricted_schema_filters_cond_to_conditions_only(self):
+        """Test that cond field only includes Condition subclasses"""
+        pc = PreemptCond(cond=AlwaysTrueCond(), task=ImmediateAction(status_val=TaskStatus.SUCCESS))
+
+        # Provide mix of Conditions and Actions
+        restricted = pc.restricted_schema(
+            tasks=[AlwaysTrueCond, ImmediateAction, AlwaysFalseCond, SetStorageAction]
+        )
+
+        # Check cond field has only 2 Conditions
+        allowed_cond_union = restricted["$defs"]["Allowed_ConditionSpec"]
+        cond_refs = allowed_cond_union["oneOf"]
+        assert len(cond_refs) == 2
+
+        cond_names = {ref["$ref"].split("/")[-1] for ref in cond_refs}
+        assert any("AlwaysTrueCondSpec" in name for name in cond_names)
+        assert any("AlwaysFalseCondSpec" in name for name in cond_names)
+
+        # Check task field has all 4 tasks
+        allowed_task_union = restricted["$defs"]["Allowed_TaskSpec"]
+        task_refs = allowed_task_union["oneOf"]
+        assert len(task_refs) == 4
+
+    def test_restricted_schema_with_no_conditions_only_updates_task(self):
+        """Test that if no Conditions in tasks, only task field is updated"""
+        pc = PreemptCond(cond=AlwaysTrueCond(), task=ImmediateAction(status_val=TaskStatus.SUCCESS))
+
+        # Provide only Actions (no Conditions)
+        restricted = pc.restricted_schema(
+            tasks=[ImmediateAction, SetStorageAction]
+        )
+
+        # Only task field should be updated
+        assert "Allowed_TaskSpec" in restricted["$defs"]
+
+        # cond field should remain unrestricted (no Allowed_ConditionSpec)
+        # The cond schema will still have a $ref but not to Allowed_ConditionSpec
+        cond_schema = restricted["properties"]["cond"]
+        if "$ref" in cond_schema:
+            assert "Allowed_ConditionSpec" not in cond_schema["$ref"]
+
+    def test_restricted_schema_inline_profile(self):
+        """Test that _profile='inline' creates inline oneOf for both fields"""
+        pc = PreemptCond(cond=AlwaysTrueCond(), task=ImmediateAction(status_val=TaskStatus.SUCCESS))
+
+        restricted = pc.restricted_schema(
+            tasks=[AlwaysTrueCond, AlwaysFalseCond, ImmediateAction, SetStorageAction],
+            _profile="inline"
+        )
+
+        # Both fields should have inline oneOf
+        cond_schema = restricted["properties"]["cond"]
+        assert "oneOf" in cond_schema
+
+        task_schema = restricted["properties"]["task"]
+        assert "oneOf" in task_schema

@@ -3,14 +3,53 @@ from abc import abstractmethod
 import typing as t
 
 # local
-from ._core import Task, TaskStatus, CompositeTask, Leaf, InitVar
+from ._core import Task, TaskStatus, CompositeTask, Leaf, InitVar, RestrictedTaskSchemaMixin
+from dachi.core._base import filter_class_variants
 
 
-class Decorator(CompositeTask):
+class Decorator(CompositeTask, RestrictedTaskSchemaMixin):
     """A task that decorates another task
     """
 
     task: Task
+
+    def restricted_schema(self, *, tasks=None, _profile="shared", _seen=None, **kwargs):
+        """
+        Generate restricted schema for Decorator.
+
+        Pattern C: Single Field - processes task variants for the task field.
+
+        Args:
+            tasks: List of allowed task variants for task field
+            _profile: "shared" (default) or "inline"
+            _seen: Cycle detection dict
+            **kwargs: Passed to nested restricted_schema() calls
+
+        Returns:
+            Restricted schema dict with task field limited to specified variants
+        """
+        # If no tasks provided, return unrestricted schema
+        if tasks is None:
+            return self.schema()
+
+        # Process task variants (handles RestrictedTaskSchemaMixin recursion)
+        task_schemas = self._schema_process_variants(
+            tasks,
+            restricted_schema_cls=RestrictedTaskSchemaMixin,
+            _seen=_seen,
+            tasks=tasks,
+            **kwargs
+        )
+
+        # Update schema's task field (single Task)
+        schema = self.schema()
+        return self._schema_update_single_field(
+            schema,
+            field_name="task",
+            placeholder_name="TaskSpec",
+            variant_schemas=task_schemas,
+            profile=_profile
+        )
 
     def update_loop(self) -> t.Iterator[Task]:
         """Get the sub-tasks of the composite task
@@ -122,13 +161,59 @@ class Not(Decorator):
         return status.invert()
 
 
-class BoundTask(Task):
+class BoundTask(Task, RestrictedTaskSchemaMixin):
     """Bind will map variables in the context to
     the inputs of the decorated task
     """
 
     leaf: Leaf
     bindings: t.Dict[str, str]
+
+    def restricted_schema(self, *, tasks=None, _profile="shared", _seen=None, **kwargs):
+        """
+        Generate restricted schema for BoundTask.
+
+        Pattern C with Leaf filter - processes task variants for the leaf field,
+        but only allows Leaf subclasses.
+
+        Args:
+            tasks: List of allowed Leaf variants for leaf field
+            _profile: "shared" (default) or "inline"
+            _seen: Cycle detection dict
+            **kwargs: Passed to nested restricted_schema() calls
+
+        Returns:
+            Restricted schema dict with leaf field limited to specified Leaf variants
+        """
+        # If no tasks provided, return unrestricted schema
+        if tasks is None:
+            return self.schema()
+
+        # Filter to only Leaf subclasses
+        leaf_variants = list(filter_class_variants(Leaf, tasks))
+
+        # If no valid Leaf variants, return unrestricted schema
+        if not leaf_variants:
+            return self.schema()
+
+        # Process leaf variants (handles RestrictedTaskSchemaMixin recursion)
+        leaf_schemas = self._schema_process_variants(
+            leaf_variants,
+            restricted_schema_cls=RestrictedTaskSchemaMixin,
+            _seen=_seen,
+            tasks=tasks,
+            **kwargs
+        )
+
+        # Update schema's leaf field (single Leaf)
+        schema = self.schema()
+        return self._schema_update_single_field(
+            schema,
+            field_name="leaf",
+            placeholder_name="LeafSpec",
+            variant_schemas=leaf_schemas,
+            profile=_profile
+        )
 
     async def tick(self, ctx) -> TaskStatus:
         """Tick the task and bind outputs to context

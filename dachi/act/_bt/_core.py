@@ -4,7 +4,7 @@ from abc import abstractmethod
 import typing as t
 
 # local
-from ...core import Attr, BaseModule, InitVar, Scope
+from ...core import Attr, BaseModule, InitVar, Scope, RestrictedSchemaMixin
 from ...proc import Process
 from ...utils._utils import resolve_fields, resolve_from_signature
 # TODO: Add in Action (For GOAP)
@@ -626,3 +626,46 @@ class FTask(Task):
     #         "FuncTask cannot be converted to a specification. "
     #         "Check your object "
     #     )
+
+
+class RestrictedTaskSchemaMixin(RestrictedSchemaMixin):
+    """
+    Mixin for behavior tree tasks with task-specific schema restrictions.
+
+    Uses isinstance(variant, RestrictedTaskSchemaMixin) for recursion checks.
+    This ensures we only recurse on task-compatible classes, preventing
+    task/state cross-contamination.
+
+    This mixin provides the domain-specific behavior for behavior trees,
+    inheriting all base functionality from core.RestrictedSchemaMixin.
+    """
+
+    def restricted_schema(
+        self,
+        *,
+        tasks: list | None = None,
+        _profile: str = "shared",
+        _seen: dict | None = None,
+        **kwargs
+    ) -> dict:
+        """
+        Generate restricted schema for behavior tree tasks.
+
+        Must be implemented by subclasses (e.g., Sequence, BT, Decorator).
+
+        Args:
+            tasks: List of allowed task variants (can be Task classes, TaskSpec classes,
+                   TaskSpec instances, or schema dicts)
+            _profile: "shared" (use $defs/Allowed_*) or "inline" (use oneOf)
+            _seen: Cycle detection dict
+            **kwargs: Additional arguments passed to nested restricted_schema() calls
+
+        Returns:
+            Restricted schema dict
+
+        Raises:
+            NotImplementedError: Must be implemented by subclasses
+        """
+        raise NotImplementedError(
+            f"{self.__class__.__name__} must implement restricted_schema()"
+        )

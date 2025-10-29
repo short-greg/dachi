@@ -5,11 +5,10 @@ from dachi.core import Ctx, Scope
 
 # local
 # from dachi.core import AdaptModule
-from ._core import Task, TaskStatus
-from dachi.core._base import RestrictedSchemaMixin
+from ._core import Task, TaskStatus, RestrictedTaskSchemaMixin
 
 
-class BT(Task, RestrictedSchemaMixin):
+class BT(Task, RestrictedTaskSchemaMixin):
     """The root task for a behavior tree
     """
     root: InitVar[Task | None] = None
@@ -85,25 +84,43 @@ class BT(Task, RestrictedSchemaMixin):
         if self.root is not None:
             self.root.reset()
 
-    def restricted_schema(self, *, _profile = "shared", _seen = None, tasks: t.List[Task] | None = None, **kwargs) -> t.Dict:
+    def restricted_schema(self, *, tasks=None, _profile="shared", _seen=None, **kwargs):
+        """
+        Generate restricted schema for BT.
 
-        options = []
-        if self.root is None:
-            raise RuntimeError(
-                "BT root task is not set "
-            )
+        Pattern C: Single Field - processes task variants for the root field.
 
-        for task in tasks:
-            if isinstance(task, RestrictedSchemaMixin):
-                options.append(task.restricted_schema(
-                    _profile=_profile,
-                    _seen=_seen,
-                    **kwargs
-                ))
-            else:
-                options.append(
-                    task.schema_dict()
-                )
+        Args:
+            tasks: List of allowed task variants for root field
+            _profile: "shared" (default) or "inline"
+            _seen: Cycle detection dict
+            **kwargs: Passed to nested restricted_schema() calls
+
+        Returns:
+            Restricted schema dict with root field limited to specified variants
+        """
+        # If no tasks provided, return unrestricted schema
+        if tasks is None:
+            return self.schema()
+
+        # Process task variants (handles RestrictedTaskSchemaMixin recursion)
+        task_schemas = self._schema_process_variants(
+            tasks,
+            restricted_schema_cls=RestrictedTaskSchemaMixin,
+            _seen=_seen,
+            tasks=tasks,
+            **kwargs
+        )
+
+        # Update schema's root field (single Task)
+        schema = self.schema()
+        return self._schema_update_single_field(
+            schema,
+            field_name="root",
+            placeholder_name="TaskSpec",
+            variant_schemas=task_schemas,
+            profile=_profile
+        )
 
 
 # TODO: Remove this at a later time. Later we will add a State Chart

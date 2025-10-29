@@ -591,15 +591,22 @@ class BaseModule:
         # 4⃣  build / rebuild the pydantic spec --------------------------------
         spec_fields: dict[str, tuple[t.Any, t.Any]] = {}
         for n, typ, dflt, _ in cls.__item_fields__:
-            origin = (
-                cls.__build_schema_hook__(n, typ, dflt)
-                if n in cls.__spec_hooks__
-                else (
-                    typ.schema_model()
-                    if isinstance(typ, type) and issubclass(typ, BaseModule)
-                    else typ
-                )
-            )
+            # Check if field has a custom schema hook
+            if n in cls.__spec_hooks__:
+                origin = cls.__build_schema_hook__(n, typ, dflt)
+            else:
+                # Handle generic aliases like ModuleList[Task]
+                # Get the origin class if it's a generic alias
+                base_type = t.get_origin(typ) if t.get_origin(typ) is not None else typ
+
+                # If the base type is a BaseModule, use its schema_model
+                if isinstance(base_type, type) and issubclass(base_type, BaseModule):
+                    # Get the spec model from the base type (e.g., ModuleList -> ModuleListSpec)
+                    # This will be the spec type used in the generated spec
+                    origin = base_type.schema_model()
+                else:
+                    origin = typ
+
             spec_fields[n] = (origin, ... if dflt is inspect._empty else dflt)
 
         cls.__spec__ = create_model(
@@ -1200,76 +1207,221 @@ class Checkpoint(Generic[V]):
 # - BaseModule.schema_model() -> Type[BaseSpec]
 # - BaseSpec.model_json_schema() -> dict
 
+
+def filter_class_variants(
+    target: t.Type | list[t.Type],
+    variants: t.Iterable[t.Any],
+    registry_instance: 'Registry' = None
+) -> t.Iterator[t.Any]:
+    """
+    Filter variants to only those that are subclasses of target class(es).
+
+    Args:
+        target: Single class or list of classes to filter by
+        variants: Iterable of variants (module classes, spec classes, instances, dicts, etc.)
+        registry_instance: Optional registry to use for lookups
+
+    Returns:
+        Iterator of variants that match the target class(es)
+
+    Examples:
+        >>> filter_class_variants(Leaf, [Action(), Sequence(), Condition()])
+        # Returns only Action() and Condition() (both are Leaf subclasses)
+
+        >>> filter_class_variants([Condition, Action], task_list)
+        # Returns only Conditions and Actions from task_list
+    """
+    import itertools
+
+    # Normalize target to a tuple
+    targets = (target,) if not isinstance(target, list) else tuple(target)
+
+    def matches(variant):
+        mod_cls = lookup_module_class(variant, registry_instance)
+        return mod_cls is not None and any(issubclass(mod_cls, t) for t in targets)
+
+    return itertools.filterfalse(lambda v: not matches(v), variants)
+
+
+def lookup_module_class(variant: t.Any, registry_instance: 'Registry' = None) -> t.Type['BaseModule'] | None:
+    """
+    Look up the BaseModule class for a given variant.
+
+    This utility accepts multiple formats (module class, spec class, spec instance, schema dict, or string name)
+    and returns the corresponding BaseModule class by looking it up in the registry.
+
+    Useful for filtering variants by type (e.g., only accepting Condition or Leaf tasks).
+
+    Args:
+        variant: Can be:
+            - BaseModule class (e.g., ActionA) - returns itself
+            - BaseSpec class (e.g., ActionASpec) - looks up ActionA
+            - BaseSpec instance (e.g., ActionASpec()) - looks up ActionA
+            - Schema dict (e.g., {"title": "ActionASpec"}) - looks up ActionA
+            - String name (e.g., "ActionA" or "ActionASpec") - looks up ActionA
+        registry_instance: Optional registry instance. If None, uses global registry.
+
+    Returns:
+        The BaseModule class, or None if not found
+
+    Examples:
+        >>> lookup_module_class(ActionA)  # Already a module class
+        <class 'ActionA'>
+
+        >>> lookup_module_class(ActionASpec)  # Spec class
+        <class 'ActionA'>
+
+        >>> lookup_module_class("ActionA")  # String name
+        <class 'ActionA'>
+
+        >>> lookup_module_class({"title": "ActionASpec"})  # Schema dict
+        <class 'ActionA'>
+    """
+    if registry_instance is None:
+        registry_instance = registry
+
+    # String name - look up directly
+    if isinstance(variant, str):
+        module_name = variant.replace("Spec", "")
+        try:
+            entry = registry_instance[module_name]
+            return entry.obj if entry else None
+        except KeyError:
+            return None
+
+    # Already a BaseModule class
+    if isinstance(variant, type) and issubclass(variant, BaseModule):
+        return variant
+
+    # Spec class - look up in registry
+    if isinstance(variant, type) and issubclass(variant, BaseSpec):
+        # Get just the class name without module path
+        spec_name = variant.__name__.rsplit(".", 1)[-1]
+        module_name = spec_name.replace("Spec", "")
+        try:
+            entry = registry_instance[module_name]
+            return entry.obj if entry else None
+        except KeyError:
+            return None
+
+    # Spec instance - look up in registry
+    if not isinstance(variant, dict) and hasattr(variant, "__class__") and isinstance(variant.__class__, type) and issubclass(variant.__class__, BaseSpec):
+        # Get just the class name without module path
+        spec_name = variant.__class__.__name__.rsplit(".", 1)[-1]
+        module_name = spec_name.replace("Spec", "")
+        try:
+            entry = registry_instance[module_name]
+            return entry.obj if entry else None
+        except KeyError:
+            return None
+
+    # Schema dict - extract name and look up
+    if isinstance(variant, dict):
+        if "title" in variant and isinstance(variant["title"], str):
+            spec_name = variant["title"].strip()
+            # Remove module path if present
+            spec_name = spec_name.rsplit(".", 1)[-1]
+        elif "$id" in variant and isinstance(variant["$id"], str):
+            _id = variant["$id"].strip()
+            spec_name = _id.rstrip("#").rsplit("/", 1)[-1]
+        else:
+            return None
+
+        module_name = spec_name.replace("Spec", "")
+        try:
+            entry = registry_instance[module_name]
+            return entry.obj if entry else None
+        except KeyError:
+            return None
+
+    return None
+
+
 class RestrictedSchemaMixin(ABC):
     """
-    Mixin for classes that can emit a *restricted* JSON Schema for themselves.
+    Base mixin for creating restricted JSON schemas.
 
-    Subclasses implement `restrict_schema(...)` by:
-      1) starting from `cls.schema()` (a dict),
-      2) normalizing caller-supplied variants (module/spec/schema) via
-         `normalize_variants(...)` → [(spec_name, schema_dict), ...],
-      3) ensuring those variants are present under `$defs` using
-         `require_defs_for_entries(...)`,
-      4) replacing their own placeholder site(s) with either:
-         • a shared union ref using `ensure_shared_union_from_entries(...)`, or
-         • an inline union using `make_union_inline_from_entries(...)`,
-      5) returning the patched schema dict.
-
-    All helpers below are **public** and designed to be reused by subclasses.
+    Subclasses must implement:
+    - restricted_schema(**kwargs) -> dict
+    - _schema_process_variants(variants, mixin_class, ...) -> list[dict]
     """
 
-    # ---------- Public entry point (must implement) ----------
     @abstractmethod
     def restricted_schema(
         self,
         *,
-        _profile: str = "shared",               # "shared" -> $defs/Allowed_* + $ref; "inline" -> oneOf at site
-        _seen: dict[type, dict] | None = None,  # memo/cycle guard (optional)
-        **kwargs: t.Any,                        # class-specific (e.g., tasks=[...], states=[...])
+        _profile: str = "shared",
+        _seen: dict | None = None,
+        **kwargs
     ) -> dict:
-        """
-        Return a JSON Schema dict for `cls` with restrictions applied.
-
-        Subclasses must implement this method by following the
-        general recipe outlined in the class docstring.
-        """
+        """Generate restricted schema. Must be implemented by subclasses."""
         raise NotImplementedError()
 
-    # =========================
-    # Normalization (single path)
-    # =========================
-    @staticmethod
-    def _name_from_schema_dict(d: dict) -> str:
+    def _schema_process_variants(
+        self,
+        variants: list,
+        *,
+        filter_fn: t.Callable | None = None,
+        restricted_schema_cls: t.Type['RestrictedSchemaMixin'],
+        _seen: dict | None = None,
+        **recursive_kwargs
+    ) -> list[dict]:
         """
-        Derive a stable spec name from a JSON Schema dict:
-          • prefer 'title'
-          • else tail of '$id' (after last '/' or '#')
+        Process variants and return their schema dicts.
+
+        For each variant:
+        - Apply filter_fn if provided
+        - If variant is a class subclassing restricted_schema_cls, create instance and call restricted_schema()
+        - If variant is an instance of restricted_schema_cls, call its restricted_schema() recursively
+        - Else use normalize_schema_type_variants to convert it to a schema
+
+        Args:
+            variants: List of task/state instances or classes
+            filter_fn: Optional filter (e.g., lambda t: isinstance(t, Action))
+            restricted_schema_cls: The domain-specific mixin class to check for recursion
+            _seen: Cycle detection dict
+            **recursive_kwargs: Passed to nested restricted_schema() calls (e.g., tasks=...)
+
+        Returns:
+            List of schema dicts
+
+        Raises:
+            TypeError: If variant cannot be converted to a schema
         """
-        if "title" in d and isinstance(d["title"], str) and d["title"].strip():
-            return d["title"].strip()
-        _id = d.get("$id")
-        if isinstance(_id, str) and _id.strip():
-            tail = _id.rsplit("/", 1)[-1].rsplit("#", 1)[-1] or _id
-            return tail
-        raise TypeError("Schema dict must include 'title' or a usable '$id' to derive the spec name.")
+        if filter_fn is not None:
+            variants = [v for v in variants if filter_fn(v)]
+
+        schemas = []
+        for variant in variants:
+            # Check if variant is a CLASS that subclasses the domain-specific mixin
+            if isinstance(variant, type) and issubclass(variant, restricted_schema_cls):
+                # Create temporary instance and call restricted_schema
+                temp_instance = variant()
+                schemas.append(temp_instance.restricted_schema(_seen=_seen, **recursive_kwargs))
+
+            # Check if variant is an INSTANCE of the domain-specific mixin
+            elif isinstance(variant, restricted_schema_cls):
+                # Call restricted_schema directly
+                schemas.append(variant.restricted_schema(_seen=_seen, **recursive_kwargs))
+
+            # Otherwise, use normalize_schema_type_variants for regular cases
+            else:
+                # This handles: module classes, spec classes, spec instances, schema dicts
+                entries = self.normalize_schema_type_variants([variant])
+                if entries:
+                    schemas.append(entries[0][1])  # Extract the schema dict
+                else:
+                    raise TypeError(f"Variant {variant} could not be normalized to a schema")
+
+        return schemas
 
     @classmethod
     def normalize_schema_type_variants(
         cls,
-        objs: t.Iterable[t.Any],  # accepts: BaseModule subclass, BaseSpec subclass/instance, or schema dict
+        objs: t.Iterable[t.Any],
     ) -> list[tuple[str, dict]]:
         """
-        Convert allowed type variants into standardized (name, schema_dict) entries for schema restriction.
-
-        When creating a restricted schema, you specify which types are allowed as variants. This method
-        accepts those types in multiple convenient formats and normalizes them into a consistent
-        representation that other schema-building methods can use.
-
-        Args:
-            objs: Iterable of allowed types in any supported format (see below)
-
-        Returns:
-            List of (spec_name, schema_dict) tuples, de-duplicated and sorted by name for determinism
+        Convert allowed type variants into standardized (name, schema_dict) entries.
 
         Supported input formats:
             • Module class:        MyTask            -> ("MyTaskSpec", {...schema...})
@@ -1277,44 +1429,11 @@ class RestrictedSchemaMixin(ABC):
             • Spec instance:       my_task_spec_obj  -> ("MyTaskSpec", {...schema...})
             • Raw schema dict:     {"title": "X", ...} or {"$id": ".../X", ...} -> ("X", {...schema...})
 
-        De-duplication policy:
-            If multiple entries have the same spec name, the last occurrence wins.
+        Args:
+            objs: Iterable of allowed types in any supported format
 
-        Usage in restricted_schema() implementation:
-            ```python
-            class MyBehaviorTree(BaseModule, RestrictedSchemaMixin):
-                def restricted_schema(self, *, tasks: list, **kwargs):
-                    # Step 1: Normalize the allowed tasks into (name, schema_dict) entries
-                    task_entries = self.normalize_schema_type_variants(tasks)
-
-                    # Step 2: Get base schema and add the entries to $defs
-                    schema = self.schema_model().model_json_schema()
-                    self.require_defs_for_entries(schema, task_entries)
-
-                    # Step 3: Replace placeholder with union of allowed tasks
-                    # ... (use other helper methods)
-
-                    return schema
-            ```
-
-        Example standalone usage:
-            ```python
-            # Define some task types
-            class ActionA(Task): pass
-            class ActionB(Task): pass
-
-            # Can pass module classes
-            entries = RestrictedSchemaMixin.normalize_schema_type_variants([ActionA, ActionB])
-            # Returns: [("ActionASpec", {...}), ("ActionBSpec", {...})]
-
-            # Can mix formats
-            entries = RestrictedSchemaMixin.normalize_schema_type_variants([
-                ActionA,                    # module class
-                ActionBSpec,                # spec class
-                action_c_spec_instance,     # spec instance
-                {"title": "ActionD", ...}   # raw schema dict
-            ])
-            ```
+        Returns:
+            List of (spec_name, schema_dict) tuples, de-duplicated and sorted by name
         """
         entries: list[tuple[str, dict]] = []
 
@@ -1335,7 +1454,7 @@ class RestrictedSchemaMixin(ABC):
                 continue
             # Raw dict schema
             if isinstance(o, dict):
-                name = cls._name_from_schema_dict(o)
+                name = cls._schema_name_from_dict(o)
                 entries.append((name, o))
                 continue
             raise TypeError(f"Unsupported variant type: {type(o)!r}")
@@ -1347,220 +1466,305 @@ class RestrictedSchemaMixin(ABC):
         return [(name, dedup[name]) for name in sorted(dedup.keys())]
 
     # =========================
-    # Memo / cycle guard
+    # 3 Update Helpers (implemented in base)
     # =========================
-    @staticmethod
-    def memo_start(memo: dict[type, dict] | None, klass: type) -> dict[type, dict]:
-        """Reserve a slot for `klass` to break cycles and enable reuse."""
-        memo = memo or {}
-        memo.setdefault(klass, None)
-        return memo
+
+    def _schema_update_list_field(
+        self,
+        schema: dict,
+        *,
+        field_name: str,
+        placeholder_name: str,
+        variant_schemas: list[dict],
+        profile: str = "shared"
+    ) -> dict:
+        """
+        Update a ModuleList field in the schema.
+
+        Path: ["properties", field_name, "items"]
+
+        Handles nullable fields: If field is "ModuleList[T] | None", wraps in anyOf.
+
+        Args:
+            schema: The base schema dict to update
+            field_name: Name of the ModuleList field (e.g., "tasks")
+            placeholder_name: Name of placeholder spec (e.g., "TaskSpec")
+            variant_schemas: List of schema dicts for allowed variants
+            profile: "shared" (use $defs/Allowed_*) or "inline" (use oneOf)
+
+        Returns:
+            Updated schema dict
+        """
+        entries = [(self._schema_name_from_dict(s), s) for s in variant_schemas]
+        self._schema_require_defs_for_entries(schema, entries)
+
+        # Build the union
+        if profile == "shared":
+            union_ref = self._schema_ensure_shared_union(
+                schema,
+                placeholder_name=placeholder_name,
+                entries=entries
+            )
+            replacement = {"$ref": union_ref}
+        else:
+            replacement = self._schema_make_union_inline(entries)
+
+        # Check if field is nullable (has anyOf with null)
+        field_schema = schema.get("properties", {}).get(field_name, {})
+        if "anyOf" in field_schema:
+            # Nullable field: update the items in the array part of anyOf
+            # Structure: {"anyOf": [{"type": "array", "items": {...}}, {"type": "null"}]}
+            for option in field_schema["anyOf"]:
+                if isinstance(option, dict) and option.get("type") == "array":
+                    option["items"] = replacement
+                    break
+        else:
+            # Non-nullable field: directly update items
+            self._schema_replace_at_path(schema, ["properties", field_name, "items"], replacement)
+
+        return schema
+
+    def _schema_update_dict_field(
+        self,
+        schema: dict,
+        *,
+        field_name: str,
+        placeholder_name: str,
+        variant_schemas: list[dict],
+        profile: str = "shared"
+    ) -> dict:
+        """
+        Update a ModuleDict field in the schema.
+
+        Path: ["properties", field_name, "additionalProperties"]
+
+        Args:
+            schema: The base schema dict to update
+            field_name: Name of the ModuleDict field (e.g., "states")
+            placeholder_name: Name of placeholder spec (e.g., "BaseStateSpec")
+            variant_schemas: List of schema dicts for allowed variants
+            profile: "shared" or "inline"
+
+        Returns:
+            Updated schema dict
+        """
+        entries = [(self._schema_name_from_dict(s), s) for s in variant_schemas]
+        self._schema_require_defs_for_entries(schema, entries)
+
+        if profile == "shared":
+            union_ref = self._schema_ensure_shared_union(
+                schema,
+                placeholder_name=placeholder_name,
+                entries=entries
+            )
+            replacement = {"$ref": union_ref}
+        else:
+            replacement = self._schema_make_union_inline(entries)
+
+        self._schema_replace_at_path(
+            schema,
+            ["properties", field_name, "additionalProperties"],
+            replacement
+        )
+
+        return schema
+
+    def _schema_update_single_field(
+        self,
+        schema: dict,
+        *,
+        field_name: str,
+        placeholder_name: str,
+        variant_schemas: list[dict],
+        profile: str = "shared"
+    ) -> dict:
+        """
+        Update a single module field in the schema.
+
+        Path: ["properties", field_name]
+
+        Args:
+            schema: The base schema dict to update
+            field_name: Name of the single field (e.g., "root")
+            placeholder_name: Name of placeholder spec (e.g., "TaskSpec")
+            variant_schemas: List of schema dicts for allowed variants
+            profile: "shared" or "inline"
+
+        Returns:
+            Updated schema dict
+        """
+        entries = [(self._schema_name_from_dict(s), s) for s in variant_schemas]
+        self._schema_require_defs_for_entries(schema, entries)
+
+        if profile == "shared":
+            union_ref = self._schema_ensure_shared_union(
+                schema,
+                placeholder_name=placeholder_name,
+                entries=entries
+            )
+            replacement = {"$ref": union_ref}
+        else:
+            replacement = self._schema_make_union_inline(entries)
+
+        self._schema_replace_at_path(schema, ["properties", field_name], replacement)
+
+        return schema
+
+    # =========================
+    # Low-Level Schema Helpers
+    # =========================
 
     @staticmethod
-    def memo_get(memo: dict[type, dict] | None, klass: type) -> dict | None:
-        """Return an already-built schema dict for `klass` if present."""
-        if not memo:
-            return None
-        doc = memo.get(klass)
-        return doc if isinstance(doc, dict) else None
+    def _schema_name_from_dict(schema_dict: dict) -> str:
+        """
+        Extract spec name from schema dict.
+
+        Tries 'title' first, then tail of '$id'.
+
+        Args:
+            schema_dict: JSON schema dict
+
+        Returns:
+            Spec name (e.g., "TaskSpec")
+
+        Raises:
+            TypeError: If no title or $id found
+        """
+        if "title" in schema_dict and isinstance(schema_dict["title"], str):
+            return schema_dict["title"].strip()
+
+        if "$id" in schema_dict and isinstance(schema_dict["$id"], str):
+            _id = schema_dict["$id"].strip()
+            # Remove trailing # first, then get tail after last /
+            tail = _id.rstrip("#").rsplit("/", 1)[-1]
+            if tail:
+                return tail
+
+        raise TypeError("Schema dict must have 'title' or '$id' to derive spec name")
 
     @staticmethod
-    def memo_end(memo: dict[type, dict] | None, klass: type, schema_doc: dict) -> None:
-        """Store the completed dict so recursion/re-entrancy reuses it."""
-        if memo is not None:
-            memo[klass] = schema_doc
+    def _schema_require_defs_for_entries(schema: dict, entries: list[tuple[str, dict]]) -> None:
+        """
+        Add entries to $defs if not already present.
 
-    # =========================
-    # Build unions from entries
-    # =========================
+        Args:
+            schema: Schema dict to update
+            entries: List of (name, schema_dict) tuples
+        """
+        defs = schema.setdefault("$defs", {})
+        for name, entry_schema in entries:
+            defs.setdefault(name, entry_schema)
+
     @staticmethod
-    def build_refs_from_entries(entries: list[tuple[str, dict]]) -> list[dict]:
-        """Convert (name, _) → {'$ref': '#/$defs/<name>'} for oneOf construction."""
+    def _schema_build_refs(entries: list[tuple[str, dict]]) -> list[dict]:
+        """
+        Convert entries to $ref list for oneOf.
+
+        Args:
+            entries: List of (name, schema_dict) tuples
+
+        Returns:
+            List of {"$ref": "#/$defs/<name>"} dicts
+        """
         return [{"$ref": f"#/$defs/{name}"} for name, _ in entries]
 
     @staticmethod
-    def _infer_discriminator_mapping_from_entries(entries: list[tuple[str, dict]]) -> dict | None:
+    def _schema_make_union_inline(entries: list[tuple[str, dict]]) -> dict:
         """
-        Infer {kind_value: '#/$defs/<name>'} by reading each entry's schema at properties.kind.const.
-        Returns None if any entry lacks a string const.
-        """
-        mapping: dict[str, str] = {}
-        for name, doc in entries:
-            if not isinstance(doc, dict):
-                return None
-            kind = doc.get("properties", {}).get("kind", {}).get("const", None)
-            if isinstance(kind, str):
-                mapping[kind] = f"#/$defs/{name}"
-            else:
-                return None
-        return mapping or None
+        Create inline oneOf union.
 
-    @classmethod
-    def make_union_inline_from_entries(
-        cls,
-        entries: list[tuple[str, dict]],
-        *,
-        add_discriminator: bool = False,
-        property_name: str = "kind",
-    ) -> dict:
-        """Return an inline `oneOf` union (optionally with a discriminator hint)."""
-        union = {"oneOf": cls.build_refs_from_entries(entries)}
-        if add_discriminator:
-            mapping = cls._infer_discriminator_mapping_from_entries(entries)
-            if mapping:
-                union["discriminator"] = {"propertyName": property_name, "mapping": mapping}
-        return union
+        Args:
+            entries: List of (name, schema_dict) tuples
+
+        Returns:
+            {"oneOf": [...]} dict
+        """
+        return {"oneOf": RestrictedSchemaMixin._schema_build_refs(entries)}
 
     @staticmethod
-    def allowed_union_name(placeholder_spec_name: str) -> str:
-        """Stable name for shared unions under $defs (avoids schema bloat)."""
-        return f"Allowed_{placeholder_spec_name}"
+    def _schema_allowed_union_name(placeholder_name: str) -> str:
+        """
+        Generate name for shared union in $defs.
+
+        Args:
+            placeholder_name: Original placeholder name (e.g., "TaskSpec")
+
+        Returns:
+            Allowed union name (e.g., "Allowed_TaskSpec")
+        """
+        return f"Allowed_{placeholder_name}"
 
     @classmethod
-    def ensure_shared_union_from_entries(
+    def _schema_ensure_shared_union(
         cls,
-        schema_doc: dict,
+        schema: dict,
         *,
-        placeholder_spec_name: str,
-        entries: list[tuple[str, dict]],
-        add_discriminator: bool = False,
-        property_name: str = "kind",
+        placeholder_name: str,
+        entries: list[tuple[str, dict]]
     ) -> str:
         """
-        Ensure `$defs/Allowed_<PlaceholderSpecName>` exists with a `oneOf` over entries
-        (and optional discriminator). Return the `$ref` to it.
+        Ensure shared union exists in $defs and return its $ref.
+
+        Args:
+            schema: Schema dict to update
+            placeholder_name: Original placeholder name
+            entries: List of (name, schema_dict) tuples
+
+        Returns:
+            Reference string (e.g., "#/$defs/Allowed_TaskSpec")
         """
-        defs = schema_doc.setdefault("$defs", {})
-        allowed_name = cls.allowed_union_name(placeholder_spec_name)
+        defs = schema.setdefault("$defs", {})
+        allowed_name = cls._schema_allowed_union_name(placeholder_name)
+
         if allowed_name not in defs:
-            defs[allowed_name] = cls.make_union_inline_from_entries(
-                entries, add_discriminator=add_discriminator, property_name=property_name
-            )
+            defs[allowed_name] = cls._schema_make_union_inline(entries)
+
         return f"#/$defs/{allowed_name}"
 
-    # =========================
-    # $defs utilities
-    # =========================
     @staticmethod
-    def require_defs_for_entries(schema_doc: dict, entries: list[tuple[str, dict]]) -> None:
+    def _schema_node_at(schema: dict, path: list[str]) -> t.Any:
         """
-        Ensure each (name, schema_dict) appears under $defs[name].
-        Does not overwrite existing entries.
+        Navigate to node at path in schema.
+
+        Args:
+            schema: Schema dict
+            path: List of keys (e.g., ["properties", "tasks", "items"])
+
+        Returns:
+            Node at path, or None if not found
         """
-        defs = schema_doc.setdefault("$defs", {})
-        for name, doc in entries:
-            defs.setdefault(name, doc)
-
-    @staticmethod
-    def merge_defs(
-        target: dict,
-        *sources: dict,
-        on_conflict: t.Literal["error", "last_wins"] = "last_wins",
-    ) -> None:
-        """Deterministically merge `$defs` from sources into target."""
-        tdefs = target.setdefault("$defs", {})
-        for src in sources:
-            sdefs = src.get("$defs", {})
-            for k in sorted(sdefs.keys()):
-                if k in tdefs and tdefs[k] != sdefs[k] and on_conflict == "error":
-                    raise ValueError(f"$defs collision on {k}")
-                tdefs[k] = sdefs[k]
-
-    # =========================
-    # Local patching helpers
-    # =========================
-    @staticmethod
-    def node_at(doc: dict, path: list[str]) -> dict | list | None:
-        """Navigate a JSON object by path segments; return node or None if missing."""
-        cur = doc
-        for p in path:
-            if isinstance(cur, dict) and p in cur:
-                cur = cur[p]
+        cur = schema
+        for key in path:
+            if isinstance(cur, dict) and key in cur:
+                cur = cur[key]
             else:
                 return None
         return cur
 
     @staticmethod
-    def replace_at_path(doc: dict, path: list[str], replacement: dict) -> None:
-        """Replace the node at `path` with `replacement`."""
+    def _schema_replace_at_path(schema: dict, path: list[str], replacement: t.Any) -> None:
+        """
+        Replace node at path with replacement.
+
+        Args:
+            schema: Schema dict to update
+            path: List of keys to navigate to
+            replacement: New value to set
+
+        Raises:
+            ValueError: If path is empty
+            KeyError: If path is invalid
+        """
         if not path:
-            raise ValueError("Path must not be empty")
-        *parent_path, last = path
-        parent = RestrictedSchemaMixin.node_at(doc, parent_path) if parent_path else doc
+            raise ValueError("Path cannot be empty")
+
+        *parent_path, last_key = path
+        parent = RestrictedSchemaMixin._schema_node_at(schema, parent_path) if parent_path else schema
+
         if not isinstance(parent, dict):
             raise KeyError(f"Invalid path: {'.'.join(path)}")
-        parent[last] = replacement
 
-    @staticmethod
-    def has_placeholder_ref(
-        schema_doc: dict,
-        *,
-        at: list[str],
-        placeholder_spec_name: str,
-    ) -> bool:
-        """Check whether the site at `at` is a `$ref` to the given placeholder spec."""
-        node = RestrictedSchemaMixin.node_at(schema_doc, at)
-        return isinstance(node, dict) and node.get("$ref") == f"#/$defs/{placeholder_spec_name}"
-
-    # =========================
-    # Optional guardrails
-    # =========================
-    @staticmethod
-    def apply_array_bounds(
-        schema_doc: dict,
-        *,
-        at: list[str],
-        min_items: int | None = None,
-        max_items: int | None = None,
-    ) -> None:
-        """Set `minItems`/`maxItems` on an array schema node (if present)."""
-        node = RestrictedSchemaMixin.node_at(schema_doc, at)
-        if isinstance(node, dict):
-            if min_items is not None:
-                node["minItems"] = int(min_items)
-            if max_items is not None:
-                node["maxItems"] = int(max_items)
-
-    @staticmethod
-    def set_additional_properties(
-        schema_doc: dict,
-        *,
-        at: list[str],
-        allow: bool,
-    ) -> None:
-        """Set `additionalProperties` on an object schema node (if present)."""
-        node = RestrictedSchemaMixin.node_at(schema_doc, at)
-        if isinstance(node, dict):
-            node["additionalProperties"] = bool(allow)
-
-    # =========================
-    # Diagnostics
-    # =========================
-    @staticmethod
-    def collect_placeholder_refs(
-        schema_doc: dict,
-        *,
-        placeholder_spec_name: str,
-    ) -> list[list[str]]:
-        """
-        Return a list of paths (lists of keys) to any remaining `$ref` that
-        target `#/$defs/<placeholder_spec_name>`.
-        """
-        target = f"#/$defs/{placeholder_spec_name}"
-        hits: list[list[str]] = []
-
-        def walk(obj: t.Any, path: list[str]) -> None:
-            if isinstance(obj, dict):
-                if obj.get("$ref") == target:
-                    hits.append(path[:])
-                for k, v in obj.items():
-                    path.append(k); walk(v, path); path.pop()
-            elif isinstance(obj, list):
-                for i, v in enumerate(obj):
-                    path.append(str(i)); walk(v, path); path.pop()
-
-        walk(schema_doc, [])
-        return hits
+        parent[last_key] = replacement
 
 
 class Registry:

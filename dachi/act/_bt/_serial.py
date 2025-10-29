@@ -4,8 +4,9 @@ import typing as t
 from dataclasses import InitVar
 
 # local
-from ._core import Task, TaskStatus, CompositeTask
-from dachi.core import Attr, ModuleList, RestrictedSchemaMixin
+from ._core import Task, TaskStatus, CompositeTask, RestrictedTaskSchemaMixin
+from dachi.core import Attr, ModuleList
+from dachi.core._base import filter_class_variants
 from ._leafs import Condition
 
 
@@ -34,11 +35,49 @@ class Serial(CompositeTask):
         raise NotImplementedError
 
 
-class Sequence(Serial):
+class Sequence(Serial, RestrictedTaskSchemaMixin):
     """Create a sequence of tasks to execute
     """
 
-    tasks: ModuleList[Task] | None = None
+    tasks: ModuleList[Task] = None
+
+    def restricted_schema(self, *, tasks=None, _profile="shared", _seen=None, **kwargs):
+        """
+        Generate restricted schema for Sequence.
+
+        Pattern B: Direct Variants - processes task variants directly for the tasks field.
+
+        Args:
+            tasks: List of allowed task variants (Task classes, TaskSpec classes, instances, or dicts)
+            _profile: "shared" (default) or "inline"
+            _seen: Cycle detection dict
+            **kwargs: Passed to nested restricted_schema() calls
+
+        Returns:
+            Restricted schema dict with tasks field limited to specified variants
+        """
+        # If no tasks provided, return unrestricted schema
+        if tasks is None:
+            return self.schema()
+
+        # Process task variants (handles RestrictedTaskSchemaMixin recursion)
+        task_schemas = self._schema_process_variants(
+            tasks,
+            restricted_schema_cls=RestrictedTaskSchemaMixin,
+            _seen=_seen,
+            tasks=tasks,
+            **kwargs
+        )
+
+        # Update schema's tasks field (ModuleList)
+        schema = self.schema()
+        return self._schema_update_list_field(
+            schema,
+            field_name="tasks",
+            placeholder_name="TaskSpec",
+            variant_schemas=task_schemas,
+            profile=_profile
+        )
 
     def __post_init__(self):
         """Initialize the Sequence. A Sequence will execute its tasks in order. If one fails then it will Fail. If cascaded is True, it will try to execute all tasks in order until one fails
@@ -132,10 +171,48 @@ class Sequence(Serial):
         self._idx.data = 0
 
 
-class Selector(Serial):
+class Selector(Serial, RestrictedTaskSchemaMixin):
     """Create a set of tasks to select from
     """
-    tasks: ModuleList[Task] | None = None
+    tasks: ModuleList[Task] = None
+
+    def restricted_schema(self, *, tasks=None, _profile="shared", _seen=None, **kwargs):
+        """
+        Generate restricted schema for Selector.
+
+        Pattern B: Direct Variants - processes task variants directly for the tasks field.
+
+        Args:
+            tasks: List of allowed task variants (Task classes, TaskSpec classes, instances, or dicts)
+            _profile: "shared" (default) or "inline"
+            _seen: Cycle detection dict
+            **kwargs: Passed to nested restricted_schema() calls
+
+        Returns:
+            Restricted schema dict with tasks field limited to specified variants
+        """
+        # If no tasks provided, return unrestricted schema
+        if tasks is None:
+            return self.schema()
+
+        # Process task variants (handles RestrictedTaskSchemaMixin recursion)
+        task_schemas = self._schema_process_variants(
+            tasks,
+            restricted_schema_cls=RestrictedTaskSchemaMixin,
+            _seen=_seen,
+            tasks=tasks,
+            **kwargs
+        )
+
+        # Update schema's tasks field (ModuleList)
+        schema = self.schema()
+        return self._schema_update_list_field(
+            schema,
+            field_name="tasks",
+            placeholder_name="TaskSpec",
+            variant_schemas=task_schemas,
+            profile=_profile
+        )
 
     def __post_init__(self):
         """Initialize the selector. A Selector will try to execute
@@ -244,13 +321,73 @@ class Selector(Serial):
 Fallback = Selector
 
 
-class PreemptCond(Serial):
+class PreemptCond(Serial, RestrictedTaskSchemaMixin):
     """Use to have a condition applied with
     each tick in order to stop the execution
     of other tasks
     """
     cond: Condition | ModuleList
     task: Task
+
+    def restricted_schema(self, *, tasks=None, _profile="shared", _seen=None, **kwargs):
+        """
+        Generate restricted schema for PreemptCond.
+
+        Pattern C × 2 with Condition filter - restricts both cond and task fields.
+        The cond field is filtered to only Condition subclasses from tasks.
+
+        Args:
+            tasks: List of allowed Task variants (filters to Conditions for cond field)
+            _profile: "shared" (default) or "inline"
+            _seen: Cycle detection dict
+            **kwargs: Passed to nested restricted_schema() calls
+
+        Returns:
+            Restricted schema dict with cond and task fields limited to specified variants
+        """
+        # If no tasks provided, return unrestricted schema
+        if tasks is None:
+            return self.schema()
+
+        schema = self.schema()
+
+        # Filter tasks to only Condition subclasses for cond field
+        cond_variants = list(filter_class_variants(Condition, tasks))
+
+        # Update cond field if we have valid Condition variants
+        if cond_variants:
+            cond_schemas = self._schema_process_variants(
+                cond_variants,
+                restricted_schema_cls=RestrictedTaskSchemaMixin,
+                _seen=_seen,
+                tasks=tasks,
+                **kwargs
+            )
+            schema = self._schema_update_single_field(
+                schema,
+                field_name="cond",
+                placeholder_name="ConditionSpec",
+                variant_schemas=cond_schemas,
+                profile=_profile
+            )
+
+        # Update task field with all task variants
+        task_schemas = self._schema_process_variants(
+            tasks,
+            restricted_schema_cls=RestrictedTaskSchemaMixin,
+            _seen=_seen,
+            tasks=tasks,
+            **kwargs
+        )
+        schema = self._schema_update_single_field(
+            schema,
+            field_name="task",
+            placeholder_name="TaskSpec",
+            variant_schemas=task_schemas,
+            profile=_profile
+        )
+
+        return schema
 
     def __post_init__(self):
         """Initialize the PreemptCond. A PreemptCond will first evaluate the condition. If the condition succeeds, it will execute the task. If the condition fails, it will fail the PreemptCond.

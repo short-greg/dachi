@@ -2,7 +2,7 @@ import pytest
 from dachi.act._bt._core import TaskStatus
 from dachi.act._bt._roots import BT
 #, StateMachine, statefunc
-from .utils import ImmediateAction
+from .utils import ImmediateAction, SetStorageAction
 from dachi.act import _states as S
 from tests.act.utils import _AsyncBoolProc, _BoolProc
 
@@ -252,3 +252,103 @@ from tests.act.utils import _AsyncBoolProc, _BoolProc
 #         sm.reset()
 #         assert sm.status is TaskStatus.READY
 #         assert sm._cur_state.data == "one"
+
+
+class TestBTRestrictedSchema:
+    """Test BT.restricted_schema() - Pattern C (Single Field)"""
+
+    def test_restricted_schema_returns_unrestricted_when_tasks_none(self):
+        """Test that tasks=None returns unrestricted schema"""
+        bt = BT(root=ImmediateAction(status_val=TaskStatus.SUCCESS))
+        restricted = bt.restricted_schema(tasks=None)
+        unrestricted = bt.schema()
+
+        # Should be identical
+        assert restricted == unrestricted
+
+    def test_restricted_schema_updates_root_field_with_variants(self):
+        """Test that root field is restricted to specified variants"""
+        bt = BT(root=ImmediateAction(status_val=TaskStatus.SUCCESS))
+
+        # Restrict to only ImmediateAction and SetStorageAction
+        restricted = bt.restricted_schema(
+            tasks=[ImmediateAction, SetStorageAction]
+        )
+
+        # Check that schema was updated
+        assert "$defs" in restricted
+        assert "Allowed_TaskSpec" in restricted["$defs"]
+
+        # Check that Allowed_TaskSpec contains our variants
+        allowed_union = restricted["$defs"]["Allowed_TaskSpec"]
+        assert "oneOf" in allowed_union
+        refs = allowed_union["oneOf"]
+        assert len(refs) == 2
+
+        # Extract spec names from refs
+        spec_names = {ref["$ref"].split("/")[-1] for ref in refs}
+        assert any("ImmediateActionSpec" in name for name in spec_names)
+        assert any("SetStorageActionSpec" in name for name in spec_names)
+
+    def test_restricted_schema_uses_shared_profile_by_default(self):
+        """Test that default profile is 'shared' (uses $defs/Allowed_*)"""
+        bt = BT(root=ImmediateAction(status_val=TaskStatus.SUCCESS))
+        restricted = bt.restricted_schema(tasks=[ImmediateAction])
+
+        # Should use shared union in $defs
+        assert "Allowed_TaskSpec" in restricted["$defs"]
+
+        # root field should reference the shared union
+        root_schema = restricted["properties"]["root"]
+        assert root_schema == {"$ref": "#/$defs/Allowed_TaskSpec"}
+
+    def test_restricted_schema_inline_profile_creates_oneof(self):
+        """Test that _profile='inline' creates inline oneOf"""
+        bt = BT(root=ImmediateAction(status_val=TaskStatus.SUCCESS))
+        restricted = bt.restricted_schema(
+            tasks=[ImmediateAction, SetStorageAction],
+            _profile="inline"
+        )
+
+        # Should still have defs for the individual tasks
+        defs_keys = restricted["$defs"].keys()
+        assert any("ImmediateActionSpec" in key for key in defs_keys)
+        assert any("SetStorageActionSpec" in key for key in defs_keys)
+
+        # But root field should have inline oneOf (no Allowed_TaskSpec)
+        root_schema = restricted["properties"]["root"]
+        assert "oneOf" in root_schema
+
+    def test_restricted_schema_with_task_spec_class(self):
+        """Test that TaskSpec classes work as variants"""
+        bt = BT(root=ImmediateAction(status_val=TaskStatus.SUCCESS))
+
+        # Get the spec class
+        spec_class = ImmediateAction.schema_model()
+
+        restricted = bt.restricted_schema(tasks=[spec_class])
+
+        # Should work and include the task
+        defs_keys = restricted["$defs"].keys()
+        assert any("ImmediateActionSpec" in key for key in defs_keys)
+
+    def test_restricted_schema_with_mixed_formats(self):
+        """Test that mixed variant formats work together"""
+        bt = BT(root=ImmediateAction(status_val=TaskStatus.SUCCESS))
+
+        # Mix: Task class, TaskSpec class, and schema dict
+        action_spec = SetStorageAction.schema_model()
+        immediate_schema = ImmediateAction.schema()
+
+        restricted = bt.restricted_schema(
+            tasks=[
+                ImmediateAction,  # Task class
+                action_spec,       # Spec class
+                immediate_schema   # Schema dict (will be duplicate)
+            ]
+        )
+
+        # Should deduplicate and work correctly
+        defs_keys = restricted["$defs"].keys()
+        assert any("ImmediateActionSpec" in key for key in defs_keys)
+        assert any("SetStorageActionSpec" in key for key in defs_keys)

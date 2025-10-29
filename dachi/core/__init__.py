@@ -18,7 +18,8 @@ from ._base import (
     registry,
     # AdaptModule,
     ParamSet,
-    RestrictedSchemaMixin
+    RestrictedSchemaMixin,
+    lookup_module_class
 )
 from ._structs import (
     ModuleDict,

@@ -290,7 +290,7 @@ class TestOpenAIChat:
         assert result['response_format'] == {"type": "json_object"}
     
     def test_build_openai_response_format_with_dict_passes_through(self):
-        custom_format = {"type": "custom_format", "schema": "test"}
+        custom_format = {"type": "json_schema", "schema": "test"}
         result = build_openai_response_format(custom_format)
         assert result['response_format'] == custom_format
     

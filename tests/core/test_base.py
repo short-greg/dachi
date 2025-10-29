@@ -13,8 +13,9 @@ import pytest
 
 from dachi.core._base import (
     BaseModule, BaseModule, Param, Attr, Shared, BaseSpec, Checkpoint, registry, Registry,
-    ParamSet, RestrictedSchemaMixin
+    ParamSet, RestrictedSchemaMixin, lookup_module_class
 )
+from dachi.act._bt._core import RestrictedTaskSchemaMixin
 
 from pydantic import ValidationError
 import inspect
@@ -1957,4 +1958,486 @@ class TestRestrictedSchemaMixin:
 #         rec.append()
 #         # Should add a row with all NaN
 #         assert rec._data.shape[0] == 1
+
+
+class TestBaseModuleWithGenericFields:
+    """Test BaseModule schema generation with generic fields like ModuleList[T]"""
+
+    def test_schema_handles_modulelist_generic(self):
+        """Test that ModuleList[T] field generates valid schema"""
+        from dachi.core import ModuleList
+
+        class ContainerModule(BaseModule):
+            items: ModuleList[Leaf] = None
+
+        # Should not raise an error
+        spec = ContainerModule.schema_model()
+        assert spec is not None
+
+        # Should have items field
+        assert 'items' in spec.model_fields
+
+        # The field should use ModuleListSpec
+        items_field = spec.model_fields['items']
+        # The annotation should be the spec model from ModuleList
+        assert items_field.annotation is ModuleList.schema_model()
+
+    def test_schema_json_generation_with_modulelist(self):
+        """Test that schema JSON can be generated for classes with ModuleList fields"""
+        from dachi.core import ModuleList
+
+        class ContainerModule(BaseModule):
+            items: ModuleList[Leaf] = None
+
+        # This should not raise PydanticInvalidForJsonSchema
+        schema = ContainerModule.schema()
+
+        # Should have properties
+        assert 'properties' in schema
+        assert 'items' in schema['properties']
+
+        # items should reference ModuleListSpec
+        items_schema = schema['properties']['items']
+        # Should have a $ref (either direct or in allOf) or type definition
+        has_ref = (
+            '$ref' in items_schema or
+            'type' in items_schema or
+            ('allOf' in items_schema and any('$ref' in item for item in items_schema['allOf']))
+        )
+        assert has_ref, f"Expected $ref or type in items_schema, got: {items_schema}"
+
+        # If there's a ref, it should point to ModuleListSpec
+        if 'allOf' in items_schema:
+            assert items_schema['allOf'][0]['$ref'] == '#/$defs/ModuleListSpec'
+        elif '$ref' in items_schema:
+            assert items_schema['$ref'] == '#/$defs/ModuleListSpec'
+
+
+class TestRestrictedSchemaMixin:
+    """Test the base RestrictedSchemaMixin low-level helpers"""
+
+    @pytest.fixture
+    def mixin_instance(self):
+        """Create a concrete instance of RestrictedSchemaMixin for testing"""
+        class ConcreteRestrictedSchemaMixin(RestrictedSchemaMixin):
+            def restricted_schema(self, **kwargs):
+                return {}
+        return ConcreteRestrictedSchemaMixin()
+
+    def test_schema_name_from_dict_uses_title(self):
+        """Test extracting name from schema dict with title"""
+        schema = {"title": "MyTaskSpec", "$id": "other"}
+        assert RestrictedSchemaMixin._schema_name_from_dict(schema) == "MyTaskSpec"
+
+    def test_schema_name_from_dict_uses_id_if_no_title(self):
+        """Test extracting name from schema dict using $id"""
+        schema = {"$id": "http://example.com/schemas/MyTaskSpec#"}
+        assert RestrictedSchemaMixin._schema_name_from_dict(schema) == "MyTaskSpec"
+
+    def test_schema_name_from_dict_raises_if_missing_both(self):
+        """Test error when neither title nor $id present"""
+        with pytest.raises(TypeError):
+            RestrictedSchemaMixin._schema_name_from_dict({})
+
+    def test_schema_build_refs_creates_ref_list(self):
+        """Test building $ref list from entries"""
+        entries = [("TaskA", {}), ("TaskB", {})]
+        refs = RestrictedSchemaMixin._schema_build_refs(entries)
+        assert refs == [
+            {"$ref": "#/$defs/TaskA"},
+            {"$ref": "#/$defs/TaskB"}
+        ]
+
+    def test_schema_make_union_inline_creates_oneof(self):
+        """Test creating inline oneOf union"""
+        entries = [("TaskA", {}), ("TaskB", {})]
+        union = RestrictedSchemaMixin._schema_make_union_inline(entries)
+        assert union == {
+            "oneOf": [
+                {"$ref": "#/$defs/TaskA"},
+                {"$ref": "#/$defs/TaskB"}
+            ]
+        }
+
+    def test_schema_allowed_union_name_adds_prefix(self):
+        """Test generating Allowed_* union name"""
+        assert RestrictedSchemaMixin._schema_allowed_union_name("TaskSpec") == "Allowed_TaskSpec"
+
+    def test_schema_node_at_navigates_path(self):
+        """Test navigating to node in schema"""
+        schema = {"properties": {"tasks": {"items": {"$ref": "#/$defs/TaskSpec"}}}}
+        node = RestrictedSchemaMixin._schema_node_at(schema, ["properties", "tasks", "items"])
+        assert node == {"$ref": "#/$defs/TaskSpec"}
+
+    def test_schema_node_at_returns_none_for_missing_path(self):
+        """Test None returned for invalid path"""
+        schema = {"properties": {}}
+        node = RestrictedSchemaMixin._schema_node_at(schema, ["properties", "nonexistent"])
+        assert node is None
+
+    def test_schema_replace_at_path_updates_node(self):
+        """Test replacing node at path"""
+        schema = {"properties": {"tasks": {"items": {"old": "value"}}}}
+        RestrictedSchemaMixin._schema_replace_at_path(
+            schema,
+            ["properties", "tasks", "items"],
+            {"new": "value"}
+        )
+        assert schema["properties"]["tasks"]["items"] == {"new": "value"}
+
+    def test_schema_replace_at_path_raises_on_empty_path(self):
+        """Test error when path is empty"""
+        schema = {"properties": {}}
+        with pytest.raises(ValueError, match="Path cannot be empty"):
+            RestrictedSchemaMixin._schema_replace_at_path(schema, [], {"new": "value"})
+
+    def test_schema_require_defs_for_entries_adds_entries(self):
+        """Test adding entries to $defs"""
+        schema = {}
+        entries = [("TaskA", {"title": "TaskA"}), ("TaskB", {"title": "TaskB"})]
+        RestrictedSchemaMixin._schema_require_defs_for_entries(schema, entries)
+
+        assert "$defs" in schema
+        assert "TaskA" in schema["$defs"]
+        assert "TaskB" in schema["$defs"]
+        assert schema["$defs"]["TaskA"] == {"title": "TaskA"}
+
+    def test_schema_require_defs_for_entries_does_not_overwrite(self):
+        """Test that existing entries are not overwritten"""
+        schema = {"$defs": {"TaskA": {"existing": "schema"}}}
+        entries = [("TaskA", {"new": "schema"})]
+        RestrictedSchemaMixin._schema_require_defs_for_entries(schema, entries)
+
+        assert schema["$defs"]["TaskA"] == {"existing": "schema"}
+
+    def test_schema_ensure_shared_union_creates_union(self):
+        """Test creating shared union in $defs"""
+        schema = {}
+        entries = [("TaskA", {}), ("TaskB", {})]
+
+        ref = RestrictedSchemaMixin._schema_ensure_shared_union(
+            schema,
+            placeholder_name="TaskSpec",
+            entries=entries
+        )
+
+        assert ref == "#/$defs/Allowed_TaskSpec"
+        assert "Allowed_TaskSpec" in schema["$defs"]
+        assert schema["$defs"]["Allowed_TaskSpec"] == {
+            "oneOf": [
+                {"$ref": "#/$defs/TaskA"},
+                {"$ref": "#/$defs/TaskB"}
+            ]
+        }
+
+    def test_schema_ensure_shared_union_reuses_existing(self):
+        """Test that existing shared union is not recreated"""
+        schema = {
+            "$defs": {
+                "Allowed_TaskSpec": {"oneOf": [{"$ref": "#/$defs/ExistingTask"}]}
+            }
+        }
+        entries = [("TaskA", {})]
+
+        ref = RestrictedSchemaMixin._schema_ensure_shared_union(
+            schema,
+            placeholder_name="TaskSpec",
+            entries=entries
+        )
+
+        assert ref == "#/$defs/Allowed_TaskSpec"
+        assert schema["$defs"]["Allowed_TaskSpec"]["oneOf"] == [{"$ref": "#/$defs/ExistingTask"}]
+
+    def test_schema_update_list_field_updates_items(self, mixin_instance):
+        """Test updating ModuleList field with non-nullable type"""
+        schema = {
+            "properties": {
+                "tasks": {
+                    "type": "array",
+                    "items": {"$ref": "#/$defs/TaskSpec"}
+                }
+            },
+            "$defs": {}
+        }
+
+        variant_schemas = [{"title": "TaskA"}, {"title": "TaskB"}]
+
+        result = mixin_instance._schema_update_list_field(
+            schema,
+            field_name="tasks",
+            placeholder_name="TaskSpec",
+            variant_schemas=variant_schemas,
+            profile="shared"
+        )
+
+        assert result["properties"]["tasks"]["items"] == {"$ref": "#/$defs/Allowed_TaskSpec"}
+        assert "Allowed_TaskSpec" in result["$defs"]
+
+    def test_schema_update_list_field_handles_nullable(self, mixin_instance):
+        """Test updating ModuleList field with nullable type (anyOf with null)"""
+        schema = {
+            "properties": {
+                "tasks": {
+                    "anyOf": [
+                        {"type": "array", "items": {"$ref": "#/$defs/TaskSpec"}},
+                        {"type": "null"}
+                    ]
+                }
+            },
+            "$defs": {}
+        }
+
+        variant_schemas = [{"title": "TaskA"}]
+
+        result = mixin_instance._schema_update_list_field(
+            schema,
+            field_name="tasks",
+            placeholder_name="TaskSpec",
+            variant_schemas=variant_schemas,
+            profile="shared"
+        )
+
+        items_ref = result["properties"]["tasks"]["anyOf"][0]["items"]
+        assert items_ref == {"$ref": "#/$defs/Allowed_TaskSpec"}
+
+    def test_schema_update_list_field_inline_profile(self, mixin_instance):
+        """Test updating list field with inline profile"""
+        schema = {
+            "properties": {
+                "tasks": {
+                    "type": "array",
+                    "items": {"$ref": "#/$defs/TaskSpec"}
+                }
+            },
+            "$defs": {}
+        }
+
+        variant_schemas = [{"title": "TaskA"}, {"title": "TaskB"}]
+
+        result = mixin_instance._schema_update_list_field(
+            schema,
+            field_name="tasks",
+            placeholder_name="TaskSpec",
+            variant_schemas=variant_schemas,
+            profile="inline"
+        )
+
+        assert result["properties"]["tasks"]["items"] == {
+            "oneOf": [
+                {"$ref": "#/$defs/TaskA"},
+                {"$ref": "#/$defs/TaskB"}
+            ]
+        }
+
+    def test_schema_update_dict_field_updates_additional_properties(self, mixin_instance):
+        """Test updating ModuleDict field"""
+        schema = {
+            "properties": {
+                "states": {
+                    "type": "object",
+                    "additionalProperties": {"$ref": "#/$defs/StateSpec"}
+                }
+            },
+            "$defs": {}
+        }
+
+        variant_schemas = [{"title": "StateA"}, {"title": "StateB"}]
+
+        result = mixin_instance._schema_update_dict_field(
+            schema,
+            field_name="states",
+            placeholder_name="StateSpec",
+            variant_schemas=variant_schemas,
+            profile="shared"
+        )
+
+        assert result["properties"]["states"]["additionalProperties"] == {"$ref": "#/$defs/Allowed_StateSpec"}
+        assert "Allowed_StateSpec" in result["$defs"]
+
+    def test_schema_update_single_field_updates_field(self, mixin_instance):
+        """Test updating single module field"""
+        schema = {
+            "properties": {
+                "root": {"$ref": "#/$defs/TaskSpec"}
+            },
+            "$defs": {}
+        }
+
+        variant_schemas = [{"title": "TaskA"}, {"title": "TaskB"}]
+
+        result = mixin_instance._schema_update_single_field(
+            schema,
+            field_name="root",
+            placeholder_name="TaskSpec",
+            variant_schemas=variant_schemas,
+            profile="shared"
+        )
+
+        assert result["properties"]["root"] == {"$ref": "#/$defs/Allowed_TaskSpec"}
+        assert "Allowed_TaskSpec" in result["$defs"]
+
+
+class TestLookupModuleClass:
+    """Test the lookup_module_class utility function"""
+
+    @pytest.fixture
+    def test_module(self):
+        """Create and register a test module"""
+        @registry.register(name="TestModule")
+        class TestModule(BaseModule):
+            value: int = 1
+        return TestModule
+
+    def test_lookup_with_module_class_returns_itself(self, test_module):
+        """Test that a BaseModule class returns itself"""
+        result = lookup_module_class(test_module)
+        assert result is test_module
+
+    def test_lookup_with_spec_class_returns_module(self, test_module):
+        """Test that a Spec class looks up the module in registry"""
+        spec_class = test_module.schema_model()
+        result = lookup_module_class(spec_class)
+        assert result is test_module
+
+    def test_lookup_with_spec_instance_returns_module(self, test_module):
+        """Test that a Spec instance looks up the module in registry"""
+        module_instance = test_module()
+        spec_instance = module_instance.spec()
+        result = lookup_module_class(spec_instance)
+        assert result is test_module
+
+    def test_lookup_with_schema_dict_returns_module(self, test_module):
+        """Test that a schema dict looks up the module in registry"""
+        schema_dict = test_module.schema()
+        result = lookup_module_class(schema_dict)
+        assert result is test_module
+
+    def test_lookup_with_string_module_name_returns_module(self, test_module):
+        """Test that a string module name looks up the module"""
+        result = lookup_module_class("TestModule")
+        assert result is test_module
+
+    def test_lookup_with_string_spec_name_returns_module(self, test_module):
+        """Test that a string spec name (with Spec suffix) looks up the module"""
+        result = lookup_module_class("TestModuleSpec")
+        assert result is test_module
+
+    def test_lookup_with_unregistered_returns_none(self):
+        """Test that unregistered module returns None"""
+        class UnregisteredModule(BaseModule):
+            pass
+
+        result = lookup_module_class(UnregisteredModule.schema_model())
+        assert result is None
+
+    def test_lookup_with_invalid_string_returns_none(self):
+        """Test that invalid string name returns None"""
+        result = lookup_module_class("NonExistentModule")
+        assert result is None
+
+    def test_lookup_with_invalid_type_returns_none(self):
+        """Test that invalid type returns None"""
+        result = lookup_module_class(12345)
+        assert result is None
+
+
+class TestRestrictedTaskSchemaMixin:
+    """Test RestrictedTaskSchemaMixin domain-specific behavior"""
+
+    @pytest.fixture
+    def task_with_mixin(self):
+        """Create a test task with RestrictedTaskSchemaMixin"""
+        @registry.register(name="TaskWithMixin")
+        class TaskWithMixin(BaseModule, RestrictedTaskSchemaMixin):
+            value: int = 1
+
+            def restricted_schema(self, *, tasks=None, _profile="shared", _seen=None, **kwargs):
+                return {"title": "TaskWithMixinSpec", "restricted": True, "tasks": tasks}
+        return TaskWithMixin
+
+    @pytest.fixture
+    def regular_task(self):
+        """Create a regular task without the mixin"""
+        @registry.register(name="RegularTask")
+        class RegularTask(BaseModule):
+            value: int = 2
+        return RegularTask
+
+    def test_process_variants_calls_restricted_schema_on_task_mixin(self, task_with_mixin, regular_task):
+        """Test that variants with RestrictedTaskSchemaMixin get restricted_schema called"""
+        # Create a concrete mixin instance to test _schema_process_variants
+        class TestTaskMixin(RestrictedTaskSchemaMixin):
+            def restricted_schema(self, **kwargs):
+                return {}
+
+        mixin = TestTaskMixin()
+
+        # Process variants - task_with_mixin should use restricted_schema
+        schemas = mixin._schema_process_variants(
+            [task_with_mixin],
+            restricted_schema_cls=RestrictedTaskSchemaMixin,
+            tasks=["test"]
+        )
+
+        # Should have called restricted_schema with tasks passed through
+        assert len(schemas) == 1
+        assert schemas[0]["restricted"] is True
+        assert schemas[0]["tasks"] == ["test"]
+
+    def test_process_variants_calls_schema_on_regular_module(self, regular_task):
+        """Test that regular modules get schema() called"""
+        class TestTaskMixin(RestrictedTaskSchemaMixin):
+            def restricted_schema(self, **kwargs):
+                return {}
+
+        mixin = TestTaskMixin()
+
+        # Process regular task
+        schemas = mixin._schema_process_variants(
+            [regular_task],
+            restricted_schema_cls=RestrictedTaskSchemaMixin
+        )
+
+        # Should have called schema(), not restricted_schema()
+        assert len(schemas) == 1
+        assert "restricted" not in schemas[0]
+        assert "RegularTaskSpec" in schemas[0]["title"]
+
+    def test_process_variants_with_filter_fn(self, task_with_mixin, regular_task):
+        """Test that filter_fn is applied correctly"""
+        class TestTaskMixin(RestrictedTaskSchemaMixin):
+            def restricted_schema(self, **kwargs):
+                return {}
+
+        mixin = TestTaskMixin()
+
+        # Filter to only accept task_with_mixin
+        def filter_fn(variant):
+            module_class = lookup_module_class(variant)
+            return module_class is task_with_mixin
+
+        schemas = mixin._schema_process_variants(
+            [task_with_mixin, regular_task],
+            restricted_schema_cls=RestrictedTaskSchemaMixin,
+            filter_fn=filter_fn
+        )
+
+        # Should only have one schema (regular_task filtered out)
+        assert len(schemas) == 1
+        assert schemas[0]["restricted"] is True
+
+    def test_process_variants_raises_for_invalid_variant(self):
+        """Test error for variant that cannot be normalized"""
+        class TestTaskMixin(RestrictedTaskSchemaMixin):
+            def restricted_schema(self, **kwargs):
+                return {}
+
+        mixin = TestTaskMixin()
+
+        # Trying to process an invalid variant should raise TypeError
+        with pytest.raises(TypeError, match="Unsupported variant type"):
+            mixin._schema_process_variants(
+                [object()],
+                restricted_schema_cls=RestrictedTaskSchemaMixin
+            )
 
