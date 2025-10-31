@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Union, Optional, Callable, Tuple, Literal
 from abc import ABC
+from dataclasses import InitVar
 import typing as t
 from abc import abstractmethod
 from enum import Enum, auto
@@ -38,7 +39,11 @@ class FinalState(PseudoState):
     """Final state that marks region completion."""
 
     name: str = "FINAL"
-    status: Attr[ChartStatus] = Attr(ChartStatus.SUCCESS)
+    status: InitVar[ChartStatus] = ChartStatus.SUCCESS
+
+    def __post_init__(self, status: ChartStatus = ChartStatus.SUCCESS):
+        
+        self.status = Attr[ChartStatus](data=status)
 
 
 class ReadyState(PseudoState):

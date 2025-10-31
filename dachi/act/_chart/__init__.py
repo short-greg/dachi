@@ -1,6 +1,7 @@
 from ._base import (
     ChartStatus,
     Recoverable,
+    RestrictedStateSchemaMixin,
 )
 from ._chart import (
     ChartSnapshot,

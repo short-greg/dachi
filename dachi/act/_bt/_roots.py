@@ -84,7 +84,8 @@ class BT(Task, RestrictedTaskSchemaMixin):
         if self.root is not None:
             self.root.reset()
 
-    def restricted_schema(self, *, tasks=None, _profile="shared", _seen=None, **kwargs):
+    @classmethod
+    def restricted_schema(cls, *, tasks=None, _profile="shared", _seen=None, **kwargs):
         """
         Generate restricted schema for BT.
 
@@ -101,10 +102,10 @@ class BT(Task, RestrictedTaskSchemaMixin):
         """
         # If no tasks provided, return unrestricted schema
         if tasks is None:
-            return self.schema()
+            return cls.schema()
 
         # Process task variants (handles RestrictedTaskSchemaMixin recursion)
-        task_schemas = self._schema_process_variants(
+        task_schemas = cls._schema_process_variants(
             tasks,
             restricted_schema_cls=RestrictedTaskSchemaMixin,
             _seen=_seen,
@@ -113,8 +114,8 @@ class BT(Task, RestrictedTaskSchemaMixin):
         )
 
         # Update schema's root field (single Task)
-        schema = self.schema()
-        return self._schema_update_single_field(
+        schema = cls.schema()
+        return cls._schema_update_single_field(
             schema,
             field_name="root",
             placeholder_name="TaskSpec",

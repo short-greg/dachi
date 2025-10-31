@@ -26,7 +26,8 @@ class Multi(Parallel, RestrictedTaskSchemaMixin):
     preempt: bool = False
     auto_run: bool = True
 
-    def restricted_schema(self, *, tasks=None, _profile="shared", _seen=None, **kwargs):
+    @classmethod
+    def restricted_schema(cls, *, tasks=None, _profile="shared", _seen=None, **kwargs):
         """
         Generate restricted schema for Multi.
 
@@ -43,10 +44,10 @@ class Multi(Parallel, RestrictedTaskSchemaMixin):
         """
         # If no tasks provided, return unrestricted schema
         if tasks is None:
-            return self.schema()
+            return cls.schema()
 
         # Process task variants (handles RestrictedTaskSchemaMixin recursion)
-        task_schemas = self._schema_process_variants(
+        task_schemas = cls._schema_process_variants(
             tasks,
             restricted_schema_cls=RestrictedTaskSchemaMixin,
             _seen=_seen,
@@ -55,8 +56,8 @@ class Multi(Parallel, RestrictedTaskSchemaMixin):
         )
 
         # Update schema's tasks field (ModuleList)
-        schema = self.schema()
-        return self._schema_update_list_field(
+        schema = cls.schema()
+        return cls._schema_update_list_field(
             schema,
             field_name="tasks",
             placeholder_name="TaskSpec",

@@ -1346,9 +1346,10 @@ class RestrictedSchemaMixin(ABC):
     - _schema_process_variants(variants, mixin_class, ...) -> list[dict]
     """
 
+    @classmethod
     @abstractmethod
     def restricted_schema(
-        self,
+        cls,
         *,
         _profile: str = "shared",
         _seen: dict | None = None,
@@ -1357,8 +1358,9 @@ class RestrictedSchemaMixin(ABC):
         """Generate restricted schema. Must be implemented by subclasses."""
         raise NotImplementedError()
 
+    @classmethod
     def _schema_process_variants(
-        self,
+        cls,
         variants: list,
         *,
         filter_fn: t.Callable | None = None,
@@ -1371,7 +1373,7 @@ class RestrictedSchemaMixin(ABC):
 
         For each variant:
         - Apply filter_fn if provided
-        - If variant is a class subclassing restricted_schema_cls, create instance and call restricted_schema()
+        - If variant is a class subclassing restricted_schema_cls, call restricted_schema() as classmethod
         - If variant is an instance of restricted_schema_cls, call its restricted_schema() recursively
         - Else use normalize_schema_type_variants to convert it to a schema
 
@@ -1395,19 +1397,18 @@ class RestrictedSchemaMixin(ABC):
         for variant in variants:
             # Check if variant is a CLASS that subclasses the domain-specific mixin
             if isinstance(variant, type) and issubclass(variant, restricted_schema_cls):
-                # Create temporary instance and call restricted_schema
-                temp_instance = variant()
-                schemas.append(temp_instance.restricted_schema(_seen=_seen, **recursive_kwargs))
+                # Call restricted_schema as classmethod - no instance needed!
+                schemas.append(variant.restricted_schema(_seen=_seen, **recursive_kwargs))
 
             # Check if variant is an INSTANCE of the domain-specific mixin
             elif isinstance(variant, restricted_schema_cls):
-                # Call restricted_schema directly
-                schemas.append(variant.restricted_schema(_seen=_seen, **recursive_kwargs))
+                # Call restricted_schema on the instance (delegates to classmethod)
+                schemas.append(variant.__class__.restricted_schema(_seen=_seen, **recursive_kwargs))
 
             # Otherwise, use normalize_schema_type_variants for regular cases
             else:
                 # This handles: module classes, spec classes, spec instances, schema dicts
-                entries = self.normalize_schema_type_variants([variant])
+                entries = cls.normalize_schema_type_variants([variant])
                 if entries:
                     schemas.append(entries[0][1])  # Extract the schema dict
                 else:
@@ -1440,8 +1441,9 @@ class RestrictedSchemaMixin(ABC):
         for o in objs:
             # Module class
             if isinstance(o, type) and issubclass(o, BaseModule):
-                sm = o.schema_model()
-                entries.append((sm.__name__, sm.model_json_schema()))
+                schema_dict = o.schema()
+                name = cls._schema_name_from_dict(schema_dict)
+                entries.append((name, schema_dict))
                 continue
             # Spec model class
             if isinstance(o, type) and issubclass(o, BaseSpec):
@@ -1469,8 +1471,9 @@ class RestrictedSchemaMixin(ABC):
     # 3 Update Helpers (implemented in base)
     # =========================
 
+    @classmethod
     def _schema_update_list_field(
-        self,
+        cls,
         schema: dict,
         *,
         field_name: str,
@@ -1495,19 +1498,19 @@ class RestrictedSchemaMixin(ABC):
         Returns:
             Updated schema dict
         """
-        entries = [(self._schema_name_from_dict(s), s) for s in variant_schemas]
-        self._schema_require_defs_for_entries(schema, entries)
+        entries = [(cls._schema_name_from_dict(s), s) for s in variant_schemas]
+        cls._schema_require_defs_for_entries(schema, entries)
 
         # Build the union
         if profile == "shared":
-            union_ref = self._schema_ensure_shared_union(
+            union_ref = cls._schema_ensure_shared_union(
                 schema,
                 placeholder_name=placeholder_name,
                 entries=entries
             )
             replacement = {"$ref": union_ref}
         else:
-            replacement = self._schema_make_union_inline(entries)
+            replacement = cls._schema_make_union_inline(entries)
 
         # Check if field is nullable (has anyOf with null)
         field_schema = schema.get("properties", {}).get(field_name, {})
@@ -1520,12 +1523,13 @@ class RestrictedSchemaMixin(ABC):
                     break
         else:
             # Non-nullable field: directly update items
-            self._schema_replace_at_path(schema, ["properties", field_name, "items"], replacement)
+            cls._schema_replace_at_path(schema, ["properties", field_name, "items"], replacement)
 
         return schema
 
+    @classmethod
     def _schema_update_dict_field(
-        self,
+        cls,
         schema: dict,
         *,
         field_name: str,
@@ -1548,20 +1552,27 @@ class RestrictedSchemaMixin(ABC):
         Returns:
             Updated schema dict
         """
-        entries = [(self._schema_name_from_dict(s), s) for s in variant_schemas]
-        self._schema_require_defs_for_entries(schema, entries)
+        # Merge $defs from all variant schemas (Pattern A: pass-through schemas may have nested $defs)
+        for variant_schema in variant_schemas:
+            if "$defs" in variant_schema:
+                if "$defs" not in schema:
+                    schema["$defs"] = {}
+                schema["$defs"].update(variant_schema["$defs"])
+
+        entries = [(cls._schema_name_from_dict(s), s) for s in variant_schemas]
+        cls._schema_require_defs_for_entries(schema, entries)
 
         if profile == "shared":
-            union_ref = self._schema_ensure_shared_union(
+            union_ref = cls._schema_ensure_shared_union(
                 schema,
                 placeholder_name=placeholder_name,
                 entries=entries
             )
             replacement = {"$ref": union_ref}
         else:
-            replacement = self._schema_make_union_inline(entries)
+            replacement = cls._schema_make_union_inline(entries)
 
-        self._schema_replace_at_path(
+        cls._schema_replace_at_path(
             schema,
             ["properties", field_name, "additionalProperties"],
             replacement
@@ -1569,8 +1580,9 @@ class RestrictedSchemaMixin(ABC):
 
         return schema
 
+    @classmethod
     def _schema_update_single_field(
-        self,
+        cls,
         schema: dict,
         *,
         field_name: str,
@@ -1593,22 +1605,69 @@ class RestrictedSchemaMixin(ABC):
         Returns:
             Updated schema dict
         """
-        entries = [(self._schema_name_from_dict(s), s) for s in variant_schemas]
-        self._schema_require_defs_for_entries(schema, entries)
+        # Merge $defs from all variant schemas (Pattern A: pass-through schemas may have nested $defs)
+        for variant_schema in variant_schemas:
+            if "$defs" in variant_schema:
+                if "$defs" not in schema:
+                    schema["$defs"] = {}
+                schema["$defs"].update(variant_schema["$defs"])
+
+        entries = [(cls._schema_name_from_dict(s), s) for s in variant_schemas]
+        cls._schema_require_defs_for_entries(schema, entries)
 
         if profile == "shared":
-            union_ref = self._schema_ensure_shared_union(
+            union_ref = cls._schema_ensure_shared_union(
                 schema,
                 placeholder_name=placeholder_name,
                 entries=entries
             )
             replacement = {"$ref": union_ref}
         else:
-            replacement = self._schema_make_union_inline(entries)
+            replacement = cls._schema_make_union_inline(entries)
 
-        self._schema_replace_at_path(schema, ["properties", field_name], replacement)
+        cls._schema_replace_at_path(schema, ["properties", field_name], replacement)
 
         return schema
+
+    @classmethod
+    def _schema_merge_defs(
+        cls,
+        target_schema: dict,
+        *source_schemas: dict
+    ) -> dict:
+        """
+        Merge $defs from source schemas into target schema.
+
+        This is specifically for Pattern A (pass-through) where a child's restricted
+        schema has its own $defs that need to be hoisted to the parent's root-level $defs.
+
+        JSON Schema $ref with "#/$defs/X" always looks at the document root, not nested
+        $defs, so all definitions must be at the root level.
+
+        Args:
+            target_schema: Schema to merge definitions into
+            *source_schemas: One or more schemas whose $defs to merge
+
+        Returns:
+            The target_schema (modified in place)
+
+        Example:
+            # Region has restricted states in its $defs
+            region_schema = Region.restricted_schema(states=[StateA, StateB])
+
+            # Merge Region's $defs into CompositeState's $defs
+            composite_schema = CompositeState.schema()
+            cls._schema_merge_defs(composite_schema, region_schema)
+            # Now composite_schema["$defs"] contains Allowed_BaseStateSpec, etc.
+        """
+        if "$defs" not in target_schema:
+            target_schema["$defs"] = {}
+
+        for source_schema in source_schemas:
+            if "$defs" in source_schema:
+                target_schema["$defs"].update(source_schema["$defs"])
+
+        return target_schema
 
     # =========================
     # Low-Level Schema Helpers

@@ -924,6 +924,165 @@ class TestChartHandleEvent:
         await chart.handle_event(event)
 
 
+class TestRegionRestrictedSchema:
+    """Test Region.restricted_schema() - Pattern B (Direct Variants)"""
+
+    def test_restricted_schema_returns_unrestricted_when_states_none(self):
+        """Test that states=None returns unrestricted schema"""
+        region = Region(name="test", initial="idle", rules=[])
+        restricted = region.restricted_schema(states=None)
+        unrestricted = region.schema()
+
+        # Should be identical
+        assert restricted == unrestricted
+
+    def test_restricted_schema_updates_states_field_with_variants(self):
+        """Test that states field is restricted to specified variants"""
+        region = Region(name="test", initial="idle", rules=[])
+
+        # Restrict to only IdleState and ActiveState
+        restricted = region.restricted_schema(
+            states=[IdleState, ActiveState]
+        )
+
+        # Check that schema was updated
+        assert "$defs" in restricted
+        assert "Allowed_BaseStateSpec" in restricted["$defs"]
+
+        # Check that Allowed_BaseStateSpec contains our variants
+        allowed_union = restricted["$defs"]["Allowed_BaseStateSpec"]
+        assert "oneOf" in allowed_union
+        refs = allowed_union["oneOf"]
+        assert len(refs) == 2
+
+        # Extract spec names from refs
+        spec_names = {ref["$ref"].split("/")[-1] for ref in refs}
+        # Spec names include module path, so check if they contain the expected name
+        assert any("IdleStateSpec" in name for name in spec_names)
+        assert any("ActiveStateSpec" in name for name in spec_names)
+
+    def test_restricted_schema_uses_shared_profile_by_default(self):
+        """Test that default profile is 'shared' (uses $defs/Allowed_*)"""
+        region = Region(name="test", initial="idle", rules=[])
+        restricted = region.restricted_schema(states=[IdleState])
+
+        # Should use shared union in $defs
+        assert "Allowed_BaseStateSpec" in restricted["$defs"]
+
+        # states field should reference the shared union (ModuleDict additionalProperties)
+        states_schema = restricted["properties"]["states"]
+        assert states_schema["additionalProperties"] == {"$ref": "#/$defs/Allowed_BaseStateSpec"}
+
+    def test_restricted_schema_inline_profile_creates_oneof(self):
+        """Test that _profile='inline' creates inline oneOf"""
+        region = Region(name="test", initial="idle", rules=[])
+        restricted = region.restricted_schema(
+            states=[IdleState, ActiveState],
+            _profile="inline"
+        )
+
+        # Should still have defs for the individual states (with full module path)
+        defs_keys = restricted["$defs"].keys()
+        assert any("IdleStateSpec" in key for key in defs_keys)
+        assert any("ActiveStateSpec" in key for key in defs_keys)
+
+        # But states field should have inline oneOf (no Allowed_BaseStateSpec)
+        states_schema = restricted["properties"]["states"]
+        assert "oneOf" in states_schema["additionalProperties"]
+
+    def test_restricted_schema_with_state_spec_class(self):
+        """Test that StateSpec classes work as variants"""
+        region = Region(name="test", initial="idle", rules=[])
+
+        # Get the spec class
+        spec_class = IdleState.schema_model()
+
+        restricted = region.restricted_schema(states=[spec_class])
+
+        # Should work and include the state (with full module path)
+        defs_keys = restricted["$defs"].keys()
+        assert any("IdleStateSpec" in key for key in defs_keys)
+
+    def test_restricted_schema_with_mixed_formats(self):
+        """Test that mixed variant formats work together"""
+        region = Region(name="test", initial="idle", rules=[])
+
+        # Mix: class, spec class, schema dict
+        spec_class = IdleState.schema_model()
+        schema_dict = ActiveState.schema()
+
+        restricted = region.restricted_schema(
+            states=[IdleState, spec_class, schema_dict]
+        )
+
+        # All should be included
+        defs_keys = restricted["$defs"].keys()
+        assert any("IdleStateSpec" in key for key in defs_keys)
+        assert any("ActiveStateSpec" in key for key in defs_keys)
+
+
+class TestStateChartRestrictedSchema:
+    """Test StateChart.restricted_schema() - Pattern A (Pass-Through)"""
+
+    def test_restricted_schema_returns_unrestricted_when_states_none(self):
+        """Test that states=None returns unrestricted schema"""
+        restricted = StateChart.restricted_schema(states=None)
+        unrestricted = StateChart.schema()
+
+        # Should be identical
+        assert restricted == unrestricted
+
+    def test_restricted_schema_passes_states_to_region(self):
+        """Test that states are passed through to Region schema"""
+        # Restrict to only IdleState and ActiveState
+        restricted = StateChart.restricted_schema(
+            states=[IdleState, ActiveState]
+        )
+
+        # Check that schema was updated
+        assert "$defs" in restricted
+        # Region schema should have Allowed_BaseStateSpec
+        assert "Allowed_BaseStateSpec" in restricted["$defs"]
+
+        # Check that Region schema is in defs
+        region_spec_keys = [k for k in restricted["$defs"].keys() if "RegionSpec" in k]
+        assert len(region_spec_keys) >= 1
+
+    def test_restricted_schema_updates_regions_field(self):
+        """Test that regions field is updated with restricted Region schema"""
+        restricted = StateChart.restricted_schema(
+            states=[IdleState, ActiveState]
+        )
+
+        # regions field should have items pointing to a Region schema
+        regions_schema = restricted["properties"]["regions"]
+        assert "items" in regions_schema
+
+        # The items should be a $ref to Allowed_RegionSpec or RegionSpec
+        items = regions_schema["items"]
+        assert "$ref" in items
+        assert "RegionSpec" in items["$ref"]
+
+    def test_restricted_schema_uses_shared_profile_by_default(self):
+        """Test that default profile is 'shared'"""
+        restricted = StateChart.restricted_schema(states=[IdleState])
+
+        # Should use shared union in $defs
+        assert "Allowed_BaseStateSpec" in restricted["$defs"]
+
+    def test_restricted_schema_inline_profile_creates_oneof(self):
+        """Test that _profile='inline' creates inline oneOf"""
+        restricted = StateChart.restricted_schema(
+            states=[IdleState, ActiveState],
+            _profile="inline"
+        )
+
+        # Should still have defs for the individual states
+        defs_keys = restricted["$defs"].keys()
+        assert any("IdleStateSpec" in key for key in defs_keys)
+        assert any("ActiveStateSpec" in key for key in defs_keys)
+
+
 # Run a quick test to see if this works
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

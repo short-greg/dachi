@@ -356,9 +356,13 @@ def test_schema_kind_field():
 
 def test_spec_kind_matches_classname():
     class WithParams(BaseModule):
-        w: Param[float]
-        s: Attr[int]
+        w: InitVar[float]
+        s: InitVar[int]
         name: str
+
+        def __post_init__(self, w: float, s: int):
+            self.w = Param(data=w)
+            self.s = Attr(data=s)
     wp = WithParams(w=Param(data=1.0), s=Attr(data=1), name="k")
     assert wp.spec(to_dict=False).kind.endswith("WithParams")
 
@@ -2275,6 +2279,61 @@ class TestRestrictedSchemaMixin:
 
         assert result["properties"]["root"] == {"$ref": "#/$defs/Allowed_TaskSpec"}
         assert "Allowed_TaskSpec" in result["$defs"]
+
+    def test_schema_merge_defs_merges_single_source(self, mixin_instance):
+        """Test that $defs from source schema are merged into target"""
+        target = {"$defs": {"Existing": {"title": "Existing"}}}
+        source = {"$defs": {"NewDef": {"title": "NewDef"}}}
+
+        result = mixin_instance._schema_merge_defs(target, source)
+
+        assert result is target  # Returns same object (modified in place)
+        assert "Existing" in result["$defs"]
+        assert "NewDef" in result["$defs"]
+        assert result["$defs"]["NewDef"] == {"title": "NewDef"}
+
+    def test_schema_merge_defs_merges_multiple_sources(self, mixin_instance):
+        """Test that $defs from multiple source schemas are all merged"""
+        target = {"$defs": {}}
+        source1 = {"$defs": {"Def1": {"title": "Def1"}}}
+        source2 = {"$defs": {"Def2": {"title": "Def2"}}}
+        source3 = {"$defs": {"Def3": {"title": "Def3"}}}
+
+        result = mixin_instance._schema_merge_defs(target, source1, source2, source3)
+
+        assert "Def1" in result["$defs"]
+        assert "Def2" in result["$defs"]
+        assert "Def3" in result["$defs"]
+
+    def test_schema_merge_defs_creates_defs_if_missing(self, mixin_instance):
+        """Test that $defs is created in target if it doesn't exist"""
+        target = {"properties": {}}  # No $defs
+        source = {"$defs": {"NewDef": {"title": "NewDef"}}}
+
+        result = mixin_instance._schema_merge_defs(target, source)
+
+        assert "$defs" in result
+        assert result["$defs"]["NewDef"] == {"title": "NewDef"}
+
+    def test_schema_merge_defs_handles_source_without_defs(self, mixin_instance):
+        """Test that sources without $defs are handled gracefully"""
+        target = {"$defs": {"Existing": {"title": "Existing"}}}
+        source1 = {"properties": {}}  # No $defs
+        source2 = {"$defs": {"NewDef": {"title": "NewDef"}}}
+
+        result = mixin_instance._schema_merge_defs(target, source1, source2)
+
+        assert "Existing" in result["$defs"]
+        assert "NewDef" in result["$defs"]
+
+    def test_schema_merge_defs_overwrites_duplicate_keys(self, mixin_instance):
+        """Test that duplicate keys are overwritten (dict.update behavior)"""
+        target = {"$defs": {"SharedKey": {"version": 1}}}
+        source = {"$defs": {"SharedKey": {"version": 2}}}
+
+        result = mixin_instance._schema_merge_defs(target, source)
+
+        assert result["$defs"]["SharedKey"] == {"version": 2}
 
 
 class TestLookupModuleClass:

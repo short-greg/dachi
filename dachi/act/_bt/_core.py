@@ -640,8 +640,9 @@ class RestrictedTaskSchemaMixin(RestrictedSchemaMixin):
     inheriting all base functionality from core.RestrictedSchemaMixin.
     """
 
+    @classmethod
     def restricted_schema(
-        self,
+        cls,
         *,
         tasks: list | None = None,
         _profile: str = "shared",
@@ -667,5 +668,5 @@ class RestrictedTaskSchemaMixin(RestrictedSchemaMixin):
             NotImplementedError: Must be implemented by subclasses
         """
         raise NotImplementedError(
-            f"{self.__class__.__name__} must implement restricted_schema()"
+            f"{cls.__name__} must implement restricted_schema()"
         )

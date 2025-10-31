@@ -890,3 +890,72 @@ class TestCompositeStateExit:
         composite.exit(post, ctx)
         # Empty composite should succeed on exit
         assert composite._status.get() == ChartStatus.SUCCESS
+
+
+class TestCompositeStateRestrictedSchema:
+    """Test CompositeState.restricted_schema() - Pattern A (Pass-Through)"""
+
+    def test_restricted_schema_returns_unrestricted_when_states_none(self):
+        """Test that states=None returns unrestricted schema"""
+        composite = CompositeState(regions=ModuleList(items=[]))
+        restricted = composite.restricted_schema(states=None)
+        unrestricted = composite.schema()
+
+        # Should be identical
+        assert restricted == unrestricted
+
+    def test_restricted_schema_passes_states_to_region(self):
+        """Test that states are passed through to Region schema"""
+        composite = CompositeState(regions=ModuleList(items=[]))
+
+        # Restrict to only SimpleState and SimpleFinal
+        restricted = composite.restricted_schema(
+            states=[SimpleState, SimpleFinal]
+        )
+
+        # Check that schema was updated
+        assert "$defs" in restricted
+        # Region schema should have Allowed_BaseStateSpec
+        assert "Allowed_BaseStateSpec" in restricted["$defs"]
+
+        # Check that Region schema is in defs
+        region_spec_keys = [k for k in restricted["$defs"].keys() if "RegionSpec" in k]
+        assert len(region_spec_keys) >= 1
+
+    def test_restricted_schema_updates_regions_field(self):
+        """Test that regions field is updated with restricted Region schema"""
+        composite = CompositeState(regions=ModuleList(items=[]))
+
+        restricted = composite.restricted_schema(
+            states=[SimpleState, SimpleFinal]
+        )
+
+        # regions field should have items pointing to a Region schema
+        regions_schema = restricted["properties"]["regions"]
+        assert "items" in regions_schema
+
+        # The items should be a $ref to a RegionSpec
+        items = regions_schema["items"]
+        assert "$ref" in items
+        assert "RegionSpec" in items["$ref"]
+
+    def test_restricted_schema_uses_shared_profile_by_default(self):
+        """Test that default profile is 'shared'"""
+        composite = CompositeState(regions=ModuleList(items=[]))
+        restricted = composite.restricted_schema(states=[SimpleState])
+
+        # Should use shared union in $defs
+        assert "Allowed_BaseStateSpec" in restricted["$defs"]
+
+    def test_restricted_schema_inline_profile_creates_oneof(self):
+        """Test that _profile='inline' creates inline oneOf"""
+        composite = CompositeState(regions=ModuleList(items=[]))
+        restricted = composite.restricted_schema(
+            states=[SimpleState, SimpleFinal],
+            _profile="inline"
+        )
+
+        # Should still have defs for the individual states
+        defs_keys = restricted["$defs"].keys()
+        assert any("SimpleStateSpec" in key for key in defs_keys)
+        assert any("SimpleFinalSpec" in key for key in defs_keys)

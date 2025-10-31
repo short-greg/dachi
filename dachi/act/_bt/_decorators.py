@@ -13,7 +13,8 @@ class Decorator(CompositeTask, RestrictedTaskSchemaMixin):
 
     task: Task
 
-    def restricted_schema(self, *, tasks=None, _profile="shared", _seen=None, **kwargs):
+    @classmethod
+    def restricted_schema(cls, *, tasks=None, _profile="shared", _seen=None, **kwargs):
         """
         Generate restricted schema for Decorator.
 
@@ -30,10 +31,10 @@ class Decorator(CompositeTask, RestrictedTaskSchemaMixin):
         """
         # If no tasks provided, return unrestricted schema
         if tasks is None:
-            return self.schema()
+            return cls.schema()
 
         # Process task variants (handles RestrictedTaskSchemaMixin recursion)
-        task_schemas = self._schema_process_variants(
+        task_schemas = cls._schema_process_variants(
             tasks,
             restricted_schema_cls=RestrictedTaskSchemaMixin,
             _seen=_seen,
@@ -42,8 +43,8 @@ class Decorator(CompositeTask, RestrictedTaskSchemaMixin):
         )
 
         # Update schema's task field (single Task)
-        schema = self.schema()
-        return self._schema_update_single_field(
+        schema = cls.schema()
+        return cls._schema_update_single_field(
             schema,
             field_name="task",
             placeholder_name="TaskSpec",
@@ -169,7 +170,8 @@ class BoundTask(Task, RestrictedTaskSchemaMixin):
     leaf: Leaf
     bindings: t.Dict[str, str]
 
-    def restricted_schema(self, *, tasks=None, _profile="shared", _seen=None, **kwargs):
+    @classmethod
+    def restricted_schema(cls, *, tasks=None, _profile="shared", _seen=None, **kwargs):
         """
         Generate restricted schema for BoundTask.
 
@@ -187,17 +189,17 @@ class BoundTask(Task, RestrictedTaskSchemaMixin):
         """
         # If no tasks provided, return unrestricted schema
         if tasks is None:
-            return self.schema()
+            return cls.schema()
 
         # Filter to only Leaf subclasses
         leaf_variants = list(filter_class_variants(Leaf, tasks))
 
         # If no valid Leaf variants, return unrestricted schema
         if not leaf_variants:
-            return self.schema()
+            return cls.schema()
 
         # Process leaf variants (handles RestrictedTaskSchemaMixin recursion)
-        leaf_schemas = self._schema_process_variants(
+        leaf_schemas = cls._schema_process_variants(
             leaf_variants,
             restricted_schema_cls=RestrictedTaskSchemaMixin,
             _seen=_seen,
@@ -206,8 +208,8 @@ class BoundTask(Task, RestrictedTaskSchemaMixin):
         )
 
         # Update schema's leaf field (single Leaf)
-        schema = self.schema()
-        return self._schema_update_single_field(
+        schema = cls.schema()
+        return cls._schema_update_single_field(
             schema,
             field_name="leaf",
             placeholder_name="LeafSpec",

@@ -5,15 +5,15 @@ import logging
 
 from typing import Literal
 from ._state import BaseState
-from ._base import ChartStatus, InvalidTransition, Recoverable
+from ._base import ChartStatus, InvalidTransition, Recoverable, RestrictedStateSchemaMixin
 from ._event import EventPost, ChartEventHandler, Event
 from ._region import Region, ValidationResult
-from dachi.core import Ctx, ModuleList, RestrictedSchemaMixin
+from dachi.core import Ctx, ModuleList
 
 logger = logging.getLogger("dachi.statechart")
 
 
-class CompositeState(BaseState, ChartEventHandler, Recoverable, RestrictedSchemaMixin):
+class CompositeState(BaseState, ChartEventHandler, Recoverable, RestrictedStateSchemaMixin):
     """Composite state containing nested regions.
 
     Lifecycle:
@@ -185,8 +185,45 @@ class CompositeState(BaseState, ChartEventHandler, Recoverable, RestrictedSchema
         """Check if any child regions can recover."""
         return any(region.can_recover() for region in self.regions)
 
-    def restricted_schema(self, *, states: t.List[BaseState] | None=None, _profile = "shared", _seen = None, **kwargs):
-        raise NotImplementedError
+    @classmethod
+    def restricted_schema(cls, *, states: t.List[BaseState] | None = None, _profile: str = "shared", _seen: dict | None = None, **kwargs):
+        """
+        Generate restricted schema for CompositeState with allowed state variants.
+
+        Pattern A: Pass-Through - pass states down to child Region.
+
+        Args:
+            states: List of allowed state variants
+            _profile: "shared" (use $defs/Allowed_*) or "inline" (use oneOf)
+            _seen: Cycle detection dict
+            **kwargs: Additional arguments passed to nested restricted_schema() calls
+
+        Returns:
+            Restricted schema dict
+        """
+        if states is None:
+            return cls.schema()
+
+        # Pattern A: Pass states to Region.restricted_schema()
+        region_schema = Region.restricted_schema(
+            states=states,
+            _profile=_profile,
+            _seen=_seen,
+            **kwargs
+        )
+
+        # Get base schema and merge $defs from region_schema (Pattern A requirement)
+        schema = cls.schema()
+        cls._schema_merge_defs(schema, region_schema)
+
+        # Update schema's regions field (ModuleList) with ONE Region schema
+        return cls._schema_update_list_field(
+            schema,
+            field_name="regions",
+            placeholder_name="RegionSpec",
+            variant_schemas=[region_schema],
+            profile=_profile
+        )
 
     def recover(self, policy: Literal["shallow", "deep"]) -> None:
         """Recover child regions using the given policy."""

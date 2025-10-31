@@ -6,7 +6,8 @@ import asyncio
 from ._base import ChartBase, ChartStatus, InvalidTransition, Recoverable
 
 # Local
-from dachi.core import Attr, ModuleDict, Ctx, RestrictedSchemaMixin
+from dachi.core import Attr, ModuleDict, Ctx
+from ._base import RestrictedStateSchemaMixin
 from ._state import State, StreamState, BaseState, PseudoState, ReadyState, FinalState, HistoryState
 from ._event import Event, EventPost, ChartEventHandler
 import logging
@@ -94,7 +95,7 @@ class RegionSnapshot(TypedDict, total=False):
     pending_target: Optional[str]
 
 
-class Region(ChartBase, ChartEventHandler, Recoverable, RestrictedSchemaMixin):
+class Region(ChartBase, ChartEventHandler, Recoverable, RestrictedStateSchemaMixin):
     # ----- Spec fields (serialized) -----
     name: str
     initial: str  # Initial state name
@@ -248,8 +249,43 @@ class Region(ChartBase, ChartEventHandler, Recoverable, RestrictedSchemaMixin):
 
         return result
 
-    def restricted_schema(self, *, states: List[State] | None=None, _profile = "shared", _seen = None, **kwargs):
-        raise NotImplementedError
+    @classmethod
+    def restricted_schema(cls, *, states: List[State] | None = None, _profile: str = "shared", _seen: dict | None = None, **kwargs):
+        """
+        Generate restricted schema for Region with allowed state variants.
+
+        Pattern B: Direct Variants - states field accepts variants directly.
+
+        Args:
+            states: List of allowed state variants
+            _profile: "shared" (use $defs/Allowed_*) or "inline" (use oneOf)
+            _seen: Cycle detection dict
+            **kwargs: Additional arguments passed to nested restricted_schema() calls
+
+        Returns:
+            Restricted schema dict
+        """
+        if states is None:
+            return cls.schema()
+
+        # Pattern B: Process state variants directly
+        state_schemas = cls._schema_process_variants(
+            states,
+            restricted_schema_cls=RestrictedStateSchemaMixin,
+            _seen=_seen,
+            states=states,
+            **kwargs
+        )
+
+        # Update schema's states field (ModuleDict)
+        schema = cls.schema()
+        return cls._schema_update_dict_field(
+            schema,
+            field_name="states",
+            placeholder_name="BaseStateSpec",
+            variant_schemas=state_schemas,
+            profile=_profile
+        )
 
     def add(self, state: State) -> None:
         """Add a State instance to the region

@@ -1,5 +1,6 @@
 from __future__ import annotations
 import asyncio
+import typing as t
 from typing import Any, Dict, List, Optional, Union, Literal
 from ._base import ChartBase, ChartStatus
 from ._state import BaseState
@@ -191,8 +192,45 @@ class StateChart(ChartBase, ChartEventHandler, RestrictedSchemaMixin):
                     ctx = self._scope.ctx(i)
                     await region.handle_event(event, post, ctx)
 
-    def restricted_schema(self, *, states: List[BaseState] | None=None, _profile = "shared", _seen = None, **kwargs):
-        raise NotImplementedError
+    @classmethod
+    def restricted_schema(cls, *, states: t.List[BaseState] | None = None, _profile: str = "shared", _seen: dict | None = None, **kwargs):
+        """
+        Generate restricted schema for StateChart with allowed state variants.
+
+        Pattern A: Pass-Through - pass states down to child Region.
+
+        Args:
+            states: List of allowed state variants
+            _profile: "shared" (use $defs/Allowed_*) or "inline" (use oneOf)
+            _seen: Cycle detection dict
+            **kwargs: Additional arguments passed to nested restricted_schema() calls
+
+        Returns:
+            Restricted schema dict
+        """
+        if states is None:
+            return cls.schema()
+
+        # Pattern A: Pass states to Region.restricted_schema()
+        region_schema = Region.restricted_schema(
+            states=states,
+            _profile=_profile,
+            _seen=_seen,
+            **kwargs
+        )
+
+        # Get base schema and merge $defs from region_schema (Pattern A requirement)
+        schema = cls.schema()
+        cls._schema_merge_defs(schema, region_schema)
+
+        # Update schema's regions field (ModuleList) with ONE Region schema
+        return cls._schema_update_list_field(
+            schema,
+            field_name="regions",
+            placeholder_name="RegionSpec",
+            variant_schemas=[region_schema],
+            profile=_profile
+        )
 
     async def stop(self) -> None:
         """Stop the state chart by stopping all running regions.

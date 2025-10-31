@@ -31,7 +31,8 @@ class Serial(CompositeTask):
         """
         self._cascaded.data = cascaded
 
-    def restricted_schema(self, *, tasks: t.List[Task] | None=None, _profile = "shared", _seen = None, **kwargs):
+    @classmethod
+    def restricted_schema(cls, *, tasks: t.List[Task] | None=None, _profile = "shared", _seen = None, **kwargs):
         raise NotImplementedError
 
 
@@ -41,7 +42,8 @@ class Sequence(Serial, RestrictedTaskSchemaMixin):
 
     tasks: ModuleList[Task] = None
 
-    def restricted_schema(self, *, tasks=None, _profile="shared", _seen=None, **kwargs):
+    @classmethod
+    def restricted_schema(cls, *, tasks=None, _profile="shared", _seen=None, **kwargs):
         """
         Generate restricted schema for Sequence.
 
@@ -58,10 +60,10 @@ class Sequence(Serial, RestrictedTaskSchemaMixin):
         """
         # If no tasks provided, return unrestricted schema
         if tasks is None:
-            return self.schema()
+            return cls.schema()
 
         # Process task variants (handles RestrictedTaskSchemaMixin recursion)
-        task_schemas = self._schema_process_variants(
+        task_schemas = cls._schema_process_variants(
             tasks,
             restricted_schema_cls=RestrictedTaskSchemaMixin,
             _seen=_seen,
@@ -70,8 +72,8 @@ class Sequence(Serial, RestrictedTaskSchemaMixin):
         )
 
         # Update schema's tasks field (ModuleList)
-        schema = self.schema()
-        return self._schema_update_list_field(
+        schema = cls.schema()
+        return cls._schema_update_list_field(
             schema,
             field_name="tasks",
             placeholder_name="TaskSpec",
@@ -176,7 +178,8 @@ class Selector(Serial, RestrictedTaskSchemaMixin):
     """
     tasks: ModuleList[Task] = None
 
-    def restricted_schema(self, *, tasks=None, _profile="shared", _seen=None, **kwargs):
+    @classmethod
+    def restricted_schema(cls, *, tasks=None, _profile="shared", _seen=None, **kwargs):
         """
         Generate restricted schema for Selector.
 
@@ -193,10 +196,10 @@ class Selector(Serial, RestrictedTaskSchemaMixin):
         """
         # If no tasks provided, return unrestricted schema
         if tasks is None:
-            return self.schema()
+            return cls.schema()
 
         # Process task variants (handles RestrictedTaskSchemaMixin recursion)
-        task_schemas = self._schema_process_variants(
+        task_schemas = cls._schema_process_variants(
             tasks,
             restricted_schema_cls=RestrictedTaskSchemaMixin,
             _seen=_seen,
@@ -205,8 +208,8 @@ class Selector(Serial, RestrictedTaskSchemaMixin):
         )
 
         # Update schema's tasks field (ModuleList)
-        schema = self.schema()
-        return self._schema_update_list_field(
+        schema = cls.schema()
+        return cls._schema_update_list_field(
             schema,
             field_name="tasks",
             placeholder_name="TaskSpec",
@@ -329,7 +332,8 @@ class PreemptCond(Serial, RestrictedTaskSchemaMixin):
     cond: Condition | ModuleList
     task: Task
 
-    def restricted_schema(self, *, tasks=None, _profile="shared", _seen=None, **kwargs):
+    @classmethod
+    def restricted_schema(cls, *, tasks=None, _profile="shared", _seen=None, **kwargs):
         """
         Generate restricted schema for PreemptCond.
 
@@ -347,23 +351,23 @@ class PreemptCond(Serial, RestrictedTaskSchemaMixin):
         """
         # If no tasks provided, return unrestricted schema
         if tasks is None:
-            return self.schema()
+            return cls.schema()
 
-        schema = self.schema()
+        schema = cls.schema()
 
         # Filter tasks to only Condition subclasses for cond field
         cond_variants = list(filter_class_variants(Condition, tasks))
 
         # Update cond field if we have valid Condition variants
         if cond_variants:
-            cond_schemas = self._schema_process_variants(
+            cond_schemas = cls._schema_process_variants(
                 cond_variants,
                 restricted_schema_cls=RestrictedTaskSchemaMixin,
                 _seen=_seen,
                 tasks=tasks,
                 **kwargs
             )
-            schema = self._schema_update_single_field(
+            schema = cls._schema_update_single_field(
                 schema,
                 field_name="cond",
                 placeholder_name="ConditionSpec",
@@ -372,14 +376,14 @@ class PreemptCond(Serial, RestrictedTaskSchemaMixin):
             )
 
         # Update task field with all task variants
-        task_schemas = self._schema_process_variants(
+        task_schemas = cls._schema_process_variants(
             tasks,
             restricted_schema_cls=RestrictedTaskSchemaMixin,
             _seen=_seen,
             tasks=tasks,
             **kwargs
         )
-        schema = self._schema_update_single_field(
+        schema = cls._schema_update_single_field(
             schema,
             field_name="task",
             placeholder_name="TaskSpec",
