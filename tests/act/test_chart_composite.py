@@ -15,6 +15,21 @@ from dachi.act._chart._event import EventQueue, EventPost
 from dachi.core import Scope, ModuleList
 
 
+@pytest.fixture(autouse=True)
+async def cleanup_tasks():
+    """Ensure all pending tasks are cancelled after each test."""
+    yield
+    # Give tasks a moment to complete naturally
+    await asyncio.sleep(0.001)
+    # Cancel any remaining tasks (except current task)
+    tasks = [t for t in asyncio.all_tasks() if not t.done() and t != asyncio.current_task()]
+    for task in tasks:
+        task.cancel()
+    # Wait for cancellation to complete
+    if tasks:
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+
 class SimpleState(State):
     async def execute(self, post, **inputs):
         pass

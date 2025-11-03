@@ -134,6 +134,18 @@ class ChartBase(BaseModule):
         """Check if state can be reset."""
         return self._status.get().is_completed()
 
+    async def cancel(self) -> None:
+        """Cancel this component and all its resources.
+
+        Only acts if not already in a finished state (SUCCESS, FAILURE, CANCELED).
+        Subclasses should override to cancel their specific resources first,
+        then call super().cancel() to set the status.
+        """
+        if self._status.get().is_completed():
+            return
+
+        self._status.set(ChartStatus.CANCELED)
+
     async def finish(self, post: EventPost | None=None, ctx: Ctx | None=None) -> None:
         """Mark as finished and invoke finish callbacks.
 

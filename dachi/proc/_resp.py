@@ -736,7 +736,7 @@ class JSONListOut(ToOut):
         print(data)  # Output: [MyModel(name='John', age=25), MyModel(name='Jane', age=30)]
     """
     
-    model_cls: typing.Type[pydantic.BaseModel] | None = None
+    json_model: typing.Type[pydantic.BaseModel] | None = None
     
     def forward(self, resp: str | None) -> typing.Any:
         """Process complete JSON array response"""
@@ -748,8 +748,8 @@ class JSONListOut(ToOut):
             if not isinstance(data, list):
                 raise RuntimeError("Expected JSON array, got different type")
             
-            if self.model_cls:
-                return [self.model_cls(**item) if isinstance(item, dict) else item for item in data]
+            if self.json_model:
+                return [self.json_model(**item) if isinstance(item, dict) else item for item in data]
             return data
         except json.JSONDecodeError as e:
             raise RuntimeError(f"Failed to parse JSON array: {e}") from e
@@ -770,9 +770,9 @@ class JSONListOut(ToOut):
             parsed = json.loads(val)
             if isinstance(parsed, list) and len(parsed) > processed_count:
                 new_items = parsed[processed_count:]
-                if self.model_cls:
+                if self.json_model:
                     new_items = [
-                        self.model_cls(**item) if isinstance(item, dict) else item 
+                        self.json_model(**item) if isinstance(item, dict) else item 
                         for item in new_items
                     ]
                 delta_store['processed_count'] = len(parsed)
@@ -788,16 +788,16 @@ class JSONListOut(ToOut):
     
     def template(self) -> str:
         """Template for JSON array output"""
-        if self.model_cls:
-            schema = self.model_cls.model_json_schema()
+        if self.json_model:
+            schema = self.json_model.model_json_schema()
             return f'[{json.dumps(schema.get("properties", {}))}, ...]'
         return '[{"key": "<value>"}, ...]'
     
     def example(self) -> str:
         """Example JSON array output"""
-        if self.model_cls:
+        if self.json_model:
             try:
-                example_obj = self.model_cls()
+                example_obj = self.json_model()
                 return self.render([example_obj.model_dump(), example_obj.model_dump()])
             except Exception:
                 pass

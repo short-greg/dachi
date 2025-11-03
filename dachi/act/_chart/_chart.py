@@ -61,6 +61,26 @@ class StateChart(ChartBase, ChartEventHandler, RestrictedSchemaMixin):
         self._timer = Timer(queue=self._queue, clock=self._clock)
         self._scope = Scope(name=self.name)
         self._event_loop_task: Optional[asyncio.Task] = None
+        self._event_tasks: t.Set[asyncio.Task] = set()
+
+    async def cancel(self) -> None:
+        """Cancel state chart, all regions, and event tasks."""
+        if self._status.get().is_completed():
+            return
+
+        # Cancel event processing tasks
+        for task in self._event_tasks:
+            if not task.done():
+                task.cancel()
+        if self._event_tasks:
+            await asyncio.gather(*self._event_tasks, return_exceptions=True)
+        self._event_tasks.clear()
+
+        # Cancel all regions
+        for region in self.regions:
+            await region.cancel()
+
+        await super().cancel()
 
     def reset(self):
         """
@@ -69,7 +89,13 @@ class StateChart(ChartBase, ChartEventHandler, RestrictedSchemaMixin):
         if not self.can_reset():
             raise RuntimeError(f"Cannot reset chart in {self._status.get()} state")
         super().reset()
-        
+
+        # Cancel any pending event tasks
+        for task in self._event_tasks:
+            if not task.done():
+                task.cancel()
+        self._event_tasks.clear()
+
         self._status.set(ChartStatus.WAITING)
         self._started_at.set(None)
         self._finished_at.set(None)
@@ -175,7 +201,9 @@ class StateChart(ChartBase, ChartEventHandler, RestrictedSchemaMixin):
             return
 
         event_to_process = self._queue.pop_nowait()
-        loop.create_task(self.handle_event(event_to_process))
+        task = loop.create_task(self.handle_event(event_to_process))
+        self._event_tasks.add(task)
+        task.add_done_callback(self._event_tasks.discard)
 
     async def handle_event(self, event: Event, post: Optional[EventPost]=None, ctx: Optional[Ctx]=None) -> None:
         """

@@ -471,6 +471,22 @@ class Region(ChartBase, ChartEventHandler, Recoverable, RestrictedStateSchemaMix
                 self._cur_task.cancel()
 
 
+    async def cancel(self) -> None:
+        """Cancel region and its current running state."""
+        if self._status.get().is_completed():
+            return
+
+        # Cancel current task
+        if self._cur_task and not self._cur_task.done():
+            self._cur_task.cancel()
+            try:
+                await self._cur_task
+            except asyncio.CancelledError:
+                pass
+        self._cur_task = None
+
+        await super().cancel()
+
     def reset(self):
         """Reset region back to READY state.
 

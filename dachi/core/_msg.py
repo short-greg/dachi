@@ -121,12 +121,11 @@ class Msg(BaseModel):
     )
     tags: t.List[str] = Field(default_factory=list, description="List of tags associated with the message")
     meta: t.Dict[str, t.Any] = Field(
-        default_factory=dict, 
+        default_factory=dict,
         description="Metadata dictionary for additional information"
     )
 
-    class Config:
-        extra = "allow"
+    model_config = pydantic.ConfigDict(extra="allow")
 
     def render(self) -> str:
         """Compact, human-readable line for logs."""

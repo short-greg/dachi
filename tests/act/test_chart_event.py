@@ -6,6 +6,7 @@ framework testing conventions.
 
 import asyncio
 import pytest
+import pytest_asyncio
 import time
 import sys
 import os
@@ -812,7 +813,7 @@ class TestPostTimerEdgeCases:
         assert result.startswith("timer_")
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def timer_fixture():
     """Fixture that creates a Timer and cleans it up after the test."""
     queue = EventQueue()

@@ -132,7 +132,7 @@ class MockAsyncResponses:
 
 # Test data structures
 @tool
-def test_function(query: str) -> str:
+def tool_test_function(query: str) -> str:
     """A test function for tool testing"""
     return f"Result: {query}"
 
@@ -201,13 +201,13 @@ class TestOpenAIChat:
         assert api_calls[0]['model'] == 'gpt-4-turbo'
     
     def test_to_input_with_tools_parameter_converts_to_openai_format(self):
-        msg = Prompt(role="user", text="Hello", tools=[test_function])
+        msg = Prompt(role="user", text="Hello", tools=[tool_test_function])
         
         result = self.chat.to_input(msg)
-        
+
         assert 'tools' in result
         assert len(result['tools']) == 1
-        assert result['tools'][0]['function']['name'] == 'test_function'
+        assert result['tools'][0]['function']['name'] == 'tool_test_function'
     
     def test_to_input_with_format_override_json_adds_json_object(self):
         msg = Prompt(role="user", text="Hello", format_override="json")
@@ -357,7 +357,7 @@ class TestOpenAIResp:
         assert api_calls[0]['reasoning_summary_request'] is True
     
     def test_to_input_with_model_and_tools_parameters(self):
-        msg = Prompt(role="user", text="Hello", tools=[test_function])
+        msg = Prompt(role="user", text="Hello", tools=[tool_test_function])
         
         result = self.resp_adapter.to_input(msg, model="o1-preview")
         

@@ -80,6 +80,26 @@ class CompositeState(BaseState, ChartEventHandler, Recoverable, RestrictedStateS
                 self._status.set(ChartStatus.SUCCESS)
                 await self.finish(post, ctx)
 
+    async def cancel(self) -> None:
+        """Cancel composite state, all tasks, and child regions."""
+        if self._status.get().is_completed():
+            return
+
+        # Cancel all background tasks
+        for task in self._tasks:
+            if not task.done():
+                task.cancel()
+        if self._tasks:
+            await asyncio.gather(*self._tasks, return_exceptions=True)
+        self._tasks = []
+
+        # Cancel all child regions
+        for region in self.regions:
+            await region.cancel()
+
+        # Set status to CANCELED
+        await super().cancel()
+
     def reset(self):
         """Reset composite state to initial state.
 
@@ -168,7 +188,8 @@ class CompositeState(BaseState, ChartEventHandler, Recoverable, RestrictedStateS
                 region.unregister_finish_callback(self.finish_region)
                 # Schedule stop as task, don't wait for it
                 loop = asyncio.get_running_loop()
-                loop.create_task(region.stop(post.child(region.name), ctx.child(i), preempt=True))
+                task = loop.create_task(region.stop(post.child(region.name), ctx.child(i), preempt=True))
+                self._tasks.append(task)
 
         self._termination_requested.set(True)
 
