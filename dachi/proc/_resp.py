@@ -30,14 +30,14 @@ from collections import OrderedDict
 import pydantic
 
 # local
-from ..core import Resp, render
+from ..core import render, modlistfield
 from ._process import Process
-from .. import utils
+from dachi import utils
 from ._parser import LineParser, Parser
 
-from ..core import (
+from dachi.core import (
     Templatable, 
-    ExampleMixin, ModuleList,
+    ExampleMixin, ModuleList, modfield,
     render, 
     Resp, struct_template, END_TOK
 )
@@ -836,8 +836,8 @@ class TupleOut(ToOut):
         # Output: [42]
     """
 
-    processors: ModuleList[ToOut] # a list of the ToOut processors to use
-    parser: Parser
+    processors: ModuleList[ToOut] = modlistfield() # a list of the ToOut processors to use
+    parser: Parser = modfield()
 
     def forward(self, resp: str | None) -> typing.Any:
         """Process complete non-streaming response"""

@@ -6,7 +6,7 @@ import asyncio
 from ._base import ChartBase, ChartStatus, InvalidTransition, Recoverable
 
 # Local
-from dachi.core import Attr, ModuleDict, Ctx
+from dachi.core import Attr, ModuleDict, Ctx, moddictfield
 from ._base import RestrictedStateSchemaMixin
 from ._state import State, StreamState, BaseState, PseudoState, ReadyState, FinalState, HistoryState
 from ._event import Event, EventPost, ChartEventHandler
@@ -100,7 +100,7 @@ class Region(ChartBase, ChartEventHandler, Recoverable, RestrictedStateSchemaMix
     name: str
     initial: str  # Initial state name
     rules: List[Rule]
-    states: ModuleDict[str, BaseState] = None
+    states: ModuleDict[str, BaseState] = moddictfield(default_factory=dict)
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -109,8 +109,6 @@ class Region(ChartBase, ChartEventHandler, Recoverable, RestrictedStateSchemaMix
         self._state_idx_map = {}
 
         # Create and register built-in states (cannot be overridden by user)
-        if self.states is None:
-            self.states = ModuleDict(items={})
         self.states["READY"] = ReadyState(name="READY")
         self.states["SUCCESS"] = FinalState(name="SUCCESS")
         self.states["FAILURE"] = FinalState(name="FAILURE")
@@ -268,24 +266,24 @@ class Region(ChartBase, ChartEventHandler, Recoverable, RestrictedStateSchemaMix
         if states is None:
             return cls.schema()
 
-        # Pattern B: Process state variants directly
-        state_schemas = cls._schema_process_variants(
-            states,
-            restricted_schema_cls=RestrictedStateSchemaMixin,
+        # Get base schema
+        schema = cls.schema()
+
+        # Use descriptor to update states field with state variants
+        # Pattern B: variants are passed directly to the states field
+        states_field_schema, states_defs = cls.states.restricted_schema(
+            filter_schema_cls=RestrictedStateSchemaMixin,
+            variants=states,
+            _profile=_profile,
             _seen=_seen,
             states=states,
             **kwargs
         )
 
-        # Update schema's states field (ModuleDict)
-        schema = cls.schema()
-        return cls._schema_update_dict_field(
-            schema,
-            field_name="states",
-            placeholder_name="BaseStateSpec",
-            variant_schemas=state_schemas,
-            profile=_profile
-        )
+        schema["properties"]["states"] = states_field_schema
+        schema["$defs"].update(states_defs)
+
+        return schema
 
     def add(self, state: State) -> None:
         """Add a State instance to the region

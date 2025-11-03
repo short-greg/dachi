@@ -421,6 +421,62 @@ def python_type_to_json_schema_type(python_type: str) -> str:
     return type_mapping.get(python_type, 'string')
 
 
+def python_type_to_json_schema(python_type: typing.Any) -> dict:
+    """Convert Python type to JSON schema dict.
+
+    Handles basic types (int, str, float, bool, list, dict, None) and
+    typing module types (List[T], Dict[K,V], Optional[T], Union[T1, T2]).
+
+    Args:
+        python_type: Python type or typing generic
+
+    Returns:
+        JSON schema dict representation
+
+    Example:
+        >>> python_type_to_json_schema(int)
+        {'type': 'integer'}
+        >>> python_type_to_json_schema(typing.List[str])
+        {'type': 'array', 'items': {'type': 'string'}}
+        >>> python_type_to_json_schema(typing.Union[int, str])
+        {'oneOf': [{'type': 'integer'}, {'type': 'string'}]}
+    """
+    type_map = {
+        int: {"type": "integer"},
+        str: {"type": "string"},
+        float: {"type": "number"},
+        bool: {"type": "boolean"},
+        list: {"type": "array"},
+        dict: {"type": "object"},
+        type(None): {"type": "null"}
+    }
+
+    if python_type in type_map:
+        return type_map[python_type]
+
+    origin = getattr(python_type, '__origin__', None)
+
+    if origin is list:
+        args = getattr(python_type, '__args__', ())
+        schema = {"type": "array"}
+        if args:
+            schema["items"] = python_type_to_json_schema(args[0])
+        return schema
+
+    if origin is dict:
+        args = getattr(python_type, '__args__', ())
+        schema = {"type": "object"}
+        if args and len(args) == 2:
+            schema["additionalProperties"] = python_type_to_json_schema(args[1])
+        return schema
+
+    if origin is typing.Union:
+        args = getattr(python_type, '__args__', ())
+        return {"oneOf": [python_type_to_json_schema(arg) for arg in args]}
+
+    return {"type": "string"}
+
+
 def create_strict_model(model_name: str, **field_definitions) -> typing.Type[pydantic.BaseModel]:
     """Create a Pydantic model with strict schema for OpenAI structured outputs.
 

@@ -5,7 +5,7 @@ from dataclasses import InitVar
 
 # local
 from ._core import Task, TaskStatus, CompositeTask, RestrictedTaskSchemaMixin
-from dachi.core import Attr, ModuleList
+from dachi.core import Attr, ModuleList, modlistfield, modfield
 from dachi.core._base import filter_class_variants
 from ._leafs import Condition
 
@@ -40,7 +40,7 @@ class Sequence(Serial, RestrictedTaskSchemaMixin):
     """Create a sequence of tasks to execute
     """
 
-    tasks: ModuleList[Task] = None
+    tasks: ModuleList[Task] = modlistfield(default_factory=list)
 
     @classmethod
     def restricted_schema(cls, *, tasks=None, _profile="shared", _seen=None, **kwargs):
@@ -62,24 +62,22 @@ class Sequence(Serial, RestrictedTaskSchemaMixin):
         if tasks is None:
             return cls.schema()
 
-        # Process task variants (handles RestrictedTaskSchemaMixin recursion)
-        task_schemas = cls._schema_process_variants(
-            tasks,
-            restricted_schema_cls=RestrictedTaskSchemaMixin,
+        # Use descriptor to generate tasks field schema
+        field_schema, field_defs = cls.tasks.restricted_schema(
+            filter_schema_cls=RestrictedTaskSchemaMixin,
+            variants=tasks,
+            _profile=_profile,
             _seen=_seen,
             tasks=tasks,
             **kwargs
         )
 
-        # Update schema's tasks field (ModuleList)
+        # Get base schema and update tasks field
         schema = cls.schema()
-        return cls._schema_update_list_field(
-            schema,
-            field_name="tasks",
-            placeholder_name="TaskSpec",
-            variant_schemas=task_schemas,
-            profile=_profile
-        )
+        schema["$defs"].update(field_defs)
+        schema["properties"]["tasks"] = field_schema
+
+        return schema
 
     def __post_init__(self):
         """Initialize the Sequence. A Sequence will execute its tasks in order. If one fails then it will Fail. If cascaded is True, it will try to execute all tasks in order until one fails
@@ -176,7 +174,7 @@ class Sequence(Serial, RestrictedTaskSchemaMixin):
 class Selector(Serial, RestrictedTaskSchemaMixin):
     """Create a set of tasks to select from
     """
-    tasks: ModuleList[Task] = None
+    tasks: ModuleList[Task] = modlistfield(default_factory=list)
 
     @classmethod
     def restricted_schema(cls, *, tasks=None, _profile="shared", _seen=None, **kwargs):
@@ -198,24 +196,21 @@ class Selector(Serial, RestrictedTaskSchemaMixin):
         if tasks is None:
             return cls.schema()
 
-        # Process task variants (handles RestrictedTaskSchemaMixin recursion)
-        task_schemas = cls._schema_process_variants(
-            tasks,
-            restricted_schema_cls=RestrictedTaskSchemaMixin,
+        # Use descriptor to generate tasks field schema
+        field_schema, field_defs = cls.tasks.restricted_schema(
+            filter_schema_cls=RestrictedTaskSchemaMixin,
+            variants=tasks,
+            _profile=_profile,
             _seen=_seen,
             tasks=tasks,
             **kwargs
         )
 
-        # Update schema's tasks field (ModuleList)
+        # Get base schema and update tasks field
         schema = cls.schema()
-        return cls._schema_update_list_field(
-            schema,
-            field_name="tasks",
-            placeholder_name="TaskSpec",
-            variant_schemas=task_schemas,
-            profile=_profile
-        )
+        schema["$defs"].update(field_defs)
+        schema["properties"]["tasks"] = field_schema
+        return schema
 
     def __post_init__(self):
         """Initialize the selector. A Selector will try to execute
@@ -329,8 +324,8 @@ class PreemptCond(Serial, RestrictedTaskSchemaMixin):
     each tick in order to stop the execution
     of other tasks
     """
-    cond: Condition | ModuleList
-    task: Task
+    cond: Condition = modfield()
+    task: Task = modfield()
 
     @classmethod
     def restricted_schema(cls, *, tasks=None, _profile="shared", _seen=None, **kwargs):
@@ -354,43 +349,37 @@ class PreemptCond(Serial, RestrictedTaskSchemaMixin):
             return cls.schema()
 
         schema = cls.schema()
+        all_defs = schema["$defs"].copy()
 
         # Filter tasks to only Condition subclasses for cond field
         cond_variants = list(filter_class_variants(Condition, tasks))
 
         # Update cond field if we have valid Condition variants
         if cond_variants:
-            cond_schemas = cls._schema_process_variants(
-                cond_variants,
-                restricted_schema_cls=RestrictedTaskSchemaMixin,
+            cond_field_schema, cond_defs = cls.cond.restricted_schema(
+                filter_schema_cls=RestrictedTaskSchemaMixin,
+                variants=cond_variants,
+                _profile=_profile,
                 _seen=_seen,
                 tasks=tasks,
                 **kwargs
             )
-            schema = cls._schema_update_single_field(
-                schema,
-                field_name="cond",
-                placeholder_name="ConditionSpec",
-                variant_schemas=cond_schemas,
-                profile=_profile
-            )
+            schema["properties"]["cond"] = cond_field_schema
+            all_defs.update(cond_defs)
 
         # Update task field with all task variants
-        task_schemas = cls._schema_process_variants(
-            tasks,
-            restricted_schema_cls=RestrictedTaskSchemaMixin,
+        task_field_schema, task_defs = cls.task.restricted_schema(
+            filter_schema_cls=RestrictedTaskSchemaMixin,
+            variants=tasks,
+            _profile=_profile,
             _seen=_seen,
             tasks=tasks,
             **kwargs
         )
-        schema = cls._schema_update_single_field(
-            schema,
-            field_name="task",
-            placeholder_name="TaskSpec",
-            variant_schemas=task_schemas,
-            profile=_profile
-        )
+        schema["properties"]["task"] = task_field_schema
+        all_defs.update(task_defs)
 
+        schema["$defs"] = all_defs
         return schema
 
     def __post_init__(self):
@@ -400,9 +389,6 @@ class PreemptCond(Serial, RestrictedTaskSchemaMixin):
             ValueError: If cond is not a Condition or task is not a Task.
         """
         super().__post_init__()
-        if isinstance(self.cond, t.List):
-            self.cond = ModuleList(items=self.cond)
-        
         self.cascade(cascaded=True)
         if not isinstance(self.cond, Condition):
             raise ValueError(

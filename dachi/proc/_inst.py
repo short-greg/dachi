@@ -43,7 +43,7 @@ from ._process import (
     Process, AsyncProcess, StreamProcess, 
     AsyncStreamProcess
 )
-from ..core import Param, END_TOK
+from ..core import Param, END_TOK, modfield
 from ..utils import primitives, str_formatter
 from ._msg import ToMsg
 from ._resp import (
@@ -61,7 +61,7 @@ class IBase(BaseModule):
     """
     f: typing.Callable
     is_method: bool = False
-    out_conv: ToOut = None
+    out_conv: ToOut = modfield(default=None)
 
     def __post_init__(self):
         """ Initializes the IBase instance.

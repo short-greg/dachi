@@ -9,7 +9,7 @@ from dachi.core import Prompt, ParamSet, BaseModule, Msg
 from ._ai import LLM
 from abc import ABC
 from dachi.proc import Process, AsyncProcess
-from dachi.core import render
+from dachi.core import render, modfield
 
 
 class Optim(BaseModule, ABC):
@@ -124,7 +124,7 @@ class Critic(Process, AsyncProcess):
     """Executes evaluations using an LLM evaluator and a criterion."""
 
     criterion: BaseCriterion
-    evaluator: Process | AsyncProcess
+    evaluator: Process | AsyncProcess = modfield()
     prompt_template: str
     reference: t.Any | None = None
 

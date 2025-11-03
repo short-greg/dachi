@@ -909,10 +909,10 @@ class TestSequenceRestrictedSchema:
 
         # Check that schema was updated
         assert "$defs" in restricted
-        assert "Allowed_TaskSpec" in restricted["$defs"]
+        assert "Allowed_tasks" in restricted["$defs"]
 
-        # Check that Allowed_TaskSpec contains our variants
-        allowed_union = restricted["$defs"]["Allowed_TaskSpec"]
+        # Check that Allowed_tasks contains our variants
+        allowed_union = restricted["$defs"]["Allowed_tasks"]
         assert "oneOf" in allowed_union
         refs = allowed_union["oneOf"]
         assert len(refs) == 2
@@ -929,7 +929,7 @@ class TestSequenceRestrictedSchema:
         restricted = seq.restricted_schema(tasks=[ImmediateAction])
 
         # Should use shared union in $defs
-        assert "Allowed_TaskSpec" in restricted["$defs"]
+        assert "Allowed_tasks" in restricted["$defs"]
 
         # tasks field should reference the shared union
         # Handle nullable field (anyOf with null)
@@ -938,11 +938,11 @@ class TestSequenceRestrictedSchema:
             # Nullable: find the array option
             for option in tasks_schema["anyOf"]:
                 if isinstance(option, dict) and option.get("type") == "array":
-                    assert option["items"] == {"$ref": "#/$defs/Allowed_TaskSpec"}
+                    assert option["items"] == {"$ref": "#/$defs/Allowed_tasks"}
                     break
         else:
             # Non-nullable
-            assert tasks_schema["items"] == {"$ref": "#/$defs/Allowed_TaskSpec"}
+            assert tasks_schema["items"] == {"$ref": "#/$defs/Allowed_tasks"}
 
     def test_restricted_schema_inline_profile_creates_oneof(self):
         """Test that _profile='inline' creates inline oneOf"""
@@ -957,7 +957,7 @@ class TestSequenceRestrictedSchema:
         assert any("ImmediateActionSpec" in key for key in defs_keys)
         assert any("SetStorageActionSpec" in key for key in defs_keys)
 
-        # But tasks field should have inline oneOf (no Allowed_TaskSpec)
+        # But tasks field should have inline oneOf (no Allowed_tasks)
         tasks_schema = restricted["properties"]["tasks"]
         if "anyOf" in tasks_schema:
             # Nullable: find the array option
@@ -1027,10 +1027,10 @@ class TestSelectorRestrictedSchema:
 
         # Check that schema was updated
         assert "$defs" in restricted
-        assert "Allowed_TaskSpec" in restricted["$defs"]
+        assert "Allowed_tasks" in restricted["$defs"]
 
-        # Check that Allowed_TaskSpec contains our variants
-        allowed_union = restricted["$defs"]["Allowed_TaskSpec"]
+        # Check that Allowed_tasks contains our variants
+        allowed_union = restricted["$defs"]["Allowed_tasks"]
         assert "oneOf" in allowed_union
         refs = allowed_union["oneOf"]
         assert len(refs) == 2
@@ -1047,7 +1047,7 @@ class TestSelectorRestrictedSchema:
         restricted = sel.restricted_schema(tasks=[ImmediateAction])
 
         # Should use shared union in $defs
-        assert "Allowed_TaskSpec" in restricted["$defs"]
+        assert "Allowed_tasks" in restricted["$defs"]
 
         # tasks field should reference the shared union
         # Handle nullable field (anyOf with null)
@@ -1056,11 +1056,11 @@ class TestSelectorRestrictedSchema:
             # Nullable: find the array option
             for option in tasks_schema["anyOf"]:
                 if isinstance(option, dict) and option.get("type") == "array":
-                    assert option["items"] == {"$ref": "#/$defs/Allowed_TaskSpec"}
+                    assert option["items"] == {"$ref": "#/$defs/Allowed_tasks"}
                     break
         else:
             # Non-nullable
-            assert tasks_schema["items"] == {"$ref": "#/$defs/Allowed_TaskSpec"}
+            assert tasks_schema["items"] == {"$ref": "#/$defs/Allowed_tasks"}
 
     def test_restricted_schema_inline_profile_creates_oneof(self):
         """Test that _profile='inline' creates inline oneOf"""
@@ -1075,7 +1075,7 @@ class TestSelectorRestrictedSchema:
         assert any("ImmediateActionSpec" in key for key in defs_keys)
         assert any("SetStorageActionSpec" in key for key in defs_keys)
 
-        # But tasks field should have inline oneOf (no Allowed_TaskSpec)
+        # But tasks field should have inline oneOf (no Allowed_tasks)
         tasks_schema = restricted["properties"]["tasks"]
         if "anyOf" in tasks_schema:
             # Nullable: find the array option
@@ -1145,16 +1145,16 @@ class TestPreemptCondRestrictedSchema:
 
         # Both field schemas should be updated
         assert "$defs" in restricted
-        assert "Allowed_ConditionSpec" in restricted["$defs"]  # For cond field
-        assert "Allowed_TaskSpec" in restricted["$defs"]       # For task field
+        assert "Allowed_cond" in restricted["$defs"]  # For cond field
+        assert "Allowed_task" in restricted["$defs"]       # For task field
 
         # cond field should only have Conditions
         cond_schema = restricted["properties"]["cond"]
-        assert cond_schema == {"$ref": "#/$defs/Allowed_ConditionSpec"}
+        assert cond_schema == {"$ref": "#/$defs/Allowed_cond"}
 
         # task field should have all tasks
         task_schema = restricted["properties"]["task"]
-        assert task_schema == {"$ref": "#/$defs/Allowed_TaskSpec"}
+        assert task_schema == {"$ref": "#/$defs/Allowed_task"}
 
     def test_restricted_schema_filters_cond_to_conditions_only(self):
         """Test that cond field only includes Condition subclasses"""
@@ -1166,7 +1166,7 @@ class TestPreemptCondRestrictedSchema:
         )
 
         # Check cond field has only 2 Conditions
-        allowed_cond_union = restricted["$defs"]["Allowed_ConditionSpec"]
+        allowed_cond_union = restricted["$defs"]["Allowed_cond"]
         cond_refs = allowed_cond_union["oneOf"]
         assert len(cond_refs) == 2
 
@@ -1175,7 +1175,7 @@ class TestPreemptCondRestrictedSchema:
         assert any("AlwaysFalseCondSpec" in name for name in cond_names)
 
         # Check task field has all 4 tasks
-        allowed_task_union = restricted["$defs"]["Allowed_TaskSpec"]
+        allowed_task_union = restricted["$defs"]["Allowed_task"]
         task_refs = allowed_task_union["oneOf"]
         assert len(task_refs) == 4
 
@@ -1189,13 +1189,13 @@ class TestPreemptCondRestrictedSchema:
         )
 
         # Only task field should be updated
-        assert "Allowed_TaskSpec" in restricted["$defs"]
+        assert "Allowed_task" in restricted["$defs"]
 
-        # cond field should remain unrestricted (no Allowed_ConditionSpec)
-        # The cond schema will still have a $ref but not to Allowed_ConditionSpec
+        # cond field should remain unrestricted (no Allowed_cond)
+        # The cond schema will still have a $ref but not to Allowed_cond
         cond_schema = restricted["properties"]["cond"]
         if "$ref" in cond_schema:
-            assert "Allowed_ConditionSpec" not in cond_schema["$ref"]
+            assert "Allowed_cond" not in cond_schema["$ref"]
 
     def test_restricted_schema_inline_profile(self):
         """Test that _profile='inline' creates inline oneOf for both fields"""

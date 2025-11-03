@@ -31,7 +31,7 @@ import numpy as np
 import pydantic
 
 # local
-from ..core import BaseModule, ModuleList
+from ..core import BaseModule, ModuleList, RestrictedSchemaMixin, modfield
 from ..utils import (
     is_async_function,
     is_generator_function,
@@ -406,7 +406,7 @@ def recur(
     )
 
 
-class Sequential(ModuleList, Process, AsyncProcess):
+class Sequential(ModuleList[Process | AsyncProcess], Process, AsyncProcess):
     """
     Sequential class wraps multiple modules into a sequential list of modules that will be executed one after the other.
     Methods:
@@ -465,7 +465,7 @@ class Sequential(ModuleList, Process, AsyncProcess):
 
 
 class AsyncParallel(
-    ModuleList, AsyncProcess
+    ModuleList[AsyncProcess], AsyncProcess
 ):
     """Calls multiple modules in parallel and then 
     combines the results into a list
@@ -815,7 +815,7 @@ class StreamSequence(StreamProcess):
     The pre and post processes are standard Processes that are applied before and after the streaming process.
     Each streamed item is postprocessed
 
-    Example: 
+    Example:
     process = StreamSequence(
         pre=pre_process,
         mod=streaming_model,
@@ -823,9 +823,9 @@ class StreamSequence(StreamProcess):
     )
     """
 
-    pre: Process
-    mod: StreamProcess
-    post: Process
+    pre: Process = modfield()
+    mod: StreamProcess = modfield()
+    post: Process = modfield()
 
     def stream(self, x: typing.Any) -> typing.Iterator:
         """Stream the input through the pre, mod, and post processes
@@ -853,9 +853,9 @@ class AsyncStreamSequence(AsyncStreamProcess):
         print(y)
     """
 
-    pre: Process | AsyncProcess
-    mod: AsyncStreamProcess
-    post: Process | AsyncProcess
+    pre: Process | AsyncProcess = modfield()
+    mod: AsyncStreamProcess = modfield()
+    post: Process | AsyncProcess = modfield()
 
     async def astream(self, x: typing.Any) -> typing.AsyncIterator:
 
@@ -908,10 +908,53 @@ class AsyncFunc(AsyncProcess):
     f: typing.Callable
     args: typing.List[typing.Any]
     kwargs: typing.Dict[str, typing.Any]
-    
+
     async def forward(self, *args, **kwargs):
 
         return await self.f(
             *self.args, *args, **self.kwargs, **kwargs
+        )
+
+
+class RestrictedProcessSchemaMixin(RestrictedSchemaMixin):
+    """
+    Domain-specific mixin for processes with process-specific schema restrictions.
+
+    Uses isinstance(variant, RestrictedProcessSchemaMixin) for recursion checks.
+    This ensures we only recurse on process-compatible classes, preventing
+    process/task/state cross-contamination.
+
+    This mixin provides the domain-specific behavior for processes,
+    inheriting all base functionality from core.RestrictedSchemaMixin.
+    """
+
+    @classmethod
+    def restricted_schema(
+        cls,
+        *,
+        processes: list | None = None,
+        _profile: str = "shared",
+        _seen: dict | None = None,
+        **kwargs
+    ) -> dict:
+        """
+        Generate restricted schema for processes.
+
+        Must be implemented by subclasses (e.g., ProcessCall, DataFlow).
+
+        Args:
+            processes: List of allowed Process/AsyncProcess types
+            _profile: "shared" (use $defs/Allowed_*) or "inline" (use oneOf)
+            _seen: Cycle detection dict
+            **kwargs: Additional arguments passed to nested restricted_schema() calls
+
+        Returns:
+            Restricted schema dict
+
+        Raises:
+            NotImplementedError: Must be implemented by subclasses
+        """
+        raise NotImplementedError(
+            f"{cls.__name__} must implement restricted_schema()"
         )
 

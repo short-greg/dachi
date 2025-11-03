@@ -915,8 +915,8 @@ class TestCompositeStateRestrictedSchema:
 
         # Check that schema was updated
         assert "$defs" in restricted
-        # Region schema should have Allowed_BaseStateSpec
-        assert "Allowed_BaseStateSpec" in restricted["$defs"]
+        # Region schema should have Allowed_states
+        assert "Allowed_states" in restricted["$defs"]
 
         # Check that Region schema is in defs
         region_spec_keys = [k for k in restricted["$defs"].keys() if "RegionSpec" in k]
@@ -945,7 +945,7 @@ class TestCompositeStateRestrictedSchema:
         restricted = composite.restricted_schema(states=[SimpleState])
 
         # Should use shared union in $defs
-        assert "Allowed_BaseStateSpec" in restricted["$defs"]
+        assert "Allowed_states" in restricted["$defs"]
 
     def test_restricted_schema_inline_profile_creates_oneof(self):
         """Test that _profile='inline' creates inline oneOf"""

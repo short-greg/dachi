@@ -947,10 +947,10 @@ class TestRegionRestrictedSchema:
 
         # Check that schema was updated
         assert "$defs" in restricted
-        assert "Allowed_BaseStateSpec" in restricted["$defs"]
+        assert "Allowed_states" in restricted["$defs"]
 
-        # Check that Allowed_BaseStateSpec contains our variants
-        allowed_union = restricted["$defs"]["Allowed_BaseStateSpec"]
+        # Check that Allowed_states contains our variants
+        allowed_union = restricted["$defs"]["Allowed_states"]
         assert "oneOf" in allowed_union
         refs = allowed_union["oneOf"]
         assert len(refs) == 2
@@ -967,11 +967,11 @@ class TestRegionRestrictedSchema:
         restricted = region.restricted_schema(states=[IdleState])
 
         # Should use shared union in $defs
-        assert "Allowed_BaseStateSpec" in restricted["$defs"]
+        assert "Allowed_states" in restricted["$defs"]
 
         # states field should reference the shared union (ModuleDict additionalProperties)
         states_schema = restricted["properties"]["states"]
-        assert states_schema["additionalProperties"] == {"$ref": "#/$defs/Allowed_BaseStateSpec"}
+        assert states_schema["additionalProperties"] == {"$ref": "#/$defs/Allowed_states"}
 
     def test_restricted_schema_inline_profile_creates_oneof(self):
         """Test that _profile='inline' creates inline oneOf"""
@@ -986,7 +986,7 @@ class TestRegionRestrictedSchema:
         assert any("IdleStateSpec" in key for key in defs_keys)
         assert any("ActiveStateSpec" in key for key in defs_keys)
 
-        # But states field should have inline oneOf (no Allowed_BaseStateSpec)
+        # But states field should have inline oneOf (no Allowed_states)
         states_schema = restricted["properties"]["states"]
         assert "oneOf" in states_schema["additionalProperties"]
 
@@ -1041,12 +1041,11 @@ class TestStateChartRestrictedSchema:
 
         # Check that schema was updated
         assert "$defs" in restricted
-        # Region schema should have Allowed_BaseStateSpec
-        assert "Allowed_BaseStateSpec" in restricted["$defs"]
 
-        # Check that Region schema is in defs
-        region_spec_keys = [k for k in restricted["$defs"].keys() if "RegionSpec" in k]
-        assert len(region_spec_keys) >= 1
+        # States restriction is passed through to Region
+        region_spec = restricted["$defs"]["dachi.act._chart._region.RegionSpec"]
+        assert "$defs" in region_spec
+        assert "Allowed_states" in region_spec["$defs"]
 
     def test_restricted_schema_updates_regions_field(self):
         """Test that regions field is updated with restricted Region schema"""
@@ -1058,17 +1057,19 @@ class TestStateChartRestrictedSchema:
         regions_schema = restricted["properties"]["regions"]
         assert "items" in regions_schema
 
-        # The items should be a $ref to Allowed_RegionSpec or RegionSpec
+        # The items should be a $ref to Allowed_regions
         items = regions_schema["items"]
         assert "$ref" in items
-        assert "RegionSpec" in items["$ref"]
+        assert "Allowed_regions" in items["$ref"]
 
     def test_restricted_schema_uses_shared_profile_by_default(self):
         """Test that default profile is 'shared'"""
         restricted = StateChart.restricted_schema(states=[IdleState])
 
-        # Should use shared union in $defs
-        assert "Allowed_BaseStateSpec" in restricted["$defs"]
+        # States restriction is passed through to Region, check RegionSpec contains it
+        region_spec = restricted["$defs"]["dachi.act._chart._region.RegionSpec"]
+        assert "$defs" in region_spec
+        assert "Allowed_states" in region_spec["$defs"]
 
     def test_restricted_schema_inline_profile_creates_oneof(self):
         """Test that _profile='inline' creates inline oneOf"""
@@ -1077,8 +1078,10 @@ class TestStateChartRestrictedSchema:
             _profile="inline"
         )
 
-        # Should still have defs for the individual states
-        defs_keys = restricted["$defs"].keys()
+        # States restriction is passed through to Region, check RegionSpec contains state defs
+        region_spec = restricted["$defs"]["dachi.act._chart._region.RegionSpec"]
+        assert "$defs" in region_spec
+        defs_keys = region_spec["$defs"].keys()
         assert any("IdleStateSpec" in key for key in defs_keys)
         assert any("ActiveStateSpec" in key for key in defs_keys)
 

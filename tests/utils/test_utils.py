@@ -187,3 +187,71 @@ class TestGetOrSet(object):
         state = {}
         child = utils.get_or_set(state, 'val', 3)
         assert child == 3
+
+
+class TestPythonTypeToJsonSchema:
+
+    def test_converts_int(self):
+        result = utils.python_type_to_json_schema(int)
+        assert result == {'type': 'integer'}
+
+    def test_converts_str(self):
+        result = utils.python_type_to_json_schema(str)
+        assert result == {'type': 'string'}
+
+    def test_converts_float(self):
+        result = utils.python_type_to_json_schema(float)
+        assert result == {'type': 'number'}
+
+    def test_converts_bool(self):
+        result = utils.python_type_to_json_schema(bool)
+        assert result == {'type': 'boolean'}
+
+    def test_converts_list(self):
+        result = utils.python_type_to_json_schema(list)
+        assert result == {'type': 'array'}
+
+    def test_converts_dict(self):
+        result = utils.python_type_to_json_schema(dict)
+        assert result == {'type': 'object'}
+
+    def test_converts_none_type(self):
+        result = utils.python_type_to_json_schema(type(None))
+        assert result == {'type': 'null'}
+
+    def test_converts_list_of_int(self):
+        from typing import List
+        result = utils.python_type_to_json_schema(List[int])
+        assert result == {'type': 'array', 'items': {'type': 'integer'}}
+
+    def test_converts_list_of_str(self):
+        from typing import List
+        result = utils.python_type_to_json_schema(List[str])
+        assert result == {'type': 'array', 'items': {'type': 'string'}}
+
+    def test_converts_dict_with_value_type(self):
+        from typing import Dict
+        result = utils.python_type_to_json_schema(Dict[str, int])
+        assert result == {'type': 'object', 'additionalProperties': {'type': 'integer'}}
+
+    def test_converts_union_types(self):
+        from typing import Union
+        result = utils.python_type_to_json_schema(Union[int, str])
+        assert result == {'oneOf': [{'type': 'integer'}, {'type': 'string'}]}
+
+    def test_converts_optional_int(self):
+        from typing import Optional
+        result = utils.python_type_to_json_schema(Optional[int])
+        assert result == {'oneOf': [{'type': 'integer'}, {'type': 'null'}]}
+
+    def test_converts_nested_list(self):
+        from typing import List
+        result = utils.python_type_to_json_schema(List[List[str]])
+        expected = {'type': 'array', 'items': {'type': 'array', 'items': {'type': 'string'}}}
+        assert result == expected
+
+    def test_unknown_type_defaults_to_string(self):
+        class CustomType:
+            pass
+        result = utils.python_type_to_json_schema(CustomType)
+        assert result == {'type': 'string'}

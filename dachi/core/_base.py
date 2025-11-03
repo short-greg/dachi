@@ -3,7 +3,7 @@ from __future__ import annotations
 from abc import abstractmethod, ABC
 
 from functools import lru_cache
-from dataclasses import InitVar
+from dataclasses import InitVar, Field as DataclassField, MISSING
 from uuid import uuid4
 from typing import Iterable, Union, Mapping, Generic, Callable, Any, Dict, Optional, Union, List
 import typing as t
@@ -12,6 +12,7 @@ from typing import Generic, Iterable, Union
 import inspect
 import json
 import copy
+import types
 from dataclasses import dataclass
 
 
@@ -542,11 +543,42 @@ class BaseModule:
         )
     
     @classmethod
+    def __convert_type_to_spec__(cls, typ: t.Any) -> t.Any:
+        """Convert a type annotation to its spec equivalent.
+
+        Handles Union types (both typing.Union and types.UnionType) by converting
+        each Union member that is a BaseModule to its spec model.
+
+        Args:
+            typ: Type annotation to convert
+
+        Returns:
+            Converted type annotation with BaseModule types replaced by their spec models
+        """
+        origin = t.get_origin(typ)
+
+        if origin is t.Union or isinstance(origin, type) and issubclass(origin, types.UnionType):
+            union_args = t.get_args(typ)
+            converted_args = []
+            for arg in union_args:
+                if isinstance(arg, type) and issubclass(arg, BaseModule):
+                    converted_args.append(arg.schema_model())
+                else:
+                    converted_args.append(arg)
+            return t.Union[tuple(converted_args)]
+
+        base_type = origin if origin is not None else typ
+        if isinstance(base_type, type) and issubclass(base_type, BaseModule):
+            return base_type.schema_model()
+
+        return typ
+
+    @classmethod
     def __build_schema__(cls) -> None:
         """
         Collect fields from *all* ancestors, then merge/override with annotations
         found on *cls* itself.  When an InitVar is later replaced by a method or
-        property of the same name, we treat that as ‘no default supplied’ rather
+        property of the same name, we treat that as 'no default supplied' rather
         than letting the callable leak into runtime initialisation.
         """
 
@@ -594,24 +626,49 @@ class BaseModule:
             # Check if field has a custom schema hook
             if n in cls.__spec_hooks__:
                 origin = cls.__build_schema_hook__(n, typ, dflt)
-            else:
-                # Handle generic aliases like ModuleList[Task]
-                # Get the origin class if it's a generic alias
-                base_type = t.get_origin(typ) if t.get_origin(typ) is not None else typ
-
-                # If the base type is a BaseModule, use its schema_model
-                if isinstance(base_type, type) and issubclass(base_type, BaseModule):
-                    # Get the spec model from the base type (e.g., ModuleList -> ModuleListSpec)
-                    # This will be the spec type used in the generated spec
-                    origin = base_type.schema_model()
+            # Check if field is a BaseFieldDescriptor (modfield/modlistfield/moddictfield)
+            elif isinstance(dflt, BaseFieldDescriptor):
+                # Get spec annotation from descriptor (already validated in __set_name__)
+                origin = dflt.get_spec_annotation()
+                dflt = ...  # modfields are required unless explicitly marked optional
+            # Check if field is a dataclasses.Field (from dataclasses.field())
+            elif hasattr(dflt, 'default') and hasattr(dflt, 'default_factory'):
+                # This is a dataclasses.Field - extract the actual default
+                if isinstance(dflt, DataclassField):
+                    if dflt.default is not MISSING:
+                        origin = cls.__convert_type_to_spec__(typ)
+                        dflt = dflt.default
+                    elif dflt.default_factory is not MISSING:
+                        origin = cls.__convert_type_to_spec__(typ)
+                        dflt = dflt.default_factory
+                    else:
+                        origin = cls.__convert_type_to_spec__(typ)
+                        dflt = ...
                 else:
-                    origin = typ
+                    origin = cls.__convert_type_to_spec__(typ)
+            else:
+                origin = cls.__convert_type_to_spec__(typ)
 
             spec_fields[n] = (origin, ... if dflt is inspect._empty else dflt)
 
+        # Find all parent spec classes for proper inheritance
+        parent_specs = []
+        for base in cls.__bases__:
+            if hasattr(base, '__spec__') and issubclass(base, BaseModule):
+                parent_specs.append(base.__spec__)
+
+        # Use parent specs if found, otherwise BaseSpec
+        # If multiple parent specs, use tuple for multiple inheritance
+        if len(parent_specs) > 1:
+            spec_base = tuple(parent_specs)
+        elif len(parent_specs) == 1:
+            spec_base = parent_specs[0]
+        else:
+            spec_base = BaseSpec
+
         cls.__spec__ = create_model(
             f"{cls._spec_model_name()}",
-            __base__       = BaseSpec,
+            __base__       = spec_base,
             kind           = (t.Literal[cls.__qualname__], cls.__qualname__),
             # model_config   = ConfigDict(arbitrary_types_allowed=True),
             **spec_fields,
@@ -636,7 +693,22 @@ class BaseModule:
             if name in __kwd:
                 val = __kwd.pop(name)
             elif default is not inspect._empty:
-                val = default
+                # Handle BaseFieldDescriptor (modfield/modlistfield/moddictfield)
+                if isinstance(default, BaseFieldDescriptor):
+                    try:
+                        val = default.get_default()
+                    except TypeError:
+                        raise TypeError(f"Missing required keyword argument: {name!r}")
+                # Handle dataclasses.Field with default_factory
+                elif isinstance(default, DataclassField):
+                    if default.default_factory is not MISSING:
+                        val = default.default_factory()
+                    elif default.default is not MISSING:
+                        val = default.default
+                    else:
+                        raise TypeError(f"Missing required keyword argument: {name!r}")
+                else:
+                    val = default
             else:
                 raise TypeError(f"Missing required keyword argument: {name!r}")
 
@@ -1824,6 +1896,217 @@ class RestrictedSchemaMixin(ABC):
             raise KeyError(f"Invalid path: {'.'.join(path)}")
 
         parent[last_key] = replacement
+
+
+# ============================================================================
+# Module Field Descriptors
+# ============================================================================
+
+UNDEFINED = inspect._empty
+
+
+class BaseFieldDescriptor(RestrictedSchemaMixin):
+    """Base descriptor for module fields with restricted schema support."""
+
+    # TODO: IF default = UNDEFINED, then field is required
+    def __init__(self, typ=UNDEFINED, default=UNDEFINED, default_factory=UNDEFINED):
+        self.typ = typ
+        self.default = default
+        self.default_factory = default_factory
+        self._name = None
+        self._owner = None
+        self._types = None
+
+    def __set_name__(self, owner, name):
+        """Called when descriptor is assigned to class attribute."""
+        self._name = name
+        self._owner = owner
+        # Use get_type_hints to resolve string annotations (from __future__ import annotations)
+        try:
+            type_hints = t.get_type_hints(owner)
+            annotation = type_hints.get(name)
+        except Exception:
+            # Fall back to __annotations__ if get_type_hints fails
+            annotation = owner.__annotations__.get(name)
+        self.validate_annotation(annotation)
+
+    def __get__(self, obj, objtype=None):
+        """Get field value from instance."""
+        if obj is None:
+            return self
+        return obj.__dict__.get(self._name)
+
+    def __set__(self, obj, value):
+        """Set field value on instance."""
+        obj.__dict__[self._name] = value
+
+    def get_default(self):
+        """Get the default value for this field.
+
+        Returns the result of default_factory() if set, otherwise default value.
+        Subclasses can override to customize default value creation.
+        """
+        if self.default_factory is not UNDEFINED:
+            return self.default_factory()
+        elif self.default is not UNDEFINED:
+            return self.default
+        else:
+            raise TypeError(f"No default value for field")
+
+    def validate_annotation(self, annotation) -> None:
+        """Validate annotation and extract types into self._types."""
+        if annotation is None and self.typ is UNDEFINED:
+            raise RuntimeError(
+                f"Field '{self._name}' has modfield() but no annotation "
+                f"and no explicit typ parameter"
+            )
+
+        # Extract types from annotation or typ parameter
+        if self.typ is not UNDEFINED:
+            if isinstance(self.typ, list):
+                extracted = self.typ
+            else:
+                # If typ is a Union, extract its members
+                typ_origin = t.get_origin(self.typ)
+                if typ_origin is t.Union or (isinstance(typ_origin, type) and issubclass(typ_origin, types.UnionType)):
+                    extracted = list(t.get_args(self.typ))
+                else:
+                    extracted = [self.typ]
+        else:
+            extracted = self._extract_types_from_annotation(annotation)
+
+        # Compare or set
+        if self._types is not None:
+            if self._types != extracted:
+                raise TypeError(
+                    f"Field '{self._name}' type mismatch: "
+                    f"annotation {extracted} != typ parameter {self._types}"
+                )
+        else:
+            self._types = extracted
+
+        # Validate that all types (except None) are BaseModule subclasses
+        for typ in self._types:
+            if typ is None:
+                continue  # None is allowed for Optional types
+            if not (isinstance(typ, type) and issubclass(typ, BaseModule)):
+                raise TypeError(
+                    f"modfield() type must be a BaseModule subclass, got {typ}"
+                )
+
+    def _extract_types_from_annotation(self, annotation) -> list:
+        """Extract list of types from annotation.
+
+        For ModFieldDescriptor:
+            Union[A, B] -> [A, B]
+            Optional[A] -> [A, None]
+            A -> [A]
+
+        Subclasses may override to handle ModuleList[T], ModuleDict[K,V], etc.
+        """
+        origin = t.get_origin(annotation)
+
+        # Handle Union (both typing.Union and types.UnionType)
+        if origin is t.Union or (isinstance(origin, type) and issubclass(origin, types.UnionType)):
+            return list(t.get_args(annotation))
+
+        # Single type
+        return [annotation]
+
+    def get_types(self) -> list:
+        """Get types as list."""
+        return self._types
+
+    def _to_spec_type(self, typ: type) -> type:
+        """Convert a single type to its spec equivalent."""
+        if typ is None:
+            return None
+
+        if isinstance(typ, type) and issubclass(typ, BaseModule):
+            return typ.schema_model()
+
+        return typ
+
+    def get_spec_annotation(self) -> type:
+        """Convert types to spec annotation for schema building."""
+        spec_types = [self._to_spec_type(t) for t in self._types if t is not None]
+        has_none = None in self._types
+
+        if len(spec_types) == 0:
+            return type(None) if has_none else None
+        elif len(spec_types) == 1:
+            return t.Optional[spec_types[0]] if has_none else spec_types[0]
+        else:
+            union = t.Union[tuple(spec_types)]
+            return t.Optional[union] if has_none else union
+
+    @abstractmethod
+    def restricted_schema(
+        self,
+        *,
+        filter_schema_cls: t.Type['RestrictedSchemaMixin'] = type,
+        variants: list | None = None,
+        _profile: str = "shared",
+        _seen: dict | None = None,
+        **kwargs
+    ) -> tuple[dict, dict]:
+        """Generate restricted schema for this field.
+
+        Returns:
+            (field_schema, defs_dict) tuple
+        """
+        raise NotImplementedError
+    
+    @property
+    def required(self) -> bool:
+        return self.default is UNDEFINED
+
+
+class ModFieldDescriptor(BaseFieldDescriptor):
+    """Descriptor for single module field."""
+
+    def restricted_schema(
+        self,
+        *,
+        filter_schema_cls: t.Type[RestrictedSchemaMixin] = type,
+        variants: list | None = None,
+        _profile: str = "shared",
+        _seen: dict | None = None,
+        **kwargs
+    ) -> tuple[dict, dict]:
+        """Generate restricted schema for single module field."""
+        if variants is None:
+            base_schema = self._owner.schema()
+            return (base_schema["properties"][self._name], {})
+
+        # Process variants
+        variant_schemas = self._schema_process_variants(
+            variants,
+            restricted_schema_cls=filter_schema_cls,
+            _seen=_seen,
+            **kwargs
+        )
+
+        # Build entries
+        entries = [(self._schema_name_from_dict(s), s) for s in variant_schemas]
+
+        # Build union based on profile
+        if _profile == "shared":
+            union_name = self._schema_allowed_union_name(self._name)
+            defs = {union_name: {"oneOf": self._schema_build_refs(entries)}}
+            for name, schema in entries:
+                defs[name] = schema
+
+            field_schema = {"$ref": f"#/$defs/{union_name}"}
+            return (field_schema, defs)
+        else:
+            field_schema = self._schema_make_union_inline(entries)
+            return (field_schema, {})
+
+
+def modfield(typ=UNDEFINED, default=UNDEFINED, default_factory=UNDEFINED) -> ModFieldDescriptor:
+    """Mark field as containing a BaseModule instance."""
+    return ModFieldDescriptor(typ=typ, default=default, default_factory=default_factory)
 
 
 class Registry:

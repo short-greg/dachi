@@ -2,15 +2,15 @@ from __future__ import annotations
 
 # 1st party
 import typing as t
+import types
 from typing import TypeVar, Iterable, ClassVar, Iterator, Optional
+from dataclasses import InitVar
 
 # 2nd Party
 from pydantic import BaseModel
-import typing as t
-from dataclasses import InitVar
 
 # Local
-from ._base import BaseModule, BaseSpec, registry 
+from ._base import BaseModule, BaseSpec, registry, BaseFieldDescriptor, RestrictedSchemaMixin, UNDEFINED
 from dachi.utils import is_primitive
 
 V_co = t.TypeVar("V_co", bound=BaseModule, covariant=True)
@@ -468,3 +468,220 @@ class SerialTuple(BaseModule):
                 out.append(item)
 
         return out
+
+# ============================================================================
+# Module Field Descriptors
+# ============================================================================
+
+
+class ModListFieldDescriptor(BaseFieldDescriptor):
+    """Descriptor for module list field."""
+
+    def get_default(self):
+        """Get default value, converting list to ModuleList if needed."""
+        if self.default_factory is not UNDEFINED:
+            val = self.default_factory()
+            # If default_factory returns a list, convert to ModuleList
+            if isinstance(val, list):
+                return ModuleList(items=val)
+            return val
+        elif self.default is not UNDEFINED:
+            return self.default
+        else:
+            raise TypeError(f"No default value for field")
+
+    def validate_annotation(self, annotation) -> None:
+        """Validate annotation, allowing ModuleList[T]."""
+        # Call parent to extract and store types
+        super().validate_annotation(annotation)
+
+    def _extract_types_from_annotation(self, annotation) -> list:
+        """Extract inner types from ModuleList[T] or ModuleList[Union[T1, T2]].
+
+        ModuleList[Task] -> [Task]
+        ModuleList[Task1 | Task2] -> [Task1, Task2]
+        """
+        origin = t.get_origin(annotation)
+
+        # Handle ModuleList[T] (ModuleList is defined in this file)
+        if origin is not None and isinstance(origin, type):
+            try:
+                is_module_list = issubclass(origin, ModuleList)
+            except TypeError:
+                is_module_list = False
+
+            if is_module_list:
+                args = t.get_args(annotation)
+                if len(args) == 1:
+                    inner_type = args[0]
+                    # If inner type is Union, extract union members
+                    inner_origin = t.get_origin(inner_type)
+                    if inner_origin is t.Union or (isinstance(inner_origin, type) and issubclass(inner_origin, types.UnionType)):
+                        return list(t.get_args(inner_type))
+                    # Single inner type
+                    return [inner_type]
+                else:
+                    raise TypeError(
+                        f"modlistfield() annotation must be ModuleList[T], got {annotation}"
+                    )
+
+        # Fall back to base implementation (for non-generic cases)
+        return super()._extract_types_from_annotation(annotation)
+
+    def restricted_schema(
+        self,
+        *,
+        filter_schema_cls: t.Type[RestrictedSchemaMixin] = type,
+        variants: list | None = None,
+        _profile: str = "shared",
+        _seen: dict | None = None,
+        **kwargs
+    ) -> tuple[dict, dict]:
+        """Generate restricted schema for list field."""
+        if variants is None:
+            base_schema = self._owner.schema()
+            return (base_schema["properties"][self._name], {})
+
+        # Process variants
+        variant_schemas = self._schema_process_variants(
+            variants,
+            restricted_schema_cls=filter_schema_cls,
+            _seen=_seen,
+            **kwargs
+        )
+
+        # Build entries
+        entries = [(self._schema_name_from_dict(s), s) for s in variant_schemas]
+
+        # Build union
+        if _profile == "shared":
+            union_name = self._schema_allowed_union_name(self._name)
+            defs = {union_name: {"oneOf": self._schema_build_refs(entries)}}
+            for name, schema in entries:
+                defs[name] = schema
+
+            field_schema = {
+                "type": "array",
+                "items": {"$ref": f"#/$defs/{union_name}"}
+            }
+            return (field_schema, defs)
+        else:
+            # Build defs for individual schemas (but not union)
+            defs = {name: schema for name, schema in entries}
+
+            field_schema = {
+                "type": "array",
+                "items": self._schema_make_union_inline(entries)
+            }
+            return (field_schema, defs)
+
+
+class ModDictFieldDescriptor(BaseFieldDescriptor):
+    """Descriptor for module dict field."""
+
+    def get_default(self):
+        """Get default value, converting dict to ModuleDict if needed."""
+        if self.default_factory is not UNDEFINED:
+            val = self.default_factory()
+            # If default_factory returns a dict, convert to ModuleDict
+            if isinstance(val, dict):
+                return ModuleDict(items=val)
+            return val
+        elif self.default is not UNDEFINED:
+            return self.default
+        else:
+            raise TypeError(f"No default value for field")
+
+    def _extract_types_from_annotation(self, annotation) -> list:
+        """Extract value types from ModuleDict[K, V] or ModuleDict[K, Union[V1, V2]].
+
+        ModuleDict[str, State] -> [State]
+        ModuleDict[str, State1 | State2] -> [State1, State2]
+        """
+        origin = t.get_origin(annotation)
+
+        # Handle ModuleDict[K, V] (ModuleDict is defined in this file)
+        if origin is not None:
+            if isinstance(origin, type) and issubclass(origin, ModuleDict):
+                args = t.get_args(annotation)
+                if len(args) == 2:
+                    key_type, value_type = args
+                    # Validate key type
+                    if key_type not in (str, int):
+                        raise TypeError(
+                            f"moddictfield() key type must be str or int, got {key_type}"
+                        )
+                    # If value type is Union, extract union members
+                    value_origin = t.get_origin(value_type)
+                    if value_origin is t.Union or (isinstance(value_origin, type) and issubclass(value_origin, types.UnionType)):
+                        return list(t.get_args(value_type))
+                    # Single value type
+                    return [value_type]
+            else:
+                raise TypeError(
+                    f"moddictfield() annotation must be ModuleDict[K, V], got {annotation}"
+                )
+
+        # Fall back to base implementation (for non-generic cases)
+        return super()._extract_types_from_annotation(annotation)
+
+    def validate_annotation(self, annotation) -> None:
+        """Validate dict annotation (key type validation happens in _extract_types_from_annotation)."""
+        super().validate_annotation(annotation)
+
+    def restricted_schema(
+        self,
+        *,
+        filter_schema_cls: t.Type[RestrictedSchemaMixin] = type,
+        variants: list | None = None,
+        _profile: str = "shared",
+        _seen: dict | None = None,
+        **kwargs
+    ) -> tuple[dict, dict]:
+        """Generate restricted schema for dict field."""
+        if variants is None:
+            base_schema = self._owner.schema()
+            return (base_schema["properties"][self._name], {})
+
+        # Process variants
+        variant_schemas = self._schema_process_variants(
+            variants,
+            restricted_schema_cls=filter_schema_cls,
+            _seen=_seen,
+            **kwargs
+        )
+
+        # Build entries
+        entries = [(self._schema_name_from_dict(s), s) for s in variant_schemas]
+
+        # Build union
+        if _profile == "shared":
+            union_name = self._schema_allowed_union_name(self._name)
+            defs = {union_name: {"oneOf": self._schema_build_refs(entries)}}
+            for name, schema in entries:
+                defs[name] = schema
+
+            field_schema = {
+                "type": "object",
+                "additionalProperties": {"$ref": f"#/$defs/{union_name}"}
+            }
+            return (field_schema, defs)
+        else:
+            # Build defs for individual schemas (but not union)
+            defs = {name: schema for name, schema in entries}
+
+            field_schema = {
+                "type": "object",
+                "additionalProperties": self._schema_make_union_inline(entries)
+            }
+            return (field_schema, defs)
+
+
+def modlistfield(typ=UNDEFINED, default=UNDEFINED, default_factory=UNDEFINED) -> ModListFieldDescriptor:
+    """Mark field as containing a list of BaseModule instances."""
+    return ModListFieldDescriptor(typ=typ, default=default, default_factory=default_factory)
+
+
+def moddictfield(typ=UNDEFINED, default=UNDEFINED, default_factory=UNDEFINED) -> ModDictFieldDescriptor:
+    """Mark field as containing a dict of BaseModule instances."""
+    return ModDictFieldDescriptor(typ=typ, default=default, default_factory=default_factory)

@@ -5,7 +5,7 @@ import asyncio
 
 # local
 from ._core import Task, TaskStatus, CompositeTask, RestrictedTaskSchemaMixin
-from dachi.core import Attr, ModuleList
+from dachi.core import Attr, ModuleList, modlistfield
 
 
 class Parallel(CompositeTask):
@@ -19,7 +19,7 @@ class Multi(Parallel, RestrictedTaskSchemaMixin):
     """A composite task for running multiple tasks in parallel
     """
 
-    tasks: ModuleList[Task] = None
+    tasks: ModuleList[Task] = modlistfield(default_factory=list)
     fails_on: int=1
     succeeds_on: int=-1
     success_priority: bool = True
@@ -46,24 +46,21 @@ class Multi(Parallel, RestrictedTaskSchemaMixin):
         if tasks is None:
             return cls.schema()
 
-        # Process task variants (handles RestrictedTaskSchemaMixin recursion)
-        task_schemas = cls._schema_process_variants(
-            tasks,
-            restricted_schema_cls=RestrictedTaskSchemaMixin,
+        # Use descriptor to generate tasks field schema
+        field_schema, field_defs = cls.tasks.restricted_schema(
+            filter_schema_cls=RestrictedTaskSchemaMixin,
+            variants=tasks,
+            _profile=_profile,
             _seen=_seen,
             tasks=tasks,
             **kwargs
         )
 
-        # Update schema's tasks field (ModuleList)
+        # Get base schema and update tasks field
         schema = cls.schema()
-        return cls._schema_update_list_field(
-            schema,
-            field_name="tasks",
-            placeholder_name="TaskSpec",
-            variant_schemas=task_schemas,
-            profile=_profile
-        )
+        schema["$defs"].update(field_defs)
+        schema["properties"]["tasks"] = field_schema
+        return schema
 
     def __post_init__(self):
         """Create a parallel task

@@ -40,18 +40,19 @@ result = dag.aforward(by={var: 10})  # Should return the output of AnotherProces
 import typing
 from typing import Self
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 # local
 from ..utils import (
     is_undefined, UNDEFINED
 )
-from ._process import Process, AsyncProcess
-from ..core import SerialDict
-from dachi.core import ModuleDict, Attr
+from ._process import Process, AsyncProcess, RestrictedProcessSchemaMixin
+from ..core import SerialDict, BaseModule
+from dachi.core import ModuleDict, Attr, modfield, moddictfield
 # from dachi.core import AdaptModule
 from dataclasses import dataclass
-import typing as t
+
+import pydantic
 
 # TODO: Check if the value coming from incoming is undefined or waiting... 
 
@@ -128,7 +129,7 @@ class BaseNode(AsyncProcess):
             yield None
 
 
-class Var(BaseNode):
+class V(BaseNode):
     """A variable in the graph. A variable is a Root Node
     that feeds into T nodes (process nodes).
     
@@ -198,7 +199,7 @@ class T(BaseNode):
         is_async (bool, optional): Whether the process is async. Defaults to False.
     """
     args: SerialDict
-    src: Process | AsyncProcess
+    src: Process | AsyncProcess = modfield()
     is_async: bool = False
 
     async def aforward(
@@ -373,9 +374,177 @@ class Idx(Process):
 
 
 @dataclass
-class RefT:
+class Ref:
     """Reference to a node in the DAG by name"""
     name: str
+
+
+class Var(pydantic.BaseModel):
+    """Variable node in the DAG, representing an input value."""
+    val: typing.Any
+    name: str
+
+
+class ProcessCall(BaseModule, RestrictedProcessSchemaMixin):
+    """Wrapper for a Process/AsyncProcess with its arguments in a DAG.
+
+    Used by DataFlow to store both the process and its arguments together
+    as a serializable unit. The name is stored as the key in DataFlow's
+    processes ModuleDict.
+
+    Args:
+        process: The Process or AsyncProcess to execute
+        args: Arguments to pass to the process (can be RefT or literal values)
+
+    Note:
+        ProcessCall is a data container, not an executable process. DataFlow
+        extracts the process and args to execute them.
+
+    Convenience Methods:
+        is_async: Returns True if the wrapped process is AsyncProcess
+    """
+    process: Process | AsyncProcess = modfield()
+    args: typing.Dict[str, Ref | typing.Any] = field(default_factory=dict)
+
+    def __post_init__(self):
+        super().__post_init__()
+
+    def is_async(self) -> bool:
+        """Check if the wrapped process is async."""
+        return isinstance(self.process, AsyncProcess)
+
+    @classmethod
+    def restricted_schema(
+        cls,
+        *,
+        processes: typing.List[typing.Type[Process | AsyncProcess]] | None = None,
+        _profile: str = "shared",
+        _seen: dict | None = None,
+        **kwargs
+    ) -> dict:
+        """Generate restricted schema for ProcessCall with allowed process types.
+
+        Pattern B (Direct Variants) + Args Type Restriction
+
+        Restricts:
+        - 'process' field to allowed Process/AsyncProcess types
+        - 'args' dict values to RefT | Union[all input types from processes]
+
+        Args:
+            processes: List of allowed Process/AsyncProcess types
+            _profile: "shared" or "inline" union style
+            _seen: Cycle detection cache
+            **kwargs: Additional process-specific restrictions
+
+        Returns:
+            JSON schema dict with restricted process and args fields
+        """
+        if processes is None:
+            return cls.schema()
+
+        # Use descriptor to generate process field schema
+        field_schema, field_defs = cls.process.restricted_schema(
+            filter_schema_cls=RestrictedProcessSchemaMixin,
+            variants=processes,
+            _profile=_profile,
+            _seen=_seen,
+            processes=processes,
+            **kwargs
+        )
+
+        # Get base schema and update process field
+        schema = cls.schema()
+        schema["$defs"].update(field_defs)
+        schema["properties"]["process"] = field_schema
+
+        # Custom logic for args field
+        input_types = cls._extract_input_types_from_processes(processes)
+        schema = cls._schema_update_args_types(
+            schema,
+            allowed_types=input_types
+        )
+
+        return schema
+
+    @classmethod
+    def _extract_input_types_from_processes(
+        cls,
+        processes: typing.List[typing.Type[Process | AsyncProcess]]
+    ) -> set:
+        """Extract all parameter types from process forward() methods.
+
+        Args:
+            processes: List of Process/AsyncProcess classes
+
+        Returns:
+            Set of all parameter types (always includes RefT)
+
+        Raises:
+            TypeError: If any process has parameters without type annotations
+        """
+        from ..utils import extract_parameter_types
+
+        types = {Ref}
+
+        for proc_cls in processes:
+            if issubclass(proc_cls, AsyncProcess):
+                method = proc_cls.aforward
+            else:
+                method = proc_cls.forward
+
+            try:
+                param_types = extract_parameter_types(
+                    method,
+                    require_annotations=True
+                )
+                types.update(param_types.values())
+            except TypeError as e:
+                raise TypeError(
+                    f"Process {proc_cls.__name__} cannot be used in restricted_schema(): {e}"
+                ) from e
+
+        return types
+
+    @classmethod
+    def _schema_update_args_types(
+        cls,
+        schema: dict,
+        allowed_types: set
+    ) -> dict:
+        """Update ProcessCall's args field value types.
+
+        This is ProcessCall-specific logic, not a generic helper.
+
+        Args:
+            schema: The base schema dict to update
+            allowed_types: Set of allowed types for args dict values
+
+        Returns:
+            Updated schema dict
+        """
+        from ..utils import python_type_to_json_schema
+
+        type_schemas = []
+        for typ in allowed_types:
+            if typ == Ref:
+                type_schemas.append(Ref.model_json_schema() if hasattr(Ref, 'model_json_schema') else {'type': 'object', 'properties': {'name': {'type': 'string'}}, 'required': ['name']})
+            elif hasattr(typ, 'schema'):
+                type_schemas.append(typ.schema())
+            else:
+                type_schemas.append(python_type_to_json_schema(typ))
+
+        if len(type_schemas) > 1:
+            union_schema = {"oneOf": type_schemas}
+        else:
+            union_schema = type_schemas[0]
+
+        cls._schema_replace_at_path(
+            schema,
+            ["properties", "args", "additionalProperties"],
+            union_schema
+        )
+
+        return schema
 
 
 class DataFlow(AsyncProcess):
@@ -415,6 +584,10 @@ class DataFlow(AsyncProcess):
         are prevented by the architecture and will cause runtime errors if forced.
     """
 
+    nodes: ModuleDict[str, ProcessCall] = moddictfield(default_factory=ModuleDict)
+    inputs: typing.List[Var] = field(default_factory=list)
+    outputs: typing.List[str] = None
+
     def __post_init__(self):
         """Initialize the DAG with an empty set of nodes and outputs
 
@@ -426,10 +599,7 @@ class DataFlow(AsyncProcess):
         Methods used in the DAG that are referenced by strings must be async.
         """
         super().__post_init__()
-        # can be a "var"
-        self._nodes = ModuleDict()
-        self._args = Attr[typing.Dict[str, typing.Dict[str, RefT | typing.Any]]](data={})
-        self._outputs = Attr[typing.List[str] | str](data=None)
+        self._args = Attr[typing.Dict[str, typing.Dict[str, Ref | typing.Any]]](data={})
         self._node_counter = Attr[int](data=0)
         self._var_counter = Attr[int](data=0)
 
@@ -449,7 +619,7 @@ class DataFlow(AsyncProcess):
             self._var_counter.data += 1
         else:
             counter = 0
-            while f"{prefix}_{counter}" in self._nodes:
+            while f"{prefix}_{counter}" in self.nodes:
                 counter += 1
             name = f"{prefix}_{counter}"
         return name
@@ -478,14 +648,14 @@ class DataFlow(AsyncProcess):
             elif name in by:
                 return by[name]
 
-        node = self._nodes[name]
+        node = self.nodes[name]
         args = self._args.data[name]
 
         kwargs = {}
 
         async with asyncio.TaskGroup() as tg:
             for key, arg in args.items():
-                if isinstance(arg, RefT):
+                if isinstance(arg, Ref):
                     task = tg.create_task(
                         self._sub(arg.name, by, visited)
                     )
@@ -518,7 +688,7 @@ class DataFlow(AsyncProcess):
         by[name] = res
         return res
     
-    def link(self, name: str, node: Process | AsyncProcess, **kwargs: RefT | typing.Any) -> RefT:
+    def link(self, name: str, node: Process | AsyncProcess, **kwargs: Ref | typing.Any) -> Ref:
         """Link a computation node to the DataFlow.
 
         Adds a Process or AsyncProcess node to the graph with the given name. Arguments
@@ -543,13 +713,13 @@ class DataFlow(AsyncProcess):
             >>> doubled = dag.link('double', Multiply(), value=inp, factor=2)
             >>> dag.link('result', Add(), a=doubled, b=5)
         """
-        if name in self._nodes:
+        if name in self.nodes:
             raise ValueError(f"Node '{name}' already exists in DAG")
-        self._nodes[name] = node
+        self.nodes[name] = node
         self._args.data[name] = kwargs
-        return RefT(name=name)
+        return Ref(name=name)
     
-    def add_inp(self, name: str, val: typing.Any) -> RefT:
+    def add_inp(self, name: str, val: typing.Any) -> Ref:
         """Add an input variable (root node) to the DataFlow.
 
         Input variables are root nodes that provide initial values to the graph.
@@ -574,11 +744,11 @@ class DataFlow(AsyncProcess):
             >>> await dag.aforward()  # Uses default values: 5 + 10 = 15
             >>> await dag.aforward(by={dag._nodes['x']: 20})  # Override x: 20 + 10 = 30
         """
-        if name in self._nodes:
+        if name in self.nodes:
             raise ValueError(f"Node {name} already exists in DAG")
-        self._nodes[name] = Var(val=val, name=name)
+        self.nodes[name] = V(val=val, name=name)
         self._args.data[name] = {}
-        return RefT(name=name)
+        return Ref(name=name)
 
     def set_out(self, outputs: typing.List[str]|str) -> None:
         """Set the output nodes of the DataFlow.
@@ -603,9 +773,9 @@ class DataFlow(AsyncProcess):
         """
         output_list = outputs if isinstance(outputs, list) else [outputs]
         for output in output_list:
-            if output not in self._nodes:
+            if output not in self.nodes:
                 raise ValueError(f"Output node '{output}' does not exist in DataFlow")
-        self._outputs.data = outputs
+        self.outputs = outputs
 
     def __contains__(self, item: str) -> bool:
         """Check if the DAG contains a node with the given name
@@ -614,7 +784,7 @@ class DataFlow(AsyncProcess):
         Returns:
             bool: True if the node exists, False otherwise
         """
-        return item in self._nodes
+        return item in self.nodes
     
     def sub(self, outputs: typing.List[str], by: typing.Dict[str, typing.Any]) -> 'DataFlow':
         """Create a sub-DAG with the given outputs
@@ -626,9 +796,9 @@ class DataFlow(AsyncProcess):
         """
         sub_dag = DataFlow()
         for name in outputs:
-            if name not in self._nodes:
+            if name not in self.nodes:
                 raise ValueError(f"Node {name} does not exist in DAG")
-            sub_dag._nodes[name] = self._nodes[name]
+            sub_dag.nodes[name] = self.nodes[name]
             sub_dag._args.data[name] = self._args.data[name]
         sub_dag.set_out(outputs)
         return sub_dag
@@ -639,14 +809,14 @@ class DataFlow(AsyncProcess):
             name (str): The name of the node to replace
             node (Process | AsyncProcess): The new node
         """
-        if name not in self._nodes:
+        if name not in self.nodes:
             raise ValueError(f"Node {name} does not exist in DAG")
-        self._nodes[name] = node
+        self.nodes[name] = node
 
     async def aforward(
         self,
         by: typing.Dict=None,
-        out_override: typing.List[str]|str|RefT=None
+        out_override: typing.List[str]|str|Ref=None
     ):
         """Execute the DataFlow and return the output values.
 
@@ -674,12 +844,12 @@ class DataFlow(AsyncProcess):
             >>> await dag.aforward(by={dag._nodes['x']: 10})  # Returns 100
             >>> await dag.aforward(out_override='x')  # Returns 5 (outputs x instead)
         """
-        outputs = out_override if out_override is not None else self._outputs.data
+        outputs = out_override if out_override is not None else self.outputs
 
         if outputs is None:
             return None
 
-        if isinstance(outputs, (str, RefT)):
+        if isinstance(outputs, (str, Ref)):
             outputs = [outputs]
             single = True
         else:
@@ -689,7 +859,7 @@ class DataFlow(AsyncProcess):
         res = []
 
         for output in outputs:
-            if isinstance(output, RefT):
+            if isinstance(output, Ref):
                 name = output.name
             else:
                 name = output
@@ -716,20 +886,20 @@ class DataFlow(AsyncProcess):
         for node in nodes:
             if node.name is None:
                 raise ValueError("Node must have a name to be added to DAG")
-            if isinstance(node, Var):
+            if isinstance(node, V):
                 dag.add_inp(name=node.name, val=node.val)
             elif isinstance(node, T):
                 args = {}
                 for k, arg in node.args.items():
                     if isinstance(arg, BaseNode):
-                        args[k] = RefT(name=arg.name)
+                        args[k] = Ref(name=arg.name)
                     else:
                         args[k] = arg
                 dag.link(name=node.name, node=node.src, **args)
             else:
                 raise ValueError("Node must be a Var or T to be added to DAG")
         return dag
-    
+
     def to_node_graph(self) -> typing.List[BaseNode]:
         """Convert the DAG to a list of nodes
 
@@ -737,14 +907,14 @@ class DataFlow(AsyncProcess):
             typing.List[BaseNode]: The list of nodes
         """
         nodes = []
-        for name, node in self._nodes.items():
-            if isinstance(node, Var):
-                nodes.append(Var(val=node.val, name=name))
+        for name, node in self.nodes.items():
+            if isinstance(node, V):
+                nodes.append(V(val=node.val, name=name))
             elif isinstance(node, (Process, AsyncProcess)):
                 args = {}
                 for k, arg in self._args.data[name].items():
-                    if isinstance(arg, RefT):
-                        ref_node = self._nodes[arg.name]
+                    if isinstance(arg, Ref):
+                        ref_node = self.nodes[arg.name]
                         args[k] = ref_node
                     else:
                         args[k] = arg

@@ -177,3 +177,61 @@ def resolve_name(name: str,
         return matches[0]
 
     raise NameResolutionError(f"'{name}' not found in namespace")
+
+
+def extract_parameter_types(
+    func: typing.Callable,
+    *,
+    require_annotations: bool = True,
+    exclude_params: set | None = None
+) -> typing.Dict[str, type]:
+    """Extract parameter names and their type annotations from a function.
+
+    Args:
+        func: Function to inspect (method, function, or callable)
+        require_annotations: If True, raises TypeError for parameters without type hints
+        exclude_params: Set of parameter names to exclude (e.g., {'self', 'cls'})
+
+    Returns:
+        Dict mapping parameter name to type annotation
+
+    Raises:
+        TypeError: If require_annotations=True and any parameter lacks type annotation
+
+    Example:
+        >>> def process(x: int, y: str) -> float:
+        ...     return float(x) + len(y)
+        >>> extract_parameter_types(process)
+        {'x': <class 'int'>, 'y': <class 'str'>}
+
+        >>> def untyped(a, b: int):
+        ...     pass
+        >>> extract_parameter_types(untyped, require_annotations=True)
+        TypeError: Parameter 'a' in function 'untyped' must have a type annotation
+    """
+    if exclude_params is None:
+        exclude_params = {'self', 'cls'}
+
+    func_name = getattr(func, '__name__', repr(func))
+    sig = inspect.signature(func)
+    param_types = {}
+
+    for param_name, param in sig.parameters.items():
+        if param_name in exclude_params:
+            continue
+
+        if param.kind in (param.VAR_POSITIONAL, param.VAR_KEYWORD):
+            continue
+
+        annotation = param.annotation if param.annotation is not inspect.Parameter.empty else None
+
+        if require_annotations and annotation is None:
+            raise TypeError(
+                f"Parameter '{param_name}' in function '{func_name}' "
+                f"must have a type annotation"
+            )
+
+        if annotation is not None:
+            param_types[param_name] = annotation
+
+    return param_types

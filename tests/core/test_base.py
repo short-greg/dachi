@@ -2410,7 +2410,8 @@ class TestRestrictedTaskSchemaMixin:
         class TaskWithMixin(BaseModule, RestrictedTaskSchemaMixin):
             value: int = 1
 
-            def restricted_schema(self, *, tasks=None, _profile="shared", _seen=None, **kwargs):
+            @classmethod
+            def restricted_schema(cls, *, tasks=None, _profile="shared", _seen=None, **kwargs):
                 return {"title": "TaskWithMixinSpec", "restricted": True, "tasks": tasks}
         return TaskWithMixin
 
@@ -2500,3 +2501,204 @@ class TestRestrictedTaskSchemaMixin:
                 restricted_schema_cls=RestrictedTaskSchemaMixin
             )
 
+
+# ------------------------------------------------------------
+#  Spec Inheritance Tests (for BaseModule.__convert_type_to_spec__ and spec inheritance)
+# ------------------------------------------------------------
+
+class TestSpecInheritance:
+    """Test that child module specs properly inherit from parent module specs."""
+
+    def test_simple_inheritance_creates_spec_hierarchy(self):
+        """Child spec should inherit from parent spec"""
+        class Parent(BaseModule):
+            x: int
+
+        class Child(Parent):
+            y: str
+
+        parent_spec = Parent.__spec__
+        child_spec = Child.__spec__
+
+        assert issubclass(child_spec, parent_spec)
+        assert child_spec.__bases__ == (parent_spec,)
+
+    def test_grandchild_inherits_from_child_spec(self):
+        """Three-level inheritance should work"""
+        class GrandParent(BaseModule):
+            a: int
+
+        class Parent(GrandParent):
+            b: str
+
+        class Child(Parent):
+            c: float
+
+        assert issubclass(Child.__spec__, Parent.__spec__)
+        assert issubclass(Parent.__spec__, GrandParent.__spec__)
+        assert issubclass(Child.__spec__, GrandParent.__spec__)
+
+    def test_multiple_inheritance_combines_parent_specs(self):
+        """Multiple inheritance should create spec with multiple bases"""
+        class Parent1(BaseModule):
+            x: int
+
+        class Parent2(BaseModule):
+            y: str
+
+        class Child(Parent1, Parent2):
+            z: float
+
+        child_spec = Child.__spec__
+        assert issubclass(child_spec, Parent1.__spec__)
+        assert issubclass(child_spec, Parent2.__spec__)
+        assert len(child_spec.__bases__) == 2
+
+    def test_direct_basemodule_child_inherits_from_basespec(self):
+        """Direct child of BaseModule should inherit from BaseSpec"""
+        class DirectChild(BaseModule):
+            x: int
+
+        assert issubclass(DirectChild.__spec__, BaseSpec)
+
+
+class TestUnionTypeConversion:
+    """Test that Union types are properly converted to spec types."""
+
+    def test_union_with_single_basemodule_converts_to_spec(self):
+        """Union[Module, str] should become Union[ModuleSpec, str]"""
+        class MyModule(BaseModule):
+            value: int
+
+        class Container(BaseModule):
+            item: MyModule | str
+
+        container_spec = Container.__spec__
+        item_annotation = container_spec.__annotations__['item']
+
+        # Should be Union[MyModuleSpec, str]
+        import typing
+        assert typing.get_origin(item_annotation) is typing.Union
+        args = typing.get_args(item_annotation)
+        assert len(args) == 2
+        assert args[0] == MyModule.__spec__
+        assert args[1] == str
+
+    def test_union_with_multiple_basemodules_converts_all(self):
+        """Union[Module1, Module2] should become Union[Module1Spec, Module2Spec]"""
+        class Module1(BaseModule):
+            x: int
+
+        class Module2(BaseModule):
+            y: str
+
+        class Container(BaseModule):
+            item: Module1 | Module2
+
+        container_spec = Container.__spec__
+        item_annotation = container_spec.__annotations__['item']
+
+        import typing
+        args = typing.get_args(item_annotation)
+        assert len(args) == 2
+        assert Module1.__spec__ in args
+        assert Module2.__spec__ in args
+
+    def test_union_with_primitives_unchanged(self):
+        """Union[int, str] should remain Union[int, str]"""
+        class Container(BaseModule):
+            item: int | str
+
+        container_spec = Container.__spec__
+        item_annotation = container_spec.__annotations__['item']
+
+        import typing
+        args = typing.get_args(item_annotation)
+        assert int in args
+        assert str in args
+
+    def test_union_mixed_modules_and_primitives(self):
+        """Union[Module, int, str] should become Union[ModuleSpec, int, str]"""
+        class MyModule(BaseModule):
+            value: int
+
+        class Container(BaseModule):
+            item: MyModule | int | str
+
+        container_spec = Container.__spec__
+        item_annotation = container_spec.__annotations__['item']
+
+        import typing
+        args = typing.get_args(item_annotation)
+        assert len(args) == 3
+        assert MyModule.__spec__ in args
+        assert int in args
+        assert str in args
+
+    def test_typing_union_syntax_also_works(self):
+        """typing.Union syntax should work same as | syntax"""
+        import typing
+
+        class MyModule(BaseModule):
+            value: int
+
+        class Container(BaseModule):
+            item: typing.Union[MyModule, str]
+
+        container_spec = Container.__spec__
+        item_annotation = container_spec.__annotations__['item']
+
+        args = typing.get_args(item_annotation)
+        assert MyModule.__spec__ in args
+        assert str in args
+
+
+class TestSpecSerializationWithUnions:
+    """Test that serialization works correctly with Union-typed fields."""
+
+    def test_spec_accepts_child_spec_in_union_field(self):
+        """When field is Union[ModuleSpec, ...], should accept subclass of ModuleSpec"""
+        @registry.register(name="Parent")
+        class Parent(BaseModule):
+            x: int
+
+        @registry.register(name="Child")
+        class Child(Parent):
+            y: str
+
+        @registry.register(name="Container")
+        class Container(BaseModule):
+            item: Parent
+
+        # Create container with child instance
+        container = Container(item=Child(x=1, y="hello"))
+
+        # Get spec - should not raise
+        spec = container.spec()
+
+        # Spec should have child's spec (with full qualified name from local class)
+        assert 'Child' in spec.item.kind
+
+    def test_union_field_accepts_either_type(self):
+        """Union field should accept instances of either type"""
+        @registry.register(name="Module1")
+        class Module1(BaseModule):
+            x: int
+
+        @registry.register(name="Module2")
+        class Module2(BaseModule):
+            y: str
+
+        @registry.register(name="Container")
+        class Container(BaseModule):
+            item: Module1 | Module2
+
+        # Should accept Module1
+        c1 = Container(item=Module1(x=5))
+        spec1 = c1.spec()
+        assert spec1.item.kind.endswith('Module1')
+
+        # Should accept Module2
+        c2 = Container(item=Module2(y="test"))
+        spec2 = c2.spec()
+        assert spec2.item.kind.endswith('Module2')

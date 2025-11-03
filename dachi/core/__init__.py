@@ -19,13 +19,20 @@ from ._base import (
     # AdaptModule,
     ParamSet,
     RestrictedSchemaMixin,
-    lookup_module_class
+    lookup_module_class,
+    BaseFieldDescriptor,
+    ModFieldDescriptor,
+    modfield,
 )
 from ._structs import (
     ModuleDict,
     ModuleList,
     SerialDict,
-    SerialTuple
+    SerialTuple,
+    modlistfield,
+    moddictfield,
+    ModListFieldDescriptor,
+    ModDictFieldDescriptor,
 )
 from ._tool import (
     BaseTool,

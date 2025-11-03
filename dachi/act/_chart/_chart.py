@@ -7,7 +7,7 @@ from ._state import BaseState
 from dataclasses import dataclass
 from dachi.core import RestrictedSchemaMixin
 
-from dachi.core import Attr, ModuleList
+from dachi.core import Attr, ModuleList, modlistfield
 from dachi.core._scope import Scope, Ctx
 from ._event import Event, EventQueue, Timer, MonotonicClock, ChartEventHandler, EventPost
 
@@ -30,7 +30,7 @@ JSON = Union[Dict[str, Any], List[Any], str, int, float, bool, None]
 
 class StateChart(ChartBase, ChartEventHandler, RestrictedSchemaMixin):
     name: str
-    regions: ModuleList[Region]  # ModuleList[Region]
+    regions: ModuleList[Region] = modlistfield(default_factory=list)
     checkpoint_policy: Literal["yield", "hard"] = "yield" # currently not used
     queue_maxsize: int = 1024
     queue_overflow: Literal["drop_newest", "drop_oldest", "block"] = "drop_newest"
@@ -43,9 +43,6 @@ class StateChart(ChartBase, ChartEventHandler, RestrictedSchemaMixin):
             ValueError: If no regions are defined.
         """
         super().__post_init__()
-
-        if isinstance(self.regions, list):
-            self.regions = ModuleList(items=self.regions)
 
         self._status = Attr[ChartStatus](data=ChartStatus.WAITING)
         self._started_at = Attr[Optional[float]](data=None)
@@ -211,26 +208,24 @@ class StateChart(ChartBase, ChartEventHandler, RestrictedSchemaMixin):
         if states is None:
             return cls.schema()
 
-        # Pattern A: Pass states to Region.restricted_schema()
-        region_schema = Region.restricted_schema(
-            states=states,
+        # Get base schema
+        schema = cls.schema()
+
+        # Use descriptor to update regions field with Region schema
+        # Pattern A: states are passed through to Region.restricted_schema()
+        regions_field_schema, regions_defs = cls.regions.restricted_schema(
+            filter_schema_cls=RestrictedSchemaMixin,
+            variants=[Region],
             _profile=_profile,
             _seen=_seen,
+            states=states,
             **kwargs
         )
 
-        # Get base schema and merge $defs from region_schema (Pattern A requirement)
-        schema = cls.schema()
-        cls._schema_merge_defs(schema, region_schema)
+        schema["properties"]["regions"] = regions_field_schema
+        schema["$defs"].update(regions_defs)
 
-        # Update schema's regions field (ModuleList) with ONE Region schema
-        return cls._schema_update_list_field(
-            schema,
-            field_name="regions",
-            placeholder_name="RegionSpec",
-            variant_schemas=[region_schema],
-            profile=_profile
-        )
+        return schema
 
     async def stop(self) -> None:
         """Stop the state chart by stopping all running regions.

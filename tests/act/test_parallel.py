@@ -83,10 +83,10 @@ class TestMultiRestrictedSchema:
 
         # Check that schema was updated
         assert "$defs" in restricted
-        assert "Allowed_TaskSpec" in restricted["$defs"]
+        assert "Allowed_tasks" in restricted["$defs"]
 
-        # Check that Allowed_TaskSpec contains our variants
-        allowed_union = restricted["$defs"]["Allowed_TaskSpec"]
+        # Check that Allowed_tasks contains our variants
+        allowed_union = restricted["$defs"]["Allowed_tasks"]
         assert "oneOf" in allowed_union
         refs = allowed_union["oneOf"]
         assert len(refs) == 2
@@ -103,7 +103,7 @@ class TestMultiRestrictedSchema:
         restricted = multi.restricted_schema(tasks=[ImmediateAction])
 
         # Should use shared union in $defs
-        assert "Allowed_TaskSpec" in restricted["$defs"]
+        assert "Allowed_tasks" in restricted["$defs"]
 
         # tasks field should reference the shared union
         # Handle nullable field (anyOf with null)
@@ -112,11 +112,11 @@ class TestMultiRestrictedSchema:
             # Nullable: find the array option
             for option in tasks_schema["anyOf"]:
                 if isinstance(option, dict) and option.get("type") == "array":
-                    assert option["items"] == {"$ref": "#/$defs/Allowed_TaskSpec"}
+                    assert option["items"] == {"$ref": "#/$defs/Allowed_tasks"}
                     break
         else:
             # Non-nullable
-            assert tasks_schema["items"] == {"$ref": "#/$defs/Allowed_TaskSpec"}
+            assert tasks_schema["items"] == {"$ref": "#/$defs/Allowed_tasks"}
 
     def test_restricted_schema_inline_profile_creates_oneof(self):
         """Test that _profile='inline' creates inline oneOf"""
@@ -131,7 +131,7 @@ class TestMultiRestrictedSchema:
         assert any("ImmediateActionSpec" in key for key in defs_keys)
         assert any("SetStorageActionSpec" in key for key in defs_keys)
 
-        # But tasks field should have inline oneOf (no Allowed_TaskSpec)
+        # But tasks field should have inline oneOf (no Allowed_tasks)
         tasks_schema = restricted["properties"]["tasks"]
         if "anyOf" in tasks_schema:
             # Nullable: find the array option
