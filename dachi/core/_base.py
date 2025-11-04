@@ -15,7 +15,7 @@ import copy
 import types
 from dataclasses import dataclass
 
-
+import pydantic
 import typing as t
 from abc import ABC, abstractmethod
 from functools import lru_cache
@@ -140,17 +140,18 @@ class ShareableItem(t.Generic[J]):
     
     def schema(self) -> dict:
         """
-        Serialise *this* ShareableItem → its spec counterpart.
+        Get the JSON schema dict for the ShareableItem's data.
 
-        If *to_dict* is True, returns a dict; otherwise returns a BaseModel.
+        Returns:
+            JSON schema dictionary
         """
         if isinstance(self._data, BaseModel):
-            return self._data.model_json_schema()
+            return type(self._data).model_json_schema()
         else:
             python_type = type(self._data).__name__
             json_type = python_type_to_json_schema_type(python_type)
             return {"type": json_type}
-        
+
     def has_callback(self, callback: Callable[[T], None]) -> bool:
         return callback in self._callbacks
 
@@ -2476,18 +2477,33 @@ class ParamSet(object):
         )
         return cls(params=params)
 
-    def update(self, param_set: Dict):
-        """Load the parameters into a BaseModule."""
+    def update(self, param_set: Dict, flat: bool = False):
+        """Update the parameters from a dictionary.
+
+        Args:
+            param_set: Dictionary with param_0, param_1, etc. keys
+            flat: If True, expects flat dict like {"param_0": "value"}.
+                  If False (default), expects schema-compliant structure.
+        """
         for i, param in enumerate(self.params):
             key = f"param_{i}"
             if key in param_set:
-                param.data = param_set[key]
-    
+                value = param_set[key]
+                if not flat and isinstance(param._data, BaseModel):
+                    # For BaseModel data, validate the dict using Pydantic
+                    param.data = type(param._data).model_validate(value)
+                else:
+                    # For primitives or flat format, direct assignment
+                    param.data = value
+
     def schema(self) -> dict:
         """
         Return the JSON schema for all parameters in the set.
         """
-        properties = {f"param_{i}": param.schema() for i, param in enumerate(self.params)}
+        properties = {}
+        for i, param in enumerate(self.params):
+            properties[f"param_{i}"] = param.schema()
+
         return {
             "type": "object",
             "properties": properties,

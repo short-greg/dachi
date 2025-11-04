@@ -8,10 +8,12 @@ from abc import abstractmethod
 from enum import Enum, auto
 import asyncio
 import logging
+import json
 
 from dachi.core import Attr, Ctx, BaseModule
 from ._event import EventPost
 from dachi.utils._utils import resolve_fields, resolve_from_signature
+from dachi.utils import python_type_to_json_schema_type
 from ._base import ChartBase, ChartStatus, InvalidTransition
 
 logger = logging.getLogger("dachi.statechart")
@@ -218,21 +220,77 @@ class AtomState(BaseState, ABC):
         
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
-        
+
         # Process optional inputs, outputs, and emit declarations
         sc_params = {"inputs": {}, "outputs": {}, "emit": {}}
-        
+
         if hasattr(cls, 'inputs'):
             sc_params["inputs"] = cls._process_ports(cls.inputs)
-        
+
         if hasattr(cls, 'outputs'):
             sc_params["outputs"] = cls._process_ports(cls.outputs)
-            
+
         if hasattr(cls, 'emit'):
             sc_params["emit"] = cls._process_ports(cls.emit)
-        
+
         cls.sc_params = sc_params
-    
+
+    @classmethod
+    def schema(cls) -> dict:
+        """Return the Pydantic schema dict with port metadata.
+
+        Returns:
+            dict: Pydantic schema dict with added 'x-ports' key for port metadata
+        """
+        base_schema = super().schema()
+
+        ports_metadata = {}
+        if cls.sc_params["inputs"]:
+            ports_metadata["inputs"] = cls._serialize_ports(cls.sc_params["inputs"])
+        if cls.sc_params["outputs"]:
+            ports_metadata["outputs"] = cls._serialize_ports(cls.sc_params["outputs"])
+        if cls.sc_params["emit"]:
+            ports_metadata["emit"] = cls._serialize_ports(cls.sc_params["emit"])
+
+        if ports_metadata:
+            base_schema["x-ports"] = ports_metadata
+
+        return base_schema
+
+    @classmethod
+    def _serialize_ports(cls, ports: dict) -> dict:
+        """Serialize port metadata to JSON-compatible format.
+
+        Args:
+            ports: Dictionary of port definitions
+
+        Returns:
+            dict: Serialized port metadata with type names
+        """
+        serialized = {}
+        for port_name, port_info in ports.items():
+            serialized_info = {}
+
+            if "type" in port_info:
+                port_type = port_info["type"]
+                try:
+                    type_name = port_type.__name__ if hasattr(port_type, '__name__') else str(port_type)
+                    serialized_info["type"] = python_type_to_json_schema_type(type_name)
+                except Exception:
+                    serialized_info["type"] = str(port_type)
+
+            if "default" in port_info:
+                default_val = port_info["default"]
+                try:
+                    json.dumps(default_val)
+                    serialized_info["default"] = default_val
+                except (TypeError, ValueError):
+                    serialized_info["default"] = str(default_val)
+
+            serialized[port_name] = serialized_info
+
+        return serialized
+
     @classmethod
     def _process_ports(cls, port_class):
         """Extract port information from inputs, outputs, or emit class"""

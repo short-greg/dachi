@@ -2,11 +2,13 @@
 from enum import Enum
 from abc import abstractmethod
 import typing as t
+import json
 
 # local
 from ...core import Attr, BaseModule, InitVar, Scope, RestrictedSchemaMixin
 from ...proc import Process
 from ...utils._utils import resolve_fields, resolve_from_signature
+from ...utils import python_type_to_json_schema_type
 # TODO: Add in Action (For GOAP)
 from abc import ABC
 import typing as t
@@ -318,17 +320,71 @@ class Leaf(Task):
     
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
-        
+
         ports = {"inputs": {}, "outputs": {}}
-        
+
         if hasattr(cls, 'inputs'):
             ports["inputs"] = cls._process_ports(cls.inputs)
-        
+
         if hasattr(cls, 'outputs'):
             ports["outputs"] = cls._process_ports(cls.outputs)
-        
+
         cls.__ports__ = ports
-    
+
+    @classmethod
+    def schema(cls) -> dict:
+        """Return the Pydantic schema dict with port metadata.
+
+        Returns:
+            dict: Pydantic schema dict with added 'x-ports' key for port metadata
+        """
+        base_schema = super().schema()
+
+        ports_metadata = {}
+        if cls.__ports__["inputs"]:
+            ports_metadata["inputs"] = cls._serialize_ports(cls.__ports__["inputs"])
+        if cls.__ports__["outputs"]:
+            ports_metadata["outputs"] = cls._serialize_ports(cls.__ports__["outputs"])
+
+        if ports_metadata:
+            base_schema["x-ports"] = ports_metadata
+
+        return base_schema
+
+    @classmethod
+    def _serialize_ports(cls, ports: dict) -> dict:
+        """Serialize port metadata to JSON-compatible format.
+
+        Args:
+            ports: Dictionary of port definitions
+
+        Returns:
+            dict: Serialized port metadata with type names
+        """
+        serialized = {}
+        for port_name, port_info in ports.items():
+            serialized_info = {}
+
+            if "type" in port_info:
+                port_type = port_info["type"]
+                try:
+                    type_name = port_type.__name__ if hasattr(port_type, '__name__') else str(port_type)
+                    serialized_info["type"] = python_type_to_json_schema_type(type_name)
+                except Exception:
+                    serialized_info["type"] = str(port_type)
+
+            if "default" in port_info:
+                default_val = port_info["default"]
+                try:
+                    json.dumps(default_val)
+                    serialized_info["default"] = default_val
+                except (TypeError, ValueError):
+                    serialized_info["default"] = str(default_val)
+
+            serialized[port_name] = serialized_info
+
+        return serialized
+
     def build_inputs(self, ctx: dict) -> dict:
         """Build inputs from context data using class definition or function signature"""
         if hasattr(self.__class__, 'inputs'):

@@ -319,12 +319,104 @@ class TestPortSystem:
         class BaseAction(Action):
             class inputs:
                 base_param: int
-        
+
         class DerivedAction(BaseAction):
             class inputs:
                 derived_param: str
-        
+
         # Each class should have its own ports
         assert "base_param" in BaseAction.__ports__["inputs"]
         assert "base_param" not in DerivedAction.__ports__["inputs"]
         assert "derived_param" in DerivedAction.__ports__["inputs"]
+
+
+class TestLeafSchemaMetadata:
+    """Test the schema method includes port metadata for Leaf classes"""
+
+    def test_schema_returns_dict_with_xports_key(self):
+        class TestAction(Action):
+            class inputs:
+                param1: int
+
+            class outputs:
+                result: str
+
+        schema = TestAction.schema()
+
+        assert isinstance(schema, dict)
+        assert "x-ports" in schema
+        assert "properties" in schema
+
+    def test_schema_includes_inputs_metadata(self):
+        class TestAction(Action):
+            class inputs:
+                param1: int
+                param2: str = "default"
+
+            async def execute(self, param1, param2):
+                return TaskStatus.SUCCESS
+
+        schema = TestAction.schema()
+
+        assert "x-ports" in schema
+        assert "inputs" in schema["x-ports"]
+        assert "param1" in schema["x-ports"]["inputs"]
+        assert "param2" in schema["x-ports"]["inputs"]
+        assert schema["x-ports"]["inputs"]["param1"]["type"] == "integer"
+        assert schema["x-ports"]["inputs"]["param2"]["type"] == "string"
+        assert schema["x-ports"]["inputs"]["param2"]["default"] == "default"
+
+    def test_schema_includes_outputs_metadata(self):
+        class TestAction(Action):
+            class outputs:
+                result: int
+                success: bool
+
+            async def execute(self):
+                return TaskStatus.SUCCESS
+
+        schema = TestAction.schema()
+
+        assert "x-ports" in schema
+        assert "outputs" in schema["x-ports"]
+        assert "result" in schema["x-ports"]["outputs"]
+        assert "success" in schema["x-ports"]["outputs"]
+        assert schema["x-ports"]["outputs"]["result"]["type"] == "integer"
+        assert schema["x-ports"]["outputs"]["success"]["type"] == "boolean"
+
+    def test_schema_with_no_ports_has_no_xports_key(self):
+        class TestAction(Action):
+            async def execute(self):
+                return TaskStatus.SUCCESS
+
+        schema = TestAction.schema()
+
+        assert "x-ports" not in schema
+
+    def test_schema_base_schema_is_preserved(self):
+        class TestAction(Action):
+            param: int = 5
+
+            class inputs:
+                input1: str
+
+        schema = TestAction.schema()
+
+        assert "properties" in schema
+        assert "param" in schema["properties"]
+
+    def test_condition_schema_includes_ports(self):
+        class TestCondition(Condition):
+            class inputs:
+                threshold: float = 0.5
+
+            async def execute(self, threshold):
+                return True
+
+        schema = TestCondition.schema()
+
+        assert "x-ports" in schema
+        assert "inputs" in schema["x-ports"]
+        assert "threshold" in schema["x-ports"]["inputs"]
+        assert schema["x-ports"]["inputs"]["threshold"]["type"] == "number"
+        assert schema["x-ports"]["inputs"]["threshold"]["default"] == 0.5

@@ -2702,3 +2702,77 @@ class TestSpecSerializationWithUnions:
         c2 = Container(item=Module2(y="test"))
         spec2 = c2.spec()
         assert spec2.item.kind.endswith('Module2')
+
+
+class TestParamSetSchema:
+    """Test schema() and update() methods for ParamSet."""
+
+    def test_paramset_schema_returns_dict(self):
+        """Test that ParamSet.schema() returns a dict (JSON schema)."""
+        param1 = Param(data="hello")
+        param2 = Param(data=42)
+        param_set = ParamSet(params=[param1, param2])
+
+        schema = param_set.schema()
+        assert isinstance(schema, dict)
+        assert "properties" in schema
+        assert "param_0" in schema["properties"]
+        assert "param_1" in schema["properties"]
+        assert schema["properties"]["param_0"] == {"type": "string"}
+        assert schema["properties"]["param_1"] == {"type": "integer"}
+
+    def test_paramset_update_with_flat_dict(self):
+        """Test that ParamSet.update() accepts a flat dict with flat=True."""
+        param1 = Param(data="hello")
+        param2 = Param(data=42)
+        param_set = ParamSet(params=[param1, param2])
+
+        param_set.update({"param_0": "world", "param_1": 100}, flat=True)
+        assert param1.data == "world"
+        assert param2.data == 100
+
+    def test_paramset_update_with_structured_dict(self):
+        """Test that ParamSet.update() accepts structured dict (default)."""
+        param1 = Param(data="hello")
+        param2 = Param(data=42)
+        param_set = ParamSet(params=[param1, param2])
+
+        # For primitives, schema-compliant format is still just the value
+        param_set.update({"param_0": "updated", "param_1": 999})
+        assert param1.data == "updated"
+        assert param2.data == 999
+
+    def test_paramset_update_with_basemodel_param(self):
+        """Test update() with a Param containing BaseModel data."""
+        class MyModel(BaseModel):
+            name: str
+            age: int
+
+        param1 = Param(data=MyModel(name="Alice", age=30))
+        param2 = Param(data=42)
+        param_set = ParamSet(params=[param1, param2])
+
+        # Update with dict matching Pydantic structure
+        param_set.update({
+            "param_0": {"name": "Bob", "age": 25},
+            "param_1": 100
+        })
+        assert param1.data.name == "Bob"
+        assert param1.data.age == 25
+        assert param2.data == 100
+
+    def test_paramset_build_from_module(self):
+        """Test ParamSet.build() collects parameters from a module."""
+        class MyModule(BaseModule):
+            def __post_init__(self):
+                super().__post_init__()
+                self.param1 = Param(data="test")
+                self.param2 = Param(data=123)
+
+        module = MyModule()
+        param_set = ParamSet.build(module)
+
+        assert len(param_set.params) == 2
+        schema = param_set.schema()
+        assert "param_0" in schema["properties"]
+        assert "param_1" in schema["properties"]

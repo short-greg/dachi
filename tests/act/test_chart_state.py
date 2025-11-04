@@ -1952,3 +1952,158 @@ class TestBoundStateEdgeCases:
 
         # Assert
         assert bound.name == "CustomBound"
+
+
+class TestAtomStateSchemaMetadata:
+    """Test the schema method includes port metadata for AtomState classes"""
+
+    def test_schema_returns_dict_with_xports_key(self):
+        """Test that schema() returns a dict with 'x-ports' key"""
+        class TestState(State):
+            class inputs:
+                param1: int
+
+            class outputs:
+                result: str
+
+            async def execute(self, post, param1):
+                return {"result": "test"}
+
+        schema = TestState.schema()
+
+        assert isinstance(schema, dict)
+        assert "x-ports" in schema
+        assert "properties" in schema
+
+    def test_schema_includes_inputs_metadata(self):
+        """Test that inputs are included in port metadata"""
+        class TestState(State):
+            class inputs:
+                param1: int
+                param2: str = "default"
+
+            async def execute(self, post, param1, param2):
+                return {"result": f"{param1}_{param2}"}
+
+        schema = TestState.schema()
+
+        assert "x-ports" in schema
+        assert "inputs" in schema["x-ports"]
+        assert "param1" in schema["x-ports"]["inputs"]
+        assert "param2" in schema["x-ports"]["inputs"]
+        assert schema["x-ports"]["inputs"]["param1"]["type"] == "integer"
+        assert schema["x-ports"]["inputs"]["param2"]["type"] == "string"
+        assert schema["x-ports"]["inputs"]["param2"]["default"] == "default"
+
+    def test_schema_includes_outputs_metadata(self):
+        """Test that outputs are included in port metadata"""
+        class TestState(State):
+            class outputs:
+                result: int
+                success: bool
+
+            async def execute(self, post):
+                return {"result": 42, "success": True}
+
+        schema = TestState.schema()
+
+        assert "x-ports" in schema
+        assert "outputs" in schema["x-ports"]
+        assert "result" in schema["x-ports"]["outputs"]
+        assert "success" in schema["x-ports"]["outputs"]
+        assert schema["x-ports"]["outputs"]["result"]["type"] == "integer"
+        assert schema["x-ports"]["outputs"]["success"]["type"] == "boolean"
+
+    def test_schema_includes_emit_metadata(self):
+        """Test that emit declarations are included in port metadata"""
+        class TestState(State):
+            class emit:
+                TestEvent: str
+                DataEvent: dict
+
+            async def execute(self, post):
+                return {"data": "test"}
+
+        schema = TestState.schema()
+
+        assert "x-ports" in schema
+        assert "emit" in schema["x-ports"]
+        assert "TestEvent" in schema["x-ports"]["emit"]
+        assert "DataEvent" in schema["x-ports"]["emit"]
+        assert schema["x-ports"]["emit"]["TestEvent"]["type"] == "string"
+        assert schema["x-ports"]["emit"]["DataEvent"]["type"] == "object"
+
+    def test_schema_with_no_ports_has_no_xports_key(self):
+        """Test that states without port declarations have no x-ports key"""
+        class TestState(State):
+            async def execute(self, post):
+                return {"result": "test"}
+
+        schema = TestState.schema()
+
+        assert "x-ports" not in schema
+
+    def test_schema_base_schema_is_preserved(self):
+        """Test that the base Pydantic schema is still accessible"""
+        class TestState(State):
+            param: int = 5
+
+            class inputs:
+                input1: str
+
+            async def execute(self, post, input1):
+                return {"result": input1}
+
+        schema = TestState.schema()
+
+        assert "properties" in schema
+        assert "param" in schema["properties"]
+
+    def test_stream_state_schema_includes_ports(self):
+        """Test that StreamState schemas include port metadata"""
+        class TestStreamState(StreamState):
+            class inputs:
+                count: int = 3
+
+            class outputs:
+                item: str
+
+            async def execute(self, post, count):
+                for i in range(count):
+                    yield {"item": f"item_{i}"}
+
+        schema = TestStreamState.schema()
+
+        assert "x-ports" in schema
+        assert "inputs" in schema["x-ports"]
+        assert "count" in schema["x-ports"]["inputs"]
+        assert schema["x-ports"]["inputs"]["count"]["type"] == "integer"
+        assert schema["x-ports"]["inputs"]["count"]["default"] == 3
+
+        assert "outputs" in schema["x-ports"]
+        assert "item" in schema["x-ports"]["outputs"]
+
+    def test_schema_with_all_port_types(self):
+        """Test that schema includes inputs, outputs, and emit together"""
+        class TestState(State):
+            class inputs:
+                input_val: int
+
+            class outputs:
+                output_val: str
+
+            class emit:
+                StatusEvent: str
+
+            async def execute(self, post, input_val):
+                return {"output_val": str(input_val)}
+
+        schema = TestState.schema()
+
+        assert "x-ports" in schema
+        assert "inputs" in schema["x-ports"]
+        assert "outputs" in schema["x-ports"]
+        assert "emit" in schema["x-ports"]
+        assert "input_val" in schema["x-ports"]["inputs"]
+        assert "output_val" in schema["x-ports"]["outputs"]
+        assert "StatusEvent" in schema["x-ports"]["emit"]
