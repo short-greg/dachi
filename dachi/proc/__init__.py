@@ -41,8 +41,8 @@ from ._graph import (
     async_t,
 )
 from ._msg import (
-    ToMsg,
-    NullToMsg,
+    ToPrompt,
+    NullToPrompt,
     ToText,
 )
 from ._ai import (

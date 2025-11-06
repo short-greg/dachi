@@ -48,10 +48,9 @@ class DummyAIModel(_ai.LLM):
         return resp
     
     def stream(
-        self, 
-        inp: Msg | BaseDialog, 
-        out=None, 
-        tools=None, 
+        self,
+        inp: Msg | BaseDialog,
+        out=None,
         **kwargs
     ) -> t.Iterator[t.Tuple[Resp, DeltaResp]]:
 

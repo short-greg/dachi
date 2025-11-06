@@ -640,15 +640,15 @@ class OpenAILLM(LLM):
         else:  # api == "response"
             self._adapter = OpenAIResp()
     
-    def forward(self, inp: Msg | BaseDialog, out: t.Union[t.Tuple[ToOut, ...], t.Dict[str, ToOut], ToOut, None] = None, tools=None, **kwargs) -> Resp:
-        """Execute LLM call synchronously."""
+    def forward(self, inp: Msg | BaseDialog, out: t.Union[t.Tuple[ToOut, ...], t.Dict[str, ToOut], ToOut, None] = None, **kwargs) -> Resp:
+        """Execute LLM call synchronously.
+
+        Tools should be attached to Prompt messages via prompt.tools.
+        The adapter will extract them using extract_tools_from_messages().
+        """
         # Add model to kwargs if not present
         if "model" not in kwargs:
             kwargs["model"] = self.model
-
-        # Add tools to kwargs if provided
-        if tools is not None:
-            kwargs["tools"] = tools
 
         # Convert input to API format
         api_input = self._adapter.to_input(inp, **kwargs)
@@ -668,15 +668,15 @@ class OpenAILLM(LLM):
         
         return resp
     
-    async def aforward(self, inp: Msg | BaseDialog, out: t.Union[t.Tuple[ToOut, ...], t.Dict[str, ToOut], ToOut, None] = None, tools=None, **kwargs) -> Resp:
-        """Execute LLM call asynchronously."""
+    async def aforward(self, inp: Msg | BaseDialog, out: t.Union[t.Tuple[ToOut, ...], t.Dict[str, ToOut], ToOut, None] = None, **kwargs) -> Resp:
+        """Execute LLM call asynchronously.
+
+        Tools should be attached to Prompt messages via prompt.tools.
+        The adapter will extract them using extract_tools_from_messages().
+        """
         # Add model to kwargs if not present
         if "model" not in kwargs:
             kwargs["model"] = self.model
-
-        # Add tools to kwargs if provided
-        if tools is not None:
-            kwargs["tools"] = tools
 
         # Convert input to API format
         api_input = self._adapter.to_input(inp, **kwargs)
@@ -696,15 +696,15 @@ class OpenAILLM(LLM):
         
         return resp
     
-    def stream(self, inp: Msg | BaseDialog, out: t.Union[t.Tuple[ToOut, ...], t.Dict[str, ToOut], ToOut, None] = None, tools=None, **kwargs) -> t.Iterator[t.Tuple[Resp, DeltaResp]]:
-        """Execute LLM call with streaming."""
+    def stream(self, inp: Msg | BaseDialog, out: t.Union[t.Tuple[ToOut, ...], t.Dict[str, ToOut], ToOut, None] = None, **kwargs) -> t.Iterator[t.Tuple[Resp, DeltaResp]]:
+        """Execute LLM call with streaming.
+
+        Tools should be attached to Prompt messages via prompt.tools.
+        The adapter will extract them using extract_tools_from_messages().
+        """
         # Add model to kwargs if not present
         if "model" not in kwargs:
             kwargs["model"] = self.model
-
-        # Add tools to kwargs if provided
-        if tools is not None:
-            kwargs["tools"] = tools
 
         # Convert input to API format
         api_input = self._adapter.to_input(inp, **kwargs)
@@ -728,15 +728,15 @@ class OpenAILLM(LLM):
             prev_resp = resp
             yield resp, delta_resp
     
-    async def astream(self, inp: Msg | BaseDialog, out: t.Union[t.Tuple[ToOut, ...], t.Dict[str, ToOut], ToOut, None] = None, tools=None, **kwargs) -> t.AsyncIterator[t.Tuple[Resp, DeltaResp]]:
-        """Execute LLM call with async streaming."""
+    async def astream(self, inp: Msg | BaseDialog, out: t.Union[t.Tuple[ToOut, ...], t.Dict[str, ToOut], ToOut, None] = None, **kwargs) -> t.AsyncIterator[t.Tuple[Resp, DeltaResp]]:
+        """Execute LLM call with async streaming.
+
+        Tools should be attached to Prompt messages via prompt.tools.
+        The adapter will extract them using extract_tools_from_messages().
+        """
         # Add model to kwargs if not present
         if "model" not in kwargs:
             kwargs["model"] = self.model
-
-        # Add tools to kwargs if provided
-        if tools is not None:
-            kwargs["tools"] = tools
 
         # Convert input to API format
         api_input = self._adapter.to_input(inp, **kwargs)

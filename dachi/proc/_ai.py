@@ -7,11 +7,11 @@ import pydantic
 
 # local
 from ..core import (
-    Msg, Resp, BaseModule, DeltaResp, Prompt, modfield, BaseDialog, BaseTool, ListDialog
+    Msg, Resp, BaseModule, DeltaResp, Prompt, modfield, BaseDialog, BaseTool
 )
 from ._process import AsyncProcess
 from ._resp import ToOut
-from ._msg import ToMsg
+from ._msg import ToPrompt
 
 # TODO: MOVE OUT OF HERE
 S = t.TypeVar('S', bound=pydantic.BaseModel)
@@ -238,20 +238,22 @@ class AIAdapt(BaseModule):
 class LLM(Process, AsyncProcess, StreamProcess, AsyncStreamProcess):
     """
     Adapter for Large Language Models (LLMs).
+
+    Note: Tools should be attached to Prompt messages via prompt.tools,
+    not passed as parameters. Adapters extract tools using extract_tools_from_messages().
     """
-    def forward(self, inp: Msg | BaseDialog, out: t.Union[t.Tuple[ToOut, ...], t.Dict[str, ToOut], ToOut, None] = None, tools=None, **kwargs) -> Resp:
+    def forward(self, inp: Msg | BaseDialog, out: t.Union[t.Tuple[ToOut, ...], t.Dict[str, ToOut], ToOut, None] = None, **kwargs) -> Resp:
         raise NotImplementedError
 
     async def aforward(
-        self, inp: Msg | BaseDialog, out: t.Union[t.Tuple[ToOut, ...], t.Dict[str, ToOut], ToOut, None] = None,
-        tools=None, **kwargs
+        self, inp: Msg | BaseDialog, out: t.Union[t.Tuple[ToOut, ...], t.Dict[str, ToOut], ToOut, None] = None, **kwargs
     ) -> Resp:
         raise NotImplementedError
 
-    def stream(self, inp: Msg | BaseDialog, out: t.Union[t.Tuple[ToOut, ...], t.Dict[str, ToOut], ToOut, None] = None, tools=None, **kwargs) -> t.Iterator[t.Tuple[Resp, DeltaResp]]:
+    def stream(self, inp: Msg | BaseDialog, out: t.Union[t.Tuple[ToOut, ...], t.Dict[str, ToOut], ToOut, None] = None, **kwargs) -> t.Iterator[t.Tuple[Resp, DeltaResp]]:
         raise NotImplementedError
 
-    def astream(self, inp: Msg | BaseDialog, out: t.Union[t.Tuple[ToOut, ...], t.Dict[str, ToOut], ToOut, None] = None, tools=None, **kwargs) -> t.AsyncIterator[t.Tuple[Resp, DeltaResp]]:
+    def astream(self, inp: Msg | BaseDialog, out: t.Union[t.Tuple[ToOut, ...], t.Dict[str, ToOut], ToOut, None] = None, **kwargs) -> t.AsyncIterator[t.Tuple[Resp, DeltaResp]]:
         raise NotImplementedError
 
 
@@ -260,132 +262,235 @@ class Op(AsyncProcess, Process, StreamProcess, AsyncStreamProcess):
     A basic operation that applies a function to the input.
 
     Wraps an LLM to provide a simpler interface for common operations:
-    - Optionally converts input to messages using to_msg
-    - Optionally prepends system message and/or base dialog
+    - Optionally converts input to messages using to_prompt
+    - Optionally prepends system message
     - Handles tools and output processing
     - Returns processed output values directly
+
+    Note: Op is immutable. Dialog is passed as a parameter to methods, not stored as instance state.
+    This allows for functional composition and easier state management.
     """
 
     llm: LLM = modfield()
-    to_msg: ToMsg = modfield(default=None)
-    dialog: BaseDialog | None = None
+    to_prompt: ToPrompt = modfield(default=None)
     system: str | None = None
     base_out: t.Any = None
     tools: t.List[BaseTool] = []
 
-    def _build_messages(self, inp: S) -> Msg | BaseDialog:
-        """Build the message/dialog to send to LLM.
-
-        Constructs the final message or dialog by:
-        1. Adding system message (if provided)
-        2. Adding base dialog messages (if provided)
-        3. Converting and adding user input
+    def forward(
+        self,
+        prompt: Prompt | t.Any,
+        out: t.Union[t.Tuple[ToOut, ...], t.Dict[str, ToOut], ToOut, None] = None,
+        dialog: BaseDialog | None = None,
+        **kwargs
+    ) -> t.Tuple[t.Any, BaseDialog | None]:
+        """
+        Processes the input through the LLM and returns the output with updated dialog.
 
         Args:
-            inp: The input to process (arbitrary type S)
-
-        Returns:
-            Msg | BaseDialog: A single message or dialog to pass to LLM
-        """
-        messages = []
-
-        # Add system message if provided
-        if self.system:
-            messages.append(Msg(role='system', text=self.system))
-
-        # Add base dialog if provided
-        if self.dialog:
-            messages.extend(list(self.dialog))
-
-        # Convert and add user input
-        if self.to_msg:
-            # Use to_msg to convert input to a message
-            user_msg = self.to_msg.forward(inp)
-            messages.append(user_msg)
-        else:
-            # Input is already a Msg, BaseDialog, or message-like object
-            if isinstance(inp, Msg):
-                messages.append(inp)
-            elif isinstance(inp, BaseDialog):
-                messages.extend(list(inp))
-            else:
-                # Pass through as-is (assume it's message-compatible)
-                messages.append(inp)
-
-        # Return single message or dialog based on count
-        if len(messages) == 0:
-            raise ValueError("No messages to send to LLM")
-        elif len(messages) == 1:
-            return messages[0]
-        else:
-            # Return as ListDialog for multiple messages
-            return ListDialog(messages=messages)
-
-    def forward(self, inp: S, out: t.Union[t.Tuple[ToOut, ...], t.Dict[str, ToOut], ToOut, None] = None, **kwargs) -> S:
-        """
-        Processes the input through the LLM and returns the output
-        Args:
-            inp (S): The input data to be processed.
-            out (_type_, optional): The output processor or format. Defaults to None.
+            prompt: The input data to be processed. Should be Prompt if to_prompt is None,
+                otherwise can be any type that to_prompt can convert.
+            out: The output processor or format. Defaults to None.
+            dialog: Optional dialog to maintain conversation state. Defaults to None.
             **kwargs: Additional keyword arguments to pass to the LLM.
+
         Returns:
-            S: The processed output data.
+            Tuple of (processed_output, updated_dialog). If no dialog was provided, the second
+            element will be None.
         """
         out = out or self.base_out
-        messages = self._build_messages(inp)
-        return self.llm.forward(messages, out=out, tools=self.tools, **kwargs).out
+        messages = []
+        prompt_message = prompt if self.to_prompt is None else self.to_prompt.forward(prompt)
 
-    async def aforward(self, inp: S, out: t.Union[t.Tuple[ToOut, ...], t.Dict[str, ToOut], ToOut, None] = None, **kwargs) -> S:
+        # Add tools to the prompt message if provided
+        if self.tools:
+            prompt_message = prompt_message.clone()
+            prompt_message.tools = self.tools
+            prompt_message.tool_override = True
+
+        if self.system is not None:
+            messages.append(Msg(role='system', text=self.system))
+        if dialog is not None:
+            messages.extend(list(dialog))
+        messages.append(prompt_message)
+
+        resp = self.llm.forward(
+            messages,
+            out=out,
+            **kwargs
+        )
+
+        # Update dialog if provided
+        updated_dialog = dialog
+        if dialog is not None:
+            dialog.add(prompt_message)
+            dialog.add(resp)
+            updated_dialog = dialog
+
+        return resp.out, updated_dialog
+
+    async def aforward(
+        self,
+        prompt: Prompt | t.Any,
+        out: t.Union[t.Tuple[ToOut, ...], t.Dict[str, ToOut], ToOut, None] = None,
+        dialog: BaseDialog | None = None,
+        **kwargs
+    ) -> t.Tuple[t.Any, BaseDialog | None]:
         """
-        Asynchronously processes the input through the LLM and returns the output
+        Asynchronously processes the input through the LLM and returns the output with updated dialog.
+
         Args:
-            inp (S): _description_
-            out (_type_, optional): _description_. Defaults to None.
-            **kwargs: _description_
+            prompt: The input data to be processed. Should be Prompt if to_prompt is None,
+                otherwise can be any type that to_prompt can convert.
+            out: The output processor or format. Defaults to None.
+            dialog: Optional dialog to maintain conversation state. Defaults to None.
+            **kwargs: Additional keyword arguments to pass to the LLM.
+
         Returns:
-            S: _description_
+            Tuple of (processed_output, updated_dialog). If no dialog was provided, the second
+            element will be None.
         """
         out = out or self.base_out
-        messages = self._build_messages(inp)
-        resp = await self.llm.aforward(messages, out=out, tools=self.tools, **kwargs)
-        return resp.out
+        messages = []
+        prompt_message = prompt if self.to_prompt is None else self.to_prompt.forward(prompt)
 
-    def stream(self, inp: S, out: t.Union[t.Tuple[ToOut, ...], t.Dict[str, ToOut], ToOut, None] = None, **kwargs) -> t.Iterator[S]:
+        # Add tools to the prompt message if provided
+        if self.tools:
+            prompt_message = prompt_message.clone()
+            prompt_message.tools = self.tools
+            prompt_message.tool_override = True
+
+        if self.system is not None:
+            messages.append(Msg(role='system', text=self.system))
+        if dialog is not None:
+            messages.extend(list(dialog))
+        messages.append(prompt_message)
+
+        resp = await self.llm.aforward(
+            messages,
+            out=out,
+            **kwargs
+        )
+
+        # Update dialog if provided
+        updated_dialog = dialog
+        if dialog is not None:
+            dialog.add(prompt_message)
+            dialog.add(resp)
+            updated_dialog = dialog
+
+        return resp.out, updated_dialog
+
+    def stream(
+        self,
+        prompt: Prompt | t.Any,
+        out: t.Union[t.Tuple[ToOut, ...], t.Dict[str, ToOut], ToOut, None] = None,
+        dialog: BaseDialog | None = None,
+        **kwargs
+    ) -> t.Iterator[t.Tuple[t.Any, BaseDialog | None]]:
         """
         Streams the input through the LLM, yielding outputs as they are produced.
+
         Args:
-            inp (S): The input data to be processed.
-            out (_type_, optional): The output processor or format. Defaults to None.
+            prompt: The input data to be processed. Should be Prompt if to_prompt is None,
+                otherwise can be any type that to_prompt can convert.
+            out: The output processor or format. Defaults to None.
+            dialog: Optional dialog to maintain conversation state. Defaults to None.
             **kwargs: Additional keyword arguments to pass to the LLM.
+
         Yields:
-            Iterator[S]: An iterator that yields processed outputs.
+            Iterator of tuples (processed_output, updated_dialog). Dialog is only updated
+            on the final yield.
         """
         out = out or self.base_out
-        messages = self._build_messages(inp)
-        for resp, _delta_resp in self.llm.stream(messages, out=out, tools=self.tools, **kwargs):
-            yield resp.out
+        messages = []
+        prompt_message = prompt if self.to_prompt is None else self.to_prompt.forward(prompt)
 
-    async def astream(self, inp: S, out: t.Union[t.Tuple[ToOut, ...], t.Dict[str, ToOut], ToOut, None] = None, **kwargs) -> t.AsyncIterator[S]:
+        # Add tools to the prompt message if provided
+        if self.tools:
+            prompt_message = prompt_message.clone()
+            prompt_message.tools = self.tools
+            prompt_message.tool_override = True
+
+        if self.system is not None:
+            messages.append(Msg(role='system', text=self.system))
+        if dialog is not None:
+            messages.extend(list(dialog))
+        messages.append(prompt_message)
+
+        final_resp = None
+        for resp, _delta_resp in self.llm.stream(
+            messages,
+            out=out,
+            **kwargs
+        ):
+            final_resp = resp
+            yield resp.out, None
+
+        # Update dialog with final response
+        updated_dialog = dialog
+        if dialog is not None and final_resp is not None:
+            dialog.add(prompt_message)
+            dialog.add(final_resp)
+            updated_dialog = dialog
+
+        # Yield final response with updated dialog
+        if final_resp is not None:
+            yield final_resp.out, updated_dialog
+
+    async def astream(
+        self,
+        prompt: Prompt | t.Any,
+        out: t.Union[t.Tuple[ToOut, ...], t.Dict[str, ToOut], ToOut, None] = None,
+        dialog: BaseDialog | None = None,
+        **kwargs
+    ) -> t.AsyncIterator[t.Tuple[t.Any, BaseDialog | None]]:
         """
-
         Asynchronously streams the input through the LLM, yielding outputs as they are produced.
+
         Args:
-            inp (S): The input data to be processed.
-            out (_type_, optional): The output processor or format. Defaults to None.
+            prompt: The input data to be processed. Should be Prompt if to_prompt is None,
+                otherwise can be any type that to_prompt can convert.
+            out: The output processor or format. Defaults to None.
+            dialog: Optional dialog to maintain conversation state. Defaults to None.
             **kwargs: Additional keyword arguments to pass to the LLM.
+
         Yields:
-            AsyncIterator[S]: An asynchronous iterator that yields processed outputs.
+            AsyncIterator of tuples (processed_output, updated_dialog). Dialog is only updated
+            on the final yield.
         """
         out = out or self.base_out
-        messages = self._build_messages(inp)
-        async for resp, _delta_resp in await self.llm.astream(messages, out=out, tools=self.tools, **kwargs):
-            yield resp.out
+        messages = []
+        prompt_message = prompt if self.to_prompt is None else self.to_prompt.forward(prompt)
 
-    def reset(self):
-        """Create a new empty dialog of the same type as the current dialog.
+        # Add tools to the prompt message if provided
+        if self.tools:
+            prompt_message = prompt_message.clone()
+            prompt_message.tools = self.tools
+            prompt_message.tool_override = True
 
-        If a dialog exists, creates a new empty instance of the same dialog class.
-        If no dialog exists, does nothing.
-        The system message and other settings are preserved.
-        """
-        self.dialog = self.dialog.spawn() if self.dialog else None
+        if self.system is not None:
+            messages.append(Msg(role='system', text=self.system))
+        if dialog is not None:
+            messages.extend(list(dialog))
+        messages.append(prompt_message)
+
+        final_resp = None
+        async for resp, _delta_resp in await self.llm.astream(
+            messages,
+            out=out,
+            **kwargs
+        ):
+            final_resp = resp
+            yield resp.out, None
+
+        # Update dialog with final response
+        updated_dialog = dialog
+        if dialog is not None and final_resp is not None:
+            dialog.add(prompt_message)
+            dialog.add(final_resp)
+            updated_dialog = dialog
+
+        # Yield final response with updated dialog
+        if final_resp is not None:
+            yield final_resp.out, updated_dialog

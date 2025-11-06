@@ -144,6 +144,14 @@ class Msg(BaseModel):
         suffix = f"  [{' | '.join(extras)}]" if extras else ""
         return f"{name}: {text}{suffix}"
 
+    def clone(self) -> 'Msg':
+        """Create a copy of this message.
+
+        Returns:
+            Msg: A new message instance with the same data
+        """
+        return self.model_copy(deep=True)
+
 
 class Prompt(Msg):
     """

@@ -45,7 +45,7 @@ from ._process import (
 )
 from ..core import Param, END_TOK, modfield
 from ..utils import primitives, str_formatter
-from ._msg import ToMsg
+from ._msg import ToPrompt
 from ._resp import (
     ToOut, PrimOut, TextOut, StructOut
 )
@@ -260,7 +260,7 @@ class FuncDecBase(object):
         self, 
         engine,
         inst: IBase, 
-        to_msg: ToMsg=None,
+        to_msg: ToPrompt=None,
         instance=None,
         kwargs: typing.Dict=None
     ):
@@ -486,7 +486,7 @@ class StreamDec(FuncDecBase, StreamProcess):
         self, 
         engine: StreamProcess,
         inst: IBase, 
-        to_msg: ToMsg=None,
+        to_msg: ToPrompt=None,
         instance=None,
         kwargs: typing.Dict=None
     ):

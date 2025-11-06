@@ -7,14 +7,14 @@ import typing
 import pydantic
 
 # local
-from dachi.core import Msg
+from dachi.core import Msg, Prompt
 from ._process import Process
 
 RESPONSE = 'resp'
 S = typing.TypeVar('S', bound=pydantic.BaseModel)
 
 
-class ToMsg(Process, ABC):
+class ToPrompt(Process, ABC):
     """Converts the input to a message
 
     Example:
@@ -25,35 +25,38 @@ class ToMsg(Process, ABC):
     """
 
     @abstractmethod
-    def forward(self, *args, **kwargs) -> Msg:
-        """Convert the args and kwargs to a message
+    def forward(self, *args, **kwargs) -> Prompt:
+        """Convert the args and kwargs to a prompt
 
         Returns:
-            Msg: A message
+            Prompt: A prompt message
         """
         pass
 
 
-class NullToMsg(ToMsg):
-    """Converts a message to a message (so actually does nothing)
+class NullToPrompt(ToPrompt):
+    """Converts a message to a prompt (wraps in Prompt if not already)
 
     Example:
-        to_msg = NullToMsg()
-        msg = to_msg(Msg(role='user', text='Hello, world!'))
-        print(msg)
-        # Msg(role='user', text='Hello, world!')
+        to_prompt = NullToPrompt()
+        prompt = to_prompt(Msg(role='user', text='Hello, world!'))
+        print(prompt)
+        # Prompt(role='user', text='Hello, world!')
     """
 
-    def forward(self, msg: Msg) -> Msg:
-        """Convert the args and kwargs to a message
+    def forward(self, msg: Msg) -> Prompt:
+        """Convert a message to a prompt
 
         Returns:
-            Msg: A message
+            Prompt: A prompt message
         """
-        return msg
+        if isinstance(msg, Prompt):
+            return msg
+        # Convert Msg to Prompt
+        return Prompt(**msg.model_dump())
 
 
-class ToText(ToMsg):
+class ToText(ToPrompt):
     """Converts the input to a text message
 
     Example:
@@ -68,16 +71,16 @@ class ToText(ToMsg):
     role: str = 'system'
     field: str = 'content'
 
-    def forward(self, text: str) -> Msg:
-        """Create a text message
+    def forward(self, text: str) -> Prompt:
+        """Create a text prompt
 
         Args:
             text (str): The text for the message
 
         Returns:
-            Msg: Converts to a text message
+            Prompt: Converts to a text prompt
         """
-        return Msg(
-            role=self.role, 
+        return Prompt(
+            role=self.role,
             **{self.field: text}
         )
