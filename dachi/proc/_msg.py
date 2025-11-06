@@ -25,7 +25,7 @@ class ToMsg(Process, ABC):
     """
 
     @abstractmethod
-    def delta(self, *args, **kwargs) -> Msg:
+    def forward(self, *args, **kwargs) -> Msg:
         """Convert the args and kwargs to a message
 
         Returns:
@@ -44,7 +44,7 @@ class NullToMsg(ToMsg):
         # Msg(role='user', text='Hello, world!')
     """
 
-    def delta(self, msg: Msg) -> Msg:
+    def forward(self, msg: Msg) -> Msg:
         """Convert the args and kwargs to a message
 
         Returns:
@@ -68,7 +68,7 @@ class ToText(ToMsg):
     role: str = 'system'
     field: str = 'content'
 
-    def delta(self, text: str) -> Msg:
+    def forward(self, text: str) -> Msg:
         """Create a text message
 
         Args:

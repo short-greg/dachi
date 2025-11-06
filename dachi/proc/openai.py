@@ -1,5 +1,6 @@
 # 1st party
 import typing as t
+from typing import Literal
 
 # 3rd party
 import pydantic
@@ -7,11 +8,11 @@ import openai
 
 # local
 from ..core import (
-    Msg, Resp, BaseModule, DeltaResp, BaseDialog
+    Msg, Resp, DeltaResp, BaseDialog
 )
 from ..core._tool import BaseTool
 from ._process import Process, AsyncProcess, AsyncStreamProcess, StreamProcess
-from ._ai import LLMAdapter, extract_tools_from_messages, extract_format_override_from_messages
+from ._ai import LLMAdapter, LLM, extract_tools_from_messages, extract_format_override_from_messages, get_resp_output
 from ._resp import ToOut
 
 
@@ -593,3 +594,168 @@ class OpenAIResp(LLMAdapter):
         
         return openai_msg
     
+
+
+class OpenAILLM(LLM):
+    """
+    Complete LLM implementation for OpenAI that inherits from LLM base class.
+    
+    Combines an OpenAI adapter (Chat or Responses API) with an OpenAI client
+    to provide a complete LLM interface.
+    
+    Fields:
+        api: Choose between "chat" (Chat Completions) or "response" (Responses API)
+        url: Optional custom base URL for the OpenAI API
+        model: Model name (e.g., "gpt-4", "o1-preview")
+        api_key: Optional API key (defaults to OPENAI_API_KEY env var)
+        **kwargs: Additional parameters passed to API calls
+    
+    Example:
+        llm = OpenAILLM(api="chat", model="gpt-4", temperature=0.7)
+        resp = llm.forward(Msg(role="user", text="Hello"))
+    """
+
+    api: Literal["chat", "response"] = "chat"
+    url: str | None = None
+    model: str = "gpt-5"
+    api_key: str | None = None
+    
+    def __post_init__(self):
+        """Initialize the OpenAI client and adapter after instance creation."""
+        super().__post_init__()
+        
+        # Create OpenAI client
+        client_kwargs = {}
+        if self.url:
+            client_kwargs["base_url"] = self.url
+        if self.api_key:
+            client_kwargs["api_key"] = self.api_key
+        
+        self._client = openai.OpenAI(**client_kwargs)
+        self._async_client = openai.AsyncOpenAI(**client_kwargs)
+        
+        # Create appropriate adapter
+        if self.api == "chat":
+            self._adapter = OpenAIChat()
+        else:  # api == "response"
+            self._adapter = OpenAIResp()
+    
+    def forward(self, inp: Msg | BaseDialog, out: t.Union[t.Tuple[ToOut, ...], t.Dict[str, ToOut], ToOut, None] = None, tools=None, **kwargs) -> Resp:
+        """Execute LLM call synchronously."""
+        # Add model to kwargs if not present
+        if "model" not in kwargs:
+            kwargs["model"] = self.model
+
+        # Add tools to kwargs if provided
+        if tools is not None:
+            kwargs["tools"] = tools
+
+        # Convert input to API format
+        api_input = self._adapter.to_input(inp, **kwargs)
+        
+        # Make API call based on api type
+        if self.api == "chat":
+            result = self._client.chat.completions.create(**api_input)
+        else:  # api == "response"
+            result = self._client.responses.create(**api_input)
+        
+        # Convert result to Resp
+        resp = self._adapter.from_result(result, inp)
+        
+        # Process output if specified
+        if out is not None:
+            resp.out = get_resp_output(resp, out)
+        
+        return resp
+    
+    async def aforward(self, inp: Msg | BaseDialog, out: t.Union[t.Tuple[ToOut, ...], t.Dict[str, ToOut], ToOut, None] = None, tools=None, **kwargs) -> Resp:
+        """Execute LLM call asynchronously."""
+        # Add model to kwargs if not present
+        if "model" not in kwargs:
+            kwargs["model"] = self.model
+
+        # Add tools to kwargs if provided
+        if tools is not None:
+            kwargs["tools"] = tools
+
+        # Convert input to API format
+        api_input = self._adapter.to_input(inp, **kwargs)
+        
+        # Make API call based on api type
+        if self.api == "chat":
+            result = await self._async_client.chat.completions.create(**api_input)
+        else:  # api == "response"
+            result = await self._async_client.responses.create(**api_input)
+        
+        # Convert result to Resp
+        resp = self._adapter.from_result(result, inp)
+        
+        # Process output if specified
+        if out is not None:
+            resp.out = get_resp_output(resp, out)
+        
+        return resp
+    
+    def stream(self, inp: Msg | BaseDialog, out: t.Union[t.Tuple[ToOut, ...], t.Dict[str, ToOut], ToOut, None] = None, tools=None, **kwargs) -> t.Iterator[t.Tuple[Resp, DeltaResp]]:
+        """Execute LLM call with streaming."""
+        # Add model to kwargs if not present
+        if "model" not in kwargs:
+            kwargs["model"] = self.model
+
+        # Add tools to kwargs if provided
+        if tools is not None:
+            kwargs["tools"] = tools
+
+        # Convert input to API format
+        api_input = self._adapter.to_input(inp, **kwargs)
+        api_input["stream"] = True
+        
+        # Make streaming API call based on api type
+        if self.api == "chat":
+            stream = self._client.chat.completions.create(**api_input)
+        else:  # api == "response"
+            stream = self._client.responses.create(**api_input)
+        
+        # Process streaming results
+        prev_resp = None
+        for chunk in stream:
+            resp, delta_resp = self._adapter.from_streamed_result(chunk, inp, prev_resp)
+            
+            # Process output if specified
+            if out is not None:
+                resp.out = get_resp_output(resp, out)
+            
+            prev_resp = resp
+            yield resp, delta_resp
+    
+    async def astream(self, inp: Msg | BaseDialog, out: t.Union[t.Tuple[ToOut, ...], t.Dict[str, ToOut], ToOut, None] = None, tools=None, **kwargs) -> t.AsyncIterator[t.Tuple[Resp, DeltaResp]]:
+        """Execute LLM call with async streaming."""
+        # Add model to kwargs if not present
+        if "model" not in kwargs:
+            kwargs["model"] = self.model
+
+        # Add tools to kwargs if provided
+        if tools is not None:
+            kwargs["tools"] = tools
+
+        # Convert input to API format
+        api_input = self._adapter.to_input(inp, **kwargs)
+        api_input["stream"] = True
+        
+        # Make streaming API call based on api type
+        if self.api == "chat":
+            stream = await self._async_client.chat.completions.create(**api_input)
+        else:  # api == "response"
+            stream = await self._async_client.responses.create(**api_input)
+        
+        # Process streaming results
+        prev_resp = None
+        async for chunk in stream:
+            resp, delta_resp = self._adapter.from_streamed_result(chunk, inp, prev_resp)
+            
+            # Process output if specified
+            if out is not None:
+                resp.out = get_resp_output(resp, out)
+            
+            prev_resp = resp
+            yield resp, delta_resp

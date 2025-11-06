@@ -7,10 +7,11 @@ import pydantic
 
 # local
 from ..core import (
-    Msg, Resp, BaseModule, DeltaResp, Prompt
+    Msg, Resp, BaseModule, DeltaResp, Prompt, modfield, BaseDialog, BaseTool, ListDialog
 )
 from ._process import AsyncProcess
 from ._resp import ToOut
+from ._msg import ToMsg
 
 # TODO: MOVE OUT OF HERE
 S = t.TypeVar('S', bound=pydantic.BaseModel)
@@ -238,32 +239,89 @@ class LLM(Process, AsyncProcess, StreamProcess, AsyncStreamProcess):
     """
     Adapter for Large Language Models (LLMs).
     """
-    def forward(self, inp: Msg | BaseDialog, out=None,**kwargs) -> Resp:
+    def forward(self, inp: Msg | BaseDialog, out: t.Union[t.Tuple[ToOut, ...], t.Dict[str, ToOut], ToOut, None] = None, tools=None, **kwargs) -> Resp:
         raise NotImplementedError
 
     async def aforward(
-        self, inp: Msg | BaseDialog, out=None,
+        self, inp: Msg | BaseDialog, out: t.Union[t.Tuple[ToOut, ...], t.Dict[str, ToOut], ToOut, None] = None,
         tools=None, **kwargs
     ) -> Resp:
         raise NotImplementedError
 
-    def stream(self, inp: Msg | BaseDialog, out=None, tools=None, **kwargs) -> t.Iterator[t.Tuple[Resp, DeltaResp]]:
+    def stream(self, inp: Msg | BaseDialog, out: t.Union[t.Tuple[ToOut, ...], t.Dict[str, ToOut], ToOut, None] = None, tools=None, **kwargs) -> t.Iterator[t.Tuple[Resp, DeltaResp]]:
         raise NotImplementedError
 
-    def astream(self, inp: Msg | BaseDialog, out=None, tools=None, **kwargs) -> t.AsyncIterator[t.Tuple[Resp, DeltaResp]]:
+    def astream(self, inp: Msg | BaseDialog, out: t.Union[t.Tuple[ToOut, ...], t.Dict[str, ToOut], ToOut, None] = None, tools=None, **kwargs) -> t.AsyncIterator[t.Tuple[Resp, DeltaResp]]:
         raise NotImplementedError
 
 
 class Op(AsyncProcess, Process, StreamProcess, AsyncStreamProcess):
     """
     A basic operation that applies a function to the input.
+
+    Wraps an LLM to provide a simpler interface for common operations:
+    - Optionally converts input to messages using to_msg
+    - Optionally prepends system message and/or base dialog
+    - Handles tools and output processing
+    - Returns processed output values directly
     """
 
-    llm: LLM
-    base_out: t.Any
-    tools: t.List[t.Any]
+    llm: LLM = modfield()
+    to_msg: ToMsg = modfield(default=None)
+    dialog: BaseDialog | None = None
+    system: str | None = None
+    base_out: t.Any = None
+    tools: t.List[BaseTool] = []
 
-    def forward(self, inp: S, out=None, **kwargs) -> S:
+    def _build_messages(self, inp: S) -> Msg | BaseDialog:
+        """Build the message/dialog to send to LLM.
+
+        Constructs the final message or dialog by:
+        1. Adding system message (if provided)
+        2. Adding base dialog messages (if provided)
+        3. Converting and adding user input
+
+        Args:
+            inp: The input to process (arbitrary type S)
+
+        Returns:
+            Msg | BaseDialog: A single message or dialog to pass to LLM
+        """
+        messages = []
+
+        # Add system message if provided
+        if self.system:
+            messages.append(Msg(role='system', text=self.system))
+
+        # Add base dialog if provided
+        if self.dialog:
+            messages.extend(list(self.dialog))
+
+        # Convert and add user input
+        if self.to_msg:
+            # Use to_msg to convert input to a message
+            user_msg = self.to_msg.forward(inp)
+            messages.append(user_msg)
+        else:
+            # Input is already a Msg, BaseDialog, or message-like object
+            if isinstance(inp, Msg):
+                messages.append(inp)
+            elif isinstance(inp, BaseDialog):
+                messages.extend(list(inp))
+            else:
+                # Pass through as-is (assume it's message-compatible)
+                messages.append(inp)
+
+        # Return single message or dialog based on count
+        if len(messages) == 0:
+            raise ValueError("No messages to send to LLM")
+        elif len(messages) == 1:
+            return messages[0]
+        else:
+            # Return as ListDialog for multiple messages
+            return ListDialog(messages=messages)
+
+    def forward(self, inp: S, out: t.Union[t.Tuple[ToOut, ...], t.Dict[str, ToOut], ToOut, None] = None, **kwargs) -> S:
         """
         Processes the input through the LLM and returns the output
         Args:
@@ -274,9 +332,10 @@ class Op(AsyncProcess, Process, StreamProcess, AsyncStreamProcess):
             S: The processed output data.
         """
         out = out or self.base_out
-        return self.llm.delta(inp, tools=self.tools, op=out, **kwargs).out
+        messages = self._build_messages(inp)
+        return self.llm.forward(messages, out=out, tools=self.tools, **kwargs).out
 
-    async def aforward(self, inp: S, out=None, **kwargs) -> S:
+    async def aforward(self, inp: S, out: t.Union[t.Tuple[ToOut, ...], t.Dict[str, ToOut], ToOut, None] = None, **kwargs) -> S:
         """
         Asynchronously processes the input through the LLM and returns the output
         Args:
@@ -287,10 +346,11 @@ class Op(AsyncProcess, Process, StreamProcess, AsyncStreamProcess):
             S: _description_
         """
         out = out or self.base_out
-        resp = await self.llm.aforward(inp, tools=self.tools, op=out, **kwargs)
+        messages = self._build_messages(inp)
+        resp = await self.llm.aforward(messages, out=out, tools=self.tools, **kwargs)
         return resp.out
 
-    def stream(self, inp: S, out=None, **kwargs) -> t.Iterator[S]:
+    def stream(self, inp: S, out: t.Union[t.Tuple[ToOut, ...], t.Dict[str, ToOut], ToOut, None] = None, **kwargs) -> t.Iterator[S]:
         """
         Streams the input through the LLM, yielding outputs as they are produced.
         Args:
@@ -301,11 +361,11 @@ class Op(AsyncProcess, Process, StreamProcess, AsyncStreamProcess):
             Iterator[S]: An iterator that yields processed outputs.
         """
         out = out or self.base_out
-        for resp in self.llm.stream(inp, tools=self.tools, op=out, **kwargs):
-
+        messages = self._build_messages(inp)
+        for resp, _delta_resp in self.llm.stream(messages, out=out, tools=self.tools, **kwargs):
             yield resp.out
 
-    async def astream(self, inp: S, out=None, **kwargs) -> t.AsyncIterator[S]:
+    async def astream(self, inp: S, out: t.Union[t.Tuple[ToOut, ...], t.Dict[str, ToOut], ToOut, None] = None, **kwargs) -> t.AsyncIterator[S]:
         """
 
         Asynchronously streams the input through the LLM, yielding outputs as they are produced.
@@ -317,6 +377,15 @@ class Op(AsyncProcess, Process, StreamProcess, AsyncStreamProcess):
             AsyncIterator[S]: An asynchronous iterator that yields processed outputs.
         """
         out = out or self.base_out
-        async for resp in await self.llm.astream(inp, tools=self.tools, op=out, **kwargs):
+        messages = self._build_messages(inp)
+        async for resp, _delta_resp in await self.llm.astream(messages, out=out, tools=self.tools, **kwargs):
             yield resp.out
 
+    def reset(self):
+        """Create a new empty dialog of the same type as the current dialog.
+
+        If a dialog exists, creates a new empty instance of the same dialog class.
+        If no dialog exists, does nothing.
+        The system message and other settings are preserved.
+        """
+        self.dialog = self.dialog.spawn() if self.dialog else None

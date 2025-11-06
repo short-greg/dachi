@@ -511,11 +511,21 @@ class BaseDialog(pydantic.BaseModel, Renderable):
         """
         pass
         
+    @abstractmethod
     def clone(self) -> 'BaseDialog':
         """Clones the dialog
 
         Returns:
             Dialog: A dialog cloned with shallow copying of the messages
+        """
+        pass
+
+    @abstractmethod
+    def spawn(self) -> 'BaseDialog':
+        """Create a new empty dialog of the same type as the current dialog.
+
+        Returns:
+            Dialog: A new empty dialog of the same type
         """
         pass
 
@@ -572,6 +582,14 @@ class ListDialog(BaseDialog):
         return ListDialog(
             messages=[*self.messages]
         )
+    
+    def spawn(self) -> 'ListDialog':
+        """Create a new empty dialog of the same type as the current dialog.
+
+        Returns:
+            Dialog: A new empty dialog of the same type
+        """
+        return ListDialog(messages=[])
 
     def pop(self, index: int=-1, get_msg: bool=False) -> t.Union['ListDialog', Msg]:
         """Remove a value from the dialog
@@ -1245,3 +1263,6 @@ class TreeDialog(BaseDialog):
         
         clone._update()
         return clone
+    
+    def spawn(self):
+        return TreeDialog()

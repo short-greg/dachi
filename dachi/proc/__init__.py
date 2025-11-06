@@ -54,6 +54,7 @@ from ._ai import (
 from .openai import (
     OpenAIChat,
     OpenAIResp,
+    OpenAILLM,
 )
 from ._resp import (
     JSONObj,
