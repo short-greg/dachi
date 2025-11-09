@@ -255,3 +255,117 @@ class TestPythonTypeToJsonSchema:
             pass
         result = utils.python_type_to_json_schema(CustomType)
         assert result == {'type': 'string'}
+
+
+class TestIsGenericType:
+    """Test is_generic_type() utility function."""
+
+    def test_plain_int_returns_false(self):
+        assert utils.is_generic_type(int) is False
+
+    def test_plain_str_returns_false(self):
+        assert utils.is_generic_type(str) is False
+
+    def test_plain_bool_returns_false(self):
+        assert utils.is_generic_type(bool) is False
+
+    def test_plain_float_returns_false(self):
+        assert utils.is_generic_type(float) is False
+
+    def test_custom_class_returns_false(self):
+        class CustomClass:
+            pass
+        assert utils.is_generic_type(CustomClass) is False
+
+    def test_list_of_int_returns_true(self):
+        assert utils.is_generic_type(list[int]) is True
+
+    def test_dict_of_str_int_returns_true(self):
+        assert utils.is_generic_type(dict[str, int]) is True
+
+    def test_tuple_of_int_str_returns_true(self):
+        assert utils.is_generic_type(tuple[int, str]) is True
+
+    def test_List_of_int_returns_true(self):
+        from typing import List
+        assert utils.is_generic_type(List[int]) is True
+
+    def test_Dict_of_str_int_returns_true(self):
+        from typing import Dict
+        assert utils.is_generic_type(Dict[str, int]) is True
+
+    def test_Tuple_of_int_str_returns_true(self):
+        from typing import Tuple
+        assert utils.is_generic_type(Tuple[int, str]) is True
+
+    def test_Union_of_int_str_returns_true(self):
+        from typing import Union
+        assert utils.is_generic_type(Union[int, str]) is True
+
+    def test_pep604_union_returns_true(self):
+        assert utils.is_generic_type(int | str) is True
+
+    def test_Optional_returns_true(self):
+        from typing import Optional
+        assert utils.is_generic_type(Optional[int]) is True
+
+    def test_string_plain_type_returns_false(self):
+        assert utils.is_generic_type("int") is False
+
+    def test_string_List_int_returns_true(self):
+        assert utils.is_generic_type("List[int]") is True
+
+    def test_string_custom_generic_returns_true(self):
+        assert utils.is_generic_type("ModuleList[Task]") is True
+
+    def test_string_Union_returns_true(self):
+        assert utils.is_generic_type("Union[int, str]") is True
+
+    def test_ForwardRef_plain_type_returns_false(self):
+        from typing import ForwardRef
+        assert utils.is_generic_type(ForwardRef("int")) is False
+
+    def test_ForwardRef_List_int_returns_true(self):
+        from typing import ForwardRef
+        assert utils.is_generic_type(ForwardRef("List[int]")) is True
+
+    def test_ForwardRef_custom_generic_returns_true(self):
+        from typing import ForwardRef
+        assert utils.is_generic_type(ForwardRef("Dict[str, Any]")) is True
+
+    def test_list_class_returns_false(self):
+        assert utils.is_generic_type(list) is False
+
+    def test_dict_class_returns_false(self):
+        assert utils.is_generic_type(dict) is False
+
+    def test_tuple_class_returns_false(self):
+        assert utils.is_generic_type(tuple) is False
+
+    def test_None_returns_false(self):
+        assert utils.is_generic_type(None) is False
+
+    def test_type_None_returns_false(self):
+        assert utils.is_generic_type(type(None)) is False
+
+    def test_custom_generic_subscripted_returns_true(self):
+        from typing import Generic, TypeVar
+        T = TypeVar('T')
+
+        class CustomGeneric(Generic[T]):
+            pass
+
+        assert utils.is_generic_type(CustomGeneric[int]) is True
+
+    def test_custom_generic_unsubscripted_returns_false(self):
+        from typing import Generic, TypeVar
+        T = TypeVar('T')
+
+        class CustomGeneric(Generic[T]):
+            pass
+
+        assert utils.is_generic_type(CustomGeneric) is False
+
+    def test_nested_generic_returns_true(self):
+        from typing import List, Dict
+        assert utils.is_generic_type(List[Dict[str, int]]) is True

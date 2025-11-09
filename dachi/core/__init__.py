@@ -15,14 +15,17 @@ from ._base import (
     RegistryEntry,
     Registry,
     Checkpoint,
-    registry,
+    mod_registry,
     # AdaptModule,
     ParamSet,
     RestrictedSchemaMixin,
     lookup_module_class,
     BaseFieldDescriptor,
+    BaseFieldTypeDescriptor,
     ModFieldDescriptor,
     modfield,
+    GenericFieldType,
+    generictype,
 )
 from ._structs import (
     ModuleDict,

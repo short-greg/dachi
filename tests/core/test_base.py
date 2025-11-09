@@ -12,7 +12,7 @@ import pytest
 
 
 from dachi.core._base import (
-    BaseModule, BaseModule, Param, Attr, Shared, BaseSpec, Checkpoint, registry, Registry,
+    BaseModule, BaseModule, Param, Attr, Shared, BaseSpec, Checkpoint, mod_registry, Registry,
     ParamSet, RestrictedSchemaMixin, lookup_module_class
 )
 from dachi.act._bt._core import RestrictedTaskSchemaMixin
@@ -157,14 +157,14 @@ def test_from_spec_missing_field_validation_error():
 
 def test_nested_module_dedup_in_from_spec():
     """Same Inner instance appears twice; loader must deduplicate."""
-    @registry()
+    @mod_registry()
     class Inner(BaseModule):
         v: InitVar[int]
         def __post_init__(self, v):
             self.v = Param(data=v)
     shared = Inner(v=3)
 
-    @registry()
+    @mod_registry()
     class Outer(BaseModule):
         a: Inner
         b: Inner
@@ -710,7 +710,7 @@ def test_checkpoint_save_module_creates_file(tmp_path):
 # # # # # # ----------  Happy-path: load → exact round-trip ----------
 def test_checkpoint_load_roundtrip(tmp_path):
     """Positive • Checkpoint.load() reproduces the exact spec & state."""
-    @registry()
+    @mod_registry()
     class Leaf(BaseModule):
         w: InitVar[int]
         def __post_init__(self, w: int):
@@ -727,14 +727,14 @@ def test_checkpoint_load_roundtrip(tmp_path):
 
 def test_checkpoint_param_dedup(tmp_path):
 
-    @registry()
+    @mod_registry()
     class Leaf(BaseModule):
         w: InitVar[int]
         def __post_init__(self, w):
             self.w = Param(data=w)
     p = Param(data=42)
 
-    @registry()
+    @mod_registry()
     class Pair(BaseModule):
         a: Leaf
         b: Leaf
@@ -747,7 +747,7 @@ def test_checkpoint_param_dedup(tmp_path):
 
 def test_checkpoint_roundtrip(tmp_path):
 
-    @registry()
+    @mod_registry()
     class Leaf(BaseModule):
         w: InitVar[int]
         def __post_init__(self, w):
@@ -765,7 +765,7 @@ def test_checkpoint_roundtrip(tmp_path):
 def test_checkpoint_load_module_restores_state(tmp_path):
     """Positive • load_module returns an equivalent, fully initialised module."""
 
-    @registry()
+    @mod_registry()
     class Leaf(BaseModule):
         w: InitVar[int]
         def __post_init__(self, w: int):
@@ -786,7 +786,7 @@ def test_checkpoint_load_module_restores_state(tmp_path):
 # # # # # # ----------  Happy-path: shared ref-names deduplicated ----------
 def test_checkpoint_shared_objects_deduplicated(tmp_path):
     """Positive • Same ref_name inside spec becomes the *same* object."""
-    @registry()
+    @mod_registry()
     class Inner(BaseModule):
         val: InitVar[int]
 
@@ -795,7 +795,7 @@ def test_checkpoint_shared_objects_deduplicated(tmp_path):
 
     shared_inner = Inner(val=5)
 
-    @registry()
+    @mod_registry()
     class Outer(BaseModule):
         a: Inner
         b: Inner
@@ -1084,14 +1084,14 @@ def test_registry_getitem_list_positive():
 
 # # # # Helper classes registered into *global* registry, because BuildContext
 # # # # relies on that for from_spec().
-@registry.register()
+@mod_registry.register()
 class Leaf(BaseModule):
     payload: InitVar[str]
 
     def __post_init__(self, payload: str):
         self.payload = Shared(data=payload)
 
-@registry.register()
+@mod_registry.register()
 class Pair(BaseModule):
     left: Leaf
     right: Leaf
@@ -1298,7 +1298,7 @@ def test_shared_subclass_roundtrip():
     assert rebuilt.val.data == 3.14
 
 
-@registry.register()
+@mod_registry.register()
 class AddOne(BaseModule):
     bias: InitVar[int]
 
@@ -1310,7 +1310,7 @@ class AddOne(BaseModule):
         return x + self.bias.data
 
 
-@registry.register()
+@mod_registry.register()
 class Multiply(BaseModule):
     weight: InitVar[int]
 
@@ -1322,7 +1322,7 @@ class Multiply(BaseModule):
         return x * self.weight.data
 
 
-@registry.register()
+@mod_registry.register()
 class Task(BaseModule):  # generic placeholder used only for schema tests
     dummy: InitVar[int]
 
@@ -1330,7 +1330,7 @@ class Task(BaseModule):  # generic placeholder used only for schema tests
 
         self.dummy = Param[int](dummy)
 
-@registry.register()
+@mod_registry.register()
 class State(BaseModule):
     flag: InitVar[bool]
     
@@ -1338,7 +1338,7 @@ class State(BaseModule):
         self.flag = Param[bool](flag)
 
 
-@registry.register()
+@mod_registry.register()
 class MulTwo(BaseModule):
     factor: InitVar[int]
 
@@ -2342,7 +2342,7 @@ class TestLookupModuleClass:
     @pytest.fixture
     def test_module(self):
         """Create and register a test module"""
-        @registry.register(name="TestModule")
+        @mod_registry.register(name="TestModule")
         class TestModule(BaseModule):
             value: int = 1
         return TestModule
@@ -2406,7 +2406,7 @@ class TestRestrictedTaskSchemaMixin:
     @pytest.fixture
     def task_with_mixin(self):
         """Create a test task with RestrictedTaskSchemaMixin"""
-        @registry.register(name="TaskWithMixin")
+        @mod_registry.register(name="TaskWithMixin")
         class TaskWithMixin(BaseModule, RestrictedTaskSchemaMixin):
             value: int = 1
 
@@ -2418,7 +2418,7 @@ class TestRestrictedTaskSchemaMixin:
     @pytest.fixture
     def regular_task(self):
         """Create a regular task without the mixin"""
-        @registry.register(name="RegularTask")
+        @mod_registry.register(name="RegularTask")
         class RegularTask(BaseModule):
             value: int = 2
         return RegularTask
@@ -2658,15 +2658,15 @@ class TestSpecSerializationWithUnions:
 
     def test_spec_accepts_child_spec_in_union_field(self):
         """When field is Union[ModuleSpec, ...], should accept subclass of ModuleSpec"""
-        @registry.register(name="Parent")
+        @mod_registry.register(name="Parent")
         class Parent(BaseModule):
             x: int
 
-        @registry.register(name="Child")
+        @mod_registry.register(name="Child")
         class Child(Parent):
             y: str
 
-        @registry.register(name="Container")
+        @mod_registry.register(name="Container")
         class Container(BaseModule):
             item: Parent
 
@@ -2681,15 +2681,15 @@ class TestSpecSerializationWithUnions:
 
     def test_union_field_accepts_either_type(self):
         """Union field should accept instances of either type"""
-        @registry.register(name="Module1")
+        @mod_registry.register(name="Module1")
         class Module1(BaseModule):
             x: int
 
-        @registry.register(name="Module2")
+        @mod_registry.register(name="Module2")
         class Module2(BaseModule):
             y: str
 
-        @registry.register(name="Container")
+        @mod_registry.register(name="Container")
         class Container(BaseModule):
             item: Module1 | Module2
 

@@ -1,5 +1,6 @@
 # 1st party
 import typing
+import types
 import string
 import re
 import inspect
@@ -127,6 +128,49 @@ def is_primitive(obj) -> bool:
         bool: If it is a "primitive"
     """
     return type(obj) in primitives
+
+
+def is_generic_type(annotation) -> bool:
+    """Detect whether an annotation represents a generic type.
+
+    A generic type is a parameterized type like list[int], Dict[str, Any],
+    or ModuleList[Task]. This function handles various forms of annotations
+    including strings and ForwardRefs.
+
+    Args:
+        annotation: Type annotation (could be type, string, ForwardRef, etc.)
+
+    Returns:
+        True if annotation appears to be a generic type, False otherwise
+
+    Examples:
+        >>> is_generic_type(int)
+        False
+        >>> is_generic_type(list[int])
+        True
+        >>> is_generic_type(Dict[str, int])
+        True
+        >>> is_generic_type("List[int]")
+        True
+        >>> is_generic_type("int")
+        False
+        >>> is_generic_type(ForwardRef("Dict[str, Any]"))
+        True
+
+    Notes:
+        - For string annotations, uses heuristic (presence of '[')
+        - For ForwardRef, checks the forward argument string
+        - For type annotations, uses typing.get_origin()
+        - Unsubscripted generic classes (e.g., list, dict) return False
+    """
+    if isinstance(annotation, str):
+        return '[' in annotation
+
+    if isinstance(annotation, typing.ForwardRef):
+        return '[' in annotation.__forward_arg__
+
+    origin = typing.get_origin(annotation)
+    return origin is not None
 
 
 def generic_class(t: typing.TypeVar, idx: int=0) -> typing.Type:

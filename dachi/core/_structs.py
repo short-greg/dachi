@@ -10,7 +10,7 @@ from dataclasses import InitVar
 from pydantic import BaseModel
 
 # Local
-from ._base import BaseModule, BaseSpec, registry, BaseFieldDescriptor, RestrictedSchemaMixin, UNDEFINED
+from ._base import BaseModule, BaseSpec, mod_registry, BaseFieldDescriptor, RestrictedSchemaMixin, UNDEFINED
 from dachi.utils import is_primitive
 
 V_co = t.TypeVar("V_co", bound=BaseModule, covariant=True)
@@ -121,7 +121,7 @@ class ModuleList(BaseModule, t.Generic[V]):
                 for item in val:
                     cur_item = ctx.get(item.id)
                     if cur_item is None:
-                        cur_item = registry[item.kind].obj.from_spec(item, ctx) 
+                        cur_item = mod_registry[item.kind].obj.from_spec(item, ctx) 
                         ctx[item.id] = cur_item
                     res.append(cur_item)
                 
@@ -255,7 +255,7 @@ class ModuleDict(BaseModule, t.Generic[V, T]):
                 if id_ in ctx:
                     out[k] = ctx[id_]
                 else:
-                    mod = registry[v.kind].obj.from_spec(v, ctx)
+                    mod = mod_registry[v.kind].obj.from_spec(v, ctx)
                     ctx[id_] = mod
                     out[k] = mod
             else:
@@ -352,11 +352,11 @@ class SerialDict(BaseModule):
         for k, v in val.items():
             if isinstance(v, BaseSpec) or (isinstance(v, dict) and "kind" in v):
                 spec_obj = v if isinstance(v, BaseSpec) else \
-                           registry[v["kind"]].obj.schema().model_validate(v)
+                           mod_registry[v["kind"]].obj.schema().model_validate(v)
                 if spec_obj.id in ctx:
                     rebuilt[k] = ctx[spec_obj.id]
                 else:
-                    mod_cls = registry[spec_obj.kind].obj
+                    mod_cls = mod_registry[spec_obj.kind].obj
                     rebuilt[k] = mod_cls.from_spec(spec_obj, ctx)
                     ctx[spec_obj.id] = rebuilt[k]
             else:
@@ -455,12 +455,12 @@ class SerialTuple(BaseModule):
             if isinstance(item, BaseSpec) or (isinstance(item, dict) and "kind" in item):
                 spec_obj: BaseSpec = (
                     item if isinstance(item, BaseSpec)
-                    else registry[item["kind"]].obj.schema().model_validate(item)
+                    else mod_registry[item["kind"]].obj.schema().model_validate(item)
                 )
                 if spec_obj.id in ctx:
                     out.append(ctx[spec_obj.id])
                 else:
-                    mod_cls = registry[spec_obj.kind].obj
+                    mod_cls = mod_registry[spec_obj.kind].obj
                     module_instance = mod_cls.from_spec(spec_obj, ctx)
                     ctx[spec_obj.id] = module_instance
                     out.append(module_instance)

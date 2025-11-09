@@ -3,6 +3,7 @@ from ._utils import (
     escape_curly_braces,
     unescape_curly_braces,
     is_primitive,
+    is_generic_type,
 
     generic_class, str_formatter,
     is_nested_model,

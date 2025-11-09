@@ -3,11 +3,11 @@ import pytest
 from dataclasses import InitVar
 
 # local
-from dachi.core._base import BaseModule, Param, Attr, BaseSpec, registry
+from dachi.core._base import BaseModule, Param, Attr, BaseSpec, mod_registry
 from dachi.core._structs import ModuleList, ModuleDict
 
 
-@registry.register()
+@mod_registry.register()
 class Leaf3(BaseModule):
     w: InitVar[float]
     s: InitVar[int]
@@ -18,7 +18,7 @@ class Leaf3(BaseModule):
         self.s = Attr(s)
 
 # --- Helper Leaf class ---
-@registry()
+@mod_registry()
 class Leaf4(BaseModule):
     v: InitVar[int]
     f: InitVar[int]

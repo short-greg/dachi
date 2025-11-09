@@ -2,24 +2,25 @@
 from __future__ import annotations
 from abc import abstractmethod, ABC
 
+import itertools
+from typing import Generic, Union
 from functools import lru_cache
 from dataclasses import InitVar, Field as DataclassField, MISSING
 from uuid import uuid4
-from typing import Iterable, Union, Mapping, Generic, Callable, Any, Dict, Optional, Union, List
+from typing import Union, Generic, Callable, Any, Dict, Optional, Union, List
+import inspect as insp
 import typing as t
+from typing import Generic, Union
 from functools import lru_cache
-from typing import Generic, Iterable, Union
 import inspect
 import json
 import copy
 import types
 from dataclasses import dataclass
 
-import pydantic
 import typing as t
 from abc import ABC, abstractmethod
-from functools import lru_cache
-from typing import Iterable, Union
+from typing import Union
 
 
 try:  # 3.12+
@@ -28,10 +29,10 @@ except ImportError:  # 3.8–3.11
     from typing_extensions import dataclass_transform
 
 # 3rd Party
-from pydantic import BaseModel, Field, ConfigDict, create_model, field_validator, TypeAdapter
+from pydantic import BaseModel, Field, ConfigDict, create_model
 
 # Local
-from dachi.utils import resolve_name, python_type_to_json_schema_type
+from dachi.utils import  python_type_to_json_schema_type, is_generic_type
 
 
 # from ._restricted_schema import RestrictedSchemaMixin  # mix‑in defined in previous patch
@@ -56,7 +57,6 @@ Usage::
 T = t.TypeVar("T")
 J = t.TypeVar("J", bound=t.Union[BaseModel, dict, str, int, float, bool])
 
-from typing import Generic, Union
 
 
 def to_kind(cls): 
@@ -455,9 +455,9 @@ class BaseSpec(BaseModel):
     @classmethod
     def load_cls(cls):
         kind = cls.class_kind()
-        if kind not in registry.list_entries():
+        if kind not in mod_registry.list_entries():
             raise ValueError(f"Class kind '{kind}' not registered in registry.")
-        return registry[kind].obj
+        return mod_registry[kind].obj
 
 
 def get_class_annotations(cls: type) -> dict[str, type]:
@@ -998,13 +998,13 @@ class BaseModule:
                     # ctx[id] = val
                 elif isinstance(val, BaseSpec):
                     id = val.id
-                    sub_cls = registry[val.kind].obj
+                    sub_cls = mod_registry[val.kind].obj
                     val = sub_cls.from_spec(val, ctx)
                     ctx[id] = val
                 else:
                     # allow dicts with 'kind' to be parsed as BaseSpec
                     id = val['id']
-                    sub_cls = registry[val["kind"]].obj
+                    sub_cls = mod_registry[val["kind"]].obj
                     val = sub_cls.from_spec(val, ctx)
                     ctx[id] = val
                 
@@ -1181,12 +1181,12 @@ class BaseModule:
                 )
 
 
-V = t.TypeVar("V", bound=BaseModule)
+T = t.TypeVar("T")
 
 
-class RegistryEntry:
+class RegistryEntry(t.Generic[T]):
     def __init__(self,
-                 obj: Union[type, Callable],
+                 obj: T,
                  obj_type: str,
                  tags: Dict[str, Any],
                  package: str,
@@ -1197,6 +1197,7 @@ class RegistryEntry:
         self.package = package
         self.description = description
 
+V = t.TypeVar("V", bound=BaseModule)
 
 @dataclass
 class Checkpoint(Generic[V]):
@@ -1227,7 +1228,7 @@ class Checkpoint(Generic[V]):
             data = f.read()
         data = json.loads(data)
 
-        load_cls = registry[data['spec']['kind']]
+        load_cls = mod_registry[data['spec']['kind']]
 
         spec = load_cls.obj.__spec__.model_validate(data['spec'])
         state_dict = data['state_dict']
@@ -1304,7 +1305,6 @@ def filter_class_variants(
         >>> filter_class_variants([Condition, Action], task_list)
         # Returns only Conditions and Actions from task_list
     """
-    import itertools
 
     # Normalize target to a tuple
     targets = (target,) if not isinstance(target, list) else tuple(target)
@@ -1351,7 +1351,7 @@ def lookup_module_class(variant: t.Any, registry_instance: 'Registry' = None) ->
         <class 'ActionA'>
     """
     if registry_instance is None:
-        registry_instance = registry
+        registry_instance = mod_registry
 
     # String name - look up directly
     if isinstance(variant, str):
@@ -1906,17 +1906,218 @@ class RestrictedSchemaMixin(ABC):
 UNDEFINED = inspect._empty
 
 
+class BaseFieldTypeDescriptor(ABC):
+    """Abstract base class for field type descriptors.
+
+    Type descriptors encapsulate knowledge about how to handle specific type patterns
+    (e.g., generics, unions, custom containers). They can be passed to modfield() to
+    specify how types should be extracted, validated, and converted to schemas.
+
+    This makes the system extensible - users can create custom type descriptors.
+    """
+
+    @abstractmethod
+    def schema(self) -> dict:
+        """Generate JSON schema for this type descriptor.
+
+        Returns:
+            Schema dict
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def restricted_schema(
+        self,
+        *,
+        filter_schema_cls: t.Type['RestrictedSchemaMixin'] = type,
+        variants: list,
+        field_name: str,
+        profile: str = "shared"
+    ) -> tuple[dict, dict]:
+        """Build restricted schema for this type pattern.
+
+        Args:
+            filter_schema_cls: Class to filter variants by
+            variants: List of allowed types/schemas
+            field_name: Name of the field (for union naming)
+            profile: "shared" or "inline"
+
+        Returns:
+            (field_schema, defs_dict) tuple
+        """
+        raise NotImplementedError
+
+
+class GenericFieldType(BaseFieldTypeDescriptor):
+    """Represents a generic container type with element type constraints.
+
+    Delegates schema generation to the parameterized container type.
+
+    Examples:
+        GenericFieldType(ModuleList, Task) → ModuleList[Task]
+        GenericFieldType(ModuleList, Task1, Task2) → ModuleList[Task1 | Task2]
+        GenericFieldType(ModuleDict, str, Task) → ModuleDict[str, Task]
+        GenericFieldType(ModuleDict, str, Task1, Task2) → ModuleDict[str, Task1 | Task2]
+    """
+
+    def __init__(self, origin: type, *typs, **metadata):
+        """Initialize GenericFieldType.
+
+        Args:
+            origin: Container type (ModuleList, ModuleDict, etc.)
+            *typs: Type constraints
+                   For list-like: (Task,) or (Task1, Task2, ...) for union
+                   For dict-like: (key_type, value_type1, value_type2, ...) where values form union
+            **metadata: Optional metadata (for future extensibility)
+        """
+        self.origin = origin
+        self.typs = []
+        self.single_typ = []
+        for typ in typs:
+            if isinstance(typ, list):
+                self.typs.append(typ)
+                self.single_typ.append(False)
+            else:
+                self.typs.append([typ])
+                self.single_typ.append(True)
+
+        self.metadata = metadata
+
+    def get_parameterized_type(self):
+        """Create the parameterized type like ModuleList[Task] or ModuleDict[str, Task]."""
+        idx = []
+        for typ, single_typ in zip(self.typs, self.single_typ):
+            if single_typ:
+                if isinstance(typ[0], BaseFieldTypeDescriptor):
+                    idx.append(typ[0].get_parameterized_type())
+                else:
+                    idx.append(typ[0])
+            else:
+                # do the same as for the single_typ
+                cur_typ = []
+                for typ_i in typ:
+                    if isinstance(typ_i, BaseFieldTypeDescriptor):
+                        cur_typ.append(typ_i.get_parameterized_type())
+                    else:
+                        cur_typ.append(typ_i)
+
+                value_union = t.Union[tuple(cur_typ)]
+                idx.append(value_union)
+        return self.origin[tuple(idx)]
+
+    def schema_model(self) -> t.Type[BaseSpec]:
+        """Get the Pydantic schema model by delegating to the parameterized container type."""
+        parameterized = self.get_parameterized_type()
+        return parameterized.schema_model()
+
+    def schema(self) -> dict:
+        """Generate JSON schema by delegating to the parameterized container type."""
+        parameterized = self.get_parameterized_type()
+        return parameterized.schema()
+
+    def restricted_schema(
+        self,
+        *,
+        filter_schema_cls: t.Type['RestrictedSchemaMixin'] = type,
+        variants: list,
+        field_name: str,
+        profile: str = "shared",
+        schema_processor: t.Callable[[t.Any], tuple[str, dict]] | None = None,
+    ) -> tuple[dict, dict]:
+        """Generate restricted schema by delegating to the parameterized container type."""
+
+        schemas = []
+        defs = []
+        for typ in self.typs:
+
+            cur_schemas = []
+            cur_defs = []
+            for typ_i in typ:
+
+                if isinstance(typ_i, BaseFieldTypeDescriptor):
+                    schema, def_ = typ_i.restricted_schema(
+                        filter_schema_cls=filter_schema_cls,
+                        variants=variants,
+                        field_name=field_name,
+                        profile=profile,
+                    )
+                elif isinstance(typ_i, type) and issubclass(typ_i, filter_schema_cls):
+
+                    schema, def_ = typ_i.restricted_schema(
+                        filter_schema_cls=filter_schema_cls,
+                        variants=variants,
+                        field_name=field_name,
+                        profile=profile,
+                    )
+                elif isinstance(typ_i, type) and issubclass(typ_i, BaseModule):
+                    schema = typ_i.schema()
+                    def_ = {}
+                else:
+                    # Non-module type (e.g., str, int for dict keys)
+                    # Use a simple type schema
+                    if typ_i == str:
+                        schema = {"type": "string"}
+                    elif typ_i == int:
+                        schema = {"type": "integer"}
+                    else:
+                        schema = {"type": "null"}
+                    def_ = {}
+
+                cur_schemas.append(schema)
+                cur_defs.append(def_)
+
+            schemas.append(cur_schemas)
+            defs.append(cur_defs)
+
+        # Merge all defs
+        merged_defs = {}
+        for pos_defs in defs:
+            for def_dict in pos_defs:
+                merged_defs.update(def_dict)
+
+        # Combine schemas for each position (combining multiple types with anyOf if needed)
+        combined_schemas = []
+        for cur_schemas in schemas:
+            if len(cur_schemas) == 1:
+                combined_schemas.append(cur_schemas[0])
+            elif len(cur_schemas) > 1:
+                combined_schemas.append({"anyOf": cur_schemas})
+            else:
+                combined_schemas.append({"type": "null"})
+
+        # Return regular schema with merged defs
+        # The schema structure is handled by get_parameterized_type()
+        return (self.schema(), merged_defs)
+
+    def __repr__(self):
+        typs_str = ', '.join(repr(typ) for typ in self.typs)
+        origin_name = getattr(self.origin, '__name__', str(self.origin))
+        return f"GenericFieldType({origin_name}, {typs_str})"
+
+    def __eq__(self, other):
+        if not isinstance(other, GenericFieldType):
+            return False
+        return self.origin == other.origin and self.typs == other.typs
+
+
 class BaseFieldDescriptor(RestrictedSchemaMixin):
     """Base descriptor for module fields with restricted schema support."""
 
     # TODO: IF default = UNDEFINED, then field is required
     def __init__(self, typ=UNDEFINED, default=UNDEFINED, default_factory=UNDEFINED):
-        self.typ = typ
+        
         self.default = default
         self.default_factory = default_factory
         self._name = None
         self._owner = None
         self._types = None
+        self.single_typ = []
+        if isinstance(typ, list):
+            self.typ = typ
+            self.single_typ = False
+        else:
+            self.typ = [typ]
+            self.single_typ = True
 
     def __set_name__(self, owner, name):
         """Called when descriptor is assigned to class attribute."""
@@ -1945,101 +2146,34 @@ class BaseFieldDescriptor(RestrictedSchemaMixin):
         """Get the default value for this field.
 
         Returns the result of default_factory() if set, otherwise default value.
-        Subclasses can override to customize default value creation.
+        If typ is a BaseFieldTypeDescriptor, uses its wrap_items() method.
         """
         if self.default_factory is not UNDEFINED:
-            return self.default_factory()
+            items = self.default_factory()
+
+            # Check if typ is a BaseFieldTypeDescriptor and wrap items
+            if isinstance(self.typ, BaseFieldTypeDescriptor):
+                return self.typ.wrap_items(items)
+
+            # Check if typ is a list with BaseFieldTypeDescriptor as first item
+            if isinstance(self.typ, list) and len(self.typ) > 0:
+                if isinstance(self.typ[0], BaseFieldTypeDescriptor):
+                    return self.typ[0].wrap_items(items)
+
+            return items
         elif self.default is not UNDEFINED:
             return self.default
         else:
             raise TypeError(f"No default value for field")
 
-    def validate_annotation(self, annotation) -> None:
-        """Validate annotation and extract types into self._types."""
-        if annotation is None and self.typ is UNDEFINED:
-            raise RuntimeError(
-                f"Field '{self._name}' has modfield() but no annotation "
-                f"and no explicit typ parameter"
-            )
+    @abstractmethod
+    def schema(self) -> dict:
+        """Generate JSON schema for this field.
 
-        # Extract types from annotation or typ parameter
-        if self.typ is not UNDEFINED:
-            if isinstance(self.typ, list):
-                extracted = self.typ
-            else:
-                # If typ is a Union, extract its members
-                typ_origin = t.get_origin(self.typ)
-                if typ_origin is t.Union or (isinstance(typ_origin, type) and issubclass(typ_origin, types.UnionType)):
-                    extracted = list(t.get_args(self.typ))
-                else:
-                    extracted = [self.typ]
-        else:
-            extracted = self._extract_types_from_annotation(annotation)
-
-        # Compare or set
-        if self._types is not None:
-            if self._types != extracted:
-                raise TypeError(
-                    f"Field '{self._name}' type mismatch: "
-                    f"annotation {extracted} != typ parameter {self._types}"
-                )
-        else:
-            self._types = extracted
-
-        # Validate that all types (except None) are BaseModule subclasses
-        for typ in self._types:
-            if typ is None:
-                continue  # None is allowed for Optional types
-            if not (isinstance(typ, type) and issubclass(typ, BaseModule)):
-                raise TypeError(
-                    f"modfield() type must be a BaseModule subclass, got {typ}"
-                )
-
-    def _extract_types_from_annotation(self, annotation) -> list:
-        """Extract list of types from annotation.
-
-        For ModFieldDescriptor:
-            Union[A, B] -> [A, B]
-            Optional[A] -> [A, None]
-            A -> [A]
-
-        Subclasses may override to handle ModuleList[T], ModuleDict[K,V], etc.
+        Delegates to the typ descriptor if it's a BaseFieldTypeDescriptor.
+        Otherwise, returns an empty schema (to be filled in by Pydantic).
         """
-        origin = t.get_origin(annotation)
-
-        # Handle Union (both typing.Union and types.UnionType)
-        if origin is t.Union or (isinstance(origin, type) and issubclass(origin, types.UnionType)):
-            return list(t.get_args(annotation))
-
-        # Single type
-        return [annotation]
-
-    def get_types(self) -> list:
-        """Get types as list."""
-        return self._types
-
-    def _to_spec_type(self, typ: type) -> type:
-        """Convert a single type to its spec equivalent."""
-        if typ is None:
-            return None
-
-        if isinstance(typ, type) and issubclass(typ, BaseModule):
-            return typ.schema_model()
-
-        return typ
-
-    def get_spec_annotation(self) -> type:
-        """Convert types to spec annotation for schema building."""
-        spec_types = [self._to_spec_type(t) for t in self._types if t is not None]
-        has_none = None in self._types
-
-        if len(spec_types) == 0:
-            return type(None) if has_none else None
-        elif len(spec_types) == 1:
-            return t.Optional[spec_types[0]] if has_none else spec_types[0]
-        else:
-            union = t.Union[tuple(spec_types)]
-            return t.Optional[union] if has_none else union
+        pass
 
     @abstractmethod
     def restricted_schema(
@@ -2050,73 +2184,435 @@ class BaseFieldDescriptor(RestrictedSchemaMixin):
         _profile: str = "shared",
         _seen: dict | None = None,
         **kwargs
-    ) -> tuple[dict, dict]:
+    ) -> dict:
         """Generate restricted schema for this field.
 
-        Returns:
-            (field_schema, defs_dict) tuple
+        Delegates to the typ descriptor if it's a BaseFieldTypeDescriptor.
+        Otherwise, raises NotImplementedError (to be handled by subclasses).
         """
-        raise NotImplementedError
+        pass
+
+    def schema_model(self) -> t.Type[BaseSpec]:
+        """Get the Pydantic schema model for this field.
+
+        Delegates to the typ descriptor if it's a BaseFieldTypeDescriptor.
+        Otherwise, raises NotImplementedError (to be handled by subclasses).
+        """
+        pass
+
+    def validate_annotation(self, annotation) -> None:
+        """Validate annotation - stub for now."""
+        pass
+
+    def get_spec_annotation(self) -> type:
+        """Get spec annotation for schema building - stub for now."""
+        # TODO: Implement proper spec annotation conversion
+        return type(None)
+
+    # def validate_annotation(self, annotation) -> None:
+    #     """Validate annotation and extract types into self._types."""
+    #     if annotation is None and self.typ is UNDEFINED:
+    #         raise RuntimeError(
+    #             f"Field '{self._name}' has modfield() but no annotation "
+    #             f"and no explicit typ parameter"
+    #         )
+
+    #     # Extract types from annotation or typ parameter
+    #     if self.typ is not UNDEFINED:
+    #         if isinstance(self.typ, list):
+    #             # Legacy or contains type descriptors: typ=[GenericFieldType(...), Type2, ...]
+    #             extracted = self.typ
+    #         else:
+    #             # Single type - could be plain or already wrapped BaseFieldTypeDescriptor
+    #             extracted = [self.typ]
+    #     else:
+    #         # Extract types from annotation
+    #         extracted = self._extract_types_from_annotation(annotation)
+
+    #     # Process extracted types: check for BaseFieldTypeDescriptor instances
+    #     processed = []
+    #     for item in extracted:
+    #         if isinstance(item, BaseFieldTypeDescriptor):
+    #             # Extract the actual types from the descriptor
+    #             processed.extend(item.extract_types())
+    #         else:
+    #             processed.append(item)
+
+    #     # Compare or set
+    #     if self._types is not None:
+    #         if self._types != processed:
+    #             raise TypeError(
+    #                 f"Field '{self._name}' type mismatch: "
+    #                 f"annotation {processed} != typ parameter {self._types}"
+    #             )
+    #     else:
+    #         self._types = processed
+
+    #     # Validate that all types (except None) are BaseModule subclasses
+    #     for typ in self._types:
+    #         if typ is None:
+    #             continue  # None is allowed for Optional types
+    #         if not (isinstance(typ, type) and issubclass(typ, BaseModule)):
+    #             raise TypeError(
+    #                 f"modfield() type must be a BaseModule subclass, got {typ}"
+    #             )
+
+    # def _extract_types_from_annotation(self, annotation) -> list:
+    #     """Extract list of types from annotation.
+
+    #     For ModFieldDescriptor:
+    #         Union[A, B] -> [A, B]
+    #         Optional[A] -> [A, None]
+    #         A -> [A]
+
+    #     Subclasses may override to handle ModuleList[T], ModuleDict[K,V], etc.
+    #     """
+    #     origin = t.get_origin(annotation)
+
+    #     # Handle Union (both typing.Union and types.UnionType for PEP 604)
+    #     if origin in (t.Union, types.UnionType):
+    #         return list(t.get_args(annotation))
+
+    #     # Single type
+    #     return [annotation]
+
+    # def get_types(self) -> list:
+    #     """Get types as list."""
+    #     return self._types
+
+    # def _to_spec_type(self, typ: type) -> type:
+    #     """Convert a single type to its spec equivalent."""
+    #     if typ is None:
+    #         return None
+
+    #     if isinstance(typ, type) and issubclass(typ, BaseModule):
+    #         return typ.schema_model()
+
+    #     return typ
+
+    # def get_spec_annotation(self) -> type:
+    #     """Convert types to spec annotation for schema building."""
+    #     # Check if typ is a BaseFieldTypeDescriptor - use its conversion
+    #     if isinstance(self.typ, BaseFieldTypeDescriptor):
+    #         spec_type = self.typ.to_spec_annotation(self._to_spec_type)
+    #         has_none = None in self._types
+    #         return t.Optional[spec_type] if has_none else spec_type
+
+    #     # Check if typ is list with BaseFieldTypeDescriptor as first item
+    #     if isinstance(self.typ, list) and len(self.typ) > 0:
+    #         if isinstance(self.typ[0], BaseFieldTypeDescriptor):
+    #             spec_type = self.typ[0].to_spec_annotation(self._to_spec_type)
+    #             has_none = None in self._types
+    #             return t.Optional[spec_type] if has_none else spec_type
+
+    #     # Default: convert each type
+    #     spec_types = [self._to_spec_type(t) for t in self._types if t is not None]
+    #     has_none = None in self._types
+
+    #     if len(spec_types) == 0:
+    #         return type(None) if has_none else None
+    #     elif len(spec_types) == 1:
+    #         return t.Optional[spec_types[0]] if has_none else spec_types[0]
+    #     else:
+    #         union = t.Union[tuple(spec_types)]
+    #         return t.Optional[union] if has_none else union
+
+    # @abstractmethod
+    # def restricted_schema(
+    #     self,
+    #     *,
+    #     filter_schema_cls: t.Type['RestrictedSchemaMixin'] = type,
+    #     variants: list | None = None,
+    #     _profile: str = "shared",
+    #     _seen: dict | None = None,
+    #     **kwargs
+    # ) -> tuple[dict, dict]:
+    #     """Generate restricted schema for this field.
+
+    #     Returns:
+    #         (field_schema, defs_dict) tuple
+    #     """
+    #     raise NotImplementedError
     
-    @property
-    def required(self) -> bool:
-        return self.default is UNDEFINED
+    # @property
+    # def required(self) -> bool:
+    #     return self.default is UNDEFINED
 
 
 class ModFieldDescriptor(BaseFieldDescriptor):
     """Descriptor for single module field."""
 
+    def schema_model(self) -> t.Type:
+
+        sub_schemas = []
+        has_none = False
+        for typ in self.typ:
+            if typ is None:
+                has_none = True
+            elif isinstance(typ, BaseFieldTypeDescriptor):
+                sub_schemas.append(typ.schema_model())
+            elif isinstance(typ, type) and issubclass(typ, BaseModule):
+                sub_schemas.append(typ.schema_model())
+        if has_none:
+            if len(sub_schemas) == 0:
+                return type(None)  # only None
+            elif len(sub_schemas) == 1:
+                return t.Optional[sub_schemas[0]]
+            else:
+                return t.Optional[t.Union[tuple(sub_schemas)]]
+        else:
+            if len(sub_schemas) == 1:
+                return sub_schemas[0]
+            else:
+                return t.Union[tuple(sub_schemas)]
+
+    def schema(self) -> dict:
+        """Generate JSON schema for this field."""
+        sub_schemas = []
+        has_none = False
+        for typ in self.typ:
+            if typ is None:
+                has_none = True
+            elif isinstance(typ, BaseFieldTypeDescriptor):
+                sub_schemas.append(typ.schema())
+            elif isinstance(typ, type) and issubclass(typ, BaseModule):
+                sub_schemas.append(typ.schema())
+
+        # Build schema from sub_schemas
+        if has_none:
+            if len(sub_schemas) == 0:
+                return {"type": "null"}
+            elif len(sub_schemas) == 1:
+                # Optional[T] - allow null or the schema
+                return {"anyOf": [{"type": "null"}, sub_schemas[0]]}
+            else:
+                # Optional[Union[...]] - allow null or any of the schemas
+                return {"anyOf": [{"type": "null"}] + sub_schemas}
+        else:
+            if len(sub_schemas) == 1:
+                return sub_schemas[0]
+            else:
+                return {"anyOf": sub_schemas}
+
     def restricted_schema(
         self,
         *,
-        filter_schema_cls: t.Type[RestrictedSchemaMixin] = type,
+        filter_schema_cls: t.Type['RestrictedSchemaMixin'] = type,
         variants: list | None = None,
         _profile: str = "shared",
         _seen: dict | None = None,
         **kwargs
     ) -> tuple[dict, dict]:
-        """Generate restricted schema for single module field."""
+        """Generate restricted schema for this field."""
         if variants is None:
             base_schema = self._owner.schema()
             return (base_schema["properties"][self._name], {})
 
-        # Process variants
-        variant_schemas = self._schema_process_variants(
-            variants,
-            restricted_schema_cls=filter_schema_cls,
-            _seen=_seen,
-            **kwargs
-        )
+        # Loop over self.typ and delegate to BaseFieldTypeDescriptor if present
 
-        # Build entries
-        entries = [(self._schema_name_from_dict(s), s) for s in variant_schemas]
+        schemas = []
+        defs = []
+        for typ in self.typ:
+            if isinstance(typ, BaseFieldTypeDescriptor):
+                schema, def_ = typ.restricted_schema(
+                    filter_schema_cls=filter_schema_cls,
+                    variants=variants,
+                    field_name=self._name,
+                    profile=_profile
+                )
+                schemas.append(schema)
+                defs.append(def_)
+            elif isinstance(typ, type) and issubclass(typ, filter_schema_cls):
+                schema, def_ = typ.restricted_schema(
+                    variants=variants,
+                    _profile=_profile
+                )
+                schemas.append(schema)
+                defs.append(def_)
+            elif typ is None:
+                # None type - add null schema
+                # TODO: CHECK THIS!
+                schemas.append({"type": "null"})
+                defs.append({})
 
-        # Build union based on profile
-        if _profile == "shared":
-            union_name = self._schema_allowed_union_name(self._name)
-            defs = {union_name: {"oneOf": self._schema_build_refs(entries)}}
-            for name, schema in entries:
-                defs[name] = schema
+            else:
+                schema = typ.schema()
+                schemas.append(schema)
+                defs.append({}) # Not sure if this is correct
 
-            field_schema = {"$ref": f"#/$defs/{union_name}"}
-            return (field_schema, defs)
+        # Merge all defs
+        merged_defs = {}
+        for def_dict in defs:
+            merged_defs.update(def_dict)
+
+        # Combine schemas based on count
+        if self.single_typ and len(schemas) == 1:
+            # Single type - return schema directly
+            return (schemas[0], merged_defs)
+        elif len(schemas) > 1:
+            # Multiple types - create union using anyOf
+            return ({"anyOf": schemas}, merged_defs)
+        elif len(schemas) == 0:
+            # No schemas collected - shouldn't normally happen
+            # Fall back to processing variants directly
+            variant_schemas = self._schema_process_variants(
+                variants,
+                restricted_schema_cls=filter_schema_cls,
+                _seen=_seen,
+                **kwargs
+            )
+            entries = [(self._schema_name_from_dict(s), s) for s in variant_schemas]
+
+            if _profile == "shared":
+                union_name = self._schema_allowed_union_name(self._name)
+                defs_dict = {union_name: {"oneOf": self._schema_build_refs(entries)}}
+                for name, schema in entries:
+                    defs_dict[name] = schema
+                field_schema = {"$ref": f"#/$defs/{union_name}"}
+                return (field_schema, defs_dict)
+            else:
+                defs_dict = {name: schema for name, schema in entries}
+                field_schema = self._schema_make_union_inline(entries)
+                return (field_schema, defs_dict)
         else:
-            field_schema = self._schema_make_union_inline(entries)
-            return (field_schema, {})
+            # Single schema but not single_typ? Return it anyway
+            return (schemas[0] if schemas else {"type": "null"}, merged_defs)
+
+
+    # def restricted_schema(
+    #     self,
+    #     *,
+    #     filter_schema_cls: t.Type[RestrictedSchemaMixin] = type,
+    #     variants: list | None = None,
+    #     _profile: str = "shared",
+    #     _seen: dict | None = None,
+    #     **kwargs
+    # ) -> tuple[dict, dict]:
+    #     """Generate restricted schema for single module field."""
+    #     if variants is None:
+    #         base_schema = self._owner.schema()
+    #         return (base_schema["properties"][self._name], {})
+
+    #     # Check if typ is a BaseFieldTypeDescriptor - delegate to it
+    #     if isinstance(self.typ, BaseFieldTypeDescriptor):
+    #         variant_schemas = self._schema_process_variants(
+    #             variants,
+    #             restricted_schema_cls=filter_schema_cls,
+    #             _seen=_seen,
+    #             **kwargs
+    #         )
+    #         entries = [(self._schema_name_from_dict(s), s) for s in variant_schemas]
+    #         return self.typ.restricted_schema(
+    #             variants=entries,
+    #             field_name=self._name,
+    #             profile=_profile,
+    #             schema_processor=None  # Already processed
+    #         )
+
+    #     # Check if typ is list with BaseFieldTypeDescriptor as first item
+    #     if isinstance(self.typ, list) and len(self.typ) > 0:
+    #         if isinstance(self.typ[0], BaseFieldTypeDescriptor):
+    #             variant_schemas = self._schema_process_variants(
+    #                 variants,
+    #                 restricted_schema_cls=filter_schema_cls,
+    #                 _seen=_seen,
+    #                 **kwargs
+    #             )
+    #             entries = [(self._schema_name_from_dict(s), s) for s in variant_schemas]
+    #             return self.typ[0].restricted_schema(
+    #                 variants=entries,
+    #                 field_name=self._name,
+    #                 profile=_profile,
+    #                 schema_processor=None
+    #             )
+
+    #     # Default: build simple union for plain fields
+    #     variant_schemas = self._schema_process_variants(
+    #         variants,
+    #         restricted_schema_cls=filter_schema_cls,
+    #         _seen=_seen,
+    #         **kwargs
+    #     )
+
+    #     entries = [(self._schema_name_from_dict(s), s) for s in variant_schemas]
+
+    #     if _profile == "shared":
+    #         union_name = self._schema_allowed_union_name(self._name)
+    #         defs = {union_name: {"oneOf": self._schema_build_refs(entries)}}
+    #         for name, schema in entries:
+    #             defs[name] = schema
+
+    #         field_schema = {"$ref": f"#/$defs/{union_name}"}
+    #         return (field_schema, defs)
+    #     else:
+    #         field_schema = self._schema_make_union_inline(entries)
+    #         return (field_schema, {})
+
+
+def generictype(container_type: type, *type_args, **metadata):
+    """Create a GenericFieldType for use with modfield().
+
+    Convenience function for explicit, readable generic type specifications.
+
+    Args:
+        container_type: Container class (ModuleList, ModuleDict, list, dict, etc.)
+        *type_args: Type arguments
+        **metadata: Optional metadata
+
+    Returns:
+        GenericFieldType instance
+
+    Examples:
+        typ=generictype(ModuleList, Task)
+        typ=generictype(ModuleDict, str, State)
+        typ=generictype(ModuleList, Task, max_items=10)
+        typ=generictype(ModuleDict, str, generictype(ModuleList, Task))
+    """
+    return GenericFieldType(container_type, *type_args, **metadata)
 
 
 def modfield(typ=UNDEFINED, default=UNDEFINED, default_factory=UNDEFINED) -> ModFieldDescriptor:
-    """Mark field as containing a BaseModule instance."""
+    """Mark field as containing a BaseModule instance.
+
+    Args:
+        typ: Type specification. Can be:
+            - A type (Task)
+            - A generic type (ModuleList[Task]) - auto-wrapped in GenericFieldType
+            - A BaseFieldTypeDescriptor (GenericFieldType(...))
+            - A list of types ([Task1, Task2]) - legacy
+        default: Default value
+        default_factory: Factory function for default value
+
+    Returns:
+        ModFieldDescriptor instance
+
+    Examples:
+        field: Task = modfield()
+        field: ModuleList[Task] = modfield()  # Auto-wrapped in GenericFieldType
+        field = modfield(typ=generictype(ModuleList, Task))
+    """
+    # Auto-wrap generic types in GenericFieldType
+    if typ is not UNDEFINED and not isinstance(typ, (list, BaseFieldTypeDescriptor)):
+        if is_generic_type(typ):
+            typ = GenericFieldType.from_annotation(typ)
+
+    # Handle list of types: typ=[ModList[Task], ...] -> convert first to GenericFieldType
+    if isinstance(typ, list) and len(typ) > 0:
+        if is_generic_type(typ[0]):
+            typ = [GenericFieldType.from_annotation(typ[0])] + typ[1:]
+
     return ModFieldDescriptor(typ=typ, default=default, default_factory=default_factory)
 
 
-class Registry:
+
+
+class Registry(t.Generic[T]):
     """Registry for BaseModule classes and functions.
     Allows registration, filtering, and retrieval of objects
     by name, type, tags, and package.
     """
     def __init__(self):
-        self._entries: Dict[str, RegistryEntry] = {}
+        self._entries: Dict[str, RegistryEntry[T]] = {}
 
     def register(self,
                  name: Optional[str] = None,
@@ -2139,7 +2635,7 @@ class Registry:
             if key in self._entries:
                 print(f"Warning: Overwriting existing entry '{key}'")
 
-            self._entries[key] = RegistryEntry(
+            self._entries[key] = RegistryEntry[T](
                 obj=obj,
                 obj_type=obj_type,
                 tags=tags or {},
@@ -2152,7 +2648,7 @@ class Registry:
     def filter(self,
                obj_type: Optional[str] = None,
                tags: Optional[Dict[str, Any]] = None,
-               package: Optional[str] = None) -> Dict[str, RegistryEntry]:
+               package: Optional[str] = None) -> Dict[str, RegistryEntry[T]]:
         """
         Filter the registry entries based on the given criteria.
         Args:
@@ -2163,7 +2659,7 @@ class Registry:
         Returns:
             A dictionary of matching registry entries.
         """
-        results: Dict[str, RegistryEntry] = {}
+        results: Dict[str, RegistryEntry[T]] = {}
         for k, v in self._entries.items():
             if obj_type and v.type != obj_type:
                 continue
@@ -2174,7 +2670,7 @@ class Registry:
             results[k] = v
         return results
 
-    def __getitem__(self, key: Union[str, List[str]]) -> Union[RegistryEntry, Dict[str, RegistryEntry]]:
+    def __getitem__(self, key: Union[str, List[str]]) -> Union[RegistryEntry[T], Dict[str, RegistryEntry[T]]]:
         """Retrieve a single entry by key or a list of entries by keys."""
         try: 
             if isinstance(key, list):
@@ -2235,8 +2731,8 @@ class Registry:
             description=description
         )
 
-registry = Registry()
-V = t.TypeVar("V", bound=BaseModule)
+mod_registry = Registry[BaseModule]()
+
 
 
 class AdaptModule(
@@ -2376,7 +2872,7 @@ class AdaptModule(
         if self.fixed:
             raise RuntimeError("Cannot update adapted on a frozen AdaptModule")
         
-        sub_cls = registry[new_spec.kind].obj
+        sub_cls = mod_registry[new_spec.kind].obj
         self._adapted = sub_cls.from_spec(new_spec, ctx={})
 
     def fix(self):
@@ -2388,7 +2884,7 @@ class AdaptModule(
             return
         ctx = ctx or {}
         spec = self.adapted_param.data  # already a BaseSpec
-        sub_cls = registry[spec.kind].obj
+        sub_cls = mod_registry[spec.kind].obj
         self._adapted = sub_cls.from_spec(spec, ctx)
         self.fixed = False
 
@@ -2434,7 +2930,7 @@ class AdaptModule(
         # )
         if "_adapted_param" in sd:
             # pass
-            cur_cls = registry[sd['_adapted_param']['kind']].obj
+            cur_cls = mod_registry[sd['_adapted_param']['kind']].obj
             spec = cur_cls.schema().model_validate(sd['_adapted_param'])
             print(spec)
             self._adapted_param.data = spec
