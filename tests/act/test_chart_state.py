@@ -10,7 +10,7 @@ import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
-from dachi.act._chart._state import BaseState, AtomState, State, StreamState, FinalState, PseudoState, ReadyState, BoundState, BoundStreamState
+from dachi.act._chart._state import BaseState, LeafState, State, StreamState, FinalState, PseudoState, ReadyState, BoundState, BoundStreamState
 from dachi.act._chart._base import ChartStatus, InvalidTransition
 from dachi.act._chart._event import EventQueue, EventPost
 from dachi.core import Scope
@@ -55,7 +55,7 @@ class ConcreteStreamStateWithInputs(StreamState):
             yield {f"{prefix}_{i}": i}
 
 
-class ConcreteLeafState(AtomState):
+class ConcreteLeafState(LeafState):
     """Concrete LeafState for testing base functionality."""
 
     async def execute(self, post, **inputs):
@@ -65,7 +65,7 @@ class ConcreteLeafState(AtomState):
         pass
 
 
-class LeafStateWithOutputs(AtomState):
+class LeafStateWithOutputs(LeafState):
     """LeafState with outputs declaration."""
 
     class outputs:
@@ -79,7 +79,7 @@ class LeafStateWithOutputs(AtomState):
         pass
 
 
-class LeafStateWithEmit(AtomState):
+class LeafStateWithEmit(LeafState):
     """LeafState with emit declaration."""
 
     class emit:
@@ -558,7 +558,7 @@ class TestBaseState:
 class TestLeafState:
 
     def test_init_subclass_processes_inputs_class(self):
-        class TestLeafState(AtomState):
+        class TestLeafState(LeafState):
             class inputs:
                 param1: str
                 param2: int = 42
@@ -593,7 +593,7 @@ class TestLeafState:
 
     @pytest.mark.asyncio
     async def test_execute_can_return_none(self):
-        class NoneLeafState(AtomState):
+        class NoneLeafState(LeafState):
             async def execute(self, post, **inputs):
                 return None
             async def run(self, post, ctx):
@@ -606,7 +606,7 @@ class TestLeafState:
 
     @pytest.mark.asyncio
     async def test_execute_receives_post_parameter(self):
-        class PostCheckingLeafState(AtomState):
+        class PostCheckingLeafState(LeafState):
             async def execute(self, post, **inputs):
                 return {"has_post": post is not None}
             async def run(self, post, ctx):
@@ -619,7 +619,7 @@ class TestLeafState:
 
     @pytest.mark.asyncio
     async def test_execute_receives_inputs_from_kwargs(self):
-        class InputCheckingLeafState(AtomState):
+        class InputCheckingLeafState(LeafState):
             class inputs:
                 test_param: str
             async def execute(self, post, test_param):

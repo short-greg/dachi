@@ -3,7 +3,7 @@ import pytest
 from dataclasses import InitVar
 
 # local
-from dachi.core._base import BaseModule, Param, Attr, BaseSpec, mod_registry
+from dachi.core._base import BaseModule, Param, Runtime, BaseSpec, mod_registry
 from dachi.core._structs import ModuleList, ModuleDict
 
 
@@ -15,7 +15,7 @@ class Leaf3(BaseModule):
     def __post_init__(self, w: float, s: int):
 
         self.w = Param(w)
-        self.s = Attr(s)
+        self.s = Runtime(s)
 
 # --- Helper Leaf class ---
 @mod_registry()
@@ -25,7 +25,7 @@ class Leaf4(BaseModule):
 
     def __post_init__(self, v, f):
         self.v = Param(data=v)
-        self.f = Attr(data=f)
+        self.f = Runtime(data=f)
 
 
 def make_leaf(val=1.0, step=0):
@@ -178,7 +178,7 @@ class TestModuleList:
 
     def test_modulelist_setitem_removes_old_attr(self):
         lst = ModuleList(
-            items=[Leaf3(w=Param(1), s=Attr(0))]
+            items=[Leaf3(w=Param(1), s=Runtime(0))]
         )
         assert hasattr(lst, "0")
         lst[0] = Leaf3(w=9, s=9)

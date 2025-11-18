@@ -1,65 +1,46 @@
 # 1st party
 import typing as t
 from dataclasses import InitVar
-from dachi.core import Ctx, Scope
-
+from dachi.core import Ctx, Scope, Runtime, PrivateRuntime
+from ._core import TASK
+from ._serial import Sequence, Selector
+from ._parallel import MultiTask
 # local
-# from dachi.core import AdaptModule
-from ._core import Task, TaskStatus, RestrictedTaskSchemaMixin
+from ._core import Task, TaskStatus
 
 
-class BT(Task, RestrictedTaskSchemaMixin):
+class BT(Task, t.Generic[TASK]):
     """The root task for a behavior tree
     """
-    root: InitVar[Task | None] = None
+    root: TASK | None = None
     bindings: t.Dict[str, str] | None = None
+    _scope: Runtime[Scope] = PrivateRuntime(default_factory=Scope)
 
-    def __post_init__(self, root: Task):
-        """Create a behavior tree task
-        Args:
-            root (Task | None): The root task for the behavior tree
-        """
-        super().__post_init__()
-        Task.__post_init__(self)
-        self.root = root
-        self.scope = Scope()
-        self.__method_tasks__ = {}
-        for name in dir(self):
-            # Get the attribute from the instance
-            attr = getattr(self, name)
-            # Check if it's a bound method of this instance
-            if (
-                callable(attr)
-                and hasattr(attr, "__self__")
-                and attr.__self__ is self
-                and getattr(attr, "is_task", False) is True
-            ):
-                self.__method_tasks__[name] = attr
-    
-    def task(
-        self, 
-        name: str, 
-        *args, 
-        **kwargs
-    ) -> Task:
-        """Get a task by name
+    # # TDOO: Find out what "method task" is
+    # def task(
+    #     self, 
+    #     name: str, 
+    #     *args, 
+    #     **kwargs
+    # ) -> Task:
+    #     """Get a task by name
 
-        Args:
-            name (str): The name of the task
-            *args: The arguments to pass to the task
-            **kwargs: The keyword arguments to pass to the task
+    #     Args:
+    #         name (str): The name of the task
+    #         *args: The arguments to pass to the task
+    #         **kwargs: The keyword arguments to pass to the task
 
-        Returns:
-            Task: The task with the given name
-        """
-        if name not in self.__method_tasks__:
-            raise ValueError(f"Task {name} not found")
-        return self.__method_tasks__[name].create(
-            name=name, 
-            args=args, 
-            kwargs=kwargs,
-            f=self.__method_tasks__[name],
-        )
+    #     Returns:
+    #         Task: The task with the given name
+    #     """
+    #     if name not in self.__method_tasks__:
+    #         raise ValueError(f"Task {name} not found")
+    #     return self.__method_tasks__[name].create(
+    #         name=name, 
+    #         args=args, 
+    #         kwargs=kwargs,
+    #         f=self.__method_tasks__[name],
+    #     )
     
     async def tick(self, ctx: Ctx | None=None) -> TaskStatus:
         """Update the task
@@ -71,9 +52,9 @@ class BT(Task, RestrictedTaskSchemaMixin):
             return TaskStatus.SUCCESS
         
         if ctx is None:
-            scope = self.scope
+            scope = self.scope.data
         else:
-            scope = self.scope.bind(ctx, self.bindings)
+            scope = self.scope.data.bind(ctx, self.bindings)
         
         status = await self.root.tick(scope.ctx())
         self._status.set(status)
@@ -84,44 +65,75 @@ class BT(Task, RestrictedTaskSchemaMixin):
         if self.root is not None:
             self.root.reset()
 
-    @classmethod
-    def restricted_schema(cls, *, tasks=None, _profile="shared", _seen=None, **kwargs):
-        """
-        Generate restricted schema for BT.
 
-        Pattern C: Single Field - processes task variants for the root field.
+DeepBT = BT[
+    Sequence[TASK] | MultiTask[TASK] | Selector[TASK] | TASK
+]
 
-        Args:
-            tasks: List of allowed task variants for root field
-            _profile: "shared" (default) or "inline"
-            _seen: Cycle detection dict
-            **kwargs: Passed to nested restricted_schema() calls
 
-        Returns:
-            Restricted schema dict with root field limited to specified variants
-        """
-        # If no tasks provided, return unrestricted schema
-        if tasks is None:
-            return cls.schema()
 
-        # Process task variants (handles RestrictedTaskSchemaMixin recursion)
-        task_schemas = cls._schema_process_variants(
-            tasks,
-            restricted_schema_cls=RestrictedTaskSchemaMixin,
-            _seen=_seen,
-            tasks=tasks,
-            **kwargs
-        )
+    # def __post_init__(self, root: Task):
+    #     """Create a behavior tree task
+    #     Args:
+    #         root (Task | None): The root task for the behavior tree
+    #     """
+    #     # super().__post_init__()
+    #     # Task.__post_init__(self)
+    #     super()
+    #     self.root = root
+    #     self.scope = Scope()
+        # self.__method_tasks__ = {}
+        # for name in dir(self):
+        #     # Get the attribute from the instance
+        #     attr = getattr(self, name)
+        #     # Check if it's a bound method of this instance
+        #     if (
+        #         callable(attr)
+        #         and hasattr(attr, "__self__")
+        #         and attr.__self__ is self
+        #         and getattr(attr, "is_task", False) is True
+        #     ):
+        #         self.__method_tasks__[name] = attr
+    
 
-        # Update schema's root field (single Task)
-        schema = cls.schema()
-        return cls._schema_update_single_field(
-            schema,
-            field_name="root",
-            placeholder_name="TaskSpec",
-            variant_schemas=task_schemas,
-            profile=_profile
-        )
+    # @classmethod
+    # def restricted_schema(cls, *, tasks=None, _profile="shared", _seen=None, **kwargs):
+    #     """
+    #     Generate restricted schema for BT.
+
+    #     Pattern C: Single Field - processes task variants for the root field.
+
+    #     Args:
+    #         tasks: List of allowed task variants for root field
+    #         _profile: "shared" (default) or "inline"
+    #         _seen: Cycle detection dict
+    #         **kwargs: Passed to nested restricted_schema() calls
+
+    #     Returns:
+    #         Restricted schema dict with root field limited to specified variants
+    #     """
+    #     # If no tasks provided, return unrestricted schema
+    #     if tasks is None:
+    #         return cls.schema()
+
+    #     # Process task variants (handles RestrictedTaskSchemaMixin recursion)
+    #     task_schemas = cls._schema_process_variants(
+    #         tasks,
+    #         restricted_schema_cls=RestrictedTaskSchemaMixin,
+    #         _seen=_seen,
+    #         tasks=tasks,
+    #         **kwargs
+    #     )
+
+    #     # Update schema's root field (single Task)
+    #     schema = cls.schema()
+    #     return cls._schema_update_single_field(
+    #         schema,
+    #         field_name="root",
+    #         placeholder_name="TaskSpec",
+    #         variant_schemas=task_schemas,
+    #         profile=_profile
+    #     )
 
 
 # TODO: Remove this at a later time. Later we will add a State Chart

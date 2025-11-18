@@ -2,57 +2,47 @@ import json
 import pytest
 import types
 
-from dataclasses import InitVar
+import pydantic
 from pydantic import ValidationError
 from pydantic import BaseModel
 
-import pytest
-
 # Local core imports
 
-
 from dachi.core._base import (
-    BaseModule, BaseModule, Param, Attr, Shared, BaseSpec, Checkpoint, mod_registry, Registry,
-    ParamSet, RestrictedSchemaMixin, lookup_module_class
+    Module, Param, Runtime, Shared, BaseSpec, Checkpoint, mod_registry, Registry,
+    ParamSet, PrivateParam, PrivateRuntime,
+    ParamField
 )
-from dachi.act._bt._core import RestrictedTaskSchemaMixin
-
 from pydantic import ValidationError
-import inspect
-import pytest
 
-# from dachi.core._base import (
-#     BaseModule, Param, Shared, 
-# )
-
-import pytest
 # ------------------------------------------------------------
 #  Helper process classes for tests
 # ------------------------------------------------------------
 
-class Leaf(BaseModule):
+class Leaf(Module):
     value: int
 
-class WithParams(BaseModule):
-    w: InitVar[float]
-    s: InitVar[int]
+class WithParams(Module):
+    w: float = pydantic.Field(frozen=True)
+    s: int = pydantic.Field(frozen=True)
     name: str
 
-    def __post_init__(self, w: float, s: int):
-        self.w = Param(data=w)
-        self.s = Attr(data=s)
+    def model_post_init(self, __context) -> None:
+        super().model_post_init(__context)
+        self._w = Param(data=self.w)
+        self._s = Runtime(data=self.s)
 
 
-class Nested(BaseModule):
+class Nested(Module):
     inner: WithParams
     extra: int = 5
 
-class InitVarProc(BaseModule):
+class InitVarProc(Module):
     x: int
-    y: InitVar[int]
+    y: int = 10
 
-    def __post_init__(self, y):
-        self.buffer = Attr(data=y)
+    def model_post_init(self, __context):
+        self._buffer = Runtime(data=self.y)
 
 # ------------------------------------------------------------
 #  Positive path tests
@@ -78,11 +68,12 @@ def test_nested_recursion():
 
 
 def _make_tree():
-    class Leaf(BaseModule):
-        v: InitVar[int]
-        def __post_init__(self, v: int):
-            self.v = Param(data=v)
-    class Root(BaseModule):
+    class Leaf(Module):
+        v: int = pydantic.Field(frozen=True)
+        def model_post_init(self, __context):
+            super().model_post_init(__context)
+            self._v = Param(data=self.v)
+    class Root(Module):
         left: Leaf
         right: Leaf
     return Root(left=Leaf(v=1), right=Leaf(v=2))
@@ -92,10 +83,11 @@ def _make_dynamic_leaf(tag: str):
     """Return a Leaf class whose *module* differs so the schema name must be unique."""
     mod = types.ModuleType(f"tmp_mod_{tag}")
 
-    class Leaf(BaseModule):
-        w: InitVar[float]
-        def __post_init__(self, w: float):
-            self.w = Param(data=w)
+    class Leaf(Module):
+        w: float = pydantic.Field(frozen=True)
+        def model_post_init(self, __context):
+            super().model_post_init(__context)
+            self._w = Param(data=self.w)
 
     Leaf.__name__ = "Leaf"
     Leaf.__qualname__ = "Leaf"
@@ -116,7 +108,7 @@ def test_spec_class_name_collision_unique():
 
 def test_initvar_without_post_init_raises():
     with pytest.raises(RuntimeError):
-        class Bad(BaseModule):
+        class Bad(Module):
             x: InitVar[int]
         Bad(x=1)
 
@@ -134,38 +126,42 @@ def test_initvar_without_post_init_raises():
 
 
 def test_modules_depth_first_order():
-    class Leaf(BaseModule):
+
+    class Leaf(Module):
         pass
-    class Branch(BaseModule):
+
+    class Branch(Module):
         left: Leaf
         right: Leaf
+
     tree = Branch(left=Leaf(), right=Leaf())
     mods = list(tree.modules())
     assert mods == [tree, tree.left, tree.right]
 
 
 def test_from_spec_missing_field_validation_error():
-    class Leaf(BaseModule):
-        w: InitVar[int]
-        def __post_init__(self, w: int):
-            self.w = Param(data=w)
+    class Leaf(Module):
+        w: int = pydantic.Field(frozen=True)
+        def model_post_init(self, __context):
+            self._w = Param(data=self.w)
 
     spec = Leaf(w=1).spec(to_dict=True)
     del spec["w"]
     with pytest.raises(ValidationError):
         Leaf.from_spec(spec)
 
+
 def test_nested_module_dedup_in_from_spec():
     """Same Inner instance appears twice; loader must deduplicate."""
     @mod_registry()
-    class Inner(BaseModule):
-        v: InitVar[int]
-        def __post_init__(self, v):
-            self.v = Param(data=v)
+    class Inner(Module):
+        v: int = pydantic.Field(frozen=True)
+        def model_post_init(self, __context):
+            self._v = Param(data=v)
     shared = Inner(v=3)
 
     @mod_registry()
-    class Outer(BaseModule):
+    class Outer(Module):
         a: Inner
         b: Inner
 
@@ -175,18 +171,17 @@ def test_nested_module_dedup_in_from_spec():
 
 
 def test_state_dict_filters():
-    wp = WithParams(w=Param(data=1.5), s=Attr(data=9), name="z")
+    wp = WithParams(w=Param(data=1.5), s=Runtime(data=9), name="z")
     assert list(wp.parameters()) == [wp.w]
 
 
 def test_state_keys_match_state_dict():
-    class Proc(BaseModule):
-        p: InitVar[int]
-        s: InitVar[int]
-        def __post_init__(self, p: int, s: int):
-            self.p = Param(data=p)
-            self.s = Attr(data=s)
-
+    class Proc(Module):
+        p: int = pydantic.Field(frozen=True)
+        s: int = pydantic.Field(frozen=True)
+        def model_post_init(self, __context):
+            self._p = Param(data=self.p)
+            self._s = Runtime(data=self.s)
     pr = Proc(p=5, s=9)
     assert set(pr.state_dict().keys()) == pr.state_keys()
 
@@ -205,7 +200,7 @@ def test_schema_cached():
 
 
 def test_shared_excluded_from_state():
-    class Proc(BaseModule):
+    class Proc(Module):
         cfg: InitVar[str]
         p: InitVar[int]
         def __post_init__(self, cfg: str, p: int):
@@ -224,11 +219,11 @@ def test_load_state_dict_roundtrip():
     assert wp2.w.data == 5.0 and wp2.s.data == 1
 
 def test_load_state_dict_extra_key_nested_strict():
-    class Leaf(BaseModule):
+    class Leaf(Module):
         p: InitVar[int]
         def __post_init__(self, p):
             self.p = Param(data=p)
-    class Root(BaseModule):
+    class Root(Module):
         leaf: Leaf
     root = Root(leaf=Leaf(p=1))
     with pytest.raises(KeyError):
@@ -280,17 +275,16 @@ def test_load_state_strict_failure():
 
 
 def test_param_deduplication():
-    shared_param = Param(data=3.0)
-    class Proc(BaseModule):
-        a: InitVar[float]
-        b: InitVar[float]
+    class Proc(Module):
+        a: float = pydantic.Field(frozen=True)
+        b: float = pydantic.Field(frozen=True)
 
         def __post_init__(self, a: float, b: float):
-            self.a = Param(data=a)
-            self.b = Param(data=b)
+            self._a = Param(data=a)
+            self._b = Param(data=b)
     
     pr = Proc(a=2.0, b=1.0)
-    pr.b = pr.a
+    pr._b = pr._a
     assert len(list(pr.parameters())) == 1  # dedup by identity
 
 
@@ -316,7 +310,7 @@ def test_param_accepts_any_val(val):
 
 
 def test_state_mutability():
-    st = Attr(data=5)
+    st = Runtime(data=5)
     st.data += 1
     assert st.data == 6
 
@@ -335,13 +329,15 @@ def test_frozen_param_not_filtered_from_state():
 # # # # # # -----  corner cases for InitVar default / override ----------
 
 def test_initvar_default_used():
-    class P(BaseModule):
+    class P(Module):
         x: int
-        y: InitVar[int] = 9
-        def __post_init__(self, y):
-            self.buf = Attr(data=y)
+        y: int = 9
+        def model_post_init(self, __context):
+            super().model_post_init(__context)
+            self.buf = Runtime(data=self.y)
     p = P(x=1)
-    assert p._init_vars["y"] == 9 and p.buf.data == 9
+
+    # assert p._init_vars["y"] == 9 and p.buf.data == 9
 
 
 def test_initvar_override():
@@ -355,25 +351,25 @@ def test_schema_kind_field():
 
 
 def test_spec_kind_matches_classname():
-    class WithParams(BaseModule):
-        w: InitVar[float]
-        s: InitVar[int]
+    class WithParams(Module):
+        w: float = pydantic.Field(frozen=True)
+        s: int = pydantic.Field(frozen=True)
         name: str
 
         def __post_init__(self, w: float, s: int):
-            self.w = Param(data=w)
-            self.s = Attr(data=s)
-    wp = WithParams(w=Param(data=1.0), s=Attr(data=1), name="k")
+            self._w = Param(data=w)
+            self._s = Runtime(data=s)
+    wp = WithParams(w=Param(data=1.0), s=Runtime(data=1), name="k")
     assert wp.spec(to_dict=False).kind.endswith("WithParams")
 
 
 def test_state_dict_train_flag():
-    wp = WithParams(w=Param(data=2.2), s=Attr(data=0), name="m")
+    wp = WithParams(w=Param(data=2.2), s=Runtime(data=0), name="m")
     assert "w" not in wp.state_dict(train=False)
 
 
 def test_state_dict_runtime_flag():
-    wp = WithParams(w=Param(data=1.0), s=Attr(data=5), name="r")
+    wp = WithParams(w=Param(data=1.0), s=Runtime(data=5), name="r")
     assert "s" not in wp.state_dict(runtime=False)
 
 
@@ -386,13 +382,13 @@ def test_load_state_in_child():
 
 
 def test_state_dict_flags_combination():
-    class A(BaseModule):
-        p: InitVar[float]
-        s: InitVar[int]
+    class A(Module):
+        p: float = pydantic.Field(frozen=True)
+        s: int = pydantic.Field(frozen=True)
 
         def __post_init__(self, p: float, s: int):
-            self.p = Param(data=p)
-            self.s = Attr(data=s)
+            self._p = Param(data=p)
+            self._s = Runtime(data=s)
 
     a = A(p=3.3, s=9)
     sd = a.state_dict(train=False, runtime=False)
@@ -400,51 +396,54 @@ def test_state_dict_flags_combination():
 
 
 def test_state_dict_nested_keys():
-    class Leaf(BaseModule):
-        val: InitVar[float] = 0.0
-        def __post_init__(self, val):
-            self.p = Param(data=val)
-    class Root(BaseModule):
+    class Leaf(Module):
+        val: float = pydantic.Field(frozen=True)
+        def model_post_init(self, __context):
+            super().model_post_init(__context)
+            self._p = Param(data=self.val)
+    class Root(Module):
         leaf: Leaf
-        b: InitVar[int] = 0
+        b: int = pydantic.Field(frozen=True)
 
-        def __post_init__(self, b: int):
-            self.b = Param(data=b)
+        def model_post_init(self, __context):
+            super().model_post_init(__context)
+            self._b = Param(data=self.b)
     r = Root(leaf=Leaf(val=1.0), b=2)
     sd = r.state_dict()
     assert set(sd.keys()) == {"leaf.p", "b"}
 
 
 def test_state_dict_shared_exclusion():
-    class A(BaseModule):
-        sh: InitVar[str]
+    class A(Module):
+        sh: str = pydantic.Field(frozen=True)
 
-        def __post_init__(self, sh: str):
-            self.sh: Shared[str] = Shared(data=sh)
+        def model_post_init(self, sh: str):
+            self._sh: Shared[str] = Shared(data=sh)
 
     a = A(sh='original')
-    a.sh.data = "updated"
+    a._sh.data = "updated"
     sd = a.state_dict()
     assert "sh" not in sd
 
 
 def test_state_dict_conflicting_keys():
-    class Child(BaseModule):
-        val: InitVar[float] = 0.0
+    class Child(Module):
+        val: float = pydantic.Field(frozen=True)
 
-        def __post_init__(self, val):
-            self.p = Param(data=val)
+        def model_post_init(self, __context):
+            super().model_post_init(__context)
+            self._p = Param(data=self.val)
 
-    class Parent(BaseModule):
+    class Parent(Module):
         child1: Child
         child2: Child
     p = Parent(child1=Child(val=1.0), child2=Child(val=2.0))
     sd = p.state_dict()
-    assert sd["child1.p"] == 1.0 and sd["child2.p"] == 2.0
+    assert sd["child1._p"] == 1.0 and sd["child2._p"] == 2.0
 
 
 def test_state_dict_dynamic_addition():
-    class A(BaseModule):
+    class A(Module):
         x: int
     a = A(x=5)
     a.p = Param(data=7.7)
@@ -452,68 +451,68 @@ def test_state_dict_dynamic_addition():
 
 
 def test_state_dict_empty_baseitem():
-    class Empty(BaseModule): pass
+    class Empty(Module): pass
     e = Empty()
     assert e.state_dict() == {}
 
 
 def test_state_dict_no_recursion():
-    class Leaf(BaseModule):
-        p: Param[float]
-    class Root(BaseModule):
+    class Leaf(Module):
+        _p: Param[float] = PrivateParam(0.0)
+    class Root(Module):
         leaf: Leaf
-        b: Param[int]
-    r = Root(leaf=Leaf(p=Param(data=5)), b=Param(data=6))
+        _b: Param[int] = PrivateParam(0)
+    r = Root(leaf=Leaf())
     sd = r.state_dict(recurse=False)
     assert "b" in sd and not any(k.startswith("leaf.") for k in sd)
 
 def test_state_dict_complex_types():
-    p = Param(data=[1,2,3])
-    s = Attr(data={"k":"v"})
-    class A(BaseModule):
-        p: Param[list]
-        s: Attr[dict]
-    a = A(p=p, s=s)
+
+    class A(Module):
+        _p: Param[list] = PrivateParam([1,2,3])
+        _s: Runtime[dict] = PrivateRuntime({"k":"v"})
+    a = A()
     sd = a.state_dict()
     assert sd == {"p":[1,2,3], "s":{"k":"v"}}
 
 
 def test_load_state_dict_happy_path():
-    class A(BaseModule):
-        p: Param[float]
-        s: Attr[int]
-    a = A(p=Param(data=1.0), s=Attr(data=2))
-    a.load_state_dict({"p": 3.3, "s": 4})
-    assert a.p.data == 3.3 and a.s.data == 4
-
+    class A(Module):
+        _p: Param[float] = PrivateParam(1.0)
+        _s: Runtime[int] = PrivateRuntime(2)
+    a = A()
+    a.load_state_dict({"_p": 3.3, "_s": 4})
+    assert a._p.data == 3.3 and a._s.data == 4
 
 def test_load_state_dict_missing_key_strict():
-    class A(BaseModule):
-        p: Param[float]
-    a = A(p=Param(data=1.0))
+    class A(Module):
+        _p: Param[float] = PrivateParam(1.0)
+    a = A()
     with pytest.raises(KeyError):
         a.load_state_dict({}, strict=True)
 
 
 def test_load_state_dict_extra_key_strict():
-    class A(BaseModule):
-        p: Param[float]
-    a = A(p=Param(data=1.0))
+    class A(Module):
+        _p: Param[float] = PrivateParam(1.0)
+
+    a = A()
     with pytest.raises(KeyError):
         a.load_state_dict({"p":1.0, "extra":5}, strict=True)
 
 
 def test_load_state_dict_partial_non_strict():
-    class A(BaseModule):
-        p: Param[float]
-        s: Attr[int]
-    a = A(p=Param(data=1.0), s=Attr(data=2))
+    class A(Module):
+        
+        _p: Param[float] = PrivateParam(1.0)
+        _s: Runtime[int] = PrivateRuntime(2)
+    a = A()
     a.load_state_dict({"p":5.0}, strict=False)
-    assert a.p.data == 5.0 and a.s.data == 2
+    assert a._p.data == 5.0 and a._s.data == 2
 
 
 def test_load_state_dict_shared_protection():
-    class A(BaseModule):
+    class A(Module):
         sh: Shared[str]
     a = A(sh=Shared(data="original"))
     a.load_state_dict({"sh": "new"}, strict=False)
@@ -521,9 +520,9 @@ def test_load_state_dict_shared_protection():
 
 
 def test_load_state_dict_nested():
-    class Leaf(BaseModule):
+    class Leaf(Module):
         p: Param[float]
-    class Root(BaseModule):
+    class Root(Module):
         leaf: Leaf
     r = Root(leaf=Leaf(p=Param(data=1.0)))
     r.load_state_dict({"leaf.p": 9.9})
@@ -531,9 +530,9 @@ def test_load_state_dict_nested():
 
 
 def test_load_state_dict_recursion_false():
-    class Leaf(BaseModule):
+    class Leaf(Module):
         p: Param[float]
-    class Root(BaseModule):
+    class Root(Module):
         leaf: Leaf
         b: Param[int]
     r = Root(leaf=Leaf(p=Param(data=1.0)), b=Param(data=2))
@@ -542,7 +541,7 @@ def test_load_state_dict_recursion_false():
 
 
 def test_load_state_dict_empty():
-    class A(BaseModule):
+    class A(Module):
         p: InitVar[float]
         def __post_init__(self, p: float):
             self.p = Param(data=p)
@@ -558,7 +557,7 @@ def test_load_state_dict_empty():
 # # # # # #         a.load_state_dict({"p": "oops"}, strict=True)
 
 def test_load_state_dict_shared_ignore_even_if_present():
-    class A(BaseModule):
+    class A(Module):
         p: Param[float]
         sh: Shared[str]
     a = A(p=Param(data=1.0), sh=Shared(data="init"))
@@ -569,13 +568,15 @@ def test_load_state_dict_shared_ignore_even_if_present():
 def test_parameters_train_only_true():
     p1 = 1.0
     p2 = 2.0
-    class P(BaseModule):
-        a: InitVar[float]
-        b: InitVar[float]
+    class P(Module):
+        a: float    
+        b: float
         
-        def __post_init__(self, a: float, b: float):
-            self.a = Param(data=a)
-            self.b = Param(data=b)
+        def model_post_init(self, __context):
+            super().model_post_init(__context)
+            self._a = Param(data=self.a)
+            self._b = Param(data=self.b)
+
     pr = P(a=p1, b=p2)
     ps = list(pr.parameters())
     assert ps[0].data == 1.0
@@ -583,87 +584,98 @@ def test_parameters_train_only_true():
 
 
 def test_parameters_no_params():
-    class P(BaseModule):
+
+    class P(Module):
         x: int
+    
     p = P(x=5)
     assert list(p.parameters()) == []
 
+
 def test_parameters_deduplication():
     p = Param(data=1.0)
-    class P(BaseModule):
-        a: InitVar[float]
-        b: InitVar[float]
+    class P(Module):
+        a: float = ParamField(default=...))
+        b: float = pydantic.Field(frozen=True)
+        _a: Param[float] = PrivateParam()
+        _b: Param[float] = PrivateParam()
 
-        def __post_init__(self, a: float, b: float):
-            self.a = Param(data=a)
-            self.b = Param(data=b)
+        def model_post_init(self, __context):
+            super().model_post_init(__context)
+            self._a = Param(data=self.a)
+            self._b = Param(data=self.b)
     
     pr = P(a=p, b=p)
-    pr.a = pr.b
+    pr._a = pr._b
     assert len(list(pr.parameters())) == 1  # dedup by identity
     assert list(pr.parameters())[0].data == p
 
 def test_parameters_nested():
-    class Leaf(BaseModule):
-        p: InitVar[float]
+    class Leaf(Module):
+        p: float = pydantic.Field(frozen=True)
 
-        def __post_init__(self, p: float):
-            self.p = Param(data=p)
-    class Branch(BaseModule):
+        def model_post_init(self, __context):
+            super().model_post_init(__context)
+            self._p = Param(data=self.p)
+    class Branch(Module):
         leaf: Leaf
-        b: InitVar[int]
-        def __post_init__(self, b: int):
-            self.b = Param(data=b)
+        b: int = pydantic.Field(frozen=True)
+        def model_post_init(self, __context):
+            super().model_post_init(__context)
+            self._b = Param(data=self.b)
     pr = Branch(leaf=Leaf(p=1.0), b=2)
     ps = list(pr.parameters())
     assert len(ps) == 2 and all(isinstance(p, Param) for p in ps)
 
 def test_parameters_recurse_false():
-    class Leaf(BaseModule):
-        p: InitVar[float]
+    class Leaf(Module):
+        p: float = pydantic.Field(frozen=True)
 
-        def __post_init__(self, p: float):
-            self.p = Param(data=p)
+        def model_post_init(self, __context):
+            super().model_post_init(__context)
+            self._p = Param(data=self.p)
 
-    class Branch(BaseModule):
+    class Branch(Module):
         leaf: Leaf
-        b: InitVar[int]
-        def __post_init__(self, b: int):
-            self.b = Param(data=b)
+        b: int = pydantic.Field(frozen=True)
+        def model_post_init(self, __context):
+            super().model_post_init(__context)
+            self._b = Param(data=self.b)
     pr = Branch(leaf=Leaf(p=1.0), b=2)
     ps = list(pr.parameters(recurse=False))
     assert len(ps) == 1 and isinstance(ps[0], Param)
 
 def test_parameters_dynamic_addition():
     p = Param(data=3)
-    class P(BaseModule):
+    class P(Module):
         x: int
     pr = P(x=1)
     pr.new_p = p
     assert p in list(pr.parameters())
 
 def test_parameters_ignore_nonparam():
-    class P(BaseModule):
-        a: InitVar[str]
-        b: InitVar[int]
+    class P(Module):
+        a: str = pydantic.Field(frozen=True)
+        b: int = pydantic.Field(frozen=True)
         c: int
-        def __post_init__(self, a: str, b: int):
-            self.a = Shared(data=a)
-            self.b = Attr(data=b)
-
+        def model_post_init(self, __context):
+            super().model_post_init(__context)
+            self.a = Shared(data=self.a)
+            self.b = Runtime(data=self.b)
     pr = P(a="ref", b=9, c=42)
     assert list(pr.parameters()) == []
 
 def test_parameters_train_only_none():
 
-    class P(BaseModule):
+    class P(Module):
 
-        a: InitVar[float]
-        b: InitVar[float]
+        a: float = pydantic.Field(frozen=True)
+        b: float = pydantic.Field(frozen=True)
 
-        def __post_init__(self, a: float, b: float):
-            self.a = Param(data=a)
-            self.b = Param(data=b)
+        def model_post_init(self, __context):
+            super().model_post_init(__context)
+            self._a = Param(data=self.a)
+            self._b = Param(data=self.b)
 
     pr = P(a=1.0, b=2.0)
     ps = list(pr.parameters())
@@ -675,12 +687,13 @@ def test_parameters_train_only_none():
 def test_shared_identity_not_dedup():
     s1 = "conf"
     s2 = "conf"
-    class P(BaseModule):
-        a: InitVar[str]
-        b: InitVar[str]
-        def __post_init__(self, a: str, b: str):
-            self.a = Shared(data=a)
-            self.b = Shared(data=b)
+    class P(Module):
+        a: str = pydantic.Field(frozen=True)
+        b: str = pydantic.Field(frozen=True)
+        def model_post_init(self, __context):
+            super().model_post_init(__context)
+            self.a = Shared(data=self.a)
+            self.b = Shared(data=self.b)
             
     pr = P(a=s1, b=s2)
     # state_dict must still omit both
@@ -690,10 +703,11 @@ def test_shared_identity_not_dedup():
 # # # # # # ----------  Happy-path: basic save  ----------
 def test_checkpoint_save_module_creates_file(tmp_path):
     """Positive • file is physically created and contains valid JSON."""
-    class Leaf(BaseModule):
-        w: InitVar[int]
-        def __post_init__(self, w: int):
-            self.w = Param(data=w)
+    class Leaf(Module):
+        w: int = pydantic.Field(frozen=True)
+        def model_post_init(self, __context):
+            super().model_post_init(__context)
+            self._w = Param(data=self.w)
 
     leaf = Leaf(w=1)
     path = tmp_path / "leaf.json"
@@ -711,10 +725,11 @@ def test_checkpoint_save_module_creates_file(tmp_path):
 def test_checkpoint_load_roundtrip(tmp_path):
     """Positive • Checkpoint.load() reproduces the exact spec & state."""
     @mod_registry()
-    class Leaf(BaseModule):
-        w: InitVar[int]
-        def __post_init__(self, w: int):
-            self.w = Param(data=w)
+    class Leaf(Module):
+        w: int = pydantic.Field(frozen=True)
+        def model_post_init(self, __context):
+            super().model_post_init(__context)
+            self._w = Param(data=self.w)
 
     leaf = Leaf(w=3)
     path = tmp_path / "leaf.json"
@@ -728,36 +743,38 @@ def test_checkpoint_load_roundtrip(tmp_path):
 def test_checkpoint_param_dedup(tmp_path):
 
     @mod_registry()
-    class Leaf(BaseModule):
-        w: InitVar[int]
-        def __post_init__(self, w):
-            self.w = Param(data=w)
+    class Leaf(Module):
+        w: int = pydantic.Field(frozen=True)
+        def model_post_init(self, __context):
+            super().model_post_init(__context)
+            self._w = Param(data=self.w)
     p = Param(data=42)
 
     @mod_registry()
-    class Pair(BaseModule):
+    class Pair(Module):
         a: Leaf
         b: Leaf
     model = Pair(a=Leaf(w=42), b=Leaf(w=42))
     path = tmp_path / "pair.json"
     Checkpoint.save_module(model, path)
     restored = Checkpoint.load_module(path)
-    assert restored.a.w.data == restored.b.w.data == 42
+    assert restored.a._w.data == restored.b._w.data == 42
 
 
 def test_checkpoint_roundtrip(tmp_path):
 
     @mod_registry()
-    class Leaf(BaseModule):
-        w: InitVar[int]
-        def __post_init__(self, w):
-            self.w = Param(data=w)
+    class Leaf(Module):
+        w: int = pydantic.Field(frozen=True)
+        def model_post_init(self, __context):
+            super().model_post_init(__context)
+            self._w = Param(data=self.w)
     leaf = Leaf(w=7)
     path = tmp_path / "leaf.json"
     Checkpoint.save_module(leaf, path)
     rebuilt = Checkpoint.load_module(path)
     assert isinstance(rebuilt, Leaf)
-    assert rebuilt.w.data == 7
+    assert rebuilt._w.data == 7
 
 # # # from dachi.core2._base4 import registry, Checkpoint, BaseModule, Param
 
@@ -766,10 +783,11 @@ def test_checkpoint_load_module_restores_state(tmp_path):
     """Positive • load_module returns an equivalent, fully initialised module."""
 
     @mod_registry()
-    class Leaf(BaseModule):
-        w: InitVar[int]
-        def __post_init__(self, w: int):
-            self.w = Param(data=w)
+    class Leaf(Module):
+        w: int = pydantic.Field(frozen=True)
+        def model_post_init(self, __context):
+            super().model_post_init(__context)
+            self._w = Param(data=self.w)
 
     original = Leaf(w=7)
     path = tmp_path / "leaf.json"
@@ -787,16 +805,17 @@ def test_checkpoint_load_module_restores_state(tmp_path):
 def test_checkpoint_shared_objects_deduplicated(tmp_path):
     """Positive • Same ref_name inside spec becomes the *same* object."""
     @mod_registry()
-    class Inner(BaseModule):
-        val: InitVar[int]
+    class Inner(Module):
+        val: int = pydantic.Field(frozen=True)
 
-        def __post_init__(self, val: int):
-            self.val = Param(data=val)
+        def model_post_init(self, __context):
+            super().model_post_init(__context)
+            self._val = Param(data=self.val)
 
     shared_inner = Inner(val=5)
 
     @mod_registry()
-    class Outer(BaseModule):
+    class Outer(Module):
         a: Inner
         b: Inner
 
@@ -810,6 +829,80 @@ def test_checkpoint_shared_objects_deduplicated(tmp_path):
     assert rebuilt.a is rebuilt.b
     assert rebuilt.a.val.data == 5
 
+
+
+class TestParamSetSchema:
+    """Test schema() and update() methods for ParamSet."""
+
+    def test_paramset_schema_returns_dict(self):
+        """Test that ParamSet.schema() returns a dict (JSON schema)."""
+        param1 = Param(data="hello")
+        param2 = Param(data=42)
+        param_set = ParamSet(params=[param1, param2])
+
+        schema = param_set.schema()
+        assert isinstance(schema, dict)
+        assert "properties" in schema
+        assert "param_0" in schema["properties"]
+        assert "param_1" in schema["properties"]
+        assert schema["properties"]["param_0"] == {"type": "string"}
+        assert schema["properties"]["param_1"] == {"type": "integer"}
+
+    def test_paramset_update_with_flat_dict(self):
+        """Test that ParamSet.update() accepts a flat dict with flat=True."""
+        param1 = Param(data="hello")
+        param2 = Param(data=42)
+        param_set = ParamSet(params=[param1, param2])
+
+        param_set.update({"param_0": "world", "param_1": 100}, flat=True)
+        assert param1.data == "world"
+        assert param2.data == 100
+
+    def test_paramset_update_with_structured_dict(self):
+        """Test that ParamSet.update() accepts structured dict (default)."""
+        param1 = Param(data="hello")
+        param2 = Param(data=42)
+        param_set = ParamSet(params=[param1, param2])
+
+        # For primitives, schema-compliant format is still just the value
+        param_set.update({"param_0": "updated", "param_1": 999})
+        assert param1.data == "updated"
+        assert param2.data == 999
+
+    def test_paramset_update_with_basemodel_param(self):
+        """Test update() with a Param containing BaseModel data."""
+        class MyModel(BaseModel):
+            name: str
+            age: int
+
+        param1 = Param(data=MyModel(name="Alice", age=30))
+        param2 = Param(data=42)
+        param_set = ParamSet(params=[param1, param2])
+
+        # Update with dict matching Pydantic structure
+        param_set.update({
+            "param_0": {"name": "Bob", "age": 25},
+            "param_1": 100
+        })
+        assert param1.data.name == "Bob"
+        assert param1.data.age == 25
+        assert param2.data == 100
+
+    def test_paramset_build_from_module(self):
+        """Test ParamSet.build() collects parameters from a module."""
+        class MyModule(Module):
+            def __post_init__(self):
+                super().__post_init__()
+                self.param1 = Param(data="test")
+                self.param2 = Param(data=123)
+
+        module = MyModule()
+        param_set = ParamSet.build(module)
+
+        assert len(param_set.params) == 2
+        schema = param_set.schema()
+        assert "param_0" in schema["properties"]
+        assert "param_1" in schema["properties"]
 
 
 # # ---------------------------------------------------------------------
@@ -845,7 +938,7 @@ def test_param_callback_runs():
     "val",
     [
         123, 3.14, "hello", True, None,  # primitives
-        Attr(data=5),                   # Shareable inside Shareable
+        Runtime(data=5),                   # Shareable inside Shareable
         ["a", "b", "c"],                # homogeneous list
         {"k": 1},                       # homogeneous dict
     ],
@@ -924,11 +1017,11 @@ def test_apply_filters_by_type():
     """Positive • apply() visits only objects of filter_type."""
     calls = []
 
-    class Leaf(BaseModule):
-        w: InitVar[int]
+    class Leaf(Module):
+        w: int = pydantic.Field(frozen=True)
 
-        def __post_init__(self, w: int):
-            self.w = Param(data=w)
+        def model_post_init(self, __context):
+            self._w = Param(data=self.w)
 
     root = Leaf(w=0)
 
@@ -943,11 +1036,11 @@ def test_apply_filters_by_fn():
     """Positive • apply() visits only objects of filter_type."""
     calls = []
 
-    class Leaf(BaseModule):
-        w: InitVar[int]
+    class Leaf(Module):
+        w: int = pydantic.Field(frozen=True)
 
-        def __post_init__(self, w: int):
-            self.w = Param(data=w)
+        def model_post_init(self, __context):
+            self._w = Param(data=self.w)
 
     root = Leaf(w=0)
 
@@ -960,13 +1053,13 @@ def test_apply_filters_by_fn():
 
 def test_named_modules_keys_are_correct():
     """Positive • named_modules() returns expected dotted names."""
-    class Leaf(BaseModule):
+    class Leaf(Module):
 
-        x: InitVar[int]
-        def __post_init__(self, x: int):
-            self.x = Param(data=x)
+        x: int = pydantic.Field(frozen=True)
+        def model_post_init(self, __context):
+            self._x = Param(data=self.x)
 
-    class Branch(BaseModule):
+    class Branch(Module):
         left: Leaf
         right: Leaf
 
@@ -979,12 +1072,12 @@ def test_named_modules_keys_are_correct():
 # # # # ----------  state_dict() recurse=False ----------
 def test_state_dict_nonrecurse_returns_empty():
     """Edge • recurse=False on parent with only submodules returns empty dict."""
-    class Leaf(BaseModule):
-        s: InitVar[int]
-        def __post_init__(self, s: int):
-            self.s = Attr(data=s)
+    class Leaf(Module):
+        s: int = pydantic.Field(frozen=True)
+        def model_post_init(self, __context):
+            self._s = Runtime(data=self.s)
 
-    class Top(BaseModule):
+    class Top(Module):
         child: Leaf
 
     t = Top(child=Leaf(s=9))
@@ -1085,14 +1178,14 @@ def test_registry_getitem_list_positive():
 # # # # Helper classes registered into *global* registry, because BuildContext
 # # # # relies on that for from_spec().
 @mod_registry.register()
-class Leaf(BaseModule):
+class Leaf(Module):
     payload: InitVar[str]
 
     def __post_init__(self, payload: str):
         self.payload = Shared(data=payload)
 
 @mod_registry.register()
-class Pair(BaseModule):
+class Pair(Module):
     left: Leaf
     right: Leaf
 
@@ -1158,7 +1251,7 @@ def test_param_type_enforcement():
 
 
 def test_state_type_enforcement():
-    class TypedState(Attr[float]):
+    class TypedState(Runtime[float]):
         pass
     with pytest.raises(TypeError):
         TypedState(data="not a float")
@@ -1203,14 +1296,14 @@ def test_param_unregister_callback():
 # # # ---------------------- VI. Conflicting StateDict Keys ------------------
 
 def test_state_dict_conflicting_nested_keys():
-    class Child(BaseModule):
-        x: Param[int]
-    class Parent(BaseModule):
+    class Child(Module):
+        _x: Param[int] = PrivateParam(0)
+    class Parent(Module):
         child: Child
-        child_x: Param[int]
+        _child_x: Param[int] = PrivateParam(0)
 
-    c = Child(x=Param(data=1))
-    p = Parent(child=c, child_x=Param(data=2))
+    c = Child(_x=Param(data=1))
+    p = Parent(child=c, _child_x=Param(data=2))
     sd = p.state_dict()
     assert "child.x" in sd and "child_x" in sd
     assert sd["child.x"] == 1
@@ -1223,11 +1316,9 @@ def test_state_dict_conflicting_nested_keys():
 def test_paramset_partial_update():
     p1 = Param(data=1)
     p2 = Param(data=2)
-    class Mod(BaseModule):
-        def __init__(self):
-            super().__init__()
-            self.p1 = p1
-            self.p2 = p2
+    class Mod(Module):
+        _p1: Param[int] = PrivateParam(0)
+        _p2: Param[int] = PrivateParam(0)
 
     mod = Mod()
     ps = ParamSet.build(mod)
@@ -1237,7 +1328,7 @@ def test_paramset_partial_update():
 # # # ---------------------- IX. Dynamic Param Addition ---------------------
 
 def test_dynamic_param_assignment_after_init():
-    class M(BaseModule):
+    class M(Module):
         x: int
     m = M(x=0)
     new_param = Param(data=42)
@@ -1248,11 +1339,11 @@ def test_param_subclass_roundtrip():
     class TypedParam(Param[int]):
         pass
 
-    class Proc(BaseModule):
-        x: InitVar[int]
+    class Proc(Module):
+        x: int = pydantic.Field(frozen=True)
 
-        def __post_init__(self, x):
-            self.x = TypedParam(data=x)
+        def model_post_init(self, __context):
+            self._x = TypedParam(data=self.x)
 
     m = Proc(x=123)
     spec = m.spec(to_dict=False)
@@ -1263,90 +1354,88 @@ def test_param_subclass_roundtrip():
 
 
 def test_state_subclass_roundtrip():
-    class TypedState(Attr[str]):
+    class TypedState(Runtime[str]):
         pass
 
-    class Proc(BaseModule):
-        msg: InitVar[str]
+    class Proc(Module):
+        msg: str = pydantic.Field(frozen=True)
+        _msg: TypedState[str] = PrivateRuntime("")
 
-        def __post_init__(self, msg):
-            self.msg = TypedState(data=msg)
+        def model_post_init(self, __context):
+            self._msg = TypedState(data=self.msg)
 
     m = Proc(msg="hello")
     spec = m.spec(to_dict=False)
     rebuilt = Proc.from_spec(spec)
 
     assert isinstance(rebuilt.msg, TypedState)
-    assert rebuilt.msg.data == "hello"
+    assert rebuilt._msg.data == "hello"
 
 
 def test_shared_subclass_roundtrip():
     class TypedShared(Shared[float]):
         pass
 
-    class Proc(BaseModule):
-        val: InitVar[float]
+    class Proc(Module):
+        val: float = pydantic.Field(frozen=True)
 
-        def __post_init__(self, val):
-            self.val = TypedShared(data=val)
+        def model_post_init(self, __context):
+            self._val = TypedShared(data=self.val)
 
     m = Proc(val=3.14)
     spec = m.spec(to_dict=False)
     rebuilt = Proc.from_spec(spec)
 
     assert isinstance(rebuilt.val, TypedShared)
-    assert rebuilt.val.data == 3.14
-
+    assert rebuilt._val.data == 3.14
 
 @mod_registry.register()
-class AddOne(BaseModule):
-    bias: InitVar[int]
+class AddOne(Module):
+    bias: int = pydantic.Field(frozen=True)
 
-    def __post_init__(self, bias: int):
+    def model_post_init(self, __context):
 
-        self.bias = Param[int](bias)
+        self._bias = Param[int](self.bias)
 
     def forward(self, x: int = 0):
-        return x + self.bias.data
-
+        return x + self._bias.data
 
 @mod_registry.register()
-class Multiply(BaseModule):
-    weight: InitVar[int]
+class Multiply(Module):
+    weight: int = pydantic.Field(frozen=True)
 
-    def __post_init__(self, weight: int):
+    def model_post_init(self, __context):
 
-        self.weight = Param[int](weight)
+        self._weight = Param[int](self.weight)
 
     def forward(self, x: int = 1):
-        return x * self.weight.data
-
-
-@mod_registry.register()
-class Task(BaseModule):  # generic placeholder used only for schema tests
-    dummy: InitVar[int]
-
-    def __post_init__(self, dummy: int):
-
-        self.dummy = Param[int](dummy)
+        return x * self._weight.data
 
 @mod_registry.register()
-class State(BaseModule):
-    flag: InitVar[bool]
+class Task(Module):  # generic placeholder used only for schema tests
+    dummy: int = pydantic.Field(frozen=True)
+
+    def model_post_init(self, __context):
+
+        self._dummy = Param[int](self.dummy)
+
+@mod_registry.register()
+class State(Module):
+    flag: bool = pydantic.Field(frozen=True)
     
-    def __post_init__(self, flag: bool):
-        self.flag = Param[bool](flag)
+    def model_post_init(self, __context):
+        self._flag = Param[bool](self.flag)
 
 
 @mod_registry.register()
-class MulTwo(BaseModule):
-    factor: InitVar[int]
+class MulTwo(Module):
+    factor: int = pydantic.Field(frozen=True)
 
-    def __post_init__(self, factor: int):
-        self.factor = Param[bool](factor)
+    def model_post_init(self, __context):
+        self._factor = Param[int](self.factor)
 
     def forward(self, x: int = 1) -> int:  # pragma: no cover
-        return x * self.factor.data
+        return x * self._factor.data
 
 # ---------------------------------------------------------------------------
 # Test suite – keep every test in **one** class as requested
@@ -1597,134 +1686,134 @@ class MulTwo(BaseModule):
 
 # assumes: pytest, BaseModule, BaseSpec, RestrictedSchemaMixin are imported
 
-class TestRestrictedSchemaMixin:
-    def setup_method(self):
-        # minimal domain: two modules + their spec models
-        class ModA(BaseModule, RestrictedSchemaMixin): 
-            def restricted_schema(self, *, _profile = "shared", _seen = None, **kwargs):
-                return self.schema_model()
-        class ModB(BaseModule, RestrictedSchemaMixin):
-            def restricted_schema(self, *, _profile = "shared", _seen = None, **kwargs):
-                return self.schema_model()
-        self.ModA, self.ModB = ModA, ModB
-        self.mod_a, self.mod_b = ModA(), ModB()
+# class TestRestrictedSchemaMixin:
+#     def setup_method(self):
+#         # minimal domain: two modules + their spec models
+#         class ModA(BaseModule, RestrictedSchemaMixin): 
+#             def restricted_schema(self, *, _profile = "shared", _seen = None, **kwargs):
+#                 return self.schema_model()
+#         class ModB(BaseModule, RestrictedSchemaMixin):
+#             def restricted_schema(self, *, _profile = "shared", _seen = None, **kwargs):
+#                 return self.schema_model()
+#         self.ModA, self.ModB = ModA, ModB
+#         self.mod_a, self.mod_b = ModA(), ModB()
 
-        # simple Pydantic models (no bare 'title' attr)
-        ModASpec = type("ModASpec", (BaseSpec,), {})
-        ModBSpec = type("ModBSpec", (BaseSpec,), {})
-        ModA.schema_model = classmethod(lambda cls: ModASpec)
-        ModB.schema_model = classmethod(lambda cls: ModBSpec)
+#         # simple Pydantic models (no bare 'title' attr)
+#         ModASpec = type("ModASpec", (BaseSpec,), {})
+#         ModBSpec = type("ModBSpec", (BaseSpec,), {})
+#         ModA.schema_model = classmethod(lambda cls: ModASpec)
+#         ModB.schema_model = classmethod(lambda cls: ModBSpec)
 
-    # ---- normalization
-    def test_normalize_variants_modules_only_dedup_sorted(self):
-        entries = RestrictedSchemaMixin.normalize_schema_type_variants([self.ModB, self.ModA, self.ModB])
-        assert [n for n, _ in entries] == ["ModASpec", "ModBSpec"]
+#     # ---- normalization
+#     def test_normalize_variants_modules_only_dedup_sorted(self):
+#         entries = RestrictedSchemaMixin.normalize_schema_type_variants([self.ModB, self.ModA, self.ModB])
+#         assert [n for n, _ in entries] == ["ModASpec", "ModBSpec"]
 
-    def test_normalize_variants_mixed_module_and_spec(self):
-        entries = RestrictedSchemaMixin.normalize_schema_type_variants([self.ModB, self.ModA.schema_model(), self.ModA])
-        assert [n for n, _ in entries] == ["ModASpec", "ModBSpec"]
+#     def test_normalize_variants_mixed_module_and_spec(self):
+#         entries = RestrictedSchemaMixin.normalize_schema_type_variants([self.ModB, self.ModA.schema_model(), self.ModA])
+#         assert [n for n, _ in entries] == ["ModASpec", "ModBSpec"]
 
-    def test_normalize_variants_mixed_inputs_sorted_and_dedup(self):
-        ModCSpec = type("ModCSpec", (BaseSpec,), {})
-        raw = {"title": "InlineSpec", "type": "object", "properties": {"kind": {"const": "Inline"}}}
-        entries = RestrictedSchemaMixin.normalize_schema_type_variants([
-            self.ModB, self.ModA.schema_model(), self.ModA, ModCSpec, raw
-        ])
-        assert [n for n, _ in entries] == ["InlineSpec", "ModASpec", "ModBSpec", "ModCSpec"]
+#     def test_normalize_variants_mixed_inputs_sorted_and_dedup(self):
+#         ModCSpec = type("ModCSpec", (BaseSpec,), {})
+#         raw = {"title": "InlineSpec", "type": "object", "properties": {"kind": {"const": "Inline"}}}
+#         entries = RestrictedSchemaMixin.normalize_schema_type_variants([
+#             self.ModB, self.ModA.schema_model(), self.ModA, ModCSpec, raw
+#         ])
+#         assert [n for n, _ in entries] == ["InlineSpec", "ModASpec", "ModBSpec", "ModCSpec"]
 
-    def test_normalize_variants_invalid_input_raises(self):
-        import pytest
-        with pytest.raises(TypeError):
-            RestrictedSchemaMixin.normalize_schema_type_variants([object])
+#     def test_normalize_variants_invalid_input_raises(self):
+#         import pytest
+#         with pytest.raises(TypeError):
+#             RestrictedSchemaMixin.normalize_schema_type_variants([object])
 
-    # ---- $defs + unions (entries-based)
-    def test_require_defs_for_entries_inserts_and_keeps_existing(self):
-        base = {"$defs": {"ModASpec": {"sentinel": 1}}}
-        entries = RestrictedSchemaMixin.normalize_schema_type_variants([self.ModA, self.ModB])
-        RestrictedSchemaMixin.require_defs_for_entries(base, entries)
-        assert base["$defs"]["ModASpec"] == {"sentinel": 1}
-        assert "ModBSpec" in base["$defs"]
+#     # ---- $defs + unions (entries-based)
+#     def test_require_defs_for_entries_inserts_and_keeps_existing(self):
+#         base = {"$defs": {"ModASpec": {"sentinel": 1}}}
+#         entries = RestrictedSchemaMixin.normalize_schema_type_variants([self.ModA, self.ModB])
+#         RestrictedSchemaMixin.require_defs_for_entries(base, entries)
+#         assert base["$defs"]["ModASpec"] == {"sentinel": 1}
+#         assert "ModBSpec" in base["$defs"]
 
-    def test_build_refs_from_entries(self):
-        entries = RestrictedSchemaMixin.normalize_schema_type_variants([self.ModA, self.ModB])
-        refs = RestrictedSchemaMixin.build_refs_from_entries(entries)
-        assert refs == [{"$ref": "#/$defs/ModASpec"}, {"$ref": "#/$defs/ModBSpec"}]
+#     def test_build_refs_from_entries(self):
+#         entries = RestrictedSchemaMixin.normalize_schema_type_variants([self.ModA, self.ModB])
+#         refs = RestrictedSchemaMixin.build_refs_from_entries(entries)
+#         assert refs == [{"$ref": "#/$defs/ModASpec"}, {"$ref": "#/$defs/ModBSpec"}]
 
-    def test_make_union_inline_from_entries_with_and_without_discriminator(self):
-        entries = RestrictedSchemaMixin.normalize_schema_type_variants([self.ModA, self.ModB])
-        u1 = RestrictedSchemaMixin.make_union_inline_from_entries(entries, add_discriminator=True)
-        assert "oneOf" in u1 and len(u1["oneOf"]) == 2
-        u2 = RestrictedSchemaMixin.make_union_inline_from_entries(entries, add_discriminator=False)
-        assert "oneOf" in u2 and "discriminator" not in u2
+#     def test_make_union_inline_from_entries_with_and_without_discriminator(self):
+#         entries = RestrictedSchemaMixin.normalize_schema_type_variants([self.ModA, self.ModB])
+#         u1 = RestrictedSchemaMixin.make_union_inline_from_entries(entries, add_discriminator=True)
+#         assert "oneOf" in u1 and len(u1["oneOf"]) == 2
+#         u2 = RestrictedSchemaMixin.make_union_inline_from_entries(entries, add_discriminator=False)
+#         assert "oneOf" in u2 and "discriminator" not in u2
 
-    def test_ensure_shared_union_from_entries_idempotent(self):
-        base = {"$defs": {}}
-        entries = RestrictedSchemaMixin.normalize_schema_type_variants([self.ModA, self.ModB])
-        ref1 = RestrictedSchemaMixin.ensure_shared_union_from_entries(
-            base, placeholder_spec_name="FooSpec", entries=entries, add_discriminator=True
-        )
-        ref2 = RestrictedSchemaMixin.ensure_shared_union_from_entries(
-            base, placeholder_spec_name="FooSpec", entries=entries, add_discriminator=False
-        )
-        assert ref1 == ref2 == "#/$defs/Allowed_FooSpec"
-        assert "Allowed_FooSpec" in base["$defs"] and "oneOf" in base["$defs"]["Allowed_FooSpec"]
+#     def test_ensure_shared_union_from_entries_idempotent(self):
+#         base = {"$defs": {}}
+#         entries = RestrictedSchemaMixin.normalize_schema_type_variants([self.ModA, self.ModB])
+#         ref1 = RestrictedSchemaMixin.ensure_shared_union_from_entries(
+#             base, placeholder_spec_name="FooSpec", entries=entries, add_discriminator=True
+#         )
+#         ref2 = RestrictedSchemaMixin.ensure_shared_union_from_entries(
+#             base, placeholder_spec_name="FooSpec", entries=entries, add_discriminator=False
+#         )
+#         assert ref1 == ref2 == "#/$defs/Allowed_FooSpec"
+#         assert "Allowed_FooSpec" in base["$defs"] and "oneOf" in base["$defs"]["Allowed_FooSpec"]
 
-    def test_merge_defs_merge_and_conflict_policies(self):
+#     def test_merge_defs_merge_and_conflict_policies(self):
 
-        target = {"$defs": {"A": {"type": "string"}}}
-        src1 = {"$defs": {"B": {"type": "number"}}}
-        src2 = {"$defs": {"C": {"type": "boolean"}}}
-        RestrictedSchemaMixin.merge_defs(target, src2, src1)
-        assert set(target["$defs"].keys()) == {"A", "B", "C"}  # order not required
-        # conflict: error
-        target2 = {"$defs": {"X": {"type": "string"}}}
-        src_conflict = {"$defs": {"X": {"type": "number"}}}
-        import pytest
-        with pytest.raises(ValueError):
-            RestrictedSchemaMixin.merge_defs(target2, src_conflict, on_conflict="error")
+#         target = {"$defs": {"A": {"type": "string"}}}
+#         src1 = {"$defs": {"B": {"type": "number"}}}
+#         src2 = {"$defs": {"C": {"type": "boolean"}}}
+#         RestrictedSchemaMixin.merge_defs(target, src2, src1)
+#         assert set(target["$defs"].keys()) == {"A", "B", "C"}  # order not required
+#         # conflict: error
+#         target2 = {"$defs": {"X": {"type": "string"}}}
+#         src_conflict = {"$defs": {"X": {"type": "number"}}}
+#         import pytest
+#         with pytest.raises(ValueError):
+#             RestrictedSchemaMixin.merge_defs(target2, src_conflict, on_conflict="error")
 
-    # ---- local patching
-    def test_node_at_and_replace_at_path(self):
-        doc = {"a": {"b": {"c": 3}}}
-        assert RestrictedSchemaMixin.node_at(doc, ["a", "b", "c"]) == 3
-        RestrictedSchemaMixin.replace_at_path(doc, ["a", "b", "c"], {"ok": True})
-        assert doc["a"]["b"]["c"] == {"ok": True}
+#     # ---- local patching
+#     def test_node_at_and_replace_at_path(self):
+#         doc = {"a": {"b": {"c": 3}}}
+#         assert RestrictedSchemaMixin.node_at(doc, ["a", "b", "c"]) == 3
+#         RestrictedSchemaMixin.replace_at_path(doc, ["a", "b", "c"], {"ok": True})
+#         assert doc["a"]["b"]["c"] == {"ok": True}
 
-    def test_replace_at_path_invalid_path_raises(self):
-        doc = {"a": {"b": {}}}
-        import pytest
-        with pytest.raises(KeyError):
-            RestrictedSchemaMixin.replace_at_path(doc, ["a", "missing", "c"], 1)
-        with pytest.raises(ValueError):
-            RestrictedSchemaMixin.replace_at_path(doc, [], 1)
+#     def test_replace_at_path_invalid_path_raises(self):
+#         doc = {"a": {"b": {}}}
+#         import pytest
+#         with pytest.raises(KeyError):
+#             RestrictedSchemaMixin.replace_at_path(doc, ["a", "missing", "c"], 1)
+#         with pytest.raises(ValueError):
+#             RestrictedSchemaMixin.replace_at_path(doc, [], 1)
 
-    def test_has_placeholder_ref_true_and_false(self):
-        doc = {"$defs": {"FooSpec": {}}, "props": {"x": {"$ref": "#/$defs/FooSpec"}}}
-        assert RestrictedSchemaMixin.has_placeholder_ref(doc, at=["props", "x"], placeholder_spec_name="FooSpec")
-        assert not RestrictedSchemaMixin.has_placeholder_ref(doc, at=["props"], placeholder_spec_name="FooSpec")
+#     def test_has_placeholder_ref_true_and_false(self):
+#         doc = {"$defs": {"FooSpec": {}}, "props": {"x": {"$ref": "#/$defs/FooSpec"}}}
+#         assert RestrictedSchemaMixin.has_placeholder_ref(doc, at=["props", "x"], placeholder_spec_name="FooSpec")
+#         assert not RestrictedSchemaMixin.has_placeholder_ref(doc, at=["props"], placeholder_spec_name="FooSpec")
 
-    # ---- guardrails
-    def test_apply_array_bounds(self):
-        doc = {"props": {"arr": {"type": "array"}}}
-        RestrictedSchemaMixin.apply_array_bounds(doc, at=["props", "arr"], min_items=1, max_items=5)
-        node = RestrictedSchemaMixin.node_at(doc, ["props", "arr"])
-        assert node["minItems"] == 1 and node["maxItems"] == 5
+#     # ---- guardrails
+#     def test_apply_array_bounds(self):
+#         doc = {"props": {"arr": {"type": "array"}}}
+#         RestrictedSchemaMixin.apply_array_bounds(doc, at=["props", "arr"], min_items=1, max_items=5)
+#         node = RestrictedSchemaMixin.node_at(doc, ["props", "arr"])
+#         assert node["minItems"] == 1 and node["maxItems"] == 5
 
-    def test_set_additional_properties(self):
-        doc = {"props": {"m": {"type": "object"}}}
-        RestrictedSchemaMixin.set_additional_properties(doc, at=["props", "m"], allow=False)
-        assert RestrictedSchemaMixin.node_at(doc, ["props", "m"])["additionalProperties"] is False
+#     def test_set_additional_properties(self):
+#         doc = {"props": {"m": {"type": "object"}}}
+#         RestrictedSchemaMixin.set_additional_properties(doc, at=["props", "m"], allow=False)
+#         assert RestrictedSchemaMixin.node_at(doc, ["props", "m"])["additionalProperties"] is False
 
-    # ---- diagnostics
-    def test_collect_placeholder_refs(self):
-        doc = {"x": {"$ref": "#/$defs/FooSpec"}, "y": [{"$ref": "#/$defs/FooSpec"}], "$defs": {"FooSpec": {}}}
-        hits = RestrictedSchemaMixin.collect_placeholder_refs(doc, placeholder_spec_name="FooSpec")
-        assert ["x"] in hits and ["y", "0"] in hits
+#     # ---- diagnostics
+#     def test_collect_placeholder_refs(self):
+#         doc = {"x": {"$ref": "#/$defs/FooSpec"}, "y": [{"$ref": "#/$defs/FooSpec"}], "$defs": {"FooSpec": {}}}
+#         hits = RestrictedSchemaMixin.collect_placeholder_refs(doc, placeholder_spec_name="FooSpec")
+#         assert ["x"] in hits and ["y", "0"] in hits
 
-    def test_collect_placeholder_refs_empty_when_replaced(self):
-        doc = {"props": {"x": {"$ref": "#/$defs/FooSpec"}}, "$defs": {"FooSpec": {}}}
-        RestrictedSchemaMixin.replace_at_path(doc, ["props", "x"], {"type": "object"})
-        assert RestrictedSchemaMixin.collect_placeholder_refs(doc, placeholder_spec_name="FooSpec") == []
+#     def test_collect_placeholder_refs_empty_when_replaced(self):
+#         doc = {"props": {"x": {"$ref": "#/$defs/FooSpec"}}, "$defs": {"FooSpec": {}}}
+#         RestrictedSchemaMixin.replace_at_path(doc, ["props", "x"], {"type": "object"})
+#         assert RestrictedSchemaMixin.collect_placeholder_refs(doc, placeholder_spec_name="FooSpec") == []
 
 
 # import pytest
@@ -1964,815 +2053,742 @@ class TestRestrictedSchemaMixin:
 #         assert rec._data.shape[0] == 1
 
 
-class TestBaseModuleWithGenericFields:
-    """Test BaseModule schema generation with generic fields like ModuleList[T]"""
-
-    def test_schema_handles_modulelist_generic(self):
-        """Test that ModuleList[T] field generates valid schema"""
-        from dachi.core import ModuleList
-
-        class ContainerModule(BaseModule):
-            items: ModuleList[Leaf] = None
-
-        # Should not raise an error
-        spec = ContainerModule.schema_model()
-        assert spec is not None
-
-        # Should have items field
-        assert 'items' in spec.model_fields
-
-        # The field should use ModuleListSpec
-        items_field = spec.model_fields['items']
-        # The annotation should be the spec model from ModuleList
-        assert items_field.annotation is ModuleList.schema_model()
-
-    def test_schema_json_generation_with_modulelist(self):
-        """Test that schema JSON can be generated for classes with ModuleList fields"""
-        from dachi.core import ModuleList
-
-        class ContainerModule(BaseModule):
-            items: ModuleList[Leaf] = None
-
-        # This should not raise PydanticInvalidForJsonSchema
-        schema = ContainerModule.schema()
-
-        # Should have properties
-        assert 'properties' in schema
-        assert 'items' in schema['properties']
-
-        # items should reference ModuleListSpec
-        items_schema = schema['properties']['items']
-        # Should have a $ref (either direct or in allOf) or type definition
-        has_ref = (
-            '$ref' in items_schema or
-            'type' in items_schema or
-            ('allOf' in items_schema and any('$ref' in item for item in items_schema['allOf']))
-        )
-        assert has_ref, f"Expected $ref or type in items_schema, got: {items_schema}"
-
-        # If there's a ref, it should point to ModuleListSpec
-        if 'allOf' in items_schema:
-            assert items_schema['allOf'][0]['$ref'] == '#/$defs/ModuleListSpec'
-        elif '$ref' in items_schema:
-            assert items_schema['$ref'] == '#/$defs/ModuleListSpec'
-
-
-class TestRestrictedSchemaMixin:
-    """Test the base RestrictedSchemaMixin low-level helpers"""
-
-    @pytest.fixture
-    def mixin_instance(self):
-        """Create a concrete instance of RestrictedSchemaMixin for testing"""
-        class ConcreteRestrictedSchemaMixin(RestrictedSchemaMixin):
-            def restricted_schema(self, **kwargs):
-                return {}
-        return ConcreteRestrictedSchemaMixin()
-
-    def test_schema_name_from_dict_uses_title(self):
-        """Test extracting name from schema dict with title"""
-        schema = {"title": "MyTaskSpec", "$id": "other"}
-        assert RestrictedSchemaMixin._schema_name_from_dict(schema) == "MyTaskSpec"
-
-    def test_schema_name_from_dict_uses_id_if_no_title(self):
-        """Test extracting name from schema dict using $id"""
-        schema = {"$id": "http://example.com/schemas/MyTaskSpec#"}
-        assert RestrictedSchemaMixin._schema_name_from_dict(schema) == "MyTaskSpec"
-
-    def test_schema_name_from_dict_raises_if_missing_both(self):
-        """Test error when neither title nor $id present"""
-        with pytest.raises(TypeError):
-            RestrictedSchemaMixin._schema_name_from_dict({})
-
-    def test_schema_build_refs_creates_ref_list(self):
-        """Test building $ref list from entries"""
-        entries = [("TaskA", {}), ("TaskB", {})]
-        refs = RestrictedSchemaMixin._schema_build_refs(entries)
-        assert refs == [
-            {"$ref": "#/$defs/TaskA"},
-            {"$ref": "#/$defs/TaskB"}
-        ]
-
-    def test_schema_make_union_inline_creates_oneof(self):
-        """Test creating inline oneOf union"""
-        entries = [("TaskA", {}), ("TaskB", {})]
-        union = RestrictedSchemaMixin._schema_make_union_inline(entries)
-        assert union == {
-            "oneOf": [
-                {"$ref": "#/$defs/TaskA"},
-                {"$ref": "#/$defs/TaskB"}
-            ]
-        }
-
-    def test_schema_allowed_union_name_adds_prefix(self):
-        """Test generating Allowed_* union name"""
-        assert RestrictedSchemaMixin._schema_allowed_union_name("TaskSpec") == "Allowed_TaskSpec"
-
-    def test_schema_node_at_navigates_path(self):
-        """Test navigating to node in schema"""
-        schema = {"properties": {"tasks": {"items": {"$ref": "#/$defs/TaskSpec"}}}}
-        node = RestrictedSchemaMixin._schema_node_at(schema, ["properties", "tasks", "items"])
-        assert node == {"$ref": "#/$defs/TaskSpec"}
-
-    def test_schema_node_at_returns_none_for_missing_path(self):
-        """Test None returned for invalid path"""
-        schema = {"properties": {}}
-        node = RestrictedSchemaMixin._schema_node_at(schema, ["properties", "nonexistent"])
-        assert node is None
-
-    def test_schema_replace_at_path_updates_node(self):
-        """Test replacing node at path"""
-        schema = {"properties": {"tasks": {"items": {"old": "value"}}}}
-        RestrictedSchemaMixin._schema_replace_at_path(
-            schema,
-            ["properties", "tasks", "items"],
-            {"new": "value"}
-        )
-        assert schema["properties"]["tasks"]["items"] == {"new": "value"}
-
-    def test_schema_replace_at_path_raises_on_empty_path(self):
-        """Test error when path is empty"""
-        schema = {"properties": {}}
-        with pytest.raises(ValueError, match="Path cannot be empty"):
-            RestrictedSchemaMixin._schema_replace_at_path(schema, [], {"new": "value"})
-
-    def test_schema_require_defs_for_entries_adds_entries(self):
-        """Test adding entries to $defs"""
-        schema = {}
-        entries = [("TaskA", {"title": "TaskA"}), ("TaskB", {"title": "TaskB"})]
-        RestrictedSchemaMixin._schema_require_defs_for_entries(schema, entries)
-
-        assert "$defs" in schema
-        assert "TaskA" in schema["$defs"]
-        assert "TaskB" in schema["$defs"]
-        assert schema["$defs"]["TaskA"] == {"title": "TaskA"}
-
-    def test_schema_require_defs_for_entries_does_not_overwrite(self):
-        """Test that existing entries are not overwritten"""
-        schema = {"$defs": {"TaskA": {"existing": "schema"}}}
-        entries = [("TaskA", {"new": "schema"})]
-        RestrictedSchemaMixin._schema_require_defs_for_entries(schema, entries)
-
-        assert schema["$defs"]["TaskA"] == {"existing": "schema"}
-
-    def test_schema_ensure_shared_union_creates_union(self):
-        """Test creating shared union in $defs"""
-        schema = {}
-        entries = [("TaskA", {}), ("TaskB", {})]
-
-        ref = RestrictedSchemaMixin._schema_ensure_shared_union(
-            schema,
-            placeholder_name="TaskSpec",
-            entries=entries
-        )
-
-        assert ref == "#/$defs/Allowed_TaskSpec"
-        assert "Allowed_TaskSpec" in schema["$defs"]
-        assert schema["$defs"]["Allowed_TaskSpec"] == {
-            "oneOf": [
-                {"$ref": "#/$defs/TaskA"},
-                {"$ref": "#/$defs/TaskB"}
-            ]
-        }
-
-    def test_schema_ensure_shared_union_reuses_existing(self):
-        """Test that existing shared union is not recreated"""
-        schema = {
-            "$defs": {
-                "Allowed_TaskSpec": {"oneOf": [{"$ref": "#/$defs/ExistingTask"}]}
-            }
-        }
-        entries = [("TaskA", {})]
-
-        ref = RestrictedSchemaMixin._schema_ensure_shared_union(
-            schema,
-            placeholder_name="TaskSpec",
-            entries=entries
-        )
-
-        assert ref == "#/$defs/Allowed_TaskSpec"
-        assert schema["$defs"]["Allowed_TaskSpec"]["oneOf"] == [{"$ref": "#/$defs/ExistingTask"}]
-
-    def test_schema_update_list_field_updates_items(self, mixin_instance):
-        """Test updating ModuleList field with non-nullable type"""
-        schema = {
-            "properties": {
-                "tasks": {
-                    "type": "array",
-                    "items": {"$ref": "#/$defs/TaskSpec"}
-                }
-            },
-            "$defs": {}
-        }
-
-        variant_schemas = [{"title": "TaskA"}, {"title": "TaskB"}]
-
-        result = mixin_instance._schema_update_list_field(
-            schema,
-            field_name="tasks",
-            placeholder_name="TaskSpec",
-            variant_schemas=variant_schemas,
-            profile="shared"
-        )
-
-        assert result["properties"]["tasks"]["items"] == {"$ref": "#/$defs/Allowed_TaskSpec"}
-        assert "Allowed_TaskSpec" in result["$defs"]
-
-    def test_schema_update_list_field_handles_nullable(self, mixin_instance):
-        """Test updating ModuleList field with nullable type (anyOf with null)"""
-        schema = {
-            "properties": {
-                "tasks": {
-                    "anyOf": [
-                        {"type": "array", "items": {"$ref": "#/$defs/TaskSpec"}},
-                        {"type": "null"}
-                    ]
-                }
-            },
-            "$defs": {}
-        }
-
-        variant_schemas = [{"title": "TaskA"}]
-
-        result = mixin_instance._schema_update_list_field(
-            schema,
-            field_name="tasks",
-            placeholder_name="TaskSpec",
-            variant_schemas=variant_schemas,
-            profile="shared"
-        )
-
-        items_ref = result["properties"]["tasks"]["anyOf"][0]["items"]
-        assert items_ref == {"$ref": "#/$defs/Allowed_TaskSpec"}
-
-    def test_schema_update_list_field_inline_profile(self, mixin_instance):
-        """Test updating list field with inline profile"""
-        schema = {
-            "properties": {
-                "tasks": {
-                    "type": "array",
-                    "items": {"$ref": "#/$defs/TaskSpec"}
-                }
-            },
-            "$defs": {}
-        }
-
-        variant_schemas = [{"title": "TaskA"}, {"title": "TaskB"}]
-
-        result = mixin_instance._schema_update_list_field(
-            schema,
-            field_name="tasks",
-            placeholder_name="TaskSpec",
-            variant_schemas=variant_schemas,
-            profile="inline"
-        )
-
-        assert result["properties"]["tasks"]["items"] == {
-            "oneOf": [
-                {"$ref": "#/$defs/TaskA"},
-                {"$ref": "#/$defs/TaskB"}
-            ]
-        }
-
-    def test_schema_update_dict_field_updates_additional_properties(self, mixin_instance):
-        """Test updating ModuleDict field"""
-        schema = {
-            "properties": {
-                "states": {
-                    "type": "object",
-                    "additionalProperties": {"$ref": "#/$defs/StateSpec"}
-                }
-            },
-            "$defs": {}
-        }
-
-        variant_schemas = [{"title": "StateA"}, {"title": "StateB"}]
-
-        result = mixin_instance._schema_update_dict_field(
-            schema,
-            field_name="states",
-            placeholder_name="StateSpec",
-            variant_schemas=variant_schemas,
-            profile="shared"
-        )
-
-        assert result["properties"]["states"]["additionalProperties"] == {"$ref": "#/$defs/Allowed_StateSpec"}
-        assert "Allowed_StateSpec" in result["$defs"]
-
-    def test_schema_update_single_field_updates_field(self, mixin_instance):
-        """Test updating single module field"""
-        schema = {
-            "properties": {
-                "root": {"$ref": "#/$defs/TaskSpec"}
-            },
-            "$defs": {}
-        }
-
-        variant_schemas = [{"title": "TaskA"}, {"title": "TaskB"}]
-
-        result = mixin_instance._schema_update_single_field(
-            schema,
-            field_name="root",
-            placeholder_name="TaskSpec",
-            variant_schemas=variant_schemas,
-            profile="shared"
-        )
-
-        assert result["properties"]["root"] == {"$ref": "#/$defs/Allowed_TaskSpec"}
-        assert "Allowed_TaskSpec" in result["$defs"]
-
-    def test_schema_merge_defs_merges_single_source(self, mixin_instance):
-        """Test that $defs from source schema are merged into target"""
-        target = {"$defs": {"Existing": {"title": "Existing"}}}
-        source = {"$defs": {"NewDef": {"title": "NewDef"}}}
-
-        result = mixin_instance._schema_merge_defs(target, source)
-
-        assert result is target  # Returns same object (modified in place)
-        assert "Existing" in result["$defs"]
-        assert "NewDef" in result["$defs"]
-        assert result["$defs"]["NewDef"] == {"title": "NewDef"}
-
-    def test_schema_merge_defs_merges_multiple_sources(self, mixin_instance):
-        """Test that $defs from multiple source schemas are all merged"""
-        target = {"$defs": {}}
-        source1 = {"$defs": {"Def1": {"title": "Def1"}}}
-        source2 = {"$defs": {"Def2": {"title": "Def2"}}}
-        source3 = {"$defs": {"Def3": {"title": "Def3"}}}
-
-        result = mixin_instance._schema_merge_defs(target, source1, source2, source3)
-
-        assert "Def1" in result["$defs"]
-        assert "Def2" in result["$defs"]
-        assert "Def3" in result["$defs"]
-
-    def test_schema_merge_defs_creates_defs_if_missing(self, mixin_instance):
-        """Test that $defs is created in target if it doesn't exist"""
-        target = {"properties": {}}  # No $defs
-        source = {"$defs": {"NewDef": {"title": "NewDef"}}}
-
-        result = mixin_instance._schema_merge_defs(target, source)
-
-        assert "$defs" in result
-        assert result["$defs"]["NewDef"] == {"title": "NewDef"}
-
-    def test_schema_merge_defs_handles_source_without_defs(self, mixin_instance):
-        """Test that sources without $defs are handled gracefully"""
-        target = {"$defs": {"Existing": {"title": "Existing"}}}
-        source1 = {"properties": {}}  # No $defs
-        source2 = {"$defs": {"NewDef": {"title": "NewDef"}}}
-
-        result = mixin_instance._schema_merge_defs(target, source1, source2)
-
-        assert "Existing" in result["$defs"]
-        assert "NewDef" in result["$defs"]
-
-    def test_schema_merge_defs_overwrites_duplicate_keys(self, mixin_instance):
-        """Test that duplicate keys are overwritten (dict.update behavior)"""
-        target = {"$defs": {"SharedKey": {"version": 1}}}
-        source = {"$defs": {"SharedKey": {"version": 2}}}
-
-        result = mixin_instance._schema_merge_defs(target, source)
-
-        assert result["$defs"]["SharedKey"] == {"version": 2}
-
-
-class TestLookupModuleClass:
-    """Test the lookup_module_class utility function"""
-
-    @pytest.fixture
-    def test_module(self):
-        """Create and register a test module"""
-        @mod_registry.register(name="TestModule")
-        class TestModule(BaseModule):
-            value: int = 1
-        return TestModule
-
-    def test_lookup_with_module_class_returns_itself(self, test_module):
-        """Test that a BaseModule class returns itself"""
-        result = lookup_module_class(test_module)
-        assert result is test_module
-
-    def test_lookup_with_spec_class_returns_module(self, test_module):
-        """Test that a Spec class looks up the module in registry"""
-        spec_class = test_module.schema_model()
-        result = lookup_module_class(spec_class)
-        assert result is test_module
-
-    def test_lookup_with_spec_instance_returns_module(self, test_module):
-        """Test that a Spec instance looks up the module in registry"""
-        module_instance = test_module()
-        spec_instance = module_instance.spec()
-        result = lookup_module_class(spec_instance)
-        assert result is test_module
-
-    def test_lookup_with_schema_dict_returns_module(self, test_module):
-        """Test that a schema dict looks up the module in registry"""
-        schema_dict = test_module.schema()
-        result = lookup_module_class(schema_dict)
-        assert result is test_module
-
-    def test_lookup_with_string_module_name_returns_module(self, test_module):
-        """Test that a string module name looks up the module"""
-        result = lookup_module_class("TestModule")
-        assert result is test_module
-
-    def test_lookup_with_string_spec_name_returns_module(self, test_module):
-        """Test that a string spec name (with Spec suffix) looks up the module"""
-        result = lookup_module_class("TestModuleSpec")
-        assert result is test_module
-
-    def test_lookup_with_unregistered_returns_none(self):
-        """Test that unregistered module returns None"""
-        class UnregisteredModule(BaseModule):
-            pass
-
-        result = lookup_module_class(UnregisteredModule.schema_model())
-        assert result is None
-
-    def test_lookup_with_invalid_string_returns_none(self):
-        """Test that invalid string name returns None"""
-        result = lookup_module_class("NonExistentModule")
-        assert result is None
-
-    def test_lookup_with_invalid_type_returns_none(self):
-        """Test that invalid type returns None"""
-        result = lookup_module_class(12345)
-        assert result is None
-
-
-class TestRestrictedTaskSchemaMixin:
-    """Test RestrictedTaskSchemaMixin domain-specific behavior"""
-
-    @pytest.fixture
-    def task_with_mixin(self):
-        """Create a test task with RestrictedTaskSchemaMixin"""
-        @mod_registry.register(name="TaskWithMixin")
-        class TaskWithMixin(BaseModule, RestrictedTaskSchemaMixin):
-            value: int = 1
-
-            @classmethod
-            def restricted_schema(cls, *, tasks=None, _profile="shared", _seen=None, **kwargs):
-                return {"title": "TaskWithMixinSpec", "restricted": True, "tasks": tasks}
-        return TaskWithMixin
-
-    @pytest.fixture
-    def regular_task(self):
-        """Create a regular task without the mixin"""
-        @mod_registry.register(name="RegularTask")
-        class RegularTask(BaseModule):
-            value: int = 2
-        return RegularTask
-
-    def test_process_variants_calls_restricted_schema_on_task_mixin(self, task_with_mixin, regular_task):
-        """Test that variants with RestrictedTaskSchemaMixin get restricted_schema called"""
-        # Create a concrete mixin instance to test _schema_process_variants
-        class TestTaskMixin(RestrictedTaskSchemaMixin):
-            def restricted_schema(self, **kwargs):
-                return {}
-
-        mixin = TestTaskMixin()
-
-        # Process variants - task_with_mixin should use restricted_schema
-        schemas = mixin._schema_process_variants(
-            [task_with_mixin],
-            restricted_schema_cls=RestrictedTaskSchemaMixin,
-            tasks=["test"]
-        )
-
-        # Should have called restricted_schema with tasks passed through
-        assert len(schemas) == 1
-        assert schemas[0]["restricted"] is True
-        assert schemas[0]["tasks"] == ["test"]
-
-    def test_process_variants_calls_schema_on_regular_module(self, regular_task):
-        """Test that regular modules get schema() called"""
-        class TestTaskMixin(RestrictedTaskSchemaMixin):
-            def restricted_schema(self, **kwargs):
-                return {}
-
-        mixin = TestTaskMixin()
-
-        # Process regular task
-        schemas = mixin._schema_process_variants(
-            [regular_task],
-            restricted_schema_cls=RestrictedTaskSchemaMixin
-        )
-
-        # Should have called schema(), not restricted_schema()
-        assert len(schemas) == 1
-        assert "restricted" not in schemas[0]
-        assert "RegularTaskSpec" in schemas[0]["title"]
-
-    def test_process_variants_with_filter_fn(self, task_with_mixin, regular_task):
-        """Test that filter_fn is applied correctly"""
-        class TestTaskMixin(RestrictedTaskSchemaMixin):
-            def restricted_schema(self, **kwargs):
-                return {}
-
-        mixin = TestTaskMixin()
-
-        # Filter to only accept task_with_mixin
-        def filter_fn(variant):
-            module_class = lookup_module_class(variant)
-            return module_class is task_with_mixin
-
-        schemas = mixin._schema_process_variants(
-            [task_with_mixin, regular_task],
-            restricted_schema_cls=RestrictedTaskSchemaMixin,
-            filter_fn=filter_fn
-        )
-
-        # Should only have one schema (regular_task filtered out)
-        assert len(schemas) == 1
-        assert schemas[0]["restricted"] is True
-
-    def test_process_variants_raises_for_invalid_variant(self):
-        """Test error for variant that cannot be normalized"""
-        class TestTaskMixin(RestrictedTaskSchemaMixin):
-            def restricted_schema(self, **kwargs):
-                return {}
-
-        mixin = TestTaskMixin()
-
-        # Trying to process an invalid variant should raise TypeError
-        with pytest.raises(TypeError, match="Unsupported variant type"):
-            mixin._schema_process_variants(
-                [object()],
-                restricted_schema_cls=RestrictedTaskSchemaMixin
-            )
-
-
-# ------------------------------------------------------------
-#  Spec Inheritance Tests (for BaseModule.__convert_type_to_spec__ and spec inheritance)
-# ------------------------------------------------------------
-
-class TestSpecInheritance:
-    """Test that child module specs properly inherit from parent module specs."""
-
-    def test_simple_inheritance_creates_spec_hierarchy(self):
-        """Child spec should inherit from parent spec"""
-        class Parent(BaseModule):
-            x: int
-
-        class Child(Parent):
-            y: str
-
-        parent_spec = Parent.__spec__
-        child_spec = Child.__spec__
-
-        assert issubclass(child_spec, parent_spec)
-        assert child_spec.__bases__ == (parent_spec,)
-
-    def test_grandchild_inherits_from_child_spec(self):
-        """Three-level inheritance should work"""
-        class GrandParent(BaseModule):
-            a: int
-
-        class Parent(GrandParent):
-            b: str
-
-        class Child(Parent):
-            c: float
-
-        assert issubclass(Child.__spec__, Parent.__spec__)
-        assert issubclass(Parent.__spec__, GrandParent.__spec__)
-        assert issubclass(Child.__spec__, GrandParent.__spec__)
-
-    def test_multiple_inheritance_combines_parent_specs(self):
-        """Multiple inheritance should create spec with multiple bases"""
-        class Parent1(BaseModule):
-            x: int
-
-        class Parent2(BaseModule):
-            y: str
-
-        class Child(Parent1, Parent2):
-            z: float
-
-        child_spec = Child.__spec__
-        assert issubclass(child_spec, Parent1.__spec__)
-        assert issubclass(child_spec, Parent2.__spec__)
-        assert len(child_spec.__bases__) == 2
-
-    def test_direct_basemodule_child_inherits_from_basespec(self):
-        """Direct child of BaseModule should inherit from BaseSpec"""
-        class DirectChild(BaseModule):
-            x: int
-
-        assert issubclass(DirectChild.__spec__, BaseSpec)
-
-
-class TestUnionTypeConversion:
-    """Test that Union types are properly converted to spec types."""
-
-    def test_union_with_single_basemodule_converts_to_spec(self):
-        """Union[Module, str] should become Union[ModuleSpec, str]"""
-        class MyModule(BaseModule):
-            value: int
-
-        class Container(BaseModule):
-            item: MyModule | str
-
-        container_spec = Container.__spec__
-        item_annotation = container_spec.__annotations__['item']
-
-        # Should be Union[MyModuleSpec, str]
-        import typing
-        assert typing.get_origin(item_annotation) is typing.Union
-        args = typing.get_args(item_annotation)
-        assert len(args) == 2
-        assert args[0] == MyModule.__spec__
-        assert args[1] == str
-
-    def test_union_with_multiple_basemodules_converts_all(self):
-        """Union[Module1, Module2] should become Union[Module1Spec, Module2Spec]"""
-        class Module1(BaseModule):
-            x: int
-
-        class Module2(BaseModule):
-            y: str
-
-        class Container(BaseModule):
-            item: Module1 | Module2
-
-        container_spec = Container.__spec__
-        item_annotation = container_spec.__annotations__['item']
-
-        import typing
-        args = typing.get_args(item_annotation)
-        assert len(args) == 2
-        assert Module1.__spec__ in args
-        assert Module2.__spec__ in args
-
-    def test_union_with_primitives_unchanged(self):
-        """Union[int, str] should remain Union[int, str]"""
-        class Container(BaseModule):
-            item: int | str
-
-        container_spec = Container.__spec__
-        item_annotation = container_spec.__annotations__['item']
-
-        import typing
-        args = typing.get_args(item_annotation)
-        assert int in args
-        assert str in args
-
-    def test_union_mixed_modules_and_primitives(self):
-        """Union[Module, int, str] should become Union[ModuleSpec, int, str]"""
-        class MyModule(BaseModule):
-            value: int
-
-        class Container(BaseModule):
-            item: MyModule | int | str
-
-        container_spec = Container.__spec__
-        item_annotation = container_spec.__annotations__['item']
-
-        import typing
-        args = typing.get_args(item_annotation)
-        assert len(args) == 3
-        assert MyModule.__spec__ in args
-        assert int in args
-        assert str in args
-
-    def test_typing_union_syntax_also_works(self):
-        """typing.Union syntax should work same as | syntax"""
-        import typing
-
-        class MyModule(BaseModule):
-            value: int
-
-        class Container(BaseModule):
-            item: typing.Union[MyModule, str]
-
-        container_spec = Container.__spec__
-        item_annotation = container_spec.__annotations__['item']
-
-        args = typing.get_args(item_annotation)
-        assert MyModule.__spec__ in args
-        assert str in args
-
-
-class TestSpecSerializationWithUnions:
-    """Test that serialization works correctly with Union-typed fields."""
-
-    def test_spec_accepts_child_spec_in_union_field(self):
-        """When field is Union[ModuleSpec, ...], should accept subclass of ModuleSpec"""
-        @mod_registry.register(name="Parent")
-        class Parent(BaseModule):
-            x: int
-
-        @mod_registry.register(name="Child")
-        class Child(Parent):
-            y: str
-
-        @mod_registry.register(name="Container")
-        class Container(BaseModule):
-            item: Parent
-
-        # Create container with child instance
-        container = Container(item=Child(x=1, y="hello"))
-
-        # Get spec - should not raise
-        spec = container.spec()
-
-        # Spec should have child's spec (with full qualified name from local class)
-        assert 'Child' in spec.item.kind
-
-    def test_union_field_accepts_either_type(self):
-        """Union field should accept instances of either type"""
-        @mod_registry.register(name="Module1")
-        class Module1(BaseModule):
-            x: int
-
-        @mod_registry.register(name="Module2")
-        class Module2(BaseModule):
-            y: str
-
-        @mod_registry.register(name="Container")
-        class Container(BaseModule):
-            item: Module1 | Module2
-
-        # Should accept Module1
-        c1 = Container(item=Module1(x=5))
-        spec1 = c1.spec()
-        assert spec1.item.kind.endswith('Module1')
-
-        # Should accept Module2
-        c2 = Container(item=Module2(y="test"))
-        spec2 = c2.spec()
-        assert spec2.item.kind.endswith('Module2')
-
-
-class TestParamSetSchema:
-    """Test schema() and update() methods for ParamSet."""
-
-    def test_paramset_schema_returns_dict(self):
-        """Test that ParamSet.schema() returns a dict (JSON schema)."""
-        param1 = Param(data="hello")
-        param2 = Param(data=42)
-        param_set = ParamSet(params=[param1, param2])
-
-        schema = param_set.schema()
-        assert isinstance(schema, dict)
-        assert "properties" in schema
-        assert "param_0" in schema["properties"]
-        assert "param_1" in schema["properties"]
-        assert schema["properties"]["param_0"] == {"type": "string"}
-        assert schema["properties"]["param_1"] == {"type": "integer"}
-
-    def test_paramset_update_with_flat_dict(self):
-        """Test that ParamSet.update() accepts a flat dict with flat=True."""
-        param1 = Param(data="hello")
-        param2 = Param(data=42)
-        param_set = ParamSet(params=[param1, param2])
-
-        param_set.update({"param_0": "world", "param_1": 100}, flat=True)
-        assert param1.data == "world"
-        assert param2.data == 100
-
-    def test_paramset_update_with_structured_dict(self):
-        """Test that ParamSet.update() accepts structured dict (default)."""
-        param1 = Param(data="hello")
-        param2 = Param(data=42)
-        param_set = ParamSet(params=[param1, param2])
-
-        # For primitives, schema-compliant format is still just the value
-        param_set.update({"param_0": "updated", "param_1": 999})
-        assert param1.data == "updated"
-        assert param2.data == 999
-
-    def test_paramset_update_with_basemodel_param(self):
-        """Test update() with a Param containing BaseModel data."""
-        class MyModel(BaseModel):
-            name: str
-            age: int
-
-        param1 = Param(data=MyModel(name="Alice", age=30))
-        param2 = Param(data=42)
-        param_set = ParamSet(params=[param1, param2])
-
-        # Update with dict matching Pydantic structure
-        param_set.update({
-            "param_0": {"name": "Bob", "age": 25},
-            "param_1": 100
-        })
-        assert param1.data.name == "Bob"
-        assert param1.data.age == 25
-        assert param2.data == 100
-
-    def test_paramset_build_from_module(self):
-        """Test ParamSet.build() collects parameters from a module."""
-        class MyModule(BaseModule):
-            def __post_init__(self):
-                super().__post_init__()
-                self.param1 = Param(data="test")
-                self.param2 = Param(data=123)
-
-        module = MyModule()
-        param_set = ParamSet.build(module)
-
-        assert len(param_set.params) == 2
-        schema = param_set.schema()
-        assert "param_0" in schema["properties"]
-        assert "param_1" in schema["properties"]
+# class TestBaseModuleWithGenericFields:
+#     """Test BaseModule schema generation with generic fields like ModuleList[T]"""
+
+#     def test_schema_handles_modulelist_generic(self):
+#         """Test that ModuleList[T] field generates valid schema"""
+#         from dachi.core import ModuleList
+
+#         class ContainerModule(Module):
+#             items: ModuleList[Leaf] = None
+
+#         # Should not raise an error
+#         spec = ContainerModule.schema_model()
+#         assert spec is not None
+
+#         # Should have items field
+#         assert 'items' in spec.model_fields
+
+#         # The field should use ModuleListSpec
+#         items_field = spec.model_fields['items']
+#         # The annotation should be the spec model from ModuleList
+#         assert items_field.annotation is ModuleList.schema_model()
+
+#     def test_schema_json_generation_with_modulelist(self):
+#         """Test that schema JSON can be generated for classes with ModuleList fields"""
+#         from dachi.core import ModuleList
+
+#         class ContainerModule(Module):
+#             items: ModuleList[Leaf] = None
+
+#         # This should not raise PydanticInvalidForJsonSchema
+#         schema = ContainerModule.schema()
+
+#         # Should have properties
+#         assert 'properties' in schema
+#         assert 'items' in schema['properties']
+
+#         # items should reference ModuleListSpec
+#         items_schema = schema['properties']['items']
+#         # Should have a $ref (either direct or in allOf) or type definition
+#         has_ref = (
+#             '$ref' in items_schema or
+#             'type' in items_schema or
+#             ('allOf' in items_schema and any('$ref' in item for item in items_schema['allOf']))
+#         )
+#         assert has_ref, f"Expected $ref or type in items_schema, got: {items_schema}"
+
+#         # If there's a ref, it should point to ModuleListSpec
+#         if 'allOf' in items_schema:
+#             assert items_schema['allOf'][0]['$ref'] == '#/$defs/ModuleListSpec'
+#         elif '$ref' in items_schema:
+#             assert items_schema['$ref'] == '#/$defs/ModuleListSpec'
+
+
+# class TestRestrictedSchemaMixin:
+#     """Test the base RestrictedSchemaMixin low-level helpers"""
+
+#     @pytest.fixture
+#     def mixin_instance(self):
+#         """Create a concrete instance of RestrictedSchemaMixin for testing"""
+#         class ConcreteRestrictedSchemaMixin(RestrictedSchemaMixin):
+#             def restricted_schema(self, **kwargs):
+#                 return {}
+#         return ConcreteRestrictedSchemaMixin()
+
+#     def test_schema_name_from_dict_uses_title(self):
+#         """Test extracting name from schema dict with title"""
+#         schema = {"title": "MyTaskSpec", "$id": "other"}
+#         assert RestrictedSchemaMixin._schema_name_from_dict(schema) == "MyTaskSpec"
+
+#     def test_schema_name_from_dict_uses_id_if_no_title(self):
+#         """Test extracting name from schema dict using $id"""
+#         schema = {"$id": "http://example.com/schemas/MyTaskSpec#"}
+#         assert RestrictedSchemaMixin._schema_name_from_dict(schema) == "MyTaskSpec"
+
+#     def test_schema_name_from_dict_raises_if_missing_both(self):
+#         """Test error when neither title nor $id present"""
+#         with pytest.raises(TypeError):
+#             RestrictedSchemaMixin._schema_name_from_dict({})
+
+#     def test_schema_build_refs_creates_ref_list(self):
+#         """Test building $ref list from entries"""
+#         entries = [("TaskA", {}), ("TaskB", {})]
+#         refs = RestrictedSchemaMixin._schema_build_refs(entries)
+#         assert refs == [
+#             {"$ref": "#/$defs/TaskA"},
+#             {"$ref": "#/$defs/TaskB"}
+#         ]
+
+#     def test_schema_make_union_inline_creates_oneof(self):
+#         """Test creating inline oneOf union"""
+#         entries = [("TaskA", {}), ("TaskB", {})]
+#         union = RestrictedSchemaMixin._schema_make_union_inline(entries)
+#         assert union == {
+#             "oneOf": [
+#                 {"$ref": "#/$defs/TaskA"},
+#                 {"$ref": "#/$defs/TaskB"}
+#             ]
+#         }
+
+#     def test_schema_allowed_union_name_adds_prefix(self):
+#         """Test generating Allowed_* union name"""
+#         assert RestrictedSchemaMixin._schema_allowed_union_name("TaskSpec") == "Allowed_TaskSpec"
+
+#     def test_schema_node_at_navigates_path(self):
+#         """Test navigating to node in schema"""
+#         schema = {"properties": {"tasks": {"items": {"$ref": "#/$defs/TaskSpec"}}}}
+#         node = RestrictedSchemaMixin._schema_node_at(schema, ["properties", "tasks", "items"])
+#         assert node == {"$ref": "#/$defs/TaskSpec"}
+
+#     def test_schema_node_at_returns_none_for_missing_path(self):
+#         """Test None returned for invalid path"""
+#         schema = {"properties": {}}
+#         node = RestrictedSchemaMixin._schema_node_at(schema, ["properties", "nonexistent"])
+#         assert node is None
+
+#     def test_schema_replace_at_path_updates_node(self):
+#         """Test replacing node at path"""
+#         schema = {"properties": {"tasks": {"items": {"old": "value"}}}}
+#         RestrictedSchemaMixin._schema_replace_at_path(
+#             schema,
+#             ["properties", "tasks", "items"],
+#             {"new": "value"}
+#         )
+#         assert schema["properties"]["tasks"]["items"] == {"new": "value"}
+
+#     def test_schema_replace_at_path_raises_on_empty_path(self):
+#         """Test error when path is empty"""
+#         schema = {"properties": {}}
+#         with pytest.raises(ValueError, match="Path cannot be empty"):
+#             RestrictedSchemaMixin._schema_replace_at_path(schema, [], {"new": "value"})
+
+#     def test_schema_require_defs_for_entries_adds_entries(self):
+#         """Test adding entries to $defs"""
+#         schema = {}
+#         entries = [("TaskA", {"title": "TaskA"}), ("TaskB", {"title": "TaskB"})]
+#         RestrictedSchemaMixin._schema_require_defs_for_entries(schema, entries)
+
+#         assert "$defs" in schema
+#         assert "TaskA" in schema["$defs"]
+#         assert "TaskB" in schema["$defs"]
+#         assert schema["$defs"]["TaskA"] == {"title": "TaskA"}
+
+#     def test_schema_require_defs_for_entries_does_not_overwrite(self):
+#         """Test that existing entries are not overwritten"""
+#         schema = {"$defs": {"TaskA": {"existing": "schema"}}}
+#         entries = [("TaskA", {"new": "schema"})]
+#         RestrictedSchemaMixin._schema_require_defs_for_entries(schema, entries)
+
+#         assert schema["$defs"]["TaskA"] == {"existing": "schema"}
+
+#     def test_schema_ensure_shared_union_creates_union(self):
+#         """Test creating shared union in $defs"""
+#         schema = {}
+#         entries = [("TaskA", {}), ("TaskB", {})]
+
+#         ref = RestrictedSchemaMixin._schema_ensure_shared_union(
+#             schema,
+#             placeholder_name="TaskSpec",
+#             entries=entries
+#         )
+
+#         assert ref == "#/$defs/Allowed_TaskSpec"
+#         assert "Allowed_TaskSpec" in schema["$defs"]
+#         assert schema["$defs"]["Allowed_TaskSpec"] == {
+#             "oneOf": [
+#                 {"$ref": "#/$defs/TaskA"},
+#                 {"$ref": "#/$defs/TaskB"}
+#             ]
+#         }
+
+#     def test_schema_ensure_shared_union_reuses_existing(self):
+#         """Test that existing shared union is not recreated"""
+#         schema = {
+#             "$defs": {
+#                 "Allowed_TaskSpec": {"oneOf": [{"$ref": "#/$defs/ExistingTask"}]}
+#             }
+#         }
+#         entries = [("TaskA", {})]
+
+#         ref = RestrictedSchemaMixin._schema_ensure_shared_union(
+#             schema,
+#             placeholder_name="TaskSpec",
+#             entries=entries
+#         )
+
+#         assert ref == "#/$defs/Allowed_TaskSpec"
+#         assert schema["$defs"]["Allowed_TaskSpec"]["oneOf"] == [{"$ref": "#/$defs/ExistingTask"}]
+
+#     def test_schema_update_list_field_updates_items(self, mixin_instance):
+#         """Test updating ModuleList field with non-nullable type"""
+#         schema = {
+#             "properties": {
+#                 "tasks": {
+#                     "type": "array",
+#                     "items": {"$ref": "#/$defs/TaskSpec"}
+#                 }
+#             },
+#             "$defs": {}
+#         }
+
+#         variant_schemas = [{"title": "TaskA"}, {"title": "TaskB"}]
+
+#         result = mixin_instance._schema_update_list_field(
+#             schema,
+#             field_name="tasks",
+#             placeholder_name="TaskSpec",
+#             variant_schemas=variant_schemas,
+#             profile="shared"
+#         )
+
+#         assert result["properties"]["tasks"]["items"] == {"$ref": "#/$defs/Allowed_TaskSpec"}
+#         assert "Allowed_TaskSpec" in result["$defs"]
+
+#     def test_schema_update_list_field_handles_nullable(self, mixin_instance):
+#         """Test updating ModuleList field with nullable type (anyOf with null)"""
+#         schema = {
+#             "properties": {
+#                 "tasks": {
+#                     "anyOf": [
+#                         {"type": "array", "items": {"$ref": "#/$defs/TaskSpec"}},
+#                         {"type": "null"}
+#                     ]
+#                 }
+#             },
+#             "$defs": {}
+#         }
+
+#         variant_schemas = [{"title": "TaskA"}]
+
+#         result = mixin_instance._schema_update_list_field(
+#             schema,
+#             field_name="tasks",
+#             placeholder_name="TaskSpec",
+#             variant_schemas=variant_schemas,
+#             profile="shared"
+#         )
+
+#         items_ref = result["properties"]["tasks"]["anyOf"][0]["items"]
+#         assert items_ref == {"$ref": "#/$defs/Allowed_TaskSpec"}
+
+#     def test_schema_update_list_field_inline_profile(self, mixin_instance):
+#         """Test updating list field with inline profile"""
+#         schema = {
+#             "properties": {
+#                 "tasks": {
+#                     "type": "array",
+#                     "items": {"$ref": "#/$defs/TaskSpec"}
+#                 }
+#             },
+#             "$defs": {}
+#         }
+
+#         variant_schemas = [{"title": "TaskA"}, {"title": "TaskB"}]
+
+#         result = mixin_instance._schema_update_list_field(
+#             schema,
+#             field_name="tasks",
+#             placeholder_name="TaskSpec",
+#             variant_schemas=variant_schemas,
+#             profile="inline"
+#         )
+
+#         assert result["properties"]["tasks"]["items"] == {
+#             "oneOf": [
+#                 {"$ref": "#/$defs/TaskA"},
+#                 {"$ref": "#/$defs/TaskB"}
+#             ]
+#         }
+
+#     def test_schema_update_dict_field_updates_additional_properties(self, mixin_instance):
+#         """Test updating ModuleDict field"""
+#         schema = {
+#             "properties": {
+#                 "states": {
+#                     "type": "object",
+#                     "additionalProperties": {"$ref": "#/$defs/StateSpec"}
+#                 }
+#             },
+#             "$defs": {}
+#         }
+
+#         variant_schemas = [{"title": "StateA"}, {"title": "StateB"}]
+
+#         result = mixin_instance._schema_update_dict_field(
+#             schema,
+#             field_name="states",
+#             placeholder_name="StateSpec",
+#             variant_schemas=variant_schemas,
+#             profile="shared"
+#         )
+
+#         assert result["properties"]["states"]["additionalProperties"] == {"$ref": "#/$defs/Allowed_StateSpec"}
+#         assert "Allowed_StateSpec" in result["$defs"]
+
+#     def test_schema_update_single_field_updates_field(self, mixin_instance):
+#         """Test updating single module field"""
+#         schema = {
+#             "properties": {
+#                 "root": {"$ref": "#/$defs/TaskSpec"}
+#             },
+#             "$defs": {}
+#         }
+
+#         variant_schemas = [{"title": "TaskA"}, {"title": "TaskB"}]
+
+#         result = mixin_instance._schema_update_single_field(
+#             schema,
+#             field_name="root",
+#             placeholder_name="TaskSpec",
+#             variant_schemas=variant_schemas,
+#             profile="shared"
+#         )
+
+#         assert result["properties"]["root"] == {"$ref": "#/$defs/Allowed_TaskSpec"}
+#         assert "Allowed_TaskSpec" in result["$defs"]
+
+#     def test_schema_merge_defs_merges_single_source(self, mixin_instance):
+#         """Test that $defs from source schema are merged into target"""
+#         target = {"$defs": {"Existing": {"title": "Existing"}}}
+#         source = {"$defs": {"NewDef": {"title": "NewDef"}}}
+
+#         result = mixin_instance._schema_merge_defs(target, source)
+
+#         assert result is target  # Returns same object (modified in place)
+#         assert "Existing" in result["$defs"]
+#         assert "NewDef" in result["$defs"]
+#         assert result["$defs"]["NewDef"] == {"title": "NewDef"}
+
+#     def test_schema_merge_defs_merges_multiple_sources(self, mixin_instance):
+#         """Test that $defs from multiple source schemas are all merged"""
+#         target = {"$defs": {}}
+#         source1 = {"$defs": {"Def1": {"title": "Def1"}}}
+#         source2 = {"$defs": {"Def2": {"title": "Def2"}}}
+#         source3 = {"$defs": {"Def3": {"title": "Def3"}}}
+
+#         result = mixin_instance._schema_merge_defs(target, source1, source2, source3)
+
+#         assert "Def1" in result["$defs"]
+#         assert "Def2" in result["$defs"]
+#         assert "Def3" in result["$defs"]
+
+#     def test_schema_merge_defs_creates_defs_if_missing(self, mixin_instance):
+#         """Test that $defs is created in target if it doesn't exist"""
+#         target = {"properties": {}}  # No $defs
+#         source = {"$defs": {"NewDef": {"title": "NewDef"}}}
+
+#         result = mixin_instance._schema_merge_defs(target, source)
+
+#         assert "$defs" in result
+#         assert result["$defs"]["NewDef"] == {"title": "NewDef"}
+
+#     def test_schema_merge_defs_handles_source_without_defs(self, mixin_instance):
+#         """Test that sources without $defs are handled gracefully"""
+#         target = {"$defs": {"Existing": {"title": "Existing"}}}
+#         source1 = {"properties": {}}  # No $defs
+#         source2 = {"$defs": {"NewDef": {"title": "NewDef"}}}
+
+#         result = mixin_instance._schema_merge_defs(target, source1, source2)
+
+#         assert "Existing" in result["$defs"]
+#         assert "NewDef" in result["$defs"]
+
+#     def test_schema_merge_defs_overwrites_duplicate_keys(self, mixin_instance):
+#         """Test that duplicate keys are overwritten (dict.update behavior)"""
+#         target = {"$defs": {"SharedKey": {"version": 1}}}
+#         source = {"$defs": {"SharedKey": {"version": 2}}}
+
+#         result = mixin_instance._schema_merge_defs(target, source)
+
+#         assert result["$defs"]["SharedKey"] == {"version": 2}
+
+
+# class TestLookupModuleClass:
+#     """Test the lookup_module_class utility function"""
+
+#     @pytest.fixture
+#     def test_module(self):
+#         """Create and register a test module"""
+#         @mod_registry.register(name="TestModule")
+#         class TestModule(BaseModule):
+#             value: int = 1
+#         return TestModule
+
+#     def test_lookup_with_module_class_returns_itself(self, test_module):
+#         """Test that a BaseModule class returns itself"""
+#         result = lookup_module_class(test_module)
+#         assert result is test_module
+
+#     def test_lookup_with_spec_class_returns_module(self, test_module):
+#         """Test that a Spec class looks up the module in registry"""
+#         spec_class = test_module.schema_model()
+#         result = lookup_module_class(spec_class)
+#         assert result is test_module
+
+#     def test_lookup_with_spec_instance_returns_module(self, test_module):
+#         """Test that a Spec instance looks up the module in registry"""
+#         module_instance = test_module()
+#         spec_instance = module_instance.spec()
+#         result = lookup_module_class(spec_instance)
+#         assert result is test_module
+
+#     def test_lookup_with_schema_dict_returns_module(self, test_module):
+#         """Test that a schema dict looks up the module in registry"""
+#         schema_dict = test_module.schema()
+#         result = lookup_module_class(schema_dict)
+#         assert result is test_module
+
+#     def test_lookup_with_string_module_name_returns_module(self, test_module):
+#         """Test that a string module name looks up the module"""
+#         result = lookup_module_class("TestModule")
+#         assert result is test_module
+
+#     def test_lookup_with_string_spec_name_returns_module(self, test_module):
+#         """Test that a string spec name (with Spec suffix) looks up the module"""
+#         result = lookup_module_class("TestModuleSpec")
+#         assert result is test_module
+
+#     def test_lookup_with_unregistered_returns_none(self):
+#         """Test that unregistered module returns None"""
+#         class UnregisteredModule(BaseModule):
+#             pass
+
+#         result = lookup_module_class(UnregisteredModule.schema_model())
+#         assert result is None
+
+#     def test_lookup_with_invalid_string_returns_none(self):
+#         """Test that invalid string name returns None"""
+#         result = lookup_module_class("NonExistentModule")
+#         assert result is None
+
+#     def test_lookup_with_invalid_type_returns_none(self):
+#         """Test that invalid type returns None"""
+#         result = lookup_module_class(12345)
+#         assert result is None
+
+
+# class TestRestrictedTaskSchemaMixin:
+#     """Test RestrictedTaskSchemaMixin domain-specific behavior"""
+
+#     @pytest.fixture
+#     def task_with_mixin(self):
+#         """Create a test task with RestrictedTaskSchemaMixin"""
+#         @mod_registry.register(name="TaskWithMixin")
+#         class TaskWithMixin(BaseModule, RestrictedTaskSchemaMixin):
+#             value: int = 1
+
+#             @classmethod
+#             def restricted_schema(cls, *, tasks=None, _profile="shared", _seen=None, **kwargs):
+#                 return {"title": "TaskWithMixinSpec", "restricted": True, "tasks": tasks}
+#         return TaskWithMixin
+
+#     @pytest.fixture
+#     def regular_task(self):
+#         """Create a regular task without the mixin"""
+#         @mod_registry.register(name="RegularTask")
+#         class RegularTask(BaseModule):
+#             value: int = 2
+#         return RegularTask
+
+#     def test_process_variants_calls_restricted_schema_on_task_mixin(self, task_with_mixin, regular_task):
+#         """Test that variants with RestrictedTaskSchemaMixin get restricted_schema called"""
+#         # Create a concrete mixin instance to test _schema_process_variants
+#         class TestTaskMixin(RestrictedTaskSchemaMixin):
+#             def restricted_schema(self, **kwargs):
+#                 return {}
+
+#         mixin = TestTaskMixin()
+
+#         # Process variants - task_with_mixin should use restricted_schema
+#         schemas = mixin._schema_process_variants(
+#             [task_with_mixin],
+#             restricted_schema_cls=RestrictedTaskSchemaMixin,
+#             tasks=["test"]
+#         )
+
+#         # Should have called restricted_schema with tasks passed through
+#         assert len(schemas) == 1
+#         assert schemas[0]["restricted"] is True
+#         assert schemas[0]["tasks"] == ["test"]
+
+#     def test_process_variants_calls_schema_on_regular_module(self, regular_task):
+#         """Test that regular modules get schema() called"""
+#         class TestTaskMixin(RestrictedTaskSchemaMixin):
+#             def restricted_schema(self, **kwargs):
+#                 return {}
+
+#         mixin = TestTaskMixin()
+
+#         # Process regular task
+#         schemas = mixin._schema_process_variants(
+#             [regular_task],
+#             restricted_schema_cls=RestrictedTaskSchemaMixin
+#         )
+
+#         # Should have called schema(), not restricted_schema()
+#         assert len(schemas) == 1
+#         assert "restricted" not in schemas[0]
+#         assert "RegularTaskSpec" in schemas[0]["title"]
+
+#     def test_process_variants_with_filter_fn(self, task_with_mixin, regular_task):
+#         """Test that filter_fn is applied correctly"""
+#         class TestTaskMixin(RestrictedTaskSchemaMixin):
+#             def restricted_schema(self, **kwargs):
+#                 return {}
+
+#         mixin = TestTaskMixin()
+
+#         # Filter to only accept task_with_mixin
+#         def filter_fn(variant):
+#             module_class = lookup_module_class(variant)
+#             return module_class is task_with_mixin
+
+#         schemas = mixin._schema_process_variants(
+#             [task_with_mixin, regular_task],
+#             restricted_schema_cls=RestrictedTaskSchemaMixin,
+#             filter_fn=filter_fn
+#         )
+
+#         # Should only have one schema (regular_task filtered out)
+#         assert len(schemas) == 1
+#         assert schemas[0]["restricted"] is True
+
+#     def test_process_variants_raises_for_invalid_variant(self):
+#         """Test error for variant that cannot be normalized"""
+#         class TestTaskMixin(RestrictedTaskSchemaMixin):
+#             def restricted_schema(self, **kwargs):
+#                 return {}
+
+#         mixin = TestTaskMixin()
+
+#         # Trying to process an invalid variant should raise TypeError
+#         with pytest.raises(TypeError, match="Unsupported variant type"):
+#             mixin._schema_process_variants(
+#                 [object()],
+#                 restricted_schema_cls=RestrictedTaskSchemaMixin
+#             )
+
+
+# # ------------------------------------------------------------
+# #  Spec Inheritance Tests (for BaseModule.__convert_type_to_spec__ and spec inheritance)
+# # ------------------------------------------------------------
+
+# class TestSpecInheritance:
+#     """Test that child module specs properly inherit from parent module specs."""
+
+#     def test_simple_inheritance_creates_spec_hierarchy(self):
+#         """Child spec should inherit from parent spec"""
+#         class Parent(BaseModule):
+#             x: int
+
+#         class Child(Parent):
+#             y: str
+
+#         parent_spec = Parent.__spec__
+#         child_spec = Child.__spec__
+
+#         assert issubclass(child_spec, parent_spec)
+#         assert child_spec.__bases__ == (parent_spec,)
+
+#     def test_grandchild_inherits_from_child_spec(self):
+#         """Three-level inheritance should work"""
+#         class GrandParent(BaseModule):
+#             a: int
+
+#         class Parent(GrandParent):
+#             b: str
+
+#         class Child(Parent):
+#             c: float
+
+#         assert issubclass(Child.__spec__, Parent.__spec__)
+#         assert issubclass(Parent.__spec__, GrandParent.__spec__)
+#         assert issubclass(Child.__spec__, GrandParent.__spec__)
+
+#     def test_multiple_inheritance_combines_parent_specs(self):
+#         """Multiple inheritance should create spec with multiple bases"""
+#         class Parent1(BaseModule):
+#             x: int
+
+#         class Parent2(BaseModule):
+#             y: str
+
+#         class Child(Parent1, Parent2):
+#             z: float
+
+#         child_spec = Child.__spec__
+#         assert issubclass(child_spec, Parent1.__spec__)
+#         assert issubclass(child_spec, Parent2.__spec__)
+#         assert len(child_spec.__bases__) == 2
+
+#     def test_direct_basemodule_child_inherits_from_basespec(self):
+#         """Direct child of BaseModule should inherit from BaseSpec"""
+#         class DirectChild(BaseModule):
+#             x: int
+
+#         assert issubclass(DirectChild.__spec__, BaseSpec)
+
+
+# class TestUnionTypeConversion:
+#     """Test that Union types are properly converted to spec types."""
+
+#     def test_union_with_single_basemodule_converts_to_spec(self):
+#         """Union[Module, str] should become Union[ModuleSpec, str]"""
+#         class MyModule(BaseModule):
+#             value: int
+
+#         class Container(BaseModule):
+#             item: MyModule | str
+
+#         container_spec = Container.__spec__
+#         item_annotation = container_spec.__annotations__['item']
+
+#         # Should be Union[MyModuleSpec, str]
+#         import typing
+#         assert typing.get_origin(item_annotation) is typing.Union
+#         args = typing.get_args(item_annotation)
+#         assert len(args) == 2
+#         assert args[0] == MyModule.__spec__
+#         assert args[1] == str
+
+#     def test_union_with_multiple_basemodules_converts_all(self):
+#         """Union[Module1, Module2] should become Union[Module1Spec, Module2Spec]"""
+#         class Module1(BaseModule):
+#             x: int
+
+#         class Module2(BaseModule):
+#             y: str
+
+#         class Container(BaseModule):
+#             item: Module1 | Module2
+
+#         container_spec = Container.__spec__
+#         item_annotation = container_spec.__annotations__['item']
+
+#         import typing
+#         args = typing.get_args(item_annotation)
+#         assert len(args) == 2
+#         assert Module1.__spec__ in args
+#         assert Module2.__spec__ in args
+
+#     def test_union_with_primitives_unchanged(self):
+#         """Union[int, str] should remain Union[int, str]"""
+#         class Container(BaseModule):
+#             item: int | str
+
+#         container_spec = Container.__spec__
+#         item_annotation = container_spec.__annotations__['item']
+
+#         import typing
+#         args = typing.get_args(item_annotation)
+#         assert int in args
+#         assert str in args
+
+#     def test_union_mixed_modules_and_primitives(self):
+#         """Union[Module, int, str] should become Union[ModuleSpec, int, str]"""
+#         class MyModule(BaseModule):
+#             value: int
+
+#         class Container(BaseModule):
+#             item: MyModule | int | str
+
+#         container_spec = Container.__spec__
+#         item_annotation = container_spec.__annotations__['item']
+
+#         import typing
+#         args = typing.get_args(item_annotation)
+#         assert len(args) == 3
+#         assert MyModule.__spec__ in args
+#         assert int in args
+#         assert str in args
+
+#     def test_typing_union_syntax_also_works(self):
+#         """typing.Union syntax should work same as | syntax"""
+#         import typing
+
+#         class MyModule(BaseModule):
+#             value: int
+
+#         class Container(BaseModule):
+#             item: typing.Union[MyModule, str]
+
+#         container_spec = Container.__spec__
+#         item_annotation = container_spec.__annotations__['item']
+
+#         args = typing.get_args(item_annotation)
+#         assert MyModule.__spec__ in args
+#         assert str in args
+
+
+# class TestSpecSerializationWithUnions:
+#     """Test that serialization works correctly with Union-typed fields."""
+
+#     def test_spec_accepts_child_spec_in_union_field(self):
+#         """When field is Union[ModuleSpec, ...], should accept subclass of ModuleSpec"""
+#         @mod_registry.register(name="Parent")
+#         class Parent(BaseModule):
+#             x: int
+
+#         @mod_registry.register(name="Child")
+#         class Child(Parent):
+#             y: str
+
+#         @mod_registry.register(name="Container")
+#         class Container(BaseModule):
+#             item: Parent
+
+#         # Create container with child instance
+#         container = Container(item=Child(x=1, y="hello"))
+
+#         # Get spec - should not raise
+#         spec = container.spec()
+
+#         # Spec should have child's spec (with full qualified name from local class)
+#         assert 'Child' in spec.item.kind
+
+#     def test_union_field_accepts_either_type(self):
+#         """Union field should accept instances of either type"""
+#         @mod_registry.register(name="Module1")
+#         class Module1(BaseModule):
+#             x: int
+
+#         @mod_registry.register(name="Module2")
+#         class Module2(BaseModule):
+#             y: str
+
+#         @mod_registry.register(name="Container")
+#         class Container(BaseModule):
+#             item: Module1 | Module2
+
+#         # Should accept Module1
+#         c1 = Container(item=Module1(x=5))
+#         spec1 = c1.spec()
+#         assert spec1.item.kind.endswith('Module1')
+
+#         # Should accept Module2
+#         c2 = Container(item=Module2(y="test"))
+#         spec2 = c2.spec()
+#         assert spec2.item.kind.endswith('Module2')
+

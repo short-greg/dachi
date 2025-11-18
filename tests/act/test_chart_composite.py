@@ -8,8 +8,8 @@ import asyncio
 import pytest
 
 from dachi.act._chart._composite import CompositeState
-from dachi.act._chart._region import Region, Rule
-from dachi.act._chart._state import State, FinalState, StreamState
+from dachi.act._chart._region import Region
+from dachi.act._chart._state import State, FinalState
 from dachi.act._chart._base import ChartStatus, InvalidTransition
 from dachi.act._chart._event import EventQueue, EventPost
 from dachi.core import Scope, ModuleList
@@ -48,23 +48,23 @@ class TestCompositeStateInit:
     """Test __post_init__ method"""
 
     def test_post_init_calls_parent_init(self):
-        composite = CompositeState(regions=ModuleList(items=[]))
+        composite = CompositeState(regions=ModuleList())
         assert composite._status.get() == ChartStatus.WAITING
 
     def test_post_init_initializes_tasks_to_empty_list(self):
-        composite = CompositeState(regions=ModuleList(items=[]))
+        composite = CompositeState(regions=ModuleList())
         assert composite._tasks == []
 
     def test_post_init_initializes_finished_regions_to_empty_set(self):
-        composite = CompositeState(regions=ModuleList(items=[]))
+        composite = CompositeState(regions=ModuleList())
         assert composite._finished_regions == set()
 
     def test_post_init_sets_status_to_waiting(self):
-        composite = CompositeState(regions=ModuleList(items=[]))
+        composite = CompositeState(regions=ModuleList())
         assert composite.get_status() == ChartStatus.WAITING
 
     def test_post_init_with_no_regions(self):
-        composite = CompositeState(regions=ModuleList(items=[]))
+        composite = CompositeState(regions=ModuleList())
         assert len(composite.regions) == 0
 
     def test_post_init_with_single_region(self):

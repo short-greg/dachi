@@ -38,12 +38,12 @@ from functools import wraps
 import pydantic
 
 # local
-from ..core import BaseModule
+from ..core import Module
 from ._process import (
     Process, AsyncProcess, StreamProcess, 
     AsyncStreamProcess
 )
-from ..core import Param, END_TOK, modfield
+from ..core import Param, END_TOK
 from ..utils import primitives, str_formatter
 from ._msg import ToPrompt
 from ._resp import (
@@ -54,22 +54,30 @@ Engine: typing.TypeAlias = Process | AsyncProcess | StreamProcess | AsyncStreamP
 S = typing.TypeVar('S')
 # TODO: MOVE OUT OF HERE
 
+from pydantic import Field
 
-class IBase(BaseModule):
+class IBase(Module):
     """
     This is the base class for wrapping an Instruction functor. It is used to create an instruction when called.
     """
     f: typing.Callable
     is_method: bool = False
-    out_conv: ToOut = modfield(default=None)
+    out_conv: ToOut = Field(default=None, exclude=True)
 
-    def __post_init__(self):
+    _docstring: str
+    _name: str
+    _signature: str
+    _sig_params: typing.Dict[str, inspect.Parameter]
+    _return_annotation: typing.Type
+
+    def model_post_init(self, __context):
         """ Initializes the IBase instance.
         Args:
             f (Callable): The function to be wrapped as an instruction.
             is_method (bool, optional): Indicates if the function is a method. Defaults to False.
             out (OutConv, optional): The output converter that converts the output of the LLM into a more useful format. Defaults to None.
         """
+        super().model_post_init(__context)
         self._docstring = self.f.__doc__
         self._name = self.f.__name__
         self._signature = str(inspect.signature(self.f))
@@ -90,7 +98,6 @@ class IBase(BaseModule):
             else:
                 # Default case - use TextOut
                 self.out_conv = TextOut()
-
 
     def _align_params(
         self, *args, **kwargs
@@ -194,7 +201,7 @@ class SigF(IBase):
     train: bool = False
     doc: str = ''
 
-    def __post_init__(self):
+    def model_post_init(self, __context):
         """
         Args:
             f: The function to wrap
@@ -203,7 +210,7 @@ class SigF(IBase):
             train (bool, optional): Whether to train the instruction. Defaults to False.
             out (OutConv, optional): The out to process the output. Defaults to None.
         """
-        super().__post_init__()
+        super().model_post_init(__context)
         self.doc = self.doc or self._docstring
         self._doc_param = Param[str](
             data=self.doc,
@@ -251,34 +258,31 @@ class SigF(IBase):
         return self._return_annotation
 
 
-class FuncDecBase(object):
+class FuncDecBase(pydantic.BaseModel):
     """This is used to decorate an "instruct" function
     that will be used 
     """
 
-    def __init__(
-        self, 
-        engine,
-        inst: IBase, 
-        to_msg: ToPrompt=None,
-        instance=None,
-        kwargs: typing.Dict=None
-    ):
-        """Initialize the Func Decorator
+    engine: StreamProcess | Process | AsyncProcess | AsyncStreamProcess
+    inst: IBase
+    to_msg: ToPrompt
+    _instance: typing.Any = pydantic.PrivateAttr(default=None)
+    _kwargs: typing.Dict | None = pydantic.PrivateAttr(default=None)
 
-        Args:
-            engine (Engine): The engine to use for the function
-            inst (IBase): The instruction base to use
-            to_msg (ToMsg, optional): The function to convert the Cue to a Msg. Defaults to None.
-            instance (optional): The instance to use if a method. Defaults to None.
-            kwargs (typing.Dict, optional): The kwargs to pass to the engine. Defaults to None.
-        """
-        super().__init__()
-        self.engine = engine
-        self.instance = instance
-        self.inst = inst
-        self.to_msg = to_msg if to_msg is not None else (lambda x: x)
-        self.kwargs = kwargs
+    # def model_post_init(
+    #     self, __context
+    # ):
+    #     """Initialize the Func Decorator
+
+    #     Args:
+    #         engine (Engine): The engine to use for the function
+    #         inst (IBase): The instruction base to use
+    #         to_msg (ToMsg, optional): The function to convert the Cue to a Msg. Defaults to None.
+    #         instance (optional): The instance to use if a method. Defaults to None.
+    #         kwargs (typing.Dict, optional): The kwargs to pass to the engine. Defaults to None.
+    #     """
+    #     super().model_post_init(__context)
+    #     # self.to_msg = to_msg if to_msg is not None else (lambda x: x)
 
     @abstractmethod
     def __call__(self, *args, **kwargs):
@@ -298,8 +302,8 @@ class FuncDecBase(object):
             object: The instance if a method is decorated or None
         """
         if self.inst.is_method:
-            if self.instance is not None:
-                return self.instance, args
+            if self._instance is not None:
+                return self._instance, args
             
             return args[0], args[1:]
         return None, args
@@ -482,17 +486,21 @@ class StreamDec(FuncDecBase, StreamProcess):
     A class that allows one to decorate a streaming function with an "instruction" so that the function will be an LLM (Language Model) call.
     """
 
-    def __init__(
-        self, 
-        engine: StreamProcess,
-        inst: IBase, 
-        to_msg: ToPrompt=None,
-        instance=None,
-        kwargs: typing.Dict=None
-    ):
-        super().__init__(
-            engine, inst, to_msg, instance, kwargs
-        )
+    # engine: StreamProcess
+    # inst: IBase
+    # to_msg: ToPrompt
+
+    # def __init__(
+    #     self, 
+    #     engine: StreamProcess,
+    #     inst: IBase, 
+    #     to_msg: ToPrompt=None,
+    #     instance=None,
+    #     kwargs: typing.Dict=None
+    # ):
+    #     super().__init__(
+    #         engine, inst, to_msg, instance, kwargs
+    #     )
 
     def stream(self, *args, **kwargs):
         """
@@ -611,7 +619,6 @@ def instructfunc(
     is_method: bool=False,
     to_async: bool=False,
     to_stream: bool=False,
-    out: typing.Tuple[str] | str = 'content',
     kwargs: typing.Dict=None
 ):
     """Decorate a method with instructfunc
@@ -660,7 +667,6 @@ def instructmethod(
     engine: Engine=None, 
     to_async: bool=False,
     to_stream: bool=False,
-    out: typing.Tuple[str] | str = 'content',
     kwargs: typing.Dict=None
 ):
     """Decorate a method with instructfunc
@@ -674,7 +680,6 @@ def instructmethod(
     return instructfunc(
         engine, is_method=True, to_async=to_async, 
         to_stream=to_stream,
-        out=out,
         kwargs=kwargs
     )
 

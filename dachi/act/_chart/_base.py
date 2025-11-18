@@ -6,8 +6,8 @@ from abc import ABC, abstractmethod
 import asyncio
 import logging
 
-from dachi.core import BaseModule, Attr, Ctx, Scope, RestrictedSchemaMixin
-from ._event import EventPost, EventQueue
+from dachi.core import Module, Runtime, Ctx, PrivateRuntime
+from ._event import EventPost
 
 logger = logging.getLogger("dachi.statechart")
 
@@ -46,13 +46,6 @@ class ChartStatus(Enum):
         """Returns True if in a final state (SUCCESS, FAILURE, or CANCELED)."""
         return self in (ChartStatus.SUCCESS, ChartStatus.FAILURE, ChartStatus.CANCELED)
 
-
-# TODO: Determine if StatusResult is needed
-# class StatusResult:
-#     """Result of a status check."""
-#     def __init__(self, status: ChartStatus, message: Optional[str] = None):
-#         self.status = status
-#         self.message = message
 
 
 class InvalidTransition(Exception):
@@ -101,16 +94,16 @@ class Recoverable(ABC):
         pass
 
 
-class ChartBase(BaseModule):
+class ChartBase(Module):
     """Base class for all state types."""
     name: Optional[str] = None
+    _finish_callbacks: Runtime[Dict[Callable, Tuple[tuple, dict]]] = PrivateRuntime(default_factory=dict)
+    _status: Runtime[ChartStatus] = PrivateRuntime(default_factory=lambda: ChartStatus.WAITING)
 
-    def __post_init__(self):
-        super().__post_init__()
+    def model_post_init(self, __context) -> None:
+        super().model_post_init(__context)
         if self.name is None:
             self.name = self.__class__.__name__
-        self._status = Attr[ChartStatus](data=ChartStatus.WAITING)
-        self._finish_callbacks: Dict[Callable, Tuple[tuple, dict]] = {}
 
     @property
     def status(self) -> ChartStatus:
@@ -146,7 +139,10 @@ class ChartBase(BaseModule):
 
         self._status.set(ChartStatus.CANCELED)
 
-    async def finish(self, post: EventPost | None=None, ctx: Ctx | None=None) -> None:
+    async def finish(
+        self, post: EventPost | None=None, 
+        ctx: Ctx | None=None
+    ) -> None:
         """Mark as finished and invoke finish callbacks.
 
         Cancels all timers created by this component's Post instance,
@@ -199,45 +195,45 @@ class ChartBase(BaseModule):
         return self._status.get()
 
 
-class RestrictedStateSchemaMixin(RestrictedSchemaMixin):
-    """
-    Mixin for state charts with state-specific schema restrictions.
+# class RestrictedStateSchemaMixin(RestrictedSchemaMixin):
+#     """
+#     Mixin for state charts with state-specific schema restrictions.
 
-    Uses isinstance(variant, RestrictedStateSchemaMixin) for recursion checks.
-    This ensures we only recurse on state-compatible classes, preventing
-    task/state cross-contamination.
+#     Uses isinstance(variant, RestrictedStateSchemaMixin) for recursion checks.
+#     This ensures we only recurse on state-compatible classes, preventing
+#     task/state cross-contamination.
 
-    This mixin provides the domain-specific behavior for state charts,
-    inheriting all base functionality from core.RestrictedSchemaMixin.
-    """
+#     This mixin provides the domain-specific behavior for state charts,
+#     inheriting all base functionality from core.RestrictedSchemaMixin.
+#     """
 
-    @classmethod
-    def restricted_schema(
-        cls,
-        *,
-        states: list | None = None,
-        _profile: str = "shared",
-        _seen: dict | None = None,
-        **kwargs
-    ) -> dict:
-        """
-        Generate restricted schema for state chart states.
+#     @classmethod
+#     def restricted_schema(
+#         cls,
+#         *,
+#         states: list | None = None,
+#         _profile: str = "shared",
+#         _seen: dict | None = None,
+#         **kwargs
+#     ) -> dict:
+#         """
+#         Generate restricted schema for state chart states.
 
-        Must be implemented by subclasses (e.g., Region, CompositeState, StateChart).
+#         Must be implemented by subclasses (e.g., Region, CompositeState, StateChart).
 
-        Args:
-            states: List of allowed state variants (can be State classes, StateSpec classes,
-                   StateSpec instances, or schema dicts)
-            _profile: "shared" (use $defs/Allowed_*) or "inline" (use oneOf)
-            _seen: Cycle detection dict
-            **kwargs: Additional arguments passed to nested restricted_schema() calls
+#         Args:
+#             states: List of allowed state variants (can be State classes, StateSpec classes,
+#                    StateSpec instances, or schema dicts)
+#             _profile: "shared" (use $defs/Allowed_*) or "inline" (use oneOf)
+#             _seen: Cycle detection dict
+#             **kwargs: Additional arguments passed to nested restricted_schema() calls
 
-        Returns:
-            Restricted schema dict
+#         Returns:
+#             Restricted schema dict
 
-        Raises:
-            NotImplementedError: Must be implemented by subclasses
-        """
-        raise NotImplementedError(
-            f"{cls.__name__} must implement restricted_schema()"
-        )
+#         Raises:
+#             NotImplementedError: Must be implemented by subclasses
+#         """
+#         raise NotImplementedError(
+#             f"{cls.__name__} must implement restricted_schema()"
+#         )

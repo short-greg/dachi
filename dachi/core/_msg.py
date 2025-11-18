@@ -873,6 +873,7 @@ class TreeDialog(BaseDialog):
         
     def model_post_init(self, __context) -> None:
         """Initialize after model validation."""
+        super().model_post_init(__context)
         self._update()
         
     def _generate_id(self) -> str:

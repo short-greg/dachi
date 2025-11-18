@@ -3,54 +3,15 @@ from abc import abstractmethod
 import typing as t
 
 # local
-from ._core import Task, TaskStatus, CompositeTask, Leaf, InitVar, RestrictedTaskSchemaMixin
+from ._core import Task, TaskStatus, CompositeTask, LeafTask, RestrictedTaskSchemaMixin, TASK, LEAF
 from dachi.core._base import filter_class_variants
 
 
-class Decorator(CompositeTask, RestrictedTaskSchemaMixin):
+class Decorator(CompositeTask, t.Generic[TASK]):
     """A task that decorates another task
     """
 
-    task: Task
-
-    @classmethod
-    def restricted_schema(cls, *, tasks=None, _profile="shared", _seen=None, **kwargs):
-        """
-        Generate restricted schema for Decorator.
-
-        Pattern C: Single Field - processes task variants for the task field.
-
-        Args:
-            tasks: List of allowed task variants for task field
-            _profile: "shared" (default) or "inline"
-            _seen: Cycle detection dict
-            **kwargs: Passed to nested restricted_schema() calls
-
-        Returns:
-            Restricted schema dict with task field limited to specified variants
-        """
-        # If no tasks provided, return unrestricted schema
-        if tasks is None:
-            return cls.schema()
-
-        # Process task variants (handles RestrictedTaskSchemaMixin recursion)
-        task_schemas = cls._schema_process_variants(
-            tasks,
-            restricted_schema_cls=RestrictedTaskSchemaMixin,
-            _seen=_seen,
-            tasks=tasks,
-            **kwargs
-        )
-
-        # Update schema's task field (single Task)
-        schema = cls.schema()
-        return cls._schema_update_single_field(
-            schema,
-            field_name="task",
-            placeholder_name="TaskSpec",
-            variant_schemas=task_schemas,
-            profile=_profile
-        )
+    task: TASK
 
     def update_loop(self) -> t.Iterator[Task]:
         """Get the sub-tasks of the composite task
@@ -118,6 +79,52 @@ class Until(Decorator):
             self.task.reset()
         return TaskStatus.RUNNING
 
+    # @classmethod
+    # def restricted_schema(
+    #     cls, 
+    #     *, 
+    #     tasks=None, 
+    #     _profile="shared", 
+    #     _seen=None, 
+    #     **kwargs
+    # ):
+    #     """
+    #     Generate restricted schema for Decorator.
+
+    #     Pattern C: Single Field - processes task variants for the task field.
+
+    #     Args:
+    #         tasks: List of allowed task variants for task field
+    #         _profile: "shared" (default) or "inline"
+    #         _seen: Cycle detection dict
+    #         **kwargs: Passed to nested restricted_schema() calls
+
+    #     Returns:
+    #         Restricted schema dict with task field limited to specified variants
+    #     """
+    #     # If no tasks provided, return unrestricted schema
+    #     if tasks is None:
+    #         return cls.schema()
+
+    #     # Process task variants (handles RestrictedTaskSchemaMixin recursion)
+    #     task_schemas = cls._schema_process_variants(
+    #         tasks,
+    #         restricted_schema_cls=RestrictedTaskSchemaMixin,
+    #         _seen=_seen,
+    #         tasks=tasks,
+    #         **kwargs
+    #     )
+
+    #     # Update schema's task field (single Task)
+    #     schema = cls.schema()
+    #     return cls._schema_update_single_field(
+    #         schema,
+    #         field_name="task",
+    #         placeholder_name="TaskSpec",
+    #         variant_schemas=task_schemas,
+    #         profile=_profile
+    #     )
+
 
 class AsLongAs(Decorator):
     """Loop while a condition is met
@@ -162,12 +169,12 @@ class Not(Decorator):
         return status.invert()
 
 
-class BoundTask(Task, RestrictedTaskSchemaMixin):
+class BoundTask(Task, t.Generic[LEAF]):
     """Bind will map variables in the context to
     the inputs of the decorated task
     """
 
-    leaf: Leaf
+    leaf: LEAF
     bindings: t.Dict[str, str]
 
     @classmethod
@@ -192,7 +199,7 @@ class BoundTask(Task, RestrictedTaskSchemaMixin):
             return cls.schema()
 
         # Filter to only Leaf subclasses
-        leaf_variants = list(filter_class_variants(Leaf, tasks))
+        leaf_variants = list(filter_class_variants(LeafTask, tasks))
 
         # If no valid Leaf variants, return unrestricted schema
         if not leaf_variants:

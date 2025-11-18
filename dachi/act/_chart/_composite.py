@@ -5,15 +5,18 @@ import logging
 
 from typing import Literal
 from ._state import BaseState
-from ._base import ChartStatus, InvalidTransition, Recoverable, RestrictedStateSchemaMixin
+from ._base import ChartStatus, InvalidTransition, Recoverable, Runtime
 from ._event import EventPost, ChartEventHandler, Event
 from ._region import Region, ValidationResult
 from dachi.core import Ctx, ModuleList
 
+
 logger = logging.getLogger("dachi.statechart")
 
+V = t.TypeVar("V", bound=BaseState)
 
-class CompositeState(BaseState, ChartEventHandler, Recoverable, RestrictedStateSchemaMixin):
+
+class CompositeState(BaseState, ChartEventHandler, Recoverable, t.Generic[V]):
     """Composite state containing nested regions.
 
     Lifecycle:
@@ -27,15 +30,9 @@ class CompositeState(BaseState, ChartEventHandler, Recoverable, RestrictedStateS
     even though run() returns immediately. This avoids busy-waiting loops
     by using callbacks (finish_region) to track completion.
     """
-    regions: ModuleList[Region]
-
-    def __post_init__(self):
-
-        super().__post_init__()
-        if isinstance(self.regions, list):
-            self.regions = ModuleList(items=self.regions)
-        self._tasks = []
-        self._finished_regions = set()
+    regions: ModuleList[Region[V]]
+    _tasks: Runtime[t.List[asyncio.Task]] = t.PrivateRuntime(default_factory=list)
+    _finished_regions: Runtime[t.Set[str]] = t.PrivateRuntime(default_factory=set)
 
     def __getitem__(self, region_name: str) -> Region:
         """Get region by name.
@@ -160,7 +157,6 @@ class CompositeState(BaseState, ChartEventHandler, Recoverable, RestrictedStateS
                 child_ctx = ctx.child(i)
                 await region.handle_event(event, child_post, child_ctx)
 
-
     def exit(self, post: EventPost, ctx: Ctx) -> None:
         """Called when exiting the state. Sets final status.
 
@@ -206,46 +202,6 @@ class CompositeState(BaseState, ChartEventHandler, Recoverable, RestrictedStateS
         """Check if any child regions can recover."""
         return any(region.can_recover() for region in self.regions)
 
-    @classmethod
-    def restricted_schema(cls, *, states: t.List[BaseState] | None = None, _profile: str = "shared", _seen: dict | None = None, **kwargs):
-        """
-        Generate restricted schema for CompositeState with allowed state variants.
-
-        Pattern A: Pass-Through - pass states down to child Region.
-
-        Args:
-            states: List of allowed state variants
-            _profile: "shared" (use $defs/Allowed_*) or "inline" (use oneOf)
-            _seen: Cycle detection dict
-            **kwargs: Additional arguments passed to nested restricted_schema() calls
-
-        Returns:
-            Restricted schema dict
-        """
-        if states is None:
-            return cls.schema()
-
-        # Pattern A: Pass states to Region.restricted_schema()
-        region_schema = Region.restricted_schema(
-            states=states,
-            _profile=_profile,
-            _seen=_seen,
-            **kwargs
-        )
-
-        # Get base schema and merge $defs from region_schema (Pattern A requirement)
-        schema = cls.schema()
-        cls._schema_merge_defs(schema, region_schema)
-
-        # Update schema's regions field (ModuleList) with ONE Region schema
-        return cls._schema_update_list_field(
-            schema,
-            field_name="regions",
-            placeholder_name="RegionSpec",
-            variant_schemas=[region_schema],
-            profile=_profile
-        )
-
     def recover(self, policy: Literal["shallow", "deep"]) -> None:
         """Recover child regions using the given policy."""
         if not self.can_recover():
@@ -268,3 +224,43 @@ class CompositeState(BaseState, ChartEventHandler, Recoverable, RestrictedStateS
         for region in self.regions:
             results.append(region.validate())
         return results
+
+    # @classmethod
+    # def restricted_schema(cls, *, states: t.List[BaseState] | None = None, _profile: str = "shared", _seen: dict | None = None, **kwargs):
+    #     """
+    #     Generate restricted schema for CompositeState with allowed state variants.
+
+    #     Pattern A: Pass-Through - pass states down to child Region.
+
+    #     Args:
+    #         states: List of allowed state variants
+    #         _profile: "shared" (use $defs/Allowed_*) or "inline" (use oneOf)
+    #         _seen: Cycle detection dict
+    #         **kwargs: Additional arguments passed to nested restricted_schema() calls
+
+    #     Returns:
+    #         Restricted schema dict
+    #     """
+    #     if states is None:
+    #         return cls.schema()
+
+    #     # Pattern A: Pass states to Region.restricted_schema()
+    #     region_schema = Region.restricted_schema(
+    #         states=states,
+    #         _profile=_profile,
+    #         _seen=_seen,
+    #         **kwargs
+    #     )
+
+    #     # Get base schema and merge $defs from region_schema (Pattern A requirement)
+    #     schema = cls.schema()
+    #     cls._schema_merge_defs(schema, region_schema)
+
+    #     # Update schema's regions field (ModuleList) with ONE Region schema
+    #     return cls._schema_update_list_field(
+    #         schema,
+    #         field_name="regions",
+    #         placeholder_name="RegionSpec",
+    #         variant_schemas=[region_schema],
+    #         profile=_profile
+    #     )

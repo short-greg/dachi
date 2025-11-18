@@ -31,7 +31,7 @@ import numpy as np
 import pydantic
 
 # local
-from ..core import BaseModule, ModuleList, RestrictedSchemaMixin, modfield
+from ..core import Module, ModuleList
 from ..utils import (
     is_async_function,
     is_generator_function,
@@ -44,7 +44,7 @@ from ..utils import (
 S = typing.TypeVar('S', bound=pydantic.BaseModel)
 
 
-class Process(BaseModule, ABC):
+class Process(Module, ABC):
     """
     Base class for synchronous processing modules.
     It inherits from BaseModule and implements the forward method.
@@ -69,8 +69,10 @@ class Process(BaseModule, ABC):
         """
         return self.forward(*args, **kwargs)
 
+PROCESS = typing.TypeVar('PROCESS', bound=Process)
 
-class AsyncProcess(BaseModule, ABC):
+
+class AsyncProcess(Module, ABC):
     """Base class for Async Processes. It defines the
     aforward method that must be implemented by subclasses.
     Refer to the BaseModule documentation for details on field definitions and initialization.
@@ -89,8 +91,10 @@ class AsyncProcess(BaseModule, ABC):
         """
         pass
 
+ASYNC_PROCESS = typing.TypeVar('ASYNC_PROCESS', bound=AsyncProcess)
 
-class StreamProcess(BaseModule, ABC):
+
+class StreamProcess(Module, ABC):
     """Base class for Stream Processes. It defines the
     stream method that must be implemented by subclasses.
 
@@ -107,7 +111,10 @@ class StreamProcess(BaseModule, ABC):
         pass
 
 
-class AsyncStreamProcess(BaseModule, ABC):
+STREAM = typing.TypeVar('STREAM', bound=StreamProcess)
+
+
+class AsyncStreamProcess(Module, ABC):
     """Base class for AsyncStream Processes. It defines the
     stream method that must be implemented by subclasses.
 
@@ -121,6 +128,9 @@ class AsyncStreamProcess(BaseModule, ABC):
             Streamer: The Streamer to loop over
         """
         pass
+
+
+ASYNC_STREAM = typing.TypeVar('ASYNC_STREAM', bound=AsyncStreamProcess)
 
 
 def forward(
@@ -405,8 +415,10 @@ def recur(
         Recur(data=d, n=n) for d in data
     )
 
+PA = typing.TypeVar('PA', bound=Process | AsyncProcess)
 
-class Sequential(ModuleList[Process | AsyncProcess], Process, AsyncProcess):
+
+class Sequential(ModuleList[PA], Process, AsyncProcess):
     """
     Sequential class wraps multiple modules into a sequential list of modules that will be executed one after the other.
     Methods:
@@ -465,7 +477,7 @@ class Sequential(ModuleList[Process | AsyncProcess], Process, AsyncProcess):
 
 
 class AsyncParallel(
-    ModuleList[AsyncProcess], AsyncProcess
+    ModuleList[ASYNC_PROCESS], AsyncProcess
 ):
     """Calls multiple modules in parallel and then 
     combines the results into a list
@@ -527,7 +539,6 @@ def process_loop(
 
     sz = None
     parallizable = False
-    print('sz', sz)
     if isinstance(processes, list):
 
         sz = len(processes)
@@ -810,7 +821,7 @@ class Partial(pydantic.BaseModel):
         )
 
 
-class StreamSequence(StreamProcess):
+class StreamSequence(StreamProcess, typing.Generic[PROCESS, STREAM]):
     """A process sequence that wraps a StreamProcess with a pre and post process.
     The pre and post processes are standard Processes that are applied before and after the streaming process.
     Each streamed item is postprocessed
@@ -823,9 +834,9 @@ class StreamSequence(StreamProcess):
     )
     """
 
-    pre: Process = modfield()
-    mod: StreamProcess = modfield()
-    post: Process = modfield()
+    pre: PROCESS
+    mod: STREAM
+    post: PROCESS
 
     def stream(self, x: typing.Any) -> typing.Iterator:
         """Stream the input through the pre, mod, and post processes
@@ -840,7 +851,7 @@ class StreamSequence(StreamProcess):
             yield self.post(x_i)
 
 
-class AsyncStreamSequence(AsyncStreamProcess):
+class AsyncStreamSequence(AsyncStreamProcess, typing.Generic[PA, ASYNC_STREAM]):
     """Asynchronous stream sequence that applies a pre-processing, a module, and a post-processing step.
 
     Example:
@@ -853,9 +864,9 @@ class AsyncStreamSequence(AsyncStreamProcess):
         print(y)
     """
 
-    pre: Process | AsyncProcess = modfield()
-    mod: AsyncStreamProcess = modfield()
-    post: Process | AsyncProcess = modfield()
+    pre: PA
+    mod: ASYNC_STREAM
+    post: PA
 
     async def astream(self, x: typing.Any) -> typing.AsyncIterator:
 
@@ -874,17 +885,8 @@ class Func(Process):
     """Function process that applies a callable to the input data.
     """
     f: typing.Callable
-    args: typing.List[typing.Any] = None
-    kwargs: typing.Dict[str, typing.Any] = None
-
-    def __post_init__(self):
-        """Initialize the function process with default arguments if not provided.
-
-        """
-        if self.args is None:
-            self.args = []
-        if self.kwargs is None:
-            self.kwargs = {}
+    args: typing.List[typing.Any] = pydantic.Field(default_factory=list)
+    kwargs: typing.Dict[str, typing.Any] = pydantic.Field(default_factory=dict)
 
     def forward(self, *args, **kwargs):
         """
@@ -906,8 +908,8 @@ class AsyncFunc(AsyncProcess):
     """A function wrapper
     """
     f: typing.Callable
-    args: typing.List[typing.Any]
-    kwargs: typing.Dict[str, typing.Any]
+    args: typing.List[typing.Any] = pydantic.Field(default_factory=list)
+    kwargs: typing.Dict[str, typing.Any] = pydantic.Field(default_factory=dict)
 
     async def forward(self, *args, **kwargs):
 
@@ -916,45 +918,45 @@ class AsyncFunc(AsyncProcess):
         )
 
 
-class RestrictedProcessSchemaMixin(RestrictedSchemaMixin):
-    """
-    Domain-specific mixin for processes with process-specific schema restrictions.
+# class RestrictedProcessSchemaMixin(RestrictedSchemaMixin):
+#     """
+#     Domain-specific mixin for processes with process-specific schema restrictions.
 
-    Uses isinstance(variant, RestrictedProcessSchemaMixin) for recursion checks.
-    This ensures we only recurse on process-compatible classes, preventing
-    process/task/state cross-contamination.
+#     Uses isinstance(variant, RestrictedProcessSchemaMixin) for recursion checks.
+#     This ensures we only recurse on process-compatible classes, preventing
+#     process/task/state cross-contamination.
 
-    This mixin provides the domain-specific behavior for processes,
-    inheriting all base functionality from core.RestrictedSchemaMixin.
-    """
+#     This mixin provides the domain-specific behavior for processes,
+#     inheriting all base functionality from core.RestrictedSchemaMixin.
+#     """
 
-    @classmethod
-    def restricted_schema(
-        cls,
-        *,
-        processes: list | None = None,
-        _profile: str = "shared",
-        _seen: dict | None = None,
-        **kwargs
-    ) -> dict:
-        """
-        Generate restricted schema for processes.
+#     @classmethod
+#     def restricted_schema(
+#         cls,
+#         *,
+#         processes: list | None = None,
+#         _profile: str = "shared",
+#         _seen: dict | None = None,
+#         **kwargs
+#     ) -> dict:
+#         """
+#         Generate restricted schema for processes.
 
-        Must be implemented by subclasses (e.g., ProcessCall, DataFlow).
+#         Must be implemented by subclasses (e.g., ProcessCall, DataFlow).
 
-        Args:
-            processes: List of allowed Process/AsyncProcess types
-            _profile: "shared" (use $defs/Allowed_*) or "inline" (use oneOf)
-            _seen: Cycle detection dict
-            **kwargs: Additional arguments passed to nested restricted_schema() calls
+#         Args:
+#             processes: List of allowed Process/AsyncProcess types
+#             _profile: "shared" (use $defs/Allowed_*) or "inline" (use oneOf)
+#             _seen: Cycle detection dict
+#             **kwargs: Additional arguments passed to nested restricted_schema() calls
 
-        Returns:
-            Restricted schema dict
+#         Returns:
+#             Restricted schema dict
 
-        Raises:
-            NotImplementedError: Must be implemented by subclasses
-        """
-        raise NotImplementedError(
-            f"{cls.__name__} must implement restricted_schema()"
-        )
+#         Raises:
+#             NotImplementedError: Must be implemented by subclasses
+#         """
+#         raise NotImplementedError(
+#             f"{cls.__name__} must implement restricted_schema()"
+#         )
 

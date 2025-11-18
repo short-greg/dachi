@@ -10,9 +10,9 @@ conventions.  All async tests use `pytest.mark.asyncio`.
 """
 
 import pytest
-from dachi.core import InitVar, Attr, Scope
+from dachi.core import InitVar, Runtime, Scope, PrivateRuntime
 from .utils import create_test_ctx
-from dachi.act._bt._core import TaskStatus, Leaf
+from dachi.act._bt._core import TaskStatus, LeafTask
 from dachi.act._bt._decorators import Not, Until, BoundTask, Decorator
 
 from dachi.act._bt._leafs import Action, Condition
@@ -38,16 +38,10 @@ class ATask(Action):
 class SetStorageAction(Action):
     """Action whose success/failure depends on *value*."""
 
-    value: InitVar[int] = 4
-
-    def __post_init__(self, value: int):
-        # TODO: enforce post init is called
-        super().__post_init__()
-        self.value = Attr[int](value)
+    value: int = 4 
 
     async def execute(self) -> TaskStatus:  # noqa: D401
-        print('Acting!')
-        return TaskStatus.FAILURE if self.value.data < 0 else TaskStatus.SUCCESS
+        return TaskStatus.FAILURE if self.value < 0 else TaskStatus.SUCCESS
 
 
 class SampleCondition(Condition):
@@ -62,16 +56,11 @@ class SampleCondition(Condition):
 class SetStorageActionCounter(Action):
     """Counts invocations – succeeds on the 2nd tick unless *value* == 0."""
 
-    # __store__ = ["value"]
-    value: InitVar[int] = 4
-
-    def __post_init__(self, value: int=4):
-        super().__post_init__()
-        self._count = 0
-        self.value = Attr[int](value)
+    value: int = 4
+    _count: Runtime[int] = PrivateRuntime(0)
 
     async def execute(self) -> TaskStatus:  # noqa: D401
-        if self.value.data == 0:
+        if self.value == 0:
             return TaskStatus.FAILURE
         self._count += 1
         if self._count == 2:
@@ -85,29 +74,21 @@ class SetStorageActionCounter(Action):
 class ImmediateAction(Action):
     """A task that immediately returns a fixed *status*."""
 
-    status_val: InitVar[TaskStatus]
-
-    def __post_init__(self, status_val: TaskStatus):
-        super().__post_init__()
-        self._status_val = status_val
+    status_val: TaskStatus = TaskStatus.SUCCESS
 
     async def execute(self) -> TaskStatus:  # noqa: D401
-        return self._status_val
+        return self.status_val
 
 
 class SetStorageActionCounter(Action):
     """Counts invocations – succeeds on the 2nd tick unless *value* == 0."""
 
     # __store__ = ["value"]
-    value: InitVar[int] = 4
-
-    def __post_init__(self, value: int=4):
-        super().__post_init__()
-        self._count = 0
-        self.value = Attr[int](value)
+    value: int = 4
+    _count: Runtime[int] = PrivateRuntime(0)
 
     async def execute(self) -> TaskStatus:  # noqa: D401
-        if self.value.data == 0:
+        if self.value == 0:
             return TaskStatus.FAILURE
         self._count += 1
         if self._count == 2:
@@ -115,6 +96,7 @@ class SetStorageActionCounter(Action):
         if self._count < 0:
             return TaskStatus.FAILURE
         return TaskStatus.RUNNING
+
 
 @pytest.mark.asyncio
 class TestNotDecorator:
@@ -165,6 +147,8 @@ from dachi.act._bt._serial import Sequence
 class ContextTestAction(Action):
     """Test action with configurable input/output ports for context testing"""
     
+    _call_count: Runtime[int] = PrivateRuntime(0)
+
     class inputs:
         target: tuple = (0, 0, 0)
         attempts: int = 1
@@ -173,10 +157,6 @@ class ContextTestAction(Action):
     class outputs:
         result: str
         success: bool
-    
-    def __post_init__(self):
-        super().__post_init__()
-        self._call_count = 0
     
     async def execute(self, target: tuple = (0, 0, 0), attempts: int = 1, optional_param: str = "default_value"):
         self._call_count += 1
@@ -196,15 +176,14 @@ class ContextTestAction(Action):
 class SimpleContextAction(Action):
     """Simpler action that just returns success and configurable outputs"""
     
+    output_value: int = 42
+
     class outputs:
         value: int
-        
-    def __init__(self, output_value: int = 42):
-        super().__init__()
-        self._output_value = output_value
     
     async def execute(self):
-        return TaskStatus.SUCCESS, {"value": self._output_value}
+        return TaskStatus.SUCCESS, {"value": self.output_value}
+
 
 class MockTestDecorator(Decorator):
     """Test decorator that just forwards context to wrapped task"""

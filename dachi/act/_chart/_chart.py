@@ -5,9 +5,8 @@ from typing import Any, Dict, List, Optional, Union, Literal
 from ._base import ChartBase, ChartStatus
 from ._state import BaseState
 from dataclasses import dataclass
-from dachi.core import RestrictedSchemaMixin
 
-from dachi.core import Attr, ModuleList, modlistfield
+from dachi.core import Runtime, ModuleList, modlistfield
 from dachi.core._scope import Scope, Ctx
 from ._event import Event, EventQueue, Timer, MonotonicClock, ChartEventHandler, EventPost
 
@@ -27,29 +26,44 @@ class ChartSnapshot:
 
 JSON = Union[Dict[str, Any], List[Any], str, int, float, bool, None]
 
+V = t.TypeVar("V", bound=BaseState)
 
-class StateChart(ChartBase, ChartEventHandler, RestrictedSchemaMixin):
+
+class StateChart(ChartBase, ChartEventHandler, t.Generic[V]):
     name: str
-    regions: ModuleList[Region] = modlistfield(default_factory=list)
+    regions: ModuleList[Region[V]] = modlistfield(default_factory=list)
     checkpoint_policy: Literal["yield", "hard"] = "yield" # currently not used
     queue_maxsize: int = 1024
     queue_overflow: Literal["drop_newest", "drop_oldest", "block"] = "drop_newest"
     emit_enforcement: Literal["none", "warn", "error"] = "warn" # currently not used
     auto_finish: bool = True # currently not used
 
-    def __post_init__(self) -> None:
+    _status = Runtime[ChartStatus]
+    _started_at: Runtime[Optional[float]]
+    _finished_at: Runtime[Optional[float]]
+    _stopping: Runtime[bool]
+    _regions_completed: Runtime[Dict[str, bool]]
+    _queue: EventQueue
+    _clock: MonotonicClock
+    _timer: Timer
+    _scope: Scope
+    _event_loop_task: Optional[asyncio.Task]
+    _event_tasks: t.Set[asyncio.Task]
+    _finish_callbacks: Dict[t.Callable, t.Tuple[tuple, dict]]
+
+    def model_post_init(self, __context) -> None:
         """Initialize the state chart and its status.
         Raises:
             ValueError: If no regions are defined.
         """
-        super().__post_init__()
+        super().model_post_init(__context)
 
-        self._status = Attr[ChartStatus](data=ChartStatus.WAITING)
-        self._started_at = Attr[Optional[float]](data=None)
-        self._finished_at = Attr[Optional[float]](data=None)
-        self._stopping = Attr[bool](data=False)
+        self._status = Runtime[ChartStatus](data=ChartStatus.WAITING)
+        self._started_at = Runtime[Optional[float]](data=None)
+        self._finished_at = Runtime[Optional[float]](data=None)
+        self._stopping = Runtime[bool](data=False)
 
-        self._regions_completed = Attr[Dict[str, bool]](data={
+        self._regions_completed = Runtime[Dict[str, bool]](data={
             region.name: region.is_completed() for region in self.regions
         })
         self._queue = EventQueue(
@@ -217,44 +231,6 @@ class StateChart(ChartBase, ChartEventHandler, RestrictedSchemaMixin):
                     ctx = self._scope.ctx(i)
                     await region.handle_event(event, post, ctx)
 
-    @classmethod
-    def restricted_schema(cls, *, states: t.List[BaseState] | None = None, _profile: str = "shared", _seen: dict | None = None, **kwargs):
-        """
-        Generate restricted schema for StateChart with allowed state variants.
-
-        Pattern A: Pass-Through - pass states down to child Region.
-
-        Args:
-            states: List of allowed state variants
-            _profile: "shared" (use $defs/Allowed_*) or "inline" (use oneOf)
-            _seen: Cycle detection dict
-            **kwargs: Additional arguments passed to nested restricted_schema() calls
-
-        Returns:
-            Restricted schema dict
-        """
-        if states is None:
-            return cls.schema()
-
-        # Get base schema
-        schema = cls.schema()
-
-        # Use descriptor to update regions field with Region schema
-        # Pattern A: states are passed through to Region.restricted_schema()
-        regions_field_schema, regions_defs = cls.regions.restricted_schema(
-            filter_schema_cls=RestrictedSchemaMixin,
-            variants=[Region],
-            _profile=_profile,
-            _seen=_seen,
-            states=states,
-            **kwargs
-        )
-
-        schema["properties"]["regions"] = regions_field_schema
-        schema["$defs"].update(regions_defs)
-
-        return schema
-
     async def stop(self) -> None:
         """Stop the state chart by stopping all running regions.
 
@@ -351,6 +327,44 @@ class StateChart(ChartBase, ChartEventHandler, RestrictedSchemaMixin):
             if raise_on_error and not result.is_valid():
                 result.raise_if_invalid()
         return results
+
+    # @classmethod
+    # def restricted_schema(cls, *, states: t.List[BaseState] | None = None, _profile: str = "shared", _seen: dict | None = None, **kwargs):
+    #     """
+    #     Generate restricted schema for StateChart with allowed state variants.
+
+    #     Pattern A: Pass-Through - pass states down to child Region.
+
+    #     Args:
+    #         states: List of allowed state variants
+    #         _profile: "shared" (use $defs/Allowed_*) or "inline" (use oneOf)
+    #         _seen: Cycle detection dict
+    #         **kwargs: Additional arguments passed to nested restricted_schema() calls
+
+    #     Returns:
+    #         Restricted schema dict
+    #     """
+    #     if states is None:
+    #         return cls.schema()
+
+    #     # Get base schema
+    #     schema = cls.schema()
+
+    #     # Use descriptor to update regions field with Region schema
+    #     # Pattern A: states are passed through to Region.restricted_schema()
+    #     regions_field_schema, regions_defs = cls.regions.restricted_schema(
+    #         filter_schema_cls=RestrictedSchemaMixin,
+    #         variants=[Region],
+    #         _profile=_profile,
+    #         _seen=_seen,
+    #         states=states,
+    #         **kwargs
+    #     )
+
+    #     schema["properties"]["regions"] = regions_field_schema
+    #     schema["$defs"].update(regions_defs)
+
+    #     return schema
 
 # @dataclass
 # class Snapshot:

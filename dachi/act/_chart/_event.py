@@ -4,9 +4,11 @@ from typing import Any, Dict, List, Optional, Literal, TypedDict, Tuple, Callabl
 from collections import deque
 import time
 import asyncio
+import pydantic
 
 # Local
 from dachi.proc import AsyncProcess
+from dachi.core import Runtime, PrivateRuntime
 
 
 class Payload(TypedDict, total=False):
@@ -42,15 +44,14 @@ class Event(TypedDict, total=False):
     # correlation_id: Optional[str]
 
 
-class EventQueue:
+class EventQueue(pydantic.BaseModel):
     """Event queue with serializable state."""
     
-    def __init__(self, maxsize: int = 1024, overflow: Literal["drop_newest", "drop_oldest", "block"] = "drop_newest"):
-        self.maxsize = maxsize
-        self.overflow = overflow
-        self.queue: deque[Event] = deque()
-        self._callbacks: Dict[Callable, Tuple[Any, Any]] = {}
-        self._posts = {}
+    maxsize: int = 1024
+    overflow: Literal["drop_newest", "drop_oldest", "block"] = "drop_newest"
+    queue: deque[Event] = pydantic.PrivateAttr(default_factory=deque)
+    _callbacks: Dict[Callable, Tuple[Any, Any]] = pydantic.PrivateAttr(default_factory=dict)
+    _posts: Dict[str, "EventPost"] = pydantic.PrivateAttr(default_factory=dict)
 
     # Non-blocking enqueue. Returns False if dropped/rejected.
     def post_nowait(
@@ -149,12 +150,9 @@ class EventPost(AsyncProcess):
     queue: "EventQueue"
     source: List[Tuple[str, str]] = []  # List of (region_name, state_name) pairs
     epoch: Optional[int] = None
-
-    def __post_init__(self):
-        super().__post_init__()
-        self.preempting = lambda: False
-        self._timers: Dict[str, asyncio.Task] = {}
-        self._next_timer_id = 0
+    _preempting: Runtime[Callable[[], bool]] = PrivateRuntime(default_factory=lambda: lambda: False)
+    _timers: Runtime[Dict[str, asyncio.Task]] = PrivateRuntime(default_factory=dict)
+    _next_timer_id: Runtime[int] = PrivateRuntime(default_factory=lambda: 0)
 
     async def aforward(
         self,
@@ -281,14 +279,12 @@ class EventPost(AsyncProcess):
         return await self.aforward(*args, **kwds)
 
 
-class Timer:
+class Timer(pydantic.BaseModel):
     """Runtime timer manager with serializable metadata."""
-    
-    def __init__(self, queue: "EventQueue", clock: "MonotonicClock"):
-        self.queue = queue
-        self.clock = clock
-        self._timers: Dict[str, Dict[str, Any]] = {}
-        self._next_id = 0
+    quque: "EventQueue"
+    clock: "MonotonicClock"
+    _timers: Dict[str, Dict[str, Any]] = pydantic.PrivateAttr(default_factory=dict)
+    _next_id: int = pydantic.PrivateAttr(default=0)
 
     def start(
         self,
@@ -382,7 +378,7 @@ class Timer:
         pass
 
 
-class MonotonicClock:
+class MonotonicClock(pydantic.BaseModel):
 
     def now(self) -> float:
         return time.monotonic()

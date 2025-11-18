@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Union, Optional, Callable, Tuple, Literal
+from typing import Any, Dict, List, Union, Optional,Literal
 from abc import ABC
-from dataclasses import InitVar
 import typing as t
 from abc import abstractmethod
 from enum import Enum, auto
@@ -10,11 +9,13 @@ import asyncio
 import logging
 import json
 
-from dachi.core import Attr, Ctx, BaseModule
+from typing import ClassVar, Dict, Any
+from dachi.core import Runtime, Ctx, BaseModule, PrivateRuntime
 from ._event import EventPost
 from dachi.utils._utils import resolve_fields, resolve_from_signature
 from dachi.utils import python_type_to_json_schema_type
 from ._base import ChartBase, ChartStatus, InvalidTransition
+
 
 logger = logging.getLogger("dachi.statechart")
 
@@ -35,17 +36,14 @@ class PseudoState(BaseModule):
     """
 
     name: str
+    status: ChartStatus = ChartStatus.WAITING
 
 
 class FinalState(PseudoState):
     """Final state that marks region completion."""
 
     name: str = "FINAL"
-    status: InitVar[ChartStatus] = ChartStatus.SUCCESS
-
-    def __post_init__(self, status: ChartStatus = ChartStatus.SUCCESS):
-        
-        self.status = Attr[ChartStatus](data=status)
+    status: ChartStatus = ChartStatus.SUCCESS
 
 
 class ReadyState(PseudoState):
@@ -58,10 +56,7 @@ class ReadyState(PseudoState):
     states (enter → run → exit) but execute() completes immediately.
     """
     name: str = "READY"
-
-    @property
-    def status(self) -> ChartStatus:
-        return ChartStatus.WAITING
+    status: Literal[ChartStatus.WAITING] = ChartStatus.WAITING
 
 
 class HistoryState(PseudoState):
@@ -100,18 +95,18 @@ class BaseState(ChartBase, ABC):
     """Base class for all state types."""
     name: Optional[str] = None
 
-    def __post_init__(self):
-        super().__post_init__()
+    _status: Runtime[ChartStatus] = PrivateRuntime(default_factory=lambda: Runtime[ChartStatus](data=ChartStatus.WAITING))
+    _termination_requested: Runtime[bool] = PrivateRuntime(default_factory=lambda: Runtime[bool](data=False))
+    _run_completed: Runtime[bool] = PrivateRuntime(default_factory=lambda: Runtime[bool](data=False))
+    _executing: Runtime[bool] = PrivateRuntime(default_factory=lambda: Runtime[bool](data=False))
+    _entered: Runtime[bool] = PrivateRuntime(default_factory=lambda: Runtime[bool](data=False))
+    _exiting: Runtime[bool] = PrivateRuntime(default_factory=lambda: Runtime[bool](data=False))
+    _finishing: bool = False  # Guard against double-finish
+    
+    def model_post_init(self, __context):
+        super().model_post_init(__context)
         if self.name is None:
             self.name = self.__class__.__name__
-
-        self._status = Attr[ChartStatus](data=ChartStatus.WAITING)
-        self._termination_requested = Attr[bool](data=False)
-        self._run_completed = Attr[bool](data=False)
-        self._executing = Attr[bool](data=False)
-        self._entered = Attr[bool](data=False)
-        self._exiting = Attr[bool](data=False)
-        self._finishing = False  # Guard against double-finish
 
     def can_enter(self) -> bool:
         """Check if state can be entered."""
@@ -215,8 +210,10 @@ class BaseState(ChartBase, ABC):
             loop.create_task(self.finish(post, ctx))
 
 
-class AtomState(BaseState, ABC):
+class LeafState(BaseState, ABC):
     """Leaf state that does not contain nested regions."""
+
+    sc_params: ClassVar[Dict[str, Dict[str, Any]]] = {}
         
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
@@ -349,7 +346,7 @@ class AtomState(BaseState, ABC):
             self._termination_requested.set(True)
 
 
-class State(AtomState):
+class State(LeafState):
     """Single-shot state that runs execute() to completion."""
 
     async def run(self, post: "EventPost", ctx: Ctx) -> None:
@@ -407,7 +404,10 @@ class State(AtomState):
                 await self.finish(post, ctx)
 
 
-class BoundState(BaseState):
+STATE = t.TypeVar("STATE", bound=State)
+
+
+class BoundState(BaseState, t.Generic[STATE]):
     """Wrap a State with variable bindings for input resolution.
 
     Bindings remap context variables when building inputs:
@@ -422,11 +422,11 @@ class BoundState(BaseState):
     The wrapped state reads inputs from bound paths but writes outputs
     to the original context automatically (BoundCtx handles this).
     """
-    state: State
+    state: STATE
     bindings: Dict[str, str]
 
-    def __post_init__(self):
-        super().__post_init__()
+    def model_post_init(self, __context):
+        super().model_post_init(__context)
         if self.name is None:
             self.name = self.state.name
 
@@ -481,7 +481,7 @@ class BoundState(BaseState):
         super().reset()
 
 
-class StreamState(AtomState, ABC):
+class StreamState(LeafState, ABC):
     """Streaming state with preemption at yield points."""
 
     @abstractmethod
@@ -555,16 +555,19 @@ class StreamState(AtomState, ABC):
                 await self.finish(post, ctx)
 
 
-class BoundStreamState(BaseState):
+STREAM_STATE = t.TypeVar("STREAM_STATE", bound=StreamState)
+
+
+class BoundStreamState(BaseState, t.Generic[STREAM_STATE]):
     """Wrap a StreamState with variable bindings for input resolution.
 
     Like BoundState but for streaming states with preemption support.
     """
-    state: StreamState
+    state: STREAM_STATE
     bindings: Dict[str, str]
 
-    def __post_init__(self):
-        super().__post_init__()
+    def model_post_init(self, __context):
+        super().model_post_init(__context)
         if self.name is None:
             self.name = self.state.name
 

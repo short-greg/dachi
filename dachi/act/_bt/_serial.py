@@ -1,23 +1,19 @@
 # 1st party
-from abc import abstractmethod
 import typing as t
-from dataclasses import InitVar
 
 # local
-from ._core import Task, TaskStatus, CompositeTask, RestrictedTaskSchemaMixin
-from dachi.core import Attr, ModuleList, modlistfield, modfield
-from dachi.core._base import filter_class_variants
-from ._leafs import Condition
+from ._core import Task, TaskStatus, CompositeTask, TASK
+from dachi.core import Runtime, ModuleList, Runtime, PrivateRuntime
+from ._leafs import CONDITION
+
+from pydantic import Field
 
 
-class Serial(CompositeTask):
+class Serial(CompositeTask[TASK], t.Generic[TASK]):
     """A task consisting of other tasks executed one 
     after the other
     """
-
-    def __post_init__(self):
-        super().__post_init__()
-        self._cascaded = Attr[bool](data=False)
+    _cascaded: Runtime[bool] = PrivateRuntime(default=False)
 
     @property
     def cascaded(self) -> bool:
@@ -31,70 +27,15 @@ class Serial(CompositeTask):
         """
         self._cascaded.data = cascaded
 
-    @classmethod
-    def restricted_schema(cls, *, tasks: t.List[Task] | None=None, _profile = "shared", _seen = None, **kwargs):
-        raise NotImplementedError
 
-
-class Sequence(Serial, RestrictedTaskSchemaMixin):
+class Sequence(Serial[TASK]):
     """Create a sequence of tasks to execute
     """
-
-    tasks: ModuleList[Task] = modlistfield(default_factory=list)
-
-    @classmethod
-    def restricted_schema(cls, *, tasks=None, _profile="shared", _seen=None, **kwargs):
-        """
-        Generate restricted schema for Sequence.
-
-        Pattern B: Direct Variants - processes task variants directly for the tasks field.
-
-        Args:
-            tasks: List of allowed task variants (Task classes, TaskSpec classes, instances, or dicts)
-            _profile: "shared" (default) or "inline"
-            _seen: Cycle detection dict
-            **kwargs: Passed to nested restricted_schema() calls
-
-        Returns:
-            Restricted schema dict with tasks field limited to specified variants
-        """
-        # If no tasks provided, return unrestricted schema
-        if tasks is None:
-            return cls.schema()
-
-        # Use descriptor to generate tasks field schema
-        field_schema, field_defs = cls.tasks.restricted_schema(
-            filter_schema_cls=RestrictedTaskSchemaMixin,
-            variants=tasks,
-            _profile=_profile,
-            _seen=_seen,
-            tasks=tasks,
-            **kwargs
-        )
-
-        # Get base schema and update tasks field
-        schema = cls.schema()
-        schema["$defs"].update(field_defs)
-        schema["properties"]["tasks"] = field_schema
-
-        return schema
-
-    def __post_init__(self):
-        """Initialize the Sequence. A Sequence will execute its tasks in order. If one fails then it will Fail. If cascaded is True, it will try to execute all tasks in order until one fails
-
-        Raises:
-            ValueError: If tasks is not a list of Task objects.
-        """
-        super().__post_init__()
-        if self.tasks is None:
-            self.tasks = ModuleList(items=[])
-        elif isinstance(self.tasks, t.List):
-            self.tasks = ModuleList(items=self.tasks)
-        if self.tasks is not None and not isinstance(self.tasks, ModuleList):
-            raise ValueError(
-                f"Tasks must be of type ModuleList not {type(self.tasks)}"
-            )
-        self._idx = Attr[int](data=0)
+    tasks: ModuleList[TASK] = Field(
+        default_factory=list,
+        description="The tasks to run in sequence"
+    )
+    _idx: Runtime[int] = PrivateRuntime(default=0)
 
     def sub_tasks(self) -> t.Iterator[Task]:
         """Get the sub-tasks of the composite task
@@ -145,7 +86,7 @@ class Sequence(Serial, RestrictedTaskSchemaMixin):
             self._status.set(TaskStatus.SUCCESS)
             return self.status
 
-        if self.cascaded:
+        if self._cascaded:
             for i, task in enumerate(self.tasks[self._idx.data:], self._idx.data):
                 child_ctx = ctx.child(i)
                 status = await task.tick(ctx=child_ctx)
@@ -170,67 +111,65 @@ class Sequence(Serial, RestrictedTaskSchemaMixin):
 
         self._idx.data = 0
 
+    # @classmethod
+    # def restricted_schema(cls, *, tasks=None, _profile="shared", _seen=None, **kwargs):
+    #     """
+    #     Generate restricted schema for Sequence.
 
-class Selector(Serial, RestrictedTaskSchemaMixin):
+    #     Pattern B: Direct Variants - processes task variants directly for the tasks field.
+
+    #     Args:
+    #         tasks: List of allowed task variants (Task classes, TaskSpec classes, instances, or dicts)
+    #         _profile: "shared" (default) or "inline"
+    #         _seen: Cycle detection dict
+    #         **kwargs: Passed to nested restricted_schema() calls
+
+    #     Returns:
+    #         Restricted schema dict with tasks field limited to specified variants
+    #     """
+    #     # If no tasks provided, return unrestricted schema
+    #     if tasks is None:
+    #         return cls.schema()
+
+    #     # Use descriptor to generate tasks field schema
+    #     field_schema, field_defs = cls.tasks.restricted_schema(
+    #         filter_schema_cls=RestrictedTaskSchemaMixin,
+    #         variants=tasks,
+    #         _profile=_profile,
+    #         _seen=_seen,
+    #         tasks=tasks,
+    #         **kwargs
+    #     )
+
+    #     # Get base schema and update tasks field
+    #     schema = cls.schema()
+    #     schema["$defs"].update(field_defs)
+    #     schema["properties"]["tasks"] = field_schema
+
+    #     return schema
+
+    # def __post_init__(self):
+    #     """Initialize the Sequence. A Sequence will execute its tasks in order. If one fails then it will Fail. If cascaded is True, it will try to execute all tasks in order until one fails
+
+    #     Raises:
+    #         ValueError: If tasks is not a list of Task objects.
+    #     """
+    #     super().__post_init__()
+    #     if self.tasks is not None and not isinstance(self.tasks, ModuleList):
+    #         raise ValueError(
+    #             f"Tasks must be of type ModuleList not {type(self.tasks)}"
+    #         )
+    #     self._idx = Runtime[int](data=0)
+
+
+class Selector(Serial[TASK]):
     """Create a set of tasks to select from
     """
-    tasks: ModuleList[Task] = modlistfield(default_factory=list)
-
-    @classmethod
-    def restricted_schema(cls, *, tasks=None, _profile="shared", _seen=None, **kwargs):
-        """
-        Generate restricted schema for Selector.
-
-        Pattern B: Direct Variants - processes task variants directly for the tasks field.
-
-        Args:
-            tasks: List of allowed task variants (Task classes, TaskSpec classes, instances, or dicts)
-            _profile: "shared" (default) or "inline"
-            _seen: Cycle detection dict
-            **kwargs: Passed to nested restricted_schema() calls
-
-        Returns:
-            Restricted schema dict with tasks field limited to specified variants
-        """
-        # If no tasks provided, return unrestricted schema
-        if tasks is None:
-            return cls.schema()
-
-        # Use descriptor to generate tasks field schema
-        field_schema, field_defs = cls.tasks.restricted_schema(
-            filter_schema_cls=RestrictedTaskSchemaMixin,
-            variants=tasks,
-            _profile=_profile,
-            _seen=_seen,
-            tasks=tasks,
-            **kwargs
-        )
-
-        # Get base schema and update tasks field
-        schema = cls.schema()
-        schema["$defs"].update(field_defs)
-        schema["properties"]["tasks"] = field_schema
-        return schema
-
-    def __post_init__(self):
-        """Initialize the selector. A Selector will try to execute
-        each task in order until one succeeds. If none succeed, the
-        selector fails. If cascaded is True, it will try to execute
-        all tasks in order until one succeeds or all fail.
-
-        Raises:
-            ValueError: If tasks is not a list of Task objects.
-        """
-        super().__post_init__()
-        if self.tasks is None:
-            self.tasks = ModuleList(items=[])
-        elif isinstance(self.tasks, t.List):
-            self.tasks = ModuleList(items=self.tasks)
-        if self.tasks is not None and not isinstance(self.tasks, ModuleList):
-            raise ValueError(
-                f"Tasks must be of type ModuleList not {type(self.tasks)}"
-            )
-        self._idx = Attr[int](data=0)
+    tasks: ModuleList[TASK] = Field(
+        default_factory=ModuleList,
+        description="The tasks to select from"
+    )
+    _idx: Runtime[int] = PrivateRuntime(default=0)
 
     def sub_tasks(self) -> t.Iterator[Task]:
         """Get the sub-tasks of the composite task
@@ -281,7 +220,7 @@ class Selector(Serial, RestrictedTaskSchemaMixin):
             self._status.set(TaskStatus.FAILURE)
             return self.status
         
-        if self.cascaded:
+        if self._cascaded.data:
             while self._idx.data < len(self.tasks) and not self.status.is_done:
                 task = self.tasks[self._idx.data]
                 child_ctx = ctx.child(self._idx.data)
@@ -315,90 +254,76 @@ class Selector(Serial, RestrictedTaskSchemaMixin):
             if isinstance(task, Task):
                 task.reset()
 
+    # def __post_init__(self):
+    #     """Initialize the selector. A Selector will try to execute
+    #     each task in order until one succeeds. If none succeed, the
+    #     selector fails. If cascaded is True, it will try to execute
+    #     all tasks in order until one succeeds or all fail.
+
+    #     Raises:
+    #         ValueError: If tasks is not a list of Task objects.
+    #     """
+    #     super().__post_init__()
+    #     if self.tasks is None:
+    #         self.tasks = ModuleList(items=[])
+    #     elif isinstance(self.tasks, t.List):
+    #         self.tasks = ModuleList(items=self.tasks)
+    #     if self.tasks is not None and not isinstance(self.tasks, ModuleList):
+    #         raise ValueError(
+    #             f"Tasks must be of type ModuleList not {type(self.tasks)}"
+    #         )
+    #     self._idx = Runtime[int](data=0)
+
+    # @classmethod
+    # def restricted_schema(cls, *, tasks=None, _profile="shared", _seen=None, **kwargs):
+    #     """
+    #     Generate restricted schema for Selector.
+
+    #     Pattern B: Direct Variants - processes task variants directly for the tasks field.
+
+    #     Args:
+    #         tasks: List of allowed task variants (Task classes, TaskSpec classes, instances, or dicts)
+    #         _profile: "shared" (default) or "inline"
+    #         _seen: Cycle detection dict
+    #         **kwargs: Passed to nested restricted_schema() calls
+
+    #     Returns:
+    #         Restricted schema dict with tasks field limited to specified variants
+    #     """
+    #     # If no tasks provided, return unrestricted schema
+    #     if tasks is None:
+    #         return cls.schema()
+
+    #     # Use descriptor to generate tasks field schema
+    #     field_schema, field_defs = cls.tasks.restricted_schema(
+    #         filter_schema_cls=RestrictedTaskSchemaMixin,
+    #         variants=tasks,
+    #         _profile=_profile,
+    #         _seen=_seen,
+    #         tasks=tasks,
+    #         **kwargs
+    #     )
+
+    #     # Get base schema and update tasks field
+    #     schema = cls.schema()
+    #     schema["$defs"].update(field_defs)
+    #     schema["properties"]["tasks"] = field_schema
+    #     return schema
 
 Fallback = Selector
 
+from typing import Literal
 
-class PreemptCond(Serial, RestrictedTaskSchemaMixin):
+class PreemptCond(Serial[TASK], t.Generic[TASK, CONDITION]):
     """Use to have a condition applied with
     each tick in order to stop the execution
     of other tasks
     """
-    cond: Condition = modfield()
-    task: Task = modfield()
+    cond: CONDITION | None = None
+    task: TASK | None = None
 
-    @classmethod
-    def restricted_schema(cls, *, tasks=None, _profile="shared", _seen=None, **kwargs):
-        """
-        Generate restricted schema for PreemptCond.
+    _cascaded: Literal[True] = True
 
-        Pattern C × 2 with Condition filter - restricts both cond and task fields.
-        The cond field is filtered to only Condition subclasses from tasks.
-
-        Args:
-            tasks: List of allowed Task variants (filters to Conditions for cond field)
-            _profile: "shared" (default) or "inline"
-            _seen: Cycle detection dict
-            **kwargs: Passed to nested restricted_schema() calls
-
-        Returns:
-            Restricted schema dict with cond and task fields limited to specified variants
-        """
-        # If no tasks provided, return unrestricted schema
-        if tasks is None:
-            return cls.schema()
-
-        schema = cls.schema()
-        all_defs = schema["$defs"].copy()
-
-        # Filter tasks to only Condition subclasses for cond field
-        cond_variants = list(filter_class_variants(Condition, tasks))
-
-        # Update cond field if we have valid Condition variants
-        if cond_variants:
-            cond_field_schema, cond_defs = cls.cond.restricted_schema(
-                filter_schema_cls=RestrictedTaskSchemaMixin,
-                variants=cond_variants,
-                _profile=_profile,
-                _seen=_seen,
-                tasks=tasks,
-                **kwargs
-            )
-            schema["properties"]["cond"] = cond_field_schema
-            all_defs.update(cond_defs)
-
-        # Update task field with all task variants
-        task_field_schema, task_defs = cls.task.restricted_schema(
-            filter_schema_cls=RestrictedTaskSchemaMixin,
-            variants=tasks,
-            _profile=_profile,
-            _seen=_seen,
-            tasks=tasks,
-            **kwargs
-        )
-        schema["properties"]["task"] = task_field_schema
-        all_defs.update(task_defs)
-
-        schema["$defs"] = all_defs
-        return schema
-
-    def __post_init__(self):
-        """Initialize the PreemptCond. A PreemptCond will first evaluate the condition. If the condition succeeds, it will execute the task. If the condition fails, it will fail the PreemptCond.
-
-        Raises:
-            ValueError: If cond is not a Condition or task is not a Task.
-        """
-        super().__post_init__()
-        self.cascade(cascaded=True)
-        if not isinstance(self.cond, Condition):
-            raise ValueError(
-                f"Condition must be of type Condition not {type(self.cond)}"
-            )
-        if not isinstance(self.task, Task):
-            raise ValueError(
-                f"Task must be of type Task not {type(self.task)}"
-            )
-        self._status.set(TaskStatus.RUNNING)
 
     def update_loop(self) -> t.Iterator[Task]:
         """Get the sub-tasks of the composite task
@@ -462,3 +387,76 @@ class PreemptCond(Serial, RestrictedTaskSchemaMixin):
     def reset(self):
         self.cond.reset()
         self.task.reset()
+
+    # def __post_init__(self):
+    #     """Initialize the PreemptCond. A PreemptCond will first evaluate the condition. If the condition succeeds, it will execute the task. If the condition fails, it will fail the PreemptCond.
+
+    #     Raises:
+    #         ValueError: If cond is not a Condition or task is not a Task.
+    #     """
+    #     super().__post_init__()
+    #     self.cascade(cascaded=True)
+    #     if not isinstance(self.cond, Condition):
+    #         raise ValueError(
+    #             f"Condition must be of type Condition not {type(self.cond)}"
+    #         )
+    #     if not isinstance(self.task, Task):
+    #         raise ValueError(
+    #             f"Task must be of type Task not {type(self.task)}"
+    #         )
+    #     self._status.set(TaskStatus.RUNNING)
+
+    # @classmethod
+    # def restricted_schema(cls, *, tasks=None, _profile="shared", _seen=None, **kwargs):
+    #     """
+    #     Generate restricted schema for PreemptCond.
+
+    #     Pattern C × 2 with Condition filter - restricts both cond and task fields.
+    #     The cond field is filtered to only Condition subclasses from tasks.
+
+    #     Args:
+    #         tasks: List of allowed Task variants (filters to Conditions for cond field)
+    #         _profile: "shared" (default) or "inline"
+    #         _seen: Cycle detection dict
+    #         **kwargs: Passed to nested restricted_schema() calls
+
+    #     Returns:
+    #         Restricted schema dict with cond and task fields limited to specified variants
+    #     """
+    #     # If no tasks provided, return unrestricted schema
+    #     if tasks is None:
+    #         return cls.schema()
+
+    #     schema = cls.schema()
+    #     all_defs = schema["$defs"].copy()
+
+    #     # Filter tasks to only Condition subclasses for cond field
+    #     cond_variants = list(filter_class_variants(Condition, tasks))
+
+    #     # Update cond field if we have valid Condition variants
+    #     if cond_variants:
+    #         cond_field_schema, cond_defs = cls.cond.restricted_schema(
+    #             filter_schema_cls=RestrictedTaskSchemaMixin,
+    #             variants=cond_variants,
+    #             _profile=_profile,
+    #             _seen=_seen,
+    #             tasks=tasks,
+    #             **kwargs
+    #         )
+    #         schema["properties"]["cond"] = cond_field_schema
+    #         all_defs.update(cond_defs)
+
+    #     # Update task field with all task variants
+    #     task_field_schema, task_defs = cls.task.restricted_schema(
+    #         filter_schema_cls=RestrictedTaskSchemaMixin,
+    #         variants=tasks,
+    #         _profile=_profile,
+    #         _seen=_seen,
+    #         tasks=tasks,
+    #         **kwargs
+    #     )
+    #     schema["properties"]["task"] = task_field_schema
+    #     all_defs.update(task_defs)
+
+    #     schema["$defs"] = all_defs
+    #     return schema

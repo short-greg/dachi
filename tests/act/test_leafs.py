@@ -12,7 +12,7 @@ import asyncio
 import types
 import random
 import pytest
-from dachi.core import InitVar, Attr, Scope
+from dachi.core import InitVar, Runtime, Scope, PrivateRuntime
 from dachi.act._bt._core import TaskStatus
 from dachi.act._bt._leafs import Action, Condition, WaitCondition, FixedTimer, RandomTimer, CountLimit
 
@@ -27,14 +27,10 @@ def create_test_ctx():
 class ImmediateAction(Action):
     """A task that immediately returns a preset *status_val*."""
 
-    status_val: InitVar[TaskStatus]
-
-    def __post_init__(self, status_val: TaskStatus):
-        super().__post_init__()
-        self._ret = status_val
+    status_val: TaskStatus = TaskStatus.SUCCESS
 
     async def execute(self) -> TaskStatus:
-        return self._ret
+        return self.status_val
 
 
 class ATask(Action):
@@ -48,16 +44,11 @@ class ATask(Action):
 class SetStorageAction(Action):
     """Action whose success/failure depends on *value*."""
 
-    value: InitVar[int] = 4
-
-    def __post_init__(self, value: int):
-        # TODO: enforce post init is called
-        super().__post_init__()
-        self.value = Attr[int](value)
+    value: int = 4
 
     async def execute(self) -> TaskStatus:  # noqa: D401
         print('Acting!')
-        return TaskStatus.FAILURE if self.value.data < 0 else TaskStatus.SUCCESS
+        return TaskStatus.FAILURE if self.value < 0 else TaskStatus.SUCCESS
 
 
 class SampleCondition(Condition):
@@ -73,12 +64,8 @@ class SetStorageActionCounter(Action):
     """Counts invocations – succeeds on the 2nd tick unless *value* == 0."""
 
     # __store__ = ["value"]
-    value: InitVar[int] = 4
-
-    def __post_init__(self, value: int=4):
-        super().__post_init__()
-        self._count = 0
-        self.value = Attr[int](value)
+    value: int = 4
+    _count: Runtime[int] = PrivateRuntime(0)
 
     async def execute(self) -> TaskStatus:  # noqa: D401
         if self.value.data == 0:
@@ -245,13 +232,13 @@ class TestPortSystem:
     """Test the port declaration and processing system for leaf classes"""
     
     def test_process_ports_extracts_annotations_from_simple_class(self):
-        from dachi.act._bt._core import Leaf
+        from dachi.act._bt._core import LeafTask
         
         class TestInputs:
             param1: int
             param2: str
         
-        result = Leaf._process_ports(TestInputs)
+        result = LeafTask._process_ports(TestInputs)
         
         assert "param1" in result
         assert result["param1"]["type"] == int
@@ -259,14 +246,14 @@ class TestPortSystem:
         assert result["param2"]["type"] == str
     
     def test_process_ports_extracts_defaults_from_class(self):
-        from dachi.act._bt._core import Leaf
+        from dachi.act._bt._core import LeafTask
         
         class TestInputs:
             param1: int = 5
             param2: str = "default"
             param3: float
         
-        result = Leaf._process_ports(TestInputs)
+        result = LeafTask._process_ports(TestInputs)
         
         assert result["param1"]["default"] == 5
         assert result["param2"]["default"] == "default"

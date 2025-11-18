@@ -102,6 +102,7 @@ class BaseCriterion(BaseModel, Renderable):
 
     def model_post_init(self, __context) -> None:
         """Auto-generate evaluation schemas from EvalFields."""
+        super().model_post_init(__context)
         single = self._create_single()
         batch = self._create_batch(single)
 

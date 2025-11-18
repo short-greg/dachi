@@ -489,7 +489,7 @@ import asyncio
 import pytest
 
 from dachi.proc._graph import DataFlow, Ref
-from dachi.core import ModuleDict, Attr
+from dachi.core import ModuleDict, Runtime
 from dachi.proc import _process as P
 
 
@@ -552,7 +552,7 @@ class TestDAG:
         dag = DataFlow()
         assert isinstance(dag.nodes, ModuleDict)
         assert dag.nodes._module_dict == {}
-        assert isinstance(dag._args, Attr)
+        assert isinstance(dag._args, Runtime)
         assert dag._args.data == {}
 
 

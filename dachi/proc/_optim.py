@@ -5,14 +5,20 @@ from abc import abstractmethod
 from pydantic import BaseModel
 
 from dachi.inst import BaseCriterion, BatchEvaluation, Evaluation
-from dachi.core import Prompt, ParamSet, BaseModule, Msg
+from dachi.core import Prompt, ParamSet, Module, Msg
 from ._ai import LLM
 from abc import ABC
 from dachi.proc import Process, AsyncProcess
 from dachi.core import render, modfield
 
 
-class Optim(BaseModule, ABC):
+T = t.TypeVar("T", bound=Module)
+L = t.TypeVar("L", bound=LLM)
+C = t.TypeVar("C", bound=BaseCriterion)
+P = t.TypeVar("P", bound=Process | AsyncProcess)
+
+
+class Optim(Module, ABC):
     """Executes optimization using an LLM optimizer and a criterion."""
 
     @abstractmethod
@@ -24,11 +30,11 @@ class Optim(BaseModule, ABC):
         pass
 
 
-class LLMOptim(Optim):
+class LLMOptim(Optim, t.Generic[L, C]):
     """Executes optimization using an LLM optimizer and a criterion."""
-    llm: LLM
+    llm: L
     params: ParamSet
-    criterion: BaseCriterion
+    criterion: C
     prompt_template: str = """
 Update the parameters to optimize objective and satisfy constraints.
 
@@ -120,11 +126,11 @@ Constraints:
         self.params.update(updated_params)
 
 
-class Critic(Process, AsyncProcess):
+class Critic(Process, AsyncProcess, t.Generic[C, P]):
     """Executes evaluations using an LLM evaluator and a criterion."""
-
-    criterion: BaseCriterion
-    evaluator: Process | AsyncProcess = modfield()
+    
+    criterion: C
+    evaluator: P
     prompt_template: str
     reference: t.Any | None = None
 

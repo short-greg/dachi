@@ -16,7 +16,6 @@ The interface for a ToOut is
 - render(data) -> str 
 """
 
-
 # 1st party 
 from abc import abstractmethod
 import typing
@@ -30,18 +29,16 @@ from collections import OrderedDict
 import pydantic
 
 # local
-from ..core import render, modlistfield
+from ..core import render
 from ._process import Process
 from dachi import utils
-from ._parser import LineParser, Parser
+from ._parser import LineParser, PARSER
 
 from dachi.core import (
     Templatable, 
-    ExampleMixin, ModuleList, modfield,
-    render, 
-    Resp, struct_template, END_TOK
+    ExampleMixin, ModuleList,
+    render, struct_template
 )
-
 
 
 # local
@@ -372,18 +369,7 @@ class KVOut(ToOut):
     """
     sep: str = '::'
     key_descr: typing.Type[pydantic.BaseModel] | None = None
-    
-    def __post_init__(
-        self
-    ):
-        """
-            Initializes the KVOut instance.
-            Creates a LineProcessor for parsing
-            into lines that will be used for
-            determining the keys and values.
-        """
-        super().__post_init__()
-        self.line_parser = LineParser()
+    _line_parser: LineParser = pydantic.PrivateAttr(default_factory=LineParser)
 
     def forward(self, resp: str | None) -> typing.Any:
         """Process complete non-streaming response
@@ -431,7 +417,7 @@ class KVOut(ToOut):
         
         resp = self.coalesce_resp(resp)
         line_store = utils.get_or_set(delta_store, 'lines', {})
-        res = self.line_parser.delta(resp, line_store, streamed=True, is_last=is_last)
+        res = self._line_parser.delta(resp, line_store, streamed=True, is_last=is_last)
 
         if res is utils.UNDEFINED or res is None:
             return res
@@ -599,10 +585,7 @@ class IndexOut(ToOut):
     sep: str = '::'
     key_descr: str = ''
     key_type: typing.Type[pydantic.BaseModel] | typing.Dict | None = None
-
-    def __post_init__(self):
-        super().__post_init__()
-        self.line_parser = LineParser()
+    _line_parser: LineParser = pydantic.PrivateAttr(default_factory=LineParser)
 
     def forward(self, resp: str | None) -> typing.Any:
         """Process complete non-streaming response
@@ -652,7 +635,7 @@ class IndexOut(ToOut):
         line_store = utils.get_or_set(
             delta_store, 'lines', {}
         )
-        resp = self.line_parser.delta(resp, line_store, streamed=True, is_last=is_last)
+        resp = self._line_parser.delta(resp, line_store, streamed=True, is_last=is_last)
         if resp is utils.UNDEFINED or resp is None:
             return utils.UNDEFINED
         result = []
@@ -803,8 +786,9 @@ class JSONListOut(ToOut):
                 pass
         return self.render([{"name": "John", "age": 25}, {"name": "Jane", "age": 30}]) 
 
+OUT = typing.TypeVar('OUT', bound=ToOut)
 
-class TupleOut(ToOut):
+class TupleOut(ToOut, typing.Generic[OUT]):
     """Processes a response into a tuple of values using specified processors and a parser.
     
     Each processor must inherit from Process, take in a string, and output some value.
@@ -836,8 +820,8 @@ class TupleOut(ToOut):
         # Output: [42]
     """
 
-    processors: ModuleList[ToOut] = modlistfield() # a list of the ToOut processors to use
-    parser: Parser = modfield()
+    processors: ModuleList[OUT] # a list of the ToOut processors to use
+    parser: PARSER
 
     def forward(self, resp: str | None) -> typing.Any:
         """Process complete non-streaming response"""

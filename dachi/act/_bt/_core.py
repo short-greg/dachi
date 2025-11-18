@@ -5,7 +5,7 @@ import typing as t
 import json
 
 # local
-from ...core import Attr, BaseModule, InitVar, Scope, RestrictedSchemaMixin
+from ...core import Runtime, Module, Scope, PrivateRuntime
 from ...proc import Process
 from ...utils._utils import resolve_fields, resolve_from_signature
 from ...utils import python_type_to_json_schema_type
@@ -176,7 +176,7 @@ FAILURE = TaskStatus.FAILURE
 RUNNING = TaskStatus.RUNNING
 
 
-class Task(BaseModule):
+class Task(Module):
     """The base class for a task in the behavior tree
     """
     SUCCESS: t.ClassVar[TaskStatus] = TaskStatus.SUCCESS
@@ -184,12 +184,8 @@ class Task(BaseModule):
     READY: t.ClassVar[TaskStatus] = TaskStatus.READY
     RUNNING: t.ClassVar[TaskStatus] = TaskStatus.RUNNING
 
-    def __post_init__(self):
-        """Initialize the task
-        """
-        super().__post_init__()
-        self._status = Attr(data=self.READY)
-        self._id = id(self)
+    _status: Runtime[TaskStatus] = PrivateRuntime(default=TaskStatus.READY)
+    _id: Runtime[t.Any] = PrivateRuntime(default_factory=id)
 
     @abstractmethod    
     async def tick(self, ctx) -> TaskStatus:
@@ -243,12 +239,15 @@ class Task(BaseModule):
         self._status.set(TaskStatus.SUCCESS)
 
 
-class CompositeTask(Task):
+TASK = t.TypeVar("TASK", bound=Task)
+
+
+class CompositeTask(Task, t.Generic[TASK]):
     """A task that is composed of other tasks
     """
 
     @abstractmethod
-    def update_loop(self) -> t.Iterator[Task]:
+    def update_loop(self) -> t.Iterator[TASK]:
         """Get the current sub-task of the composite task
 
         Yields:
@@ -257,7 +256,7 @@ class CompositeTask(Task):
         pass
 
     @abstractmethod
-    def sub_tasks(self) -> t.Iterator[Task]:
+    def sub_tasks(self) -> t.Iterator[TASK]:
         """Get the sub-tasks of the composite task
 
         Yields:
@@ -270,13 +269,14 @@ class CompositeTask(Task):
         pass
 
 
-class Leaf(Task):
+class LeafTask(Task):
     """A task that is composed of other tasks
     """
 
     # Define input ports if you do not want to use the function signature
     # class inputs:
     #    pass
+    __ports__: t.ClassVar[dict]
     
     class outputs:
         pass
@@ -293,7 +293,6 @@ class Leaf(Task):
     @classmethod
     def _process_ports(cls, port_class):
         """Extract port information from inputs or outputs class"""
-        import inspect
         
         if port_class is None:
             return {}
@@ -421,6 +420,8 @@ class Leaf(Task):
         #     return self.status
 
 
+LEAF = t.TypeVar("LEAF", bound=LeafTask)
+
 
 class ToStatus(Process):
     """Use to convert a value to a status
@@ -452,7 +453,6 @@ def from_bool(status: bool) -> TaskStatus:
         TaskStatus: The task status
     """
     return TaskStatus.from_bool(status)
-
 
 
 async def run_task(
@@ -537,11 +537,12 @@ class FTask(Task):
     args: t.List[t.Any]
     kwargs: t.Dict[str, t.Any]
 
-    def __post_init__(self):
+    _obj: Runtime[t.Any] = PrivateRuntime()
+
+    def model_post_init(self):
         """Initialize the FTask"""
-        super().__post_init__()
-        self.obj = None
-        self._task = None
+        super().model_post_init()
+        # self._task = None
 
     async def tick(self) -> TaskStatus:
         """Execute the task
@@ -562,13 +563,6 @@ class FTask(Task):
         status = await self.func_tick()
         self._status.set(status)
         return status
-    
-    def reset(self):
-        """Reset the task
-        """
-        super().reset()
-        self._task = None
-
 
 
 # TODO: Remove the State and Router
@@ -684,45 +678,45 @@ class FTask(Task):
     #     )
 
 
-class RestrictedTaskSchemaMixin(RestrictedSchemaMixin):
-    """
-    Mixin for behavior tree tasks with task-specific schema restrictions.
+# class RestrictedTaskSchemaMixin(RestrictedSchemaMixin):
+#     """
+#     Mixin for behavior tree tasks with task-specific schema restrictions.
 
-    Uses isinstance(variant, RestrictedTaskSchemaMixin) for recursion checks.
-    This ensures we only recurse on task-compatible classes, preventing
-    task/state cross-contamination.
+#     Uses isinstance(variant, RestrictedTaskSchemaMixin) for recursion checks.
+#     This ensures we only recurse on task-compatible classes, preventing
+#     task/state cross-contamination.
 
-    This mixin provides the domain-specific behavior for behavior trees,
-    inheriting all base functionality from core.RestrictedSchemaMixin.
-    """
+#     This mixin provides the domain-specific behavior for behavior trees,
+#     inheriting all base functionality from core.RestrictedSchemaMixin.
+#     """
 
-    @classmethod
-    def restricted_schema(
-        cls,
-        *,
-        tasks: list | None = None,
-        _profile: str = "shared",
-        _seen: dict | None = None,
-        **kwargs
-    ) -> dict:
-        """
-        Generate restricted schema for behavior tree tasks.
+#     @classmethod
+#     def restricted_schema(
+#         cls,
+#         *,
+#         tasks: list | None = None,
+#         _profile: str = "shared",
+#         _seen: dict | None = None,
+#         **kwargs
+#     ) -> dict:
+#         """
+#         Generate restricted schema for behavior tree tasks.
 
-        Must be implemented by subclasses (e.g., Sequence, BT, Decorator).
+#         Must be implemented by subclasses (e.g., Sequence, BT, Decorator).
 
-        Args:
-            tasks: List of allowed task variants (can be Task classes, TaskSpec classes,
-                   TaskSpec instances, or schema dicts)
-            _profile: "shared" (use $defs/Allowed_*) or "inline" (use oneOf)
-            _seen: Cycle detection dict
-            **kwargs: Additional arguments passed to nested restricted_schema() calls
+#         Args:
+#             tasks: List of allowed task variants (can be Task classes, TaskSpec classes,
+#                    TaskSpec instances, or schema dicts)
+#             _profile: "shared" (use $defs/Allowed_*) or "inline" (use oneOf)
+#             _seen: Cycle detection dict
+#             **kwargs: Additional arguments passed to nested restricted_schema() calls
 
-        Returns:
-            Restricted schema dict
+#         Returns:
+#             Restricted schema dict
 
-        Raises:
-            NotImplementedError: Must be implemented by subclasses
-        """
-        raise NotImplementedError(
-            f"{cls.__name__} must implement restricted_schema()"
-        )
+#         Raises:
+#             NotImplementedError: Must be implemented by subclasses
+#         """
+#         raise NotImplementedError(
+#             f"{cls.__name__} must implement restricted_schema()"
+#         )

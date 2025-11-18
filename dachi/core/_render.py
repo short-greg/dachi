@@ -9,7 +9,7 @@ from dataclasses import dataclass
 import string
 import roman
 import re
-from typing import Self, get_type_hints
+from typing import get_type_hints
 
 # 3rd party
 import pydantic

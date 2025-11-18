@@ -2,19 +2,23 @@
 from __future__ import annotations
 from typing import Any, Dict, List, Optional, Union, TypedDict, Literal, Tuple, Set
 from dataclasses import dataclass, field
+import typing as t
 import asyncio
-from ._base import ChartBase, ChartStatus, InvalidTransition, Recoverable
+import logging
+
+from pydantic import Field
 
 # Local
-from dachi.core import Attr, ModuleDict, Ctx, moddictfield
-from ._base import RestrictedStateSchemaMixin
-from ._state import State, StreamState, BaseState, PseudoState, ReadyState, FinalState, HistoryState
+from dachi.core import Runtime, ModuleDict, Ctx, PrivateRuntime
+from ._state import State, BaseState, PseudoState, ReadyState, FinalState, HistoryState
 from ._event import Event, EventPost, ChartEventHandler
-import logging
+from ._base import ChartBase, ChartStatus, InvalidTransition, Recoverable
 
 logger = logging.getLogger("dachi.statechart")
 
 JSON = Union[Dict[str, Any], List[Any], str, int, float, bool, None]
+
+V = t.TypeVar("V", bound=BaseState)
 
 
 @dataclass
@@ -95,15 +99,25 @@ class RegionSnapshot(TypedDict, total=False):
     pending_target: Optional[str]
 
 
-class Region(ChartBase, ChartEventHandler, Recoverable, RestrictedStateSchemaMixin):
+class Region(ChartBase, ChartEventHandler, Recoverable, t.Generic[V]):
     # ----- Spec fields (serialized) -----
     name: str
     initial: str  # Initial state name
     rules: List[Rule]
-    states: ModuleDict[str, BaseState] = moddictfield(default_factory=dict)
+    states: ModuleDict[str, V] = Field(default_factory=ModuleDict)
+    _cur_task: Runtime[Optional[asyncio.Task]] = PrivateRuntime(default_factory=lambda: None)
+    _current_state: Runtime[Optional[str]] = PrivateRuntime(default_factory=lambda: None)
+    _last_active_state: Runtime[Optional[str]] = PrivateRuntime(default_factory=lambda: None)
+    _pending_target: Runtime[Optional[str]] = PrivateRuntime(default_factory=lambda: None)
+    _pending_reason: Runtime[Optional[str]] = PrivateRuntime(default_factory=lambda: None)
+    _status: Runtime[ChartStatus] = PrivateRuntime(default_factory=lambda: ChartStatus.WAITING)
+    _finished: Runtime[bool] = PrivateRuntime(default_factory=lambda: False)
+    _started: Runtime[bool] = PrivateRuntime(default_factory=lambda: False)
+    _stopped: Runtime[bool] = PrivateRuntime(default_factory=lambda: False)
+    _stopping: Runtime[bool] = PrivateRuntime(default_factory=lambda: False)
 
-    def __post_init__(self) -> None:
-        super().__post_init__()
+    def model_post_init(self, __context) -> None:
+        super().model_post_init(__context)
 
         # Store State instances in module hierarchy
         self._state_idx_map = {}
@@ -116,15 +130,15 @@ class Region(ChartBase, ChartEventHandler, Recoverable, RestrictedStateSchemaMix
 
         # Track current state with just string keys (simple data in Attr)
         # Initialize to READY (always start here before start() is called)
-        self._current_state = Attr[str | None](data="READY")
-        self._last_active_state = Attr[str | None](data=None)
-        self._pending_target = Attr[str | None](data=None)
-        self._pending_reason = Attr[str | None](data=None)
-        self._status = Attr[ChartStatus](data=ChartStatus.WAITING)
-        self._finished = Attr[bool](data=False)
-        self._started = Attr[bool](data=False)
-        self._stopped = Attr[bool](data=False)
-        self._stopping = Attr[bool](data=False)
+        self._current_state = Runtime[str | None](data="READY")
+        self._last_active_state = Runtime[str | None](data=None)
+        self._pending_target = Runtime[str | None](data=None)
+        self._pending_reason = Runtime[str | None](data=None)
+        self._status = Runtime[ChartStatus](data=ChartStatus.WAITING)
+        self._finished = Runtime[bool](data=False)
+        self._started = Runtime[bool](data=False)
+        self._stopped = Runtime[bool](data=False)
+        self._stopping = Runtime[bool](data=False)
 
         # Build efficient rule lookup table
         self._rule_lookup: Dict[Tuple, Rule] = {}
@@ -247,43 +261,43 @@ class Region(ChartBase, ChartEventHandler, Recoverable, RestrictedStateSchemaMix
 
         return result
 
-    @classmethod
-    def restricted_schema(cls, *, states: List[State] | None = None, _profile: str = "shared", _seen: dict | None = None, **kwargs):
-        """
-        Generate restricted schema for Region with allowed state variants.
+    # @classmethod
+    # def restricted_schema(cls, *, states: List[State] | None = None, _profile: str = "shared", _seen: dict | None = None, **kwargs):
+    #     """
+    #     Generate restricted schema for Region with allowed state variants.
 
-        Pattern B: Direct Variants - states field accepts variants directly.
+    #     Pattern B: Direct Variants - states field accepts variants directly.
 
-        Args:
-            states: List of allowed state variants
-            _profile: "shared" (use $defs/Allowed_*) or "inline" (use oneOf)
-            _seen: Cycle detection dict
-            **kwargs: Additional arguments passed to nested restricted_schema() calls
+    #     Args:
+    #         states: List of allowed state variants
+    #         _profile: "shared" (use $defs/Allowed_*) or "inline" (use oneOf)
+    #         _seen: Cycle detection dict
+    #         **kwargs: Additional arguments passed to nested restricted_schema() calls
 
-        Returns:
-            Restricted schema dict
-        """
-        if states is None:
-            return cls.schema()
+    #     Returns:
+    #         Restricted schema dict
+    #     """
+    #     if states is None:
+    #         return cls.schema()
 
-        # Get base schema
-        schema = cls.schema()
+    #     # Get base schema
+    #     schema = cls.schema()
 
-        # Use descriptor to update states field with state variants
-        # Pattern B: variants are passed directly to the states field
-        states_field_schema, states_defs = cls.states.restricted_schema(
-            filter_schema_cls=RestrictedStateSchemaMixin,
-            variants=states,
-            _profile=_profile,
-            _seen=_seen,
-            states=states,
-            **kwargs
-        )
+    #     # Use descriptor to update states field with state variants
+    #     # Pattern B: variants are passed directly to the states field
+    #     states_field_schema, states_defs = cls.states.restricted_schema(
+    #         filter_schema_cls=RestrictedStateSchemaMixin,
+    #         variants=states,
+    #         _profile=_profile,
+    #         _seen=_seen,
+    #         states=states,
+    #         **kwargs
+    #     )
 
-        schema["properties"]["states"] = states_field_schema
-        schema["$defs"].update(states_defs)
+    #     schema["properties"]["states"] = states_field_schema
+    #     schema["$defs"].update(states_defs)
 
-        return schema
+    #     return schema
 
     def add(self, state: State) -> None:
         """Add a State instance to the region

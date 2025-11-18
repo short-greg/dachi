@@ -7,7 +7,7 @@ import pydantic
 
 # local
 from ..core import (
-    Msg, Resp, BaseModule, DeltaResp, Prompt, modfield, BaseDialog, BaseTool
+    Msg, Resp, BaseModule, DeltaResp, Prompt,  BaseDialog, BaseTool
 )
 from ._process import AsyncProcess
 from ._resp import ToOut
@@ -256,8 +256,12 @@ class LLM(Process, AsyncProcess, StreamProcess, AsyncStreamProcess):
     def astream(self, inp: Msg | BaseDialog, out: t.Union[t.Tuple[ToOut, ...], t.Dict[str, ToOut], ToOut, None] = None, **kwargs) -> t.AsyncIterator[t.Tuple[Resp, DeltaResp]]:
         raise NotImplementedError
 
+L = t.TypeVar("L", bound=LLM)
+T = t.TypeVar("T", bound=ToPrompt)
 
-class Op(AsyncProcess, Process, StreamProcess, AsyncStreamProcess):
+class Op(
+    AsyncProcess, Process, StreamProcess, AsyncStreamProcess, t.Generic[L, T]
+):
     """
     A basic operation that applies a function to the input.
 
@@ -271,10 +275,10 @@ class Op(AsyncProcess, Process, StreamProcess, AsyncStreamProcess):
     This allows for functional composition and easier state management.
     """
 
-    llm: LLM = modfield()
-    to_prompt: ToPrompt = modfield(default=None)
+    llm: L
+    to_prompt: T | None = None
     system: str | None = None
-    base_out: t.Any = None
+    base_out: t.Union[t.Tuple[ToOut, ...], t.Dict[str, ToOut], ToOut, None] = None
     tools: t.List[BaseTool] = []
 
     def forward(

@@ -1,5 +1,5 @@
 import pytest
-from dachi.core import InitVar, Attr, ModuleList, Scope
+from dachi.core import InitVar, Runtime, ModuleList, Scope
 from dachi.act._bt._core import TaskStatus
 from dachi.act._bt._leafs import Action
 from dachi.act._bt._serial import PreemptCond, Serial, Selector, Sequence
@@ -22,21 +22,17 @@ class TestPreemptCond:
         ctx = scope.ctx()
         main = ImmediateAction(status_val=TaskStatus.SUCCESS)
         pc = PreemptCond(cond=AlwaysTrueCond(), task=main)
-        print('Cascaded: ', pc.cascaded)
+        print('Cascaded: ', pc._cascaded)
         assert await pc.tick(ctx) is TaskStatus.SUCCESS
 
 
 class ImmediateAction(Action):
     """A task that immediately returns a fixed *status*."""
 
-    status_val: InitVar[TaskStatus]
-
-    def __post_init__(self, status_val: TaskStatus):
-        super().__post_init__()
-        self._status_val = status_val
+    status_val: TaskStatus = TaskStatus.SUCCESS
 
     async def execute(self) -> TaskStatus:  # noqa: D401
-        return self._status_val
+        return self.status_val
 
 
 class TestSerialValidation:

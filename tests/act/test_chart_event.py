@@ -302,8 +302,8 @@ class TestPost:
     def test_post_init_sets_preempting_lambda(self):
         queue = EventQueue()
         post = _event.EventPost(queue=queue)
-        assert callable(post.preempting)
-        assert post.preempting() is False
+        assert callable(post._preempting)
+        assert post._preempting() is False
 
     def test_post_init_with_empty_source(self):
         queue = EventQueue()

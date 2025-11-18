@@ -1,4 +1,4 @@
-from dachi.core import InitVar, Attr, ModuleList, Scope
+from dachi.core import InitVar, Runtime, ModuleList, Scope, PrivateRuntime
 from dachi.act._bt._core import TaskStatus, Task
 
 from typing import Any
@@ -8,9 +8,9 @@ from dachi.proc import Process, AsyncProcess
 
 class _ToggleTask(Task):
     """RUNNING ▸ SUCCESS over two ticks; counts invocations."""
-    def __post_init__(self):
-        super().__post_init__()
-        self.calls = 0
+
+    calls: Runtime[int] = PrivateRuntime(0)
+
     async def tick(self, ctx):
         self.calls += 1
         if self.calls == 1:
@@ -22,13 +22,16 @@ class _ToggleTask(Task):
 
 class _BoolProc(Process):
     """Process returning the value supplied at construction."""
-    def __init__(self, val): self.val = val
+
+    val: Any
+
     def forward(self): return self.val
 
 
 class _ABoolProc(AsyncProcess):
     """Async variant of _BoolProc."""
-    def __init__(self, val): self.val = val
+    val: Any
+
     async def aforward(self): return self.val
 
 
@@ -44,14 +47,9 @@ class AlwaysFalseCond(Condition):
 class ImmediateAction(Action):
     """A task that immediately returns a preset *status_val*."""
 
-    status_val: InitVar[TaskStatus]
-
-    def __post_init__(self, status_val: TaskStatus):
-        super().__post_init__()
-        self._ret = status_val
-
+    status_val: TaskStatus = TaskStatus.SUCCESS
     async def execute(self) -> TaskStatus:
-        return self._ret
+        return self.status_val
 
 
 class ATask(Action):
@@ -65,15 +63,9 @@ class ATask(Action):
 class SetStorageAction(Action):
     """Action whose success/failure depends on *value*."""
 
-    value: InitVar[int] = 4
+    value: int = 4
 
-    def __post_init__(self, value: int):
-        # TODO: enforce post init is called
-        super().__post_init__()
-        self.value = Attr[int](value)
-
-    async def execute(self) -> TaskStatus:  # noqa: D401
-        print('Acting!')
+    async def execute(self) -> TaskStatus:  # noqa: D401    
         return TaskStatus.FAILURE if self.value.data < 0 else TaskStatus.SUCCESS
 
 
@@ -90,13 +82,9 @@ class SetStorageActionCounter(Action):
     """Counts invocations – succeeds on the 2nd tick unless *value* == 0."""
 
     # __store__ = ["value"]
-    value: InitVar[int] = 4
-
-    def __post_init__(self, value: int=4):
-        super().__post_init__()
-        self._count = 0
-        self.value = Attr[int](value)
-
+    value: int = 4
+    _count: Runtime[int] = PrivateRuntime(0)
+    
     async def execute(self) -> TaskStatus:  # noqa: D401
         if self.value.data == 0:
             return TaskStatus.FAILURE
@@ -137,13 +125,11 @@ class _AsyncBoolProc(AsyncProcess):
 
 class _ImmediateTask(Task):
     """Task that immediately finishes with a fixed status."""
-    def __init__(self, status: TaskStatus) -> None:
-        super().__init__()
-        self._status_to_return = status
+    status_to_return: TaskStatus
+
 
     async def tick(self, ctx) -> TaskStatus:  # noqa: D401
-        return self._status_to_return
-
+        return self.status_to_return
 
 def create_test_ctx():
     """Helper to create test context"""

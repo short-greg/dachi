@@ -46,13 +46,19 @@ from dataclasses import dataclass, field
 from ..utils import (
     is_undefined, UNDEFINED
 )
-from ._process import Process, AsyncProcess, RestrictedProcessSchemaMixin
-from ..core import SerialDict, BaseModule
-from dachi.core import ModuleDict, Attr, modfield, moddictfield
+from ._process import Process, AsyncProcess
+from ..core import BaseModule
+from dachi.core import ModuleDict, Runtime
 # from dachi.core import AdaptModule
 from dataclasses import dataclass
 
+import typing as t  
 import pydantic
+
+
+P = typing.TypeVar("P", bound=Process)
+AP = typing.TypeVar("AP", bound=Process | AsyncProcess)
+A = typing.TypeVar("A", bound=AsyncProcess)
 
 # TODO: Check if the value coming from incoming is undefined or waiting... 
 
@@ -101,12 +107,12 @@ class BaseNode(AsyncProcess):
         if is_undefined(self.val):
             return T(
                 val=self.val, src=Idx(idx=idx),
-                args=SerialDict()
+                args={}
             )
 
         return T(
             val=self.val[idx], src=Idx(idx=idx), 
-            args=SerialDict()
+            args={}
         )
     
     def detach(self) -> typing.Self:
@@ -116,7 +122,7 @@ class BaseNode(AsyncProcess):
             T: The detached T
         """
         return T(
-            val=self.val, src=None, args=SerialDict()
+            val=self.val, src=None, args={}
         )
     
     async def aforward(
@@ -179,7 +185,9 @@ class V(BaseNode):
         return
 
 
-class T(BaseNode):
+
+
+class T(BaseNode, typing.Generic[P]):
     """A process node in a DAG. It can be used to store a value that can be processed or async processed.
     It is both used to wrap a Process/AsyncProcess and to represent a node in the graph that can be processed or async processed.
 
@@ -198,9 +206,15 @@ class T(BaseNode):
         src (Process | AsyncProcess): The process to execute
         is_async (bool, optional): Whether the process is async. Defaults to False.
     """
-    args: SerialDict
-    src: Process | AsyncProcess = modfield()
-    is_async: bool = False
+    src: AP | None = None
+    args: dict[str, typing.Any] = pydantic.Field(default_factory=dict)
+    _is_async: bool = pydantic.PrivateAttr(
+        default=False
+    )
+
+    def model_post_init(self, __context):
+        super().model_post_init(__context)
+        self._is_async = isinstance(self.src, AsyncProcess)
 
     async def aforward(
         self, 
@@ -215,7 +229,7 @@ class T(BaseNode):
         if not self.is_undefined():
             return self.val                       
 
-        kw_serial = await self.get_incoming(by)   # SerialDict
+        kw_serial = await self.get_incoming(by)
         kwargs = dict(kw_serial.items())   
 
         if self.is_async:
@@ -238,7 +252,7 @@ class T(BaseNode):
             if isinstance(arg, BaseNode):
                 yield k, arg
 
-    def eval_args(self) -> SerialDict:
+    def eval_args(self) -> dict:
         """Evaluate the current arguments
             - The value of t
             - The current value for a Streamer or Partial
@@ -251,10 +265,9 @@ class T(BaseNode):
         for k, a in self.args.items():
             if isinstance(a, BaseNode):
                 a = a.val
-            # elif isinstance(a, Partial):
-            #     a = a.dx
+
             kwargs[k] = a
-        return SerialDict(data=kwargs)
+        return kwargs
 
     # Have to evaluate the kwargs    
     async def get_incoming(
@@ -269,7 +282,6 @@ class T(BaseNode):
         Returns:
             typing.Dict[str, typing.Any]: The evaluated arguments
         """
-
         by = by if by is not None else {}
         kwargs = {}
         tasks = {}
@@ -290,7 +302,8 @@ class T(BaseNode):
         for k, task in tasks.items():
             kwargs[k] = task.result()
         
-        return SerialDict(data=kwargs)
+        return kwargs
+        # return SerialDict(data=kwargs)
 
     def has_partial(self) -> bool:
 
@@ -313,28 +326,26 @@ class T(BaseNode):
 
 
 def t(
-    p: Process, 
+    p: P, 
     _name: str=None, _annotation: str=None,
     **kwargs, 
 ) -> T:
     """Convenience function to create a T node from a Process. """
 
-    args = SerialDict(data=kwargs)
     return T(
-        src=p, args=args, name=_name, annotation=_annotation,
+        src=p, args=kwargs, name=_name, annotation=_annotation,
         is_async=False
     )
 
 
 def async_t(
-    p: AsyncProcess,
+    p: A,
     _name: str=None, _annotation: str=None,
     **kwargs, 
 ) -> T:
 
-    args = SerialDict(data=kwargs)
     return T(
-        src=p, args=args, name=_name, annotation=_annotation,
+        src=p, args=kwargs, name=_name, annotation=_annotation,
         is_async=True
     )
 
@@ -385,7 +396,9 @@ class Var(pydantic.BaseModel):
     name: str
 
 
-class ProcessCall(BaseModule, RestrictedProcessSchemaMixin):
+class ProcessCall(
+    BaseModule, typing.Generic[AP]
+):
     """Wrapper for a Process/AsyncProcess with its arguments in a DAG.
 
     Used by DataFlow to store both the process and its arguments together
@@ -403,151 +416,150 @@ class ProcessCall(BaseModule, RestrictedProcessSchemaMixin):
     Convenience Methods:
         is_async: Returns True if the wrapped process is AsyncProcess
     """
-    process: Process | AsyncProcess = modfield()
-    args: typing.Dict[str, Ref | typing.Any] = field(default_factory=dict)
-
-    def __post_init__(self):
-        super().__post_init__()
+    process: AP | None = None
+    args: typing.Dict[
+        str, Ref | typing.Any
+    ] = field(default_factory=dict)
 
     def is_async(self) -> bool:
         """Check if the wrapped process is async."""
         return isinstance(self.process, AsyncProcess)
 
-    @classmethod
-    def restricted_schema(
-        cls,
-        *,
-        processes: typing.List[typing.Type[Process | AsyncProcess]] | None = None,
-        _profile: str = "shared",
-        _seen: dict | None = None,
-        **kwargs
-    ) -> dict:
-        """Generate restricted schema for ProcessCall with allowed process types.
+    # @classmethod
+    # def restricted_schema(
+    #     cls,
+    #     *,
+    #     processes: typing.List[typing.Type[Process | AsyncProcess]] | None = None,
+    #     _profile: str = "shared",
+    #     _seen: dict | None = None,
+    #     **kwargs
+    # ) -> dict:
+    #     """Generate restricted schema for ProcessCall with allowed process types.
 
-        Pattern B (Direct Variants) + Args Type Restriction
+    #     Pattern B (Direct Variants) + Args Type Restriction
 
-        Restricts:
-        - 'process' field to allowed Process/AsyncProcess types
-        - 'args' dict values to RefT | Union[all input types from processes]
+    #     Restricts:
+    #     - 'process' field to allowed Process/AsyncProcess types
+    #     - 'args' dict values to RefT | Union[all input types from processes]
 
-        Args:
-            processes: List of allowed Process/AsyncProcess types
-            _profile: "shared" or "inline" union style
-            _seen: Cycle detection cache
-            **kwargs: Additional process-specific restrictions
+    #     Args:
+    #         processes: List of allowed Process/AsyncProcess types
+    #         _profile: "shared" or "inline" union style
+    #         _seen: Cycle detection cache
+    #         **kwargs: Additional process-specific restrictions
 
-        Returns:
-            JSON schema dict with restricted process and args fields
-        """
-        if processes is None:
-            return cls.schema()
+    #     Returns:
+    #         JSON schema dict with restricted process and args fields
+    #     """
+    #     if processes is None:
+    #         return cls.schema()
 
-        # Use descriptor to generate process field schema
-        field_schema, field_defs = cls.process.restricted_schema(
-            filter_schema_cls=RestrictedProcessSchemaMixin,
-            variants=processes,
-            _profile=_profile,
-            _seen=_seen,
-            processes=processes,
-            **kwargs
-        )
+    #     # Use descriptor to generate process field schema
+    #     field_schema, field_defs = cls.process.restricted_schema(
+    #         filter_schema_cls=RestrictedProcessSchemaMixin,
+    #         variants=processes,
+    #         _profile=_profile,
+    #         _seen=_seen,
+    #         processes=processes,
+    #         **kwargs
+    #     )
 
-        # Get base schema and update process field
-        schema = cls.schema()
-        schema["$defs"].update(field_defs)
-        schema["properties"]["process"] = field_schema
+    #     # Get base schema and update process field
+    #     schema = cls.schema()
+    #     schema["$defs"].update(field_defs)
+    #     schema["properties"]["process"] = field_schema
 
-        # Custom logic for args field
-        input_types = cls._extract_input_types_from_processes(processes)
-        schema = cls._schema_update_args_types(
-            schema,
-            allowed_types=input_types
-        )
+    #     # Custom logic for args field
+    #     input_types = cls._extract_input_types_from_processes(processes)
+    #     schema = cls._schema_update_args_types(
+    #         schema,
+    #         allowed_types=input_types
+    #     )
 
-        return schema
+    #     return schema
 
-    @classmethod
-    def _extract_input_types_from_processes(
-        cls,
-        processes: typing.List[typing.Type[Process | AsyncProcess]]
-    ) -> set:
-        """Extract all parameter types from process forward() methods.
+    # @classmethod
+    # def _extract_input_types_from_processes(
+    #     cls,
+    #     processes: typing.List[typing.Type[Process | AsyncProcess]]
+    # ) -> set:
+    #     """Extract all parameter types from process forward() methods.
 
-        Args:
-            processes: List of Process/AsyncProcess classes
+    #     Args:
+    #         processes: List of Process/AsyncProcess classes
 
-        Returns:
-            Set of all parameter types (always includes RefT)
+    #     Returns:
+    #         Set of all parameter types (always includes RefT)
 
-        Raises:
-            TypeError: If any process has parameters without type annotations
-        """
-        from ..utils import extract_parameter_types
+    #     Raises:
+    #         TypeError: If any process has parameters without type annotations
+    #     """
+    #     from ..utils import extract_parameter_types
 
-        types = {Ref}
+    #     types = {Ref}
 
-        for proc_cls in processes:
-            if issubclass(proc_cls, AsyncProcess):
-                method = proc_cls.aforward
-            else:
-                method = proc_cls.forward
+    #     for proc_cls in processes:
+    #         if issubclass(proc_cls, AsyncProcess):
+    #             method = proc_cls.aforward
+    #         else:
+    #             method = proc_cls.forward
 
-            try:
-                param_types = extract_parameter_types(
-                    method,
-                    require_annotations=True
-                )
-                types.update(param_types.values())
-            except TypeError as e:
-                raise TypeError(
-                    f"Process {proc_cls.__name__} cannot be used in restricted_schema(): {e}"
-                ) from e
+    #         try:
+    #             param_types = extract_parameter_types(
+    #                 method,
+    #                 require_annotations=True
+    #             )
+    #             types.update(param_types.values())
+    #         except TypeError as e:
+    #             raise TypeError(
+    #                 f"Process {proc_cls.__name__} cannot be used in restricted_schema(): {e}"
+    #             ) from e
 
-        return types
+    #     return types
 
-    @classmethod
-    def _schema_update_args_types(
-        cls,
-        schema: dict,
-        allowed_types: set
-    ) -> dict:
-        """Update ProcessCall's args field value types.
+    # @classmethod
+    # def _schema_update_args_types(
+    #     cls,
+    #     schema: dict,
+    #     allowed_types: set
+    # ) -> dict:
+    #     """Update ProcessCall's args field value types.
 
-        This is ProcessCall-specific logic, not a generic helper.
+    #     This is ProcessCall-specific logic, not a generic helper.
 
-        Args:
-            schema: The base schema dict to update
-            allowed_types: Set of allowed types for args dict values
+    #     Args:
+    #         schema: The base schema dict to update
+    #         allowed_types: Set of allowed types for args dict values
 
-        Returns:
-            Updated schema dict
-        """
-        from ..utils import python_type_to_json_schema
+    #     Returns:
+    #         Updated schema dict
+    #     """
+    #     from ..utils import python_type_to_json_schema
 
-        type_schemas = []
-        for typ in allowed_types:
-            if typ == Ref:
-                type_schemas.append(Ref.model_json_schema() if hasattr(Ref, 'model_json_schema') else {'type': 'object', 'properties': {'name': {'type': 'string'}}, 'required': ['name']})
-            elif hasattr(typ, 'schema'):
-                type_schemas.append(typ.schema())
-            else:
-                type_schemas.append(python_type_to_json_schema(typ))
+    #     type_schemas = []
+    #     for typ in allowed_types:
+    #         if typ == Ref:
+    #             type_schemas.append(Ref.model_json_schema() if hasattr(Ref, 'model_json_schema') else {'type': 'object', 'properties': {'name': {'type': 'string'}}, 'required': ['name']})
+    #         elif hasattr(typ, 'schema'):
+    #             type_schemas.append(typ.schema())
+    #         else:
+    #             type_schemas.append(python_type_to_json_schema(typ))
 
-        if len(type_schemas) > 1:
-            union_schema = {"oneOf": type_schemas}
-        else:
-            union_schema = type_schemas[0]
+    #     if len(type_schemas) > 1:
+    #         union_schema = {"oneOf": type_schemas}
+    #     else:
+    #         union_schema = type_schemas[0]
 
-        cls._schema_replace_at_path(
-            schema,
-            ["properties", "args", "additionalProperties"],
-            union_schema
-        )
+    #     cls._schema_replace_at_path(
+    #         schema,
+    #         ["properties", "args", "additionalProperties"],
+    #         union_schema
+    #     )
 
-        return schema
+    #     return schema
 
 
-class DataFlow(AsyncProcess):
+class DataFlow(AsyncProcess, typing.Generic[AP]):
     """DataFlow: Directed Acyclic Graph (DAG) for processing data pipelines.
 
     DataFlow is a declarative container for defining data processing pipelines using named
@@ -584,24 +596,27 @@ class DataFlow(AsyncProcess):
         are prevented by the architecture and will cause runtime errors if forced.
     """
 
-    nodes: ModuleDict[str, ProcessCall] = moddictfield(default_factory=ModuleDict)
+    nodes: ModuleDict[str, ProcessCall[AP]] = pydantic.Field(default_factory=ModuleDict)
     inputs: typing.List[Var] = field(default_factory=list)
     outputs: typing.List[str] = None
+    _args: Runtime[typing.Dict[str, typing.Dict[str, Ref | typing.Any]]] = pydantic.PrivateAttr(default_factory=dict)
+    _node_counter: Runtime[int] = pydantic.PrivateAttr(default=0)
+    _var_counter: Runtime[int] = pydantic.PrivateAttr(default=0)
 
-    def __post_init__(self):
-        """Initialize the DAG with an empty set of nodes and outputs
+    # def model_post_init(self):
+    #     """Initialize the DAG with an empty set of nodes and outputs
 
-        The args specify the args that get input into a node.
-        They can be a reference (RefT) or a value.
-        If it is a reference, the node that is referenced will be resolved
-        when the node is processed.
+    #     The args specify the args that get input into a node.
+    #     They can be a reference (RefT) or a value.
+    #     If it is a reference, the node that is referenced will be resolved
+    #     when the node is processed.
 
-        Methods used in the DAG that are referenced by strings must be async.
-        """
-        super().__post_init__()
-        self._args = Attr[typing.Dict[str, typing.Dict[str, Ref | typing.Any]]](data={})
-        self._node_counter = Attr[int](data=0)
-        self._var_counter = Attr[int](data=0)
+    #     Methods used in the DAG that are referenced by strings must be async.
+    #     """
+    #     super().model_post_init()
+    #     self._args = Runtime[typing.Dict[str, typing.Dict[str, Ref | typing.Any]]](data={})
+    #     self._node_counter = Runtime[int](data=0)
+    #     self._var_counter = Runtime[int](data=0)
 
     def _generate_node_name(self, prefix: str = "node") -> str:
         """Generate unique node name with given prefix
@@ -688,7 +703,7 @@ class DataFlow(AsyncProcess):
         by[name] = res
         return res
     
-    def link(self, name: str, node: Process | AsyncProcess, **kwargs: Ref | typing.Any) -> Ref:
+    def link(self, name: str, node: AP, **kwargs: Ref | typing.Any) -> Ref:
         """Link a computation node to the DataFlow.
 
         Adds a Process or AsyncProcess node to the graph with the given name. Arguments
@@ -922,7 +937,7 @@ class DataFlow(AsyncProcess):
                 nodes.append(
                     T(
                         src=node,
-                        args=SerialDict(data=args),
+                        args=args,
                         name=name,
                         is_async=is_async
                     )
@@ -939,11 +954,7 @@ class FProc(Process):
     """
 
     name: str
-
-    def __post_init__(self):
-        """Initialize the FProc"""
-        super().__post_init__()
-        self.obj = None
+    _obj: typing.Any = pydantic.PrivateAttr(default=None)
 
     async def aforward(self, obj, kwargs) -> typing.Any:
         """Execute the process
@@ -954,15 +965,15 @@ class FProc(Process):
         if self.status.is_done:
             return self.status
         
-        if self.obj is None:
+        if self._obj is None:
             raise ValueError(
                 "Process object is not set. "
                 "Please set the object before calling aforward."
             )
 
-        f = getattr(self.obj, self.name, None)
+        f = getattr(self._obj, self.name, None)
         if f is None:
             raise ValueError(
-                f"Function {self.name} not found in object {self.obj}"
+                f"Function {self.name} not found in object {self._obj}"
             )
         return await f(**kwargs)

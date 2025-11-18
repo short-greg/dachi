@@ -3,9 +3,11 @@ from ._bt._core import (
     TaskStatus,
     TOSTATUS, 
     ToStatus, 
+    LEAF,
+    TASK,
     from_bool,
     CompositeTask, 
-    Leaf,
+    LeafTask,
     run_task,
     loop_aslongas,
     loop_until,
@@ -37,18 +39,20 @@ from ._bt._leafs import (
     FixedTimer, 
     Action,
     RandomTimer,
+    CONDITION,
+    ACTION
 
 )
 from ._bt._parallel import (
-    Parallel,
-    Multi
+    ParallelTask,
+    MultiTask
 )
+
 
 # from ._states import (
 #     TaskState, 
 #     BranchState
 # )
-
 
 
 

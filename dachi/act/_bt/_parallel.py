@@ -1,83 +1,51 @@
 # 1st party
 import typing as t
-import time
 import asyncio
+import pydantic
 
 # local
-from ._core import Task, TaskStatus, CompositeTask, RestrictedTaskSchemaMixin
-from dachi.core import Attr, ModuleList, modlistfield
+from ._core import Task, TaskStatus, CompositeTask, TASK
+from dachi.core import ModuleList, PrivateRuntime, Runtime
 
 
-class Parallel(CompositeTask):
+class ParallelTask(CompositeTask[TASK]):
     """A task that runs multiple tasks in parallel
     """
-    def update_loop(self) -> t.Iterator[Task]:
+    def update_loop(self) -> t.Iterator[TASK]:
         yield from self.sub_tasks()
 
 
-class Multi(Parallel, RestrictedTaskSchemaMixin):
+class MultiTask(ParallelTask[TASK], t.Generic[TASK]):
     """A composite task for running multiple tasks in parallel
     """
 
-    tasks: ModuleList[Task] = modlistfield(default_factory=list)
+    tasks: ModuleList[TASK] = pydantic.Field(
+        default_factory=list,
+        description="The tasks to run in parallel"
+    )
     fails_on: int=1
     succeeds_on: int=-1
     success_priority: bool = True
     preempt: bool = False
     auto_run: bool = True
 
-    @classmethod
-    def restricted_schema(cls, *, tasks=None, _profile="shared", _seen=None, **kwargs):
-        """
-        Generate restricted schema for Multi.
+    _status: Runtime[TaskStatus] = PrivateRuntime(TaskStatus.READY)
 
-        Pattern B: Direct Variants - processes task variants directly for the tasks field.
-
-        Args:
-            tasks: List of allowed task variants (Task classes, TaskSpec classes, instances, or dicts)
-            _profile: "shared" (default) or "inline"
-            _seen: Cycle detection dict
-            **kwargs: Passed to nested restricted_schema() calls
-
-        Returns:
-            Restricted schema dict with tasks field limited to specified variants
-        """
-        # If no tasks provided, return unrestricted schema
-        if tasks is None:
-            return cls.schema()
-
-        # Use descriptor to generate tasks field schema
-        field_schema, field_defs = cls.tasks.restricted_schema(
-            filter_schema_cls=RestrictedTaskSchemaMixin,
-            variants=tasks,
-            _profile=_profile,
-            _seen=_seen,
-            tasks=tasks,
-            **kwargs
-        )
-
-        # Get base schema and update tasks field
-        schema = cls.schema()
-        schema["$defs"].update(field_defs)
-        schema["properties"]["tasks"] = field_schema
-        return schema
-
-    def __post_init__(self):
-        """Create a parallel task
+    # def model_post_init(self):
+    #     """Create a parallel task
         
-        Args:   
-            tasks (t.List[Task], optional): The tasks to run in parallel. Defaults to None.
-            fails_on (int, optional): The number of tasks that must fail for the parallel task to fail. Defaults to 1.
-            succeeds_on (int, optional): The number of tasks that must succeed for the parallel task to succeed. Defaults to -1.
-            success_priority (bool, optional): Whether to prioritize success over failure. Defaults to True.
-            preempt (bool, optional): Whether to preempt the task if a condition is met. Defaults to False.
-            auto_run (bool, optional): Whether to automatically run the task. Defaults to True.
-        """
-        super().__post_init__()
-        self._status = Attr[TaskStatus](data=TaskStatus.READY)
-        self.validate()
+    #     Args:   
+    #         tasks (t.List[Task], optional): The tasks to run in parallel. Defaults to None.
+    #         fails_on (int, optional): The number of tasks that must fail for the parallel task to fail. Defaults to 1.
+    #         succeeds_on (int, optional): The number of tasks that must succeed for the parallel task to succeed. Defaults to -1.
+    #         success_priority (bool, optional): Whether to prioritize success over failure. Defaults to True.
+    #         preempt (bool, optional): Whether to preempt the task if a condition is met. Defaults to False.
+    #         auto_run (bool, optional): Whether to automatically run the task. Defaults to True.
+    #     """
+    #     super().model_post_init()
+    #     self.validate()
 
-    def sub_tasks(self) -> t.Iterator[Task]:
+    def sub_tasks(self) -> t.Iterator[TASK]:
         """Get the sub-tasks of the composite task
         
         Returns:
@@ -85,25 +53,30 @@ class Multi(Parallel, RestrictedTaskSchemaMixin):
         """
         if self.tasks is not None:
             yield from self.tasks
-
-    def validate(self):
-        """Validate the number of tasks required to succeed and fail
+    
+    @pydantic.field_validator('fails_on')
+    def validate_thresholds(cls, v, info: pydantic.FieldValidationInfo) -> int:
+        """Validate that the thresholds are not zero
+        
+        Args:
+            v (int): The threshold value
+        
         Raises:
-            ValueError: If the number of tasks is less than the number of fails or succeeds
-            ValueError: If the number of fails or succeeds is less than 0
+            ValueError: If the threshold is zero
+        
+        Returns:
+            int: The validated threshold value
         """
-        if self.fails_on < 0:
-            fails_on = len(self.tasks) + self.fails_on + 1
+        if fails_on < 0:
+            fails_on = len(info.data["tasks"]) + fails_on + 1
+        if info.data["succeeds_on"] < 0:
+            succeeds_on = len(info.data["tasks"]) + info.data["succeeds_on"] + 1
         else:
-            fails_on = self.fails_on
-        if self.succeeds_on < 0:
-            succeeds_on = len(self.tasks) + self.succeeds_on + 1
-        else:
-            succeeds_on = self.succeeds_on
+            succeeds_on = info.data["succeeds_on"]
 
         if (
             fails_on + succeeds_on - 1
-        ) > len(self.tasks):
+        ) > len(info.data["tasks"]):
             raise ValueError(
                 'The number of tasks required to succeed or fail is greater than the number of tasks'
             )
@@ -112,7 +85,8 @@ class Multi(Parallel, RestrictedTaskSchemaMixin):
                 'The number of fails or succeeds '
                 'must be greater than 0'
             )
-        
+        return v
+
     async def run(self, task: Task, ctx) -> TaskStatus:
         """Run the task until it is done
 
@@ -201,4 +175,39 @@ class Multi(Parallel, RestrictedTaskSchemaMixin):
             if isinstance(task, Task):
                 task.reset()
 
+    # @classmethod
+    # def restricted_schema(cls, *, tasks=None, _profile="shared", _seen=None, **kwargs):
+    #     """
+    #     Generate restricted schema for Multi.
+
+    #     Pattern B: Direct Variants - processes task variants directly for the tasks field.
+
+    #     Args:
+    #         tasks: List of allowed task variants (Task classes, TaskSpec classes, instances, or dicts)
+    #         _profile: "shared" (default) or "inline"
+    #         _seen: Cycle detection dict
+    #         **kwargs: Passed to nested restricted_schema() calls
+
+    #     Returns:
+    #         Restricted schema dict with tasks field limited to specified variants
+    #     """
+    #     # If no tasks provided, return unrestricted schema
+    #     if tasks is None:
+    #         return cls.schema()
+
+    #     # Use descriptor to generate tasks field schema
+    #     field_schema, field_defs = cls.tasks.restricted_schema(
+    #         filter_schema_cls=RestrictedTaskSchemaMixin,
+    #         variants=tasks,
+    #         _profile=_profile,
+    #         _seen=_seen,
+    #         tasks=tasks,
+    #         **kwargs
+    #     )
+
+    #     # Get base schema and update tasks field
+    #     schema = cls.schema()
+    #     schema["$defs"].update(field_defs)
+    #     schema["properties"]["tasks"] = field_schema
+    #     return schema
 

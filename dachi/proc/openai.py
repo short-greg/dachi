@@ -11,7 +11,6 @@ from ..core import (
     Msg, Resp, DeltaResp, BaseDialog
 )
 from ..core._tool import BaseTool
-from ._process import Process, AsyncProcess, AsyncStreamProcess, StreamProcess
 from ._ai import LLMAdapter, LLM, extract_tools_from_messages, extract_format_override_from_messages, get_resp_output
 from ._resp import ToOut
 
@@ -375,7 +374,6 @@ class OpenAIChat(LLMAdapter):
             openai_msg["content"] = content
         
         return openai_msg
-    
 
 
 class OpenAIResp(LLMAdapter):
@@ -619,10 +617,13 @@ class OpenAILLM(LLM):
     url: str | None = None
     model: str = "gpt-5"
     api_key: str | None = None
+    _client: openai.OpenAI = pydantic.PrivateAttr()
+    _async_client: openai.AsyncOpenAI = pydantic.PrivateAttr()
+    _adapter: LLMAdapter = pydantic.PrivateAttr()
     
-    def __post_init__(self):
+    def model_post_init(self, __context):
         """Initialize the OpenAI client and adapter after instance creation."""
-        super().__post_init__()
+        super().model_post_init(__context)
         
         # Create OpenAI client
         client_kwargs = {}

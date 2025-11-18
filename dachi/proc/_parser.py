@@ -63,6 +63,8 @@ class Parser(Process):
     def render(self, data) -> str:
         pass
 
+PARSER = typing.TypeVar('PARSER', bound=Parser)
+
 # TODO: Look into how to get CSVRowParser
 # combined with CSVout. Ensure CSVOut
 # can process row by row or if it already

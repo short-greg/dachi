@@ -5,11 +5,11 @@ import time
 import random
 
 # local
-from ._core import TaskStatus, Leaf
-from dachi.core import Attr
+from ._core import TaskStatus, LeafTask
+from dachi.core import Runtime, PrivateRuntime
 
 
-class Condition(Leaf):
+class Condition(LeafTask):
     """A task that checks a condition
     """
 
@@ -44,11 +44,13 @@ class Condition(Leaf):
         status = TaskStatus.SUCCESS if cond else TaskStatus.FAILURE
         self._status.set(status)
         return status
-    
+
+
+CONDITION = t.TypeVar("CONDITION", bound=Condition)    
 
 # TODO: Update the WaitCondition class tick
 # to use ctx
-class WaitCondition(Leaf):
+class WaitCondition(LeafTask):
     """A task that waits for a condition to be met
     """
     
@@ -85,7 +87,7 @@ class WaitCondition(Leaf):
         return self.status
 
 
-class Action(Leaf):
+class Action(LeafTask):
     """A task that performs some kind of action
     """
 
@@ -121,14 +123,16 @@ class Action(Leaf):
         return status
 
 
+ACTION = t.TypeVar("ACTION", bound=Action)
+
+
 class FixedTimer(Action):
     """A timer that will "succeed" at a fixed interval
     """
     seconds: float
-
-    def __post_init__(self):
-        super().__post_init__()
-        self._start = Attr[float | None](data=None)
+    _start: float | None = PrivateRuntime(
+        None
+    )
 
     async def execute(self) -> TaskStatus:
         """Execute the timer
@@ -152,12 +156,8 @@ class RandomTimer(Action):
     seconds_lower: float
     seconds_upper: float
 
-    def __post_init__(
-        self
-    ):
-        super().__post_init__()
-        self._start = Attr[None | float](data=None)
-        self._target = Attr[None | float](data=None)
+    _start: Runtime[float | None] = PrivateRuntime()
+    _target: Runtime[float | None] = PrivateRuntime()
 
     def reset(self):
         super().reset()
@@ -184,13 +184,13 @@ class RandomTimer(Action):
 class CountLimit(Action):
     """A task that counts the number of times it has been run
     """
-
     count: int
     on_reached: TaskStatus=TaskStatus.SUCCESS
+    _i: Runtime[int] = PrivateRuntime(0)
 
-    def __post_init__(self):
-        super().__post_init__()
-        self._i = Attr[int](data=0)
+    def model_post_init(self, __context):
+        super().model_post_init(__context)
+        self._i = Runtime[int](data=0)
 
     async def execute(self):
         
@@ -203,4 +203,3 @@ class CountLimit(Action):
     def reset(self):
         super().reset()
         self._i.set(0)
-
