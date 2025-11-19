@@ -79,52 +79,6 @@ class Until(Decorator):
             self.task.reset()
         return TaskStatus.RUNNING
 
-    # @classmethod
-    # def restricted_schema(
-    #     cls, 
-    #     *, 
-    #     tasks=None, 
-    #     _profile="shared", 
-    #     _seen=None, 
-    #     **kwargs
-    # ):
-    #     """
-    #     Generate restricted schema for Decorator.
-
-    #     Pattern C: Single Field - processes task variants for the task field.
-
-    #     Args:
-    #         tasks: List of allowed task variants for task field
-    #         _profile: "shared" (default) or "inline"
-    #         _seen: Cycle detection dict
-    #         **kwargs: Passed to nested restricted_schema() calls
-
-    #     Returns:
-    #         Restricted schema dict with task field limited to specified variants
-    #     """
-    #     # If no tasks provided, return unrestricted schema
-    #     if tasks is None:
-    #         return cls.schema()
-
-    #     # Process task variants (handles RestrictedTaskSchemaMixin recursion)
-    #     task_schemas = cls._schema_process_variants(
-    #         tasks,
-    #         restricted_schema_cls=RestrictedTaskSchemaMixin,
-    #         _seen=_seen,
-    #         tasks=tasks,
-    #         **kwargs
-    #     )
-
-    #     # Update schema's task field (single Task)
-    #     schema = cls.schema()
-    #     return cls._schema_update_single_field(
-    #         schema,
-    #         field_name="task",
-    #         placeholder_name="TaskSpec",
-    #         variant_schemas=task_schemas,
-    #         profile=_profile
-    #     )
-
 
 class AsLongAs(Decorator):
     """Loop while a condition is met
@@ -176,53 +130,6 @@ class BoundTask(Task, t.Generic[LEAF]):
 
     leaf: LEAF
     bindings: t.Dict[str, str]
-
-    @classmethod
-    def restricted_schema(cls, *, tasks=None, _profile="shared", _seen=None, **kwargs):
-        """
-        Generate restricted schema for BoundTask.
-
-        Pattern C with Leaf filter - processes task variants for the leaf field,
-        but only allows Leaf subclasses.
-
-        Args:
-            tasks: List of allowed Leaf variants for leaf field
-            _profile: "shared" (default) or "inline"
-            _seen: Cycle detection dict
-            **kwargs: Passed to nested restricted_schema() calls
-
-        Returns:
-            Restricted schema dict with leaf field limited to specified Leaf variants
-        """
-        # If no tasks provided, return unrestricted schema
-        if tasks is None:
-            return cls.schema()
-
-        # Filter to only Leaf subclasses
-        leaf_variants = list(filter_class_variants(LeafTask, tasks))
-
-        # If no valid Leaf variants, return unrestricted schema
-        if not leaf_variants:
-            return cls.schema()
-
-        # Process leaf variants (handles RestrictedTaskSchemaMixin recursion)
-        leaf_schemas = cls._schema_process_variants(
-            leaf_variants,
-            restricted_schema_cls=RestrictedTaskSchemaMixin,
-            _seen=_seen,
-            tasks=tasks,
-            **kwargs
-        )
-
-        # Update schema's leaf field (single Leaf)
-        schema = cls.schema()
-        return cls._schema_update_single_field(
-            schema,
-            field_name="leaf",
-            placeholder_name="LeafSpec",
-            variant_schemas=leaf_schemas,
-            profile=_profile
-        )
 
     async def tick(self, ctx) -> TaskStatus:
         """Tick the task and bind outputs to context

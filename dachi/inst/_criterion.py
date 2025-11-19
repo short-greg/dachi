@@ -5,7 +5,6 @@ from abc import abstractmethod
 from typing import Type, List
 from pydantic import BaseModel, Field, ConfigDict, PrivateAttr, create_model
 from ..core import Renderable
-from ..utils import create_strict_model
 
 
 class EvalField(BaseModel):

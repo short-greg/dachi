@@ -17,7 +17,6 @@ from pydantic import Field
 from pydantic.dataclasses import dataclass as pydantic_dataclass
 from dataclasses import InitVar
 
-
 # local
 from ..utils import is_async_function
 

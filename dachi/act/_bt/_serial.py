@@ -111,56 +111,6 @@ class Sequence(Serial[TASK]):
 
         self._idx.data = 0
 
-    # @classmethod
-    # def restricted_schema(cls, *, tasks=None, _profile="shared", _seen=None, **kwargs):
-    #     """
-    #     Generate restricted schema for Sequence.
-
-    #     Pattern B: Direct Variants - processes task variants directly for the tasks field.
-
-    #     Args:
-    #         tasks: List of allowed task variants (Task classes, TaskSpec classes, instances, or dicts)
-    #         _profile: "shared" (default) or "inline"
-    #         _seen: Cycle detection dict
-    #         **kwargs: Passed to nested restricted_schema() calls
-
-    #     Returns:
-    #         Restricted schema dict with tasks field limited to specified variants
-    #     """
-    #     # If no tasks provided, return unrestricted schema
-    #     if tasks is None:
-    #         return cls.schema()
-
-    #     # Use descriptor to generate tasks field schema
-    #     field_schema, field_defs = cls.tasks.restricted_schema(
-    #         filter_schema_cls=RestrictedTaskSchemaMixin,
-    #         variants=tasks,
-    #         _profile=_profile,
-    #         _seen=_seen,
-    #         tasks=tasks,
-    #         **kwargs
-    #     )
-
-    #     # Get base schema and update tasks field
-    #     schema = cls.schema()
-    #     schema["$defs"].update(field_defs)
-    #     schema["properties"]["tasks"] = field_schema
-
-    #     return schema
-
-    # def __post_init__(self):
-    #     """Initialize the Sequence. A Sequence will execute its tasks in order. If one fails then it will Fail. If cascaded is True, it will try to execute all tasks in order until one fails
-
-    #     Raises:
-    #         ValueError: If tasks is not a list of Task objects.
-    #     """
-    #     super().__post_init__()
-    #     if self.tasks is not None and not isinstance(self.tasks, ModuleList):
-    #         raise ValueError(
-    #             f"Tasks must be of type ModuleList not {type(self.tasks)}"
-    #         )
-    #     self._idx = Runtime[int](data=0)
-
 
 class Selector(Serial[TASK]):
     """Create a set of tasks to select from

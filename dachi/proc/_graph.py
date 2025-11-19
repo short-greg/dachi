@@ -35,6 +35,9 @@ dag = DAG(
 result = dag.aforward(by={var: 10})  # Should return the output of AnotherProcess with input from SomeProcess with x=10
 """
 
+import inspect
+import typing as t
+from pydantic import BaseModel, create_model
 
 # 1st party
 import typing
@@ -43,6 +46,7 @@ import asyncio
 from dataclasses import dataclass, field
 
 # local
+from ._process import ProcessCall, AsyncProcessCall, StreamProcessCall, AsyncStreamProcessCall, Ref
 from ..utils import (
     is_undefined, UNDEFINED
 )
@@ -384,11 +388,6 @@ class Idx(Process):
         return val[self.idx]
 
 
-@dataclass
-class Ref:
-    """Reference to a node in the DAG by name"""
-    name: str
-
 
 class Var(pydantic.BaseModel):
     """Variable node in the DAG, representing an input value."""
@@ -396,167 +395,37 @@ class Var(pydantic.BaseModel):
     name: str
 
 
-class ProcessCall(
-    BaseModule, typing.Generic[AP]
-):
-    """Wrapper for a Process/AsyncProcess with its arguments in a DAG.
 
-    Used by DataFlow to store both the process and its arguments together
-    as a serializable unit. The name is stored as the key in DataFlow's
-    processes ModuleDict.
-
-    Args:
-        process: The Process or AsyncProcess to execute
-        args: Arguments to pass to the process (can be RefT or literal values)
-
-    Note:
-        ProcessCall is a data container, not an executable process. DataFlow
-        extracts the process and args to execute them.
-
-    Convenience Methods:
-        is_async: Returns True if the wrapped process is AsyncProcess
+def build_args_model_from_forward(process_cls: type) -> type[BaseModel]:
     """
-    process: AP | None = None
-    args: typing.Dict[
-        str, Ref | typing.Any
-    ] = field(default_factory=dict)
+    Inspect `process_cls.forward` and build a Pydantic model for its args.
+    Only handles keyword-style params; *args/**kwargs are ignored or forbidden.
+    """
+    forward = process_cls.forward
+    sig = inspect.signature(forward)
+    hints = t.get_type_hints(forward)
 
-    def is_async(self) -> bool:
-        """Check if the wrapped process is async."""
-        return isinstance(self.process, AsyncProcess)
+    fields: dict[str, tuple[t.Any, t.Any]] = {}
 
-    # @classmethod
-    # def restricted_schema(
-    #     cls,
-    #     *,
-    #     processes: typing.List[typing.Type[Process | AsyncProcess]] | None = None,
-    #     _profile: str = "shared",
-    #     _seen: dict | None = None,
-    #     **kwargs
-    # ) -> dict:
-    #     """Generate restricted schema for ProcessCall with allowed process types.
+    for name, param in sig.parameters.items():
+        if name == "self":
+            continue
 
-    #     Pattern B (Direct Variants) + Args Type Restriction
+        if param.kind in (param.VAR_POSITIONAL, param.VAR_KEYWORD):
+            raise TypeError(
+                f"{process_cls.__name__}.forward uses *args/**kwargs; "
+                "cannot derive a static args model."
+            )
 
-    #     Restricts:
-    #     - 'process' field to allowed Process/AsyncProcess types
-    #     - 'args' dict values to RefT | Union[all input types from processes]
+        anno = hints.get(name, t.Any)
 
-    #     Args:
-    #         processes: List of allowed Process/AsyncProcess types
-    #         _profile: "shared" or "inline" union style
-    #         _seen: Cycle detection cache
-    #         **kwargs: Additional process-specific restrictions
+        if param.default is inspect._empty:
+            fields[name] = (anno, ...)
+        else:
+            fields[name] = (anno, param.default)
 
-    #     Returns:
-    #         JSON schema dict with restricted process and args fields
-    #     """
-    #     if processes is None:
-    #         return cls.schema()
-
-    #     # Use descriptor to generate process field schema
-    #     field_schema, field_defs = cls.process.restricted_schema(
-    #         filter_schema_cls=RestrictedProcessSchemaMixin,
-    #         variants=processes,
-    #         _profile=_profile,
-    #         _seen=_seen,
-    #         processes=processes,
-    #         **kwargs
-    #     )
-
-    #     # Get base schema and update process field
-    #     schema = cls.schema()
-    #     schema["$defs"].update(field_defs)
-    #     schema["properties"]["process"] = field_schema
-
-    #     # Custom logic for args field
-    #     input_types = cls._extract_input_types_from_processes(processes)
-    #     schema = cls._schema_update_args_types(
-    #         schema,
-    #         allowed_types=input_types
-    #     )
-
-    #     return schema
-
-    # @classmethod
-    # def _extract_input_types_from_processes(
-    #     cls,
-    #     processes: typing.List[typing.Type[Process | AsyncProcess]]
-    # ) -> set:
-    #     """Extract all parameter types from process forward() methods.
-
-    #     Args:
-    #         processes: List of Process/AsyncProcess classes
-
-    #     Returns:
-    #         Set of all parameter types (always includes RefT)
-
-    #     Raises:
-    #         TypeError: If any process has parameters without type annotations
-    #     """
-    #     from ..utils import extract_parameter_types
-
-    #     types = {Ref}
-
-    #     for proc_cls in processes:
-    #         if issubclass(proc_cls, AsyncProcess):
-    #             method = proc_cls.aforward
-    #         else:
-    #             method = proc_cls.forward
-
-    #         try:
-    #             param_types = extract_parameter_types(
-    #                 method,
-    #                 require_annotations=True
-    #             )
-    #             types.update(param_types.values())
-    #         except TypeError as e:
-    #             raise TypeError(
-    #                 f"Process {proc_cls.__name__} cannot be used in restricted_schema(): {e}"
-    #             ) from e
-
-    #     return types
-
-    # @classmethod
-    # def _schema_update_args_types(
-    #     cls,
-    #     schema: dict,
-    #     allowed_types: set
-    # ) -> dict:
-    #     """Update ProcessCall's args field value types.
-
-    #     This is ProcessCall-specific logic, not a generic helper.
-
-    #     Args:
-    #         schema: The base schema dict to update
-    #         allowed_types: Set of allowed types for args dict values
-
-    #     Returns:
-    #         Updated schema dict
-    #     """
-    #     from ..utils import python_type_to_json_schema
-
-    #     type_schemas = []
-    #     for typ in allowed_types:
-    #         if typ == Ref:
-    #             type_schemas.append(Ref.model_json_schema() if hasattr(Ref, 'model_json_schema') else {'type': 'object', 'properties': {'name': {'type': 'string'}}, 'required': ['name']})
-    #         elif hasattr(typ, 'schema'):
-    #             type_schemas.append(typ.schema())
-    #         else:
-    #             type_schemas.append(python_type_to_json_schema(typ))
-
-    #     if len(type_schemas) > 1:
-    #         union_schema = {"oneOf": type_schemas}
-    #     else:
-    #         union_schema = type_schemas[0]
-
-    #     cls._schema_replace_at_path(
-    #         schema,
-    #         ["properties", "args", "additionalProperties"],
-    #         union_schema
-    #     )
-
-    #     return schema
+    model_name = f"{process_cls.__name__}Args"
+    return create_model(model_name, **fields)  # type: ignore[call-arg]
 
 
 class DataFlow(AsyncProcess, typing.Generic[AP]):

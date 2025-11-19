@@ -42,8 +42,6 @@ class Ref(pydantic.BaseModel, Renderable):
         return self.desc.name
 
 
-
-
 class Record(Renderable):
     """Use to create a pairwise object
     """

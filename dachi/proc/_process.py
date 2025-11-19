@@ -18,6 +18,7 @@ class AsyncStreamProcess
 """
 
 # 1st party
+import inspect
 from abc import ABC, abstractmethod
 from functools import partial
 import typing
@@ -26,6 +27,7 @@ import asyncio
 import itertools
 import dataclasses
 import numpy as np
+import typing as t
 
 # 3rd party
 import pydantic
@@ -41,7 +43,46 @@ from ..utils import (
 
 )
 
-S = typing.TypeVar('S', bound=pydantic.BaseModel)
+S = t.TypeVar('S', bound=pydantic.BaseModel)
+
+@dataclasses.dataclass
+class Ref:
+    """Reference to the output of another process"""
+    name: str
+
+
+def func_arg_model(cls: type, cls_f, with_ref: bool=False) -> type[pydantic.BaseModel]:
+    """
+    Inspect `process_cls` and its method and build a Pydantic model for its args.
+    Only handles keyword-style params; *args/**kwargs are ignored or forbidden.
+    """
+    sig = inspect.signature(cls_f)
+    hints = t.get_type_hints(cls_f)
+
+    fields: dict[str, tuple[t.Any, t.Any]] = {}
+
+    for name, param in sig.parameters.items():
+        if name == "self":
+            continue
+
+        if param.kind in (param.VAR_POSITIONAL, param.VAR_KEYWORD):
+            raise TypeError(
+                f"{cls.__name__}.forward uses *args/**kwargs; "
+                "cannot derive a static args model."
+            )
+
+        anno = hints.get(name, t.Any)
+
+        if with_ref:
+            anno = t.Union[Ref, anno]
+
+        if param.default is inspect._empty:
+            fields[name] = (anno, ...)
+        else:
+            fields[name] = (anno, param.default)
+
+    model_name = f"{cls.__name__}Args"
+    return create_model(model_name, **fields)  # type: ignore[call-arg]
 
 
 class Process(Module, ABC):
@@ -52,6 +93,23 @@ class Process(Module, ABC):
     Refer to the BaseModule documentation for details on field definitions and initialization.
 
     """
+    ForwardArgModel: t.ClassVar = None
+    ForwardRefArgModel: t.ClassVar = None
+    ForwardProcessCall: t.ClassVar = None
+    ForwardRefProcessCall: t.ClassVar = None
+
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+
+        if cls is Process:
+            return
+
+        # Build an ArgsModel from `forward`
+        cls.ForwardArgModel = func_arg_model(cls, cls.forward)
+        cls.ForwardRefArgModel = func_arg_model(cls, cls.forward, with_ref=True)
+        cls.ForwardProcessCall = ProcessCall[cls, cls.ForwardArgModel]
+        cls.ForwardRefProcessCall = ProcessCall[cls, cls.ForwardRefArgModel]
+
     @abstractmethod
     def forward(self, *args, **kwargs) -> typing.Any:
         """Execute the module
@@ -69,6 +127,7 @@ class Process(Module, ABC):
         """
         return self.forward(*args, **kwargs)
 
+
 PROCESS = typing.TypeVar('PROCESS', bound=Process)
 
 
@@ -78,6 +137,24 @@ class AsyncProcess(Module, ABC):
     Refer to the BaseModule documentation for details on field definitions and initialization.
 
     """
+
+    AForwardArgModel: t.ClassVar = None
+    AForwardRefArgModel: t.ClassVar = None
+    AForwardProcessCall: t.ClassVar = None
+    AForwardRefProcessCall: t.ClassVar = None
+
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+
+        if cls is Process:
+            return
+
+        # Build an ArgsModel from `forward`
+        cls.AForwardArgModel = func_arg_model(cls, cls.aforward)
+        cls.AForwardRefArgModel = func_arg_model(cls, cls.aforward, with_ref=True)
+        cls.AForwardProcessCall = AsyncProcessCall[cls, cls.AForwardArgModel]
+        cls.AForwardRefProcessCall = AsyncProcessCall[cls, cls.AForwardRefArgModel]
+
     @abstractmethod
     async def aforward(
         self, 
@@ -91,7 +168,43 @@ class AsyncProcess(Module, ABC):
         """
         pass
 
+
 ASYNC_PROCESS = typing.TypeVar('ASYNC_PROCESS', bound=AsyncProcess)
+
+
+AP = typing.TypeVar('AP', bound=AsyncProcess | Process)
+ARGS = typing.TypeVar('ARGS', bound=pydantic.BaseModel)
+
+
+class ProcessCall(
+    Module, typing.Generic[PROCESS, ARGS]
+):
+    process: PROCESS
+    args: ARGS
+
+
+class AsyncProcessCall(
+    Module, typing.Generic[ASYNC_PROCESS, ARGS]
+):
+    """Wrapper for a Process/AsyncProcess with its arguments in a DAG.
+
+    Used by DataFlow to store both the process and its arguments together
+    as a serializable unit. The name is stored as the key in DataFlow's
+    processes ModuleDict.
+
+    Args:
+        process: The Process or AsyncProcess to execute
+        args: Arguments to pass to the process (can be Ref or literal values)
+
+    Note:
+        ProcessCall is a data container, not an executable process. DataFlow
+        extracts the process and args to execute them.
+
+    Convenience Methods:
+        is_async: Returns True if the wrapped process is AsyncProcess
+    """
+    process: AsyncProcess
+    args: ARGS
 
 
 class StreamProcess(Module, ABC):
@@ -100,7 +213,24 @@ class StreamProcess(Module, ABC):
 
     Refer to the BaseModule documentation for details on field definitions and initialization.
     """
-    
+
+    StreamArgModel: t.ClassVar = None
+    StreamRefArgModel: t.ClassVar = None
+    StreamProcessCall: t.ClassVar = None
+    StreamRefProcessCall: t.ClassVar = None
+
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+
+        if cls is Process:
+            return
+
+        # Build an ArgsModel from `forward`
+        cls.StreamArgModel = func_arg_model(cls, cls.stream)
+        cls.StreamRefArgModel = func_arg_model(cls, cls.stream, with_ref=True)
+        cls.StreamProcessCall = StreamProcessCall[cls, cls.StreamArgModel]
+        cls.StreamRefProcessCall = StreamProcessCall[cls, cls.StreamRefArgModel]
+
     @abstractmethod
     def stream(self, *args, **kwargs) -> typing.Iterator[typing.Any]:
         """Stream the output
@@ -120,7 +250,24 @@ class AsyncStreamProcess(Module, ABC):
 
     Refer to BaseModule documentation for details on field definitions and initialization.
     """
-    
+
+    AStreamArgModel: t.ClassVar = None
+    AStreamRefArgModel: t.ClassVar = None
+    AStreamProcessCall: t.ClassVar = None
+    AStreamRefProcessCall: t.ClassVar = None
+
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+
+        if cls is Process:
+            return
+
+        # Build an ArgsModel from `forward`
+        cls.AStreamArgModel = func_arg_model(cls, cls.astream)
+        cls.AStreamRefArgModel = func_arg_model(cls, cls.astream, with_ref=True)
+        cls.AStreamProcessCall = AsyncStreamProcessCall[cls, cls.AStreamArgModel]
+        cls.AStreamRefProcessCall = AsyncStreamProcessCall[cls, cls.AStreamRefArgModel]
+
     @abstractmethod
     async def astream(self, *args, **kwargs) -> typing.AsyncIterator:
         """
@@ -131,6 +278,23 @@ class AsyncStreamProcess(Module, ABC):
 
 
 ASYNC_STREAM = typing.TypeVar('ASYNC_STREAM', bound=AsyncStreamProcess)
+
+
+
+class StreamProcessCall(
+    StreamProcess, typing.Generic[STREAM, ARGS]
+):
+    process: STREAM
+    args: ARGS
+
+
+
+class AsyncStreamProcessCall(
+    AsyncStreamProcess, typing.Generic[ASYNC_STREAM, ARGS]
+):
+    process: ASYNC_STREAM
+    args: ARGS
+
 
 
 def forward(
@@ -916,47 +1080,3 @@ class AsyncFunc(AsyncProcess):
         return await self.f(
             *self.args, *args, **self.kwargs, **kwargs
         )
-
-
-# class RestrictedProcessSchemaMixin(RestrictedSchemaMixin):
-#     """
-#     Domain-specific mixin for processes with process-specific schema restrictions.
-
-#     Uses isinstance(variant, RestrictedProcessSchemaMixin) for recursion checks.
-#     This ensures we only recurse on process-compatible classes, preventing
-#     process/task/state cross-contamination.
-
-#     This mixin provides the domain-specific behavior for processes,
-#     inheriting all base functionality from core.RestrictedSchemaMixin.
-#     """
-
-#     @classmethod
-#     def restricted_schema(
-#         cls,
-#         *,
-#         processes: list | None = None,
-#         _profile: str = "shared",
-#         _seen: dict | None = None,
-#         **kwargs
-#     ) -> dict:
-#         """
-#         Generate restricted schema for processes.
-
-#         Must be implemented by subclasses (e.g., ProcessCall, DataFlow).
-
-#         Args:
-#             processes: List of allowed Process/AsyncProcess types
-#             _profile: "shared" (use $defs/Allowed_*) or "inline" (use oneOf)
-#             _seen: Cycle detection dict
-#             **kwargs: Additional arguments passed to nested restricted_schema() calls
-
-#         Returns:
-#             Restricted schema dict
-
-#         Raises:
-#             NotImplementedError: Must be implemented by subclasses
-#         """
-#         raise NotImplementedError(
-#             f"{cls.__name__} must implement restricted_schema()"
-#         )
-

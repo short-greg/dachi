@@ -261,44 +261,6 @@ class Region(ChartBase, ChartEventHandler, Recoverable, t.Generic[V]):
 
         return result
 
-    # @classmethod
-    # def restricted_schema(cls, *, states: List[State] | None = None, _profile: str = "shared", _seen: dict | None = None, **kwargs):
-    #     """
-    #     Generate restricted schema for Region with allowed state variants.
-
-    #     Pattern B: Direct Variants - states field accepts variants directly.
-
-    #     Args:
-    #         states: List of allowed state variants
-    #         _profile: "shared" (use $defs/Allowed_*) or "inline" (use oneOf)
-    #         _seen: Cycle detection dict
-    #         **kwargs: Additional arguments passed to nested restricted_schema() calls
-
-    #     Returns:
-    #         Restricted schema dict
-    #     """
-    #     if states is None:
-    #         return cls.schema()
-
-    #     # Get base schema
-    #     schema = cls.schema()
-
-    #     # Use descriptor to update states field with state variants
-    #     # Pattern B: variants are passed directly to the states field
-    #     states_field_schema, states_defs = cls.states.restricted_schema(
-    #         filter_schema_cls=RestrictedStateSchemaMixin,
-    #         variants=states,
-    #         _profile=_profile,
-    #         _seen=_seen,
-    #         states=states,
-    #         **kwargs
-    #     )
-
-    #     schema["properties"]["states"] = states_field_schema
-    #     schema["$defs"].update(states_defs)
-
-    #     return schema
-
     def add(self, state: State) -> None:
         """Add a State instance to the region
 
