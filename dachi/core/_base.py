@@ -48,6 +48,19 @@ T = t.TypeVar("T")
 J = t.TypeVar("J", bound=t.Union[BaseModel, dict, str, int, float, bool])
 
 
+class StorableState(ABC):
+    """Mixin for classes that implement state_dict() and load_state_dict() methods."""
+
+    @abstractmethod
+    def state_dict(self, *, recurse: bool = True) -> dict:
+        """Return a dictionary representing the state of the object."""
+        pass
+
+    @abstractmethod
+    def load_state_dict(self, state_dict: dict, *, recurse: bool = True):
+        """Load the state of the object from a dictionary."""
+        pass
+
 
 def to_kind(cls): 
     """Convert a class to its kind."""
@@ -83,30 +96,6 @@ class ShareableItem(pydantic.BaseModel, t.Generic[J]):
 
         return self.data is None
 
-    # def get(self) -> J | None:
-
-    #     return self._data
-    
-    # def set(self, data: J | None):
-    #     expected_type = self._get_expected_type()
-    #     if (
-    #         expected_type is not None and not isinstance(data, expected_type)
-    #     ):
-    #         raise TypeError(f"Expected data of type {expected_type}, got {type(data)}")
-    #     self._data = data
-    #     self.update_data_hook(data)
-
-    # @property
-    # def data(self) -> J | None:
-    #     """Get the data value."""
-    #     return self._data
-
-    # @data.setter
-    # def data(self, value: J):
-    #     """Set the data value and trigger update hook."""
-    #     self.set(value)
-    #     return value
-
     def update_data_hook(self, old_val: J | None, val: J | None) -> J | None:
         # override for any hooks / logic here for data
         # e.g. log, trigger dirty flag, coerce type
@@ -116,44 +105,9 @@ class ShareableItem(pydantic.BaseModel, t.Generic[J]):
     def __hash__(self):
         return id(self) 
     
-    def load(self, data) -> "ShareableItem[J]":
-        """
-        Rebuild a ShareableItem from a spec or dict.
-        """
-        if isinstance(self._data, BaseModel):
-            # If data is a BaseModel, use its model_validate method
-            self._data = self._data.model_validate(data)
-        else:
-            self._data = data
-
-    def dump(self) -> dict:
-        """
-        Dump the ShareableItem to a dictionary.
-        """
-        if isinstance(self.data, BaseModel):
-            # If data is a BaseModel, use its model_dump method
-            data = self.data.model_dump()
-        else:
-            data = self.data
-        return data
-
-    def schema(self) -> dict:
+    def spec_schema(self) -> dict:
 
         return self.model_json_schema()
-
-    # def schema(self) -> dict:
-    #     """
-    #     Get the JSON schema dict for the ShareableItem's data.
-
-    #     Returns:
-    #         JSON schema dictionary
-    #     """
-    #     if isinstance(self._data, BaseModel):
-    #         return type(self._data).model_json_schema()
-    #     else:
-    #         python_type = type(self._data).__name__
-    #         json_type = python_type_to_json_schema_type(python_type)
-    #         return {"type": json_type}
 
     def has_callback(self, callback: Callable[[J | None, J | None], None]) -> bool:
         return callback in self._callbacks
@@ -171,15 +125,6 @@ class ShareableItem(pydantic.BaseModel, t.Generic[J]):
         except ValueError:
             return False
 
-    # def _get_expected_type(self):
-    #     """Resolve expected type from the immediate generic base (Param, State, Shared)."""
-    #     cls = self.__class__
-    #     for base in getattr(cls, "__orig_bases__", []):
-    #         origin = getattr(base, "__origin__", None)
-    #         if origin in {Param, Attr, Shared}:
-    #             return t.get_args(base)[0]
-    #     return None
-    
     def __eq__(self, other):
         if isinstance(other, ShareableItem):
             return self.data == other.data
@@ -200,104 +145,132 @@ class ShareableItem(pydantic.BaseModel, t.Generic[J]):
 
     # Arithmetic dunder methods
     def __add__(self, other):
-        result = self.data + (other.data if isinstance(other, ShareableItem) else other)
-        self.data = result
-        return self
+        result_data = self.data + (other.data if isinstance(other, ShareableItem) else other)
+        new_instance = self.model_copy()
+        new_instance.data = result_data
+        return new_instance
 
     def __sub__(self, other):
-        result = self.data - (other.data if isinstance(other, ShareableItem) else other)
-        self.data = result
-        return self
+        result_data = self.data - (other.data if isinstance(other, ShareableItem) else other)
+        new_instance = self.model_copy()
+        new_instance.data = result_data
+        return new_instance
 
     def __mul__(self, other):
-        result = self.data * (other.data if isinstance(other, ShareableItem) else other)
-        self.data = result
-        return self
+        result_data = self.data * (other.data if isinstance(other, ShareableItem) else other)
+        new_instance = self.model_copy()
+        new_instance.data = result_data
+        return new_instance
 
     def __truediv__(self, other):
-        result = self.data / (other.data if isinstance(other, ShareableItem) else other)
-        self.data = result
-        return self
+        result_data = self.data / (other.data if isinstance(other, ShareableItem) else other)
+        new_instance = self.model_copy()
+        new_instance.data = result_data
+        return new_instance
 
     def __floordiv__(self, other):
-        result = self.data // (other.data if isinstance(other, ShareableItem) else other)
-        self.data = result
-        return self
+        result_data = self.data // (other.data if isinstance(other, ShareableItem) else other)
+        new_instance = self.model_copy()
+        new_instance.data = result_data
+        return new_instance
 
     def __mod__(self, other):
-        result = self.data % (other.data if isinstance(other, ShareableItem) else other)
-        self.data = result
-        return self
+        result_data = self.data % (other.data if isinstance(other, ShareableItem) else other)
+        new_instance = self.model_copy()
+        new_instance.data = result_data
+        return new_instance
 
     def __pow__(self, other):
-        result = self.data ** (other.data if isinstance(other, ShareableItem) else other)
-        self.data = result
-        return self
+        result_data = self.data ** (other.data if isinstance(other, ShareableItem) else other)
+        new_instance = self.model_copy()
+        new_instance.data = result_data
+        return new_instance
 
     # Reverse arithmetic dunder methods
     def __radd__(self, other):
-        result = (other.data if isinstance(other, ShareableItem) else other) + self.data
-        self.data = result
-        return self
+        result_data = (other.data if isinstance(other, ShareableItem) else other) + self.data
+        new_instance = self.model_copy()
+        new_instance.data = result_data
+        return new_instance
 
     def __rsub__(self, other):
-        result = (other.data if isinstance(other, ShareableItem) else other) - self.data
-        self.data = result
-        return self
+        result_data = (other.data if isinstance(other, ShareableItem) else other) - self.data
+        new_instance = self.model_copy()
+        new_instance.data = result_data
+        return new_instance
 
     def __rmul__(self, other):
-        result = (other.data if isinstance(other, ShareableItem) else other) * self.data
-        self.data = result
-        return self
+        result_data = (other.data if isinstance(other, ShareableItem) else other) * self.data
+        new_instance = self.model_copy()
+        new_instance.data = result_data
+        return new_instance
 
     def __rtruediv__(self, other):
-        result = (other.data if isinstance(other, ShareableItem) else other) / self.data
-        self.data = result
-        return self
+        result_data = (other.data if isinstance(other, ShareableItem) else other) / self.data
+        new_instance = self.model_copy()
+        new_instance.data = result_data
+        return new_instance
 
     def __rfloordiv__(self, other):
-        result = (other.data if isinstance(other, ShareableItem) else other) // self.data
-        self.data = result
-        return self
+        result_data = (other.data if isinstance(other, ShareableItem) else other) // self.data
+        new_instance = self.model_copy()
+        new_instance.data = result_data
+        return new_instance
 
     def __rmod__(self, other):
-        result = (other.data if isinstance(other, ShareableItem) else other) % self.data
-        self.data = result
-        return self
+        result_data = (other.data if isinstance(other, ShareableItem) else other) % self.data
+        new_instance = self.model_copy()
+        new_instance.data = result_data
+        return new_instance
 
     def __rpow__(self, other):
-        result = (other.data if isinstance(other, ShareableItem) else other) ** self.data
-        self.data = result
-        return self
+        result_data = (other.data if isinstance(other, ShareableItem) else other) ** self.data
+        new_instance = self.model_copy()
+        new_instance.data = result_data
+        return new_instance
 
     # In-place arithmetic dunder methods
     def __iadd__(self, other):
-        self.data = self.data + (other.data if isinstance(other, ShareableItem) else other)
-        return self
+        result_data = self.data + (other.data if isinstance(other, ShareableItem) else other)
+        new_instance = self.model_copy()
+        new_instance.data = result_data
+        return new_instance
 
     def __isub__(self, other):
-        self.data = self.data - (other.data if isinstance(other, ShareableItem) else other)
-        return self
+        result_data = self.data - (other.data if isinstance(other, ShareableItem) else other)
+        new_instance = self.model_copy()
+        new_instance.data = result_data
+        return new_instance
 
     def __imul__(self, other):
-        self.data = self.data * (other.data if isinstance(other, ShareableItem) else other)
-        return self
+        result_data = self.data * (other.data if isinstance(other, ShareableItem) else other)
+        new_instance = self.model_copy()
+        new_instance.data = result_data
+        return new_instance
 
     def __itruediv__(self, other):
-        self.data = self.data / (other.data if isinstance(other, ShareableItem) else other)
-        return self
+        result_data = self.data / (other.data if isinstance(other, ShareableItem) else other)
+        new_instance = self.model_copy()
+        new_instance.data = result_data
+        return new_instance
 
     def __ifloordiv__(self, other):
-        self.data = self.data // (other.data if isinstance(other, ShareableItem) else other)
-        return self
+        result_data = self.data // (other.data if isinstance(other, ShareableItem) else other)
+        new_instance = self.model_copy()
+        new_instance.data = result_data
+        return new_instance
 
     def __imod__(self, other):
-        self.data = self.data % (other.data if isinstance(other, ShareableItem) else other)
-        return self
+        result_data = self.data % (other.data if isinstance(other, ShareableItem) else other)
+        new_instance = self.model_copy()
+        new_instance.data = result_data
+        return new_instance
 
     def __ipow__(self, other):
-        self.data = self.data ** (other.data if isinstance(other, ShareableItem) else other)
-        return self
+        result_data = self.data ** (other.data if isinstance(other, ShareableItem) else other)
+        new_instance = self.model_copy()
+        new_instance.data = result_data
+        return new_instance
 
     def __lt__(self, other):
         return self.data < (other.data if isinstance(other, ShareableItem) else other)
@@ -311,11 +284,48 @@ class ShareableItem(pydantic.BaseModel, t.Generic[J]):
     def __ge__(self, other):
         return self.data >= (other.data if isinstance(other, ShareableItem) else other)
 
+    # def _get_expected_type(self):
+    #     """Resolve expected type from the immediate generic base (Param, State, Shared)."""
+    #     cls = self.__class__
+    #     for base in getattr(cls, "__orig_bases__", []):
+    #         origin = getattr(base, "__origin__", None)
+    #         if origin in {Param, Attr, Shared}:
+    #             return t.get_args(base)[0]
+    #     return None
+
+    def load(self, data):
+        """
+        Rebuild a ShareableItem from a spec or dict.
+        """
+        print('Loading ', data, self.__class__)
+        loaded = self.__class__.model_validate(data)
+        print('Loaded: ', self.data.__class__)
+        self.data = loaded.data
+
+    def dump(self) -> dict:
+        """
+        Dump the ShareableItem to a dictionary.
+        """
+        # if isinstance(self.data, BaseModel):
+        #     # If data is a BaseModel, use its model_dump method
+        #     data = self.data.model_dump()
+        # else:
+        #     data = self.data
+
+        return self.model_dump()
+
+    def __repr__(self):
+        
+        return f"{self.__class__.__name__}(data={repr(self.data)})"
+    
+    def __str__(self):
+        return str(self.data)
+
 
 class Param(ShareableItem[J]):
     """Trainable parameter; ``training`` may be toggled to freeze it."""
 
-    fixed: bool = False
+    _fixed: bool = False
     
     def set(self, data):
         if self._fixed:
@@ -323,24 +333,26 @@ class Param(ShareableItem[J]):
                 'Cannot set parameter that is fixed.'
             )
         data = super().set(data)
+        return data
 
     def is_fixed(self) -> bool:
         """
         Check if the parameter is fixed.
         """
-        return self.fixed
+        return self._fixed
     
     def fix(self):
         """
         Fix the parameter, making it unmodifiable.
         """
-        self.fixed = True
+        self._fixed = True
 
     def unfix(self):
         """
         Unfix the parameter, making it modifiable.
         """
-        self.fixed = False
+        self._fixed = False   
+
 
 
 class Runtime(ShareableItem[J]):
@@ -385,7 +397,13 @@ class Trainable(ABC):
     """
 
     @abstractmethod
-    def parameters(self) -> t.Iterator['Param']:
+    def parameters(
+        self,
+        *,
+        recurse: bool = True,
+        _seen: t.Optional[set[int]] = None,
+        with_annotations: bool = False,
+    ) -> t.Iterator[Param | tuple[Param, t.Any]]:
         pass
 
 
@@ -417,49 +435,6 @@ class ExampleMixin(ABC):
             str: 
         """
         pass
-
-
-# def ParamField(
-#     *, default=..., frozen=True, default_factory=..., **kwargs
-# ):
-#     """Create a Field for Param with default value.
-#     Frozen is set to True by default 
-#     """
-#     f = Field(default, frozen=frozen, default_factory=default_factory, **kwargs)
-#     # mark this field as a "param"
-#     meta = getattr(f, "json_schema_extra", None) or {}
-#     meta["is_param"] = True
-#     f.json_schema_extra = meta
-#     return f
-
-
-# def SharedField(
-#     *, default=..., frozen=True, default_factory=..., **kwargs
-# ):
-#     """Create a Field for Param with default value.
-#     Frozen is set to True by default 
-#     """
-#     f = Field(default, frozen=frozen, default_factory=default_factory, **kwargs)
-#     # mark this field as a "param"
-#     meta = getattr(f, "json_schema_extra", None) or {}
-#     meta["is_param"] = True
-#     f.json_schema_extra = meta
-#     return f
-
-
-def RuntimeField(
-    *, default=..., default_factory=..., **kwargs
-):
-    """Create a Field for Runtime with default value.
-    Frozen is always True for this. It can be treated as a way to initialize a variable that will be used at runtime.
-    """
-    f = Field(default, default_factory=default_factory,
-    frozen=True, **kwargs)
-    # mark this field as a "runtime"
-    meta = getattr(f, "json_schema_extra", None) or {}
-    meta["is_runtime"] = True
-    f.json_schema_extra = meta
-    return f
 
 
 class SelfInit:
@@ -551,114 +526,89 @@ def PrivateShared(
 class StateType(Enum):
 
     MODULE: str = auto()
-    ATTR: str = auto()
+    RUNTIME: str = auto()
     PARAM: str = auto()
 
 
-class Module(pydantic.BaseModel):
+class Module(pydantic.BaseModel, StorableState, Trainable):
     # Pydantic v2 style config
     model_config = pydantic.ConfigDict(
         arbitrary_types_allowed=True,
         ignored_types=(ShareableItem,),  # do not treat Param/Runtime annotations as fields
     )
 
-    kind: str
+    KIND: str = Field(default="Module")
     # registry: name -> StateType (PARAM / ATTR / MODULE)
     _registry: t.Dict[str, StateType] = pydantic.PrivateAttr(default_factory=dict)
-
+    _training: bool = PrivateRuntime(default=True)
+    
     @classmethod
     def __init_subclass__(cls, **kwargs):
-        super().__init_subclass__(**kwargs)
-
         if cls is Module:
+            super().__init_subclass__(**kwargs)
             return
 
         # Set constant kind: Literal["ClsName"]
-        cls.__annotations__["kind"] = t.Literal[cls.__qualname__]
-        if "kind" not in cls.__dict__:
-            cls.kind = cls.__qualname__
+        # Must modify annotation BEFORE super().__init_subclass__ so Pydantic picks it up
+        cls.__annotations__["KIND"] = t.Literal[cls.__qualname__]
+        if "KIND" not in cls.__dict__:
+            cls.KIND = cls.__qualname__
 
         #
         # --- Handle ParamFields declared as normal fields ---
         #
         # Detect which fields were declared as ParamField(...)
-        param_field_names: list[str] = []
-        runtime_field_names: list[str] = []
-        for name, field in cls.__dict__.items():
-            if isinstance(field, pydantic.fields.FieldInfo):
-                extra = field.json_schema_extra or {}
-                if extra.get("is_param"):
-                    param_field_names.append(name)
-                elif extra.get("is_runtime"):
-                    runtime_field_names.append(name)
+        # param_field_names: list[str] = []
+        # runtime_field_names: list[str] = []
+        # for name, field in cls.__dict__.items():
+        #     if isinstance(field, pydantic.fields.FieldInfo):
+        #         extra = field.json_schema_extra or {}
+        #         if extra.get("is_param"):
+        #             param_field_names.append(name)
+        #         elif extra.get("is_runtime"):
+        #             runtime_field_names.append(name)
 
         # For each ParamField:
         #   1. Remove it from annotations (no longer a pydantic field)
         #   2. Add a PrivateAttr placeholder instead
-        for name in param_field_names:
-            cls.__annotations__.pop(name, None)
-            private = pydantic.PrivateAttr(default=None)
-            setattr(cls, name, private)
-            cls.__private_attributes__[name] = private
+        # for name in param_field_names:
+        #     cls.__annotations__.pop(name, None)
+        #     private = pydantic.PrivateAttr(default=None)
+        #     setattr(cls, name, private)
+        #     cls.__private_attributes__[name] = private
 
-        for name in runtime_field_names:
-            cls.__annotations__.pop(name, None)
-            private = pydantic.PrivateAttr(default=None)
-            setattr(cls, name, private)
-            cls.__private_attributes__[name] = private
+        # for name in runtime_field_names:
+        #     cls.__annotations__.pop(name, None)
+        #     private = pydantic.PrivateAttr(default=None)
+        #     setattr(cls, name, private)
+        #     cls.__private_attributes__[name] = private
 
         for name, attr in list(cls.__dict__.items()):
             if not isinstance(attr, FieldInfo):
                 continue
 
             extra = attr.json_schema_extra or {}
-            if not extra.get("is_param"):
-                continue
+            if extra.get("is_param"):
+            
+                orig_type = cls.__annotations__.get(name, t.Any)
+                cls.__annotations__[name] = Param[orig_type]
+            elif extra.get("is_runtime"):
+                orig_type = cls.__annotations__.get(name, t.Any)
+                cls.__annotations__[name] = Runtime[orig_type]
 
-            # Original user annotation type, e.g. `float` in `x: float = ParamField(...)`
-            orig_type = cls.__annotations__.get(name, t.Any)
+        # Call super().__init_subclass__ AFTER all annotation modifications
+        # This allows Pydantic to build the model with the correct schema
+        super().__init_subclass__(**kwargs)
 
-            # Annotate as Param[orig_type] so later code can inspect __annotations__[name].__args__[0]
-            cls.__annotations__[name] = Param[orig_type]
+        # Update the model_fields to have the correct default
+        if "KIND" in cls.model_fields:
+            cls.model_fields["KIND"].default = cls.__qualname__
 
-            # Build a PrivateParam default based on the Field default
-            default = attr.default
-            if isinstance(default, SelfInit):
-                private_attr = PrivateParam(factory=default.fn)
-            else:
-                private_attr = PrivateParam(default=default)
-
-            # Replace the FieldInfo on the class with the PrivateAttr
-            setattr(cls, name, private_attr)
-
-        # Rebuild model so pydantic recognizes changes
-        cls.model_rebuild(force=True)
+        # Auto-register the module in the global registry
+        mod_registry.register()(cls)
 
     def model_post_init(self, __context):
         super().model_post_init(__context)
-
-        # 1) Param *fields* (ParamField)
-        for name, field in self.model_fields.items():
-            extra = getattr(field, "json_schema_extra", None) or {}
-            if not extra.get("is_param"):
-                continue
-
-            raw_value = getattr(self, name)  # validated user value (T)
-
-            # build Param[T] using the annotation if available
-            ann = self.__annotations__.get(name, t.Any)
-            try:
-                ParamT = Param[ann]          # Param[T]
-            except TypeError:
-                ParamT = Param               # fallback
-
-            param_obj = ParamT(raw_value)    # Param[T](data) or similar
-            setattr(self, name, param_obj)   # now attribute `name` is a Param
-            if name in self._registry:
-                raise RuntimeError(
-                    f"Parameter '{name}' already registered in module '{self.__class__.__name__}'"
-                )
-            self._registry[name] = StateType.PARAM
 
         # 2) Private attributes (ignore the registry itself)
         for name in self.__private_attributes__.keys():
@@ -685,7 +635,7 @@ class Module(pydantic.BaseModel):
                     raise RuntimeError(
                         f"Runtime attribute '{name}' already registered in module '{self.__class__.__name__}'"
                     )
-                self._registry[name] = StateType.ATTR
+                self._registry[name] = StateType.RUNTIME
 
             elif isinstance(value, Module):
                 if name in self._registry:
@@ -802,7 +752,7 @@ class Module(pydantic.BaseModel):
     ):
         """Yield all state names and their Runtime objects."""
         for name, state_type in self._registry.items():
-            if state_type is not StateType.ATTR:
+            if state_type is not StateType.RUNTIME:
                 continue
             state = getattr(self, name)
             if isinstance(state, Runtime):
@@ -864,7 +814,7 @@ class Module(pydantic.BaseModel):
 
     def train(self, mode: bool = True):
         """Recursively set Param.training for all parameters."""
-        self.training = mode
+        self._training.set(mode)
         for name, state_type in self._registry.items():
             if state_type is not StateType.MODULE:
                 continue
@@ -877,12 +827,6 @@ class Module(pydantic.BaseModel):
         """Alias for ``train(False)``."""
         return self.train(False)
 
-    def named_children(self):
-        """
-        Yield all child module names and their corresponding modules.
-        """
-        return self._modules.items()
-
     # TODO: figure out how to deal with Shareables
     def __setattr__(self, name, value):
         super().__setattr__(name, value)
@@ -894,7 +838,7 @@ class Module(pydantic.BaseModel):
         if isinstance(value, Param):
             self._registry[name] = StateType.PARAM
         elif isinstance(value, Runtime):
-            self._registry[name] = StateType.ATTR
+            self._registry[name] = StateType.RUNTIME
         elif isinstance(value, Module):
             self._registry[name] = StateType.MODULE
 
@@ -913,9 +857,9 @@ class Module(pydantic.BaseModel):
         for name, state_type in self._registry.items():
             obj = getattr(self, name)
             if state_type is StateType.PARAM and train and isinstance(obj, Param):
-                out[name] = obj.data
-            elif state_type is StateType.ATTR and runtime and isinstance(obj, Runtime):
-                out[name] = obj.data
+                out[name] = obj.dump()
+            elif state_type is StateType.RUNTIME and runtime and isinstance(obj, Runtime):
+                out[name] = obj.dump()
 
         # recurse into modules
         if recurse:
@@ -945,7 +889,7 @@ class Module(pydantic.BaseModel):
         for name, state_type in self._registry.items():
             if state_type is StateType.PARAM and train:
                 keys.add(name)
-            elif state_type is StateType.ATTR and runtime:
+            elif state_type is StateType.RUNTIME and runtime:
                 keys.add(name)
 
         if recurse:
@@ -982,10 +926,10 @@ class Module(pydantic.BaseModel):
                 continue
             obj = getattr(self, name)
             if state_type is StateType.PARAM and train and isinstance(obj, Param):
-                obj.data = sd[name]
+                obj.load(sd[name])
                 found.add(name)
-            elif state_type is StateType.ATTR and runtime and isinstance(obj, Runtime):
-                obj.data = sd[name]
+            elif state_type is StateType.RUNTIME and runtime and isinstance(obj, Runtime):
+                obj.load(sd[name])
                 found.add(name)
 
         # recurse
@@ -1022,6 +966,7 @@ class Module(pydantic.BaseModel):
                 raise KeyError(f"Missing keys in load_state_dict: {sorted(missing)}")
             if extra:
                 raise KeyError(f"Unexpected keys in load_state_dict: {sorted(extra)}")
+    
 
     # def children(self):
     #     """Immediate child modules (non-recursive)."""
@@ -1114,7 +1059,7 @@ class Checkpoint(pydantic.BaseModel):
         description="The specification for the module."
     )
     state: t.Dict[str, Dict[str, t.Any]] = Field(
-        description="The state dict for the module"
+        description="The state dict for the module."
     )
 
     def save(self, path: str):
@@ -1135,7 +1080,7 @@ class Checkpoint(pydantic.BaseModel):
             data = f.read()
         data = json.loads(data)
 
-        load_cls = mod_registry[data['spec']['kind']]
+        load_cls = mod_registry[data['spec']['KIND']]
 
         spec = load_cls.obj.__spec__.model_validate(data['spec'])
         state = data['state']
@@ -1361,7 +1306,7 @@ class AdaptModule(
 
     # fixed: bool = False
     # train_submods: bool = True   # expose inner numeric params?
-    _adapted: V | None = PrivateParam(None)
+    _adapted: Param[V | None] = PrivateParam(None)
     _train_submods: bool = pydantic.PrivateAttr(default=True)
     _fixed: bool = pydantic.PrivateAttr(default=False)
 
@@ -1372,7 +1317,7 @@ class AdaptModule(
     def unfix(self, *, ctx: dict | None = None):
         self._fixed = False
 
-    def parameters(self, *, recurse=True, _seen=None, with_annotation: bool=False):  # noqa: D401
+    def parameters(self, *, recurse=True, _seen=None, with_annotations: bool=False):  # noqa: D401
         if _seen is None:
             _seen = set()
         if id(self) in _seen:
@@ -1381,17 +1326,18 @@ class AdaptModule(
 
         # always expose the *spec* parameter itself unless frozen
         if not self._fixed:
-            if with_annotation:
+            if with_annotations:
                 yield (self._adapted, V)
             else:
                 yield self._adapted
 
         # inner numeric params – optional
-        if recurse and self._train_submods and not self.fixed:
-            yield from self._adapted.parameters(recurse=True, _seen=_seen, with_annotations=with_annotation)
+        if recurse and self._train_submods and not self._fixed and self._adapted.data is not None:
+            yield from self._adapted.data.parameters(recurse=True, _seen=_seen, with_annotations=with_annotations)
 
     def render(self) -> str:  # for LLM debugging
-        return f"AdaptModule(adapted={self._adapted.__class__.__name__}, fixed={self.fixed})"
+        adapted_name = self._adapted.data.__class__.__name__ if self._adapted.data else 'None'
+        return f"AdaptModule(adapted={adapted_name}, fixed={self._fixed})"
 
     @classmethod
     def build(cls, 
@@ -1411,37 +1357,39 @@ class AdaptModule(
         return adapt_mod
 
     @property
-    def adapted(self) -> Module:
+    def adapted(self) -> V | None:
         """Get the adapted module
         """
-        return self._adapted
+        return self._adapted.data
 
     @adapted.setter
-    def adapted(self, val: V | Param[V]):
+    def adapted(self, val: V):
         if self._fixed:
             raise RuntimeError("Cannot update adapted on a frozen AdaptModule")
 
-        if not isinstance(val, Param):
-            val = Param[J](data=val)
-        
         self._adapted.set(val)
 
-    def state_dict(self) -> dict:
+    def state_dict(self, *, recurse=True, train=True, runtime=True) -> dict:
         """Get the state dict, including adapted sub-module."""
-        out = super().state_dict()
-        if self._adapted is not None:
-            adapted_sd = self._adapted.state_dict()
+        out = super().state_dict(recurse=recurse, train=train, runtime=runtime)
+        if self._adapted.data is not None:
+            adapted_sd = self._adapted.data.state_dict(recurse=recurse, train=train, runtime=runtime)
             for k, v in adapted_sd.items():
                 out[f"adapted.{k}"] = v
         return out
 
     def load_state_dict(self, sd, *, recurse = True, train = True, runtime = True, strict = True):
-        super().load_state_dict(sd, recurse=recurse, train=train, runtime=runtime, strict=strict)
-        # Load adapted sub-module state dict
-        if self._adapted is None:
-            return
+        # Separate adapted state dict from parent state dict
         adapted_sd = {k[len("adapted.") :]: v for k, v in sd.items() if k.startswith("adapted.")}
-        self._adapted.load_state_dict(adapted_sd, recurse=recurse, train=train, runtime=runtime, strict=strict)
+        parent_sd = {k: v for k, v in sd.items() if not k.startswith("adapted.")}
+
+        # Load parent state dict
+        
+        super().load_state_dict(parent_sd, recurse=recurse, train=train, runtime=runtime, strict=strict)
+
+        # Load adapted sub-module state dict
+        if self._adapted.data is not None and adapted_sd:
+            self._adapted.data.load_state_dict(adapted_sd, recurse=recurse, train=train, runtime=runtime, strict=strict)
 
     # @pydantic.field_validator('adapted', mode='before')
     # def validate_adapted(self, val: J | None | Param[J | None]) -> t.Set[str]:
@@ -1452,3 +1400,46 @@ class AdaptModule(
         
     #     return Param[J](data=val)
     
+
+
+# def ParamField(
+#     *, default=..., frozen=True, default_factory=..., **kwargs
+# ):
+#     """Create a Field for Param with default value.
+#     Frozen is set to True by default 
+#     """
+#     f = Field(default, frozen=frozen, default_factory=default_factory, **kwargs)
+#     # mark this field as a "param"
+#     meta = getattr(f, "json_schema_extra", None) or {}
+#     meta["is_param"] = True
+#     f.json_schema_extra = meta
+#     return f
+
+
+# def SharedField(
+#     *, default=..., frozen=True, default_factory=..., **kwargs
+# ):
+#     """Create a Field for Param with default value.
+#     Frozen is set to True by default 
+#     """
+#     f = Field(default, frozen=frozen, default_factory=default_factory, **kwargs)
+#     # mark this field as a "param"
+#     meta = getattr(f, "json_schema_extra", None) or {}
+#     meta["is_param"] = True
+#     f.json_schema_extra = meta
+#     return f
+
+
+# def RuntimeField(
+#     *, default=..., default_factory=..., **kwargs
+# ):
+#     """Create a Field for Runtime with default value.
+#     Frozen is always True for this. It can be treated as a way to initialize a variable that will be used at runtime.
+#     """
+#     f = Field(default, default_factory=default_factory,
+#     frozen=True, **kwargs)
+#     # mark this field as a "runtime"
+#     meta = getattr(f, "json_schema_extra", None) or {}
+#     meta["is_runtime"] = True
+#     f.json_schema_extra = meta
+#     return f

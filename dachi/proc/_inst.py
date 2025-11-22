@@ -214,7 +214,7 @@ class SigF(IBase):
         self.doc = self.doc or self._docstring
         self._doc_param = Param[str](
             data=self.doc,
-            fixed=not self.train
+            _fixed=not self.train
         )
         
     def __call__(self, instance, *args, **kwargs) -> str:
