@@ -41,11 +41,13 @@ def _get_typevar_map_for_model(model_cls: type[BaseModel]) -> dict[TypeVar, Any]
 
     We first look at the model's own __pydantic_generic_metadata__.
     If that doesn't give us anything (e.g. for a non-generic subclass of
-    a concrete generic base), we fall back to inspecting its BaseModel bases.
+    a concrete generic base), we walk the full MRO in reverse order to collect
+    TypeVar mappings from all generic ancestors, with child mappings taking
+    precedence over parent mappings.
     """
     tv_map: dict[TypeVar, Any] = {}
 
-    # 1) Try the model itself, e.g. HasParam[bool]
+    # 1) Try the model itself first, e.g. HasParam[bool]
     md = getattr(model_cls, "__pydantic_generic_metadata__", None)
     if md:
         origin = md.get("origin")
@@ -54,12 +56,20 @@ def _get_typevar_map_for_model(model_cls: type[BaseModel]) -> dict[TypeVar, Any]
             origin_md = getattr(origin, "__pydantic_generic_metadata__", None)
             if origin_md:
                 params = tuple(origin_md.get("parameters") or ())
+                # Don't return early - continue to collect from MRO for complete mapping
                 tv_map.update(dict(zip(params, args)))
-                if tv_map:
-                    return tv_map
 
-    # 2) Fallback: check generic BaseModel bases, e.g. class Child(HasParam[bool])
-    for base in model_cls.__bases__:
+    # 2) Walk the full MRO in REVERSE (parent to child) to build complete TypeVar map
+    # This handles deep inheritance: Level1[str] -> Level2[int] -> Level3
+    # Reverse ensures parent mappings are added first, then overridden by child
+    for base in reversed(model_cls.__mro__[1:]):  # Skip model_cls itself, reverse for parent-first
+        # Skip non-BaseModel classes
+        try:
+            if not (isinstance(base, type) and issubclass(base, BaseModel)):
+                continue
+        except TypeError:
+            continue
+
         bmd = getattr(base, "__pydantic_generic_metadata__", None)
         if not bmd:
             continue
@@ -77,30 +87,43 @@ def _get_typevar_map_for_model(model_cls: type[BaseModel]) -> dict[TypeVar, Any]
         if not params:
             continue
 
-        tv_map.update(dict(zip(params, args)))
-        if tv_map:
-            return tv_map
+        # Update map - later (child) mappings override earlier (parent) ones
+        for param, arg in zip(params, args):
+            # Add all non-None mappings, including TypeVar-to-TypeVar
+            # (will be resolved recursively by _lookup_typevar)
+            if arg is not None:
+                tv_map[param] = arg
 
     return tv_map
 
 
 def _lookup_typevar(tv: TypeVar, tv_map: dict[TypeVar, Any]) -> Any:
     """
-    Lookup a TypeVar in tv_map.
+    Lookup a TypeVar in tv_map with recursive resolution.
 
     First try identity (tv_map[tv]).
-    If that fails, fall back to matching by TypeVar name, to handle cases
-    where the same logical TypeVar is re-used or re-imported.
+    If that fails, fall back to matching by TypeVar name.
+    If the result is another TypeVar, recursively resolve it.
     """
+    result = None
+
     if tv in tv_map:
-        return tv_map[tv]
+        result = tv_map[tv]
+    else:
+        # Fallback: match by name
+        for k, v in tv_map.items():
+            if isinstance(k, TypeVar) and getattr(k, "__name__", None) == getattr(tv, "__name__", None):
+                result = v
+                break
 
-    # Fallback: match by name
-    for k, v in tv_map.items():
-        if isinstance(k, TypeVar) and getattr(k, "__name__", None) == getattr(tv, "__name__", None):
-            return v
+    if result is None:
+        return tv  # unresolved
 
-    return tv  # unresolved
+    # Recursive resolution: if result is another TypeVar, look it up
+    if isinstance(result, TypeVar) and result != tv:  # Avoid infinite loop
+        return _lookup_typevar(result, tv_map)
+
+    return result
 
 
 def _rebuild_union(origin: Any, args: tuple[Any, ...]) -> Any:
@@ -265,9 +288,7 @@ def get_all_private_attr_annotations(model_cls: type[BaseModel]) -> dict[str, An
         # 1) Resolve any string / forward-ref style annotation
         resolved = _resolve_raw_annotation(defining_cls, raw)
         # 2) Substitute TypeVars using this model's concrete mapping
-        print('Resolved before substitution: ', resolved)
         resolved = _substitute_typevars(resolved, tv_map)
-        print('Resolved after substitution: ', resolved)
 
         result[name] = resolved
 
