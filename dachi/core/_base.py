@@ -976,12 +976,9 @@ class Module(pydantic.BaseModel, StorableState, Trainable):
 
         # recurse into modules
         if recurse:
-            for name, state_type in self._registry.items():
-                if state_type is not StateType.MODULE:
-                    continue
-                child = getattr(self, name)
-                if not isinstance(child, Module):
-                    continue
+            for name, child in self.named_modules(
+                recurse=False, _skip_self=True
+            ):
                 child_sd = child.state_dict(
                     recurse=True, train=train, runtime=runtime
                 )
@@ -1006,12 +1003,9 @@ class Module(pydantic.BaseModel, StorableState, Trainable):
                 keys.add(name)
 
         if recurse:
-            for name, state_type in self._registry.items():
-                if state_type is not StateType.MODULE:
-                    continue
-                child = getattr(self, name)
-                if not isinstance(child, Module):
-                    continue
+            for name, child in self.named_modules(
+                recurse=False, _skip_self=True
+            ):
                 for sub_name in child.state_keys(
                     recurse=True, train=train, runtime=runtime
                 ):
@@ -1047,12 +1041,9 @@ class Module(pydantic.BaseModel, StorableState, Trainable):
 
         # recurse
         if recurse:
-            for name, state_type in self._registry.items():
-                if state_type is not StateType.MODULE:
-                    continue
-                child = getattr(self, name)
-                if not isinstance(child, Module):
-                    continue
+            for name, child in self.named_modules(
+                recurse=False, _skip_self=True
+            ):
                 prefix = f"{name}."
                 child_sd = {
                     k[len(prefix):]: v
