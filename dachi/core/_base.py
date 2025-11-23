@@ -9,7 +9,7 @@ from typing import Generic, Union
 import inspect
 import json
 from enum import Enum, auto
-
+from dachi.utils import get_all_private_attr_annotations
 from abc import ABC, abstractmethod
 
 from pydantic import BaseModel, Field
@@ -437,13 +437,44 @@ class ExampleMixin(ABC):
         pass
 
 
-class SelfInit:
+class StateType(Enum):
 
-    def __init__(self, fn: t.Callable[['Module'], t.Any]):
+    MODULE: str = auto()
+    RUNTIME: str = auto()
+    PARAM: str = auto()
+
+
+class ObjInit(t.Generic[T]):
+
+    def __init__(
+        self, fn: t.Callable[['Module'], t.Any], 
+        base_cls: t.Type
+    ):
         self.fn = fn
+        self.base_cls = base_cls
 
-    def __call__(self, module: 'Module'):
-        return self.fn(module)
+    def __call__(self, module: 'Module', anno=None):
+        # anno = self.anno or anno
+        if anno is None:
+            return self.base_cls(data=self.fn(module))
+        return self.base_cls[anno](data=self.fn(module))
+
+
+class FuncInit(t.Generic[T]):
+    
+    def __init__(
+        self, fn: t.Callable[[], t.Any], 
+        base_cls: t.Type
+    ):
+        self.fn = fn
+        self.base_cls = base_cls
+
+    def __call__(self, anno=None):
+        # anno = self.anno or anno
+        print('Anno: ', anno)
+        if anno is None:
+            return self.base_cls(data=self.fn())
+        return self.base_cls[anno](data=self.fn())
 
 
 def _PrivateType(
@@ -454,24 +485,33 @@ def _PrivateType(
     instance_field=None
 ):
     """Create a PrivateAttr for ShareableItem subclass with default value."""
-    if instance_field is not None and default is None and default_factory is None and instance_factory is None:
+    if (
+        instance_field is not None 
+        and default is None 
+        and default_factory is None 
+        and instance_factory is None
+    ):
         return pydantic.PrivateAttr(
-            default=SelfInit(
-                lambda module: cls(data=getattr(module, instance_field))
+            default=ObjInit(
+                lambda module: getattr(module, instance_field), cls
             )
         )
     if instance_factory is not None and default is None and default_factory is None:
         return pydantic.PrivateAttr(
-            default=SelfInit(
-                instance_factory
+            default=ObjInit(
+                instance_factory, cls
             )
         )
     if default is None and default_factory is not None:
         return pydantic.PrivateAttr(
-            default_factory=lambda: cls(data=default_factory())
+            default=FuncInit(
+                default_factory, cls
+            )
         )
     return pydantic.PrivateAttr(
-        default_factory=lambda: cls(data=default)
+        default=FuncInit(
+            lambda: default, cls
+        )
     )
 
 
@@ -487,7 +527,7 @@ def PrivateRuntime(
         default=default,
         default_factory=default_factory,
         instance_factory=instance_factory,
-        instance_field=instance_field,
+        instance_field=instance_field
     )
 
 
@@ -503,7 +543,7 @@ def PrivateParam(
         default=default,
         default_factory=default_factory,
         instance_factory=instance_factory,
-        instance_field=instance_field,
+        instance_field=instance_field
     )
 
 
@@ -519,15 +559,70 @@ def PrivateShared(
         default=default,
         default_factory=default_factory,
         instance_factory=instance_factory,
-        instance_field=instance_field,
+        instance_field=instance_field
     )
 
 
-class StateType(Enum):
+# import sys
+# from typing import Any
+# from pydantic import BaseModel
 
-    MODULE: str = auto()
-    RUNTIME: str = auto()
-    PARAM: str = auto()
+
+# def _resolve_raw_annotation(defining_cls: type[BaseModel], raw: Any) -> Any:
+#     """Best-effort resolution of a single annotation value."""
+#     if raw is None:
+#         return None
+
+#     # Already a real type or typing object
+#     if not isinstance(raw, str):
+#         return raw
+
+#     module_globals = vars(sys.modules[defining_cls.__module__])
+#     localns = dict(vars(defining_cls))
+
+#     try:
+#         return eval(raw, module_globals, localns)
+#     except Exception:
+#         # NameError, SyntaxError, whatever – don't blow up, just keep the string
+#         return raw
+
+
+# def get_all_private_attr_annotations(model_cls: type[BaseModel]) -> dict[str, Any]:
+#     """
+#     Return {name: annotation_or_type} for all private attributes on this
+#     Pydantic model class, including those declared on base classes.
+
+#     - If the annotation is a real type (int, SomeModel, list[str], ...),
+#       you'll get that object.
+#     - If it's a string and resolvable in the defining class's namespace,
+#       you'll get the resolved type.
+#     - If resolution fails, you'll get the raw string.
+#     """
+#     private_attrs = getattr(model_cls, "__private_attributes__", {})
+#     if not private_attrs:
+#         return {}
+
+#     result: dict[str, Any] = {}
+
+#     for name in private_attrs.keys():
+#         raw = None
+#         defining_cls: type[BaseModel] | None = None
+
+#         # Find the class in the MRO that actually defines the annotation
+#         for cls in model_cls.__mro__:
+#             anns = getattr(cls, "__annotations__", {})
+#             if name in anns:
+#                 raw = anns[name]
+#                 defining_cls = cls
+#                 break
+
+#         if defining_cls is None:
+#             # No annotation found anywhere in the MRO
+#             result[name] = None
+#         else:
+#             result[name] = _resolve_raw_annotation(defining_cls, raw)
+
+#     return result
 
 
 class Module(pydantic.BaseModel, StorableState, Trainable):
@@ -540,8 +635,8 @@ class Module(pydantic.BaseModel, StorableState, Trainable):
     KIND: str = Field(default="Module")
     # registry: name -> StateType (PARAM / ATTR / MODULE)
     _registry: t.Dict[str, StateType] = pydantic.PrivateAttr(default_factory=dict)
-    _training: bool = PrivateRuntime(default=True)
-    
+    _training: Runtime[bool] = PrivateRuntime(default=True)
+
     @classmethod
     def __init_subclass__(cls, **kwargs):
         if cls is Module:
@@ -554,47 +649,18 @@ class Module(pydantic.BaseModel, StorableState, Trainable):
         if "KIND" not in cls.__dict__:
             cls.KIND = cls.__qualname__
 
-        #
-        # --- Handle ParamFields declared as normal fields ---
-        #
-        # Detect which fields were declared as ParamField(...)
-        # param_field_names: list[str] = []
-        # runtime_field_names: list[str] = []
-        # for name, field in cls.__dict__.items():
-        #     if isinstance(field, pydantic.fields.FieldInfo):
-        #         extra = field.json_schema_extra or {}
-        #         if extra.get("is_param"):
-        #             param_field_names.append(name)
-        #         elif extra.get("is_runtime"):
-        #             runtime_field_names.append(name)
+        # for name, attr in list(cls.__dict__.items()):
+        #     if not isinstance(attr, FieldInfo):
+        #         continue
 
-        # For each ParamField:
-        #   1. Remove it from annotations (no longer a pydantic field)
-        #   2. Add a PrivateAttr placeholder instead
-        # for name in param_field_names:
-        #     cls.__annotations__.pop(name, None)
-        #     private = pydantic.PrivateAttr(default=None)
-        #     setattr(cls, name, private)
-        #     cls.__private_attributes__[name] = private
-
-        # for name in runtime_field_names:
-        #     cls.__annotations__.pop(name, None)
-        #     private = pydantic.PrivateAttr(default=None)
-        #     setattr(cls, name, private)
-        #     cls.__private_attributes__[name] = private
-
-        for name, attr in list(cls.__dict__.items()):
-            if not isinstance(attr, FieldInfo):
-                continue
-
-            extra = attr.json_schema_extra or {}
-            if extra.get("is_param"):
+        #     extra = attr.json_schema_extra or {}
+        #     if extra.get("is_param"):
             
-                orig_type = cls.__annotations__.get(name, t.Any)
-                cls.__annotations__[name] = Param[orig_type]
-            elif extra.get("is_runtime"):
-                orig_type = cls.__annotations__.get(name, t.Any)
-                cls.__annotations__[name] = Runtime[orig_type]
+        #         orig_type = cls.__annotations__.get(name, t.Any)
+        #         cls.__annotations__[name] = Param[orig_type]
+        #     elif extra.get("is_runtime"):
+        #         orig_type = cls.__annotations__.get(name, t.Any)
+        #         cls.__annotations__[name] = Runtime[orig_type]
 
         # Call super().__init_subclass__ AFTER all annotation modifications
         # This allows Pydantic to build the model with the correct schema
@@ -609,6 +675,7 @@ class Module(pydantic.BaseModel, StorableState, Trainable):
 
     def model_post_init(self, __context):
         super().model_post_init(__context)
+        private_annotations = get_all_private_attr_annotations(self.__class__)
 
         # 2) Private attributes (ignore the registry itself)
         for name in self.__private_attributes__.keys():
@@ -616,34 +683,50 @@ class Module(pydantic.BaseModel, StorableState, Trainable):
                 continue
 
             value = getattr(self, name)
-
+            # annotations = get_all_private_attr_annotations(self.__class__)
             # SelfInit → compute from self, then re-read
-            if isinstance(value, SelfInit):
-                computed = value.fn(self)
+            if isinstance(value, ObjInit) or isinstance(value, FuncInit):
+
+                if name not in private_annotations:
+                    annotation = None
+                elif hasattr(private_annotations[name], "__pydantic_generic_metadata__"):
+                    annotation = private_annotations[name].__pydantic_generic_metadata__['args'][0]
+                else:
+                    annotation = None
+
+                computed = value(self, annotation) if isinstance(value, ObjInit) else value(annotation)
                 setattr(self, name, computed)
                 value = computed
-
-            if isinstance(value, Param):
-                if name in self._registry:
-                    raise RuntimeError(
-                        f"Parameter '{name}' already registered in module '{self.__class__.__name__}'"
-                    )
-                self._registry[name] = StateType.PARAM
-
-            elif isinstance(value, Runtime):
-                if name in self._registry:
-                    raise RuntimeError(
-                        f"Runtime attribute '{name}' already registered in module '{self.__class__.__name__}'"
-                    )
-                self._registry[name] = StateType.RUNTIME
-
+                if isinstance(value, Param):
+                    self._registry[name] = StateType.PARAM
+                elif isinstance(value, Runtime):
+                    self._registry[name] = StateType.RUNTIME
+            
+            # elif isinstance(value, FuncInit):
+            #     print('FuncInit ', name)
+            #     if name not in self.__class__.__annotations__:
+            #         annotation = None
+            #     elif hasattr(self.__class__.__annotations__[name], "__pydantic_generic_metadata__"):
+            #         annotation = private_annotations[name].__pydantic_generic_metadata__['args'][0]
+            #     else:
+            #         annotation = None
+            #     print('Annotation: ', annotation)
+            #     computed = value(annotation)
+            #     print('setting', computed)
+            #     setattr(self, name, computed)
+            #     print('set', getattr(self, name))
+            #     value = computed
+            #     if isinstance(value, Param):
+            #         self._registry[name] = StateType.PARAM
+            #     elif isinstance(value, Runtime):
+            #         self._registry[name] = StateType.RUNTIME
             elif isinstance(value, Module):
                 if name in self._registry:
                     raise RuntimeError(
                         f"Module '{name}' already registered in module '{self.__class__.__name__}'"
                     )
                 self._registry[name] = StateType.MODULE
-    
+
     def parameters(
         self,
         *,

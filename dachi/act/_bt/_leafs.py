@@ -156,8 +156,8 @@ class RandomTimer(Action):
     seconds_lower: float
     seconds_upper: float
 
-    _start: Runtime[float | None] = PrivateRuntime()
-    _target: Runtime[float | None] = PrivateRuntime()
+    _start: Runtime[float | None] = PrivateRuntime(None)
+    _target: Runtime[float | None] = PrivateRuntime(None)
 
     def reset(self):
         super().reset()

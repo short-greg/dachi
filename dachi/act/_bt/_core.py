@@ -184,7 +184,7 @@ class Task(Module):
     READY: t.ClassVar[TaskStatus] = TaskStatus.READY
     RUNNING: t.ClassVar[TaskStatus] = TaskStatus.RUNNING
 
-    _status: Runtime[TaskStatus] = PrivateRuntime(default=TaskStatus.READY)
+    _status: Runtime[TaskStatus] = PrivateRuntime(default=TaskStatus.READY, anno=TaskStatus)
     _id: Runtime[t.Any] = PrivateRuntime(default_factory=id)
 
     @abstractmethod    
@@ -537,7 +537,7 @@ class FTask(Task):
     args: t.List[t.Any]
     kwargs: t.Dict[str, t.Any]
 
-    _obj: Runtime[t.Any] = PrivateRuntime()
+    _obj: Runtime[t.Any] = PrivateRuntime(anno=t.Any)
 
     def model_post_init(self):
         """Initialize the FTask"""

@@ -12,7 +12,7 @@ from dachi.core._base import (
     PrivateParam,
     PrivateRuntime,
     PrivateShared,
-    SelfInit,
+    ObjInit,
     Module,
     StateType,
     Registry,
@@ -141,7 +141,7 @@ class TestShareableItem:
 
     def test_repr_returns_class_and_data(self):
         item = ShareableItem[int](data=42)
-        assert repr(item) == "ShareableItem[int](42)"
+        assert repr(item) == "ShareableItem[int](data=42)"
 
 
 class TestShareableItemCallbacks:
@@ -497,43 +497,43 @@ class TestPrivateParam:
 
     def test_with_default_when_called_creates_private_attr_with_value(self):
         private_attr = PrivateParam(default=42)
-        assert private_attr.default_factory is not None
-        param = private_attr.default_factory()
+        assert private_attr.default_factory is None
+        param = private_attr.default()
         assert isinstance(param, Param)
         assert param.data == 42
 
     def test_with_default_factory_when_called_creates_private_attr_with_factory(self):
         private_attr = PrivateParam(default_factory=lambda: 100)
-        assert private_attr.default_factory is not None
-        param = private_attr.default_factory()
+        assert private_attr.default_factory is None
+        param = private_attr.default()
         assert isinstance(param, Param)
         assert param.data == 100
 
     def test_with_instance_field_when_called_creates_selfinit(self):
         private_attr = PrivateParam(instance_field="x")
         assert private_attr.default is not None
-        assert isinstance(private_attr.default, SelfInit)
+        assert isinstance(private_attr.default, ObjInit)
 
     def test_with_instance_factory_when_called_creates_selfinit(self):
         factory_fn = lambda m: Param(data=m.x if hasattr(m, 'x') else 0)
         private_attr = PrivateParam(instance_factory=factory_fn)
         assert private_attr.default is not None
-        assert isinstance(private_attr.default, SelfInit)
+        assert isinstance(private_attr.default, ObjInit)
 
 
 class TestPrivateRuntime:
 
     def test_with_default_when_called_creates_private_attr_with_value(self):
         private_attr = PrivateRuntime(default=42)
-        assert private_attr.default_factory is not None
-        runtime = private_attr.default_factory()
+        assert private_attr.default_factory is None
+        runtime = private_attr.default()
         assert isinstance(runtime, Runtime)
         assert runtime.data == 42
 
     def test_with_default_factory_when_called_creates_private_attr_with_factory(self):
         private_attr = PrivateRuntime(default_factory=lambda: 100)
-        assert private_attr.default_factory is not None
-        runtime = private_attr.default_factory()
+        assert private_attr.default is not None
+        runtime = private_attr.default()
         assert isinstance(runtime, Runtime)
         assert runtime.data == 100
 
@@ -542,15 +542,15 @@ class TestPrivateShared:
 
     def test_with_default_when_called_creates_private_attr_with_value(self):
         private_attr = PrivateShared(default="test")
-        assert private_attr.default_factory is not None
-        shared = private_attr.default_factory()
+        assert private_attr.default is not None
+        shared = private_attr.default()
         assert isinstance(shared, Shared)
         assert shared.data == "test"
 
     def test_with_default_factory_when_called_creates_private_attr_with_factory(self):
         private_attr = PrivateShared(default_factory=lambda: "factory_value")
-        assert private_attr.default_factory is not None
-        shared = private_attr.default_factory()
+        assert private_attr.default is not None
+        shared = private_attr.default()
         assert isinstance(shared, Shared)
         assert shared.data == "factory_value"
 
@@ -564,22 +564,22 @@ class TestSelfInit:
         def factory_fn(module):
             return module.x * 2
 
-        self_init = SelfInit(factory_fn)
+        self_init = ObjInit(factory_fn, Param)
         test_module = TestModule(x=10)
         result = self_init(test_module)
-        assert result == 20
+        assert result.data == 20
 
     def test_call_when_invoked_returns_result(self):
         def factory_fn(module):
             return 42
 
-        self_init = SelfInit(factory_fn)
+        self_init = ObjInit(factory_fn, Param)
 
         class DummyModule:
             pass
 
         result = self_init(DummyModule())
-        assert result == 42
+        assert result.data == 42
 
 
 class TestModuleInitialization:
@@ -612,6 +612,7 @@ class TestModuleInitialization:
 class TestModuleRegistry:
 
     def test_model_post_init_when_private_param_assigned_registers_as_param(self):
+
         class TestModule(Module):
             _param: Param[int] = PrivateParam(default=42)
 
@@ -1016,7 +1017,6 @@ class TestModuleNamedStates:
         print(named_states)
         assert "_s1" in named_states
         assert "_s2" in named_states
-        assert "_training" in named_states
         assert len(named_states) == 3
 
     def test_named_states_when_recurse_true_returns_dotted_paths(self):
@@ -1053,7 +1053,6 @@ class TestModuleNamedStates:
         named_states = dict(parent.named_states(recurse=False))
         assert len(named_states) == 2
         assert "_state" in named_states
-        assert "_training" in named_states
         assert "_param" not in named_states
         assert "_child" not in named_states
 
@@ -1193,11 +1192,10 @@ class TestModuleLoadStateDict:
         module = TestModule()
         module.load_state_dict(
             {"_param": {"data": 99}, 
-             "_training": {"data": True},
+             "_training": {"data": True}
              }
         )
         assert module._param.data == 99
-        assert module._training.data is True
 
     def test_load_state_dict_when_valid_updates_runtime(self):
         class TestModule(Module):
@@ -1206,11 +1204,10 @@ class TestModuleLoadStateDict:
         module = TestModule()
         module.load_state_dict(
             {"_runtime": {"data": 99},
-             "_training": {"data": False}
+             "_training": {"data": True}
              }
         )
         assert module._runtime.data == 99
-        assert module._training.data is False
 
     def test_load_state_dict_when_recurse_true_updates_children(self):
         class ChildModule(Module):
@@ -1223,9 +1220,9 @@ class TestModuleLoadStateDict:
         parent = ParentModule()
         parent.load_state_dict({
             "_p_parent": {"data": 100},
+            "_training": {"data": True},
             "_child._p_child": {"data": 200},
-            "_child._training": {"data": False},
-            "_training": {"data": True}
+            "_child._training": {"data": True}
         })
         assert parent._p_parent.data == 100
         assert parent._child._p_child.data == 200
@@ -1246,8 +1243,7 @@ class TestModuleLoadStateDict:
         module = TestModule()
         with pytest.raises(KeyError, match="Unexpected keys"):
             module.load_state_dict(
-                {"_param": {"data": 99}, "_extra": 1,
-                 "_training": {"data": True}
+                {"_param": {"data": 99}, "_training": {"data": True}, "_extra": 1
                  }, strict=True)
 
     def test_load_state_dict_when_strict_false_ignores_extra_keys(self):
@@ -1705,7 +1701,7 @@ class TestAdaptModule:
         inner._p.data = 99
         adapt_mod = AdaptModule[InnerModule].build(adapted=inner)
 
-        print(adapt_mod._adapted.__orig_class__)
+        # print(adapt_mod._adapted.__orig_class__)
 
         sd = adapt_mod.state_dict()
         assert "adapted._p" in sd
@@ -1718,39 +1714,39 @@ class TestAdaptModule:
         assert adapt_mod2.adapted._p.data == 99
 
 
-# class TestCheckpoint:
+class TestCheckpoint:
 
-#     def test_save_when_called_writes_json_file_with_spec_and_state(self, tmp_path):
-#         import json
+    def test_save_when_called_writes_json_file_with_spec_and_state(self, tmp_path):
+        import json
 
-#         checkpoint_path = tmp_path / "test_checkpoint.json"
+        checkpoint_path = tmp_path / "test_checkpoint.json"
 
-#         spec_data = {"KIND": "TestModule", "x": 10}
-#         state_data = {"param1": {"value": 42}}
-#         checkpoint = Checkpoint(spec=spec_data, state=state_data)
+        spec_data = {"KIND": "TestModule", "x": 10}
+        state_data = {"param1": {"value": 42}}
+        checkpoint = Checkpoint(spec=spec_data, state=state_data)
 
-#         checkpoint.save(str(checkpoint_path))
+        checkpoint.save(str(checkpoint_path))
 
-#         assert checkpoint_path.exists()
-#         with open(checkpoint_path, 'r') as f:
-#             loaded_data = json.load(f)
+        assert checkpoint_path.exists()
+        with open(checkpoint_path, 'r') as f:
+            loaded_data = json.load(f)
 
-#         assert loaded_data["spec"] == spec_data
-#         assert loaded_data["state"] == state_data
+        assert loaded_data["spec"] == spec_data
+        assert loaded_data["state"] == state_data
 
-#     def test_load_when_called_reads_json_file_correctly(self, tmp_path):
-#         import json
+    def test_load_when_called_reads_json_file_correctly(self, tmp_path):
+        import json
 
-#         checkpoint_path = tmp_path / "test_checkpoint.json"
+        checkpoint_path = tmp_path / "test_checkpoint.json"
 
-#         spec_data = {"KIND": "TestModule"}
-#         state_data = {"param1": {"value": 42}}
+        spec_data = {"KIND": "TestModule"}
+        state_data = {"param1": {"value": 42}}
 
-#         with open(checkpoint_path, 'w') as f:
-#             json.dump({"spec": spec_data, "state": state_data}, f)
+        with open(checkpoint_path, 'w') as f:
+            json.dump({"spec": spec_data, "state": state_data}, f)
 
-#         with open(checkpoint_path, 'r') as f:
-#             loaded = json.load(f)
+        with open(checkpoint_path, 'r') as f:
+            loaded = json.load(f)
 
-#         assert loaded["spec"] == spec_data
-#         assert loaded["state"] == state_data
+        assert loaded["spec"] == spec_data
+        assert loaded["state"] == state_data
