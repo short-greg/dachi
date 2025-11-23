@@ -43,16 +43,14 @@ class ModuleList(Module, t.Generic[V]):
         old_key = str(idx)
         del self._modules[old_key]
         self.items[idx] = value
-        self.register_module(old_key, value)
 
     # public API – intentionally *append‑only*
     def append(self, module: V):
 
         if not isinstance(module, Module):
             raise TypeError("ModuleList accepts only BaseModule instances")
-        key = str(len(self.items))
+        # key = str(len(self.items))
         self.items.append(module)
-        self.register_module(key, module)
     
     @property
     def aslist(self) -> list[V]:
@@ -62,13 +60,56 @@ class ModuleList(Module, t.Generic[V]):
         """
         return [*self.items]
     
+    def modules(self, *, recurse = True, f = None):
+        yield from super().modules(recurse=recurse, f=f)
+
+        if recurse:
+            for module in self.items:
+                yield from module.modules(recurse=recurse, f=f)
+    
     def parameters(self, *, recurse = True, _seen = None, with_annotations = False):
+        if _seen is None:
+            _seen = set()
+        
+        if id(self) in _seen:
+            return
+        _seen.add(id(self))
+
         for param in super().parameters(recurse=recurse, _seen=_seen, with_annotations=with_annotations):
             yield param
-        
         for module in self.items:
             for param in module.parameters(recurse=recurse, _seen=_seen, with_annotations=with_annotations):
                 yield param
+
+    def named_parameters(self, *, recurse = True, _seen = None, prefix = ""):
+        if _seen is None:
+            _seen = set()
+        if id(self) in _seen:
+            return
+        _seen.add(id(self))
+        yield from super().named_parameters(recurse=recurse, _seen=_seen, prefix=prefix)
+        for i, module in enumerate(self.items):
+            child_prefix = f"{prefix}{i}."
+            for name, param in module.named_parameters(recurse=recurse, _seen=_seen, prefix=child_prefix):
+                yield name, param
+
+    def children(self):
+        """Immediate child modules (non-recursive)."""
+        yield from super().children()
+        for module in self.items:
+            yield module
+    
+    def named_children(self):
+        """Immediate child modules (non-recursive) as (name, module) pairs."""
+        yield from super().named_children()
+        for i, module in enumerate(self.items):
+            yield str(i), module
+
+    def apply(self, fn, *, recurse = True, include = None):
+        super().apply(fn, recurse=recurse, include=include)
+
+        for module in self.items:
+            module.apply(fn, recurse=recurse, include=include)
 
     def state_dict(self, *, recurse = True, train = True, runtime = True):
         d = super().state_dict(recurse=recurse, train=train, runtime=runtime)
@@ -166,6 +207,30 @@ class ModuleDict(Module, t.Generic[V]):
                 for param in module.parameters(recurse=recurse, _seen=_seen, with_annotations=with_annotations):
                     yield param
     
+    def named_parameters(self, *, recurse = True, _seen = None, prefix = ""):
+
+        _seen = _seen or set()
+
+        for param in super().named_parameters(recurse=recurse, _seen=_seen):
+            yield param
+        for k, module in self.items.items():
+            if isinstance(module, Module):
+                child_prefix = f"{prefix}{k}."
+                for param in module.named_parameters(recurse=recurse, _seen=_seen, prefix=child_prefix):
+                    yield param
+
+    def children(self):
+        """Immediate child modules (non-recursive)."""
+        for module in self.items.values():
+            if isinstance(module, Module):
+                yield module
+
+    def named_children(self):
+        """Immediate child modules (non-recursive) as (name, module) pairs."""
+        for k, module in self.items.items():
+            if isinstance(module, Module):
+                yield k, module
+
     def state_dict(self, *, recurse = True, train = True, runtime = True):
         d = super().state_dict(recurse=recurse, train=train, runtime=runtime)
         for k, module in self.items.items():

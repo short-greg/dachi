@@ -737,6 +737,10 @@ class Module(pydantic.BaseModel, StorableState, Trainable):
         if _seen is None:
             _seen = set()
 
+        if id(self) in _seen:
+            return
+
+        _seen.add(id(self))
         # local params
         for name, state_type in self._registry.items():
             if state_type is not StateType.PARAM:
@@ -746,10 +750,6 @@ class Module(pydantic.BaseModel, StorableState, Trainable):
             if not isinstance(param, Param):
                 continue
 
-            if id(param) in _seen:
-                continue
-            _seen.add(id(param))
-
             if with_annotations:
                 ann = self.__annotations__.get(name, t.Any)
                 yield (param, ann)
@@ -758,30 +758,38 @@ class Module(pydantic.BaseModel, StorableState, Trainable):
 
         # recurse into child modules
         if recurse:
-            for name, state_type in self._registry.items():
-                if state_type is not StateType.MODULE:
-                    continue
-                child = getattr(self, name)
-                if isinstance(child, Module):
-                    yield from child.parameters(
-                        recurse=True, _seen=_seen, with_annotations=with_annotations
-                    )
+            for name, mod in self.named_modules():
+                yield from mod.parameters(
+                    recurse=True, _seen=_seen, with_annotations=with_annotations
+                )
 
     def modules(
         self,
         *,
         recurse: bool = True,
         f: t.Callable[['Module'], bool] | None = None,
+        _seen: t.Optional[set[int]] = None,
+        _skip_self: bool = False
     ):
-        if f is None or f(self):
+        """Yield all Module objects."""
+        if _seen is None:
+            _seen = set()
+
+        if not _skip_self and (f is None or f(self)):
             yield self
-        if recurse:
-            for name, state_type in self._registry.items():
-                if state_type is not StateType.MODULE:
-                    continue
-                child = getattr(self, name)
-                if isinstance(child, Module):
-                    yield from child.modules(recurse=True, f=f)
+            _seen.add(id(self))
+        for name, state_type in self._registry.items():
+            if state_type is not StateType.MODULE:
+                continue
+            child = getattr(self, name)
+            if id(child) in _seen:
+                continue
+            _seen.add(id(child))
+            if f is None or f(child):
+                print('Yielding child module: ', name, child)
+                yield child
+            if recurse:
+                yield from child.modules(recurse=recurse, f=f, _seen=_seen, _skip_self=True)
 
     def named_modules(
         self,
@@ -789,51 +797,76 @@ class Module(pydantic.BaseModel, StorableState, Trainable):
         recurse: bool = True,
         prefix: str = "",
         f: t.Callable[['Module'], bool] | None = None,
+        _seen: t.Optional[set[int]] = None,
+        _skip_self: bool = False
     ):
-        if f is None or f(self):
+        """Yield all module names and their Module objects."""
+        if _seen is None:
+            _seen = set()
+
+        if not _skip_self and (f is None or f(self)):
             yield prefix.rstrip("."), self
-        if recurse:
-            for name, state_type in self._registry.items():
-                if state_type is not StateType.MODULE:
-                    continue
-                child = getattr(self, name)
-                if isinstance(child, Module):
-                    child_prefix = f"{prefix}{name}."
-                    yield from child.named_modules(
-                        recurse=True, prefix=child_prefix, f=f
-                    )
+            _seen.add(id(self))
+        for name, state_type in self._registry.items():
+            if state_type is not StateType.MODULE:
+                continue
+            child = getattr(self, name)
+            child_prefix = f"{prefix}{name}."
+            if id(child) in _seen:
+                continue
+            _seen.add(id(child))
+            yield child_prefix.rstrip("."), child
+            if recurse:
+                yield from child.named_modules(
+                    recurse=recurse, prefix=child_prefix, f=f, _seen=_seen, _skip_self=True
+                )
 
     def named_parameters(
         self,
         *,
         recurse: bool = True,
+        _seen: t.Optional[set] = None,
         prefix: str = "",
     ) -> t.Generator[tuple[str, Param], None, None]:
+        """Yield all parameter names and their Param objects."""
+        if _seen is None:
+            _seen = set()
+
         for name, state_type in self._registry.items():
             if state_type is not StateType.PARAM:
                 continue
+            if name in _seen:
+                continue
+            _seen.add(name)
             param = getattr(self, name)
             if isinstance(param, Param):
                 yield f"{prefix}{name}", param
 
         if recurse:
-            for name, state_type in self._registry.items():
-                if state_type is not StateType.MODULE:
-                    continue
-                child = getattr(self, name)
-                if isinstance(child, Module):
-                    child_prefix = f"{prefix}{name}."
-                    yield from child.named_parameters(
-                        recurse=True, prefix=child_prefix
-                    )
+            for name, module in self.named_modules(recurse=True):
+                if name == "":
+                    child_prefix = ""
+                else:
+                    child_prefix = f"{name}."
+                for param_name, param in module.named_parameters(
+                    recurse=False, _seen=_seen, prefix=child_prefix
+                ):
+                    yield param_name, param
 
     def named_states(
         self,
         *,
         recurse: bool = True,
+        _seen: t.Optional[set] = None,
         prefix: str = "",
     ):
         """Yield all state names and their Runtime objects."""
+        if _seen is None:
+            _seen = set()
+        if id(self) in _seen:
+            return
+        _seen.add(id(self))
+        # local states
         for name, state_type in self._registry.items():
             if state_type is not StateType.RUNTIME:
                 continue
@@ -842,43 +875,43 @@ class Module(pydantic.BaseModel, StorableState, Trainable):
                 yield f"{prefix}{name}", state
 
         if recurse:
-            for name, state_type in self._registry.items():
-                if state_type is not StateType.MODULE:
-                    continue
-                child = getattr(self, name)
-                if isinstance(child, Module):
+            for name, mod in self.named_modules(recurse=True):
+                if name == "":
+                    child_prefix = ""
+                else:
                     child_prefix = f"{prefix}{name}."
-                    yield from child.named_states(recurse=True, prefix=child_prefix)
+                    yield from mod.named_states(recurse=True, _seen=_seen, prefix=child_prefix)
 
     def children(self):
         """Immediate child modules (non-recursive)."""
-        return [
-            getattr(self, name)
-            for name, state_type in self._registry.items()
-            if state_type is StateType.MODULE
-        ]
+        return list(
+            self.modules(recurse=False, _skip_self=True)
+        )
 
     def named_children(self):
         """Immediate child modules (name, module) pairs."""
-        for name, state_type in self._registry.items():
-            if state_type is not StateType.MODULE:
-                continue
-            child = getattr(self, name)
-            if isinstance(child, Module):
-                yield name, child
+        return {
+            name: child
+            for name, child in self.named_modules(recurse=False, _skip_self=True)
+        }
 
     def apply(
         self,
         fn: t.Callable[[t.Any], None],
         *,
+        recurse: bool = True,
         include: t.Callable[[t.Any], bool] | t.Type | None = None,
+        _seen: t.Optional[set[int]] = None,
     ):
         """
         Recursively apply *fn* to self and all registered objects.
         """
-        targets: list[t.Any] = [self]
-        for name in self._registry:
-            targets.append(getattr(self, name))
+        if _seen is None:
+            _seen = set()
+        # targets: list[t.Any] = [self]
+        targets: list[t.Any] = []
+        for name, module in self.named_modules(recurse=recurse):
+            targets.append(module)
 
         for obj in targets:
             if include is None:
@@ -888,22 +921,19 @@ class Module(pydantic.BaseModel, StorableState, Trainable):
             elif not isinstance(include, type) and include(obj):
                 fn(obj)
 
-        for name, state_type in self._registry.items():
-            if state_type is not StateType.MODULE:
-                continue
-            child = getattr(self, name)
-            if isinstance(child, Module):
-                child.apply(fn, include=include)
+        # for name, mod in self.modules(recurse=recurse, ):
+        #     if state_type is not StateType.MODULE:
+        #         continue
+        #     child = getattr(self, name)
+        #     if isinstance(child, Module):
+        #         child.apply(fn, include=include, recurse=recurse, _seen=_seen)
 
     def train(self, mode: bool = True):
         """Recursively set Param.training for all parameters."""
         self._training.set(mode)
-        for name, state_type in self._registry.items():
-            if state_type is not StateType.MODULE:
-                continue
-            child = getattr(self, name)
-            if isinstance(child, Module):
-                child.train(mode)
+        for name, mod in self.named_modules(recurse=True, _skip_self=True):
+            # if isinstance(mod, Module):
+            mod.train(mode)
         return self
 
     def eval(self):
