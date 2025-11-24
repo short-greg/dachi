@@ -22,83 +22,83 @@ class SimpleModule2(Module):
 class TestModuleListBasicOperations:
 
     def test_init_when_empty_creates_empty_list(self):
-        ml = ModuleList[SimpleModule](items=[])
+        ml = ModuleList[SimpleModule](vals=[])
         assert len(ml) == 0
 
     def test_init_when_given_items_contains_all_items(self):
         m1, m2 = SimpleModule(value=10), SimpleModule(value=20)
-        ml = ModuleList[SimpleModule](items=[m1, m2])
+        ml = ModuleList[SimpleModule](vals=[m1, m2])
         assert len(ml) == 2
         assert ml[0] is m1
         assert ml[1] is m2
 
     def test_len_when_called_returns_item_count(self):
-        ml = ModuleList[SimpleModule](items=[SimpleModule(), SimpleModule()])
+        ml = ModuleList[SimpleModule](vals=[SimpleModule(), SimpleModule()])
         assert len(ml) == 2
 
     def test_getitem_when_valid_index_returns_item(self):
         m1, m2 = SimpleModule(value=10), SimpleModule(value=20)
-        ml = ModuleList[SimpleModule](items=[m1, m2])
+        ml = ModuleList[SimpleModule](vals=[m1, m2])
         assert ml[0] is m1
         assert ml[1] is m2
 
     def test_getitem_when_negative_index_returns_from_end(self):
         m1, m2, m3 = SimpleModule(value=1), SimpleModule(value=2), SimpleModule(value=3)
-        ml = ModuleList[SimpleModule](items=[m1, m2, m3])
+        ml = ModuleList[SimpleModule](vals=[m1, m2, m3])
         assert ml[-1] is m3
         assert ml[-2] is m2
 
     def test_getitem_when_out_of_bounds_raises_index_error(self):
-        ml = ModuleList[SimpleModule](items=[SimpleModule()])
+        ml = ModuleList[SimpleModule](vals=[SimpleModule()])
         with pytest.raises(IndexError):
             _ = ml[10]
 
     def test_iter_when_called_yields_items_in_order(self):
         m1, m2 = SimpleModule(value=1), SimpleModule(value=2)
-        ml = ModuleList[SimpleModule](items=[m1, m2])
+        ml = ModuleList[SimpleModule](vals=[m1, m2])
         assert list(ml) == [m1, m2]
 
     def test_append_when_module_adds_to_end(self):
-        ml = ModuleList[SimpleModule](items=[])
+        ml = ModuleList[SimpleModule](vals=[])
         m = SimpleModule(value=42)
         ml.append(m)
         assert len(ml) == 1
         assert ml[0] is m
 
     def test_append_when_not_module_raises_type_error(self):
-        ml = ModuleList[SimpleModule](items=[])
+        ml = ModuleList[SimpleModule](vals=[])
         with pytest.raises(TypeError, match="ModuleList accepts only BaseModule instances"):
             ml.append(42)
 
     def test_setitem_when_valid_replaces_item(self):
         m1, m2 = SimpleModule(value=1), SimpleModule(value=2)
-        ml = ModuleList[SimpleModule](items=[m1])
+        ml = ModuleList[SimpleModule](vals=[m1])
         ml[0] = m2
         assert ml[0] is m2
 
     def test_setitem_when_not_module_raises_type_error(self):
-        ml = ModuleList[SimpleModule](items=[SimpleModule()])
+        ml = ModuleList[SimpleModule](vals=[SimpleModule()])
         with pytest.raises(TypeError, match="ModuleList accepts only BaseModule instances"):
             ml[0] = "not a module"
 
     def test_setitem_when_out_of_bounds_raises_index_error(self):
-        ml = ModuleList[SimpleModule](items=[SimpleModule()])
+        ml = ModuleList[SimpleModule](vals=[SimpleModule()])
         with pytest.raises(IndexError, match="out of bounds"):
             ml[10] = SimpleModule()
 
     def test_aslist_when_called_returns_list_copy(self):
         m1, m2 = SimpleModule(value=1), SimpleModule(value=2)
-        ml = ModuleList[SimpleModule](items=[m1, m2])
+        ml = ModuleList[SimpleModule](vals=[m1, m2])
         result = ml.aslist
         assert result == [m1, m2]
-        assert result is not ml.items
+        assert result is not ml.vals
 
 
 class TestModuleListModulesAndNaming:
 
     def test_modules_when_not_recursive_yields_self_and_children(self):
         m1, m2 = SimpleModule(value=1), SimpleModule(value=2)
-        ml = ModuleList[SimpleModule](items=[m1, m2])
+        ml = ModuleList[SimpleModule](vals=[m1, m2])
 
         mods = list(ml.modules(recurse=False))
         assert ml in mods
@@ -107,8 +107,8 @@ class TestModuleListModulesAndNaming:
 
     def test_modules_when_recursive_yields_all_descendants(self):
         m_inner = SimpleModule(value=1)
-        ml_inner = ModuleList[SimpleModule](items=[m_inner])
-        ml_outer = ModuleList[ModuleList](items=[ml_inner])
+        ml_inner = ModuleList[SimpleModule](vals=[m_inner])
+        ml_outer = ModuleList[ModuleList](vals=[ml_inner])
 
         mods = list(ml_outer.modules(recurse=True))
         assert ml_outer in mods
@@ -117,14 +117,14 @@ class TestModuleListModulesAndNaming:
 
     def test_modules_when_duplicate_reference_deduplicates(self):
         m = SimpleModule(value=42)
-        ml = ModuleList[SimpleModule](items=[m, m, m])
+        ml = ModuleList[SimpleModule](vals=[m, m, m])
 
         mods = list(ml.modules())
         assert len([mod for mod in mods if mod is m]) == 1
 
     def test_modules_when_filter_provided_only_yields_matching(self):
         m1, m2, m3 = SimpleModule(value=1), SimpleModule(value=10), SimpleModule(value=20)
-        ml = ModuleList[SimpleModule](items=[m1, m2, m3])
+        ml = ModuleList[SimpleModule](vals=[m1, m2, m3])
 
         def filter_func(mod):
             return isinstance(mod, SimpleModule) and mod._value.data >= 10
@@ -136,7 +136,7 @@ class TestModuleListModulesAndNaming:
 
     def test_named_modules_when_called_returns_indexed_names(self):
         m1, m2 = SimpleModule(value=1), SimpleModule(value=2)
-        ml = ModuleList[SimpleModule](items=[m1, m2])
+        ml = ModuleList[SimpleModule](vals=[m1, m2])
 
         named = dict(ml.named_modules())
         assert "" in named
@@ -145,8 +145,8 @@ class TestModuleListModulesAndNaming:
 
     def test_named_modules_when_nested_uses_dot_notation(self):
         m = SimpleModule(value=1)
-        ml_inner = ModuleList[SimpleModule](items=[m])
-        ml_outer = ModuleList[ModuleList](items=[ml_inner])
+        ml_inner = ModuleList[SimpleModule](vals=[m])
+        ml_outer = ModuleList[ModuleList](vals=[ml_inner])
 
         named = dict(ml_outer.named_modules())
         assert "" in named
@@ -155,7 +155,7 @@ class TestModuleListModulesAndNaming:
 
     def test_named_modules_when_skip_self_excludes_self(self):
         m1 = SimpleModule(value=1)
-        ml = ModuleList[SimpleModule](items=[m1])
+        ml = ModuleList[SimpleModule](vals=[m1])
 
         named = dict(ml.named_modules(_skip_self=True))
         assert "" not in named
@@ -165,21 +165,21 @@ class TestModuleListModulesAndNaming:
 class TestModuleListEdgeCases:
 
     def test_empty_list_has_zero_length(self):
-        ml = ModuleList[SimpleModule](items=[])
+        ml = ModuleList[SimpleModule](vals=[])
         assert len(ml) == 0
         assert list(ml) == []
 
     def test_multiple_appends_work_correctly(self):
-        ml = ModuleList[SimpleModule](items=[])
+        ml = ModuleList[SimpleModule](vals=[])
         for i in range(5):
             ml.append(SimpleModule(value=i))
         assert len(ml) == 5
         assert ml[4]._value.data == 4
 
     def test_very_deep_nesting_does_not_crash(self):
-        current = ModuleList[SimpleModule](items=[SimpleModule(value=0)])
+        current = ModuleList[SimpleModule](vals=[SimpleModule(value=0)])
         for i in range(20):
-            current = ModuleList[ModuleList](items=[current])
+            current = ModuleList[ModuleList](vals=[current])
 
         mods = list(current.modules(recurse=True))
         assert isinstance(mods, list)

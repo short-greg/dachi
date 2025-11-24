@@ -35,68 +35,66 @@ class TestProcessCall:
 
     def test_process_call_creation(self):
         add = AddNumbers()
-        pc = ProcessCall(process=add, args={'x': 5, 'y': 3})
+        pc = add.forward_process_call(x=5, y=3)
 
         assert pc.process is add
-        assert pc.args == {'x': 5, 'y': 3}
+        assert pc.args.x == 5
+        assert pc.args.y == 3
 
-    def test_process_call_args_defaults_to_empty_dict(self):
+    def test_process_call_has_args_attribute(self):
         add = AddNumbers()
-        pc = ProcessCall(process=add)
+        pc = add.forward_process_call(x=0, y=0)
 
-        assert pc.args == {}
+        assert hasattr(pc, 'args')
+        assert hasattr(pc.args, 'x')
+        assert hasattr(pc.args, 'y')
 
-    def test_is_async_returns_false_for_process(self):
+    def test_process_call_has_process_attribute(self):
         add = AddNumbers()
-        pc = ProcessCall(process=add, args={})
+        pc = add.forward_process_call(x=0, y=0)
 
-        assert pc.is_async() is False
+        assert hasattr(pc, 'process')
+        assert isinstance(pc.process, Process)
 
-    def test_is_async_returns_true_for_async_process(self):
+    def test_async_process_call_has_process_attribute(self):
         multiply = MultiplyNumbers()
-        pc = ProcessCall(process=multiply, args={})
+        pc = multiply.aforward_process_call(a=0.0, b=0.0)
 
-        assert pc.is_async() is True
+        assert hasattr(pc, 'process')
+        assert isinstance(pc.process, AsyncProcess)
 
     def test_process_call_with_reft_args(self):
         add = AddNumbers()
-        pc = ProcessCall(
-            process=add,
-            args={'x': Ref(name='input'), 'y': 10}
-        )
+        pc = add.forward_process_call(x=Ref(name='input'), y=10, _ref=True)
 
-        assert isinstance(pc.args['x'], Ref)
-        assert pc.args['x'].name == 'input'
-        assert pc.args['y'] == 10
+        assert isinstance(pc.args.x, Ref)
+        assert pc.args.x.name == 'input'
+        assert pc.args.y == 10
 
 
-class TestProcessCallSerialization:
+class TestProcessCallAttributes:
 
-    def test_process_call_creates_spec(self):
+    def test_process_call_has_required_attributes(self):
         add = AddNumbers()
-        pc = ProcessCall(process=add, args={'x': 5, 'y': 3})
+        pc = add.forward_process_call(x=5, y=3)
 
-        spec = pc.spec()
-        assert spec is not None
-        assert hasattr(spec, 'process')
-        assert hasattr(spec, 'args')
+        assert hasattr(pc, 'process')
+        assert hasattr(pc, 'args')
+        assert pc.process is add
+        assert pc.args.x == 5
+        assert pc.args.y == 3
 
-    def test_process_call_spec_contains_process_spec(self):
+    def test_process_call_is_module_instance(self):
         add = AddNumbers()
-        pc = ProcessCall(process=add, args={'x': 5, 'y': 3})
+        pc = add.forward_process_call(x=5, y=3)
 
-        spec = pc.spec()
-        # The process should be converted to its spec
-        assert spec.process.kind == 'AddNumbers'
+        from dachi.core import Module
+        assert isinstance(pc, Module)
 
-    def test_process_call_spec_preserves_args(self):
+    def test_ref_process_call_preserves_refs(self):
         add = AddNumbers()
-        pc = ProcessCall(
-            process=add,
-            args={'x': 5, 'y': Ref(name='input')}
-        )
+        pc = add.forward_process_call(x=5, y=Ref(name='input'), _ref=True)
 
-        spec = pc.spec()
-        assert spec.args['x'] == 5
-        assert isinstance(spec.args['y'], Ref)
-        assert spec.args['y'].name == 'input'
+        assert pc.args.x == 5
+        assert isinstance(pc.args.y, Ref)
+        assert pc.args.y.name == 'input'

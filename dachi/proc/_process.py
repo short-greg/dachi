@@ -40,13 +40,16 @@ from ..utils import (
     is_async_iterator
 
 )
+from ._arg_model import (
+    Ref,
+    KWOnly,
+    PosArgs,
+    KWArgs,
+    BaseArgs,
+    func_arg_model
+)
 
 S = t.TypeVar('S', bound=pydantic.BaseModel)
-
-@dataclasses.dataclass
-class Ref:
-    """Reference to the output of another process"""
-    name: str
 
 
 class Process(Module, ABC):
@@ -68,13 +71,23 @@ class Process(Module, ABC):
         if cls is Process:
             return
 
-        print('Initializing: ', cls.__name__)
-        # Build an ArgsModel from `forward`
-        cls.ForwardArgModel = func_arg_model(cls, cls.forward)
-        cls.ForwardRefArgModel = func_arg_model(cls, cls.forward, with_ref=True)
-        cls.ForwardProcessCall = ProcessCall[cls, cls.ForwardArgModel]
-        cls.ForwardRefProcessCall = ProcessCall[cls, cls.ForwardRefArgModel]
-        print('Initialized: ', cls.__name__)
+        try:
+            cls.ForwardArgModel = func_arg_model(cls, cls.forward)
+            cls.ForwardRefArgModel = func_arg_model(cls, cls.forward, with_ref=True)
+            cls.ForwardProcessCall = ProcessCall[cls, cls.ForwardArgModel]
+            cls.ForwardRefProcessCall = ProcessCall[cls, cls.ForwardRefArgModel]
+        except Exception as e:
+            import warnings
+            warnings.warn(
+                f"Failed to generate argument model for {cls.__name__}.forward: {e}\n"
+                f"ProcessCall creation will not be available for this class.",
+                UserWarning,
+                stacklevel=2
+            )
+            cls.ForwardArgModel = None
+            cls.ForwardRefArgModel = None
+            cls.ForwardProcessCall = None
+            cls.ForwardRefProcessCall = None
 
     @abstractmethod
     def forward(self, *args, **kwargs) -> t.Any:
@@ -94,7 +107,7 @@ class Process(Module, ABC):
         return self.forward(*args, **kwargs)
     
     def forward_process_call(
-        self, 
+        self,
         _ref: bool=False,
         **kwargs,
     ) -> t.Any:
@@ -104,8 +117,19 @@ class Process(Module, ABC):
             t.Any: The output of the module
         """
         if _ref:
+            if self.ForwardRefArgModel is None:
+                raise RuntimeError(
+                    f"Cannot create ProcessCall for {self.__class__.__name__}: "
+                    "argument model generation failed during class initialization"
+                )
             arg_model = self.ForwardRefArgModel(**kwargs)
             return self.ForwardRefProcessCall(process=self, args=arg_model)
+
+        if self.ForwardArgModel is None:
+            raise RuntimeError(
+                f"Cannot create ProcessCall for {self.__class__.__name__}: "
+                "argument model generation failed during class initialization"
+            )
         arg_model = self.ForwardArgModel(**kwargs)
         return self.ForwardProcessCall(process=self, args=arg_model)
 
@@ -128,16 +152,26 @@ class AsyncProcess(Module, ABC):
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
 
-        if cls is Process:
+        if cls is AsyncProcess:
             return
 
-        print('Initializing: ', cls.__name__)
-        # Build an ArgsModel from `forward`
-        cls.AForwardArgModel = func_arg_model(cls, cls.aforward)
-        cls.AForwardRefArgModel = func_arg_model(cls, cls.aforward, with_ref=True)
-        cls.AForwardProcessCall = AsyncProcessCall[cls, cls.AForwardArgModel]
-        cls.AForwardRefProcessCall = AsyncProcessCall[cls, cls.AForwardRefArgModel]
-        print('Initialized: ', cls.__name__)
+        try:
+            cls.AForwardArgModel = func_arg_model(cls, cls.aforward)
+            cls.AForwardRefArgModel = func_arg_model(cls, cls.aforward, with_ref=True)
+            cls.AForwardProcessCall = AsyncProcessCall[cls, cls.AForwardArgModel]
+            cls.AForwardRefProcessCall = AsyncProcessCall[cls, cls.AForwardRefArgModel]
+        except Exception as e:
+            import warnings
+            warnings.warn(
+                f"Failed to generate argument model for {cls.__name__}.aforward: {e}\n"
+                f"AsyncProcessCall creation will not be available for this class.",
+                UserWarning,
+                stacklevel=2
+            )
+            cls.AForwardArgModel = None
+            cls.AForwardRefArgModel = None
+            cls.AForwardProcessCall = None
+            cls.AForwardRefProcessCall = None
 
     @abstractmethod
     async def aforward(
@@ -153,7 +187,7 @@ class AsyncProcess(Module, ABC):
         pass
 
     def aforward_process_call(
-        self, 
+        self,
         _ref: bool=False,
         **kwargs,
     ) -> t.Any:
@@ -163,137 +197,30 @@ class AsyncProcess(Module, ABC):
             t.Any: The output of the module
         """
         if _ref:
+            if self.AForwardRefArgModel is None:
+                raise RuntimeError(
+                    f"Cannot create AsyncProcessCall for {self.__class__.__name__}: "
+                    "argument model generation failed during class initialization"
+                )
             arg_model = self.AForwardRefArgModel(**kwargs)
             return self.AForwardRefProcessCall(process=self, args=arg_model)
+
+        if self.AForwardArgModel is None:
+            raise RuntimeError(
+                f"Cannot create AsyncProcessCall for {self.__class__.__name__}: "
+                "argument model generation failed during class initialization"
+            )
         arg_model = self.AForwardArgModel(**kwargs)
         return self.AForwardProcessCall(process=self, args=arg_model)
 
 
 ASYNC_PROCESS = t.TypeVar('ASYNC_PROCESS', bound=AsyncProcess)
 
-V = t.TypeVar('V')
-
-
-class KWOnly(pydantic.BaseModel, t.Generic[V]):
-    
-    data: V
-
-class PosArgs(pydantic.BaseModel, t.Generic[V]):
-    
-    data: t.List[V]
-
-
-class KWArgs(pydantic.BaseModel, t.Generic[V]):
-    
-    data: t.Dict[str, V]
-
-
-class BaseArgs(pydantic.BaseModel):
-
-    def get_args(self, by: t.Dict[str, t.Any]) -> t.Tuple[t.List[t.Any], t.Dict[str, t.Any]]:
-        """Get the kwargs with references resolved
-
-        by: The mapping to resolve references from
-
-        Returns:
-            Dict[str, t.Any]: The resolved kwargs
-        """
-        args = []
-        pos_args = []
-        kw_only = {}
-        kwargs = {}
-        for k, _ in self.model_fields.items():
-            value = getattr(self, k)
-
-            if isinstance(value, PosArgs):
-                pos_args = value.data
-            elif isinstance(value, KWOnly):
-                if isinstance(value.data, Ref):
-                    value = by[value.data.name]
-                else:
-                    value = value.data
-                kw_only[k] = value
-            elif isinstance(value, KWArgs):
-                kwargs = value.data
-            elif isinstance(value, Ref):
-                args.append(by[value.name])
-            else:
-                args.append(value)
-
-        return (
-            [*args, *pos_args], 
-            {**kw_only, **kwargs}
-        )
-
-
-def func_arg_model(cls: type, cls_f, with_ref: bool=False) -> type[pydantic.BaseModel]:
-    """
-    Inspect `process_cls` and its method and build a Pydantic model for its args.
-    Only handles keyword-style params; *args/**kwargs are ignored or forbidden.
-    """
-    sig = inspect.signature(cls_f)
-    # hints = t.get_type_hints(cls_f)
-
-    fields: dict[str, tuple[t.Any, t.Any]] = {}
-
-    positional_only = {}
-    var_positional = None
-    # defines the name and the default value
-    positional_or_keyword = {}
-    keyword_only = {}
-    var_positional = None
-
-    for name, param in sig.parameters.items():
-        if name == "self":
-            continue
-
-        anno = param.annotation
-
-        # anno = hints.get(name, t.Any)
-        if with_ref:
-            if anno == inspect._empty:
-                anno = t.Any
-            anno = t.Union[Ref, anno]
-        elif anno == inspect._empty:
-            anno = t.Any
-
-        default = param.default if param.default is not inspect._empty else ...
-        
-        if param.kind == param.POSITIONAL_OR_KEYWORD:
-            positional_or_keyword[name] = (anno, default)
-        elif param.kind == param.POSITIONAL_ONLY:
-            positional_only[name] = (anno, default)
-        elif param.kind == param.VAR_POSITIONAL:
-            var_positional = (anno, name)
-        elif param.kind == param.KEYWORD_ONLY:
-            keyword_only[name] = (anno, default)
-        elif param.kind == param.VAR_POSITIONAL:
-            var_positional = (anno, name)
-
-    if positional_or_keyword is not None:
-        for name, (anno, default) in positional_or_keyword.items():
-            fields[name] = (anno, default)
-    for name, (anno, default) in keyword_only.items():
-        anno = KWOnly[anno]
-        fields[name] = (anno, lambda v=default: KWOnly[anno](data=v))
-    if positional_only is not None:
-        anno, name = positional_only
-        fields[name] = (PosArgs[anno], lambda: PosArgs[anno](data=[]))
-    if var_positional is not None:
-        anno, name = var_positional
-        fields[name] = (KWArgs[anno], lambda: KWArgs[anno](data={}))
-
-    model_name = f"{cls.__name__}Args"
-    created =  pydantic.create_model(model_name, **fields)  # type: ignore[call-arg]
-
-    return created
-
-
 AP = t.TypeVar('AP', bound=AsyncProcess | Process)
 ARGS = t.TypeVar('ARGS', bound=BaseArgs)
 
 
-class BaseProcessCall(ABC):
+class BaseProcessCall(Module, t.Generic[ARGS]):
 
     args: ARGS
 
@@ -303,14 +230,14 @@ class BaseProcessCall(ABC):
         Yields:
             Iterator[str]: The names of the processes
         """
-        for field in self.args.model_fields.values():
-            value = getattr(self.args, field.name)
+        for field_name in self.args.model_fields.keys():
+            value = getattr(self.args, field_name)
             if isinstance(value, Ref):
                 yield value.name
 
 
 class ProcessCall(
-    BaseProcessCall, t.Generic[PROCESS, ARGS]
+    BaseProcessCall[ARGS], t.Generic[PROCESS, ARGS]
 ):
     process: PROCESS
 
@@ -327,7 +254,7 @@ class ProcessCall(
 
 
 class AsyncProcessCall(
-    BaseProcessCall, t.Generic[ASYNC_PROCESS, ARGS]
+    BaseProcessCall[ARGS], t.Generic[ASYNC_PROCESS, ARGS]
 ):
     """Wrapper for a Process/AsyncProcess with its arguments in a DAG.
 
@@ -375,14 +302,26 @@ class StreamProcess(Module, ABC):
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
 
-        if cls is Process:
+        if cls is StreamProcess:
             return
 
-        # Build an ArgsModel from `forward`
-        cls.StreamArgModel = func_arg_model(cls, cls.stream)
-        cls.StreamRefArgModel = func_arg_model(cls, cls.stream, with_ref=True)
-        cls.StreamProcessCall = StreamProcessCall[cls, cls.StreamArgModel]
-        cls.StreamRefProcessCall = StreamProcessCall[cls, cls.StreamRefArgModel]
+        try:
+            cls.StreamArgModel = func_arg_model(cls, cls.stream)
+            cls.StreamRefArgModel = func_arg_model(cls, cls.stream, with_ref=True)
+            cls.StreamProcessCall = StreamProcessCall[cls, cls.StreamArgModel]
+            cls.StreamRefProcessCall = StreamProcessCall[cls, cls.StreamRefArgModel]
+        except Exception as e:
+            import warnings
+            warnings.warn(
+                f"Failed to generate argument model for {cls.__name__}.stream: {e}\n"
+                f"StreamProcessCall creation will not be available for this class.",
+                UserWarning,
+                stacklevel=2
+            )
+            cls.StreamArgModel = None
+            cls.StreamRefArgModel = None
+            cls.StreamProcessCall = None
+            cls.StreamRefProcessCall = None
 
     @abstractmethod
     def stream(self, *args, **kwargs) -> t.Iterator[t.Any]:
@@ -394,7 +333,7 @@ class StreamProcess(Module, ABC):
         pass
 
     def stream_process_call(
-        self, 
+        self,
         _ref: bool=False,
         **kwargs,
     ) -> t.Any:
@@ -404,8 +343,19 @@ class StreamProcess(Module, ABC):
             t.Any: The output of the module
         """
         if _ref:
+            if self.StreamRefArgModel is None:
+                raise RuntimeError(
+                    f"Cannot create StreamProcessCall for {self.__class__.__name__}: "
+                    "argument model generation failed during class initialization"
+                )
             arg_model = self.StreamRefArgModel(**kwargs)
             return self.StreamRefProcessCall(process=self, args=arg_model)
+
+        if self.StreamArgModel is None:
+            raise RuntimeError(
+                f"Cannot create StreamProcessCall for {self.__class__.__name__}: "
+                "argument model generation failed during class initialization"
+            )
         arg_model = self.StreamArgModel(**kwargs)
         return self.StreamProcessCall(process=self, args=arg_model)
 
@@ -428,14 +378,26 @@ class AsyncStreamProcess(Module, ABC):
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
 
-        if cls is Process:
+        if cls is AsyncStreamProcess:
             return
 
-        # Build an ArgsModel from `forward`
-        cls.AStreamArgModel = func_arg_model(cls, cls.astream)
-        cls.AStreamRefArgModel = func_arg_model(cls, cls.astream, with_ref=True)
-        cls.AStreamProcessCall = AsyncStreamProcessCall[cls, cls.AStreamArgModel]
-        cls.AStreamRefProcessCall = AsyncStreamProcessCall[cls, cls.AStreamRefArgModel]
+        try:
+            cls.AStreamArgModel = func_arg_model(cls, cls.astream)
+            cls.AStreamRefArgModel = func_arg_model(cls, cls.astream, with_ref=True)
+            cls.AStreamProcessCall = AsyncStreamProcessCall[cls, cls.AStreamArgModel]
+            cls.AStreamRefProcessCall = AsyncStreamProcessCall[cls, cls.AStreamRefArgModel]
+        except Exception as e:
+            import warnings
+            warnings.warn(
+                f"Failed to generate argument model for {cls.__name__}.astream: {e}\n"
+                f"AsyncStreamProcessCall creation will not be available for this class.",
+                UserWarning,
+                stacklevel=2
+            )
+            cls.AStreamArgModel = None
+            cls.AStreamRefArgModel = None
+            cls.AStreamProcessCall = None
+            cls.AStreamRefProcessCall = None
 
     @abstractmethod
     async def astream(self, *args, **kwargs) -> t.AsyncIterator:
@@ -446,7 +408,7 @@ class AsyncStreamProcess(Module, ABC):
         pass
 
     def astream_process_call(
-        self, 
+        self,
         _ref: bool=False,
         **kwargs,
     ) -> t.Any:
@@ -456,8 +418,19 @@ class AsyncStreamProcess(Module, ABC):
             t.Any: The output of the module
         """
         if _ref:
+            if self.AStreamRefArgModel is None:
+                raise RuntimeError(
+                    f"Cannot create AsyncStreamProcessCall for {self.__class__.__name__}: "
+                    "argument model generation failed during class initialization"
+                )
             arg_model = self.AStreamRefArgModel(**kwargs)
             return self.AStreamRefProcessCall(process=self, args=arg_model)
+
+        if self.AStreamArgModel is None:
+            raise RuntimeError(
+                f"Cannot create AsyncStreamProcessCall for {self.__class__.__name__}: "
+                "argument model generation failed during class initialization"
+            )
         arg_model = self.AStreamArgModel(**kwargs)
         return self.AStreamProcessCall(process=self, args=arg_model)
 
@@ -467,7 +440,7 @@ ASYNC_STREAM = t.TypeVar('ASYNC_STREAM', bound=AsyncStreamProcess)
 
 
 class StreamProcessCall(
-    BaseProcessCall, t.Generic[STREAM, ARGS]
+    BaseProcessCall[ARGS], t.Generic[STREAM, ARGS]
 ):
     process: STREAM
 
@@ -484,7 +457,7 @@ class StreamProcessCall(
 
 
 class AsyncStreamProcessCall(
-    BaseProcessCall, t.Generic[ASYNC_STREAM, ARGS]
+    BaseProcessCall[ARGS], t.Generic[ASYNC_STREAM, ARGS]
 ):
     process: ASYNC_STREAM
 
@@ -844,7 +817,7 @@ class Sequential(ModuleList[PA], Process, AsyncProcess):
 
 
 class AsyncParallel(
-    ModuleList[ASYNC_PROCESS], AsyncProcess
+    ModuleList[PA], AsyncProcess
 ):
     """Calls multiple modules in parallel and then 
     combines the results into a list
@@ -859,7 +832,7 @@ class AsyncParallel(
         """The asynchronous method to use for inputs
 
         Args:
-            args (t.List[Args]): The list of inputs to the modules 
+            args (t.List[Args]): The list of inputs to the modules
 
         Returns:
             t.Tuple: The output to the paralell module
@@ -867,7 +840,7 @@ class AsyncParallel(
         tasks = []
         async with asyncio.TaskGroup() as tg:
             for module, cur_args, cur_kwargs in process_loop(
-                self.module_list, *args, **kwargs
+                self.vals, *args, **kwargs
             ):
                 if isinstance(module, AsyncProcess):
                     tasks.append(tg.create_task(
@@ -1278,7 +1251,7 @@ class AsyncFunc(AsyncProcess):
     args: t.List[t.Any] = pydantic.Field(default_factory=list)
     kwargs: t.Dict[str, t.Any] = pydantic.Field(default_factory=dict)
 
-    async def forward(self, *args, **kwargs):
+    async def aforward(self, *args, **kwargs):
 
         return await self.f(
             *self.args, *args, **self.kwargs, **kwargs

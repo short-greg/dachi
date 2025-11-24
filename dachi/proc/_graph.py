@@ -36,29 +36,17 @@ result = dag.aforward(by={var: 10})  # Should return the output of AnotherProces
 """
 
 import inspect
-import typing as t
-from pydantic import BaseModel, create_model
-
-# 1st party
 import typing
-from typing import Self
 import asyncio
-from dataclasses import dataclass, field
+from typing import Self
+from dataclasses import dataclass
+from pydantic import BaseModel, create_model
+import pydantic
 
 # local
-
-from dachi.core import PrivateRuntime, PrivateParam
-from ._process import ProcessCall, AsyncProcessCall, StreamProcessCall, AsyncStreamProcessCall, Ref
-from ..utils import (
-    is_undefined, UNDEFINED
-)
-from ._process import Process, AsyncProcess
-from dachi.core import ModuleDict, Runtime
-# from dachi.core import AdaptModule
-from dataclasses import dataclass
-
-import typing as t  
-import pydantic
+from dachi.core import PrivateRuntime, PrivateParam, ModuleDict, Runtime
+from ._process import ProcessCall, AsyncProcessCall, StreamProcessCall, AsyncStreamProcessCall, Ref, Process, AsyncProcess, Func, AsyncFunc
+from ..utils import is_undefined, UNDEFINED
 
 
 P = typing.TypeVar("P", bound=Process)
@@ -76,7 +64,15 @@ class BaseNode(AsyncProcess):
     name: str | None = None
     val: typing.Any = UNDEFINED
     annotation: str | None = None
-    
+
+    def __hash__(self):
+        """Make BaseNode hashable for use as dict keys."""
+        return id(self)
+
+    def __eq__(self, other):
+        """Equality based on identity."""
+        return self is other
+
     # Move up a level
     def label(self, name: str=None, annotation: str=None) -> Self:
         """Add a label to the transmission
@@ -203,10 +199,10 @@ class T(BaseNode, typing.Generic[P]):
             is_async=False
         )
         ```
-        val = await t.aforward()
+        val = await typing.aforward()
 
     Args:
-        args (SerialDict): The arguments to the process
+        args (Dict): The arguments to the process
         src (Process | AsyncProcess): The process to execute
         is_async (bool, optional): Whether the process is async. Defaults to False.
     """
@@ -219,6 +215,11 @@ class T(BaseNode, typing.Generic[P]):
     def model_post_init(self, __context):
         super().model_post_init(__context)
         self._is_async = isinstance(self.src, AsyncProcess)
+
+    @property
+    def is_async(self) -> bool:
+        """Check if the source is an AsyncProcess."""
+        return isinstance(self.src, AsyncProcess)
 
     async def aforward(
         self, 
@@ -234,10 +235,10 @@ class T(BaseNode, typing.Generic[P]):
             return self.val                       
 
         kw_serial = await self.get_incoming(by)
-        kwargs = dict(kw_serial.items())   
+        kwargs = dict(kw_serial.items())
 
         if self.is_async:
-            val = by[self] = await self.src(**kwargs)
+            val = by[self] = await self.src.aforward(**kwargs)
         else:
             val = by[self] = self.src(**kwargs)
 
@@ -329,12 +330,14 @@ class T(BaseNode, typing.Generic[P]):
                 yield arg
 
 
-def t(
-    p: P, 
+def sync_t(
+    p: P | typing.Callable,
     _name: str=None, _annotation: str=None,
-    **kwargs, 
+    **kwargs,
 ) -> T:
-    """Convenience function to create a T node from a Process. """
+    """Convenience function to create a T node from a Process or callable."""
+    if not isinstance(p, Process):
+        p = Func(f=p)
 
     return T(
         src=p, args=kwargs, name=_name, annotation=_annotation,
@@ -343,10 +346,13 @@ def t(
 
 
 def async_t(
-    p: A,
+    p: A | typing.Callable,
     _name: str=None, _annotation: str=None,
-    **kwargs, 
+    **kwargs,
 ) -> T:
+    """Convenience function to create a T node from an AsyncProcess or async callable."""
+    if not isinstance(p, AsyncProcess):
+        p = AsyncFunc(f=p)
 
     return T(
         src=p, args=kwargs, name=_name, annotation=_annotation,
@@ -354,43 +360,43 @@ def async_t(
     )
 
 
-
-class Var(pydantic.BaseModel):
+class Inp(pydantic.BaseModel):
     """Variable node in the DAG, representing an input value."""
     val: typing.Any
     name: str
 
 
-def build_args_model_from_forward(process_cls: type) -> type[BaseModel]:
-    """
-    Inspect `process_cls.forward` and build a Pydantic model for its args.
-    Only handles keyword-style params; *args/**kwargs are ignored or forbidden.
-    """
-    forward = process_cls.forward
-    sig = inspect.signature(forward)
-    hints = t.get_type_hints(forward)
 
-    fields: dict[str, tuple[t.Any, t.Any]] = {}
+# def build_args_model_from_forward(process_cls: type) -> type[BaseModel]:
+#     """
+#     Inspect `process_cls.forward` and build a Pydantic model for its args.
+#     Only handles keyword-style params; *args/**kwargs are ignored or forbidden.
+#     """
+#     forward = process_cls.forward
+#     sig = inspec.signature(forward)
+#     hints = typing.get_type_hints(forward)
 
-    for name, param in sig.parameters.items():
-        if name == "self":
-            continue
+#     fields: dict[str, tuple[typing.Any, typing.Any]] = {}
 
-        if param.kind in (param.VAR_POSITIONAL, param.VAR_KEYWORD):
-            raise TypeError(
-                f"{process_cls.__name__}.forward uses *args/**kwargs; "
-                "cannot derive a static args model."
-            )
+#     for name, param in sig.parameters.items():
+#         if name == "self":
+#             continue
 
-        anno = hints.get(name, t.Any)
+#         if param.kind in (param.VAR_POSITIONAL, param.VAR_KEYWORD):
+#             raise TypeError(
+#                 f"{process_cls.__name__}.forward uses *args/**kwargs; "
+#                 "cannot derive a static args model."
+#             )
 
-        if param.default is inspect._empty:
-            fields[name] = (anno, ...)
-        else:
-            fields[name] = (anno, param.default)
+#         anno = hints.get(name, typing.Any)
 
-    model_name = f"{process_cls.__name__}Args"
-    return create_model(model_name, **fields)  # type: ignore[call-arg]
+#         if param.default is inspectyping._empty:
+#             fields[name] = (anno, ...)
+#         else:
+#             fields[name] = (anno, param.default)
+
+#     model_name = f"{process_cls.__name__}Args"
+#     return create_model(model_name, **fields)  # type: ignore[call-arg]
 
 
 class DataFlow(AsyncProcess, typing.Generic[PROCESS_CALL]):
@@ -431,9 +437,9 @@ class DataFlow(AsyncProcess, typing.Generic[PROCESS_CALL]):
     """
 
     nodes: ModuleDict[PROCESS_CALL] = pydantic.Field(default_factory=ModuleDict)
-    inputs: typing.List[Var] = field(default_factory=list)
-    outputs: typing.List[str] = None
-    _args: Runtime[typing.Dict[str, typing.Dict[str, Ref | typing.Any]]] = PrivateRuntime(default_factory=dict)
+    inputs: list[Inp] = pydantic.Field(default_factory=list)
+    outputs: list[str] = None
+    _args: Runtime[dict[str, dict[str, Ref | typing.Any]]] = PrivateRuntime(default_factory=dict)
     _node_counter: Runtime[int] = PrivateRuntime(default=0)
     _var_counter: Runtime[int] = PrivateRuntime(default=0)
 
@@ -575,8 +581,8 @@ class DataFlow(AsyncProcess, typing.Generic[PROCESS_CALL]):
         They can be overridden at execution time via the `by` parameter in aforward().
 
         Args:
-            name (str): Unique name for this input. Must not already exist in the DataFlow.
-            val (typing.Any): The default value for this input.
+            name (str): Unique name for this inputyping. Must not already exist in the DataFlow.
+            val (typing.Any): The default value for this inputyping.
 
         Returns:
             RefT: A reference to this input that can be used in other node arguments.
@@ -607,7 +613,7 @@ class DataFlow(AsyncProcess, typing.Generic[PROCESS_CALL]):
         If a list is provided, aforward() returns a tuple of values.
 
         Args:
-            outputs (typing.List[str]|str): Names of nodes to output. Can be a single
+            outputs (typing.List[str]|str): Names of nodes to outputyping. Can be a single
                                            node name or a list of node names.
 
         Raises:
@@ -681,7 +687,7 @@ class DataFlow(AsyncProcess, typing.Generic[PROCESS_CALL]):
 
         Returns:
             Single value if outputs is a string, tuple of values if outputs is a list,
-            None if no outputs are set.
+            None if no outputs are setyping.
 
         Example:
             >>> dag = DataFlow()
@@ -801,7 +807,7 @@ class FProc(Process):
         
         if self._obj is None:
             raise ValueError(
-                "Process object is not set. "
+                "Process object is not setyping. "
                 "Please set the object before calling aforward."
             )
 
@@ -845,4 +851,3 @@ class Idx(Process):
                 val[i] for i in self.idx
             ]
         return val[self.idx]
-

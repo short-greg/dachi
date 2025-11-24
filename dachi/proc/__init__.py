@@ -44,7 +44,7 @@ from ._graph import (
     T,
     Idx,
     DataFlow,
-    t,
+    sync_t,
     async_t,
 )
 from ._msg import (

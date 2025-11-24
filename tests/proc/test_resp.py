@@ -422,7 +422,7 @@ class TestTupleOut:
             def forward(self, s: str) -> int:
                 return int(s.strip())
         
-        processors = ModuleList(items=[StrProcessor(), IntProcessor()])
+        processors = ModuleList(vals=[StrProcessor(), IntProcessor()])
         proc = TupleOut(processors=processors, parser=LineParser())
         result = proc.forward('hello\n42')
         assert result == ('hello', 42)
@@ -434,7 +434,7 @@ class TestTupleOut:
             def forward(self, s: str) -> str:
                 return s.strip()
         
-        processors = ModuleList(items=[StrProcessor()])  # Only 1 processor
+        processors = ModuleList(vals=[StrProcessor()])  # Only 1 processor
         proc = TupleOut(processors=processors, parser=LineParser()) 
         with pytest.raises(RuntimeError, match="Expected 1 parts, got 2"):
             proc.forward('hello\n42')  # 2 parts

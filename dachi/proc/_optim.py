@@ -9,7 +9,7 @@ from dachi.core import Prompt, ParamSet, Module, Msg
 from ._ai import LLM
 from abc import ABC
 from dachi.proc import Process, AsyncProcess
-from dachi.core import render, modfield
+from dachi.core import render
 
 
 T = t.TypeVar("T", bound=Module)

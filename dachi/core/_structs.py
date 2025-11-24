@@ -21,18 +21,18 @@ class ModuleList(Module, t.Generic[V]):
     A list-like container whose elements are themselves `BaseModule`
     instances.  Works seamlessly with the new serialization / dedup rules.
     """
-    items: list[V] = pydantic.Field(default_factory=list)
+    vals: list[V] = pydantic.Field(default_factory=list)
 
     # Positive test: len reflects number added
     def __len__(self) -> int:  
-        return len(self.items)
+        return len(self.vals)
 
     # Positive test: order preserved
     def __iter__(self) -> Iterator[V]:  
-        return iter(self.items)
+        return iter(self.vals)
 
     def __getitem__(self, idx: int) -> V:  # Edge test: negative index ok
-        return self.items[idx]
+        return self.vals[idx]
 
     def __setitem__(self, idx: int, value: V):
         if not isinstance(value, Module):
@@ -40,7 +40,11 @@ class ModuleList(Module, t.Generic[V]):
         if idx >= len(self):
             raise IndexError(f"Index {idx} is out of bounds.")
         # unregister old, register new
-        self.items[idx] = value
+        self.vals[idx] = value
+
+    def items(self) -> Iterator[str | int, V]:
+        for idx, module in enumerate(self.vals):
+            yield idx, module
 
     # public API – intentionally *append‑only*
     def append(self, module: V):
@@ -48,7 +52,7 @@ class ModuleList(Module, t.Generic[V]):
         if not isinstance(module, Module):
             raise TypeError("ModuleList accepts only BaseModule instances")
         # key = str(len(self.items))
-        self.items.append(module)
+        self.vals.append(module)
     
     @property
     def aslist(self) -> list[V]:
@@ -56,7 +60,7 @@ class ModuleList(Module, t.Generic[V]):
         Expose the internal list of modules.
         This is useful for iterating over the modules directly.
         """
-        return [*self.items]
+        return [*self.vals]
     
     def modules(
         self,
@@ -69,7 +73,7 @@ class ModuleList(Module, t.Generic[V]):
         _seen = _seen or set()
         yield from super().modules(recurse=recurse, f=f, _seen=_seen, _skip_self=_skip_self)
 
-        for module in self.items:
+        for module in self.vals:
             
             if not isinstance(module, Module):
                 continue
@@ -94,7 +98,7 @@ class ModuleList(Module, t.Generic[V]):
             _seen = set()
         yield from super().named_modules(recurse=recurse, prefix=prefix, f=f, _seen=_seen, _skip_self=_skip_self)
 
-        for idx, module in enumerate(self.items):
+        for idx, module in enumerate(self.vals):
             if not isinstance(module, Module):
                 continue
             child_prefix = f"{prefix}{idx}."
@@ -108,18 +112,21 @@ class ModuleList(Module, t.Generic[V]):
 
     def state_dict(self, *, recurse = True, train = True, runtime = True):
         d = super().state_dict(recurse=recurse, train=train, runtime=runtime)
-        for module in self.items:
+        for module in self.vals:
             d["items." + module._module_key] = module.state_dict(recurse=recurse, train=train, runtime=runtime)
         return d
     
     def load_state_dict(self, sd, *, recurse = True, train = True, runtime = True, strict = True):
         super().load_state_dict(sd, recurse=recurse, train=train, runtime=runtime, strict=strict)
-        for module in self.items:
+        for module in self.vals:
             module.load_state_dict(
                 sd.get("items." + module._module_key, {}),
                 recurse=recurse, train=train, runtime=runtime, strict=strict
             )
     
+    def __contains__(self, item: t.Any) -> bool:
+        return item in self.vals
+
 
 class ModuleDict(Module, t.Generic[V]):
     """
@@ -128,7 +135,7 @@ class ModuleDict(Module, t.Generic[V]):
     """
     # __spec_hooks__: ClassVar[t.List[str]] = ["items"]
     # items: InitVar[dict[str, BaseModule | t.Any]] = {}
-    items: dict[str | int, V] = pydantic.Field(default_factory=dict)
+    vals: dict[str | int, V] = pydantic.Field(default_factory=dict)
 
     def __getitem__(self, key: str) -> V:
         """Get an item from the module dict.
@@ -139,7 +146,7 @@ class ModuleDict(Module, t.Generic[V]):
         Returns:
             V: The item associated with the key.
         """
-        return self.items[key]
+        return self.vals[key]
 
     def __setitem__(self, key: str, val: V):
         """Set an item in the module dict.
@@ -157,28 +164,31 @@ class ModuleDict(Module, t.Generic[V]):
         
         if not isinstance(val, Module) and not is_primitive(val):
             raise TypeError("Values must be Module instances or primitives")
-        self.items[key] = val
+        self.vals[key] = val
 
     def __iter__(self):
-        return iter(self.items)
+        return iter(self.vals)
 
     def __len__(self):
-        return len(self.items)
-    
+        return len(self.vals)
+
+    def __contains__(self, item: t.Any) -> bool:
+        return item in self.vals
+
     def __delattr__(self, name):
         
-        if isinstance(self.items[name], Module):
+        if isinstance(self.vals[name], Module):
             del self._modules[name]
-        del self.items[name]
+        del self.vals[name]
 
     def keys(self):
-        return self.items.keys()
+        return self.vals.keys()
 
     def values(self):
-        return self.items.values()
+        return self.vals.values()
 
     def items(self):
-        return self.items.items()
+        return self.vals.items()
     
     def get(self, key: str, default: Optional[V] = None) -> Optional[V]:
         """Get an item from the module dict, returning a default if not found.
@@ -189,7 +199,7 @@ class ModuleDict(Module, t.Generic[V]):
         Returns:
             Optional[V]: The item associated with the key, or the default value if not found.
         """
-        return self.items.get(key, default)
+        return self.vals.get(key, default)
 
     def modules(self, *, recurse = True, f = None, _seen = None, _skip_self = False):
 
@@ -197,7 +207,7 @@ class ModuleDict(Module, t.Generic[V]):
             _seen = set()
 
         yield from super().modules(recurse=recurse, f=f, _seen=_seen, _skip_self=_skip_self)
-        for module in self.items.values():
+        for module in self.vals.values():
             if not isinstance(module, Module):
                 continue
             if id(module) in (_seen := _seen or set()):
@@ -222,7 +232,7 @@ class ModuleDict(Module, t.Generic[V]):
             _seen = set()
         yield from super().named_modules(recurse=recurse, prefix=prefix, f=f, _seen=_seen, _skip_self=_skip_self)
 
-        for name, module in self.items.items():
+        for name, module in self.vals.items():
             child_prefix = f"{prefix}{name}."
             if not isinstance(module, Module):
                 continue

@@ -9,6 +9,7 @@ Google‑style docstrings are used throughout.
 import asyncio
 from typing import Any, Iterator, List, Tuple
 import pytest
+import pydantic
 
 from dachi import proc as P
 
@@ -23,8 +24,7 @@ def _gen(x: int) -> Iterator[int]:  # noqa: D401
 
 
 class _EchoProcess(P.Process):
-    def __init__(self):
-        self.calls = []
+    calls: List[Tuple] = pydantic.Field(default_factory=list)
 
     def forward(self, *args, **kwargs):
         self.calls.append((args, kwargs))
@@ -32,8 +32,7 @@ class _EchoProcess(P.Process):
 
 
 class _AEchoProcess(P.AsyncProcess):
-    def __init__(self):
-        self.calls = []
+    calls: List[Tuple] = pydantic.Field(default_factory=list)
 
     async def aforward(self, *args, **kwargs):
         self.calls.append((args, kwargs))
@@ -41,8 +40,7 @@ class _AEchoProcess(P.AsyncProcess):
 
 
 class _SEchoProcess(P.StreamProcess):
-    def __init__(self, n: int):
-        self.n = n
+    n: int
 
     def stream(self, x):
         for _ in range(self.n):
@@ -50,8 +48,7 @@ class _SEchoProcess(P.StreamProcess):
 
 
 class _ASEchoProcess(P.AsyncStreamProcess):
-    def __init__(self, n: int):
-        self.n = n
+    n: int
 
     async def astream(self, x):
         for _ in range(self.n):
@@ -321,12 +318,12 @@ class TestSequential:
 
     def test_three_stage_pipeline(self) -> None:
         seq = P.Sequential(
-            items=[_EchoProcess(), _EchoProcess()]
+            vals=[_EchoProcess(), _EchoProcess()]
         )
         assert seq.forward(2) == 2
 
     def test_empty_sequential_identity(self) -> None:
-        seq = P.Sequential(items=[])
+        seq = P.Sequential(vals=[])
         assert seq.forward(99) == 99
 
 #     # def test_type_mismatch_raises(self) -> None:
@@ -407,11 +404,11 @@ class TestAsyncParallel:
     async def test_order_preserved(self) -> None:
         """Ensure that async tasks complete in the order they were started."""
         items = [self.AsyncP(), self.AsyncP()]
-        par = P.AsyncParallel(items=items)
+        par = P.AsyncParallel(vals=items)
         assert await par.aforward(1) == [1, 1]
 
     async def test_single_module(self) -> None:
-        par = P.AsyncParallel(items=[self.SyncP()])
+        par = P.AsyncParallel(vals=[self.SyncP()])
         assert await par.aforward(3) == [4]
 
 

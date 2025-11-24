@@ -48,7 +48,7 @@ class CompositeBuilder:
         Returns:
             Constructed CompositeState instance
         """
-        regions = ModuleList(items=[rb.region for rb in self.region_stack])
+        regions = ModuleList(vals=[rb.region for rb in self.region_stack])
         self._composite = _composite.CompositeState(name=self.name, regions=regions)
         return self._composite
 
@@ -212,7 +212,7 @@ class ChartBuilder:
             The populated StateChart instance
         """
         self.chart.regions = ModuleList(
-            items=[rb.region for rb in self.region_stack]
+            vals=[rb.region for rb in self.region_stack]
         )
         return self.chart
 

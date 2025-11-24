@@ -365,7 +365,7 @@ class TestParallelDataFetching:
         # Composite for parallel execution
         composite = CompositeState(
             name="parallel_fetch",
-            regions=ModuleList(items=[region_a, region_b])
+            regions=ModuleList(vals=[region_a, region_b])
         )
 
         # Main region orchestrates

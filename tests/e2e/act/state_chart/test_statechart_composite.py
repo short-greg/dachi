@@ -86,7 +86,7 @@ class TestBasicParallelRegions:
         # Create composite state with parallel regions
         composite = CompositeState(
             name="parallel_tasks",
-            regions=ModuleList(items=[region_a, region_b])
+            regions=ModuleList(vals=[region_a, region_b])
         )
 
         # Wrapper region to hold composite
@@ -158,7 +158,7 @@ class TestSequentialChildWorkflow:
 
         composite = CompositeState(
             name="workflow_composite",
-            regions=ModuleList(items=[workflow_region])
+            regions=ModuleList(vals=[workflow_region])
         )
 
         main_region = Region(name="main", initial="composite", rules=[])
@@ -233,7 +233,7 @@ class TestParallelDataCollection:
 
         composite = CompositeState(
             name="parallel_collectors",
-            regions=ModuleList(items=[region_a, region_b, region_c])
+            regions=ModuleList(vals=[region_a, region_b, region_c])
         )
 
         main_region = Region(name="main", initial="composite", rules=[
@@ -324,7 +324,7 @@ class TestCompositeCompletion:
 
         composite = CompositeState(
             name="mixed_speed",
-            regions=ModuleList(items=[fast_region, slow_region])
+            regions=ModuleList(vals=[fast_region, slow_region])
         )
 
         main_region = Region(name="main", initial="composite", rules=[
@@ -423,7 +423,7 @@ class TestCompositeInStateMachine:
 
         composite = CompositeState(
             name="parallel_work",
-            regions=ModuleList(items=[work1_region, work2_region])
+            regions=ModuleList(vals=[work1_region, work2_region])
         )
 
         # Main workflow: sequential with composite in middle
@@ -494,7 +494,7 @@ class TestEmptyComposite:
         """Test composite with zero regions completes immediately."""
         composite = CompositeState(
             name="empty",
-            regions=ModuleList(items=[])
+            regions=ModuleList(vals=[])
         )
 
         main_region = Region(name="main", initial="composite", rules=[])
@@ -571,7 +571,7 @@ class TestMultipleIndependentWorkflows:
 
         composite = CompositeState(
             name="independent_workflows",
-            regions=ModuleList(items=[workflow_a, workflow_b])
+            regions=ModuleList(vals=[workflow_a, workflow_b])
         )
 
         main_region = Region(name="main", initial="composite", rules=[])
@@ -630,7 +630,7 @@ class TestCompositeReset:
 
         composite = CompositeState(
             name="resetable",
-            regions=ModuleList(items=[region1, region2])
+            regions=ModuleList(vals=[region1, region2])
         )
 
         main_region = Region(name="main", initial="composite", rules=[
