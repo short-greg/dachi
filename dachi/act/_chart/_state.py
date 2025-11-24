@@ -10,7 +10,7 @@ import logging
 import json
 
 from typing import ClassVar, Dict, Any
-from dachi.core import Runtime, Ctx, BaseModule, PrivateRuntime
+from dachi.core import Runtime, Ctx, Module, PrivateRuntime
 from ._event import EventPost
 from dachi.utils._utils import resolve_fields, resolve_from_signature
 from dachi.utils import python_type_to_json_schema_type
@@ -27,7 +27,7 @@ class RunResult(Enum):
     PREEMPTED = auto()   # State was cancelled/preempted
 
 
-class PseudoState(BaseModule):
+class PseudoState(Module):
     """Marker state that is entered but not executed.
 
     PseudoStates include initial states (READY) and final states.

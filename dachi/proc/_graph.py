@@ -46,12 +46,13 @@ import asyncio
 from dataclasses import dataclass, field
 
 # local
+
+from dachi.core import PrivateRuntime, PrivateParam
 from ._process import ProcessCall, AsyncProcessCall, StreamProcessCall, AsyncStreamProcessCall, Ref
 from ..utils import (
     is_undefined, UNDEFINED
 )
 from ._process import Process, AsyncProcess
-from ..core import BaseModule
 from dachi.core import ModuleDict, Runtime
 # from dachi.core import AdaptModule
 from dataclasses import dataclass
@@ -63,6 +64,7 @@ import pydantic
 P = typing.TypeVar("P", bound=Process)
 AP = typing.TypeVar("AP", bound=Process | AsyncProcess)
 A = typing.TypeVar("A", bound=AsyncProcess)
+PROCESS_CALL = typing.TypeVar("PROCESS_CALL", bound=ProcessCall | AsyncProcessCall)
 
 # TODO: Check if the value coming from incoming is undefined or waiting... 
 
@@ -187,8 +189,6 @@ class V(BaseNode):
         if False:
             yield None
         return
-
-
 
 
 class T(BaseNode, typing.Generic[P]):
@@ -354,46 +354,11 @@ def async_t(
     )
 
 
-class Idx(Process):
-    """Index the output of a transmission"""
-
-    idx: int | typing.List[int]
-
-    def index(self, val) -> typing.Union[typing.Any, typing.List[typing.Any]]:
-        
-        if isinstance(self.idx, typing.List):
-            return [
-                val[i] for i in self.idx
-            ]
-        return val[self.idx]
-
-    def forward(
-        self, val
-    ) -> typing.Any:
-        """Probe the graph using the values specified in by
-
-        Args:
-            by (typing.Dict[&#39;T&#39;, typing.Any]): The inputs to the network
-
-        Raises:
-            RuntimeError: If the value is undefined
-
-        Returns:
-            typing.Any: The value returned by the probe
-        """
-        if isinstance(self.idx, typing.List):
-            return [
-                val[i] for i in self.idx
-            ]
-        return val[self.idx]
-
-
 
 class Var(pydantic.BaseModel):
     """Variable node in the DAG, representing an input value."""
     val: typing.Any
     name: str
-
 
 
 def build_args_model_from_forward(process_cls: type) -> type[BaseModel]:
@@ -428,7 +393,7 @@ def build_args_model_from_forward(process_cls: type) -> type[BaseModel]:
     return create_model(model_name, **fields)  # type: ignore[call-arg]
 
 
-class DataFlow(AsyncProcess, typing.Generic[AP]):
+class DataFlow(AsyncProcess, typing.Generic[PROCESS_CALL]):
     """DataFlow: Directed Acyclic Graph (DAG) for processing data pipelines.
 
     DataFlow is a declarative container for defining data processing pipelines using named
@@ -465,12 +430,12 @@ class DataFlow(AsyncProcess, typing.Generic[AP]):
         are prevented by the architecture and will cause runtime errors if forced.
     """
 
-    nodes: ModuleDict[str, ProcessCall[AP]] = pydantic.Field(default_factory=ModuleDict)
+    nodes: ModuleDict[PROCESS_CALL] = pydantic.Field(default_factory=ModuleDict)
     inputs: typing.List[Var] = field(default_factory=list)
     outputs: typing.List[str] = None
-    _args: Runtime[typing.Dict[str, typing.Dict[str, Ref | typing.Any]]] = pydantic.PrivateAttr(default_factory=dict)
-    _node_counter: Runtime[int] = pydantic.PrivateAttr(default=0)
-    _var_counter: Runtime[int] = pydantic.PrivateAttr(default=0)
+    _args: Runtime[typing.Dict[str, typing.Dict[str, Ref | typing.Any]]] = PrivateRuntime(default_factory=dict)
+    _node_counter: Runtime[int] = PrivateRuntime(default=0)
+    _var_counter: Runtime[int] = PrivateRuntime(default=0)
 
     # def model_post_init(self):
     #     """Initialize the DAG with an empty set of nodes and outputs
@@ -846,3 +811,38 @@ class FProc(Process):
                 f"Function {self.name} not found in object {self._obj}"
             )
         return await f(**kwargs)
+
+
+class Idx(Process):
+    """Index the output of a transmission"""
+
+    idx: int | typing.List[int]
+
+    def index(self, val) -> typing.Union[typing.Any, typing.List[typing.Any]]:
+        
+        if isinstance(self.idx, typing.List):
+            return [
+                val[i] for i in self.idx
+            ]
+        return val[self.idx]
+
+    def forward(
+        self, val
+    ) -> typing.Any:
+        """Probe the graph using the values specified in by
+
+        Args:
+            by (typing.Dict[&#39;T&#39;, typing.Any]): The inputs to the network
+
+        Raises:
+            RuntimeError: If the value is undefined
+
+        Returns:
+            typing.Any: The value returned by the probe
+        """
+        if isinstance(self.idx, typing.List):
+            return [
+                val[i] for i in self.idx
+            ]
+        return val[self.idx]
+

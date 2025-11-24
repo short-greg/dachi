@@ -7,7 +7,7 @@ import pydantic
 
 # local
 from ..core import (
-    Msg, Resp, BaseModule, DeltaResp, Prompt,  BaseDialog, BaseTool
+    Msg, Resp, Module, DeltaResp, Prompt,  BaseDialog, BaseTool
 )
 from ._process import AsyncProcess
 from ._resp import ToOut
@@ -195,7 +195,7 @@ class LLMAdapter(Process, AsyncProcess, StreamProcess, AsyncStreamProcess):
             yield resp, delta_resp
 
 
-class AIAdapt(BaseModule):
+class AIAdapt(Module):
     """
     Use to adapt the message from the standard format
     to the format required by the LLM

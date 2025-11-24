@@ -7,13 +7,13 @@ The module also includes utility functions for forwarding, streaming, mapping, a
 The Process interfaces are:
 
 class Process
-- forward(self, *args, **kwargs) -> typing.Any:
+- forward(self, *args, **kwargs) -> t.Any:
 class AsyncProcess
-- aforward(self, *args, **kwargs) -> typing.Any:
+- aforward(self, *args, **kwargs) -> t.Any:
 class StreamProcess
-- stream(self, *args, **kwargs) -> typing.Iterator[typing.Any]:
+- stream(self, *args, **kwargs) -> t.Iterator[t.Any]:
 class AsyncStreamProcess
-- astream(self, *args, **kwargs) -> typing.AsyncIterator:typing.Any
+- astream(self, *args, **kwargs) -> t.AsyncIterator:t.Any
 
 """
 
@@ -21,8 +21,6 @@ class AsyncStreamProcess
 import inspect
 from abc import ABC, abstractmethod
 from functools import partial
-import typing
-from typing import Any
 import asyncio
 import itertools
 import dataclasses
@@ -51,40 +49,6 @@ class Ref:
     name: str
 
 
-def func_arg_model(cls: type, cls_f, with_ref: bool=False) -> type[pydantic.BaseModel]:
-    """
-    Inspect `process_cls` and its method and build a Pydantic model for its args.
-    Only handles keyword-style params; *args/**kwargs are ignored or forbidden.
-    """
-    sig = inspect.signature(cls_f)
-    hints = t.get_type_hints(cls_f)
-
-    fields: dict[str, tuple[t.Any, t.Any]] = {}
-
-    for name, param in sig.parameters.items():
-        if name == "self":
-            continue
-
-        if param.kind in (param.VAR_POSITIONAL, param.VAR_KEYWORD):
-            raise TypeError(
-                f"{cls.__name__}.forward uses *args/**kwargs; "
-                "cannot derive a static args model."
-            )
-
-        anno = hints.get(name, t.Any)
-
-        if with_ref:
-            anno = t.Union[Ref, anno]
-
-        if param.default is inspect._empty:
-            fields[name] = (anno, ...)
-        else:
-            fields[name] = (anno, param.default)
-
-    model_name = f"{cls.__name__}Args"
-    return create_model(model_name, **fields)  # type: ignore[call-arg]
-
-
 class Process(Module, ABC):
     """
     Base class for synchronous processing modules.
@@ -104,31 +68,49 @@ class Process(Module, ABC):
         if cls is Process:
             return
 
+        print('Initializing: ', cls.__name__)
         # Build an ArgsModel from `forward`
         cls.ForwardArgModel = func_arg_model(cls, cls.forward)
         cls.ForwardRefArgModel = func_arg_model(cls, cls.forward, with_ref=True)
         cls.ForwardProcessCall = ProcessCall[cls, cls.ForwardArgModel]
         cls.ForwardRefProcessCall = ProcessCall[cls, cls.ForwardRefArgModel]
+        print('Initialized: ', cls.__name__)
 
     @abstractmethod
-    def forward(self, *args, **kwargs) -> typing.Any:
+    def forward(self, *args, **kwargs) -> t.Any:
         """Execute the module
 
         Returns:
-            typing.Any: The output of the module
+            t.Any: The output of the module
         """
         pass
 
-    def __call__(self, *args, **kwargs) -> typing.Any:
+    def __call__(self, *args, **kwargs) -> t.Any:
         """Execute the module
 
         Returns:
-            typing.Any: The output of the module
+            t.Any: The output of the module
         """
         return self.forward(*args, **kwargs)
+    
+    def forward_process_call(
+        self, 
+        _ref: bool=False,
+        **kwargs,
+    ) -> t.Any:
+        """Execute the module
+
+        Returns:
+            t.Any: The output of the module
+        """
+        if _ref:
+            arg_model = self.ForwardRefArgModel(**kwargs)
+            return self.ForwardRefProcessCall(process=self, args=arg_model)
+        arg_model = self.ForwardArgModel(**kwargs)
+        return self.ForwardProcessCall(process=self, args=arg_model)
 
 
-PROCESS = typing.TypeVar('PROCESS', bound=Process)
+PROCESS = t.TypeVar('PROCESS', bound=Process)
 
 
 class AsyncProcess(Module, ABC):
@@ -138,10 +120,10 @@ class AsyncProcess(Module, ABC):
 
     """
 
-    AForwardArgModel: t.ClassVar = None
-    AForwardRefArgModel: t.ClassVar = None
-    AForwardProcessCall: t.ClassVar = None
-    AForwardRefProcessCall: t.ClassVar = None
+    AForwardArgModel: t.ClassVar['BaseArgs'] = None
+    AForwardRefArgModel: t.ClassVar['BaseArgs'] = None
+    AForwardProcessCall: t.ClassVar['BaseArgs'] = None
+    AForwardRefProcessCall: t.ClassVar['BaseArgs'] = None
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
@@ -149,42 +131,203 @@ class AsyncProcess(Module, ABC):
         if cls is Process:
             return
 
+        print('Initializing: ', cls.__name__)
         # Build an ArgsModel from `forward`
         cls.AForwardArgModel = func_arg_model(cls, cls.aforward)
         cls.AForwardRefArgModel = func_arg_model(cls, cls.aforward, with_ref=True)
         cls.AForwardProcessCall = AsyncProcessCall[cls, cls.AForwardArgModel]
         cls.AForwardRefProcessCall = AsyncProcessCall[cls, cls.AForwardRefArgModel]
+        print('Initialized: ', cls.__name__)
 
     @abstractmethod
     async def aforward(
         self, 
         *args, 
         **kwargs
-    ) -> typing.Any:
+    ) -> t.Any:
         """Execute the module
 
         Returns:
-            typing.Any: The output of the module
+            t.Any: The output of the module
         """
         pass
 
+    def aforward_process_call(
+        self, 
+        _ref: bool=False,
+        **kwargs,
+    ) -> t.Any:
+        """Execute the module
 
-ASYNC_PROCESS = typing.TypeVar('ASYNC_PROCESS', bound=AsyncProcess)
+        Returns:
+            t.Any: The output of the module
+        """
+        if _ref:
+            arg_model = self.AForwardRefArgModel(**kwargs)
+            return self.AForwardRefProcessCall(process=self, args=arg_model)
+        arg_model = self.AForwardArgModel(**kwargs)
+        return self.AForwardProcessCall(process=self, args=arg_model)
 
 
-AP = typing.TypeVar('AP', bound=AsyncProcess | Process)
-ARGS = typing.TypeVar('ARGS', bound=pydantic.BaseModel)
+ASYNC_PROCESS = t.TypeVar('ASYNC_PROCESS', bound=AsyncProcess)
+
+V = t.TypeVar('V')
+
+
+class KWOnly(pydantic.BaseModel, t.Generic[V]):
+    
+    data: V
+
+class PosArgs(pydantic.BaseModel, t.Generic[V]):
+    
+    data: t.List[V]
+
+
+class KWArgs(pydantic.BaseModel, t.Generic[V]):
+    
+    data: t.Dict[str, V]
+
+
+class BaseArgs(pydantic.BaseModel):
+
+    def get_args(self, by: t.Dict[str, t.Any]) -> t.Tuple[t.List[t.Any], t.Dict[str, t.Any]]:
+        """Get the kwargs with references resolved
+
+        by: The mapping to resolve references from
+
+        Returns:
+            Dict[str, t.Any]: The resolved kwargs
+        """
+        args = []
+        pos_args = []
+        kw_only = {}
+        kwargs = {}
+        for k, _ in self.model_fields.items():
+            value = getattr(self, k)
+
+            if isinstance(value, PosArgs):
+                pos_args = value.data
+            elif isinstance(value, KWOnly):
+                if isinstance(value.data, Ref):
+                    value = by[value.data.name]
+                else:
+                    value = value.data
+                kw_only[k] = value
+            elif isinstance(value, KWArgs):
+                kwargs = value.data
+            elif isinstance(value, Ref):
+                args.append(by[value.name])
+            else:
+                args.append(value)
+
+        return (
+            [*args, *pos_args], 
+            {**kw_only, **kwargs}
+        )
+
+
+def func_arg_model(cls: type, cls_f, with_ref: bool=False) -> type[pydantic.BaseModel]:
+    """
+    Inspect `process_cls` and its method and build a Pydantic model for its args.
+    Only handles keyword-style params; *args/**kwargs are ignored or forbidden.
+    """
+    sig = inspect.signature(cls_f)
+    # hints = t.get_type_hints(cls_f)
+
+    fields: dict[str, tuple[t.Any, t.Any]] = {}
+
+    positional_only = {}
+    var_positional = None
+    # defines the name and the default value
+    positional_or_keyword = {}
+    keyword_only = {}
+    var_positional = None
+
+    for name, param in sig.parameters.items():
+        if name == "self":
+            continue
+
+        anno = param.annotation
+
+        # anno = hints.get(name, t.Any)
+        if with_ref:
+            if anno == inspect._empty:
+                anno = t.Any
+            anno = t.Union[Ref, anno]
+        elif anno == inspect._empty:
+            anno = t.Any
+
+        default = param.default if param.default is not inspect._empty else ...
+        
+        if param.kind == param.POSITIONAL_OR_KEYWORD:
+            positional_or_keyword[name] = (anno, default)
+        elif param.kind == param.POSITIONAL_ONLY:
+            positional_only[name] = (anno, default)
+        elif param.kind == param.VAR_POSITIONAL:
+            var_positional = (anno, name)
+        elif param.kind == param.KEYWORD_ONLY:
+            keyword_only[name] = (anno, default)
+        elif param.kind == param.VAR_POSITIONAL:
+            var_positional = (anno, name)
+
+    if positional_or_keyword is not None:
+        for name, (anno, default) in positional_or_keyword.items():
+            fields[name] = (anno, default)
+    for name, (anno, default) in keyword_only.items():
+        anno = KWOnly[anno]
+        fields[name] = (anno, lambda v=default: KWOnly[anno](data=v))
+    if positional_only is not None:
+        anno, name = positional_only
+        fields[name] = (PosArgs[anno], lambda: PosArgs[anno](data=[]))
+    if var_positional is not None:
+        anno, name = var_positional
+        fields[name] = (KWArgs[anno], lambda: KWArgs[anno](data={}))
+
+    model_name = f"{cls.__name__}Args"
+    created =  pydantic.create_model(model_name, **fields)  # type: ignore[call-arg]
+
+    return created
+
+
+AP = t.TypeVar('AP', bound=AsyncProcess | Process)
+ARGS = t.TypeVar('ARGS', bound=BaseArgs)
+
+
+class BaseProcessCall(ABC):
+
+    args: ARGS
+
+    def depends_on(self) -> t.Iterator[str]:
+        """Get the names of processes this process depends on
+
+        Yields:
+            Iterator[str]: The names of the processes
+        """
+        for field in self.args.model_fields.values():
+            value = getattr(self.args, field.name)
+            if isinstance(value, Ref):
+                yield value.name
 
 
 class ProcessCall(
-    Module, typing.Generic[PROCESS, ARGS]
+    BaseProcessCall, t.Generic[PROCESS, ARGS]
 ):
     process: PROCESS
-    args: ARGS
+
+    async def forward(self, **kwargs) -> t.Any:
+        """Execute the wrapped process asynchronously
+
+        Returns:
+            t.Any: The output of the process
+        """
+        return await self.process.forward(**{
+            k: (kwargs[v.data] if isinstance(v, Ref) else v)
+            for k, v in self.args.model_dump().items()
+        })
 
 
 class AsyncProcessCall(
-    Module, typing.Generic[ASYNC_PROCESS, ARGS]
+    BaseProcessCall, t.Generic[ASYNC_PROCESS, ARGS]
 ):
     """Wrapper for a Process/AsyncProcess with its arguments in a DAG.
 
@@ -203,8 +346,18 @@ class AsyncProcessCall(
     Convenience Methods:
         is_async: Returns True if the wrapped process is AsyncProcess
     """
-    process: AsyncProcess
-    args: ARGS
+    process: ASYNC_PROCESS
+
+    async def aforward(self, **kwargs) -> t.Any:
+        """Execute the wrapped process asynchronously
+
+        Returns:
+            t.Any: The output of the process
+        """
+        return await self.process.aforward(**{
+            k: (kwargs[v.data] if isinstance(v, Ref) else v)
+            for k, v in self.args.model_dump().items()
+        })
 
 
 class StreamProcess(Module, ABC):
@@ -232,16 +385,32 @@ class StreamProcess(Module, ABC):
         cls.StreamRefProcessCall = StreamProcessCall[cls, cls.StreamRefArgModel]
 
     @abstractmethod
-    def stream(self, *args, **kwargs) -> typing.Iterator[typing.Any]:
+    def stream(self, *args, **kwargs) -> t.Iterator[t.Any]:
         """Stream the output
 
         Yields:
-            Iterator[typing.Any]: The value streamed
+            Iterator[t.Any]: The value streamed
         """
         pass
 
+    def stream_process_call(
+        self, 
+        _ref: bool=False,
+        **kwargs,
+    ) -> t.Any:
+        """Execute the module
 
-STREAM = typing.TypeVar('STREAM', bound=StreamProcess)
+        Returns:
+            t.Any: The output of the module
+        """
+        if _ref:
+            arg_model = self.StreamRefArgModel(**kwargs)
+            return self.StreamRefProcessCall(process=self, args=arg_model)
+        arg_model = self.StreamArgModel(**kwargs)
+        return self.StreamProcessCall(process=self, args=arg_model)
+
+
+STREAM = t.TypeVar('STREAM', bound=StreamProcess)
 
 
 class AsyncStreamProcess(Module, ABC):
@@ -269,46 +438,80 @@ class AsyncStreamProcess(Module, ABC):
         cls.AStreamRefProcessCall = AsyncStreamProcessCall[cls, cls.AStreamRefArgModel]
 
     @abstractmethod
-    async def astream(self, *args, **kwargs) -> typing.AsyncIterator:
+    async def astream(self, *args, **kwargs) -> t.AsyncIterator:
         """
         Returns:
             Streamer: The Streamer to loop over
         """
         pass
 
+    def astream_process_call(
+        self, 
+        _ref: bool=False,
+        **kwargs,
+    ) -> t.Any:
+        """Execute the module
 
-ASYNC_STREAM = typing.TypeVar('ASYNC_STREAM', bound=AsyncStreamProcess)
+        Returns:
+            t.Any: The output of the module
+        """
+        if _ref:
+            arg_model = self.AStreamRefArgModel(**kwargs)
+            return self.AStreamRefProcessCall(process=self, args=arg_model)
+        arg_model = self.AStreamArgModel(**kwargs)
+        return self.AStreamProcessCall(process=self, args=arg_model)
+
+
+ASYNC_STREAM = t.TypeVar('ASYNC_STREAM', bound=AsyncStreamProcess)
 
 
 
 class StreamProcessCall(
-    StreamProcess, typing.Generic[STREAM, ARGS]
+    BaseProcessCall, t.Generic[STREAM, ARGS]
 ):
     process: STREAM
-    args: ARGS
 
+    def stream(self, **kwargs) -> t.Iterator[t.Any]:
+        """Execute the wrapped process asynchronously
+
+        Returns:
+            t.Any: The output of the process
+        """
+        return self.process.stream(**{
+            k: (kwargs[v.data] if isinstance(v, Ref) else v)
+            for k, v in self.args.model_dump().items()
+        })
 
 
 class AsyncStreamProcessCall(
-    AsyncStreamProcess, typing.Generic[ASYNC_STREAM, ARGS]
+    BaseProcessCall, t.Generic[ASYNC_STREAM, ARGS]
 ):
     process: ASYNC_STREAM
-    args: ARGS
 
+    async def astream(self, **kwargs) -> t.AsyncIterator[t.Any]:
+        """Execute the wrapped process asynchronously
+
+        Returns:
+            t.Any: The output of the process
+        """
+        return await self.process.astream(**{
+            k: (kwargs[v.data] if isinstance(v, Ref) else v)
+            for k, v in self.args.model_dump().items()
+        })
 
 
 def forward(
-    f: typing.Union[Process, typing.Callable], 
+    f: t.Union[Process, t.Callable], 
     *args, **kwargs
-) -> typing.Any:
+) -> t.Any:
     """
     Calls the forward method on the module or the function that has been passed in.
     Parameters:
-    f (typing.Union[Module, typing.Callable]): The module or function to forward to.
+    f (t.Union[Module, t.Callable]): The module or function to forward to.
     *args: Variable length argument list.
     **kwargs: Arbitrary keyword arguments.
     Returns:
-    typing.Any: The result of the forward call.
+    t.Any: The result of the forward call.
     Raises:
     NotImplementedError: If the function is asynchronous.
     RuntimeError: If the function type is not supported.
@@ -325,20 +528,20 @@ def forward(
 
 
 async def aforward(
-    f: typing.Union[Process, typing.Callable], 
+    f: t.Union[Process, t.Callable], 
     *args, **kwargs
-) -> typing.Any:
+) -> t.Any:
     """
     Asynchronously calls the appropriate forward method or function.
     This function determines the type of the input `f` and calls the corresponding
     forward method or function, handling both synchronous and asynchronous cases,
     as well as generator functions.
     Parameters:
-    f (typing.Union[Module, typing.Callable]): The module or callable to be executed.
+    f (t.Union[Module, t.Callable]): The module or callable to be executed.
     *args: Variable length argument list to be passed to the callable.
     **kwargs: Arbitrary keyword arguments to be passed to the callable.
     Returns:
-    typing.Any: The result of the forward method or function call, which can be
+    t.Any: The result of the forward method or function call, which can be
     synchronous or asynchronous, and can handle generator functions.
     """
     
@@ -347,13 +550,13 @@ async def aforward(
     if isinstance(f, Process):
         return f.forward(*args, **kwargs)
     if not is_async_function(f) and not is_generator_function(f):
-        if not isinstance(f, typing.Callable):
+        if not isinstance(f, t.Callable):
             raise TypeError(
                 f"Object {object} is not callable"
             )
         return f(*args, **kwargs)
     if is_async_function(f) and not is_generator_function(f):
-        if not isinstance(f, typing.Callable):
+        if not isinstance(f, t.Callable):
             raise TypeError(
                 f"Object {object} is not callable"
             )
@@ -367,18 +570,18 @@ async def aforward(
     )
 
 
-def stream(f: typing.Union[StreamProcess, typing.Callable], *args, **kwargs) -> typing.Any:
+def stream(f: t.Union[StreamProcess, t.Callable], *args, **kwargs) -> t.Any:
     """
     Stream values from a given function or StreamModule.
     This function handles different types of input functions or modules and streams their output.
     It supports synchronous generator functions and StreamModules. It raises exceptions for
     unsupported async functions or async generator functions.
     Args:
-        f (typing.Union[Module, typing.Callable]): The function or StreamModule to stream from.
+        f (t.Union[Module, t.Callable]): The function or StreamModule to stream from.
         *args: Positional arguments to pass to the function or StreamModule.
         **kwargs: Keyword arguments to pass to the function or StreamModule.
     Yields:
-        typing.Any: The values yielded by the function or StreamModule.
+        t.Any: The values yielded by the function or StreamModule.
     Raises:
         NotImplementedError: If an async function or async generator function is passed.
         RuntimeError: If the input does not match any supported type.
@@ -402,18 +605,18 @@ def stream(f: typing.Union[StreamProcess, typing.Callable], *args, **kwargs) -> 
         raise TypeError()
 
 
-async def astream(f: typing.Union[AsyncStreamProcess, typing.Callable], *args, **kwargs) -> typing.Any:
+async def astream(f: t.Union[AsyncStreamProcess, t.Callable], *args, **kwargs) -> t.Any:
     """
     Stream values from a given function or AsyncStreamModule.
     This function handles different types of input functions or modules and streams their output.
     It supports synchronous generator functions and StreamModules. It raises exceptions for
     unsupported async functions or async generator functions.
     Args:
-        f (typing.Union[Module, typing.Callable]): The function or StreamModule to stream from.
+        f (t.Union[Module, t.Callable]): The function or StreamModule to stream from.
         *args: Positional arguments to pass to the function or StreamModule.
         **kwargs: Keyword arguments to pass to the function or StreamModule.
     Yields:
-        typing.Any: The values yielded by the function or StreamModule.
+        t.Any: The values yielded by the function or StreamModule.
     Raises:
         NotImplementedError: If an async function or async generator function is passed.
         RuntimeError: If the input does not match any supported type.
@@ -457,7 +660,7 @@ class Recur(pydantic.BaseModel):
         print(r)
         # prints "hello" 5 times
     """
-    data: typing.Any
+    data: t.Any
     n: int
 
     @pydantic.field_validator('n')
@@ -466,11 +669,11 @@ class Recur(pydantic.BaseModel):
             raise ValueError('n must be greater than 0')
         return v
 
-    def __iter__(self) -> typing.Iterator[typing.Any]:
+    def __iter__(self) -> t.Iterator[t.Any]:
         """Iterate over the object (n times)
 
         Returns:
-            typing.Iterator[typing.Any]: The 
+            t.Iterator[t.Any]: The 
         """
         for _ in range(self.n):
             yield self.data
@@ -486,16 +689,16 @@ class Chunk(pydantic.BaseModel):
         print(c)
         # prints [1,2] then [3,4,5]
     """
-    data: typing.List
+    data: t.List
     n: int | None = None
     shuffle: bool = False
     use_last: bool = True
 
-    def __iter__(self) -> typing.Iterator[typing.List]:
+    def __iter__(self) -> t.Iterator[t.List]:
         """
 
         Yields:
-            typing.Any: Get each value in the  
+            t.Any: Get each value in the  
         """
         n = self.n
         data = np.array(self.data)
@@ -533,15 +736,15 @@ class Chunk(pydantic.BaseModel):
 
     @classmethod
     def m(
-        cls, *data: typing.Iterable, n: int=None
-    ) -> typing.Tuple['Chunk']:
+        cls, *data: t.Iterable, n: int=None
+    ) -> t.Tuple['Chunk']:
         """Wrap multiple data through Ps
 
         data: The data to wrap in P
         n: The number of batches to have
 
         Returns:
-            typing.Tuple[P]: The resulting ps
+            t.Tuple[P]: The resulting ps
         """
         return tuple(
             Chunk(data=d, n=n) for d in data
@@ -549,13 +752,13 @@ class Chunk(pydantic.BaseModel):
 
 
 def chunk(
-    *data: typing.List, n: int=None
-) -> typing.Tuple[Chunk] | Chunk:
+    *data: t.List, n: int=None
+) -> t.Tuple[Chunk] | Chunk:
     """Wrap multiple data through Ps
     data: The data to wrap in P
     n: The number of batches to have
     Returns:
-        typing.Tuple[Chunk]: The resulting ps
+        t.Tuple[Chunk]: The resulting ps
     """
     if len(data) == 1:
         return Chunk(data=data[0], n=n)
@@ -565,13 +768,13 @@ def chunk(
 
 
 def recur(
-    *data: typing.Any, n: int
-) -> typing.Tuple[Recur] | Recur:
+    *data: t.Any, n: int
+) -> t.Tuple[Recur] | Recur:
     """Wrap multiple data through Ps
     data: The data to wrap in P
     n: The number of iterations to have
     Returns:
-        typing.Tuple[Recur]: The resulting ps
+        t.Tuple[Recur]: The resulting ps
     """
     if len(data) == 1:
         return Recur(data=data[0], n=n)
@@ -579,7 +782,7 @@ def recur(
         Recur(data=d, n=n) for d in data
     )
 
-PA = typing.TypeVar('PA', bound=Process | AsyncProcess)
+PA = t.TypeVar('PA', bound=Process | AsyncProcess)
 
 
 class Sequential(ModuleList[PA], Process, AsyncProcess):
@@ -594,7 +797,7 @@ class Sequential(ModuleList[PA], Process, AsyncProcess):
         forward(*x) -> Any:
             Pass the input through each of the modules in sequence and return the result of the final module.
     """
-    def forward(self, *x) -> Any:
+    def forward(self, *x) -> t.Any:
         """Pass the input (x) through each of the modules
 
         Returns:
@@ -652,14 +855,14 @@ class AsyncParallel(
     )
     y1, y2, y3 = process.aforward(x)
     """
-    async def aforward(self, *args, **kwargs) -> typing.List:
+    async def aforward(self, *args, **kwargs) -> t.List:
         """The asynchronous method to use for inputs
 
         Args:
-            args (typing.List[Args]): The list of inputs to the modules 
+            args (t.List[Args]): The list of inputs to the modules 
 
         Returns:
-            typing.Tuple: The output to the paralell module
+            t.Tuple: The output to the paralell module
         """
         tasks = []
         async with asyncio.TaskGroup() as tg:
@@ -683,22 +886,22 @@ class AsyncParallel(
 
 
 def process_loop(
-    processes: typing.List | None, *args, **kwargs
-) -> typing.Iterator[
-    typing.Tuple[Process, typing.List, typing.Dict]
+    processes: t.List | None, *args, **kwargs
+) -> t.Iterator[
+    t.Tuple[Process, t.List, t.Dict]
 ]:
     """Use to loop over the module list
 
     Args:
-        modules (typing.Union[ModuleList, Module, None]): 
+        modules (t.Union[ModuleList, Module, None]): 
 
     Returns:
-        typing.Iterator[ typing.Tuple[Module, typing.List, typing.Dict] ]: 
+        t.Iterator[ t.Tuple[Module, t.List, t.Dict] ]: 
 
     Yields:
-        Iterator[typing.Iterator[ typing.Tuple[Module, typing.List, typing.Dict] ]]: 
+        Iterator[t.Iterator[ t.Tuple[Module, t.List, t.Dict] ]]: 
     """
-    # if isinstance(processes, typing.List):
+    # if isinstance(processes, t.List):
     #     processes = ModuleList(items=processes)
 
     sz = None
@@ -750,10 +953,10 @@ def process_loop(
 
 def create_proc_task(
     tg: asyncio.TaskGroup,
-    f: AsyncProcess | Process | typing.Callable,
+    f: AsyncProcess | Process | t.Callable,
     *args, 
     **kwargs
-) -> typing.Any:
+) -> t.Any:
     """Create a task for the process to run in the task group
 
     This function creates a task in the provided asyncio TaskGroup for the given function `f`.
@@ -761,13 +964,13 @@ def create_proc_task(
     
     Args:
         tg (asyncio.TaskGroup): The task group to create the task in
-        f (AsyncProcess | Process | typing.Callable): The function to run
+        f (AsyncProcess | Process | t.Callable): The function to run
         *args: The arguments to pass to the function
         **kwargs: The keyword arguments to pass to the function
         
     Returns:
 
-        typing.Any: The task created
+        t.Any: The task created
     """
 
     if isinstance(f, AsyncProcess):
@@ -782,16 +985,16 @@ def create_proc_task(
 
 
 def process_map(
-    f: Process | AsyncProcess | typing.Callable, 
+    f: Process | AsyncProcess | t.Callable, 
     *args, **kwargs
-) -> typing.Tuple[typing.Any]:
+) -> t.Tuple[t.Any]:
     """Helper function to run async_map
 
     Args:
         f (Module): The function to asynchronously execute
 
     Returns:
-        typing.Tuple[typing.Any]: The result of the map
+        t.Tuple[t.Any]: The result of the map
     """
     return tuple(
         cur_f(*a, **kv) for cur_f, a, kv in process_loop(f, *args, **kwargs)
@@ -799,16 +1002,16 @@ def process_map(
 
 
 async def async_process_map(
-    f: AsyncProcess | typing.Callable, 
+    f: AsyncProcess | t.Callable, 
     *args, **kwargs
-) -> typing.Tuple[typing.Any]:
+) -> t.Tuple[t.Any]:
     """Helper function to run async_map
 
     Args:
         f (Module): The function to asynchronously execute
 
     Returns:
-        typing.Tuple[typing.Any]: The result of the map
+        t.Tuple[t.Any]: The result of the map
     """
     tasks = []
 
@@ -825,12 +1028,12 @@ async def async_process_map(
 
 
 def multiprocess(
-    *f: Process | typing.Callable
-) -> typing.Tuple[typing.Any]:
+    *f: Process | t.Callable
+) -> t.Tuple[t.Any]:
     """Helper function to run asynchronous processes
 
     Returns:
-        typing.Tuple[typing.Any]: 
+        t.Tuple[t.Any]: 
     """
     return tuple(
         f_i() for f_i in f
@@ -838,12 +1041,12 @@ def multiprocess(
 
 
 async def async_multiprocess(
-    *f: AsyncProcess | typing.Callable
-) -> typing.Tuple[typing.Any]:
+    *f: AsyncProcess | t.Callable
+) -> t.Tuple[t.Any]:
     """Helper function to run asynchronous processes
 
     Returns:
-        typing.Tuple[typing.Any]: 
+        t.Tuple[t.Any]: 
     """
     tasks = []
     async with asyncio.TaskGroup() as tg:
@@ -862,7 +1065,7 @@ async def async_multiprocess(
 # TODO: Update to be more flexible
 def reduce(
     mod: Process, *args, init_mod: Process=None, init_val=None, **kwargs
-) -> typing.Any:
+) -> t.Any:
     """Reduce the args passed in with a module
 
     Args:
@@ -906,7 +1109,7 @@ async def _execute_reduce_mod(mod, *args, **kwargs):
         *args: The arguments to pass to the module
         **kwargs: The keyword arguments to pass to the module
     Returns:
-        typing.Any: The result of the module execution
+        t.Any: The result of the module execution
     """
     print(mod)
     if isinstance(mod, AsyncProcess):
@@ -920,11 +1123,11 @@ async def _execute_reduce_mod(mod, *args, **kwargs):
 
 
 async def async_reduce(
-    mod: AsyncProcess | typing.Callable, 
+    mod: AsyncProcess | t.Callable, 
     *args, 
-    init_mod: AsyncProcess | typing.Callable=None, init_val=None, 
+    init_mod: AsyncProcess | t.Callable=None, init_val=None, 
     **kwargs
-) -> typing.Any:
+) -> t.Any:
     """Reduce the args passed in with a module
 
     Args:
@@ -969,10 +1172,10 @@ async def async_reduce(
 class Partial(pydantic.BaseModel):
     """Class for storing a partial output from a streaming process
     """
-    dx: typing.Any = None
+    dx: t.Any = None
     complete: bool = False
-    prev: typing.Any = None
-    full: typing.List = dataclasses.field(default_factory=list)
+    prev: t.Any = None
+    full: t.List = dataclasses.field(default_factory=list)
 
     def clone(self) -> 'Partial':
         """Clone the partial object
@@ -985,7 +1188,7 @@ class Partial(pydantic.BaseModel):
         )
 
 
-class StreamSequence(StreamProcess, typing.Generic[PROCESS, STREAM]):
+class StreamSequence(StreamProcess, t.Generic[PROCESS, STREAM]):
     """A process sequence that wraps a StreamProcess with a pre and post process.
     The pre and post processes are standard Processes that are applied before and after the streaming process.
     Each streamed item is postprocessed
@@ -1002,12 +1205,12 @@ class StreamSequence(StreamProcess, typing.Generic[PROCESS, STREAM]):
     mod: STREAM
     post: PROCESS
 
-    def stream(self, x: typing.Any) -> typing.Iterator:
+    def stream(self, x: t.Any) -> t.Iterator:
         """Stream the input through the pre, mod, and post processes
         Args:
-            x (typing.Any): The input to the process
+            x (t.Any): The input to the process
         Yields:
-            typing.Any: The output of the process
+            t.Any: The output of the process
         """
 
         x = self.pre(x)
@@ -1015,7 +1218,7 @@ class StreamSequence(StreamProcess, typing.Generic[PROCESS, STREAM]):
             yield self.post(x_i)
 
 
-class AsyncStreamSequence(AsyncStreamProcess, typing.Generic[PA, ASYNC_STREAM]):
+class AsyncStreamSequence(AsyncStreamProcess, t.Generic[PA, ASYNC_STREAM]):
     """Asynchronous stream sequence that applies a pre-processing, a module, and a post-processing step.
 
     Example:
@@ -1032,7 +1235,7 @@ class AsyncStreamSequence(AsyncStreamProcess, typing.Generic[PA, ASYNC_STREAM]):
     mod: ASYNC_STREAM
     post: PA
 
-    async def astream(self, x: typing.Any) -> typing.AsyncIterator:
+    async def astream(self, x: t.Any) -> t.AsyncIterator:
 
         if isinstance(self.pre, AsyncProcess):
             x = await self.pre.aforward(x)
@@ -1048,9 +1251,9 @@ class AsyncStreamSequence(AsyncStreamProcess, typing.Generic[PA, ASYNC_STREAM]):
 class Func(Process):
     """Function process that applies a callable to the input data.
     """
-    f: typing.Callable
-    args: typing.List[typing.Any] = pydantic.Field(default_factory=list)
-    kwargs: typing.Dict[str, typing.Any] = pydantic.Field(default_factory=dict)
+    f: t.Callable
+    args: t.List[t.Any] = pydantic.Field(default_factory=list)
+    kwargs: t.Dict[str, t.Any] = pydantic.Field(default_factory=dict)
 
     def forward(self, *args, **kwargs):
         """
@@ -1071,9 +1274,9 @@ class Func(Process):
 class AsyncFunc(AsyncProcess):
     """A function wrapper
     """
-    f: typing.Callable
-    args: typing.List[typing.Any] = pydantic.Field(default_factory=list)
-    kwargs: typing.Dict[str, typing.Any] = pydantic.Field(default_factory=dict)
+    f: t.Callable
+    args: t.List[t.Any] = pydantic.Field(default_factory=list)
+    kwargs: t.Dict[str, t.Any] = pydantic.Field(default_factory=dict)
 
     async def forward(self, *args, **kwargs):
 
