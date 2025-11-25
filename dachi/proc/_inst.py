@@ -45,7 +45,7 @@ from ._process import (
 )
 from ..core import Param, END_TOK
 from ..utils import primitives, str_formatter
-from ._msg import ToPrompt
+from ._msg import ToPrompt, NullToPrompt, ToText
 from ._resp import (
     ToOut, PrimOut, TextOut, StructOut
 )
@@ -54,7 +54,7 @@ Engine: typing.TypeAlias = Process | AsyncProcess | StreamProcess | AsyncStreamP
 S = typing.TypeVar('S')
 # TODO: MOVE OUT OF HERE
 
-from pydantic import Field
+from pydantic import Field, PrivateAttr
 
 class IBase(Module):
     """
@@ -64,11 +64,11 @@ class IBase(Module):
     is_method: bool = False
     out_conv: ToOut = Field(default=None, exclude=True)
 
-    _docstring: str
-    _name: str
-    _signature: str
-    _sig_params: typing.Dict[str, inspect.Parameter]
-    _return_annotation: typing.Type
+    _docstring: str = PrivateAttr(default='')
+    _name: str = PrivateAttr(default='')
+    _signature: str = PrivateAttr(default='')
+    _sig_params: typing.Dict[str, inspect.Parameter] = PrivateAttr(default_factory=dict)
+    _return_annotation: typing.Type = PrivateAttr(default=None)
 
     def model_post_init(self, __context):
         """ Initializes the IBase instance.
@@ -263,11 +263,16 @@ class FuncDecBase(pydantic.BaseModel):
     that will be used 
     """
 
-    engine: StreamProcess | Process | AsyncProcess | AsyncStreamProcess
+    engine: StreamProcess | Process | AsyncProcess | AsyncStreamProcess | str | None = None
     inst: IBase
     to_msg: ToPrompt
     _instance: typing.Any = pydantic.PrivateAttr(default=None)
     _kwargs: typing.Dict | None = pydantic.PrivateAttr(default=None)
+
+    @property
+    def kwargs(self):
+        """Access _kwargs via property for backward compatibility"""
+        return self._kwargs or {}
 
     # def model_post_init(
     #     self, __context
@@ -344,11 +349,15 @@ class FuncDecBase(pydantic.BaseModel):
         Returns:
             Self: A new instance of the current class with the provided arguments.
         """
-        
-        return self.__class__(
-            inst=self.inst, 
-            instance=instance
+
+        new_inst = self.__class__(
+            engine=self.engine,
+            inst=self.inst,
+            to_msg=self.to_msg
         )
+        new_inst._instance = instance
+        new_inst._kwargs = self._kwargs
+        return new_inst
 
     def i(self, *args, **kwargs) -> str:
         """
@@ -408,16 +417,19 @@ class FuncDec(FuncDecBase):
         """
         Spawns a new instance of the current class, optionally updating the instance.
         Args:
-            instance (optional): The new instance to be used. If not specified, 
+            instance (optional): The new instance to be used. If not specified,
                 the current instance is retained.
         Returns:
             Self: A new instance of the current class with updated attributes.
         """
-        return self.__class__(
-            inst=self.inst, 
-            engine=self.engine, instance=instance,
-            to_msg=self.to_msg, kwargs=self.kwargs
+        new_inst = self.__class__(
+            engine=self.engine,
+            inst=self.inst,
+            to_msg=self.to_msg
         )
+        new_inst._instance = instance
+        new_inst._kwargs = self._kwargs
+        return new_inst
     
     def __call__(self, *args, **kwargs):
         return self.forward(*args, **kwargs)
@@ -473,12 +485,15 @@ class AFuncDec(FuncDecBase):
         Returns:
             Self: A new instance of the AsyncFuncDec class with the specified instance.
         """
-        
-        return self.__class__(
+
+        new_inst = self.__class__(
+            engine=self.engine,
             inst=self.inst,
-            engine=self.engine, instance=instance,
-            to_msg=self.to_msg, kwargs=self.kwargs
+            to_msg=self.to_msg
         )
+        new_inst._instance = instance
+        new_inst._kwargs = self._kwargs
+        return new_inst
     
 
 class StreamDec(FuncDecBase, StreamProcess):
@@ -538,11 +553,14 @@ class StreamDec(FuncDecBase, StreamProcess):
         Returns:
             Self: A new instance of the class.
         """
-        return self.__class__(
-            inst=self.inst, 
-            engine=self.engine, instance=instance,
-            kwargs=self.kwargs
+        new_inst = self.__class__(
+            engine=self.engine,
+            inst=self.inst,
+            to_msg=self.to_msg
         )
+        new_inst._instance = instance
+        new_inst._kwargs = self._kwargs
+        return new_inst
     
     def __call__(self, *args, **kwargs):
         """
@@ -590,13 +608,15 @@ class AStreamDec(FuncDecBase, AsyncStreamProcess):
             yield resp.out
 
     def spawn(self, instance=None) -> Self:
-        
-        return self.__class__(
-            inst=self.inst, 
-            engine=self.engine, instance=instance,
-            to_msg=self.to_msg,
-            kwargs=self.kwargs
+
+        new_inst = self.__class__(
+            engine=self.engine,
+            inst=self.inst,
+            to_msg=self.to_msg
         )
+        new_inst._instance = instance
+        new_inst._kwargs = self._kwargs
+        return new_inst
 
     async def __call__(self, *args, **kwargs):
         """
@@ -642,24 +662,20 @@ def instructfunc(
         )
 
         if not to_async and not to_stream:
-            return FuncDec(
-                engine, inst,
-                kwargs=kwargs
-            )
+            dec = FuncDec(engine=engine, inst=inst, to_msg=ToText())
+            dec._kwargs = kwargs
+            return dec
         if not to_stream:
-            return AFuncDec(
-                engine, inst,
-                kwargs=kwargs
-            )
+            dec = AFuncDec(engine=engine, inst=inst, to_msg=ToText())
+            dec._kwargs = kwargs
+            return dec
         if not to_async:
-            return StreamDec(
-                engine, inst, 
-                kwargs=kwargs
-            )
-        return AStreamDec(
-            engine, inst, 
-            kwargs=kwargs
-        )
+            dec = StreamDec(engine=engine, inst=inst, to_msg=ToText())
+            dec._kwargs = kwargs
+            return dec
+        dec = AStreamDec(engine=engine, inst=inst, to_msg=ToText())
+        dec._kwargs = kwargs
+        return dec
     return _
 
 
@@ -710,29 +726,25 @@ def signaturefunc(
             return f(*args, **kwargs)
         
         inst = SigF(
-            f=f, is_method=is_method, train=train, 
-            doc=doc
+            f=f, is_method=is_method, train=train,
+            doc=doc or ''
         )
 
         if not to_async and not to_stream:
-            return FuncDec(
-                engine, inst,
-                kwargs=kwargs
-            )
+            dec = FuncDec(engine=engine, inst=inst, to_msg=ToText())
+            dec._kwargs = kwargs
+            return dec
         if not to_stream:
-            return AFuncDec(
-                engine, inst,
-                kwargs=kwargs
-            )
+            dec = AFuncDec(engine=engine, inst=inst, to_msg=ToText())
+            dec._kwargs = kwargs
+            return dec
         if not to_async:
-            return StreamDec(
-                engine, inst,
-                kwargs=kwargs
-            )
-        return AStreamDec(
-            engine, inst,
-            kwargs=kwargs
-        )
+            dec = StreamDec(engine=engine, inst=inst, to_msg=ToText())
+            dec._kwargs = kwargs
+            return dec
+        dec = AStreamDec(engine=engine, inst=inst, to_msg=ToText())
+        dec._kwargs = kwargs
+        return dec
 
     return _
 

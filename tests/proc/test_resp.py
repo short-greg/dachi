@@ -409,33 +409,68 @@ class TestTextOut:
 
 class TestTupleOut:
     """Tests for TupleOut tuple processing."""
-    
+
     def test_tupleout_forward_basic(self):
-        """Test basic tuple processing with Process-based processors."""
-        
-        # Processors that inherit from Process, take strings and return objects
-        class StrProcessor(Process):
+        """Test basic tuple processing with ToOut-based processors."""
+
+        # Processors that inherit from ToOut, take strings and return objects
+        class StrProcessor(ToOut):
             def forward(self, s: str) -> str:
                 return s.strip()
-        
-        class IntProcessor(Process):
+            def delta(self, s: str, delta_store: dict, is_last: bool = False):
+                return s.strip()
+            def template(self) -> str:
+                return "string"
+            def example(self) -> str:
+                return "example"
+            def render(self, data) -> str:
+                return str(data)
+
+        class IntProcessor(ToOut):
             def forward(self, s: str) -> int:
                 return int(s.strip())
-        
+            def delta(self, s: str, delta_store: dict, is_last: bool = False):
+                return int(s.strip())
+            def template(self) -> str:
+                return "integer"
+            def example(self) -> str:
+                return "42"
+            def render(self, data) -> str:
+                return str(data)
+
         processors = ModuleList(vals=[StrProcessor(), IntProcessor()])
         proc = TupleOut(processors=processors, parser=LineParser())
         result = proc.forward('hello\n42')
         assert result == ('hello', 42)
-    
-    def test_tupleout_forward_mismatch_count(self):
-        """Test error when processor count doesn't match parsed parts."""
-        
+
+    def test_tupleout_rejects_process_instead_of_toout(self):
+        """Test that TupleOut rejects Process instances (must be ToOut)."""
+
         class StrProcessor(Process):
             def forward(self, s: str) -> str:
                 return s.strip()
-        
+
+        processors = ModuleList(vals=[StrProcessor()])
+        with pytest.raises(pydantic.ValidationError):
+            TupleOut(processors=processors, parser=LineParser())
+
+    def test_tupleout_forward_mismatch_count(self):
+        """Test error when processor count doesn't match parsed parts."""
+
+        class StrProcessor(ToOut):
+            def forward(self, s: str) -> str:
+                return s.strip()
+            def delta(self, s: str, delta_store: dict, is_last: bool = False):
+                return s.strip()
+            def template(self) -> str:
+                return "string"
+            def example(self) -> str:
+                return "example"
+            def render(self, data) -> str:
+                return str(data)
+
         processors = ModuleList(vals=[StrProcessor()])  # Only 1 processor
-        proc = TupleOut(processors=processors, parser=LineParser()) 
+        proc = TupleOut(processors=processors, parser=LineParser())
         with pytest.raises(RuntimeError, match="Expected 1 parts, got 2"):
             proc.forward('hello\n42')  # 2 parts
 

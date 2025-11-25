@@ -1,3 +1,5 @@
+import typing
+
 from dachi.inst._criterion import (
     PassFailCriterion,
     TextField,
@@ -17,9 +19,8 @@ class MockResp:
 class MockProcess(Process):
     """Mock process for testing Critic."""
 
-    def __init__(self, response_json: str):
-        self.response_json = response_json
-        self.last_prompt = None
+    response_json: str
+    last_prompt: typing.Any = None
 
     def forward(self, prompt, **kwargs):
         self.last_prompt = prompt
@@ -32,7 +33,7 @@ class TestCritic:
     def test_forward_returns_evaluation_matching_schema(self):
         """Critic.forward() returns instance of criterion.evaluation_schema."""
         response_json = '{"criterion_name": "test", "passed": true, "reason": "good"}'
-        evaluator = MockProcess(response_json)
+        evaluator = MockProcess(response_json=response_json)
 
         criterion = PassFailCriterion(
             name="test",
@@ -55,7 +56,7 @@ class TestCritic:
     def test_forward_passes_format_override_to_evaluator(self):
         """Critic passes criterion.evaluation_schema as format_override."""
         response_json = '{"criterion_name": "test", "passed": true, "reason": "good"}'
-        evaluator = MockProcess(response_json)
+        evaluator = MockProcess(response_json=response_json)
 
         criterion = PassFailCriterion(
             name="test",
@@ -76,7 +77,7 @@ class TestCritic:
     def test_prompt_template_receives_output_and_criterion_render(self):
         """Formatted prompt includes output and criterion.render()."""
         response_json = '{"criterion_name": "test", "passed": true, "reason": "good"}'
-        evaluator = MockProcess(response_json)
+        evaluator = MockProcess(response_json=response_json)
 
         criterion = PassFailCriterion(
             name="test",
@@ -98,7 +99,7 @@ class TestCritic:
     def test_batch_forward_creates_batch_evaluation_with_list(self):
         """Critic.batch_forward() returns batch_evaluation_schema instance."""
         response_json = '{"criterion_name": "test", "evaluations": [{"criterion_name": "test", "passed": true, "reason": "good"}, {"criterion_name": "test", "passed": false, "reason": "bad"}]}'
-        evaluator = MockProcess(response_json)
+        evaluator = MockProcess(response_json=response_json)
 
         criterion = PassFailCriterion(
             name="test",
@@ -122,7 +123,7 @@ class TestCritic:
     def test_reference_parameter_is_included_in_template(self):
         """Reference argument is formatted into prompt template."""
         response_json = '{"criterion_name": "test", "passed": true, "reason": "good"}'
-        evaluator = MockProcess(response_json)
+        evaluator = MockProcess(response_json=response_json)
 
         criterion = PassFailCriterion(
             name="test",
@@ -143,7 +144,7 @@ class TestCritic:
     def test_context_parameter_is_included_in_template(self):
         """Context argument is formatted into prompt template."""
         response_json = '{"criterion_name": "test", "passed": true, "reason": "good"}'
-        evaluator = MockProcess(response_json)
+        evaluator = MockProcess(response_json=response_json)
 
         criterion = PassFailCriterion(
             name="test",

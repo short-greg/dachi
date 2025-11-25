@@ -487,7 +487,7 @@ class StructOut(ToOut):
     Unified structured data converter for JSON/structured outputs.
     Works with the unified Resp structure.
     """
-    struct: typing.Union[pydantic.BaseModel, typing.Dict, None] = None
+    struct: typing.Union[typing.Type[pydantic.BaseModel], pydantic.BaseModel, typing.Dict, None] = None
 
     def forward(self, resp: str | None) -> typing.Any:
         """Process complete non-streaming structured response"""
@@ -822,6 +822,20 @@ class TupleOut(ToOut, typing.Generic[OUT]):
 
     processors: ModuleList[OUT] # a list of the ToOut processors to use
     parser: PARSER
+
+    @pydantic.field_validator('processors', mode='before')
+    @classmethod
+    def validate_processors(cls, val):
+        # If it's a ModuleList without generic type info, or a plain list, wrap it
+        if isinstance(val, list):
+            return ModuleList[OUT](vals=val)
+        if isinstance(val, ModuleList):
+            # Check if it has generic type parameters
+            # If __orig_class__ is not set, it's untyped - reconstruct it
+            if not hasattr(val, '__orig_class__'):
+                return ModuleList[OUT](vals=val.vals)
+        # Otherwise accept as-is
+        return val
 
     def forward(self, resp: str | None) -> typing.Any:
         """Process complete non-streaming response"""
