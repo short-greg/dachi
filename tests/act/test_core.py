@@ -108,18 +108,19 @@ class _DummyTask(core.Task):
         return self._ret_status
 
 
-class _CountingFTask(core.FTask):
-    """FTask stub that counts ``func_tick`` invocations for idempotency tests."""
+# TODO: Uncomment when FTask is implemented
+# class _CountingFTask(core.FTask):
+#     """FTask stub that counts ``func_tick`` invocations for idempotency tests."""
 
-    def __init__(self, ret_status: core.TaskStatus = core.TaskStatus.SUCCESS):
-        super().__init__(name="ft", args=[], kwargs={})
-        self._ret_status = ret_status
-        self.calls: int = 0
-        self.obj = object()  # satisfy FTask pre-condition
+#     def __init__(self, ret_status: core.TaskStatus = core.TaskStatus.SUCCESS):
+#         super().__init__(name="ft", args=[], kwargs={})
+#         self._ret_status = ret_status
+#         self.calls: int = 0
+#         self.obj = object()  # satisfy FTask pre-condition
 
-    async def func_tick(self) -> core.TaskStatus:  # noqa: D401 – simple stub
-        self.calls += 1
-        return self._ret_status
+#     async def func_tick(self) -> core.TaskStatus:  # noqa: D401 – simple stub
+#         self.calls += 1
+#         return self._ret_status
 
 
 class TestTaskStatusProperties:

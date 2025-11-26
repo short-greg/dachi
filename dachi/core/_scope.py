@@ -1,5 +1,6 @@
 from __future__ import annotations
-from typing import Dict, Tuple, Any, Union
+from typing import Dict, Tuple, Any, Union, Optional, List
+import pydantic
 
 """
 Hierarchical Data Storage and Context Management System
@@ -159,16 +160,28 @@ Three distinct resolution mechanisms:
 """
 
 
-class Scope:
+class Scope(pydantic.BaseModel):
     """Hierarchical data storage with index and tag-based access patterns"""
-    
-    def __init__(self, parent: 'Scope' = None, name: str = None):
-        self.parent = parent
-        self.name = name
-        self.children: Dict[str, 'Scope'] = {}
-        self.full_path: Dict[Tuple, Any] = {}  # Indexed storage
-        self.aliases: Dict[str, Tuple[int, ...]] = {}
-        self.fields: Dict[str, Any] = {}  # Unindexed storage
+
+    model_config = pydantic.ConfigDict(arbitrary_types_allowed=True)
+
+    name: Optional[str] = None
+    children: Dict[str, 'Scope'] = pydantic.Field(default_factory=dict)
+    full_path: Dict[Tuple, Any] = pydantic.Field(default_factory=dict)
+    aliases: Dict[str, Tuple] = pydantic.Field(default_factory=dict)
+    data: Dict[str, Any] = pydantic.Field(default_factory=dict)
+
+    _parent: Optional['Scope'] = pydantic.PrivateAttr(default=None)
+
+    def model_post_init(self, __context):
+        """Reconstruct parent references for all children after deserialization"""
+        for child in self.children.values():
+            child._parent = self
+
+    @property
+    def parent(self) -> Optional['Scope']:
+        """Access parent scope (backward compatibility property)"""
+        return self._parent
     
     def ctx(self, *index_path: int) -> 'Ctx':
         """Get or create context at index path, optionally register tag alias"""
@@ -184,29 +197,31 @@ class Scope:
         #     # Register new tag
         #     self.aliases[tag] = index_path
         
-        return Ctx(self, index_path)
+        return Ctx(scope=self, index_path=index_path)
     
     def child(self, name: str) -> 'Scope':
         """Get or create named child scope"""
         if name not in self.children:
-            self.children[name] = Scope(parent=self, name=name)
+            new_child = Scope(name=name)
+            new_child._parent = self
+            self.children[name] = new_child
         return self.children[name]
-    
+
     def base_scope(self) -> 'Scope':
         """Navigate to root scope"""
         scope = self
-        while scope.parent is not None:
-            scope = scope.parent
+        while scope._parent is not None:
+            scope = scope._parent
         return scope
-    
+
     def change_scope(self, step: str) -> 'Scope':
         """Change scope by one step: '.', '..', or child name"""
         if step == '.' or step == '':
             return self
         elif step == '..':
-            if self.parent is None:
+            if self._parent is None:
                 raise ValueError("Cannot go up - no parent scope")
-            return self.parent
+            return self._parent
         else:
             # Child scope name
             return self.child(step)
@@ -219,11 +234,11 @@ class Scope:
             bindings (Dict[str, str]): The bindings to apply
             inherit (bool, optional): Whether to inherit from the parent context. Defaults to True.
         """
-        return BoundScope(self, ctx, bindings)
+        return BoundScope(base_scope=self, base_ctx=ctx, bindings=bindings)
 
     def __getitem__(self, key: Union[str, Tuple]) -> Any:
         scope, key, index = self._resolve_var(key)
-        if key[-1] not in scope.fields:
+        if key[-1] not in scope.data:
             raise KeyError(f"Unknown tag: {key[-1]}")
         if index is not None:
             return scope.full_path[key][index]
@@ -257,7 +272,7 @@ class Scope:
             scope.full_path[key][index] = value
             return value
         scope.full_path[key] = value
-        scope.fields[key[-1]] = value
+        scope.data[key[-1]] = value
         scope.aliases[key[-1]] = key
         return value
         # if isinstance(key, tuple):
@@ -266,7 +281,7 @@ class Scope:
         #     scope.full_path[key] = value
         #     # Also store in unindexed if it's a simple field reference
         #     if len(key) >= 2 and isinstance(key[-1], str):
-        #         scope.fields[key[-1]] = value
+        #         scope.data[key[-1]] = value
         #         print(key[-1])
         #         scope.aliases[key[-1]] = key
         # elif isinstance(key, str):
@@ -277,7 +292,7 @@ class Scope:
         #     scope.full_path[resolved_key] = value
         #     # Also store in unindexed if it's a simple field reference
         #     if len(resolved_key) >= 2 and isinstance(resolved_key[-1], str):
-        #         scope.fields[resolved_key[-1]] = value
+        #         scope.data[resolved_key[-1]] = value
         #         scope.aliases[resolved_key[-1]] = resolved_key
         # else:
         #     raise ValueError(f"Invalid key format: {key}")
@@ -471,7 +486,7 @@ class Scope:
         while scope is not None:
             if alias in scope.aliases:
                 return scope, scope.aliases[alias]
-            scope = scope.parent
+            scope = scope._parent
         raise KeyError(f"Alias '{alias}' not found in scope chain")
     
 # $.x
@@ -487,12 +502,10 @@ class Scope:
 
 class BoundScope(Scope):
     """A scope that has bindings applied"""
-    
-    def __init__(self, base_scope: Scope, base_ctx: Ctx, bindings: Dict[str, str]):
-        super().__init__()
-        self.base_scope = base_scope
-        self.base_ctx = base_ctx
-        self.bindings = bindings
+
+    base_scope: Scope
+    base_ctx: 'Ctx'
+    bindings: Dict[str, str] = pydantic.Field(default_factory=dict)
     
     def __getitem__(self, key: Union[str, Tuple]) -> Any:
         """Retrieve data with bindings applied"""
@@ -541,19 +554,20 @@ class BoundScope(Scope):
 
     def path(self, index_path: Tuple[int, ...], field: str, index: Union[str, int] = None) -> Any:
         """Get value from indexed location at this context's path"""
-        return self.bound_scope.path(index_path, field, index)
+        return self.base_scope.path(index_path, field, index)
     
     def set(self, index_path: Tuple[int, ...], field: str, value: Any, index: Union[str, int] = None):
         """Set value at both indexed and unindexed locations"""
-        return self.bound_scope.set(index_path, field, value, index)
+        return self.base_scope.set(index_path, field, value, index)
 
 
-class Ctx:
+class Ctx(pydantic.BaseModel):
     """Context proxy that knows its position in the Scope"""
-    
-    def __init__(self, scope: Scope, index_path: Tuple[int, ...]):
-        self.scope = scope
-        self.index_path = index_path
+
+    model_config = pydantic.ConfigDict(arbitrary_types_allowed=True)
+
+    scope: Scope
+    index_path: Tuple[int, ...] = ()
     
     def __setitem__(self, key: str, value: Any):
         """Store data at both indexed and unindexed locations"""
@@ -599,11 +613,11 @@ class Ctx:
     
     def keys(self):
         """Return keys from scope.fields for dict-like behavior"""
-        return self.scope.fields.keys()
+        return self.scope.data.keys()
     
     def __contains__(self, key: str) -> bool:
         """Check if key exists in scope.fields for dict-like behavior"""
-        return key in self.scope.fields
+        return key in self.scope.data
 
     def bind(self, bindings: Dict[str, str]) -> BoundCtx:
         """Bind variables in the context to the scope
@@ -613,7 +627,7 @@ class Ctx:
             bindings (Dict[str, str]): The bindings to apply
             inherit (bool, optional): Whether to inherit from the parent context. Defaults to True.
         """
-        return BoundCtx(self, bindings)
+        return BoundCtx(scope=self.scope, index_path=self.index_path, base_ctx=self, bindings=bindings)
 
     def ctx(self, *index_path: int) -> 'Ctx':
         """Get or create context at index path, optionally register tag alias"""
@@ -629,16 +643,14 @@ class Ctx:
         #     # Register new tag
         #     self.aliases[tag] = index_path
         
-        return Ctx(self, index_path)
+        return Ctx(scope=self, index_path=index_path)
 
 
 class BoundCtx(Ctx):
     """A context that has bindings applied"""
-    
-    def __init__(self, base_ctx: Ctx, bindings: Dict[str, str]):
-        super().__init__(base_ctx.scope, base_ctx.index_path)
-        self.bindings = bindings
-        self.base_ctx = base_ctx
+
+    bindings: Dict[str, str] = pydantic.Field(default_factory=dict)
+    base_ctx: 'Ctx'
     
     def __getitem__(self, key: str) -> Any:
         """Retrieve data with bindings applied"""

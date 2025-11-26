@@ -6,7 +6,7 @@ from ._base import ChartBase, ChartStatus
 from ._state import BaseState
 from dataclasses import dataclass
 
-from dachi.core import Runtime, ModuleList, PrivateParam, PrivateRuntime, ParamField
+from dachi.core import Runtime, ModuleList, PrivateParam, PrivateRuntime
 from dachi.core._scope import Scope, Ctx
 from ._event import Event, EventQueue, Timer, MonotonicClock, ChartEventHandler, EventPost
 

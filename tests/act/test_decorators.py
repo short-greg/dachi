@@ -293,7 +293,7 @@ class TestBindDecorator:
         
         await bind_decorator.tick(ctx)
         
-        print(ctx.scope.fields)
+        print(ctx.scope.data)
         # Verify action received bound constant values
         assert ctx['target_base'] == action._last_kwargs['target']
         assert ctx['attempts_base'] == action._last_kwargs['attempts']

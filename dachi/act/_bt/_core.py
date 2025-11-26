@@ -184,8 +184,13 @@ class Task(Module):
     READY: t.ClassVar[TaskStatus] = TaskStatus.READY
     RUNNING: t.ClassVar[TaskStatus] = TaskStatus.RUNNING
 
-    _status: Runtime[TaskStatus] = PrivateRuntime(default=TaskStatus.READY, anno=TaskStatus)
-    _id: Runtime[t.Any] = PrivateRuntime(default_factory=id)
+    _status: Runtime[TaskStatus] = PrivateRuntime(default=TaskStatus.READY)
+    _id: Runtime[t.Any] = PrivateRuntime(default=None)
+
+    def model_post_init(self, __context):
+        super().model_post_init(__context)
+        if self._id.data is None:
+            self._id.set(id(self))
 
     @abstractmethod    
     async def tick(self, ctx) -> TaskStatus:
@@ -530,39 +535,46 @@ async def loop_until(
 
 
 # TODO: Define this. I think we need one for Action and one for Condition
-class FTask(Task):
-    """A task that executes a function
-    """
-    name: str
-    args: t.List[t.Any]
-    kwargs: t.Dict[str, t.Any]
+# TODO: Uncomment when FTask is fully implemented
+# TODO: FTask needs:
+# TODO:   1. Define missing func_tick() abstract method
+# TODO:   2. Define or remove .obj property
+# TODO:   3. Fix model_post_init to properly call super with __context
+# TODO:   4. Add proper type annotations
+# TODO:   5. Implement or remove any missing methods
+# class FTask(Task):
+#     """A task that executes a function
+#     """
+#     name: str
+#     args: t.List[t.Any]
+#     kwargs: t.Dict[str, t.Any]
 
-    _obj: Runtime[t.Any] = PrivateRuntime(anno=t.Any)
+#     _obj: Runtime[t.Any] = PrivateRuntime(default=None)
 
-    def model_post_init(self):
-        """Initialize the FTask"""
-        super().model_post_init()
-        # self._task = None
+#     def model_post_init(self, __context):
+#         """Initialize the FTask"""
+#         super().model_post_init(__context)
+#         # self._task = None
 
-    async def tick(self) -> TaskStatus:
-        """Execute the task
+#     async def tick(self) -> TaskStatus:
+#         """Execute the task
 
-        Returns:
-            TaskStatus: The status after executing the task
-        """
+#         Returns:
+#             TaskStatus: The status after executing the task
+#         """
 
-        if self.status.is_done:
-            return self.status
-        
-        if self.obj is None:
-            raise ValueError(
-                "Task object is not set. "
-                "Please set the object before calling tick."
-            )
+#         if self.status.is_done:
+#             return self.status
 
-        status = await self.func_tick()
-        self._status.set(status)
-        return status
+#         if self.obj is None:
+#             raise ValueError(
+#                 "Task object is not set. "
+#                 "Please set the object before calling tick."
+#             )
+
+#         status = await self.func_tick()
+#         self._status.set(status)
+#         return status
 
 
 # TODO: Remove the State and Router

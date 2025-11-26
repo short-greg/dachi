@@ -149,7 +149,8 @@ class BaseArgs(pydantic.BaseModel):
 
         return cls(**init_kwargs)
 
-
+# TODO: Determine how to handle arguments that start with _ or __
+# Currently, we will not be able to create a model from these
 def func_arg_model(cls: type, cls_f, with_ref: bool=False) -> type[pydantic.BaseModel]:
     """Build a Pydantic model from a function's signature.
 

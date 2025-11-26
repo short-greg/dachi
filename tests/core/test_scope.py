@@ -842,3 +842,95 @@ class TestChangeScopeEdgeCases:
         # Navigate from root to level2 via multiple steps
         result = root.change_scope('level1').change_scope('level2')
         assert result is level2
+
+
+class TestScopeSerialization:
+    """Test Pydantic serialization for all Scope classes"""
+
+    def test_scope_model_dump_works(self):
+        """Scope can be serialized without errors"""
+        scope = Scope(name="test")
+        scope[(0, "goal")] = "value"
+
+        data = scope.model_dump()
+        assert data["name"] == "test"
+        assert "full_path" in data
+
+    def test_scope_roundtrip_preserves_data(self):
+        """Scope can be deserialized and data is preserved"""
+        scope = Scope(name="test")
+        scope[(0, "goal")] = "test_value"
+        scope[(0, "pose")] = {"x": 1, "y": 2}
+
+        data = scope.model_dump()
+        restored = Scope(**data)
+
+        assert restored.name == "test"
+        assert restored[(0, "goal")] == "test_value"
+        assert restored[(0, "pose")] == {"x": 1, "y": 2}
+
+    def test_scope_parent_child_roundtrip(self):
+        """Parent-child relationships reconstructed after deserialization"""
+        root = Scope(name="root")
+        child = root.child("child")
+        child[(0, "data")] = "child_data"
+
+        data = root.model_dump()
+        restored = Scope(**data)
+
+        restored_child = restored.children["child"]
+        assert restored_child.parent is restored
+        assert restored_child.name == "child"
+        assert restored_child[(0, "data")] == "child_data"
+
+    def test_scope_deep_hierarchy_roundtrip(self):
+        """Deep hierarchies preserve parent links"""
+        root = Scope(name="root")
+        level1 = root.child("level1")
+        level2 = level1.child("level2")
+        level2[(0, "deep_data")] = "value"
+
+        data = root.model_dump()
+        restored = Scope(**data)
+
+        restored_level2 = restored.children["level1"].children["level2"]
+        assert restored_level2.parent.parent is restored
+        assert restored_level2[(0, "deep_data")] == "value"
+
+    def test_ctx_serialization(self):
+        """Ctx can be serialized and deserialized"""
+        scope = Scope()
+        ctx = scope.ctx(0, 1)
+        ctx["field"] = "value"
+
+        data = ctx.model_dump()
+        assert data["index_path"] == (0, 1)
+
+    def test_bound_scope_creation_with_pydantic(self):
+        """BoundScope works with Pydantic initialization"""
+        base_scope = Scope()
+        base_ctx = base_scope.ctx(0)
+        base_ctx["target"] = (10, 20, 0)
+
+        bound = BoundScope(
+            base_scope=base_scope,
+            base_ctx=base_ctx,
+            bindings={"goal": "target"}
+        )
+
+        assert bound["@goal"] == (10, 20, 0)
+
+    def test_bound_ctx_creation_with_pydantic(self):
+        """BoundCtx works with Pydantic initialization"""
+        scope = Scope()
+        ctx = scope.ctx(0)
+        ctx["position"] = (5, 10, 0)
+
+        bound_ctx = BoundCtx(
+            scope=scope,
+            index_path=(0,),
+            base_ctx=ctx,
+            bindings={"input": "position"}
+        )
+
+        assert bound_ctx["input"] == (5, 10, 0)
