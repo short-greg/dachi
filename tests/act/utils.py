@@ -9,11 +9,11 @@ from dachi.proc import Process, AsyncProcess
 class _ToggleTask(Task):
     """RUNNING ▸ SUCCESS over two ticks; counts invocations."""
 
-    calls: Runtime[int] = PrivateRuntime(0)
+    _calls: Runtime[int] = PrivateRuntime(0)
 
     async def tick(self, ctx):
-        self.calls += 1
-        if self.calls == 1:
+        self._calls.set(self._calls.get() + 1)
+        if self._calls.get() == 1:
             self._status.set(TaskStatus.RUNNING)
         else:
             self._status.set(TaskStatus.SUCCESS)
@@ -65,8 +65,8 @@ class SetStorageAction(Action):
 
     value: int = 4
 
-    async def execute(self) -> TaskStatus:  # noqa: D401    
-        return TaskStatus.FAILURE if self.value.data < 0 else TaskStatus.SUCCESS
+    async def execute(self) -> TaskStatus:  # noqa: D401
+        return TaskStatus.FAILURE if self.value < 0 else TaskStatus.SUCCESS
 
 
 class SampleCondition(Condition):
@@ -86,12 +86,12 @@ class SetStorageActionCounter(Action):
     _count: Runtime[int] = PrivateRuntime(0)
     
     async def execute(self) -> TaskStatus:  # noqa: D401
-        if self.value.data == 0:
+        if self.value == 0:
             return TaskStatus.FAILURE
-        self._count += 1
-        if self._count == 2:
+        self._count.set(self._count.get() + 1)
+        if self._count.get() == 2:
             return TaskStatus.SUCCESS
-        if self._count < 0:
+        if self._count.get() < 0:
             return TaskStatus.FAILURE
         return TaskStatus.RUNNING
 
@@ -108,11 +108,11 @@ class FlagWaitCond(WaitCondition):
 
 class _SyncBoolProc(Process):
     """Synchronous Process that returns the bool supplied at init."""
-    def __init__(self, val: Any) -> None:
-        self._val = val
+
+    val: Any
 
     def forward(self) -> Any:  # noqa: D401
-        return self._val
+        return self.val
 
 
 class _AsyncBoolProc(AsyncProcess):

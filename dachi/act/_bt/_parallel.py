@@ -20,7 +20,7 @@ class MultiTask(ParallelTask[TASK], t.Generic[TASK]):
     """
 
     tasks: ModuleList[TASK] = pydantic.Field(
-        default_factory=list,
+        default_factory=ModuleList,
         description="The tasks to run in parallel"
     )
     fails_on: int=1
@@ -31,6 +31,18 @@ class MultiTask(ParallelTask[TASK], t.Generic[TASK]):
 
     _status: Runtime[TaskStatus] = PrivateRuntime(TaskStatus.READY)
 
+    @pydantic.field_validator('tasks', mode='before')
+    def validate_tasks(cls, v):
+        """Validate and convert tasks to ModuleList
+
+        Args:
+            v: The tasks input (list or ModuleList)
+
+        Returns:
+            ModuleList: The tasks as a ModuleList with correct generic type
+        """
+        return ModuleList[TASK](vals=[*v])
+    
     # def model_post_init(self):
     #     """Create a parallel task
         
@@ -53,39 +65,34 @@ class MultiTask(ParallelTask[TASK], t.Generic[TASK]):
         """
         if self.tasks is not None:
             yield from self.tasks
-    
-    @pydantic.field_validator('fails_on')
-    def validate_thresholds(cls, v, info: pydantic.FieldValidationInfo) -> int:
-        """Validate that the thresholds are not zero
-        
-        Args:
-            v (int): The threshold value
-        
-        Raises:
-            ValueError: If the threshold is zero
-        
-        Returns:
-            int: The validated threshold value
-        """
-        if fails_on < 0:
-            fails_on = len(info.data["tasks"]) + fails_on + 1
-        if info.data["succeeds_on"] < 0:
-            succeeds_on = len(info.data["tasks"]) + info.data["succeeds_on"] + 1
-        else:
-            succeeds_on = info.data["succeeds_on"]
 
-        if (
-            fails_on + succeeds_on - 1
-        ) > len(info.data["tasks"]):
+    @pydantic.model_validator(mode='after')
+    def validate_thresholds(self):
+        """Validate that the thresholds are not zero and within bounds
+
+        Raises:
+            ValueError: If the thresholds are invalid
+
+        Returns:
+            Self: The validated instance
+        """
+        fails_on = self.fails_on
+        if fails_on < 0:
+            fails_on = len(self.tasks) + fails_on + 1
+
+        succeeds_on = self.succeeds_on
+        if succeeds_on < 0:
+            succeeds_on = len(self.tasks) + succeeds_on + 1
+
+        if (fails_on + succeeds_on - 1) > len(self.tasks):
             raise ValueError(
                 'The number of tasks required to succeed or fail is greater than the number of tasks'
             )
         if fails_on <= 0 or succeeds_on <= 0:
             raise ValueError(
-                'The number of fails or succeeds '
-                'must be greater than 0'
+                'The number of fails or succeeds must be greater than 0'
             )
-        return v
+        return self
 
     async def run(self, task: Task, ctx) -> TaskStatus:
         """Run the task until it is done

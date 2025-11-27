@@ -5,7 +5,7 @@ from enum import Enum
 from abc import ABC, abstractmethod
 import asyncio
 import logging
-
+from pydantic import PrivateAttr
 from dachi.core import Module, Runtime, Ctx, PrivateRuntime
 from ._event import EventPost
 
@@ -97,7 +97,7 @@ class Recoverable(ABC):
 class ChartBase(Module):
     """Base class for all state types."""
     name: Optional[str] = None
-    _finish_callbacks: Runtime[Dict[Callable, Tuple[tuple, dict]]] = PrivateRuntime(default_factory=dict)
+    _finish_callbacks: Dict[Callable, Tuple[tuple, dict]] = PrivateAttr(default_factory=dict)
     _status: Runtime[ChartStatus] = PrivateRuntime(default_factory=lambda: ChartStatus.WAITING)
 
     def model_post_init(self, __context) -> None:

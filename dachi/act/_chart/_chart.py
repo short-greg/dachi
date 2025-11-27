@@ -44,13 +44,13 @@ class StateChart(ChartBase, ChartEventHandler, t.Generic[V]):
     _finished_at: Runtime[Optional[float]] = PrivateRuntime(None)
     _stopping: Runtime[bool] = PrivateRuntime(False)
     _regions_completed: Runtime[Dict[str, bool]] = PrivateRuntime({})
-    _queue: EventQueue
-    _clock: MonotonicClock
-    _timer: Timer
-    _scope: Scope
-    _event_loop_task: Optional[asyncio.Task]
-    _event_tasks: t.Set[asyncio.Task]
-    _finish_callbacks: Dict[t.Callable, t.Tuple[tuple, dict]]
+    _queue: EventQueue = pydantic.PrivateAttr()
+    _clock: MonotonicClock = pydantic.PrivateAttr()
+    _timer: Timer = pydantic.PrivateAttr()
+    _scope: Runtime[Scope] = PrivateRuntime(default_factory=Scope)
+    _event_loop_task: Optional[asyncio.Task] = pydantic.PrivateAttr(default=None)
+    _event_tasks: t.Set[asyncio.Task] = pydantic.PrivateAttr(default_factory=set)
+    _finish_callbacks: Dict[t.Callable, t.Tuple[tuple, dict]] = pydantic.PrivateAttr(default_factory=dict)
 
     def model_post_init(self, __context) -> None:
         """Initialize the state chart and its status.

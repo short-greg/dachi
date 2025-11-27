@@ -186,7 +186,7 @@ class TestChartBaseFinish:
         base = ChartBase()
         queue = EventQueue()
         post = EventPost(queue=queue)
-        ctx = Scope().child(0)
+        ctx = Scope().child('x')
         await base.finish(post, ctx)
         assert base.get_status() == ChartStatus.WAITING
 
@@ -201,7 +201,7 @@ class TestChartBaseFinish:
 
         queue = EventQueue()
         post = EventPost(queue=queue)
-        ctx = Scope().child(0)
+        ctx = Scope().child('x')
         base.register_finish_callback(callback)
         await base.finish(post, ctx)
         assert called is True
@@ -218,7 +218,7 @@ class TestChartBaseFinish:
 
         queue = EventQueue()
         post = EventPost(queue=queue)
-        ctx = Scope().child(0)
+        ctx = Scope().child('x')
         await base.finish(post, ctx)
         assert result == ["test_value"]
 
@@ -232,7 +232,7 @@ class TestChartBaseFinish:
 
         queue = EventQueue()
         post = EventPost(queue=queue)
-        ctx = Scope().child(0)
+        ctx = Scope().child('x')
         base.register_finish_callback(callback, key="value")
         await base.finish(post, ctx)
         assert result == {"key": "value"}
@@ -248,7 +248,7 @@ class TestChartBaseFinish:
 
         queue = EventQueue()
         post = EventPost(queue=queue)
-        ctx = Scope().child(0)
+        ctx = Scope().child('x')
         base.register_finish_callback(callback, "arg_value", key="kwarg_value")
         await base.finish(post, ctx)
         assert result == {"arg": "arg_value", "key": "kwarg_value"}
@@ -269,7 +269,7 @@ class TestChartBaseFinish:
 
         queue = EventQueue()
         post = EventPost(queue=queue)
-        ctx = Scope().child(0)
+        ctx = Scope().child('x')
         await base.finish(post, ctx)
         assert 1 in results
         assert 2 in results
@@ -281,6 +281,6 @@ class TestChartBaseFinish:
 
         queue = EventQueue()
         post = EventPost(queue=queue)
-        ctx = Scope().child(0)
+        ctx = Scope().child('x')
         await base.finish(post, ctx)
         assert base.get_status() == ChartStatus.WAITING

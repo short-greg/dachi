@@ -16,7 +16,6 @@ from dachi.utils._utils import resolve_fields, resolve_from_signature
 from dachi.utils import python_type_to_json_schema_type
 from ._base import ChartBase, ChartStatus, InvalidTransition
 
-
 logger = logging.getLogger("dachi.statechart")
 
 JSON = Union[Dict[str, Any], List[Any], str, int, float, bool, None]
@@ -95,12 +94,12 @@ class BaseState(ChartBase, ABC):
     """Base class for all state types."""
     name: Optional[str] = None
 
-    _status: Runtime[ChartStatus] = PrivateRuntime(default_factory=lambda: Runtime[ChartStatus](data=ChartStatus.WAITING))
-    _termination_requested: Runtime[bool] = PrivateRuntime(default_factory=lambda: Runtime[bool](data=False))
-    _run_completed: Runtime[bool] = PrivateRuntime(default_factory=lambda: Runtime[bool](data=False))
-    _executing: Runtime[bool] = PrivateRuntime(default_factory=lambda: Runtime[bool](data=False))
-    _entered: Runtime[bool] = PrivateRuntime(default_factory=lambda: Runtime[bool](data=False))
-    _exiting: Runtime[bool] = PrivateRuntime(default_factory=lambda: Runtime[bool](data=False))
+    _status: Runtime[ChartStatus] = PrivateRuntime(default=ChartStatus.WAITING)
+    _termination_requested: Runtime[bool] = PrivateRuntime(default=False)
+    _run_completed: Runtime[bool] = PrivateRuntime(default=False)
+    _executing: Runtime[bool] = PrivateRuntime(default=False)
+    _entered: Runtime[bool] = PrivateRuntime(default=False)
+    _exiting: Runtime[bool] = PrivateRuntime(default=False)
     _finishing: bool = False  # Guard against double-finish
     
     def model_post_init(self, __context):
@@ -213,7 +212,7 @@ class BaseState(ChartBase, ABC):
 class LeafState(BaseState, ABC):
     """Leaf state that does not contain nested regions."""
 
-    sc_params: ClassVar[Dict[str, Dict[str, Any]]] = {}
+    __sc_params__: ClassVar[Dict[str, Dict[str, Any]]] = {}
         
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
@@ -230,7 +229,7 @@ class LeafState(BaseState, ABC):
         if hasattr(cls, 'emit'):
             sc_params["emit"] = cls._process_ports(cls.emit)
 
-        cls.sc_params = sc_params
+        cls.__sc_params__ = sc_params
 
     @classmethod
     def schema(cls) -> dict:
@@ -242,12 +241,12 @@ class LeafState(BaseState, ABC):
         base_schema = super().schema()
 
         ports_metadata = {}
-        if cls.sc_params["inputs"]:
-            ports_metadata["inputs"] = cls._serialize_ports(cls.sc_params["inputs"])
-        if cls.sc_params["outputs"]:
-            ports_metadata["outputs"] = cls._serialize_ports(cls.sc_params["outputs"])
-        if cls.sc_params["emit"]:
-            ports_metadata["emit"] = cls._serialize_ports(cls.sc_params["emit"])
+        if cls.__sc_params__["inputs"]:
+            ports_metadata["inputs"] = cls._serialize_ports(cls.__sc_params__["inputs"])
+        if cls.__sc_params__["outputs"]:
+            ports_metadata["outputs"] = cls._serialize_ports(cls.__sc_params__["outputs"])
+        if cls.__sc_params__["emit"]:
+            ports_metadata["emit"] = cls._serialize_ports(cls.__sc_params__["emit"])
 
         if ports_metadata:
             base_schema["x-ports"] = ports_metadata

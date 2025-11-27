@@ -6,6 +6,7 @@ import typing as t
 import asyncio
 import logging
 
+import pydantic
 from pydantic import Field
 
 # Local
@@ -18,7 +19,7 @@ logger = logging.getLogger("dachi.statechart")
 
 JSON = Union[Dict[str, Any], List[Any], str, int, float, bool, None]
 
-V = t.TypeVar("V", bound=BaseState)
+BASE_STATE = t.TypeVar("BASE_STATE", bound=BaseState | PseudoState)
 
 
 @dataclass
@@ -99,13 +100,13 @@ class RegionSnapshot(TypedDict, total=False):
     pending_target: Optional[str]
 
 
-class Region(ChartBase, ChartEventHandler, Recoverable, t.Generic[V]):
+class Region(ChartBase, ChartEventHandler, Recoverable, t.Generic[BASE_STATE]):
     # ----- Spec fields (serialized) -----
     name: str
     initial: str  # Initial state name
     rules: List[Rule]
-    states: ModuleDict[str, V] = Field(default_factory=ModuleDict)
-    _cur_task: Runtime[Optional[asyncio.Task]] = PrivateRuntime(default_factory=lambda: None)
+    states: ModuleDict[BASE_STATE] = Field(default_factory=ModuleDict)
+    _cur_task: Optional[asyncio.Task] = pydantic.PrivateAttr(default=None)
     _current_state: Runtime[Optional[str]] = PrivateRuntime(default_factory=lambda: None)
     _last_active_state: Runtime[Optional[str]] = PrivateRuntime(default_factory=lambda: None)
     _pending_target: Runtime[Optional[str]] = PrivateRuntime(default_factory=lambda: None)

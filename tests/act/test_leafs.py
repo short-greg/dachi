@@ -12,6 +12,7 @@ import asyncio
 import types
 import random
 import pytest
+import pydantic
 from dachi.core import InitVar, Runtime, Scope, PrivateRuntime
 from dachi.act._bt._core import TaskStatus
 from dachi.act._bt._leafs import Action, Condition, WaitCondition, FixedTimer, RandomTimer, CountLimit
@@ -68,12 +69,12 @@ class SetStorageActionCounter(Action):
     _count: Runtime[int] = PrivateRuntime(0)
 
     async def execute(self) -> TaskStatus:  # noqa: D401
-        if self.value.data == 0:
+        if self.value == 0:
             return TaskStatus.FAILURE
-        self._count += 1
-        if self._count == 2:
+        self._count.set(self._count.get() + 1)
+        if self._count.get() == 2:
             return TaskStatus.SUCCESS
-        if self._count < 0:
+        if self._count.get() < 0:
             return TaskStatus.FAILURE
         return TaskStatus.RUNNING
 
@@ -123,7 +124,7 @@ class TestAction:
         action2 = SetStorageActionCounter(value=2)
         await action.tick(create_test_ctx())
         action2.load_state_dict(action.state_dict())
-        assert action2.value.data == 3
+        assert action2.value == 3
 
 
 
@@ -193,9 +194,7 @@ class TestWaitCondition:
 class ToggleWait(WaitCondition):
     """Returns WAITING on first tick, SUCCESS on second."""
 
-    def __init__(self):
-        super().__init__()
-        self._first = True
+    _first: bool = pydantic.PrivateAttr(default=True)
 
     async def execute(self):
         if self._first:

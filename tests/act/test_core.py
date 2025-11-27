@@ -1,3 +1,4 @@
+import pydantic
 from dachi.act._bt import _core
 from dachi.act._bt._core import TaskStatus
 from .utils import ImmediateAction, SetStorageActionCounter, create_test_ctx
@@ -94,18 +95,16 @@ from dachi.act._bt import _core as core
 class _DummyTask(core.Task):
     """Concrete :class:`~core.Task` that simply returns a preset status."""
 
-    def __init__(self, ret_status: core.TaskStatus):  # noqa: D401 – simple stub
-        super().__init__()
-        self._ret_status = ret_status
+    ret_status: core.TaskStatus
 
     async def tick(self, ctx) -> core.TaskStatus:  # noqa: D401 – trivial impl
-        self._status.set(self._ret_status)
-        return self._ret_status
+        self._status.set(self.ret_status)
+        return self.ret_status
 
     # sync variant used in rare cases where a synchronous path is required
     def sync_tick(self) -> core.TaskStatus:  # noqa: D401
-        self._status.set(self._ret_status)
-        return self._ret_status
+        self._status.set(self.ret_status)
+        return self.ret_status
 
 
 # TODO: Uncomment when FTask is implemented
@@ -174,11 +173,11 @@ class TestAsLongAs:
 
     async def test_aslongas_fails_if_failure_after_two(self):
         action1 = SetStorageActionCounter(value=1)
-        action1._count = 1
-        action1.value.data = 4
+        action1._count.set(1)
+        action1.value = 4
         aslongas = AsLongAs(task=action1)
         await aslongas.tick(create_test_ctx())
-        action1.value.data = 0
+        action1.value = 0
         assert await aslongas.tick(create_test_ctx()) == TaskStatus.FAILURE
 
 class TestFromBoolHelper:
@@ -228,22 +227,22 @@ class TestTaskLifecycle:
     """A *Task* starts READY, updates on *tick*, and can be *reset*."""
 
     async def test_initial_status_ready(self):
-        t = _DummyTask(core.TaskStatus.SUCCESS)
+        t = _DummyTask(ret_status=core.TaskStatus.SUCCESS)
         assert t.status is core.TaskStatus.READY
 
     async def test_tick_updates_status_and_returns(self):
-        t = _DummyTask(core.TaskStatus.SUCCESS)
+        t = _DummyTask(ret_status=core.TaskStatus.SUCCESS)
         out = await t.tick(create_test_ctx())
         assert out is core.TaskStatus.SUCCESS
         assert t.status is core.TaskStatus.SUCCESS
 
     async def test_call_delegates_to_tick(self):
-        t = _DummyTask(core.TaskStatus.FAILURE)
+        t = _DummyTask(ret_status=core.TaskStatus.FAILURE)
         out = await t()
         assert out is core.TaskStatus.FAILURE
 
     async def test_reset_restores_ready(self):
-        t = _DummyTask(core.TaskStatus.SUCCESS)
+        t = _DummyTask(ret_status=core.TaskStatus.SUCCESS)
         await t.tick(create_test_ctx())
         t.reset()
         assert t.status is core.TaskStatus.READY

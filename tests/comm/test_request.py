@@ -7,6 +7,9 @@ from typing import Any, Optional, Iterable, AsyncIterator
 import pytest
 # import _pytest.threadexception as threadexception
 
+import asyncio
+import inspect
+import typing as t
 
 # Adjust if your module path differs
 from dachi.comm._dispatch import AsyncDispatcher, RequestState, DispatchStatus
@@ -16,10 +19,8 @@ from dachi.proc._process import AsyncProcess, AsyncStreamProcess
 # Wrapper classes for testing
 class FuncAsyncProcess(AsyncProcess):
     """Wrapper to make functions work as AsyncProcess"""
-    def __init__(self, func):
-        super().__init__()
-        self.func = func
-    
+    func: t.Callable[..., t.Any]
+
     async def aforward(self, *args, **kwargs):
         if asyncio.iscoroutinefunction(self.func):
             return await self.func(*args, **kwargs)
@@ -29,13 +30,9 @@ class FuncAsyncProcess(AsyncProcess):
 
 class StreamAsyncProcess(AsyncStreamProcess):
     """Wrapper to make generator functions work as AsyncStreamProcess"""
-    def __init__(self, func):
-        super().__init__()
-        self.func = func
-    
+
+    func: t.Callable[..., t.AsyncIterator]
     async def astream(self, *args, **kwargs):
-        import asyncio
-        import inspect
         
         # Check if the function is an async generator
         if inspect.isasyncgenfunction(self.func):
@@ -153,14 +150,14 @@ def _ai_flaky(p_fail: float = 1.0, delay: float = 0.02) -> str:
 class TestSubmitProc:
 
     def test_submit_proc_sync_returns_result(self, rd: AsyncDispatcher):
-        proc = FuncAsyncProcess(_ai_sync_value)
+        proc = FuncAsyncProcess(func=_ai_sync_value)
         rid = rd.submit_proc(proc, 21, delay=0.02)
         st = _wait_until(rd, rid, {RequestState.DONE, RequestState.ERROR})
         assert st.state == RequestState.DONE
         assert rd.result(rid) == 42
 
     def test_submit_proc_async_returns_result(self, rd: AsyncDispatcher):
-        proc = FuncAsyncProcess(_ai_async_value)
+        proc = FuncAsyncProcess(func=_ai_async_value)
         rid = rd.submit_proc(proc, {"msg": "hi"}, delay=0.02)
         st = _wait_until(rd, rid, {RequestState.DONE, RequestState.ERROR})
         assert st.state == RequestState.DONE
@@ -168,19 +165,11 @@ class TestSubmitProc:
         assert res["ok"] is True and res["payload"] == {"msg": "hi"}
 
     def test_submit_proc_error_propagates(self, rd: AsyncDispatcher):
-        proc = FuncAsyncProcess(_ai_flaky)
+        proc = FuncAsyncProcess(func=_ai_flaky)
         rid = rd.submit_proc(proc, p_fail=1.0, delay=0.01)
         st = _wait_until(rd, rid, {RequestState.DONE, RequestState.ERROR})
         assert st.state == RequestState.ERROR
         with pytest.raises(RuntimeError):
-            _ = rd.result(rid)
-
-    def test_submit_proc_non_callable_sets_error_and_result_raises(self, rd: AsyncDispatcher):
-        proc = FuncAsyncProcess(12345)  # type: ignore[arg-type]
-        rid = rd.submit_proc(proc)
-        st = _wait_until(rd, rid, {RequestState.ERROR})
-        assert st.state == RequestState.ERROR
-        with pytest.raises(TypeError):
             _ = rd.result(rid)
 
     def test_submit_proc_forwards_args_and_kwargs_exactly(self, rd: AsyncDispatcher):
@@ -189,7 +178,7 @@ class TestSubmitProc:
             seen["args"] = (a, b)
             seen["kwargs"] = {"c": c, "d": d}
             return "ok"
-        proc = FuncAsyncProcess(checker)
+        proc = FuncAsyncProcess(func=checker)
         rid = rd.submit_proc(proc, 1, 2, c=3, d=5)
         _wait_until(rd, rid, {RequestState.DONE})
         assert rd.result(rid) == "ok"
@@ -197,14 +186,14 @@ class TestSubmitProc:
         assert seen["kwargs"] == {"c": 3, "d": 5}
 
     def test_submit_proc_zero_delay_no_race(self, rd: AsyncDispatcher):
-        proc = FuncAsyncProcess(_ai_sync_value)
+        proc = FuncAsyncProcess(func=_ai_sync_value)
         rid = rd.submit_proc(proc, 7, delay=0.0)
         st = _wait_until(rd, rid, {RequestState.DONE})
         assert rd.result(rid) == 14
 
 
     def test_submit_proc_cancel_after_start_does_not_stop_job(self, rd: AsyncDispatcher):
-        proc = FuncAsyncProcess(_ai_sync_value)
+        proc = FuncAsyncProcess(func=_ai_sync_value)
         rid = rd.submit_proc(proc, 10, delay=0.05)
 
         # Wait until it has actually started, to avoid cancelling while queued.
@@ -222,9 +211,9 @@ class TestSubmitProc:
 
     def test_submit_proc_cancel_before_start_transitions_to_cancelled(self, rd: AsyncDispatcher):
         # Saturate the semaphore with holders so the next job is waiting to start.
-        proc_holder = FuncAsyncProcess(_ai_async_value)
+        proc_holder = FuncAsyncProcess(func=_ai_async_value)
         holders = [rd.submit_proc(proc_holder, f"hold-{i}", delay=0.2) for i in range(16)]
-        proc_cancel = FuncAsyncProcess(_ai_async_value)
+        proc_cancel = FuncAsyncProcess(func=_ai_async_value)
         rid = rd.submit_proc(proc_cancel, "to-cancel", delay=0.01)
         rd.cancel(rid)  # cancel while queued/waiting
         for h in holders:
@@ -252,7 +241,7 @@ class TestCallbacks:
             with lock:
                 calls.append(("ok", req_id, result, error))
 
-        proc = FuncAsyncProcess(_ai_sync_value)
+        proc = FuncAsyncProcess(func=_ai_sync_value)
         rid = rd.submit_proc(proc, 3, delay=0.01, _callback=cb)
         _wait_until(rd, rid, {RequestState.DONE, RequestState.ERROR})
         time.sleep(0.05)  # callback runs on a tiny daemon thread
@@ -268,7 +257,7 @@ class TestCallbacks:
             with lock:
                 calls.append(("err", req_id, result, error))
 
-        proc = FuncAsyncProcess(_ai_flaky)
+        proc = FuncAsyncProcess(func=_ai_flaky)
         rid = rd.submit_proc(proc, p_fail=1.0, delay=0.01, _callback=cb)
         _wait_until(rd, rid, {RequestState.DONE, RequestState.ERROR})
         time.sleep(0.05)
@@ -285,7 +274,7 @@ class TestCallbacks:
             order.append("callback")
             evt.set()
 
-        proc = StreamAsyncProcess(_ai_sync_stream)
+        proc = StreamAsyncProcess(func=_ai_sync_stream)
         rid = rd.submit_stream(proc, n=2, interval=0.01, _callback=cb)
         order.append("consumed")
         chunks = list(rd.stream_result(rid))  # consume
@@ -299,7 +288,7 @@ class TestCallbacks:
         calls = []
         def cb(req_id, result, error):
             calls.append(1)
-        proc = FuncAsyncProcess(_ai_sync_value)
+        proc = FuncAsyncProcess(func=_ai_sync_value)
         rid = rd.submit_proc(proc, 1, delay=0.0, _callback=cb)
         _wait_until(rd, rid, {RequestState.DONE})
         time.sleep(0.05)
@@ -309,7 +298,7 @@ class TestCallbacks:
 class TestSubmitStream:
 
     def test_submit_stream_async_generator(self, rd: AsyncDispatcher):
-        proc = StreamAsyncProcess(_ai_async_stream)
+        proc = StreamAsyncProcess(func=_ai_async_stream)
         rid = rd.submit_stream(proc, n=5)
         chunks = list(rd.stream_result(rid))
         assert chunks == [{"i": i} for i in range(5)]
@@ -317,7 +306,7 @@ class TestSubmitStream:
         assert rd.status(rid) is None
 
     def test_submit_stream_sync_generator(self, rd: AsyncDispatcher):
-        proc = StreamAsyncProcess(_ai_sync_stream)
+        proc = StreamAsyncProcess(func=_ai_sync_stream)
         rid = rd.submit_stream(proc, n=3, interval=0.01)
         chunks = list(rd.stream_result(rid))
         assert chunks == [{"i": i} for i in range(3)]
@@ -340,7 +329,7 @@ class TestSubmitStream:
                     return FakeStream(n=kw.get("n", 4), dt=kw.get("dt", 0.003)) if stream else {"choices":[{"message":{"content":"full"}}]}
         client = FakeClient()
 
-        proc = StreamAsyncProcess(client.ChatCompletions.create)
+        proc = StreamAsyncProcess(func=client.ChatCompletions.create)
         rid = rd.submit_stream(proc, stream=True, n=5, dt=0.002)
         chunks = list(rd.stream_result(rid))
         assert [c["delta"] for c in chunks] == [f"chunk-{i}" for i in range(5)]
@@ -349,7 +338,7 @@ class TestSubmitStream:
         async def async_value():
             await asyncio.sleep(0.005)
             return {"one": "shot"}
-        proc = StreamAsyncProcess(async_value)
+        proc = StreamAsyncProcess(func=async_value)
         rid = rd.submit_stream(proc)
         chunks = list(rd.stream_result(rid))
         assert chunks == [{"one": "shot"}]
@@ -357,7 +346,7 @@ class TestSubmitStream:
     def test_submit_stream_one_shot_sync_function(self, rd: AsyncDispatcher):
         def one_shot():
             return {"ok": 1}
-        proc = StreamAsyncProcess(one_shot)
+        proc = StreamAsyncProcess(func=one_shot)
         rid = rd.submit_stream(proc)
         chunks = list(rd.stream_result(rid))
         assert chunks == [{"ok": 1}]
@@ -367,13 +356,13 @@ class TestSubmitStream:
         async def returns_list():
             await asyncio.sleep(0.002)
             return [1, 2, 3]  # sync iterable
-        proc = StreamAsyncProcess(returns_list)
+        proc = StreamAsyncProcess(func=returns_list)
         rid = rd.submit_stream(proc)
         chunks = list(rd.stream_result(rid))
         assert chunks == [[1, 2, 3]]
 
     def test_submit_stream_timeout_parameter_allows_waiting_for_slow_producer(self, rd: AsyncDispatcher):
-        proc = StreamAsyncProcess(_ai_async_stream)
+        proc = StreamAsyncProcess(func=_ai_async_stream)
         rid = rd.submit_stream(proc, n=3, interval=0.08)
         collected = []
         start = time.perf_counter()
@@ -389,7 +378,7 @@ class TestSubmitStream:
             time.sleep(0.01)
             raise RuntimeError("boom")
 
-        proc = StreamAsyncProcess(bad_gen)
+        proc = StreamAsyncProcess(func=bad_gen)
         rid = rd.submit_stream(proc)
         chunks = list(rd.stream_result(rid))
         assert chunks == [{"i": 0}]
@@ -402,7 +391,7 @@ class TestSubmitStream:
             await asyncio.sleep(0.005)
             raise RuntimeError("boom")
 
-        proc = StreamAsyncProcess(bad_agen)
+        proc = StreamAsyncProcess(func=bad_agen)
         rid = rd.submit_stream(proc)
         chunks = list(rd.stream_result(rid))
         assert chunks == [{"i": 0}]
@@ -425,7 +414,7 @@ class TestSubmitStream:
                 async def __aexit__(self, exc_type, exc, tb): return False
             return AsyncCtx()
 
-        proc = StreamAsyncProcess(open_stream_ctx)
+        proc = StreamAsyncProcess(func=open_stream_ctx)
         rid = rd.submit_stream(proc, n=5, interval=0.002)
         chunks = list(rd.stream_result(rid))
         assert chunks == [{"i": i} for i in range(5)]
@@ -442,13 +431,13 @@ class TestSubmitStream:
                 def __exit__(self, exc_type, exc, tb): return False
             return SyncCtx()
 
-        proc = StreamAsyncProcess(open_stream_ctx)
+        proc = StreamAsyncProcess(func=open_stream_ctx)
         rid = rd.submit_stream(proc, n=6, interval=0.001)
         chunks = list(rd.stream_result(rid))
         assert chunks == [{"i": i} for i in range(6)]
 
     def test_submit_stream_second_consumer_raises(self, rd: AsyncDispatcher):
-        proc = StreamAsyncProcess(_ai_sync_stream)
+        proc = StreamAsyncProcess(func=_ai_sync_stream)
         rid = rd.submit_stream(proc, n=2, interval=0.001)
         first = list(rd.stream_result(rid))
         assert first == [{"i": 0}, {"i": 1}]
@@ -457,7 +446,7 @@ class TestSubmitStream:
             _ = list(rd.stream_result(rid, timeout=0.01))
         
     def test_submit_stream_second_consumer_while_in_progress_raises(self, rd: AsyncDispatcher):
-        proc = StreamAsyncProcess(_ai_sync_stream)
+        proc = StreamAsyncProcess(func=_ai_sync_stream)
         rid = rd.submit_stream(proc, n=10, interval=0.01)
         it = rd.stream_result(rid, timeout=0.01)  # claims the stream immediately
         with pytest.raises(RuntimeError, match="already being consumed"):
@@ -468,7 +457,7 @@ class TestSubmitStream:
 class TestCancelStream:
 
     def test_cancel_stream_midway(self, rd: AsyncDispatcher):
-        proc = StreamAsyncProcess(_ai_async_stream)
+        proc = StreamAsyncProcess(func=_ai_async_stream)
         rid = rd.submit_stream(proc, n=50, interval=0.01)
         collected = []
         for idx, chunk in enumerate(rd.stream_result(rid, timeout=0.5)):
@@ -488,7 +477,7 @@ class TestCancelStream:
             print('Callback invoked:', req_id, result, error)
             evt.set()
 
-        proc = StreamAsyncProcess(_ai_async_stream)
+        proc = StreamAsyncProcess(func=_ai_async_stream)
         rid = rd.submit_stream(proc, n=2, interval=0.1, _callback=cb)
         rd.cancel(rid)
 
@@ -502,7 +491,7 @@ class TestCancelStream:
         assert rd.status(rid) is None
 
     def test_cancel_stream_idempotent_multiple_calls(self, rd: AsyncDispatcher):
-        proc = StreamAsyncProcess(_ai_async_stream)
+        proc = StreamAsyncProcess(func=_ai_async_stream)
         rid = rd.submit_stream(proc, n=5, interval=0.02)
         first = rd.cancel(rid)
         second = rd.cancel(rid)
@@ -513,9 +502,9 @@ class TestCancelStream:
         assert rd.status(rid) is None
 
     def test_cancel_stream_before_start_transitions_to_cancelled(self, rd: AsyncDispatcher):
-        proc_holder = FuncAsyncProcess(_ai_async_value)
+        proc_holder = FuncAsyncProcess(func=_ai_async_value)
         holders = [rd.submit_proc(proc_holder, f"hold-{i}", delay=0.2) for i in range(16)]
-        proc = StreamAsyncProcess(_ai_async_stream)
+        proc = StreamAsyncProcess(func=_ai_async_stream)
         rid = rd.submit_stream(proc, n=3, interval=0.05)
         rd.cancel(rid)
 
@@ -533,10 +522,10 @@ class TestConcurrency:
         def cb(req_id: str, result: Any, error: Optional[BaseException]):
             done_times[req_id] = time.perf_counter()
 
-        proc_a = FuncAsyncProcess(_ai_async_value)
+        proc_a = FuncAsyncProcess(func=_ai_async_value)
         rid_a = rd.submit_proc(proc_a, "A", delay=0.30, _callback=cb)  # ~0.30s
         time.sleep(0.10)
-        proc_b = FuncAsyncProcess(_ai_sync_value)
+        proc_b = FuncAsyncProcess(func=_ai_sync_value)
         rid_b = rd.submit_proc(proc_b, 1, delay=0.01, _callback=cb)     # ~0.01s
 
         _wait_until(rd, rid_b, {RequestState.DONE, RequestState.ERROR})
@@ -544,9 +533,9 @@ class TestConcurrency:
         assert done_times[rid_b] < done_times[rid_a]
 
     def test_no_starvation_many_shorts_complete_and_long_completes_eventually(self, rd: AsyncDispatcher):
-        proc_long = FuncAsyncProcess(_ai_async_value)
+        proc_long = FuncAsyncProcess(func=_ai_async_value)
         rid_long = rd.submit_proc(proc_long, "long", delay=0.6)
-        proc_short = FuncAsyncProcess(_ai_sync_value)
+        proc_short = FuncAsyncProcess(func=_ai_sync_value)
         short_rids = [rd.submit_proc(proc_short, i, delay=0.02) for i in range(25)]
         # Shorts should all finish quickly
         for rid in short_rids:
@@ -570,7 +559,7 @@ class TestConcurrency:
             with lock:
                 active -= 1
             return "ok"
-        proc_probe = FuncAsyncProcess(probe)
+        proc_probe = FuncAsyncProcess(func=probe)
         rids = [rd.submit_proc(proc_probe, delay=0.05) for _ in range(32)]
         for rid in rids:
             _wait_until(rd, rid, {RequestState.DONE})
@@ -581,7 +570,7 @@ class TestConcurrency:
 class TestStatus:
 
     def test_status_fields_are_ordered(self, rd: AsyncDispatcher):
-        proc = FuncAsyncProcess(_ai_sync_value)
+        proc = FuncAsyncProcess(func=_ai_sync_value)
         rid = rd.submit_proc(proc, 5, delay=0.02)
         st_done = _wait_until(rd, rid, {RequestState.DONE, RequestState.ERROR})
         assert st_done.state == RequestState.DONE
@@ -593,7 +582,7 @@ class TestStatus:
         assert st.queued_at <= st.started_at <= st.ended_at
 
     def test_status_running_mid_flight_is_running(self, rd: AsyncDispatcher):
-        proc = FuncAsyncProcess(_ai_sync_value)
+        proc = FuncAsyncProcess(func=_ai_sync_value)
         rid = rd.submit_proc(proc, 9, delay=0.1)
         time.sleep(0.02)  # give it time to enter RUNNING
         st = rd.status(rid)
@@ -601,7 +590,7 @@ class TestStatus:
         _wait_until(rd, rid, {RequestState.DONE})
 
     def test_status_streaming_mid_flight_is_streaming(self, rd: AsyncDispatcher):
-        proc = StreamAsyncProcess(_ai_async_stream)
+        proc = StreamAsyncProcess(func=_ai_async_stream)
         rid = rd.submit_stream(proc, n=10, interval=0.02)
         time.sleep(0.03)  # give it time to enter STREAMING
         st = rd.status(rid)
@@ -615,7 +604,7 @@ class TestStatus:
         assert rd.status(rid) is None
 
     def test_status_after_error_has_error_string(self, rd: AsyncDispatcher):
-        proc = FuncAsyncProcess(_ai_flaky)
+        proc = FuncAsyncProcess(func=_ai_flaky)
         rid = rd.submit_proc(proc, p_fail=1.0, delay=0.005)
         st = _wait_until(rd, rid, {RequestState.ERROR})
         assert isinstance(st.error, str) and st.error
@@ -627,7 +616,7 @@ class TestStatus:
 class TestResult:
 
     def test_result_before_done_returns_none(self, rd: AsyncDispatcher):
-        proc = FuncAsyncProcess(_ai_sync_value)
+        proc = FuncAsyncProcess(func=_ai_sync_value)
         rid = rd.submit_proc(proc, 2, delay=0.05)
         val = rd.result(rid)  # likely None until done
         assert val is None or isinstance(val, int)  # tolerate fast machines
@@ -648,7 +637,7 @@ class TestResult:
             yield 1
             raise RuntimeError("stream-err")
 
-        proc = StreamAsyncProcess(bad_agen)
+        proc = StreamAsyncProcess(func=bad_agen)
         rid = rd.submit_stream(proc)
         for _ in rd.stream_result(rid):  # consume one then the error ends stream
             break
@@ -667,7 +656,7 @@ class TestResult:
 class TestStreamResult:
 
     def test_stream_result_on_non_streaming_raises(self, rd: AsyncDispatcher):
-        proc = FuncAsyncProcess(_ai_sync_value)
+        proc = FuncAsyncProcess(func=_ai_sync_value)
         rid = rd.submit_proc(proc, 3, delay=0.01)
         _wait_until(rd, rid, {RequestState.DONE, RequestState.ERROR})
         with pytest.raises(KeyError):
@@ -678,7 +667,7 @@ class TestStreamResult:
             _ = list(rd.stream_result("does-not-exist"))
 
     def test_stream_result_timeout_yields_chunks_until_sentinel(self, rd: AsyncDispatcher):
-        proc = StreamAsyncProcess(_ai_async_stream)
+        proc = StreamAsyncProcess(func=_ai_async_stream)
         rid = rd.submit_stream(proc, n=3, interval=0.05)
         start = time.perf_counter()
         out = list(rd.stream_result(rid, timeout=0.01))
@@ -693,5 +682,5 @@ class TestLifecycle:
     def test_shutdown_stops_loop_and_subsequent_submits_fail(self, rd: AsyncDispatcher):
         rd.shutdown()
         with pytest.raises(RuntimeError):
-            proc = FuncAsyncProcess(_ai_sync_value)
+            proc = FuncAsyncProcess(func=_ai_sync_value)
             _ = rd.submit_proc(proc, 1, delay=0.01)

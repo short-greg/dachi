@@ -471,7 +471,6 @@ class FuncInit(t.Generic[T]):
 
     def __call__(self, anno=None):
         # anno = self.anno or anno
-        print('Anno: ', anno)
         if anno is None:
             return self.base_cls(data=self.fn())
         return self.base_cls[anno](data=self.fn())

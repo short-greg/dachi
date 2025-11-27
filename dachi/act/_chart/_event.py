@@ -49,7 +49,7 @@ class EventQueue(pydantic.BaseModel):
     
     maxsize: int = 1024
     overflow: Literal["drop_newest", "drop_oldest", "block"] = "drop_newest"
-    queue: deque[Event] = pydantic.PrivateAttr(default_factory=deque)
+    _queue: deque[Event] = pydantic.PrivateAttr(default_factory=deque)
     _callbacks: Dict[Callable, Tuple[Any, Any]] = pydantic.PrivateAttr(default_factory=dict)
     _posts: Dict[str, "EventPost"] = pydantic.PrivateAttr(default_factory=dict)
 
@@ -62,15 +62,15 @@ class EventQueue(pydantic.BaseModel):
         if isinstance(event, str):
             event = Event(type=event, ts=time.monotonic())
         
-        if len(self.queue) >= self.maxsize:
+        if len(self._queue) >= self.maxsize:
             if self.overflow == "drop_newest":
                 return False
             elif self.overflow == "drop_oldest":
-                self.queue.popleft()
+                self._queue.popleft()
             elif self.overflow == "block":
                 return False
         
-        self.queue.append(event)
+        self._queue.append(event)
         for callback, (args, kwargs) in self._callbacks.items():
             callback(event, *args, **kwargs)
         return True
@@ -103,7 +103,7 @@ class EventQueue(pydantic.BaseModel):
 
     def clear(self) -> None:
         """Clear all events from the queue."""
-        self.queue.clear()
+        self._queue.clear()
     
     def state_dict(self) -> Dict[str, Any]:
         """Return serializable state."""
@@ -140,7 +140,7 @@ class EventQueue(pydantic.BaseModel):
     
     def clear_children(self) -> None:
         """Clear all events from the queue."""
-        self.queue.clear()
+        self._queue.clear()
 
 
 class EventPost(AsyncProcess):
@@ -148,10 +148,10 @@ class EventPost(AsyncProcess):
     """
 
     queue: "EventQueue"
-    source: List[Tuple[str, str]] = []  # List of (region_name, state_name) pairs
+    source: List[Tuple[str, str | None]] = []  # List of (region_name, state_name) pairs
     epoch: Optional[int] = None
     _preempting: Runtime[Callable[[], bool]] = PrivateRuntime(default_factory=lambda: lambda: False)
-    _timers: Runtime[Dict[str, asyncio.Task]] = PrivateRuntime(default_factory=dict)
+    _timers: Dict[str, asyncio.Task] = pydantic.PrivateAttr(default_factory=dict)
     _next_timer_id: Runtime[int] = PrivateRuntime(default_factory=lambda: 0)
 
     async def aforward(
@@ -179,7 +179,7 @@ class EventPost(AsyncProcess):
             ValueError: If delay is negative
         """
         if not delay:
-            self.queue.post_nowait({
+            self._queue.post_nowait({
                 "type": event,
                 "payload": payload or {},
                 "scope": scope,
@@ -200,7 +200,7 @@ class EventPost(AsyncProcess):
         async def _fire():
             await asyncio.sleep(delay)
             if timer_id in self._timers:
-                self.queue.post_nowait({
+                self._queue.post_nowait({
                     "type": event,
                     "payload": payload or {},
                     "scope": scope,
@@ -251,6 +251,7 @@ class EventPost(AsyncProcess):
         Returns:
             New Post with extended source list and shared queue
         """
+        
         return EventPost(
             queue=self.queue,
             source=self.source + [(region_name, None)],

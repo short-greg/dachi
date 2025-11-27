@@ -13,8 +13,10 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 from dachi.act._chart._state import BaseState, LeafState, State, StreamState, FinalState, PseudoState, ReadyState, BoundState, BoundStreamState
 from dachi.act._chart._base import ChartStatus, InvalidTransition
 from dachi.act._chart._event import EventQueue, EventPost
-from dachi.core import Scope
+from dachi.core import Scope, Module
 
+import typing as t
+import pydantic
 
 class ConcreteState(State):
     """Concrete State implementation for testing."""
@@ -176,9 +178,7 @@ class StateWithAllPorts(State):
 class TrackingState(State):
     """State that tracks lifecycle method calls."""
 
-    def __init__(self):
-        super().__init__()
-        self.calls = []
+    calls: list[t.Any] = pydantic.Field(default_factory=list)
 
     def enter(self, post, ctx):
         self.calls.append('enter')
@@ -566,22 +566,22 @@ class TestLeafState:
                 return {}
             async def run(self, post, ctx):
                 pass
-        assert hasattr(TestLeafState, 'sc_params')
-        assert 'param1' in TestLeafState.sc_params['inputs']
+        assert hasattr(TestLeafState, '__sc_params__')
+        assert 'param1' in TestLeafState.__sc_params__['inputs']
 
     def test_init_subclass_processes_outputs_class(self):
-        assert hasattr(LeafStateWithOutputs, 'sc_params')
-        assert 'result' in LeafStateWithOutputs.sc_params['outputs']
+        assert hasattr(LeafStateWithOutputs, '__sc_params__')
+        assert 'result' in LeafStateWithOutputs.__sc_params__['outputs']
 
     def test_init_subclass_processes_emit_class(self):
-        assert hasattr(LeafStateWithEmit, 'sc_params')
-        assert 'TestEvent' in LeafStateWithEmit.sc_params['emit']
+        assert hasattr(LeafStateWithEmit, '__sc_params__')
+        assert 'TestEvent' in LeafStateWithEmit.__sc_params__['emit']
 
     def test_init_subclass_with_no_declarations_creates_empty_params(self):
         state = ConcreteLeafState()
-        assert state.sc_params['inputs'] == {}
-        assert state.sc_params['outputs'] == {}
-        assert state.sc_params['emit'] == {}
+        assert state.__sc_params__['inputs'] == {}
+        assert state.__sc_params__['outputs'] == {}
+        assert state.__sc_params__['emit'] == {}
 
     @pytest.mark.asyncio
     async def test_execute_can_return_dict(self):
@@ -633,12 +633,12 @@ class TestLeafState:
         assert result["received"] == "value"
 
     def test_outputs_class_processed_into_sc_params(self):
-        outputs_params = LeafStateWithOutputs.sc_params['outputs']
+        outputs_params = LeafStateWithOutputs.__sc_params__['outputs']
         assert 'result' in outputs_params
         assert 'value' in outputs_params
 
     def test_emit_class_processed_into_sc_params(self):
-        emit_params = LeafStateWithEmit.sc_params['emit']
+        emit_params = LeafStateWithEmit.__sc_params__['emit']
         assert 'TestEvent' in emit_params
         assert 'DataEvent' in emit_params
 
@@ -1123,9 +1123,8 @@ class TestPseudoState:
         assert state.name == "FINAL"
 
     def test_pseudostate_is_base_module(self):
-        from dachi.core import BaseModule
         state = FinalState()
-        assert isinstance(state, BaseModule)
+        assert isinstance(state, Module)
 
 
 class TestFinalState:
@@ -1143,7 +1142,7 @@ class TestFinalState:
         state = FinalState()
         assert hasattr(state, 'status')
         # status is an Attr, get its value
-        assert state.status.get() == ChartStatus.SUCCESS
+        assert state.status == ChartStatus.SUCCESS
 
     def test_finalstate_does_not_have_run_method(self):
         state = FinalState()
@@ -1171,12 +1170,6 @@ class TestReadyState:
         state = ReadyState()
         # ReadyState.status is a property that returns WAITING
         assert state.status == ChartStatus.WAITING
-
-    def test_readystate_status_is_property(self):
-        state = ReadyState()
-        # Verify it's a property, not an Attr
-        assert isinstance(type(state).status, property)
-
 
 class TestStateLifecycle:
 

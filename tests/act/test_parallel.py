@@ -24,9 +24,9 @@ class TestParallelValidate:
         return MultiTask(tasks=tasks, fails_on=fails, succeeds_on=succ)
 
     def test_ok_when_thresholds_within_bounds(self):
+        # Should not raise during construction (validation happens automatically)
         par = self._parallel(fails=1, succ=-1)  # always succeed with *all* successes
-        # Should not raise
-        par.validate()
+        assert par is not None
 
     def test_error_when_threshold_exceeds_task_count(self):
         # 2 + 3 - 1 = 4 > 3 triggers the guard in constructor

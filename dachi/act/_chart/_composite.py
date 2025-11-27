@@ -2,21 +2,22 @@ from __future__ import annotations
 import typing as t
 import asyncio
 import logging
+import pydantic
 
 from typing import Literal
-from ._state import BaseState
-from ._base import ChartStatus, InvalidTransition, Recoverable, Runtime
+from ._state import BaseState, PseudoState
+from ._base import ChartStatus, InvalidTransition, Recoverable
 from ._event import EventPost, ChartEventHandler, Event
 from ._region import Region, ValidationResult
-from dachi.core import Ctx, ModuleList
+from dachi.core import Ctx, ModuleList, Runtime, PrivateRuntime
 
 
 logger = logging.getLogger("dachi.statechart")
 
-V = t.TypeVar("V", bound=BaseState)
+BASE_STATE = t.TypeVar("BASE_STATE", bound=t.Union[BaseState, PseudoState])
 
 
-class CompositeState(BaseState, ChartEventHandler, Recoverable, t.Generic[V]):
+class CompositeState(BaseState, ChartEventHandler, Recoverable, t.Generic[BASE_STATE]):
     """Composite state containing nested regions.
 
     Lifecycle:
@@ -30,9 +31,59 @@ class CompositeState(BaseState, ChartEventHandler, Recoverable, t.Generic[V]):
     even though run() returns immediately. This avoids busy-waiting loops
     by using callbacks (finish_region) to track completion.
     """
-    regions: ModuleList[Region[V]]
-    _tasks: Runtime[t.List[asyncio.Task]] = t.PrivateRuntime(default_factory=list)
-    _finished_regions: Runtime[t.Set[str]] = t.PrivateRuntime(default_factory=set)
+    regions: ModuleList[Region[BASE_STATE]] = pydantic.Field(default_factory=ModuleList[BASE_STATE])
+    _tasks: t.List[asyncio.Task] = pydantic.PrivateAttr(default_factory=list)
+    _finished_regions: Runtime[t.Set[str]] = PrivateRuntime(default_factory=set)
+
+    @pydantic.field_validator('regions', mode='before')
+    def validate_regions(cls, v):
+        """Validate and convert regions to ModuleList
+
+        Args:
+            v: The regions input (list or ModuleList)
+
+        Returns:
+            ModuleList: The regions as a ModuleList with correct generic type
+        """
+        # if (
+        #     isinstance(v, ModuleList) 
+        #     and t.get_origin(v) is not None 
+        #     and hasattr(region, "__orig_class__")
+        # ):
+        #     return t.cast(ModuleList[Region[BASE_STATE]], v)
+        # Try to resolve BASE_STATE from __orig_class__ if available
+        base_state_type = None
+        if hasattr(cls, "__orig_class__"):
+            # __orig_class__ is something like CompositeState[SomeState]
+            orig = getattr(cls, "__orig_class__")
+            if hasattr(orig, "__args__") and orig.__args__:
+                base_state_type = orig.__args__[0]
+        # If BASE_STATE is resolved, use it; otherwise, fallback to Region
+
+        if base_state_type is None and isinstance(v, ModuleList):
+            # Already a ModuleList, return as is
+            return v
+
+        print('Validating regions: ', v)
+
+        for region in v:
+            if not isinstance(region, Region):
+                raise TypeError(f"All regions must be Region instances, got {type(region)}")
+            if base_state_type is None:
+                # Already a generic Region[BASE_STATE], no cast needed
+                regions.append(region)
+            else:
+                # Cast to Region[BASE_STATE] if possible
+                regions.append(
+                    t.cast(
+                        Region[base_state_type], 
+                        region)
+                    )
+        if base_state_type is not None:
+            module_list = ModuleList[Region[base_state_type]](vals=regions)
+        else:
+            module_list = ModuleList[Region](vals=regions)
+        return module_list
 
     def __getitem__(self, region_name: str) -> Region:
         """Get region by name.

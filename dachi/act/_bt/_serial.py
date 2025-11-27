@@ -7,6 +7,7 @@ from dachi.core import Runtime, ModuleList, Runtime, PrivateRuntime
 from ._leafs import CONDITION
 
 from pydantic import Field
+import pydantic
 
 
 class Serial(CompositeTask[TASK], t.Generic[TASK]):
@@ -28,6 +29,7 @@ class Serial(CompositeTask[TASK], t.Generic[TASK]):
         self._cascaded.data = cascaded
 
 
+
 class Sequence(Serial[TASK]):
     """Create a sequence of tasks to execute
     """
@@ -36,6 +38,10 @@ class Sequence(Serial[TASK]):
         description="The tasks to run in sequence"
     )
     _idx: Runtime[int] = PrivateRuntime(default=0)
+
+    @pydantic.field_validator('tasks', mode='before')
+    def task_validator(cls, v):
+        return ModuleList[TASK](vals=[*v])
 
     def sub_tasks(self) -> t.Iterator[Task]:
         """Get the sub-tasks of the composite task
@@ -86,7 +92,7 @@ class Sequence(Serial[TASK]):
             self._status.set(TaskStatus.SUCCESS)
             return self.status
 
-        if self._cascaded:
+        if self.cascaded:
             for i, task in enumerate(self.tasks[self._idx.data:], self._idx.data):
                 child_ctx = ctx.child(i)
                 status = await task.tick(ctx=child_ctx)
@@ -111,6 +117,14 @@ class Sequence(Serial[TASK]):
 
         self._idx.data = 0
 
+    def update_loop(self) -> t.Iterator[TASK]:
+        """Get the sub-tasks of the composite task
+
+        Yields:
+            t.Iterator[Task]: The sub-tasks
+        """
+        yield from self.tasks
+
 
 class Selector(Serial[TASK]):
     """Create a set of tasks to select from
@@ -120,6 +134,10 @@ class Selector(Serial[TASK]):
         description="The tasks to select from"
     )
     _idx: Runtime[int] = PrivateRuntime(default=0)
+
+    @pydantic.field_validator('tasks', mode='before')
+    def task_validator(cls, v):
+        return ModuleList[TASK](vals=[*v])
 
     def sub_tasks(self) -> t.Iterator[Task]:
         """Get the sub-tasks of the composite task
@@ -170,7 +188,7 @@ class Selector(Serial[TASK]):
             self._status.set(TaskStatus.FAILURE)
             return self.status
         
-        if self._cascaded.data:
+        if self.cascaded:
             while self._idx.data < len(self.tasks) and not self.status.is_done:
                 task = self.tasks[self._idx.data]
                 child_ctx = ctx.child(self._idx.data)
@@ -203,6 +221,15 @@ class Selector(Serial[TASK]):
         for task in self.tasks:
             if isinstance(task, Task):
                 task.reset()
+
+    def update_loop(self) -> t.Iterator[TASK]:
+        """Get the sub-tasks of the composite task
+
+        Yields:
+            t.Iterator[Task]: The sub-tasks
+        """
+        yield from self.tasks
+
 
     # def __post_init__(self):
     #     """Initialize the selector. A Selector will try to execute
@@ -274,8 +301,7 @@ class PreemptCond(Serial[TASK], t.Generic[TASK, CONDITION]):
 
     _cascaded: Literal[True] = True
 
-
-    def update_loop(self) -> t.Iterator[Task]:
+    def update_loop(self) -> t.Iterator[TASK]:
         """Get the sub-tasks of the composite task
 
         Yields:

@@ -5,6 +5,7 @@ from dachi.act._bt._leafs import Action
 from dachi.act._bt._serial import PreemptCond, Serial, Selector, Sequence
 from .utils import ImmediateAction, SetStorageActionCounter, AlwaysTrueCond, AlwaysFalseCond, SetStorageAction
 
+from dachi.core import PrivateRuntime, Runtime
 
 
 @pytest.mark.asyncio
@@ -44,7 +45,7 @@ class TestSerialValidation:
         assert len(Sequence().tasks) == 0
 
     def test_invalid_tasks_type(self):
-        with pytest.raises(ValueError):
+        with pytest.raises(TypeError):
             Sequence(tasks=123)
 
 
@@ -407,18 +408,17 @@ from dachi.act._bt._leafs import Action, Condition
 
 class ContextTestAction(Action):
     """Test action using function signature for input resolution"""
-    
+
+    _call_count: Runtime[int] = PrivateRuntime(0)
+    _last_kwargs: Runtime[dict] = PrivateRuntime(default_factory=dict)
+
     class outputs:
         result: str
         success: bool
-    
-    def __post_init__(self):
-        super().__post_init__()
-        self._call_count = 0
-    
+
     async def execute(self, target: tuple = (0, 0, 0), attempts: int = 1, optional_param: str = "default_value"):
-        self._call_count += 1
-        self._last_kwargs = {"target": target, "attempts": attempts, "optional_param": optional_param}
+        self._call_count.set(self._call_count.get() + 1)
+        self._last_kwargs.set({"target": target, "attempts": attempts, "optional_param": optional_param})
         
         if attempts > 0:
             return TaskStatus.SUCCESS, {
@@ -433,16 +433,13 @@ class ContextTestAction(Action):
 
 class SimpleContextAction(Action):
     """Simpler action that just returns success and configurable outputs"""
-    
+    output_value: int = 42
+
     class outputs:
         value: int
-        
-    def __init__(self, output_value: int = 42):
-        super().__init__()
-        self._output_value = output_value
-    
+
     async def execute(self):
-        return TaskStatus.SUCCESS, {"value": self._output_value}
+        return TaskStatus.SUCCESS, {"value": self.output_value}
 
 class RequiredInputAction(Action):
     """Action with required inputs using class-based input resolution"""
@@ -494,9 +491,9 @@ class TestSequenceWithContext:
         
         # Verify the action was called with resolved kwargs
         assert hasattr(action, '_last_kwargs')
-        assert action._last_kwargs['target'] == (10, 20, 30)
-        assert action._last_kwargs['attempts'] == 3
-        assert action._last_kwargs['optional_param'] == "default_value"  # from default
+        assert action._last_kwargs.get()['target'] == (10, 20, 30)
+        assert action._last_kwargs.get()['attempts'] == 3
+        assert action._last_kwargs.get()['optional_param'] == "default_value"  # from default
     
     async def test_sequence_calls_composite_with_child_context(self):
         """Test that sequence calls composite children with child context, not kwargs"""
@@ -547,8 +544,8 @@ class TestSequenceWithContext:
         await sequence.tick(ctx)
         
         # Verify the action received the context data
-        assert action._last_kwargs['target'] == (100, 200, 300)
-        assert action._last_kwargs['attempts'] == 5
+        assert action._last_kwargs.get()['target'] == (100, 200, 300)
+        assert action._last_kwargs.get()['attempts'] == 5
     
     async def test_sequence_fails_on_missing_required_inputs(self):
         """Test that sequence fails when child has unresolvable required inputs"""
@@ -575,9 +572,9 @@ class TestSequenceWithContext:
         await sequence.tick(ctx)
         
         # Should use defaults for all inputs
-        assert action._last_kwargs['target'] == (0, 0, 0)  # default
-        assert action._last_kwargs['attempts'] == 1  # default
-        assert action._last_kwargs['optional_param'] == "default_value"  # default
+        assert action._last_kwargs.get()['target'] == (0, 0, 0)  # default
+        assert action._last_kwargs.get()['attempts'] == 1  # default
+        assert action._last_kwargs.get()['optional_param'] == "default_value"  # default
     
     async def test_sequence_sibling_data_flow_between_children(self):
         """Test that later children can access earlier children's outputs"""
@@ -635,7 +632,7 @@ class TestSelectorWithContext:
         await selector.tick(ctx)
         
         # Verify action received context data
-        assert action1._last_kwargs['attempts'] == 2
+        assert action1._last_kwargs.get()['attempts'] == 2
     
     async def test_selector_stops_at_first_success_with_context(self):
         """Test that selector stops at first success and stores outputs"""
@@ -763,23 +760,24 @@ class TestCompositeInputResolution:
         """Test input resolution priority order"""
         scope = Scope()
         ctx = scope.ctx()
-        
+
         # Set up context data (lower priority)
         ctx["target"] = (1, 1, 1)
         ctx["attempts"] = 1
-        
-        # First action produces sibling output (higher priority)
-        producer = SimpleContextAction(output_value=999)
-        async def mock_tick(ctx):
-            outputs = {
-                "target": (2, 2, 2),  # This should override context
-                "attempts": 2
-            }
-            ctx.update(outputs)
-            producer._status.set(TaskStatus.SUCCESS)
-            return TaskStatus.SUCCESS
-        producer.tick = mock_tick
-        
+
+        # Create producer action that outputs the data we want
+        class ProducerAction(Action):
+            class outputs:
+                target: tuple
+                attempts: int
+
+            async def execute(self):
+                return TaskStatus.SUCCESS, {
+                    "target": (2, 2, 2),
+                    "attempts": 2
+                }
+
+        producer = ProducerAction()
         consumer = ContextTestAction()
         sequence = Sequence(tasks=[producer, consumer])
         
@@ -877,7 +875,7 @@ class TestCompositeInputResolution:
         await sequence.tick(ctx)
         
         # Should have used all default values
-        assert action._last_kwargs['target'] == (0, 0, 0)  # default
-        assert action._last_kwargs['attempts'] == 1  # default
-        assert action._last_kwargs['optional_param'] == "default_value"  # default
+        assert action._last_kwargs.get()['target'] == (0, 0, 0)  # default
+        assert action._last_kwargs.get()['attempts'] == 1  # default
+        assert action._last_kwargs.get()['optional_param'] == "default_value"  # default
 
