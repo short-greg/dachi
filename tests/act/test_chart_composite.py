@@ -9,7 +9,7 @@ import pytest
 
 from dachi.act._chart._composite import CompositeState
 from dachi.act._chart._region import Region
-from dachi.act._chart._state import State, FinalState
+from dachi.act._chart._state import State, FinalState, BaseState, PseudoState
 from dachi.act._chart._base import ChartStatus, InvalidTransition
 from dachi.act._chart._event import EventQueue, EventPost
 from dachi.core import Scope, ModuleList
@@ -57,7 +57,7 @@ class TestCompositeStateInit:
 
     def test_post_init_initializes_finished_regions_to_empty_set(self):
         composite = CompositeState(regions=ModuleList())
-        assert composite._finished_regions == set()
+        assert composite._finished_regions.data == set()
 
     def test_post_init_sets_status_to_waiting(self):
         composite = CompositeState(regions=ModuleList())
@@ -449,7 +449,7 @@ class TestCompositeStateFinishRegion:
         composite._exiting.set(True)
         region.register_finish_callback(composite.finish_region, region.name, post, ctx)
         await composite.finish_region("child", post, ctx)
-        assert "child" in composite._finished_regions
+        assert "child" in composite._finished_regions.data
 
     @pytest.mark.asyncio
     async def test_finish_region_unregisters_callback(self):
@@ -612,10 +612,10 @@ class TestCompositeStateFinishRegion:
         region2.register_finish_callback(composite.finish_region, region2.name, post, ctx)
 
         await composite.finish_region("child1", post, ctx)
-        assert len(composite._finished_regions) == 1
+        assert len(composite._finished_regions.data) == 1
 
         await composite.finish_region("child2", post, ctx)
-        assert len(composite._finished_regions) == 2
+        assert len(composite._finished_regions.data) == 2
 
     @pytest.mark.asyncio
     async def test_finish_region_called_twice_same_region_idempotent(self):
@@ -633,7 +633,7 @@ class TestCompositeStateFinishRegion:
         await composite.finish_region("child", post, ctx)
         # Call again - should be safe
         await composite.finish_region("child", post, ctx)
-        assert len(composite._finished_regions) == 1
+        assert len(composite._finished_regions.data) == 1
 
     @pytest.mark.asyncio
     async def test_finish_region_order_independence(self):
@@ -696,9 +696,9 @@ class TestCompositeStateReset:
     def test_reset_clears_finished_regions(self):
         composite = CompositeState(regions=ModuleList(vals=[]))
         composite._status.set(ChartStatus.SUCCESS)
-        composite._finished_regions = {"child1", "child2"}
+        composite._finished_regions.data = {"child1", "child2"}
         composite.reset()
-        assert composite._finished_regions == set()
+        assert composite._finished_regions.data == set()
 
     def test_reset_raises_error_when_running(self):
         composite = CompositeState(regions=ModuleList(vals=[]))
@@ -870,11 +870,11 @@ class TestCompositeStateExit:
     async def test_exit_with_multiple_regions_some_complete(self):
         # Use SimpleState for region1 instead of FinalState
         # Region1 will complete quickly, region2 will still be running
-        region1 = Region(name="child1", initial="idle", rules=[])
-        region2 = Region(name="child2", initial="idle", rules=[])
+        region1 = Region[BaseState | PseudoState](name="child1", initial="idle", rules=[])
+        region2 = Region[BaseState | PseudoState](name="child2", initial="idle", rules=[])
         region1.add(SimpleState(name="idle"))  # Quick to complete
         region2.add(SlowState(name="idle"))     # Still running
-        composite = CompositeState(regions=ModuleList(vals=[region1, region2]))
+        composite = CompositeState[BaseState | PseudoState](regions=ModuleList[Region[BaseState | PseudoState]](vals=[region1, region2]))
         queue = EventQueue()
         post = EventPost(queue=queue)
         scope = Scope()
@@ -894,7 +894,7 @@ class TestCompositeStateExit:
 
     @pytest.mark.asyncio
     async def test_exit_with_no_regions(self):
-        composite = CompositeState(regions=ModuleList(vals=[]))
+        composite = CompositeState[BaseState | PseudoState](regions=ModuleList[Region[BaseState | PseudoState]](vals=[]))
         queue = EventQueue()
         post = EventPost(queue=queue)
         scope = Scope()

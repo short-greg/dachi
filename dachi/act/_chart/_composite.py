@@ -8,13 +8,12 @@ from typing import Literal
 from ._state import BaseState, PseudoState
 from ._base import ChartStatus, InvalidTransition, Recoverable
 from ._event import EventPost, ChartEventHandler, Event
-from ._region import Region, ValidationResult
-from dachi.core import Ctx, ModuleList, Runtime, PrivateRuntime
+from ._region import Region, ValidationResult, BASE_STATE
+from dachi.core import Ctx, Runtime, PrivateRuntime
 
+from dachi.core import ModuleList
 
 logger = logging.getLogger("dachi.statechart")
-
-BASE_STATE = t.TypeVar("BASE_STATE", bound=t.Union[BaseState, PseudoState])
 
 
 class CompositeState(BaseState, ChartEventHandler, Recoverable, t.Generic[BASE_STATE]):
@@ -31,7 +30,7 @@ class CompositeState(BaseState, ChartEventHandler, Recoverable, t.Generic[BASE_S
     even though run() returns immediately. This avoids busy-waiting loops
     by using callbacks (finish_region) to track completion.
     """
-    regions: ModuleList[Region[BASE_STATE]] = pydantic.Field(default_factory=ModuleList[BASE_STATE])
+    regions: ModuleList[Region[BASE_STATE]] = pydantic.Field(default_factory=ModuleList)
     _tasks: t.List[asyncio.Task] = pydantic.PrivateAttr(default_factory=list)
     _finished_regions: Runtime[t.Set[str]] = PrivateRuntime(default_factory=set)
 
@@ -40,52 +39,35 @@ class CompositeState(BaseState, ChartEventHandler, Recoverable, t.Generic[BASE_S
         """Validate and convert regions to ModuleList
 
         Args:
-            v: The regions input (list or ModuleList)
+            v: The regions input (list, ModuleList)
 
         Returns:
-            ModuleList: The regions as a ModuleList with correct generic type
+            ModuleList[Region[BASE_STATE]]: The regions as a ModuleList
         """
-        # if (
-        #     isinstance(v, ModuleList) 
-        #     and t.get_origin(v) is not None 
-        #     and hasattr(region, "__orig_class__")
-        # ):
-        #     return t.cast(ModuleList[Region[BASE_STATE]], v)
-        # Try to resolve BASE_STATE from __orig_class__ if available
-        base_state_type = None
-        if hasattr(cls, "__orig_class__"):
-            # __orig_class__ is something like CompositeState[SomeState]
-            orig = getattr(cls, "__orig_class__")
-            if hasattr(orig, "__args__") and orig.__args__:
-                base_state_type = orig.__args__[0]
-        # If BASE_STATE is resolved, use it; otherwise, fallback to Region
+        # Accept any ModuleList regardless of type parameter
+        # Accept ModuleList and convert
+        print(cls.model_fields['regions'].annotation)  # Debug line
+        # get the annotation args for the generic for ModuleList 
+        
+        base_state = cls.model_fields['regions'].annotation.__pydantic_generic_metadata__['args'][0]
 
-        if base_state_type is None and isinstance(v, ModuleList):
-            # Already a ModuleList, return as is
-            return v
+        print(base_state, base_state == Region[BASE_STATE])
+        if base_state == Region[BASE_STATE]:
+            base_state = Region
 
-        print('Validating regions: ', v)
+        if isinstance(v, list):
+            print('Input is list, converting to ModuleList')
+            converted = ModuleList[base_state](vals=v)
+            
+            return converted
+        if isinstance(v, ModuleList):
+            converted = ModuleList[base_state](vals=v.vals)
+            return converted
+        # only item remaining is to somehow convert the regions to the correct base type if not defined
 
-        for region in v:
-            if not isinstance(region, Region):
-                raise TypeError(f"All regions must be Region instances, got {type(region)}")
-            if base_state_type is None:
-                # Already a generic Region[BASE_STATE], no cast needed
-                regions.append(region)
-            else:
-                # Cast to Region[BASE_STATE] if possible
-                regions.append(
-                    t.cast(
-                        Region[base_state_type], 
-                        region)
-                    )
-        if base_state_type is not None:
-            module_list = ModuleList[Region[base_state_type]](vals=regions)
-        else:
-            module_list = ModuleList[Region](vals=regions)
-        return module_list
+        return v
 
-    def __getitem__(self, region_name: str) -> Region:
+    def __getitem__(self, region_name: str) -> Region[BASE_STATE]:
         """Get region by name.
 
         Args:
@@ -112,7 +94,7 @@ class CompositeState(BaseState, ChartEventHandler, Recoverable, t.Generic[BASE_S
         Raises:
             ValueError: If the region is unknown
         """
-        self._finished_regions.add(region_name)
+        self._finished_regions.data.add(region_name)
 
         # Find region by name and unregister callback
         for region in self.regions:
@@ -120,7 +102,7 @@ class CompositeState(BaseState, ChartEventHandler, Recoverable, t.Generic[BASE_S
                 region.unregister_finish_callback(self.finish_region)
                 break
 
-        if len(self._finished_regions) == len(self.regions):
+        if len(self._finished_regions.data) == len(self.regions):
             # All regions have completed
             self._tasks = []
             self._run_completed.set(True)
@@ -162,7 +144,7 @@ class CompositeState(BaseState, ChartEventHandler, Recoverable, t.Generic[BASE_S
         for region in self.regions:
             region.reset()
         self._tasks = []
-        self._finished_regions = set()
+        self._finished_regions.data = set()
         
     async def execute(self, post: "EventPost", ctx: Ctx) -> None:
         """Composite states do not have direct execution logic."""

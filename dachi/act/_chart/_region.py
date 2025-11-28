@@ -10,7 +10,7 @@ import pydantic
 from pydantic import Field
 
 # Local
-from dachi.core import Runtime, ModuleDict, Ctx, PrivateRuntime
+from dachi.core import Runtime, ModuleDict, ModuleList, Ctx, PrivateRuntime
 from ._state import State, BaseState, PseudoState, ReadyState, FinalState, HistoryState
 from ._event import Event, EventPost, ChartEventHandler
 from ._base import ChartBase, ChartStatus, InvalidTransition, Recoverable
@@ -95,7 +95,7 @@ class Rule(TypedDict, total=False):
 class RegionSnapshot(TypedDict, total=False):
     """Serializable snapshot of region state"""
     name: str  # Required
-    current_state: str  # Required  
+    current_state: str  # Required
     status: ChartStatus  # Required
     pending_target: Optional[str]
 
