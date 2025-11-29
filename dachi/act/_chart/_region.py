@@ -611,8 +611,8 @@ class Region(ChartBase, ChartEventHandler, Recoverable, t.Generic[BASE_STATE]):
             elif target == "CANCELED":
                 self._status.set(ChartStatus.CANCELED)
             else:
-                # Custom FinalState - use its status field (call .get() to unwrap Attr)
-                self._status.set(state_obj.status.get())
+                # Custom FinalState - use its status field
+                self._status.set(state_obj.status)
 
             # Complete the region
             self._stopped.set(True)

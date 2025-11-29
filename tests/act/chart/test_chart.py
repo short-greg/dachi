@@ -605,10 +605,7 @@ class TestChartInheritedMethods:
 
         chart.register_finish_callback(my_callback, "test_arg")
 
-        queue = EventQueue()
-        post = EventPost(queue=queue)
-        ctx = Scope().child(0)
-        await chart.finish(post, ctx)
+        await chart.finish()
 
         assert callback_called == ["test_arg"]
 
@@ -644,10 +641,7 @@ class TestChartInheritedMethods:
         chart.register_finish_callback(callback1)
         chart.register_finish_callback(callback2)
 
-        queue = EventQueue()
-        post = EventPost(queue=queue)
-        ctx = Scope().child(0)
-        await chart.finish(post, ctx)
+        await chart.finish()
 
         assert 1 in results
         assert 2 in results

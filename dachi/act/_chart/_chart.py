@@ -66,7 +66,10 @@ class StateChart(ChartBase, ChartEventHandler, t.Generic[BASE_STATE]):
         )
         self._timer = Timer(queue=self._queue, clock=self._clock)
         self._scope = Scope(name=self.name)
-        
+        self._regions_completed.set({
+            region.name: False for region in self.regions
+        })
+
         self._event_loop_task: Optional[asyncio.Task] = None
         self._event_tasks: t.Set[asyncio.Task] = set()
 
