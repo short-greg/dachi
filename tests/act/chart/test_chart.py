@@ -918,6 +918,173 @@ class TestChartHandleEvent:
         await chart.handle_event(event)
 
 
+# ============================================================================
+# Test Custom States for Generic Testing
+# ============================================================================
+
+class ProcessingState(State):
+    """Custom state with additional field."""
+    process_id: int = 0
+
+    async def execute(self, post, **inputs):
+        return {"processed": self.process_id}
+
+
+class DataStreamState(StreamState):
+    """Custom stream state with chunk size."""
+    chunk_size: int = 10
+
+    async def execute(self, post, **inputs):
+        for i in range(3):
+            yield {"chunk": i, "size": self.chunk_size}
+
+
+# ============================================================================
+# Test Class: StateChart Generic Type Parameters
+# ============================================================================
+
+class TestStateChartGenericTypeParameters:
+
+    def test_statechart_accepts_custom_state_subclass(self):
+        """StateChart accepts custom State subclass as type parameter."""
+        region = Region(name="main", initial="proc", rules=[])
+        region.add(ProcessingState(name="proc", process_id=42))
+        region.add(FinalState(name="SUCCESS"))
+
+        chart = StateChart(name="test", regions=[region])
+
+        assert chart.regions[0]["proc"].process_id == 42
+
+    def test_statechart_with_stream_state_type_parameter(self):
+        """StateChart works with StreamState type parameter."""
+        region = Region(name="main", initial="stream", rules=[])
+        region.add(DataStreamState(name="stream", chunk_size=128))
+        region.add(FinalState(name="SUCCESS"))
+
+        chart = StateChart(name="test", regions=[region])
+
+        assert chart.regions[0]["stream"].chunk_size == 128
+
+    def test_statechart_multiple_regions_same_state_type(self):
+        """StateChart handles multiple regions with same custom state type."""
+        r1 = Region(name="r1", initial="proc1", rules=[])
+        r1.add(ProcessingState(name="proc1", process_id=1))
+        r1.add(FinalState(name="SUCCESS"))
+
+        r2 = Region(name="r2", initial="proc2", rules=[])
+        r2.add(ProcessingState(name="proc2", process_id=2))
+        r2.add(FinalState(name="SUCCESS"))
+
+        chart = StateChart(name="test", regions=[r1, r2])
+
+        assert len(chart.regions) == 2
+        assert chart.regions[0]["proc1"].process_id == 1
+        assert chart.regions[1]["proc2"].process_id == 2
+
+    def test_statechart_preserves_state_subclass_fields(self):
+        """StateChart preserves custom fields on state subclasses."""
+        region = Region(name="main", initial="proc", rules=[])
+        region.add(ProcessingState(name="proc", process_id=99))
+        region.add(FinalState(name="SUCCESS"))
+
+        chart = StateChart(name="test", regions=[region])
+        state = chart.regions[0]["proc"]
+
+        assert isinstance(state, ProcessingState)
+        assert state.process_id == 99
+
+
+# ============================================================================
+# Test Class: StateChart Serialization
+# ============================================================================
+
+class TestStateChartSerialization:
+
+    def test_to_spec_preserves_chart_structure(self):
+        """to_spec() preserves basic chart structure."""
+        region = Region(name="main", initial="idle", rules=[])
+        region.add(IdleState(name="idle"))
+        region.add(FinalState(name="SUCCESS"))
+
+        chart = StateChart(name="test", regions=[region])
+        spec = chart.to_spec()
+
+        assert spec["name"] == "test"
+        assert "regions" in spec
+        assert len(spec["regions"]["vals"]) == 1
+
+    def test_to_spec_preserves_regions(self):
+        """to_spec() preserves all regions in chart."""
+        r1 = Region(name="r1", initial="idle", rules=[])
+        r1.add(IdleState(name="idle"))
+        r1.add(FinalState(name="SUCCESS"))
+
+        r2 = Region(name="r2", initial="idle", rules=[])
+        r2.add(IdleState(name="idle"))
+        r2.add(FinalState(name="SUCCESS"))
+
+        chart = StateChart(name="test", regions=[r1, r2])
+        spec = chart.to_spec()
+
+        assert len(spec["regions"]["vals"]) == 2
+
+    def test_to_spec_preserves_custom_state_fields(self):
+        """to_spec() preserves custom fields on state subclasses."""
+        region = Region(name="main", initial="proc", rules=[])
+        region.add(ProcessingState(name="proc", process_id=77))
+        region.add(FinalState(name="SUCCESS"))
+
+        chart = StateChart(name="test", regions=[region])
+        spec = chart.to_spec()
+
+        states = spec["regions"]["vals"][0]["states"]["vals"]
+        proc_state = states["proc"]
+        assert proc_state["process_id"] == 77
+
+    def test_to_spec_with_multiple_custom_state_types(self):
+        """to_spec() handles multiple custom state types."""
+        region = Region(name="main", initial="proc", rules=[])
+        region.add(ProcessingState(name="proc", process_id=10))
+        region.add(DataStreamState(name="stream", chunk_size=256))
+        region.add(FinalState(name="SUCCESS"))
+
+        chart = StateChart(name="test", regions=[region])
+        spec = chart.to_spec()
+
+        states = spec["regions"]["vals"][0]["states"]["vals"]
+        assert "proc" in states
+        assert "stream" in states
+        assert "SUCCESS" in states
+
+    def test_to_spec_excludes_private_runtime_attrs(self):
+        """to_spec() excludes private Runtime attributes."""
+        region = Region(name="main", initial="idle", rules=[])
+        region.add(IdleState(name="idle"))
+        region.add(FinalState(name="SUCCESS"))
+
+        chart = StateChart(name="test", regions=[region])
+        spec = chart.to_spec()
+
+        assert "_status" not in spec
+        assert "_started_at" not in spec
+        assert "_finished_at" not in spec
+        assert "_regions_completed" not in spec
+        assert "_queue" not in spec
+
+    def test_to_spec_includes_public_config_fields(self):
+        """to_spec() includes public configuration fields."""
+        region = Region(name="main", initial="idle", rules=[])
+        region.add(IdleState(name="idle"))
+        region.add(FinalState(name="SUCCESS"))
+
+        chart = StateChart(name="test", queue_maxsize=2048, regions=[region])
+        spec = chart.to_spec()
+
+        assert spec["queue_maxsize"] == 2048
+        assert "queue_overflow" in spec
+        assert "checkpoint_policy" in spec
+
+
 # Run a quick test to see if this works
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

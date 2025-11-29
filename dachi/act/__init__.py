@@ -25,10 +25,10 @@ from ._bt._roots import (
 
 )
 from ._bt._serial import (
-    Serial,
-    Selector,
-    Fallback,
-    Sequence,
+    SerialTask,
+    SelectorTask,
+    FallbackTask,
+    SequenceTask,
     PreemptCond
     
 )

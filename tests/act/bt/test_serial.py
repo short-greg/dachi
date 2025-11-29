@@ -2,7 +2,7 @@ import pytest
 from dachi.core import InitVar, Runtime, ModuleList, Scope
 from dachi.act._bt._core import TaskStatus
 from dachi.act._bt._leafs import Action
-from dachi.act._bt._serial import PreemptCond, Serial, Selector, Sequence
+from dachi.act._bt._serial import PreemptCond, SerialTask, SelectorTask, SequenceTask
 from ..utils import ImmediateAction, SetStorageActionCounter, AlwaysTrueCond, AlwaysFalseCond, SetStorageAction
 
 from dachi.core import PrivateRuntime, Runtime
@@ -38,15 +38,15 @@ class ImmediateAction(Action):
 
 class TestSerialValidation:
     def test_list_to_modulelist(self):
-        serial = Sequence(tasks=[ImmediateAction(status_val=TaskStatus.SUCCESS)])
+        serial = SequenceTask(tasks=[ImmediateAction(status_val=TaskStatus.SUCCESS)])
         assert isinstance(serial.tasks, ModuleList)
 
     def test_defaults_to_empty(self):
-        assert len(Sequence().tasks) == 0
+        assert len(SequenceTask().tasks) == 0
 
     def test_invalid_tasks_type(self):
         with pytest.raises(TypeError):
-            Sequence(tasks=123)
+            SequenceTask(tasks=123)
 
 
 @pytest.mark.asyncio
@@ -57,7 +57,7 @@ class TestSequence:
         
         action1 = SetStorageAction(value=1)
         action2 = SetStorageAction(value=2)
-        sequence = Sequence(
+        sequence = SequenceTask(
             tasks=[action1, action2]
         )
         assert await sequence.tick(ctx) == TaskStatus.RUNNING
@@ -68,7 +68,7 @@ class TestSequence:
         
         action1 = SetStorageAction(value=1)
         action2 = SetStorageAction(value=2)
-        sequence = Sequence(tasks=[action1, action2])
+        sequence = SequenceTask(tasks=[action1, action2])
         await sequence.tick(ctx)
         assert await sequence.tick(ctx) == TaskStatus.SUCCESS
 
@@ -78,7 +78,7 @@ class TestSequence:
         
         action1 = SetStorageAction(value=1)
         action2 = SetStorageAction(value=-1)
-        sequence = Sequence(tasks=[action1, action2])
+        sequence = SequenceTask(tasks=[action1, action2])
         await sequence.tick(ctx)
         assert await sequence.tick(ctx) == TaskStatus.FAILURE
 
@@ -88,7 +88,7 @@ class TestSequence:
         
         action1 = SetStorageAction(value=1)
         action2 = SetStorageAction(value=-1)
-        sequence = Sequence(tasks=[action1, action2])
+        sequence = SequenceTask(tasks=[action1, action2])
         await sequence.tick(ctx)
         await sequence.tick(ctx)
         sequence.reset()
@@ -100,7 +100,7 @@ class TestSequence:
         
         action1 = SetStorageAction(value=2)
         action2 = SetStorageActionCounter(value=3)
-        sequence = Sequence(tasks=[action1, action2])
+        sequence = SequenceTask(tasks=[action1, action2])
         await sequence.tick(ctx)
         await sequence.tick(ctx)
         assert await sequence.tick(ctx) == TaskStatus.SUCCESS
@@ -113,7 +113,7 @@ class TestCascadedSequence:
         action1 = ImmediateAction(status_val=TaskStatus.SUCCESS)
         action2 = ImmediateAction(status_val=TaskStatus.SUCCESS) 
         action3 = ImmediateAction(status_val=TaskStatus.SUCCESS)
-        sequence = Sequence(tasks=[action1, action2, action3])
+        sequence = SequenceTask(tasks=[action1, action2, action3])
         sequence.cascade()
         
         # Should complete all tasks in one tick
@@ -129,7 +129,7 @@ class TestCascadedSequence:
         action1 = ImmediateAction(status_val=TaskStatus.SUCCESS)
         action2 = ImmediateAction(status_val=TaskStatus.RUNNING)
         action3 = ImmediateAction(status_val=TaskStatus.SUCCESS)
-        sequence = Sequence(tasks=[action1, action2, action3])
+        sequence = SequenceTask(tasks=[action1, action2, action3])
         sequence.cascade()
         
         # Should stop at the RUNNING task
@@ -145,7 +145,7 @@ class TestCascadedSequence:
         action1 = ImmediateAction(status_val=TaskStatus.SUCCESS)
         action2 = ImmediateAction(status_val=TaskStatus.FAILURE)
         action3 = ImmediateAction(status_val=TaskStatus.SUCCESS)
-        sequence = Sequence(tasks=[action1, action2, action3])
+        sequence = SequenceTask(tasks=[action1, action2, action3])
         sequence.cascade()
         
         # Should fail immediately at action2
@@ -161,13 +161,13 @@ class TestCascadedSequence:
         # Non-cascaded sequence
         action1_nc = ImmediateAction(status_val=TaskStatus.SUCCESS)
         action2_nc = ImmediateAction(status_val=TaskStatus.SUCCESS)
-        sequence_nc = Sequence(tasks=[action1_nc, action2_nc])
+        sequence_nc = SequenceTask(tasks=[action1_nc, action2_nc])
         sequence_nc.cascade(cascaded=False)
         
         # Cascaded sequence  
         action1_c = ImmediateAction(status_val=TaskStatus.SUCCESS)
         action2_c = ImmediateAction(status_val=TaskStatus.SUCCESS)
-        sequence_c = Sequence(tasks=[action1_c, action2_c])
+        sequence_c = SequenceTask(tasks=[action1_c, action2_c])
         sequence_c.cascade()
         
         scope_nc = Scope()
@@ -186,7 +186,7 @@ class TestCascadedSequence:
         """Test cascaded sequence with mixture of immediate and storage actions"""
         immediate = ImmediateAction(status_val=TaskStatus.SUCCESS)
         storage = SetStorageAction(value=1)  # Will succeed
-        sequence = Sequence(tasks=[immediate, storage])
+        sequence = SequenceTask(tasks=[immediate, storage])
         sequence.cascade()
         
         # Should complete both in one tick since both succeed immediately
@@ -204,7 +204,7 @@ class TestCascadedSelector:
         action1 = ImmediateAction(status_val=TaskStatus.FAILURE)
         action2 = ImmediateAction(status_val=TaskStatus.SUCCESS) 
         action3 = ImmediateAction(status_val=TaskStatus.SUCCESS)
-        selector = Selector(tasks=[action1, action2, action3])
+        selector = SelectorTask(tasks=[action1, action2, action3])
         selector.cascade()
         
         # Should succeed at action2 and not try action3
@@ -220,7 +220,7 @@ class TestCascadedSelector:
         action1 = ImmediateAction(status_val=TaskStatus.FAILURE)
         action2 = ImmediateAction(status_val=TaskStatus.FAILURE)
         action3 = ImmediateAction(status_val=TaskStatus.FAILURE)
-        selector = Selector(tasks=[action1, action2, action3])
+        selector = SelectorTask(tasks=[action1, action2, action3])
         selector.cascade()
         
         # Should try all tasks and fail
@@ -236,7 +236,7 @@ class TestCascadedSelector:
         action1 = ImmediateAction(status_val=TaskStatus.FAILURE)
         action2 = ImmediateAction(status_val=TaskStatus.RUNNING)
         action3 = ImmediateAction(status_val=TaskStatus.SUCCESS)
-        selector = Selector(tasks=[action1, action2, action3])
+        selector = SelectorTask(tasks=[action1, action2, action3])
         selector.cascade()
         
         # Should stop at the RUNNING task
@@ -252,13 +252,13 @@ class TestCascadedSelector:
         # Non-cascaded selector
         action1_nc = ImmediateAction(status_val=TaskStatus.FAILURE)
         action2_nc = ImmediateAction(status_val=TaskStatus.SUCCESS)
-        selector_nc = Selector(tasks=[action1_nc, action2_nc])
+        selector_nc = SelectorTask(tasks=[action1_nc, action2_nc])
         selector_nc.cascade(cascaded=False)
         
         # Cascaded selector
         action1_c = ImmediateAction(status_val=TaskStatus.FAILURE) 
         action2_c = ImmediateAction(status_val=TaskStatus.SUCCESS)
-        selector_c = Selector(tasks=[action1_c, action2_c])
+        selector_c = SelectorTask(tasks=[action1_c, action2_c])
         selector_c.cascade()
         
         scope_nc = Scope()
@@ -278,7 +278,7 @@ class TestCascadedSelector:
 class TestCascadedEdgeCases:
     async def test_cascaded_sequence_empty_tasks(self):
         """Test cascaded sequence with no tasks"""
-        sequence = Sequence(tasks=[])
+        sequence = SequenceTask(tasks=[])
         sequence.cascade()
         # Should succeed immediately with no tasks
         scope = Scope()
@@ -287,7 +287,7 @@ class TestCascadedEdgeCases:
 
     async def test_cascaded_selector_empty_tasks(self):
         """Test cascaded selector with no tasks"""
-        selector = Selector(tasks=[])
+        selector = SelectorTask(tasks=[])
         selector.cascade()
         # Should fail immediately with no tasks to try
         scope = Scope()
@@ -297,7 +297,7 @@ class TestCascadedEdgeCases:
     async def test_cascaded_sequence_single_task(self):
         """Test cascaded sequence with single task"""
         action = ImmediateAction(status_val=TaskStatus.SUCCESS)
-        sequence = Sequence(tasks=[action])
+        sequence = SequenceTask(tasks=[action])
         sequence.cascade()
         
         scope = Scope()
@@ -308,7 +308,7 @@ class TestCascadedEdgeCases:
     async def test_cascaded_selector_single_task(self):
         """Test cascaded selector with single task"""
         action = ImmediateAction(status_val=TaskStatus.SUCCESS)
-        selector = Selector(tasks=[action])
+        selector = SelectorTask(tasks=[action])
         selector.cascade()
         
         scope = Scope()
@@ -320,7 +320,7 @@ class TestCascadedEdgeCases:
         """Test that cascaded sequence resets properly"""
         action1 = ImmediateAction(status_val=TaskStatus.SUCCESS)
         action2 = ImmediateAction(status_val=TaskStatus.SUCCESS)
-        sequence = Sequence(tasks=[action1, action2])
+        sequence = SequenceTask(tasks=[action1, action2])
         sequence.cascade()
         
         # Complete the sequence
@@ -339,7 +339,7 @@ class TestCascadedEdgeCases:
         """Test that cascaded selector resets properly"""
         action1 = ImmediateAction(status_val=TaskStatus.FAILURE)
         action2 = ImmediateAction(status_val=TaskStatus.SUCCESS)
-        selector = Selector(tasks=[action1, action2])
+        selector = SelectorTask(tasks=[action1, action2])
         selector.cascade()
         
         # Complete the selector
@@ -362,7 +362,7 @@ class TestFallback:
         ctx = scope.ctx()
         action1 = SetStorageAction(value=1)
         action2 = SetStorageAction()
-        fallback = Selector(tasks=[action1, action2])
+        fallback = SelectorTask(tasks=[action1, action2])
         assert await fallback.tick(ctx) == TaskStatus.SUCCESS
 
     async def test_fallback_is_successful_after_two_ticks(self):
@@ -370,7 +370,7 @@ class TestFallback:
         ctx = scope.ctx()
         action1 = SetStorageAction(value=-1)
         action2 = SetStorageAction(value=1)
-        fallback = Selector(tasks=[action1, action2])
+        fallback = SelectorTask(tasks=[action1, action2])
         await fallback.tick(ctx)
         assert await fallback.tick(ctx) == TaskStatus.SUCCESS
 
@@ -379,7 +379,7 @@ class TestFallback:
         ctx = scope.ctx()
         action1 = SetStorageAction(value=-1)
         action2 = SetStorageAction(value=-1)
-        fallback = Selector(tasks=[action1, action2])
+        fallback = SelectorTask(tasks=[action1, action2])
         await fallback.tick(ctx)
         assert await fallback.tick(ctx) == TaskStatus.FAILURE
 
@@ -388,7 +388,7 @@ class TestFallback:
         ctx = scope.ctx()
         action1 = SetStorageAction(value=-1)
         action2 = SetStorageAction(value=-1)
-        fallback = Selector(tasks=[action1, action2])
+        fallback = SelectorTask(tasks=[action1, action2])
         assert await fallback.tick(ctx) == TaskStatus.RUNNING
 
     async def test_fallback_ready_after_reset(self):
@@ -396,7 +396,7 @@ class TestFallback:
         ctx = scope.ctx()
         action1 = SetStorageAction(value=-1)
         action2 = SetStorageAction(value=-1)
-        fallback = Selector(tasks=[action1, action2])
+        fallback = SelectorTask(tasks=[action1, action2])
         await fallback.tick(ctx)
         fallback.reset()
         assert fallback.status == TaskStatus.READY
@@ -463,7 +463,7 @@ class TestSequenceWithContext:
         
         action1 = SimpleContextAction(output_value=1)
         action2 = SimpleContextAction(output_value=2)
-        sequence = Sequence(tasks=[action1, action2])
+        sequence = SequenceTask(tasks=[action1, action2])
         sequence.cascade()
         
         # This should create child contexts at paths (0,) and (1,)
@@ -485,7 +485,7 @@ class TestSequenceWithContext:
         ctx["attempts"] = 3
         
         action = ContextTestAction()
-        sequence = Sequence(tasks=[action])
+        sequence = SequenceTask(tasks=[action])
         
         await sequence.tick(ctx)
         
@@ -502,9 +502,9 @@ class TestSequenceWithContext:
         
         # Create nested sequence (composite child)
         inner_action = SimpleContextAction(output_value=5)
-        inner_sequence = Sequence(tasks=[inner_action])
+        inner_sequence = SequenceTask(tasks=[inner_action])
         inner_sequence.cascade()
-        outer_sequence = Sequence(tasks=[inner_sequence])
+        outer_sequence = SequenceTask(tasks=[inner_sequence])
         outer_sequence.cascade()
 
         await outer_sequence.tick(ctx)
@@ -520,7 +520,7 @@ class TestSequenceWithContext:
         ctx = scope.ctx()
         
         action = SimpleContextAction(output_value=42)
-        sequence = Sequence(tasks=[action])
+        sequence = SequenceTask(tasks=[action])
         sequence.cascade()
 
         await sequence.tick(ctx)
@@ -538,7 +538,7 @@ class TestSequenceWithContext:
         scope.set((), "attempts", 5)
         
         action = ContextTestAction()
-        sequence = Sequence(tasks=[action])
+        sequence = SequenceTask(tasks=[action])
         sequence.cascade()
 
         await sequence.tick(ctx)
@@ -554,7 +554,7 @@ class TestSequenceWithContext:
         
         # Create action with required inputs but don't provide them in context
         action = RequiredInputAction()
-        sequence = Sequence(tasks=[action])
+        sequence = SequenceTask(tasks=[action])
         
         # Should fail the sequence when child has missing required inputs
         result = await sequence.tick(ctx)
@@ -567,7 +567,7 @@ class TestSequenceWithContext:
         ctx = scope.ctx()
         
         action = ContextTestAction()
-        sequence = Sequence(tasks=[action])
+        sequence = SequenceTask(tasks=[action])
         
         await sequence.tick(ctx)
         
@@ -588,7 +588,7 @@ class TestSequenceWithContext:
         # This will be tested once input resolution is implemented
         consumer = ContextTestAction()
 
-        sequence = Sequence(tasks=[producer, consumer])
+        sequence = SequenceTask(tasks=[producer, consumer])
         sequence.cascade()
         await sequence.tick(ctx)
         
@@ -610,7 +610,7 @@ class TestSelectorWithContext:
         # First action fails, second succeeds
         action1 = ImmediateAction(status_val=TaskStatus.FAILURE)
         action2 = SimpleContextAction(output_value=99)
-        selector = Selector(tasks=[action1, action2])
+        selector = SelectorTask(tasks=[action1, action2])
         
         await selector.tick(ctx)  # First tick: action1 fails, moves to index 1
         await selector.tick(ctx)  # Second tick: action2 succeeds
@@ -627,7 +627,7 @@ class TestSelectorWithContext:
         ctx["attempts"] = 2
         
         action1 = ContextTestAction()  # Will succeed with the context
-        selector = Selector(tasks=[action1])
+        selector = SelectorTask(tasks=[action1])
         
         await selector.tick(ctx)
         
@@ -643,7 +643,7 @@ class TestSelectorWithContext:
         action2 = SimpleContextAction(output_value=777)
         action3 = SimpleContextAction(output_value=888)  # Should not execute
         
-        selector = Selector(tasks=[action1, action2, action3])
+        selector = SelectorTask(tasks=[action1, action2, action3])
         await selector.tick(ctx)  # First tick: action1 fails, moves to index 1
         await selector.tick(ctx)  # Second tick: action2 succeeds
         
@@ -665,7 +665,7 @@ class TestSelectorWithContext:
         action1 = ImmediateAction(status_val=TaskStatus.FAILURE)
         action2 = SimpleContextAction(output_value=456)
         
-        selector = Selector(tasks=[action1, action2])
+        selector = SelectorTask(tasks=[action1, action2])
         await selector.tick(ctx)  # First tick: action1 fails, moves to index 1
         await selector.tick(ctx)  # Second tick: action2 succeeds
         
@@ -745,7 +745,7 @@ class TestCompositeInputResolution:
         
         # Action with required inputs (no defaults)
         action = RequiredInputAction()
-        sequence = Sequence(tasks=[action])
+        sequence = SequenceTask(tasks=[action])
         
         # No required inputs provided in context
         result = await sequence.tick(ctx)
@@ -779,7 +779,7 @@ class TestCompositeInputResolution:
 
         producer = ProducerAction()
         consumer = ContextTestAction()
-        sequence = Sequence(tasks=[producer, consumer])
+        sequence = SequenceTask(tasks=[producer, consumer])
         
         await sequence.tick(ctx)
         
@@ -800,7 +800,7 @@ class TestCompositeInputResolution:
         # Consumer should be able to access producer's output
         consumer = ContextTestAction()
         
-        sequence = Sequence(tasks=[producer, consumer])
+        sequence = SequenceTask(tasks=[producer, consumer])
         await sequence.tick(ctx)
         
         # Verify producer output stored and accessible
@@ -819,8 +819,8 @@ class TestCompositeInputResolution:
         
         # Nested structure: sequence -> sequence -> action
         inner_action = ContextTestAction()
-        inner_sequence = Sequence(tasks=[inner_action])
-        outer_sequence = Sequence(tasks=[inner_sequence])
+        inner_sequence = SequenceTask(tasks=[inner_action])
+        outer_sequence = SequenceTask(tasks=[inner_sequence])
         
         await outer_sequence.tick(root_ctx)
         
@@ -840,7 +840,7 @@ class TestCompositeInputResolution:
         }
         
         action = ContextTestAction()
-        sequence = Sequence(tasks=[action])
+        sequence = SequenceTask(tasks=[action])
         
         # This will test path resolution like "0.sensors.pose.x"
         # For now, verify the data structure is accessible
@@ -856,7 +856,7 @@ class TestCompositeInputResolution:
         ctx["irrelevant_data"] = "not_what_we_need"
         
         action = RequiredInputAction()  # Needs required_param and required_number
-        sequence = Sequence(tasks=[action])
+        sequence = SequenceTask(tasks=[action])
         
         result = await sequence.tick(ctx)
         
@@ -870,7 +870,7 @@ class TestCompositeInputResolution:
         
         # Don't provide any inputs - should use all defaults
         action = ContextTestAction()
-        sequence = Sequence(tasks=[action])
+        sequence = SequenceTask(tasks=[action])
         
         await sequence.tick(ctx)
         
@@ -879,3 +879,35 @@ class TestCompositeInputResolution:
         assert action._last_kwargs.get()['attempts'] == 1  # default
         assert action._last_kwargs.get()['optional_param'] == "default_value"  # default
 
+
+
+class TestSerialTaskSerialization:
+
+    def test_to_spec_preserves_sequence_task_structure(self):
+        """to_spec() preserves SequenceTask structure."""
+        from dachi.act._bt._serial import SequenceTask
+        from tests.act.utils import ImmediateAction
+        from dachi.act._bt._core import TaskStatus
+
+        task1 = ImmediateAction(status_val=TaskStatus.SUCCESS)
+        task2 = ImmediateAction(status_val=TaskStatus.SUCCESS)
+        original = SequenceTask[ImmediateAction](children=[task1, task2])
+
+        spec = original.to_spec()
+
+        assert "SequenceTask" in spec["KIND"]
+        assert "tasks" in spec
+
+    def test_to_spec_preserves_selector_task_structure(self):
+        """to_spec() preserves SelectorTask structure."""
+        from dachi.act._bt._serial import SelectorTask
+        from tests.act.utils import ImmediateAction
+        from dachi.act._bt._core import TaskStatus
+
+        task1 = ImmediateAction(status_val=TaskStatus.FAILURE)
+        task2 = ImmediateAction(status_val=TaskStatus.SUCCESS)
+        original = SelectorTask[ImmediateAction](children=[task1, task2])
+
+        spec = original.to_spec()
+
+        assert "SelectorTask" in spec["KIND"]

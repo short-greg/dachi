@@ -31,31 +31,43 @@ class MultiTask(ParallelTask[TASK], t.Generic[TASK]):
 
     _status: Runtime[TaskStatus] = PrivateRuntime(TaskStatus.READY)
 
+    # @pydantic.field_validator('tasks', mode='before')
+    # def validate_tasks(cls, v):
+    #     """Validate and convert tasks to ModuleList
+
+    #     Args:
+    #         v: The tasks input (list or ModuleList)
+
+    #     Returns:
+    #         ModuleList: The tasks as a ModuleList with correct generic type
+    #     """
+    #     return ModuleList[TASK](vals=[*v])
+    
     @pydantic.field_validator('tasks', mode='before')
-    def validate_tasks(cls, v):
-        """Validate and convert tasks to ModuleList
+    def validate_regions(cls, v):
+        """Validate and convert regions to ModuleList
 
         Args:
-            v: The tasks input (list or ModuleList)
+            v: The regions input (list, ModuleList)
 
         Returns:
-            ModuleList: The tasks as a ModuleList with correct generic type
+            ModuleList[TASK]: The regions as a ModuleList
         """
-        return ModuleList[TASK](vals=[*v])
-    
-    # def model_post_init(self):
-    #     """Create a parallel task
+        # Accept any ModuleList regardless of type parameter
+        # Accept ModuleList and convert
+
+        # get the annotation args for the generic for ModuleList 
         
-    #     Args:   
-    #         tasks (t.List[Task], optional): The tasks to run in parallel. Defaults to None.
-    #         fails_on (int, optional): The number of tasks that must fail for the parallel task to fail. Defaults to 1.
-    #         succeeds_on (int, optional): The number of tasks that must succeed for the parallel task to succeed. Defaults to -1.
-    #         success_priority (bool, optional): Whether to prioritize success over failure. Defaults to True.
-    #         preempt (bool, optional): Whether to preempt the task if a condition is met. Defaults to False.
-    #         auto_run (bool, optional): Whether to automatically run the task. Defaults to True.
-    #     """
-    #     super().model_post_init()
-    #     self.validate()
+        base_state = cls.model_fields['tasks'].annotation.__pydantic_generic_metadata__['args'][0]
+
+        if isinstance(v, list):
+            converted = ModuleList[base_state](vals=v)
+            return converted
+        if isinstance(v, ModuleList):
+            converted = ModuleList[base_state](vals=v.vals)
+            return converted
+
+        return v
 
     def sub_tasks(self) -> t.Iterator[TASK]:
         """Get the sub-tasks of the composite task

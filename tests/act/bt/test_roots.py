@@ -252,3 +252,38 @@ from tests.act.utils import _AsyncBoolProc, _BoolProc
 #         sm.reset()
 #         assert sm.status is TaskStatus.READY
 #         assert sm._cur_state.data == "one"
+
+
+class TestBTSerialization:
+
+    def test_spec_roundtrip_with_simple_task(self):
+        """Spec round-trip with BT[Task] preserves structure."""
+        task = ImmediateAction(status_val=TaskStatus.SUCCESS)
+        original = BT[ImmediateAction](root=task)
+        
+        spec = original.to_spec()
+        restored = BT[ImmediateAction].from_spec(spec)
+        
+        assert restored.root.status_val == TaskStatus.SUCCESS
+
+    def test_to_spec_preserves_generic_type_parameter(self):
+        """to_spec() preserves BT generic type parameter."""
+        task = SetStorageAction(value=10)
+        original = BT[SetStorageAction](root=task)
+
+        spec = original.to_spec()
+
+        assert "BT" in spec["KIND"]
+        assert "SetStorageAction" in spec["root"]["KIND"]
+        assert spec["root"]["value"] == 10
+
+    def test_spec_roundtrip_with_union_type(self):
+        """Spec round-trip with BT[Task1 | Task2] works."""
+        task = ImmediateAction(status_val=TaskStatus.FAILURE)
+        original = BT[ImmediateAction | SetStorageAction](root=task)
+        
+        spec = original.to_spec()
+        restored = BT[ImmediateAction | SetStorageAction].from_spec(spec)
+        
+        assert restored.root.status_val == TaskStatus.FAILURE
+        assert isinstance(restored.root, ImmediateAction)

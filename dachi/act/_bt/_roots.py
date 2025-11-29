@@ -3,7 +3,7 @@ import typing as t
 from dataclasses import InitVar
 from dachi.core import Ctx, Scope, Runtime, PrivateRuntime
 from ._core import TASK
-from ._serial import Sequence, Selector
+from ._serial import SequenceTask, SelectorTask
 from ._parallel import MultiTask
 # local
 from ._core import Task, TaskStatus
@@ -67,7 +67,7 @@ class BT(Task, t.Generic[TASK]):
 
 
 DeepBT = BT[
-    Sequence[TASK] | MultiTask[TASK] | Selector[TASK] | TASK
+    SequenceTask[TASK] | MultiTask[TASK] | SelectorTask[TASK] | TASK
 ]
 
 

@@ -142,7 +142,7 @@ class TestUntil:
 # Context-aware decorator test helpers
 from dachi.core import Scope
 from dachi.act._bt._decorators import Decorator
-from dachi.act._bt._serial import Sequence
+from dachi.act._bt._serial import SequenceTask
 
 class ContextTestAction(Action):
     """Test action with configurable input/output ports for context testing"""
@@ -218,7 +218,7 @@ class TestDecoratorWithContext:
         
         # Create composite wrapped in decorator
         inner_action = SimpleContextAction(output_value=99)
-        inner_sequence = Sequence(tasks=[inner_action])
+        inner_sequence = SequenceTask(tasks=[inner_action])
         inner_sequence.cascade()
         decorator = MockTestDecorator(task=inner_sequence)
         
@@ -252,7 +252,7 @@ class TestDecoratorWithContext:
         
         # Create nested structure: decorator -> sequence -> action
         action = SimpleContextAction(output_value=77)
-        sequence = Sequence(tasks=[action])
+        sequence = SequenceTask(tasks=[action])
         decorator = MockTestDecorator(task=sequence)
         
         await decorator.tick(ctx)
@@ -393,3 +393,74 @@ class TestBindDecorator:
 
         # Verify complex path binding setup
         assert bind_decorator.bindings['target'] == "0.1.deep_value"
+
+
+class TestDecoratorSerialization:
+    """Decorator serialization and generic type parameter tests."""
+
+    def test_to_spec_preserves_not_decorator_structure(self):
+        """to_spec() preserves Not decorator structure."""
+        task = ImmediateAction(status_val=TaskStatus.SUCCESS)
+        original = Not[ImmediateAction](task=task)
+
+        spec = original.to_spec()
+
+        assert "Not" in spec["KIND"]
+        assert "task" in spec
+        assert spec["task"]["status_val"] == TaskStatus.SUCCESS
+
+    def test_to_spec_preserves_until_decorator_structure(self):
+        """to_spec() preserves Until decorator structure."""
+        task = SetStorageAction(value=10)
+        original = Until[SetStorageAction](task=task, target_status=TaskStatus.FAILURE)
+
+        spec = original.to_spec()
+
+        assert "Until" in spec["KIND"]
+        assert spec["task"]["value"] == 10
+        assert spec["target_status"] == TaskStatus.FAILURE
+
+    def test_spec_roundtrip_with_union_type(self):
+        """Spec round-trip with Decorator[Task1 | Task2] works."""
+        task = ImmediateAction(status_val=TaskStatus.FAILURE)
+        original = Not[ImmediateAction | SetStorageAction](task=task)
+
+        spec = original.to_spec()
+        restored = Not[ImmediateAction | SetStorageAction].from_spec(spec)
+
+        assert isinstance(restored.task, ImmediateAction)
+        assert restored.task.status_val == TaskStatus.FAILURE
+
+
+class TestBoundTaskSerialization:
+    """BoundTask serialization and generic type parameter tests."""
+
+    def test_to_spec_preserves_boundtask_structure(self):
+        """to_spec() preserves BoundTask structure."""
+        leaf = ImmediateAction(status_val=TaskStatus.SUCCESS)
+        bindings = {"input1": "value1", "input2": "value2"}
+        original = BoundTask[ImmediateAction](leaf=leaf, bindings=bindings)
+
+        spec = original.to_spec()
+
+        assert "BoundTask" in spec["KIND"]
+        assert "leaf" in spec
+        assert "bindings" in spec
+        assert spec["bindings"]["input1"] == "value1"
+        assert spec["bindings"]["input2"] == "value2"
+
+    def test_spec_roundtrip_with_union_type(self):
+        """Spec round-trip with BoundTask[Leaf1 | Leaf2] works."""
+        leaf = SetStorageAction(value=42)
+        bindings = {"key": "value"}
+        original = BoundTask[ImmediateAction | SetStorageAction](
+            leaf=leaf,
+            bindings=bindings
+        )
+
+        spec = original.to_spec()
+        restored = BoundTask[ImmediateAction | SetStorageAction].from_spec(spec)
+
+        assert isinstance(restored.leaf, SetStorageAction)
+        assert restored.leaf.value == 42
+        assert restored.bindings == bindings

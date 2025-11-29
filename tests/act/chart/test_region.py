@@ -11,7 +11,7 @@ from dachi.act._chart._state import State, StreamState, FinalState
 from dachi.act._chart._event import Event, EventQueue, EventPost
 from dachi.act._chart._base import ChartStatus, InvalidTransition
 from dachi.core import ModuleDict, Scope, Ctx
-
+from dachi.act._chart._state import ReadyState, FinalState
 
 class SimpleState(State):
     async def execute(self, post, **inputs):
@@ -1097,3 +1097,53 @@ class TestRegionRecovery:
         region.recover("shallow")
 
         assert region._pending_target.get() == "active"
+
+
+class TestRegionSerialization:
+    """Region serialization and generic type parameter tests."""
+
+    def test_to_spec_preserves_region_structure(self):
+        """to_spec() preserves Region structure with complete state union."""
+        from dachi.act._chart._state import ReadyState, FinalState
+
+        region = Region[SimpleState | ReadyState | FinalState](
+            name="test_region",
+            initial="idle",
+            rules=[]
+        )
+        idle = SimpleState(name="idle")
+        region.add(idle)
+
+        spec = region.to_spec()
+
+        assert "Region" in spec["KIND"]
+        assert spec["name"] == "test_region"
+        assert spec["initial"] == "idle"
+
+    def test_spec_roundtrip_with_complete_state_union(self):
+        """Spec round-trip with Region[UserStates | PseudoStates] works."""
+
+        rules = [Rule(event_type="start", target="streaming")]
+        region = Region[SimpleState | SimpleStreamState | ReadyState | FinalState](
+            name="main",
+            initial="idle",
+            rules=rules
+        )
+        idle = SimpleState(name="idle")
+        streaming = SimpleStreamState(name="streaming")
+        region.add(idle)
+        region.add(streaming)
+        print(region.KIND)
+        spec = region.to_spec()
+        restored = Region[SimpleState | SimpleStreamState | ReadyState | FinalState].from_spec(spec)
+
+        assert restored.name == "main"
+        assert restored.initial == "idle"
+        assert "idle" in restored.states
+        assert "streaming" in restored.states
+        assert "READY" in restored.states
+        assert "SUCCESS" in restored.states
+        assert "FAILURE" in restored.states
+        assert "CANCELED" in restored.states
+        assert len(restored.rules) == 1
+        assert restored.rules[0]["event_type"] == "start"

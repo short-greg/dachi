@@ -58,3 +58,54 @@ class TestParallel:
         tasks = [ImmediateAction(status_val=TaskStatus.SUCCESS), ImmediateAction(status_val=TaskStatus.FAILURE)]
         par = MultiTask(tasks=tasks, fails_on=1, succeeds_on=2)
         assert await par.tick(create_test_ctx()) is TaskStatus.FAILURE
+
+
+class TestMultiTaskSerialization:
+    """MultiTask serialization and generic type parameter tests."""
+
+    def test_to_spec_preserves_multitask_structure(self):
+        """to_spec() preserves MultiTask structure."""
+        task1 = ImmediateAction(status_val=TaskStatus.SUCCESS)
+        task2 = ImmediateAction(status_val=TaskStatus.SUCCESS)
+        original = MultiTask[ImmediateAction](tasks=[task1, task2], fails_on=1, succeeds_on=2)
+
+        spec = original.to_spec()
+
+        assert "MultiTask" in spec["KIND"]
+        assert "tasks" in spec
+        assert len(spec["tasks"]) == 2
+        assert spec["fails_on"] == 1
+        assert spec["succeeds_on"] == 2
+
+    def test_to_spec_preserves_generic_type_parameter(self):
+        """to_spec() preserves MultiTask generic type parameter."""
+        task1 = SetStorageAction(value=10)
+        task2 = SetStorageAction(value=20)
+        original = MultiTask[SetStorageAction](tasks=[task1, task2])
+
+        spec = original.to_spec()
+
+        assert "MultiTask" in spec["KIND"]
+        assert spec["tasks"]["vals"][0]["value"] == 10
+        assert spec["tasks"]["vals"][1]["value"] == 20
+
+    def test_spec_roundtrip_with_union_type(self):
+        """Spec round-trip with MultiTask[Task1 | Task2] works."""
+        task1 = ImmediateAction(status_val=TaskStatus.SUCCESS)
+        task2 = SetStorageAction(value=42)
+        original = MultiTask[ImmediateAction | SetStorageAction](
+            tasks=[task1, task2],
+            fails_on=1,
+            succeeds_on=2
+        )
+
+        spec = original.to_spec()
+        restored = MultiTask[ImmediateAction | SetStorageAction].from_spec(spec)
+
+        assert len(restored.tasks) == 2
+        assert isinstance(restored.tasks[0], ImmediateAction)
+        assert isinstance(restored.tasks[1], SetStorageAction)
+        assert restored.tasks[0].status_val == TaskStatus.SUCCESS
+        assert restored.tasks[1].value == 42
+        assert restored.fails_on == 1
+        assert restored.succeeds_on == 2

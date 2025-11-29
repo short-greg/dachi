@@ -105,9 +105,34 @@ class ShareableItem(pydantic.BaseModel, t.Generic[J]):
     def __hash__(self):
         return id(self) 
     
-    def spec_schema(self) -> dict:
+    @classmethod
+    def to_schema(cls) -> dict:
+        """Converts the shareable item into a spec. Simply a wrapper for model_json_schema
 
-        return self.model_json_schema()
+        Returns:
+            dict: _description_
+        """
+        return cls.model_json_schema()
+    
+    def to_spec(self) -> dict:
+        """Converts the Shareable item to a 
+        specification. Simply a wrapper for 
+        model_dump.
+
+        Returns:
+            dict: The specification as a dictionary.
+        """
+        return self.model_dump()
+    
+    @classmethod
+    def from_spec(cls, spec: dict) -> ShareableItem[J]:
+        """Reconstruct a ShareableItem from its specification.
+        Args:
+            spec (dict): The specification dictionary.
+        Returns:
+            ShareableItem[J]: The reconstructed ShareableItem instance.
+        """
+        return cls.model_validate(spec)
 
     def has_callback(self, callback: Callable[[J | None, J | None], None]) -> bool:
         return callback in self._callbacks
@@ -623,6 +648,7 @@ def PrivateShared(
 
 #     return result
 
+import inspect
 
 class Module(pydantic.BaseModel, StorableState, Trainable):
     # Pydantic v2 style config
@@ -644,33 +670,21 @@ class Module(pydantic.BaseModel, StorableState, Trainable):
 
         # Set constant kind: Literal["ClsName"]
         # Must modify annotation BEFORE super().__init_subclass__ so Pydantic picks it up
-        cls.__annotations__["KIND"] = t.Literal[cls.__qualname__]
+        
+        module_ = cls.__module__
+        cls_name = cls.__qualname__.split('[')[0]
+        qual_name = f'{module_}.{cls_name}'
+
+        cls.__annotations__["KIND"] = t.Literal[qual_name]
+
         if "KIND" not in cls.__dict__:
-            cls.KIND = cls.__qualname__
-
-        # for name, attr in list(cls.__dict__.items()):
-        #     if not isinstance(attr, FieldInfo):
-        #         continue
-
-        #     extra = attr.json_schema_extra or {}
-        #     if extra.get("is_param"):
             
-        #         orig_type = cls.__annotations__.get(name, t.Any)
-        #         cls.__annotations__[name] = Param[orig_type]
-        #     elif extra.get("is_runtime"):
-        #         orig_type = cls.__annotations__.get(name, t.Any)
-        #         cls.__annotations__[name] = Runtime[orig_type]
+            cls.KIND = qual_name
 
-        # Call super().__init_subclass__ AFTER all annotation modifications
-        # This allows Pydantic to build the model with the correct schema
         super().__init_subclass__(**kwargs)
 
-        # Update the model_fields to have the correct default
         if "KIND" in cls.model_fields:
-            cls.model_fields["KIND"].default = cls.__qualname__
-
-        # Auto-register the module in the global registry
-        mod_registry.register()(cls)
+            cls.model_fields["KIND"].default = qual_name
 
     def model_post_init(self, __context):
         super().model_post_init(__context)
@@ -823,6 +837,20 @@ class Module(pydantic.BaseModel, StorableState, Trainable):
                 yield from child.named_modules(
                     recurse=recurse, prefix=child_prefix, f=f, _seen=_seen, _skip_self=True
                 )
+
+    def to_spec(self) -> dict:
+        """Convert the Module to a specification dictionary."""
+        return self.model_dump()
+    
+    @classmethod
+    def from_spec(cls, spec: dict) -> Module:
+        """Reconstruct a Module from its specification dictionary."""
+        return cls.model_validate(spec)
+    
+    @classmethod
+    def to_schema(cls) -> dict:
+        """Convert the Module class to a schema dictionary."""
+        return cls.model_json_schema()
 
     def named_parameters(
         self,
@@ -1231,6 +1259,30 @@ class Registry(t.Generic[T]):
     """
     def __init__(self):
         self._entries: Dict[str, RegistryEntry[T]] = {}
+
+    def register_item(
+        self,
+        item: T,
+        name: Optional[str] = None,
+        tags: Optional[Dict[str, Any]] = None,
+        description: Optional[str] = None
+    ) -> None:
+        """
+        Register an object in the registry.
+
+        Args:
+            key: The name of the object.
+            obj: The object to register.
+            obj_type: The type of the object.
+            tags: A dictionary of tags associated with the object.
+            package: The package of the object.
+            description: A description of the object.
+        """
+        return self.register(
+            name=name,
+            tags=tags,
+            description=description
+        )(item)
 
     def register(
         self,

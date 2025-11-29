@@ -74,7 +74,7 @@ class TestShareableItem:
 
     def test_spec_schema_returns_json_schema(self):
         item = ShareableItem[int](data=42)
-        schema = item.spec_schema()
+        schema = item.to_schema()
         assert isinstance(schema, dict)
         assert "properties" in schema or "$defs" in schema
 

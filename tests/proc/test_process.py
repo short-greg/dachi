@@ -7,7 +7,7 @@ multiple values that must be asserted together).
 Google‑style docstrings are used throughout.
 """
 import asyncio
-from typing import Any, Iterator, List, Tuple
+from typing import Any, Iterator, List, Tuple, TypeVar, Generic
 import pytest
 import pydantic
 
@@ -533,3 +533,104 @@ class TestAsyncReduce:
 
         with pytest.raises(ValueError):
             await P.async_reduce(add, chunk)
+
+
+class TestProcessSerialization:
+
+    def test_spec_roundtrip_preserves_process(self):
+        """Spec round-trip via to_spec() and from_spec() works."""
+        original = _EchoProcess()
+        spec = original.to_spec()
+
+        restored = _EchoProcess.from_spec(spec)
+
+        assert restored("test") == "test"
+
+
+T = TypeVar('T')
+
+class WrapProcess(P.Process, Generic[T]):
+    """Process wrapper for testing generics."""
+    inner: T
+
+    def forward(self, *args, **kwargs):
+        if hasattr(self.inner, 'forward'):
+            return self.inner.forward(*args, **kwargs)
+        return None
+
+
+class TestProcessGenericSerialization:
+
+    def test_to_spec_preserves_generic_type_parameter(self):
+        """to_spec() preserves generic type parameter in KIND."""
+        inner = _EchoProcess()
+        original = WrapProcess[_EchoProcess](inner=inner)
+
+        spec = original.to_spec()
+
+        assert "WrapProcess[_EchoProcess]" in spec["KIND"]
+        assert spec["inner"]["KIND"] == "_EchoProcess"
+
+    def test_to_spec_preserves_union_type_parameter(self):
+        """to_spec() preserves union type parameter in KIND."""
+        inner = _AEchoProcess()
+        original = WrapProcess[_EchoProcess | _AEchoProcess](inner=inner)
+
+        spec = original.to_spec()
+
+        assert "WrapProcess[Union[_EchoProcess, _AEchoProcess]]" == spec["KIND"]
+        assert spec["inner"]["KIND"] == "_AEchoProcess"
+
+    def test_to_spec_with_different_union_members(self):
+        """to_spec() works with different union type members."""
+        # First with _EchoProcess
+        inner1 = _EchoProcess()
+        proc1 = WrapProcess[_EchoProcess | _AEchoProcess](inner=inner1)
+        spec1 = proc1.to_spec()
+
+        assert spec1["inner"]["KIND"] == "_EchoProcess"
+
+        # Then with _AEchoProcess
+        inner2 = _AEchoProcess()
+        proc2 = WrapProcess[_EchoProcess | _AEchoProcess](inner=inner2)
+        spec2 = proc2.to_spec()
+
+        assert spec2["inner"]["KIND"] == "_AEchoProcess"
+
+    def test_spec_roundtrip_with_union_type_parameter(self):
+        """Spec round-trip with union type parameter works."""
+        inner = _EchoProcess()
+        original = WrapProcess[_EchoProcess | _AEchoProcess](inner=inner)
+        spec = original.to_spec()
+
+        restored = WrapProcess[_EchoProcess | _AEchoProcess].from_spec(spec)
+
+        assert restored.forward("test") == "test"
+        assert isinstance(restored.inner, _EchoProcess)
+
+
+class TestSequentialSerialization:
+
+    def test_to_spec_preserves_sequential_structure(self):
+        """to_spec() preserves Sequential structure."""
+        proc1 = _EchoProcess()
+        proc2 = _EchoProcess()
+        original = P.Sequential(vals=[proc1, proc2])
+
+        spec = original.to_spec()
+
+        assert spec["KIND"] == "Sequential"
+        assert len(spec["vals"]) == 2
+        assert spec["vals"][0]["KIND"] == "_EchoProcess"
+        assert spec["vals"][1]["KIND"] == "_EchoProcess"
+
+    def test_to_spec_sequential_with_different_process_types(self):
+        """to_spec() works with mixed process types in Sequential."""
+        proc1 = _EchoProcess()
+        proc2 = _EchoProcess()
+        original = P.Sequential(vals=[proc1, proc2])
+
+        spec = original.to_spec()
+
+        assert len(spec["vals"]) == 2
+        assert all("KIND" in item for item in spec["vals"])

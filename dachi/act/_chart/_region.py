@@ -145,6 +145,32 @@ class Region(ChartBase, ChartEventHandler, Recoverable, t.Generic[BASE_STATE]):
         # Current asyncio Task for state activity
         self._cur_task = None
     
+    @pydantic.field_validator('states', mode='before')
+    def validate_regions(cls, v):
+        """Validate and convert regions to ModuleList
+
+        Args:
+            v: The regions input (list, ModuleList)
+
+        Returns:
+            ModuleList[BASE_STATE]: The regions as a ModuleList
+        """
+        # Accept any ModuleList regardless of type parameter
+        # Accept ModuleList and convert
+
+        # get the annotation args for the generic for ModuleList 
+        
+        base_state = cls.model_fields['states'].annotation.__pydantic_generic_metadata__['args'][0]
+
+        if isinstance(v, list):
+            converted = ModuleList[base_state](vals=v)
+            return converted
+        if isinstance(v, ModuleList):
+            converted = ModuleList[base_state](vals=v.vals)
+            return converted
+
+        return v
+
     def _build_rule_lookup(self) -> None:
         """Build efficient O(1) rule lookup table"""
         for rule in self.rules:

@@ -8,9 +8,10 @@ from ._leafs import CONDITION
 
 from pydantic import Field
 import pydantic
+from typing import Literal
 
 
-class Serial(CompositeTask[TASK], t.Generic[TASK]):
+class SerialTask(CompositeTask[TASK], t.Generic[TASK]):
     """A task consisting of other tasks executed one 
     after the other
     """
@@ -30,7 +31,7 @@ class Serial(CompositeTask[TASK], t.Generic[TASK]):
 
 
 
-class Sequence(Serial[TASK]):
+class SequenceTask(SerialTask[TASK]):
     """Create a sequence of tasks to execute
     """
     tasks: ModuleList[TASK] = Field(
@@ -126,7 +127,7 @@ class Sequence(Serial[TASK]):
         yield from self.tasks
 
 
-class Selector(Serial[TASK]):
+class SelectorTask(SerialTask[TASK]):
     """Create a set of tasks to select from
     """
     tasks: ModuleList[TASK] = Field(
@@ -287,11 +288,10 @@ class Selector(Serial[TASK]):
     #     schema["properties"]["tasks"] = field_schema
     #     return schema
 
-Fallback = Selector
+FallbackTask = SelectorTask
 
-from typing import Literal
 
-class PreemptCond(Serial[TASK], t.Generic[TASK, CONDITION]):
+class PreemptCond(SerialTask[TASK], t.Generic[TASK, CONDITION]):
     """Use to have a condition applied with
     each tick in order to stop the execution
     of other tasks

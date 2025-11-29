@@ -98,3 +98,74 @@ class TestProcessCallAttributes:
         assert pc.args.x == 5
         assert isinstance(pc.args.y, Ref)
         assert pc.args.y.name == 'input'
+
+
+class TestProcessCallSerialization:
+
+    def test_to_spec_preserves_process_and_args(self):
+        """to_spec() preserves process and args structure."""
+        add = AddNumbers()
+        pc = add.forward_process_call(x=10, y=20)
+
+        spec = pc.to_spec()
+
+        assert "KIND" in spec
+        assert "process" in spec
+        assert "args" in spec
+        assert spec["args"]["x"] == 10
+        assert spec["args"]["y"] == 20
+
+    def test_to_spec_includes_kind_field(self):
+        """to_spec() includes KIND field for registry lookup."""
+        add = AddNumbers()
+        pc = add.forward_process_call(x=5, y=3)
+
+        spec = pc.to_spec()
+
+        assert "KIND" in spec
+        assert "ProcessCall" in spec["KIND"]
+        assert "AddNumbers" in spec["KIND"]
+
+    def test_to_spec_preserves_ref_args(self):
+        """to_spec() preserves Ref objects in args."""
+        add = AddNumbers()
+        pc = add.forward_process_call(x=Ref(name='input_x'), y=100, _ref=True)
+
+        spec = pc.to_spec()
+
+        assert spec["args"]["x"]["name"] == 'input_x'
+        assert spec["args"]["y"] == 100
+
+    def test_to_spec_with_async_process(self):
+        """to_spec() works with AsyncProcess."""
+        multiply = MultiplyNumbers()
+        pc = multiply.aforward_process_call(a=3.14, b=2.71)
+
+        spec = pc.to_spec()
+
+        assert "AsyncProcessCall" in spec["KIND"]
+        assert spec["args"]["a"] == 3.14
+        assert spec["args"]["b"] == 2.71
+
+    def test_to_spec_preserves_string_args(self):
+        """to_spec() preserves string argument types."""
+        concat = ConcatStrings()
+        pc = concat.forward_process_call(s1="hello", s2="world")
+
+        spec = pc.to_spec()
+
+        assert spec["args"]["s1"] == "hello"
+        assert spec["args"]["s2"] == "world"
+
+    def test_to_spec_preserves_int_args(self):
+        """to_spec() preserves integer argument types."""
+        add = AddNumbers()
+        pc = add.forward_process_call(x=42, y=99)
+
+        spec = pc.to_spec()
+
+        assert spec["args"]["x"] == 42
+        assert spec["args"]["y"] == 99
+        assert isinstance(spec["args"]["x"], int)
+        assert isinstance(spec["args"]["y"], int)
+
