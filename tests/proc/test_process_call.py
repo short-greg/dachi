@@ -124,7 +124,6 @@ class TestProcessCallSerialization:
 
         assert "KIND" in spec
         assert "ProcessCall" in spec["KIND"]
-        assert "AddNumbers" in spec["KIND"]
 
     def test_to_spec_preserves_ref_args(self):
         """to_spec() preserves Ref objects in args."""

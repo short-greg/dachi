@@ -19,6 +19,7 @@ from dachi.core._base import (
     AdaptModule,
     Checkpoint,
     mod_registry,
+    to_kind
 )
 from typing import Literal
 
@@ -593,7 +594,7 @@ class TestModuleInitialization:
         # Check via instance since Pydantic intercepts class attribute access
         instance = TestModule()
         assert "TestModule" in instance.KIND
-        assert instance.KIND == TestModule.__qualname__
+        assert instance.KIND == to_kind(TestModule)
 
     def test_init_subclass_when_subclassed_updates_annotation_to_literal(self):
         class TestModule(Module):
@@ -602,7 +603,7 @@ class TestModuleInitialization:
         hints = TestModule.__annotations__
         assert "KIND" in hints
         # The annotation should be a Literal type with the qualname
-        expected_literal = Literal[TestModule.__qualname__]
+        expected_literal = Literal[to_kind(TestModule)]
         assert hints["KIND"] == expected_literal
 
     def test_init_subclass_when_is_module_does_nothing(self):
@@ -1430,7 +1431,7 @@ class TestRegistry:
             pass
 
         # Registry uses __qualname__ which includes the full path
-        assert TestModule.__qualname__ in registry.list_entries()
+        assert to_kind(TestModule) in registry.list_entries()
 
     def test_register_when_custom_name_provided_uses_custom_name(self):
         registry = Registry[Module]()
@@ -1448,7 +1449,7 @@ class TestRegistry:
         class TestModule(Module):
             pass
 
-        entry = registry[TestModule.__qualname__]
+        entry = registry[to_kind(TestModule)]
         assert entry.tags["category"] == "test"
         assert entry.tags["version"] == 1
 
@@ -1459,7 +1460,7 @@ class TestRegistry:
         class TestModule(Module):
             pass
 
-        entry = registry[TestModule.__qualname__]
+        entry = registry[to_kind(TestModule)]
         assert entry.description == "Test module description"
 
     def test_register_when_duplicate_name_prints_warning(self, capsys):
@@ -1483,7 +1484,7 @@ class TestRegistry:
         class TestModule(Module):
             pass
 
-        entry = registry[TestModule.__qualname__]
+        entry = registry[to_kind(TestModule)]
         assert entry.obj is TestModule
 
     def test_getitem_when_list_of_keys_returns_dict(self):
@@ -1497,10 +1498,10 @@ class TestRegistry:
         class TestModule2(Module):
             pass
 
-        entries = registry[[TestModule1.__qualname__, TestModule2.__qualname__]]
+        entries = registry[[to_kind(TestModule1), to_kind(TestModule2)]]
         assert isinstance(entries, dict)
-        assert TestModule1.__qualname__ in entries
-        assert TestModule2.__qualname__ in entries
+        assert to_kind(TestModule1) in entries
+        assert to_kind(TestModule2) in entries
 
     def test_getitem_when_key_not_found_raises_keyerror(self):
         registry = Registry[Module]()
@@ -1535,7 +1536,7 @@ class TestRegistry:
 
         results = registry.filter(tags={"type": "encoder"})
         assert len(results) == 1
-        assert EncoderModule.__qualname__ in results
+        assert to_kind(EncoderModule) in results
 
     def test_filter_when_obj_type_criteria_returns_matching_only(self):
         registry = Registry()
@@ -1574,8 +1575,8 @@ class TestRegistry:
             pass
 
         entries = registry.list_entries()
-        assert TestModule1.__qualname__ in entries
-        assert TestModule2.__qualname__ in entries
+        assert to_kind(TestModule1) in entries
+        assert to_kind(TestModule2) in entries
 
     def test_list_types_returns_unique_object_types(self):
         registry = Registry()

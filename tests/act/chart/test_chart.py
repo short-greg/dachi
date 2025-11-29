@@ -1084,6 +1084,34 @@ class TestStateChartSerialization:
         assert "queue_overflow" in spec
         assert "checkpoint_policy" in spec
 
+    def test_spec_roundtrip_with_generic_type(self):
+        """Spec round-trip with StateChart[State | PseudoState] works."""
+        from dachi.act._chart._state import State, ReadyState, FinalState
+
+        region = Region[IdleState | ActiveState | ReadyState | FinalState](
+            name="main",
+            initial="idle",
+            rules=[Rule(event_type="start", target="active")]
+        )
+        region.add(IdleState(name="idle"))
+        region.add(ActiveState(name="active"))
+
+        original = StateChart[IdleState | ActiveState | ReadyState | FinalState](
+            name="test_chart",
+            regions=[region]
+        )
+
+        spec = original.to_spec()
+        restored = StateChart[IdleState | ActiveState | ReadyState | FinalState].from_spec(spec)
+
+        assert restored.name == "test_chart"
+        assert len(restored.regions) == 1
+        assert restored.regions[0].name == "main"
+        assert restored.regions[0].initial == "idle"
+        assert "idle" in restored.regions[0].states
+        assert "active" in restored.regions[0].states
+        assert len(restored.regions[0].rules) == 1
+
 
 # Run a quick test to see if this works
 if __name__ == "__main__":

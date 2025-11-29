@@ -905,3 +905,55 @@ class TestCompositeStateExit:
         composite.exit(post, ctx)
         # Empty composite should succeed on exit
         assert composite._status.get() == ChartStatus.SUCCESS
+
+
+class TestCompositeStateSerialization:
+    """CompositeState serialization and generic type parameter tests."""
+
+    def test_to_spec_preserves_composite_structure(self):
+        """to_spec() preserves CompositeState structure."""
+        from dachi.act._chart._state import ReadyState, FinalState
+
+        region1 = Region[SimpleState | ReadyState | FinalState](name="r1", initial="idle", rules=[])
+        region1.add(SimpleState(name="idle"))
+
+        region2 = Region[SimpleState | ReadyState | FinalState](name="r2", initial="idle", rules=[])
+        region2.add(SimpleState(name="idle"))
+
+        original = CompositeState[SimpleState | ReadyState | FinalState](
+            name="composite",
+            regions=ModuleList[Region[SimpleState | ReadyState | FinalState]](vals=[region1, region2])
+        )
+
+        spec = original.to_spec()
+
+        assert "CompositeState" in spec["KIND"]
+        assert spec["name"] == "composite"
+        assert len(spec["regions"]["vals"]) == 2
+        assert spec["regions"]["vals"][0]["name"] == "r1"
+        assert spec["regions"]["vals"][1]["name"] == "r2"
+
+    def test_spec_roundtrip_with_union_type(self):
+        """Spec round-trip with CompositeState[State | PseudoState] works."""
+        from dachi.act._chart._state import ReadyState, FinalState
+
+        region1 = Region[SimpleState | ReadyState | FinalState](name="child1", initial="idle", rules=[])
+        region1.add(SimpleState(name="idle"))
+
+        region2 = Region[SimpleState | ReadyState | FinalState](name="child2", initial="idle", rules=[])
+        region2.add(SimpleState(name="idle"))
+
+        original = CompositeState[SimpleState | ReadyState | FinalState](
+            name="parent",
+            regions=ModuleList[Region[SimpleState | ReadyState | FinalState]](vals=[region1, region2])
+        )
+
+        spec = original.to_spec()
+        restored = CompositeState[SimpleState | ReadyState | FinalState].from_spec(spec)
+
+        assert restored.name == "parent"
+        assert len(restored.regions) == 2
+        assert restored.regions[0].name == "child1"
+        assert restored.regions[1].name == "child2"
+        assert "idle" in restored.regions[0].states
+        assert "idle" in restored.regions[1].states

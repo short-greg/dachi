@@ -64,6 +64,12 @@ class StorableState(ABC):
 
 def to_kind(cls): 
     """Convert a class to its kind."""
+
+    if isinstance(cls, type) and issubclass(cls, pydantic.BaseModel):
+        module_ = cls.__module__
+        cls_name = cls.__qualname__.split('[')[0]
+        qual_name = f'{module_}.{cls_name}'
+        return qual_name
     
     return cls.__qualname__
 
@@ -671,10 +677,7 @@ class Module(pydantic.BaseModel, StorableState, Trainable):
         # Set constant kind: Literal["ClsName"]
         # Must modify annotation BEFORE super().__init_subclass__ so Pydantic picks it up
         
-        module_ = cls.__module__
-        cls_name = cls.__qualname__.split('[')[0]
-        qual_name = f'{module_}.{cls_name}'
-
+        qual_name = to_kind(cls)
         cls.__annotations__["KIND"] = t.Literal[qual_name]
 
         if "KIND" not in cls.__dict__:
