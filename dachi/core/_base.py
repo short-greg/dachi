@@ -680,8 +680,12 @@ class Module(pydantic.BaseModel, StorableState, Trainable):
         for name in self.__private_attributes__.keys():
             if name == "_registry":
                 continue
-
-            value = getattr(self, name)
+            
+            try:
+                value = getattr(self, name)
+            except AttributeError:
+                # The value has not been set up yet
+                continue
             # annotations = get_all_private_attr_annotations(self.__class__)
             # SelfInit → compute from self, then re-read
             if isinstance(value, ObjInit) or isinstance(value, FuncInit):

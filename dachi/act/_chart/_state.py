@@ -621,45 +621,4 @@ class BoundStreamState(BaseState, t.Generic[STREAM_STATE]):
         super().reset()
 
 
-# class ReadyState(State):
-#     """Built-in ready state. Region begins here before starting.
-
-#     READY is a marker state that does no work. It exists to ensure
-#     regions are always in a defined state, even at initialization.
-#     When region.start() is called, it automatically transitions from
-#     READY to the initial state. Follows the same lifecycle as other
-#     states (enter → run → exit) but execute() completes immediately.
-#     """
-
-#     async def execute(self, post: Post, **inputs) -> None:
-#         """READY does nothing - it exists only as a marker."""
-#         return None
-
-
-# class FinalState(LeafState):
-#     """Final state that marks region completion."""
-
-#     async def execute(self, post: "Post", **inputs: Any) -> Optional[Any]:
-#         """FinalState has no work to do."""
-#         return None
-
-#     async def run(self, post: "Post", ctx: Ctx) -> None:
-#         """FinalState immediately completes upon run."""
-#         if not self.can_run():
-#             raise InvalidTransition(
-#                 f"Cannot run FinalState '{self.name}' from status {self._status.get()}. "
-#                 f"State must be RUNNING, not executing, and not completed."
-#             )
-
-#         self._executing.set(True)
-#         self._run_completed.set(True)
-#         self._executing.set(False)
-#         self._status.set(ChartStatus.SUCCESS)
-#         await self.finish()
-
-#     def can_exit(self):
-#         return False
-
-#     def is_final(self) -> bool:
-#         """FinalState is always final."""
-#         return True
+BASE_STATE = t.TypeVar("BASE_STATE", bound=BaseState | PseudoState)

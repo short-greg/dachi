@@ -5,10 +5,10 @@ import logging
 import pydantic
 
 from typing import Literal
-from ._state import BaseState, PseudoState
+from ._state import BaseState, PseudoState, BASE_STATE
 from ._base import ChartStatus, InvalidTransition, Recoverable
 from ._event import EventPost, ChartEventHandler, Event
-from ._region import Region, ValidationResult, BASE_STATE
+from ._region import Region, ValidationResult
 from dachi.core import Ctx, Runtime, PrivateRuntime
 
 from dachi.core import ModuleList
@@ -51,12 +51,11 @@ class CompositeState(BaseState, ChartEventHandler, Recoverable, t.Generic[BASE_S
         
         base_state = cls.model_fields['regions'].annotation.__pydantic_generic_metadata__['args'][0]
 
-        print(base_state, base_state == Region[BASE_STATE])
-        if base_state == Region[BASE_STATE]:
+        if base_state == Region[BASE_STATE] or base_state == Region[t.TypeVar]:
             base_state = Region
 
         if isinstance(v, list):
-            print('Input is list, converting to ModuleList')
+            print('Input is list, converting to ModuleList', base_state)
             converted = ModuleList[base_state](vals=v)
             
             return converted

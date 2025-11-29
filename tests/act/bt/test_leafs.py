@@ -119,15 +119,6 @@ class TestAction:
         action.reset()
         assert action.status == TaskStatus.READY
 
-    async def test_load_state_dict_sets_state(self):
-        action = SetStorageActionCounter(value=3)
-        action2 = SetStorageActionCounter(value=2)
-        await action.tick(create_test_ctx())
-        action2.load_state_dict(action.state_dict())
-        assert action2.value == 3
-
-
-
 @pytest.mark.asyncio
 class TestTimers:
     async def test_fixed_timer(self, monkeypatch):

@@ -85,17 +85,17 @@ class EventQueue(pydantic.BaseModel):
 
     def pop_nowait(self) -> Event:
         """Remove and return the next event from the queue. Raises IndexError if empty."""
-        if not self.queue:
+        if not self._queue:
             raise IndexError("pop from an empty queue")
-        return self.queue.popleft()
+        return self._queue.popleft()
 
     def size(self) -> int:
         """Return the number of events in the queue."""
-        return len(self.queue)
+        return len(self._queue)
     
     def empty(self) -> bool:
         """Return True if the queue is empty."""
-        return len(self.queue) == 0
+        return len(self._queue) == 0
     
     def capacity(self) -> int:
         """Return the maximum size of the queue."""
@@ -110,14 +110,14 @@ class EventQueue(pydantic.BaseModel):
         return {
             "maxsize": self.maxsize,
             "overflow": self.overflow,
-            "events": list(self.queue)  # Convert deque to list
+            "events": list(self._queue)  # Convert deque to list
         }
     
     def load_state_dict(self, state: Dict[str, Any]) -> None:
         """Load state from dict."""
         self.maxsize = state["maxsize"]
         self.overflow = state["overflow"]
-        self.queue = deque(state["events"])
+        self._queue = deque(state["events"])
 
     def register_callback(self, callback: Any, *args, **kwargs) -> None:
         """Register a callback to be called when an event is posted.
@@ -179,7 +179,7 @@ class EventPost(AsyncProcess):
             ValueError: If delay is negative
         """
         if not delay:
-            self._queue.post_nowait({
+            self.queue.post_nowait({
                 "type": event,
                 "payload": payload or {},
                 "scope": scope,
@@ -200,7 +200,7 @@ class EventPost(AsyncProcess):
         async def _fire():
             await asyncio.sleep(delay)
             if timer_id in self._timers:
-                self._queue.post_nowait({
+                self.queue.post_nowait({
                     "type": event,
                     "payload": payload or {},
                     "scope": scope,
@@ -282,7 +282,7 @@ class EventPost(AsyncProcess):
 
 class Timer(pydantic.BaseModel):
     """Runtime timer manager with serializable metadata."""
-    quque: "EventQueue"
+    queue: "EventQueue"
     clock: "MonotonicClock"
     _timers: Dict[str, Dict[str, Any]] = pydantic.PrivateAttr(default_factory=dict)
     _next_id: int = pydantic.PrivateAttr(default=0)

@@ -11,7 +11,7 @@ conventions.  All async tests use `pytest.mark.asyncio`.
 
 import pytest
 from dachi.core import InitVar, Runtime, Scope, PrivateRuntime
-from .utils import create_test_ctx
+from ..utils import create_test_ctx
 from dachi.act._bt._core import TaskStatus, LeafTask
 from dachi.act._bt._decorators import Not, Until, BoundTask, Decorator
 from dachi.core import PrivateRuntime, Runtime
@@ -135,7 +135,7 @@ class TestUntil:
         action1._count = 1
         until_ = Until(task=action1)
         await until_.tick(ctx)
-        action1.value.data = 1
+        action1.value = 1
         assert await until_.tick(ctx) == TaskStatus.SUCCESS
 
 
@@ -349,7 +349,7 @@ class TestBindDecorator:
             leaf=action, 
             bindings={
             "target": "dynamic_target",  # from context
-            "attempts": 10,              # constant
+            "attempts": "bound_attempts",              # constant
             "optional_param": "bound_value"  # constant
             }
         )
@@ -358,7 +358,7 @@ class TestBindDecorator:
         
         # Verify mixed binding setup
         assert bind_decorator.bindings['target'] == "dynamic_target"
-        assert bind_decorator.bindings['attempts'] == 10
+        assert bind_decorator.bindings['attempts'] == "bound_attempts"
         assert bind_decorator.bindings['optional_param'] == "bound_value"
     
     async def test_bind_resolution_failure_handling(self):

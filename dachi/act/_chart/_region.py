@@ -11,15 +11,13 @@ from pydantic import Field
 
 # Local
 from dachi.core import Runtime, ModuleDict, ModuleList, Ctx, PrivateRuntime
-from ._state import State, BaseState, PseudoState, ReadyState, FinalState, HistoryState
+from ._state import State, BaseState, PseudoState, ReadyState, FinalState, HistoryState, BASE_STATE
 from ._event import Event, EventPost, ChartEventHandler
 from ._base import ChartBase, ChartStatus, InvalidTransition, Recoverable
 
 logger = logging.getLogger("dachi.statechart")
 
 JSON = Union[Dict[str, Any], List[Any], str, int, float, bool, None]
-
-BASE_STATE = t.TypeVar("BASE_STATE", bound=BaseState | PseudoState)
 
 
 @dataclass

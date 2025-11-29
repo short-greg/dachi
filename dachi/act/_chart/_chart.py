@@ -3,7 +3,7 @@ import asyncio
 import typing as t
 from typing import Any, Dict, List, Optional, Union, Literal
 from ._base import ChartBase, ChartStatus
-from ._state import BaseState
+from ._state import BaseState, BASE_STATE
 from dataclasses import dataclass
 
 from dachi.core import Runtime, ModuleList, PrivateParam, PrivateRuntime
@@ -27,12 +27,10 @@ class ChartSnapshot:
 
 JSON = Union[Dict[str, Any], List[Any], str, int, float, bool, None]
 
-V = t.TypeVar("V", bound=BaseState)
 
-
-class StateChart(ChartBase, ChartEventHandler, t.Generic[V]):
+class StateChart(ChartBase, ChartEventHandler, t.Generic[BASE_STATE]):
     name: str
-    regions: ModuleList[Region[V]] = pydantic.Field(default_factory=ModuleList)
+    regions: ModuleList[Region[BASE_STATE]] = pydantic.Field(default_factory=ModuleList)
     checkpoint_policy: Literal["yield", "hard"] = "yield" # currently not used
     queue_maxsize: int = 1024
     queue_overflow: Literal["drop_newest", "drop_oldest", "block"] = "drop_newest"
@@ -45,7 +43,7 @@ class StateChart(ChartBase, ChartEventHandler, t.Generic[V]):
     _stopping: Runtime[bool] = PrivateRuntime(False)
     _regions_completed: Runtime[Dict[str, bool]] = PrivateRuntime({})
     _queue: EventQueue = pydantic.PrivateAttr()
-    _clock: MonotonicClock = pydantic.PrivateAttr()
+    _clock: MonotonicClock = pydantic.PrivateAttr(default_factory=MonotonicClock)
     _timer: Timer = pydantic.PrivateAttr()
     _scope: Runtime[Scope] = PrivateRuntime(default_factory=Scope)
     _event_loop_task: Optional[asyncio.Task] = pydantic.PrivateAttr(default=None)
@@ -58,14 +56,17 @@ class StateChart(ChartBase, ChartEventHandler, t.Generic[V]):
             ValueError: If no regions are defined.
         """
         super().model_post_init(__context)
+
         self._queue = EventQueue(
             maxsize=self.queue_maxsize,
             overflow=self.queue_overflow
         )
-        self._queue.register_callback(self._process_event_callback)
-        self._clock = MonotonicClock()
+        self._queue.register_callback(
+            self._process_event_callback
+        )
         self._timer = Timer(queue=self._queue, clock=self._clock)
         self._scope = Scope(name=self.name)
+        
         self._event_loop_task: Optional[asyncio.Task] = None
         self._event_tasks: t.Set[asyncio.Task] = set()
 
@@ -112,6 +113,37 @@ class StateChart(ChartBase, ChartEventHandler, t.Generic[V]):
         self._timer.clear()
         for region in self.regions:
             region.reset()
+
+    @pydantic.field_validator('regions', mode='before')
+    def validate_regions(cls, v):
+        """Validate and convert regions to ModuleList
+
+        Args:
+            v: The regions input (list, ModuleList)
+
+        Returns:
+            ModuleList[Region[BASE_STATE]]: The regions as a ModuleList
+        """
+        # Accept any ModuleList regardless of type parameter
+        # Accept ModuleList and convert
+
+        # get the annotation args for the generic for ModuleList 
+        
+        base_state = cls.model_fields['regions'].annotation.__pydantic_generic_metadata__['args'][0]
+
+        if base_state == Region[BASE_STATE]:
+            base_state = Region
+
+        if isinstance(v, list):
+            converted = ModuleList[base_state](vals=v)
+            
+            return converted
+        if isinstance(v, ModuleList):
+            converted = ModuleList[base_state](vals=v.vals)
+            return converted
+        # only item remaining is to somehow convert the regions to the correct base type if not defined
+
+        return v
 
     def can_reset(self):
         return self._status.get().is_completed()
