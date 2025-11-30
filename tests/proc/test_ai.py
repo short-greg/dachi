@@ -12,7 +12,7 @@ import pytest
 from types import SimpleNamespace
 
 
-class DummyAIModel(_ai.LLM):
+class DummyAIModel(_ai.LLMAdapter):
     """Dummy LLM adapter for testing purposes.
     
     Simulates LLM responses by returning a fixed target string.

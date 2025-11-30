@@ -6,12 +6,13 @@ from typing import Literal
 import pydantic
 import openai
 
+import typing as t
 # local
 from ..core import (
     Msg, Resp, DeltaResp, BaseDialog
 )
 from ..core._tool import BaseTool, ToolBuffer, ToolChunk, ToolUse
-from ._ai import LangEngine, LLM, extract_tools_from_messages, extract_format_override_from_messages, get_resp_output
+from ._ai import LangEngine, LLMAdapter, extract_tools_from_messages, extract_format_override_from_messages, get_resp_output
 from ._resp import ToOut
 import json
 
@@ -135,21 +136,6 @@ def build_openai_response_format(format_override, use_strict: bool = True) -> di
     else:
         raise ValueError(f"Unsupported format_override type: {type(format_override)}")
 
-class OpenAIExtractorMixin:
-
-    def extract_openai_tool_calls(self, message: dict) -> list[dict]:
-        pass
-
-    def extract_openai_delta_tool_calls(self, prev_resp: Resp, delta: dict) -> list[dict]:
-        pass
-
-    def set_core_elements(self, resp: Resp, message: t.Dict) -> t.Dict[str, t.Any]:
-        pass
-
-    def set_core_delta_elements(self, cur_resp: Resp, cur_delta: DeltaResp, prev_resp: Resp, delta_message: dict) -> t.Dict[str, t.Any]:
-        pass
-
-
 
 
 def build_openai_text_format(format_override) -> dict:
@@ -181,315 +167,8 @@ def build_openai_text_format(format_override) -> dict:
 # Tool Call Processing Helper Functions
 # ============================================================================
 
-def _is_valid_json(s: str) -> bool:
-    """Check if a string is valid JSON.
 
-    Args:
-        s: String to validate
-
-    Returns:
-        True if valid JSON, False otherwise
-    """
-    if not s or not isinstance(s, str):
-        return False
-    try:
-        import json
-        json.loads(s)
-        return True
-    except (ValueError, TypeError):
-        return False
-
-
-def _accumulate_text(prev: str | None, delta: str | None) -> str:
-    """Accumulate text from previous and delta.
-
-    Args:
-        prev: Previous accumulated text
-        delta: New delta text
-
-    Returns:
-        Accumulated text
-    """
-    if prev is None:
-        prev = ""
-    if delta is None:
-        delta = ""
-    return prev + delta
-
-
-def _get_staging(resp: Resp | None, key: str) -> dict:
-    """Get staging data from previous response.
-
-    Args:
-        resp: Previous response (may be None)
-        key: Key to look up in _raw dict
-
-    Returns:
-        Staging dict (empty if not found)
-    """
-    if resp is None:
-        return {}
-    if not hasattr(resp, '_raw') or resp._raw is None:
-        return {}
-    return resp._raw.get(key, {})
-
-
-def _store_staging(resp: Resp, key: str, staging: dict) -> None:
-    """Store staging data in response _raw dict.
-
-    Args:
-        resp: Response object to store in
-        key: Key to store under in _raw dict
-        staging: Staging data to store
-    """
-    if not hasattr(resp, '_raw') or resp._raw is None:
-        resp._raw = {}
-    resp._raw[key] = staging
-
-
-def _extract_text_delta_chat(chunk: dict) -> str | None:
-    """Extract text delta from Chat Completions chunk.
-
-    Args:
-        chunk: Chat completion chunk dict
-
-    Returns:
-        Text delta or None
-    """
-    choice = chunk.get("choices", [{}])[0]
-    delta = choice.get("delta", {})
-    content = delta.get("content")
-    return content if content else None
-
-
-def _extract_text_delta_resp(event: dict) -> str | None:
-    """Extract text delta from Responses API event.
-
-    Args:
-        event: Responses API event dict
-
-    Returns:
-        Text delta or None
-    """
-    if event.get("type") == "content.delta":
-        delta_data = event.get("delta", {})
-        text = delta_data.get("text")
-        return text if text else None
-    return None
-
-
-def _extract_thinking_delta_resp(event: dict) -> str | None:
-    """Extract thinking delta from Responses API event.
-
-    Args:
-        event: Responses API event dict
-
-    Returns:
-        Thinking delta or None
-    """
-    if event.get("type") == "response.output_item.added":
-        item = event.get("item", {})
-        if item.get("type") == "message":
-            content_list = item.get("content", [])
-            for content_item in content_list:
-                if content_item.get("type") == "reasoning":
-                    return content_item.get("reasoning", "")
-    return None
-
-
-def _extract_tool_deltas_chat(chunk: dict) -> list[dict]:
-    """Extract tool call deltas from Chat Completions chunk.
-
-    Args:
-        chunk: Chat completion chunk dict
-
-    Returns:
-        List of tool call delta dicts (may be empty)
-    """
-    choice = chunk.get("choices", [{}])[0]
-    delta = choice.get("delta", {})
-    tool_calls = delta.get("tool_calls")
-
-    if not tool_calls:
-        return []
-
-    result = []
-    for tc in tool_calls:
-        tool_delta = {}
-        if "index" in tc:
-            tool_delta["index"] = tc["index"]
-        if "id" in tc:
-            tool_delta["id"] = tc["id"]
-        if "type" in tc:
-            tool_delta["type"] = tc["type"]
-
-        if "function" in tc:
-            func = tc["function"]
-            tool_delta["function"] = {}
-            if "name" in func:
-                tool_delta["function"]["name"] = func["name"]
-            if "arguments" in func:
-                tool_delta["function"]["arguments"] = func["arguments"]
-
-        result.append(tool_delta)
-
-    return result
-
-
-def _extract_tool_deltas_resp(event: dict) -> dict | None:
-    """Extract tool call delta from Responses API event.
-
-    Args:
-        event: Responses API event dict
-
-    Returns:
-        Tool call delta dict or None
-    """
-    event_type = event.get("type")
-
-    if event_type == "response.function_call_arguments.delta":
-        return {
-            "call_id": event.get("call_id"),
-            "arguments_delta": event.get("delta")
-        }
-    elif event_type == "response.function_call_arguments.done":
-        return {
-            "call_id": event.get("call_id"),
-            "name": event.get("name"),
-            "arguments": event.get("arguments")
-        }
-
-    return None
-
-
-def _extract_tool_calls_chat(message: dict) -> list[dict]:
-    """Extract complete tool calls from Chat Completions message.
-
-    Args:
-        message: Message dict from Chat Completions response
-
-    Returns:
-        List of canonical tool call dicts
-    """
-    tool_calls = message.get("tool_calls")
-    if not tool_calls:
-        return []
-
-    result = []
-    for tc in tool_calls:
-        canonical = {
-            "id": tc.get("id"),
-            "type": tc.get("type", "function"),
-            "function": {
-                "name": tc.get("function", {}).get("name", ""),
-                "arguments": tc.get("function", {}).get("arguments", "")
-            },
-            "_complete": True
-        }
-        result.append(canonical)
-
-    return result
-
-
-def _extract_tool_calls_resp(output: list[dict]) -> list[dict]:
-    """Extract complete tool calls from Responses API output items.
-
-    Args:
-        output: List of output items from Responses API
-
-    Returns:
-        List of canonical tool call dicts
-    """
-    result = []
-    for item in output:
-        if item.get("type") == "function_call":
-            canonical = {
-                "id": item.get("call_id"),
-                "type": "function",
-                "function": {
-                    "name": item.get("name", ""),
-                    "arguments": item.get("arguments", "")
-                },
-                "_complete": True
-            }
-            result.append(canonical)
-
-    return result
-
-
-def accumulate_streaming_text(prev_text: str | None, delta_text: str | None) -> str:
-    """Pure function for text accumulation without spawn()"""
-    if prev_text is None:
-        prev_text = ""
-    if delta_text is None:
-        delta_text = ""
-    return prev_text + delta_text
-
-
-def convert_messages(msg: Msg | BaseDialog | list[Msg] | str) -> list[dict]:
-    """Convert Dachi messages to OpenAI Responses API message format."""
-    if isinstance(msg, Msg):
-        original_messages = [msg]
-    elif isinstance(msg, str):
-        original_messages = [Msg(role="user", text=msg)]
-    else:
-        original_messages = list(msg)
-    
-    openai_messages = []
-    for original_msg in original_messages:
-        openai_msg = {
-            "role": original_msg.role,
-            "content": original_msg.text or ""
-        }
-        
-        # Handle attachments (same as Chat Completions)
-        if original_msg.attachments:
-            content = []
-            if original_msg.text:
-                content.append({"type": "text", "text": original_msg.text})
-            
-            for attachment in original_msg.attachments:
-                if attachment.kind == "image":
-                    image_url = attachment.data
-                    if not image_url.startswith("data:"):
-                        mime = attachment.mime or "image/png"
-                        image_url = f"data:{mime};base64,{attachment.data}"
-                    
-                    content.append({
-                        "type": "image_url",
-                        "image_url": {"url": image_url}
-                    })
-            
-            openai_msg["content"] = content
-        
-        openai_messages.append(openai_msg)
-    
-    return openai_messages
-
-
-def to_api_input(messages: list[dict], tools: list[BaseTool], format_override, **kwargs) -> t.Dict:
-    """Convert to OpenAI Responses API input format."""
-    api_input = {
-        "messages": messages,
-        **kwargs
-    }
-    
-    # Add tools if present
-    if tools:
-        api_input["tools"] = convert_tools_to_openai_format(tools)
-        
-    # Add text format if present
-    if format_override:
-        api_input.update(build_openai_text_format(format_override))
-    
-    if kwargs.get('stream', False) is True:
-        api_input['stream'] = True
-    
-    return api_input
-
-
-
-class OpenAIChat(LangEngine, OpenAIExtractorMixin):
+class OpenAIChat(LangEngine):
     """
     Adapter for OpenAI Chat Completions API.
     
@@ -520,112 +199,37 @@ class OpenAIChat(LangEngine, OpenAIExtractorMixin):
       marked as required in the schema, even if they have defaults.
     """
 
+    def to_api_input(self, messages: list[dict], tools: list[BaseTool], format_override, **kwargs) -> t.Dict:
+        """Convert to OpenAI Responses API input format."""
+        api_input = {
+            "messages": messages,
+            **kwargs
+        }
+        
+        # Add tools if present
+        if tools:
+            api_input["tools"] = convert_tools_to_openai_format(tools)
+            
+        # Add text format if present
+        if format_override:
+            api_input.update(build_openai_text_format(format_override))
+        
+        if kwargs.get('stream', False) is True:
+            api_input['stream'] = True
+        
+        return api_input
+
     def to_input(self, msg: Msg | BaseDialog | str | list[Msg], **kwargs) -> t.Dict:
         """Convert Dachi messages to Chat Completions format using universal helpers."""
         # Use universal helper functions to extract tools and format_override
         tools = extract_tools_from_messages(msg)
         format_override = extract_format_override_from_messages(msg)
 
-        msg = convert_messages(msg)
-        api_input = self.to_api_input(
+        msg = self._convert_messages(msg)
+        api_input = self._to_api_input(
             msg, tools, format_override, **kwargs
         )
         return api_input
-
-    def from_result(
-        self, 
-        output: t.Dict | pydantic.BaseModel, 
-        messages: Msg | BaseDialog
-    ) -> Resp:
-        """Convert Chat Completions response to Dachi Resp."""
-        # Convert Pydantic model to dict if needed
-        if isinstance(output, pydantic.BaseModel):
-            output = output.model_dump()
-        
-        # Extract tools and format info from messages for potential validation/processing
-        # tools = extract_tools_from_messages(messages)
-        # format_override = extract_format_override_from_messages(messages)
-        
-        choice = output.get("choices", [{}])[0]
-        message = choice.get("message", {})
-        
-        resp = Resp(
-            role=message.get("role", "assistant"),
-            text=message.get("content", ""),
-            finish_reason=choice.get("finish_reason"),
-            id=output.get("id"),
-            model=output.get("model"),
-            usage=output.get("usage") or {},
-            tool_use=extract_openai_tool_calls(message),
-            logprobs=choice.get("logprobs"),
-            choices=[{
-                "index": c.get("index", i),
-                "finish_reason": c.get("finish_reason"),
-                "logprobs": c.get("logprobs")
-            } for i, c in enumerate(output.get("choices", []))]
-        )
-        
-        # Store commonly useful metadata (debugging, monitoring, feature detection)
-        resp.meta.update(extract_commonly_useful_meta(output))
-        
-        # Store raw response
-        resp.raw = output
-        return resp
-    
-    def from_streamed_result(
-        self, 
-        output: t.Dict | pydantic.BaseModel, 
-        messages: Msg | BaseDialog, 
-        prev_resp: Resp | None = None
-    ) -> t.Tuple[Resp, DeltaResp]:
-        """Handle Chat Completions streaming responses with pure accumulation."""
-        # Convert Pydantic model to dict if needed
-        if isinstance(output, pydantic.BaseModel):
-            output = output.model_dump()
-        
-        # # Extract tools and format info from messages for potential validation/processing
-        # tools = extract_tools_from_messages(messages)
-        # format_override = extract_format_override_from_messages(messages)
-        
-        choice = output.get("choices", [{}])[0]
-        delta = choice.get("delta", {})
-        
-        # Accumulate text content using helper function
-        delta_text = delta.get("content", "") or ""
-        accumulated_text = accumulate_streaming_text(
-            prev_resp.text if prev_resp else None, 
-            delta_text
-        )
-        
-        # Use previous role if delta doesn't specify one (common in streaming)
-        role = delta.get("role")
-        if role is None and prev_resp:
-            role = prev_resp.role
-        if role is None:
-            role = "assistant"  # Default fallback
-        
-        # Create response with accumulated content (no spawn() logic)
-        resp = Resp(
-            role=role,
-            text=accumulated_text,  # Full accumulated text
-            finish_reason=choice.get("finish_reason"),
-            id=output.get("id"),
-            model=output.get("model"),
-            usage=output.get("usage") or {}
-        )
-        
-        # Create delta object for streaming
-        delta_resp = DeltaResp(
-            text=delta_text,  # Just the delta part
-            tool=delta.get("tool_calls", [{}])[0].get("function", {}).get("arguments") if delta.get("tool_calls") else None,
-            finish_reason=choice.get("finish_reason"),
-            usage=output.get("usage")
-        )
-        
-        # Store raw response
-        resp.raw = output
-        
-        return resp, delta_resp
 
     def _convert_message(self, msg: Msg) -> t.Dict:
         """Convert single Msg to OpenAI message format."""
@@ -875,7 +479,7 @@ class OpenAIChat(LangEngine, OpenAIExtractorMixin):
         cur_resp.raw = delta_message
 
 
-class OpenAIResp(LangEngine, OpenAIExtractorMixin):
+class OpenAIResp(LangEngine):
     """
     Adapter for OpenAI Responses API.
     
@@ -894,19 +498,79 @@ class OpenAIResp(LangEngine, OpenAIExtractorMixin):
     3. Uses text.format instead of response_format for structured output
     """
 
+    def _to_api_input(self, messages: list[dict], tools: list[BaseTool], format_override, **kwargs) -> t.Dict:
+        """Convert to OpenAI Responses API input format."""
+        api_input = {
+            "messages": messages,
+            **kwargs
+        }
+        
+        # Add tools if present
+        if tools:
+            api_input["tools"] = convert_tools_to_openai_format(tools)
+            
+        # Add text format if present
+        if format_override:
+            api_input.update(build_openai_text_format(format_override))
+        
+        if kwargs.get('stream', False) is True:
+            api_input['stream'] = True
+        
+        return api_input
+    
+    def _convert_messages(self, msg: Msg | BaseDialog | list[Msg] | str) -> list[dict]:
+        """Convert Dachi messages to OpenAI Responses API message format."""
+        if isinstance(msg, Msg):
+            original_messages = [msg]
+        elif isinstance(msg, str):
+            original_messages = [Msg(role="user", text=msg)]
+        else:
+            original_messages = list(msg)
+        
+        openai_messages = []
+        for original_msg in original_messages:
+            openai_msg = {
+                "role": original_msg.role,
+                "content": original_msg.text or ""
+            }
+            
+            # Handle attachments (same as Chat Completions)
+            if original_msg.attachments:
+                content = []
+                if original_msg.text:
+                    content.append({"type": "text", "text": original_msg.text})
+                
+                for attachment in original_msg.attachments:
+                    if attachment.kind == "image":
+                        image_url = attachment.data
+                        if not image_url.startswith("data:"):
+                            mime = attachment.mime or "image/png"
+                            image_url = f"data:{mime};base64,{attachment.data}"
+                        
+                        content.append({
+                            "type": "image_url",
+                            "image_url": {"url": image_url}
+                        })
+                
+                openai_msg["content"] = content
+            
+            openai_messages.append(openai_msg)
+        
+        return openai_messages
+
     def to_input(self, msg: Msg | BaseDialog, **kwargs) -> t.Dict:
         """Convert Dachi messages to Responses API format using universal helpers."""
         # Use universal helper functions to extract tools and format_override
         tools = extract_tools_from_messages(msg)
         format_override = extract_format_override_from_messages(msg)
 
-        messages = self.convert_messages(msg)
-        api_input = self.to_api_input(
+        messages = self._convert_messages(msg)
+        api_input = self._to_api_input(
             messages, tools, format_override, **kwargs
         )
         return api_input
     
-    def _responses_text_from_message_item(msg_item: t.Dict[str, t.Any]) -> str:
+    def _responses_text_from_message_item(self, msg_item: t.Dict[str, t.Any]) -> str:
         content = msg_item.get("content", [])
         if not isinstance(content, list):
             return ""
@@ -932,7 +596,7 @@ class OpenAIResp(LangEngine, OpenAIExtractorMixin):
         )
 
         resp.role = msg_item.get("role", "assistant")
-        resp.text = _responses_text_from_message_item(msg_item)
+        resp.text = self._responses_text_from_message_item(msg_item)
 
     def set_core_delta_elements(
         self,
@@ -978,118 +642,6 @@ class OpenAIResp(LangEngine, OpenAIExtractorMixin):
 
         cur_resp.raw = delta_message
             
-
-
-        # # Handle single user message case - use simple string input
-        # if isinstance(msg, Msg) and msg.role == "user" and "instructions" not in kwargs:
-        #     api_input = {
-        #         "input": msg.text or "",
-        #         **kwargs
-        #     }
-        # else:
-        #     # Handle multiple messages or complex cases - use input array format
-        #     if isinstance(msg, Msg):
-        #         original_messages = [msg]
-        #     else:
-        #         original_messages = list(msg)
-            
-        #     # Convert messages to OpenAI format
-        #     openai_messages = [self._convert_message(msg) for msg in original_messages]
-            
-        #     # Add tool messages from ToolUse objects (using original Msg objects)
-        #     out_messages = []
-        #     for i, msg in enumerate(openai_messages):
-        #         out_messages.append(msg)
-        #         # Access tool_calls from original Msg object, not converted dict
-        #         for tool_out in original_messages[i].tool_calls:
-        #             out_messages.append({
-        #                 "role": "tool",
-        #                 "content": str(tool_out.result),
-        #                 "tool_call_id": tool_out.id
-        #             })
-            
-        #     api_input = {
-        #         "input": out_messages,
-        #         **kwargs
-        #     }
-        
-        # # Map parameter names for Responses API
-        # if 'max_tokens' in api_input:
-        #     api_input['max_output_tokens'] = api_input.pop('max_tokens')
-        
-        # # Add tools if present
-        # if tools:
-        #     api_input["tools"] = convert_tools_to_openai_format(tools)
-            
-        # # Add text format if present  
-        # if format_override:
-        #     api_input.update(build_openai_text_format(format_override))
-        
-        # if kwargs.get('stream', False) is True:
-        #     api_input['stream'] = True
-            
-        # return api_input
-    
-    def from_result(
-        self, 
-        output: t.Dict | pydantic.BaseModel, 
-        messages: Msg | BaseDialog
-    ) -> Resp:
-        """Convert Responses API response to Dachi Resp."""
-        if isinstance(output, pydantic.BaseModel):
-            output = output.model_dump()
-        
-        # Extract tools and format info from messages for potential validation/processing
-        tools = extract_tools_from_messages(messages)
-        format_override = extract_format_override_from_messages(messages)
-        
-        choice = output.get("choices", [{}])[0]
-        message = choice.get("message", {})
-
-        resp = Resp(
-            role=message.get("role", "assistant"),
-            text=message.get("content", ""),
-            thinking=output.get("reasoning"),  # Can be string or dict
-            finish_reason=choice.get("finish_reason"),
-            id=output.get("id"),
-            model=output.get("model"),
-            usage=output.get("usage") or {},
-            tool_use=extract_openai_tool_calls(message),
-            logprobs=choice.get("logprobs"),
-            choices=[{
-                "index": c.get("index", i),
-                "finish_reason": c.get("finish_reason"),
-                "logprobs": c.get("logprobs")
-            } for i, c in enumerate(output.get("choices", []))]
-        )
-        
-        # Store commonly useful metadata (debugging, monitoring, feature detection)
-        resp.meta.update(extract_commonly_useful_meta(output))
-        
-        # Store raw response
-        resp.raw = output
-        return resp
-    
-    def from_streamed_result(self, result: t.Dict, messages: Msg | BaseDialog, prev_resp: Resp | None = None) -> t.Tuple[Resp, DeltaResp]:
-        """Convert streaming LLM response to Dachi Resp + DeltaResp"""
-        # Convert Pydantic model to dict if needed
-        if isinstance(result, pydantic.BaseModel):
-            result = result.model_dump()
-    
-        text = 
-        
-        citations = self.extract_citations(
-            result, delta=prev_resp
-        )
-        thinking = extract_delta_thinking(result, messages, prev_resp)
-        tool_use = extract_delta_tool_use(result, messages, prev_resp)
-
-    def set_core_elements(self, resp: Resp, message: t.Dict) -> t.Dict[str, t.Any]:
-        # Set all of the core elements here
-        
-        resp.text = message.get("content", "")
-        resp.role = message.get("role", "assistant")
-
     def set_tools(self, resp: "Resp", message: dict) -> dict:
         """
         Responses API (non-streamed):
@@ -1161,7 +713,6 @@ class OpenAIResp(LangEngine, OpenAIExtractorMixin):
         - When a call completes, ToolBuffer clears that call’s accumulator automatically
         - We also clear the item_id routing entry on completion
         """
-
         # DeltaResp.tool must be None unless we completed a full tool call this chunk
         cur_delta.tool = None
 
@@ -1283,6 +834,147 @@ class OpenAIResp(LangEngine, OpenAIExtractorMixin):
         return {"completed": new_calls}
 
 
+
+
+
+
+# def _extract_tool_calls_resp(output: list[dict]) -> list[dict]:
+#     """Extract complete tool calls from Responses API output items.
+
+#     Args:
+#         output: List of output items from Responses API
+
+#     Returns:
+#         List of canonical tool call dicts
+#     """
+#     result = []
+#     for item in output:
+#         if item.get("type") == "function_call":
+#             canonical = {
+#                 "id": item.get("call_id"),
+#                 "type": "function",
+#                 "function": {
+#                     "name": item.get("name", ""),
+#                     "arguments": item.get("arguments", "")
+#                 },
+#                 "_complete": True
+#             }
+#             result.append(canonical)
+
+#     return result
+
+
+        # # Handle single user message case - use simple string input
+        # if isinstance(msg, Msg) and msg.role == "user" and "instructions" not in kwargs:
+        #     api_input = {
+        #         "input": msg.text or "",
+        #         **kwargs
+        #     }
+        # else:
+        #     # Handle multiple messages or complex cases - use input array format
+        #     if isinstance(msg, Msg):
+        #         original_messages = [msg]
+        #     else:
+        #         original_messages = list(msg)
+            
+        #     # Convert messages to OpenAI format
+        #     openai_messages = [self._convert_message(msg) for msg in original_messages]
+            
+        #     # Add tool messages from ToolUse objects (using original Msg objects)
+        #     out_messages = []
+        #     for i, msg in enumerate(openai_messages):
+        #         out_messages.append(msg)
+        #         # Access tool_calls from original Msg object, not converted dict
+        #         for tool_out in original_messages[i].tool_calls:
+        #             out_messages.append({
+        #                 "role": "tool",
+        #                 "content": str(tool_out.result),
+        #                 "tool_call_id": tool_out.id
+        #             })
+            
+        #     api_input = {
+        #         "input": out_messages,
+        #         **kwargs
+        #     }
+        
+        # # Map parameter names for Responses API
+        # if 'max_tokens' in api_input:
+        #     api_input['max_output_tokens'] = api_input.pop('max_tokens')
+        
+        # # Add tools if present
+        # if tools:
+        #     api_input["tools"] = convert_tools_to_openai_format(tools)
+            
+        # # Add text format if present  
+        # if format_override:
+        #     api_input.update(build_openai_text_format(format_override))
+        
+        # if kwargs.get('stream', False) is True:
+        #     api_input['stream'] = True
+            
+        # return api_input
+    
+
+    # def from_result(
+    #     self, 
+    #     output: t.Dict | pydantic.BaseModel, 
+    #     messages: Msg | BaseDialog
+    # ) -> Resp:
+    #     """Convert Responses API response to Dachi Resp."""
+    #     if isinstance(output, pydantic.BaseModel):
+    #         output = output.model_dump()
+        
+    #     # Extract tools and format info from messages for potential validation/processing
+    #     tools = extract_tools_from_messages(messages)
+    #     format_override = extract_format_override_from_messages(messages)
+        
+    #     choice = output.get("choices", [{}])[0]
+    #     message = choice.get("message", {})
+
+    #     resp = Resp(
+    #         role=message.get("role", "assistant"),
+    #         text=message.get("content", ""),
+    #         thinking=output.get("reasoning"),  # Can be string or dict
+    #         finish_reason=choice.get("finish_reason"),
+    #         id=output.get("id"),
+    #         model=output.get("model"),
+    #         usage=output.get("usage") or {},
+    #         tool_use=extract_openai_tool_calls(message),
+    #         logprobs=choice.get("logprobs"),
+    #         choices=[{
+    #             "index": c.get("index", i),
+    #             "finish_reason": c.get("finish_reason"),
+    #             "logprobs": c.get("logprobs")
+    #         } for i, c in enumerate(output.get("choices", []))]
+    #     )
+        
+    #     # Store commonly useful metadata (debugging, monitoring, feature detection)
+    #     resp.meta.update(extract_commonly_useful_meta(output))
+        
+    #     # Store raw response
+    #     resp.raw = output
+    #     return resp
+
+
+    # def from_streamed_result(self, result: t.Dict, messages: Msg | BaseDialog, prev_resp: Resp | None = None) -> t.Tuple[Resp, DeltaResp]:
+    #     """Convert streaming LLM response to Dachi Resp + DeltaResp"""
+    #     # Convert Pydantic model to dict if needed
+    #     resp = Resp()
+    #     delta = DeltaResp()
+    #     self.set_core_delta_elements(
+    #         cur_resp=resp,
+    #         cur_delta=delta,
+    #         prev_resp=prev_resp,
+    #         delta_message=result
+    #     )
+    #     self.set_tools_delta(
+    #         cur_resp=resp,
+    #         cur_delta=delta,
+    #         prev_resp=prev_resp,
+    #         delta_message=result
+    #     )
+    #     return resp, delta
+
         # Extract tools and format info from messages for potential validation/processing
         # tools = extract_tools_from_messages(messages)
         # format_override = extract_format_override_from_messages(messages)
@@ -1381,17 +1073,339 @@ class OpenAIResp(LangEngine, OpenAIExtractorMixin):
         
     #     return openai_msg
     
-import typing as t
 
-def _responses_text_from_message_item(msg_item: t.Dict[str, t.Any]) -> str:
-content = msg_item.get("content", [])
-if not isinstance(content, list):
-    return ""
-return "".join(
-    part.get("text", "")
-    for part in content
-    if isinstance(part, dict) and isinstance(part.get("text"), str)
-)
+
+# def _is_valid_json(s: str) -> bool:
+#     """Check if a string is valid JSON.
+
+#     Args:
+#         s: String to validate
+
+#     Returns:
+#         True if valid JSON, False otherwise
+#     """
+#     if not s or not isinstance(s, str):
+#         return False
+#     try:
+#         import json
+#         json.loads(s)
+#         return True
+#     except (ValueError, TypeError):
+#         return False
+
+
+# def _accumulate_text(prev: str | None, delta: str | None) -> str:
+#     """Accumulate text from previous and delta.
+
+#     Args:
+#         prev: Previous accumulated text
+#         delta: New delta text
+
+#     Returns:
+#         Accumulated text
+#     """
+#     if prev is None:
+#         prev = ""
+#     if delta is None:
+#         delta = ""
+#     return prev + delta
+
+
+# def _get_staging(resp: Resp | None, key: str) -> dict:
+#     """Get staging data from previous response.
+
+#     Args:
+#         resp: Previous response (may be None)
+#         key: Key to look up in _raw dict
+
+#     Returns:
+#         Staging dict (empty if not found)
+#     """
+#     if resp is None:
+#         return {}
+#     if not hasattr(resp, '_raw') or resp._raw is None:
+#         return {}
+#     return resp._raw.get(key, {})
+
+
+# def _store_staging(resp: Resp, key: str, staging: dict) -> None:
+#     """Store staging data in response _raw dict.
+
+#     Args:
+#         resp: Response object to store in
+#         key: Key to store under in _raw dict
+#         staging: Staging data to store
+#     """
+#     if not hasattr(resp, '_raw') or resp._raw is None:
+#         resp._raw = {}
+#     resp._raw[key] = staging
+
+
+# def _extract_text_delta_chat(chunk: dict) -> str | None:
+#     """Extract text delta from Chat Completions chunk.
+
+#     Args:
+#         chunk: Chat completion chunk dict
+
+#     Returns:
+#         Text delta or None
+#     """
+#     choice = chunk.get("choices", [{}])[0]
+#     delta = choice.get("delta", {})
+#     content = delta.get("content")
+#     return content if content else None
+
+
+# def _extract_text_delta_resp(event: dict) -> str | None:
+#     """Extract text delta from Responses API event.
+
+#     Args:
+#         event: Responses API event dict
+
+#     Returns:
+#         Text delta or None
+#     """
+#     if event.get("type") == "content.delta":
+#         delta_data = event.get("delta", {})
+#         text = delta_data.get("text")
+#         return text if text else None
+#     return None
+
+
+# def _extract_thinking_delta_resp(event: dict) -> str | None:
+#     """Extract thinking delta from Responses API event.
+
+#     Args:
+#         event: Responses API event dict
+
+#     Returns:
+#         Thinking delta or None
+#     """
+#     if event.get("type") == "response.output_item.added":
+#         item = event.get("item", {})
+#         if item.get("type") == "message":
+#             content_list = item.get("content", [])
+#             for content_item in content_list:
+#                 if content_item.get("type") == "reasoning":
+#                     return content_item.get("reasoning", "")
+#     return None
+
+
+# def _extract_tool_deltas_chat(chunk: dict) -> list[dict]:
+#     """Extract tool call deltas from Chat Completions chunk.
+
+#     Args:
+#         chunk: Chat completion chunk dict
+
+#     Returns:
+#         List of tool call delta dicts (may be empty)
+#     """
+#     choice = chunk.get("choices", [{}])[0]
+#     delta = choice.get("delta", {})
+#     tool_calls = delta.get("tool_calls")
+
+#     if not tool_calls:
+#         return []
+
+#     result = []
+#     for tc in tool_calls:
+#         tool_delta = {}
+#         if "index" in tc:
+#             tool_delta["index"] = tc["index"]
+#         if "id" in tc:
+#             tool_delta["id"] = tc["id"]
+#         if "type" in tc:
+#             tool_delta["type"] = tc["type"]
+
+#         if "function" in tc:
+#             func = tc["function"]
+#             tool_delta["function"] = {}
+#             if "name" in func:
+#                 tool_delta["function"]["name"] = func["name"]
+#             if "arguments" in func:
+#                 tool_delta["function"]["arguments"] = func["arguments"]
+
+#         result.append(tool_delta)
+
+#     return result
+
+
+# def _extract_tool_deltas_resp(event: dict) -> dict | None:
+#     """Extract tool call delta from Responses API event.
+
+#     Args:
+#         event: Responses API event dict
+
+#     Returns:
+#         Tool call delta dict or None
+#     """
+#     event_type = event.get("type")
+
+#     if event_type == "response.function_call_arguments.delta":
+#         return {
+#             "call_id": event.get("call_id"),
+#             "arguments_delta": event.get("delta")
+#         }
+#     elif event_type == "response.function_call_arguments.done":
+#         return {
+#             "call_id": event.get("call_id"),
+#             "name": event.get("name"),
+#             "arguments": event.get("arguments")
+#         }
+
+#     return None
+
+
+# def _extract_tool_calls_chat(message: dict) -> list[dict]:
+#     """Extract complete tool calls from Chat Completions message.
+
+#     Args:
+#         message: Message dict from Chat Completions response
+
+#     Returns:
+#         List of canonical tool call dicts
+#     """
+#     tool_calls = message.get("tool_calls")
+#     if not tool_calls:
+#         return []
+
+#     result = []
+#     for tc in tool_calls:
+#         canonical = {
+#             "id": tc.get("id"),
+#             "type": tc.get("type", "function"),
+#             "function": {
+#                 "name": tc.get("function", {}).get("name", ""),
+#                 "arguments": tc.get("function", {}).get("arguments", "")
+#             },
+#             "_complete": True
+#         }
+#         result.append(canonical)
+
+#     return result
+
+
+
+    # def from_result(
+    #     self, 
+    #     output: t.Dict | pydantic.BaseModel, 
+    #     messages: Msg | BaseDialog
+    # ) -> Resp:
+    #     """Convert Chat Completions response to Dachi Resp."""
+    #     # Convert Pydantic model to dict if needed
+    #     if isinstance(output, pydantic.BaseModel):
+    #         output = output.model_dump()
+        
+    #     # Extract tools and format info from messages for potential validation/processing
+    #     # tools = extract_tools_from_messages(messages)
+    #     # format_override = extract_format_override_from_messages(messages)
+        
+    #     choice = output.get("choices", [{}])[0]
+    #     message = choice.get("message", {})
+        
+    #     resp = Resp(
+    #         role=message.get("role", "assistant"),
+    #         text=message.get("content", ""),
+    #         finish_reason=choice.get("finish_reason"),
+    #         id=output.get("id"),
+    #         model=output.get("model"),
+    #         usage=output.get("usage") or {},
+    #         tool_use=_extract_openai_tool_calls(message),
+    #         logprobs=choice.get("logprobs"),
+    #         choices=[{
+    #             "index": c.get("index", i),
+    #             "finish_reason": c.get("finish_reason"),
+    #             "logprobs": c.get("logprobs")
+    #         } for i, c in enumerate(output.get("choices", []))]
+    #     )
+        
+    #     # Store commonly useful metadata (debugging, monitoring, feature detection)
+    #     resp.meta.update(extract_commonly_useful_meta(output))
+        
+    #     # Store raw response
+    #     resp.raw = output
+    #     return resp
+    
+    # def from_streamed_result(
+    #     self, 
+    #     output: t.Dict | pydantic.BaseModel, 
+    #     messages: Msg | BaseDialog, 
+    #     prev_resp: Resp | None = None
+    # ) -> t.Tuple[Resp, DeltaResp]:
+    #     """Handle Chat Completions streaming responses with pure accumulation."""
+    #     # Convert Pydantic model to dict if needed
+    #     if isinstance(output, pydantic.BaseModel):
+    #         output = output.model_dump()
+        
+    #     # # Extract tools and format info from messages for potential validation/processing
+    #     # tools = extract_tools_from_messages(messages)
+    #     # format_override = extract_format_override_from_messages(messages)
+        
+    #     choice = output.get("choices", [{}])[0]
+    #     delta = choice.get("delta", {})
+        
+    #     # Accumulate text content using helper function
+    #     delta_text = delta.get("content", "") or ""
+    #     accumulated_text = accumulate_streaming_text(
+    #         prev_resp.text if prev_resp else None, 
+    #         delta_text
+    #     )
+        
+    #     # Use previous role if delta doesn't specify one (common in streaming)
+    #     role = delta.get("role")
+    #     if role is None and prev_resp:
+    #         role = prev_resp.role
+    #     if role is None:
+    #         role = "assistant"  # Default fallback
+        
+    #     # Create response with accumulated content (no spawn() logic)
+    #     resp = Resp(
+    #         role=role,
+    #         text=accumulated_text,  # Full accumulated text
+    #         finish_reason=choice.get("finish_reason"),
+    #         id=output.get("id"),
+    #         model=output.get("model"),
+    #         usage=output.get("usage") or {}
+    #     )
+        
+    #     # Create delta object for streaming
+    #     delta_resp = DeltaResp(
+    #         text=delta_text,  # Just the delta part
+    #         tool=delta.get("tool_calls", [{}])[0].get("function", {}).get("arguments") if delta.get("tool_calls") else None,
+    #         finish_reason=choice.get("finish_reason"),
+    #         usage=output.get("usage")
+    #     )
+        
+    #     # Store raw response
+    #     resp.raw = output
+        
+    #     return resp, delta_resp
+
+
+# def _responses_text_from_message_item(
+#     msg_item: t.Dict[str, t.Any]
+# ) -> str:
+#     content = msg_item.get("content", [])
+#     if not isinstance(content, list):
+#         return ""
+#     return "".join(
+#         part.get("text", "")
+#         for part in content
+#         if isinstance(part, dict) and isinstance(part.get("text"), str)
+#     )
+
+
+# def accumulate_streaming_text(
+#     prev_text: str | None, 
+#     delta_text: str | None
+# ) -> str:
+#     """Pure function for text accumulation without spawn()"""
+#     if prev_text is None:
+#         prev_text = ""
+#     if delta_text is None:
+#         delta_text = ""
+#     return prev_text + delta_text
+
 
 
 # class OpenAILLM(LLM):

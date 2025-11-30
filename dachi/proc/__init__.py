@@ -55,7 +55,7 @@ from ._msg import (
 )
 from ._ai import (
     LLM_PROMPT,
-    LLM,
+    LLMAdapter,
 )
 from .openai import (
     OpenAIChat,

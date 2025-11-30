@@ -24,45 +24,26 @@ LLM_PROMPT: t.TypeAlias = t.Union[t.Iterable[Msg], Msg]
 S = t.TypeVar('S', bound=pydantic.BaseModel)
 
 
-def get_resp_output(resp: Resp, out: t.Union[t.Tuple[ToOut, ...], t.Dict[str, ToOut], ToOut, None]):
-    """Process out parameter for non-streaming functions using forward() method.
+class LLMAdapter(Process, AsyncProcess, StreamProcess, AsyncStreamProcess, ABC):
+
+    @abstractmethod
+    def forward(self, *args, **kwargs):
+        pass
     
-    Takes an out parameter and processes it by calling the forward() method on each processor.
-    Returns the processed result in the same structure as the input (dict, tuple, or single value).
-    
-    Args:
-        resp (Resp): The response object to process
-        out (Union[Dict[str, ToOut], Tuple[ToOut, ...], ToOut, None]): The output processors to apply
-            - Dict: Keys map to processor results, e.g. {'text': TextOut(), 'summary': SummaryOut()}
-            - Tuple: Returns tuple of processor results, e.g. (text_result, summary_result)  
-            - Single ToOut: Returns single processor result
-            - None: No processing, returns None
-            
-    Returns:
-        Union[Dict, Tuple, Any, None]: Processed result matching input structure:
-            - Dict input -> Dict output with same keys
-            - Tuple input -> Tuple output with same length
-            - Single input -> Single output value
-            - None input -> None output
-            
-    Raises:
-        TypeError: If out parameter is not a supported type (dict, tuple, ToOut, or None)
-        
-    Example:
-        >>> resp = Resp(...)
-        >>> result = get_resp_output(resp, {'content': TextOut(), 'tokens': TokenOut()})
-        >>> # Returns: {'content': 'processed text', 'tokens': 42}
-    """
-    if out is None:
-        return None
-    elif isinstance(out, dict):
-        return {key: processor.forward(resp.text) for key, processor in out.items()}
-    elif isinstance(out, tuple):
-        return tuple(processor.forward(resp.text) for processor in out)
-    elif isinstance(out, ToOut):
-        return out.forward(resp.text)
-    else:
-        raise TypeError(f"Unsupported out type: {type(out)}")
+    @abstractmethod
+    async def aforward(self, *args, **kwargs):
+        pass
+
+    @abstractmethod
+    def stream(self, *args, **kwargs):
+        pass
+
+    @abstractmethod
+    async def astream(self, *args, **kwargs):
+        pass
+
+
+LLM_ADAPTER = t.TypeVar("LLM_ADAPTER", bound=LLMAdapter)
 
 
 # Universal Helper Functions for Message Analysis
@@ -115,26 +96,7 @@ def extract_format_override_from_messages(messages: Msg | BaseDialog) -> t.Union
     return format_override
 
 
-class LLM(Process, AsyncProcess, StreamProcess, AsyncStreamProcess, ABC):
-
-    @abstractmethod
-    def forward(self, *args, **kwargs):
-        pass
-    
-    @abstractmethod
-    async def aforward(self, *args, **kwargs):
-        pass
-
-    @abstractmethod
-    def stream(self, *args, **kwargs):
-        pass
-
-    @abstractmethod
-    async def astream(self, *args, **kwargs):
-        pass
-
-
-class LangEngine(Process, AsyncProcess, StreamProcess, AsyncStreamProcess):
+class LangEngine(Process, AsyncProcess, StreamProcess, AsyncStreamProcess, t.Generic[LLM_ADAPTER]):
     """
     Base LLM adapter with function injection pattern.
     
@@ -147,41 +109,47 @@ class LangEngine(Process, AsyncProcess, StreamProcess, AsyncStreamProcess):
         - Streaming support: Handle streaming responses without complex state management
         - Modular design: Separate conversion logic from execution logic
     """
-    llm: LLM 
+    llm: LLM_ADAPTER
 
     @abstractmethod
     def to_input(self, msg: Msg | BaseDialog, **kwargs) -> t.Dict:
         """Convert Dachi messages to LLM-specific input format"""
-        pass
-        
-    @abstractmethod  
-    def from_result(self, result: t.Dict, msg: Msg | BaseDialog) -> Resp:
-        """Convert LLM response to Dachi Resp"""
-        pass
-        
-    @abstractmethod
-    def from_streamed_result(self, result: t.Dict, msg: Msg | BaseDialog, prev_resp: Resp | None) -> t.Tuple[Resp, DeltaResp]:
-        """Convert streaming LLM response to Dachi Resp + DeltaResp"""
         pass
     
     def forward(self, msg: Msg | BaseDialog, out: t.Union[t.Tuple[ToOut, ...], t.Dict[str, ToOut], ToOut, None] = None, *args, **kwargs) -> Resp:
         """Execute LLM function with format conversion"""
         api_input = self.to_input(msg, *args, **kwargs)
         result = self.llm.forward(**api_input)
-        resp = self.from_result(result, msg)
+        resp = Resp()
+        self.set_core_elements(
+            resp=resp,
+            result=result,
+        )
+        self.set_tools_delta(
+            resp=resp,
+            result=result,
+        )
         
         # Process with out parameter
-        resp.out = get_resp_output(resp, out)
+        resp.out = self.set_out(resp, out)
         return resp
     
     async def aforward(self, msg: Msg | BaseDialog, out: t.Union[t.Tuple[ToOut, ...], t.Dict[str, ToOut], ToOut, None] = None, *args, **kwargs) -> Resp:
         """Execute LLM function asynchronously with format conversion"""
         api_input = self.to_input(msg, *args, **kwargs)
         result = await self.llm.aforward(**api_input)
-        resp = self.from_result(result, msg)
+        resp = Resp()
+        self.set_core_elements(
+            resp=resp,
+            result=result,
+        )
+        self.set_tools_delta(
+            resp=resp,
+            result=result,
+        )
         
         # Process with out parameter
-        resp.out = get_resp_output(resp, out)
+        resp.out = self.set_out(resp, out)
         return resp
         
     def stream(self, msg: Msg | BaseDialog, out: t.Union[t.Tuple[ToOut, ...], t.Dict[str, ToOut], ToOut, None] = None, *args, **kwargs) -> t.Iterator[t.Tuple[Resp, DeltaResp]]:
@@ -189,28 +157,138 @@ class LangEngine(Process, AsyncProcess, StreamProcess, AsyncStreamProcess):
         api_input = self.to_input(msg, *args, stream=True, **kwargs)
         
         prev_resp = None
+        delta_store = {}
         for chunk in self.llm.stream(**api_input):
-            resp, delta_resp = self.from_streamed_result(chunk, msg, prev_resp)
-            
-            # Process with out parameter using accumulated text (simplified approach)
-            resp.out = get_resp_output(resp, out)
-            
-            prev_resp = resp
-            yield resp, delta_resp
+            resp = Resp()
+            delta = DeltaResp()
+            self.set_core_delta_elements(
+                cur_resp=resp,
+                cur_delta=delta,
+                prev_resp=prev_resp,
+                delta_message=chunk
+            )
+            self.set_tools_delta(
+                cur_resp=resp,
+                cur_delta=delta,
+                prev_resp=prev_resp,
+                delta_message=chunk
+            )
+            resp.out = self.set_out_delta(resp, delta, out, delta_store, is_last=False)  
+            yield resp, delta
     
     async def astream(self, msg: Msg | BaseDialog, out: t.Union[t.Tuple[ToOut, ...], t.Dict[str, ToOut], ToOut, None] = None, *args, **kwargs) -> t.AsyncIterator[t.Tuple[Resp, DeltaResp]]:
         """Execute streaming LLM function asynchronously with format conversion"""
         api_input = self.to_input(msg, *args, stream=True, **kwargs)
         
         prev_resp = None
+        delta_store = {}
         async for chunk in await self.llm.astream(**api_input):
-            resp, delta_resp = self.from_streamed_result(chunk, msg, prev_resp)
             
+            resp = Resp()
+            delta = DeltaResp()
+            self.set_core_delta_elements(
+                cur_resp=resp,
+                cur_delta=delta,
+                prev_resp=prev_resp,
+                delta_message=chunk
+            )
+            self.set_tools_delta(
+                cur_resp=resp,
+                cur_delta=delta,
+                prev_resp=prev_resp,
+                delta_message=chunk
+            )
+            self.set_out_delta(
+                cur_resp=resp,
+                cur_delta=delta,
+                out=out,
+                prev_resp=prev_resp,
+                delta_message=chunk,
+                delta_store=delta_store,  # You might want to replace this with actual delta store
+                is_last=False,  # You might want to replace this with actual is_last flag
+            )
+            yield resp, delta
+        # have to set the last response outside the loop to mark is_last=True
+        # think how to do that 
+        
+    @abstractmethod
+    def set_core_elements(self, resp: "Resp", message: t.Dict) -> t.Dict[str, t.Any]:
+        pass
+
+    @abstractmethod
+    def set_core_delta_elements(
+        self,
+        cur_resp: "Resp",
+        cur_delta: "DeltaResp",
+        prev_resp: "Resp",
+        delta_message: dict,  # single Responses streaming event payload
+    ) -> t.Dict[str, t.Any]:
+        pass
+
+    @abstractmethod
+    def set_tools(self, resp: "Resp", message: dict) -> dict:
+        pass
+
+    @abstractmethod
+    def set_tools_delta(
+        self,
+        cur_resp: "Resp",
+        cur_delta: "DeltaResp",
+        prev_resp: "Resp",
+        delta_message: dict,  # single Responses streaming event payload
+    ) -> dict:
+        pass
+
+    def set_out(
+        self,
+        resp: Resp,
+        out: t.Union[t.Tuple[ToOut, ...], t.Dict[str, ToOut], ToOut, None],
+    ) -> dict:
+        if out is None:
+            resp.out = None
+        elif isinstance(out, dict):
+            resp.out = {key: processor.forward(resp.text) for key, processor in out.items()}
+        elif isinstance(out, tuple):
+            resp.out = tuple(processor.forward(resp.text) for processor in out)
+        elif isinstance(out, ToOut):
+            resp.out = out.forward(resp.text)
+        else:
+            raise TypeError(f"Unsupported out type: {type(out)}")
+
+    def set_out_delta(
+        self,
+        cur_resp: "Resp",
+        cur_delta: "DeltaResp",
+        out: t.Union[t.Tuple[ToOut, ...], t.Dict[str, ToOut], ToOut, None],
+        delta_store: dict,
+        is_last: bool,
+    ) -> dict:
+        if out is None:
+            cur_resp.out = None
+        elif isinstance(out, dict):
+            cur_resp.out = {key: processor.delta(cur_delta.text, delta_store, is_last) for key, processor in out.items()}
+        elif isinstance(out, tuple):
+            cur_resp.out = tuple(processor.delta(cur_delta.text, delta_store, is_last) for processor in out)
+        elif isinstance(out, ToOut):
+            cur_resp.out = out.delta(cur_delta.text, delta_store, is_last)
+        else:
+            raise TypeError(f"Unsupported out type: {type(out)}")
+
+    # @abstractmethod  
+    # def from_result(self, result: t.Dict, msg: Msg | BaseDialog) -> Resp:
+    #     """Convert LLM response to Dachi Resp"""
+    #     pass
+        
+    # @abstractmethod
+    # def from_streamed_result(self, result: t.Dict, msg: Msg | BaseDialog, prev_resp: Resp | None) -> t.Tuple[Resp, DeltaResp]:
+    #     """Convert streaming LLM response to Dachi Resp + DeltaResp"""
+    #     pass
+
             # Process with out parameter using accumulated text (simplified approach)
-            resp.out = get_resp_output(resp, out)
             
-            prev_resp = resp
-            yield resp, delta_resp
+            # prev_resp = resp
+            # yield resp, delta_resp
+
 
 
 # class Op(

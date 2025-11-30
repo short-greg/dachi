@@ -6,14 +6,14 @@ from pydantic import BaseModel
 
 from dachi.inst import BaseCriterion, BatchEvaluation, Evaluation
 from dachi.core import Prompt, ParamSet, Module, Msg
-from ._ai import LLM
+from ._ai import LLMAdapter
 from abc import ABC
 from dachi.proc import Process, AsyncProcess
 from dachi.core import render
 
 
 T = t.TypeVar("T", bound=Module)
-L = t.TypeVar("L", bound=LLM)
+L = t.TypeVar("L", bound=LLMAdapter)
 C = t.TypeVar("C", bound=BaseCriterion)
 P = t.TypeVar("P", bound=Process | AsyncProcess)
 
