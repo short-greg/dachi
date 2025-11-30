@@ -51,12 +51,11 @@ from ._msg import (
     ToPrompt,
     NullToPrompt,
     ToText,
+    TO_PROMPT
 )
 from ._ai import (
     LLM_PROMPT,
-    AIAdapt,
     LLM,
-    Op,
 )
 from .openai import (
     OpenAIChat,

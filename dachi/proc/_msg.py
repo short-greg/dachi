@@ -1,7 +1,7 @@
 
 # 1st party 
 from abc import ABC, abstractmethod
-import typing
+import typing as t
 
 # 3rd party
 import pydantic
@@ -10,9 +10,9 @@ import pydantic
 from dachi.core import Msg, Prompt
 from ._process import Process
 
-RESPONSE = 'resp'
-S = typing.TypeVar('S', bound=pydantic.BaseModel)
 
+RESPONSE = 'resp'
+S = t.TypeVar('S', bound=pydantic.BaseModel)
 
 class ToPrompt(Process, ABC):
     """Converts the input to a message
@@ -33,6 +33,8 @@ class ToPrompt(Process, ABC):
         """
         pass
 
+
+TO_PROMPT = t.TypeVar("TO_PROMPT", bound=ToPrompt)
 
 class NullToPrompt(ToPrompt):
     """Converts a message to a prompt (wraps in Prompt if not already)

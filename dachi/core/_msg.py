@@ -111,10 +111,7 @@ class Msg(BaseModel):
         default_factory=list, 
         description="List of completed tool calls with their results stored in ToolUse.result"
     )
-    
-    # Message metadata
-    id: t.Optional[str] = Field(default=None, description="Unique identifier for the message")
-    prev_id: t.Optional[str] = Field(default=None, description="ID of the previous message in the conversation")
+
     timestamp: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc), 
         description="Timestamp of the message creation in UTC"
@@ -177,6 +174,21 @@ class Prompt(Msg):
     """
     role: str = "user"  # Default for prompts
     
+    # LLM Sampling parameters (commonly passed via **kwargs)
+    model: t.Optional[str] = Field(default=None, description="Model override")
+    temperature: t.Optional[float] = Field(default=None, description="Sampling temperature")
+    max_tokens: t.Optional[int] = Field(default=None, description="Maximum tokens to generate")
+    top_p: t.Optional[float] = Field(default=None, description="Nucleus sampling")
+    frequency_penalty: t.Optional[float] = Field(default=None, description="Frequency penalty")
+    presence_penalty: t.Optional[float] = Field(default=None, description="Presence penalty")
+    seed: t.Optional[int] = Field(default=None, description="Deterministic seed")
+    
+    # Advanced prompt features
+    system_message: t.Optional[str] = Field(default=None, description="System message override")
+    reasoning_summary_request: t.Optional[bool] = Field(
+        default=None, 
+        description="Request reasoning summary for reasoning models"
+    )
     # Tool configuration
     tool_override: bool = Field(
         default=False, 
@@ -191,22 +203,6 @@ class Prompt(Msg):
     format_override: t.Optional[t.Union[Literal["json", "text"], t.Type[pydantic.BaseModel], dict]] = Field(
         default=None,
         description="Override output format: 'json'/'text', Pydantic model class, or JSON schema dict for structured output"
-    )
-    
-    # LLM Sampling parameters (commonly passed via **kwargs)
-    model: t.Optional[str] = Field(default=None, description="Model override")
-    temperature: t.Optional[float] = Field(default=None, description="Sampling temperature")
-    max_tokens: t.Optional[int] = Field(default=None, description="Maximum tokens to generate")
-    top_p: t.Optional[float] = Field(default=None, description="Nucleus sampling")
-    frequency_penalty: t.Optional[float] = Field(default=None, description="Frequency penalty")
-    presence_penalty: t.Optional[float] = Field(default=None, description="Presence penalty")
-    seed: t.Optional[int] = Field(default=None, description="Deterministic seed")
-    
-    # Advanced prompt features
-    system_prompt: t.Optional[str] = Field(default=None, description="System message override")
-    reasoning_summary_request: t.Optional[bool] = Field(
-        default=None, 
-        description="Request reasoning summary for reasoning models"
     )
 
 
@@ -260,6 +256,18 @@ class Resp(Msg):
         default=None, 
         description="Source citations for generated content"
     )
+    # Tool execution
+    tool_use: t.List[ToolUse] = Field(
+        default_factory=list, 
+        description="Tools to be executed (not yet completed)"
+    )
+    # Message metadata
+    id: t.Optional[str] = Field(default=None, description="Unique identifier for the message")
+    # Processing output
+    out: t.Any = Field(
+        default=None, 
+        description="Processed result from ToOut processors"
+    )
     
     # Multi-choice support
     choices: t.Optional[t.List[t.Dict[str, t.Any]]] = Field(
@@ -267,17 +275,7 @@ class Resp(Msg):
         description="Alternative completions for multi-choice scenarios"
     )
     
-    # Tool execution
-    tool_use: t.List[ToolUse] = Field(
-        default_factory=list, 
-        description="Tools to be executed (not yet completed)"
-    )
-    
-    # Processing output
-    out: t.Any = Field(
-        default=None, 
-        description="Processed result from ToOut processors"
-    )
+
     
     # Internal
     _raw: t.Dict = PrivateAttr(default_factory=dict)
@@ -364,6 +362,10 @@ class DeltaResp(BaseModel):
     usage: t.Optional[t.Dict[str, t.Any]] = Field(
         default=None, 
         description="Per-chunk token usage statistics for this specific chunk"
+    )
+    accumulation: t.Dict[str, t.Any] = Field(
+        default_factory=dict,
+        description="Accumulated values up to this chunk"
     )
 
 
