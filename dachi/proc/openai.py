@@ -195,22 +195,6 @@ class OpenAIChat(LangEngine):
 
         return None
         
-    def set_core_elements(self, resp: "Resp", message: t.Dict) -> t.Dict[str, t.Any]:
-        payload = message
-
-        resp.raw = payload
-        resp.id = payload.get("id")
-        resp.model = payload.get("model")
-        resp.usage = payload.get("usage", {}) if isinstance(payload.get("usage"), dict) else {}
-
-        # assistant message
-        choices = payload.get("choices") or []
-        choice0 = choices[0] if isinstance(choices, list) and choices and isinstance(choices[0], dict) else {}
-        msg = choice0.get("message") or {}
-
-        resp.role = msg.get("role", "assistant")
-        resp.text = msg.get("content") or ""
-
     def set_tools(self, resp: "Resp", message: dict) -> dict:
         """
         Chat Completions (non-streamed):
@@ -313,57 +297,34 @@ class OpenAIChat(LangEngine):
         cur_delta: "DeltaResp",
         prev_resp: "Resp",
         delta_message: dict,  # full chat.completion.chunk payload
-    ) -> None:
+    ) -> t.Dict[str, t.Any]:
         # --- delta: reset to "this chunk only"
         cur_delta.text = None
-        cur_delta.thinking = None
-        cur_delta.citations = None
-        cur_delta.tool = None
         cur_delta.usage = None
         cur_delta.finish_reason = None
 
-        # Defensive: allow prev_resp to be empty-ish
-        if prev_resp is None:
-            prev_resp = Resp()
+        # --- extract
+        choices = delta_message.get("choices") or []
+        choice0 = choices[0] if isinstance(choices, list) and choices and isinstance(choices[0], dict) else {}
 
-        # --- extract first choice delta (Chat chunks are choice-based)
-        choices = delta_message.get("choices")
-        if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
-            # Still propagate stable metadata if present
-            mid = delta_message.get("id")
-            model = delta_message.get("model")
-
-            cur_resp.id = prev_resp.id or (mid if isinstance(mid, str) else None)
-            cur_resp.model = prev_resp.model or (model if isinstance(model, str) else None)
-            cur_resp.role = prev_resp.role or "assistant"
-            cur_resp.text = prev_resp.text or ""
-            cur_resp.finish_reason = prev_resp.finish_reason
-            cur_resp.usage = prev_resp.usage or {}
-            cur_resp.raw = delta_message
-            return
-
-        choice0 = choices[0]
         delta = choice0.get("delta")
         delta = delta if isinstance(delta, dict) else {}
 
-        text_inc = delta.get("content")               # incremental text fragment
-        role_inc = delta.get("role")                  # may appear only once (first chunk)
-        finish_inc = choice0.get("finish_reason")     # usually only last chunk
+        text_inc = delta.get("content")          # incremental text fragment
+        role_inc = delta.get("role")             # may appear only once (first chunk)
+        finish_inc = choice0.get("finish_reason")  # usually only last chunk
 
-        usage_inc = delta_message.get("usage")        # only if stream_options include it
+        # usage may appear only if stream_options include it; treat as "latest total"
+        usage_inc = delta_message.get("usage")
         usage_inc = usage_inc if isinstance(usage_inc, dict) else None
 
         # --- accumulate into cur_resp (prev + increment)
-        mid = delta_message.get("id")
-        model = delta_message.get("model")
-        cur_resp.id = prev_resp.id or (mid if isinstance(mid, str) else None)
-        cur_resp.model = prev_resp.model or (model if isinstance(model, str) else None)
+        cur_resp.id = prev_resp.id or delta_message.get("id")
+        cur_resp.model = prev_resp.model or delta_message.get("model")
 
-        cur_resp.role = (
-            role_inc if isinstance(role_inc, str) and role_inc else (prev_resp.role or "assistant")
-        )
+        cur_resp.role = (role_inc if isinstance(role_inc, str) and role_inc else prev_resp.role) or "assistant"
 
-        prev_text = prev_resp.text if isinstance(prev_resp.text, str) else (prev_resp.text or "")
+        prev_text = prev_resp.text if isinstance(prev_resp.text, str) else ""
         if isinstance(text_inc, str) and text_inc:
             cur_delta.text = text_inc
             cur_resp.text = prev_text + text_inc
@@ -380,8 +341,84 @@ class OpenAIChat(LangEngine):
         if finish_inc is not None:
             cur_delta.finish_reason = finish_inc
 
-        # keep raw around
+        # keep raw around (optional but often useful)
         cur_resp.raw = delta_message
+
+    # def set_core_delta_elements(
+    #     self,
+    #     cur_resp: "Resp",
+    #     cur_delta: "DeltaResp",
+    #     prev_resp: "Resp",
+    #     delta_message: dict,  # full chat.completion.chunk payload
+    # ) -> None:
+    #     # --- delta: reset to "this chunk only"
+    #     cur_delta.text = None
+    #     cur_delta.thinking = None
+    #     cur_delta.citations = None
+    #     cur_delta.tool = None
+    #     cur_delta.usage = None
+    #     cur_delta.finish_reason = None
+
+    #     # Defensive: allow prev_resp to be empty-ish
+    #     if prev_resp is None:
+    #         prev_resp = Resp()
+
+    #     # --- extract first choice delta (Chat chunks are choice-based)
+    #     choices = delta_message.get("choices")
+    #     if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
+    #         # Still propagate stable metadata if present
+    #         mid = delta_message.get("id")
+    #         model = delta_message.get("model")
+
+    #         cur_resp.id = prev_resp.id or (mid if isinstance(mid, str) else None)
+    #         cur_resp.model = prev_resp.model or (model if isinstance(model, str) else None)
+    #         cur_resp.role = prev_resp.role or "assistant"
+    #         cur_resp.text = prev_resp.text or ""
+    #         cur_resp.finish_reason = prev_resp.finish_reason
+    #         cur_resp.usage = prev_resp.usage or {}
+    #         cur_resp.raw = delta_message
+    #         return
+
+    #     choice0 = choices[0]
+    #     delta = choice0.get("delta")
+    #     delta = delta if isinstance(delta, dict) else {}
+
+    #     text_inc = delta.get("content")               # incremental text fragment
+    #     role_inc = delta.get("role")                  # may appear only once (first chunk)
+    #     finish_inc = choice0.get("finish_reason")     # usually only last chunk
+
+    #     usage_inc = delta_message.get("usage")        # only if stream_options include it
+    #     usage_inc = usage_inc if isinstance(usage_inc, dict) else None
+
+    #     # --- accumulate into cur_resp (prev + increment)
+    #     mid = delta_message.get("id")
+    #     model = delta_message.get("model")
+    #     cur_resp.id = prev_resp.id or (mid if isinstance(mid, str) else None)
+    #     cur_resp.model = prev_resp.model or (model if isinstance(model, str) else None)
+
+    #     cur_resp.role = (
+    #         role_inc if isinstance(role_inc, str) and role_inc else (prev_resp.role or "assistant")
+    #     )
+
+    #     prev_text = prev_resp.text if isinstance(prev_resp.text, str) else (prev_resp.text or "")
+    #     if isinstance(text_inc, str) and text_inc:
+    #         cur_delta.text = text_inc
+    #         cur_resp.text = prev_text + text_inc
+    #     else:
+    #         cur_resp.text = prev_text
+
+    #     # usage: overwrite with latest if provided, otherwise keep previous
+    #     cur_resp.usage = usage_inc if usage_inc is not None else (prev_resp.usage or {})
+    #     if usage_inc is not None:
+    #         cur_delta.usage = usage_inc
+
+    #     # finish_reason exists for chat completions
+    #     cur_resp.finish_reason = finish_inc if finish_inc is not None else prev_resp.finish_reason
+    #     if finish_inc is not None:
+    #         cur_delta.finish_reason = finish_inc
+
+    #     # keep raw around
+    #     cur_resp.raw = delta_message
             
     def set_tools(self, resp: "Resp", message: dict):
         """
@@ -458,149 +495,149 @@ class OpenAIChat(LangEngine):
 
             resp.tool_use.append(tool_use)
 
-    def set_tools_delta(
-        self,
-        cur_resp: "Resp",
-        cur_delta: "DeltaResp",
-        prev_resp: "Resp",
-        delta_message: dict,  # chat.completion.chunk payload
-    ):
-        """
-        Chat Completions streaming:
-        chunk["choices"][0]["delta"]["tool_calls"][...]
+    # def set_tools_delta(
+    #     self,
+    #     cur_resp: "Resp",
+    #     cur_delta: "DeltaResp",
+    #     prev_resp: "Resp",
+    #     delta_message: dict,  # chat.completion.chunk payload
+    # ):
+    #     """
+    #     Chat Completions streaming:
+    #     chunk["choices"][0]["delta"]["tool_calls"][...]
 
-        Contract:
-        - cur_delta.tool stays None unless a tool call fully completes in this chunk.
-        - newly completed ToolUse objects get appended to cur_resp.tool_use
-        - accumulation is cleared once completion happens (no lingering partials).
-        """
-        cur_delta.tool = None
-        cur_resp.tool_use = list(prev_resp.tool_use)
+    #     Contract:
+    #     - cur_delta.tool stays None unless a tool call fully completes in this chunk.
+    #     - newly completed ToolUse objects get appended to cur_resp.tool_use
+    #     - accumulation is cleared once completion happens (no lingering partials).
+    #     """
+    #     cur_delta.tool = None
+    #     cur_resp.tool_use = list(prev_resp.tool_use)
 
-        if not isinstance(getattr(cur_delta, "accumulation", None), dict):
-            cur_delta.accumulation = {}
+    #     if not isinstance(getattr(cur_delta, "accumulation", None), dict):
+    #         cur_delta.accumulation = {}
 
-        buf = cur_delta.accumulation.get("tool_buffer")
-        if buf is None:
-            tools = getattr(self, "tools", None) or getattr(self, "_tools", None) or []
-            buf = ToolBuffer(tools=tools)
-            cur_delta.accumulation["tool_buffer"] = buf
-            cur_delta.accumulation["tool_buffer_emitted"] = 0
-            cur_delta.accumulation["tool_call_meta"] = {}
+    #     buf = cur_delta.accumulation.get("tool_buffer")
+    #     if buf is None:
+    #         tools = getattr(self, "tools", None) or getattr(self, "_tools", None) or []
+    #         buf = ToolBuffer(tools=tools)
+    #         cur_delta.accumulation["tool_buffer"] = buf
+    #         cur_delta.accumulation["tool_buffer_emitted"] = 0
+    #         cur_delta.accumulation["tool_call_meta"] = {}
 
-        emitted_n = cur_delta.accumulation.get("tool_buffer_emitted", 0)
-        if not isinstance(emitted_n, int):
-            emitted_n = 0
-            cur_delta.accumulation["tool_buffer_emitted"] = 0
+    #     emitted_n = cur_delta.accumulation.get("tool_buffer_emitted", 0)
+    #     if not isinstance(emitted_n, int):
+    #         emitted_n = 0
+    #         cur_delta.accumulation["tool_buffer_emitted"] = 0
 
-        meta = cur_delta.accumulation.get("tool_call_meta")
-        if not isinstance(meta, dict):
-            meta = {}
-            cur_delta.accumulation["tool_call_meta"] = meta
+    #     meta = cur_delta.accumulation.get("tool_call_meta")
+    #     if not isinstance(meta, dict):
+    #         meta = {}
+    #         cur_delta.accumulation["tool_call_meta"] = meta
 
-        choices = delta_message.get("choices") or []
-        choice0 = choices[0] if isinstance(choices, list) and choices and isinstance(choices[0], dict) else {}
-        finish_reason = choice0.get("finish_reason")
+    #     choices = delta_message.get("choices") or []
+    #     choice0 = choices[0] if isinstance(choices, list) and choices and isinstance(choices[0], dict) else {}
+    #     finish_reason = choice0.get("finish_reason")
 
-        delta = choice0.get("delta")
-        delta = delta if isinstance(delta, dict) else {}
+    #     delta = choice0.get("delta")
+    #     delta = delta if isinstance(delta, dict) else {}
 
-        tool_calls_delta = delta.get("tool_calls")
+    #     tool_calls_delta = delta.get("tool_calls")
 
-        # Back-compat: deprecated delta["function_call"] -> tool_calls[0]
-        if not isinstance(tool_calls_delta, list) or not tool_calls_delta:
-            fc = delta.get("function_call")
-            if isinstance(fc, dict):
-                tool_calls_delta = [{
-                    "index": 0,
-                    "id": None,
-                    "type": "function",
-                    "function": fc,
-                }]
-            else:
-                tool_calls_delta = []
+    #     # Back-compat: deprecated delta["function_call"] -> tool_calls[0]
+    #     if not isinstance(tool_calls_delta, list) or not tool_calls_delta:
+    #         fc = delta.get("function_call")
+    #         if isinstance(fc, dict):
+    #             tool_calls_delta = [{
+    #                 "index": 0,
+    #                 "id": None,
+    #                 "type": "function",
+    #                 "function": fc,
+    #             }]
+    #         else:
+    #             tool_calls_delta = []
 
-        # 1) Accumulate chunks
-        for tc in tool_calls_delta:
-            if not isinstance(tc, dict):
-                continue
+    #     # 1) Accumulate chunks
+    #     for tc in tool_calls_delta:
+    #         if not isinstance(tc, dict):
+    #             continue
 
-            call_index = tc.get("index")
-            if not isinstance(call_index, int):
-                continue
+    #         call_index = tc.get("index")
+    #         if not isinstance(call_index, int):
+    #             continue
 
-            fn = tc.get("function")
-            fn = fn if isinstance(fn, dict) else {}
+    #         fn = tc.get("function")
+    #         fn = fn if isinstance(fn, dict) else {}
 
-            tc_id = tc.get("id") if isinstance(tc.get("id"), str) else None
-            fn_name = fn.get("name") if isinstance(fn.get("name"), str) else None
-            fn_args = fn.get("arguments") if isinstance(fn.get("arguments"), str) else None
+    #         tc_id = tc.get("id") if isinstance(tc.get("id"), str) else None
+    #         fn_name = fn.get("name") if isinstance(fn.get("name"), str) else None
+    #         fn_args = fn.get("arguments") if isinstance(fn.get("arguments"), str) else None
 
-            existing = meta.get(call_index)
-            existing = existing if isinstance(existing, dict) else {}
+    #         existing = meta.get(call_index)
+    #         existing = existing if isinstance(existing, dict) else {}
 
-            # IMPORTANT: ToolBuffer keying prefers id if present; if OpenAI only sends id once,
-            # we must remember it and pass it on every chunk afterwards.
-            stable_id = tc_id or (existing.get("id") if isinstance(existing.get("id"), str) else None)
-            stable_name = fn_name or (existing.get("name") if isinstance(existing.get("name"), str) else None)
+    #         # IMPORTANT: ToolBuffer keying prefers id if present; if OpenAI only sends id once,
+    #         # we must remember it and pass it on every chunk afterwards.
+    #         stable_id = tc_id or (existing.get("id") if isinstance(existing.get("id"), str) else None)
+    #         stable_name = fn_name or (existing.get("name") if isinstance(existing.get("name"), str) else None)
 
-            meta[call_index] = {"id": stable_id, "name": stable_name}
+    #         meta[call_index] = {"id": stable_id, "name": stable_name}
 
-            try:
-                buf.append(
-                    ToolChunk(
-                        id=stable_id,
-                        turn_index=0,  # chat doesn't expose a message index; stable constant
-                        call_index=call_index,
-                        name=stable_name,
-                        args_text_delta=fn_args,
-                        done=False,
-                    )
-                )
-            except Exception:
-                # Don't crash streaming on partial tool-call issues; subclass can inspect raw if desired.
-                pass
+    #         try:
+    #             buf.append(
+    #                 ToolChunk(
+    #                     id=stable_id,
+    #                     turn_index=0,  # chat doesn't expose a message index; stable constant
+    #                     call_index=call_index,
+    #                     name=stable_name,
+    #                     args_text_delta=fn_args,
+    #                     done=False,
+    #                 )
+    #             )
+    #         except Exception:
+    #             # Don't crash streaming on partial tool-call issues; subclass can inspect raw if desired.
+    #             pass
 
-        # 2) Finalize on terminal chunk even if it contains no delta.tool_calls
-        if finish_reason == "tool_calls":
-            for call_index, rec in list(meta.items()):
-                if not isinstance(call_index, int) or not isinstance(rec, dict):
-                    continue
+    #     # 2) Finalize on terminal chunk even if it contains no delta.tool_calls
+    #     if finish_reason == "tool_calls":
+    #         for call_index, rec in list(meta.items()):
+    #             if not isinstance(call_index, int) or not isinstance(rec, dict):
+    #                 continue
 
-                stable_id = rec.get("id") if isinstance(rec.get("id"), str) else None
-                stable_name = rec.get("name") if isinstance(rec.get("name"), str) else None
+    #             stable_id = rec.get("id") if isinstance(rec.get("id"), str) else None
+    #             stable_name = rec.get("name") if isinstance(rec.get("name"), str) else None
 
-                try:
-                    buf.append(
-                        ToolChunk(
-                            id=stable_id,
-                            turn_index=0,
-                            call_index=call_index,
-                            name=stable_name,
-                            args_text_delta=None,
-                            done=True,
-                        )
-                    )
-                except Exception:
-                    pass
+    #             try:
+    #                 buf.append(
+    #                     ToolChunk(
+    #                         id=stable_id,
+    #                         turn_index=0,
+    #                         call_index=call_index,
+    #                         name=stable_name,
+    #                         args_text_delta=None,
+    #                         done=True,
+    #                     )
+    #                 )
+    #             except Exception:
+    #                 pass
 
-        # 3) Emit newly completed calls
-        new_calls = buf._calls[emitted_n:]
-        if new_calls:
-            cur_resp.tool_use.extend(new_calls)
-            cur_delta.accumulation["tool_buffer_emitted"] = emitted_n + len(new_calls)
+    #     # 3) Emit newly completed calls
+    #     new_calls = buf._calls[emitted_n:]
+    #     if new_calls:
+    #         cur_resp.tool_use.extend(new_calls)
+    #         cur_delta.accumulation["tool_buffer_emitted"] = emitted_n + len(new_calls)
 
-            last = new_calls[-1]
-            try:
-                cur_delta.tool = json.dumps(last.inputs.model_dump())
-            except Exception:
-                cur_delta.tool = "{}"
+    #         last = new_calls[-1]
+    #         try:
+    #             cur_delta.tool = json.dumps(last.inputs.model_dump())
+    #         except Exception:
+    #             cur_delta.tool = "{}"
 
-        # 4) Clear accumulation when tool-calling turn is finished (no lingering partials)
-        if finish_reason == "tool_calls":
-            cur_delta.accumulation.pop("tool_buffer", None)
-            cur_delta.accumulation.pop("tool_buffer_emitted", None)
-            cur_delta.accumulation.pop("tool_call_meta", None)
+    #     # 4) Clear accumulation when tool-calling turn is finished (no lingering partials)
+    #     if finish_reason == "tool_calls":
+    #         cur_delta.accumulation.pop("tool_buffer", None)
+    #         cur_delta.accumulation.pop("tool_buffer_emitted", None)
+    #         cur_delta.accumulation.pop("tool_call_meta", None)
 
 
     def convert_messages(self, msg: Msg | BaseDialog | str) -> list[dict]:
@@ -749,59 +786,6 @@ class OpenAIChat(LangEngine):
         if finish_reason == "tool_calls":
             cur_delta.accumulation.pop("tool_buffer", None)
             cur_delta.accumulation.pop("tool_buffer_emitted", None)
-
-    def set_core_delta_elements(
-        self,
-        cur_resp: "Resp",
-        cur_delta: "DeltaResp",
-        prev_resp: "Resp",
-        delta_message: dict,  # full chat.completion.chunk payload
-    ) -> t.Dict[str, t.Any]:
-        # --- delta: reset to "this chunk only"
-        cur_delta.text = None
-        cur_delta.usage = None
-        cur_delta.finish_reason = None
-
-        # --- extract
-        choices = delta_message.get("choices") or []
-        choice0 = choices[0] if isinstance(choices, list) and choices and isinstance(choices[0], dict) else {}
-
-        delta = choice0.get("delta")
-        delta = delta if isinstance(delta, dict) else {}
-
-        text_inc = delta.get("content")          # incremental text fragment
-        role_inc = delta.get("role")             # may appear only once (first chunk)
-        finish_inc = choice0.get("finish_reason")  # usually only last chunk
-
-        # usage may appear only if stream_options include it; treat as "latest total"
-        usage_inc = delta_message.get("usage")
-        usage_inc = usage_inc if isinstance(usage_inc, dict) else None
-
-        # --- accumulate into cur_resp (prev + increment)
-        cur_resp.id = prev_resp.id or delta_message.get("id")
-        cur_resp.model = prev_resp.model or delta_message.get("model")
-
-        cur_resp.role = (role_inc if isinstance(role_inc, str) and role_inc else prev_resp.role) or "assistant"
-
-        prev_text = prev_resp.text if isinstance(prev_resp.text, str) else ""
-        if isinstance(text_inc, str) and text_inc:
-            cur_delta.text = text_inc
-            cur_resp.text = prev_text + text_inc
-        else:
-            cur_resp.text = prev_text
-
-        # usage: overwrite with latest if provided, otherwise keep previous
-        cur_resp.usage = usage_inc if usage_inc is not None else (prev_resp.usage or {})
-        if usage_inc is not None:
-            cur_delta.usage = usage_inc
-
-        # finish_reason exists for chat completions
-        cur_resp.finish_reason = finish_inc if finish_inc is not None else prev_resp.finish_reason
-        if finish_inc is not None:
-            cur_delta.finish_reason = finish_inc
-
-        # keep raw around (optional but often useful)
-        cur_resp.raw = delta_message
 
 
 class OpenAIResp(LangEngine):
@@ -1096,6 +1080,22 @@ class OpenAIResp(LangEngine):
             if isinstance(resp.meta["unknown_tool_calls"], list):
                 resp.meta["unknown_tool_calls"].extend(unknown_calls)
 
+    def set_core_elements(self, resp: "Resp", message: t.Dict) -> t.Dict[str, t.Any]:
+        payload = message
+
+        resp.raw = payload
+        resp.id = payload.get("id")
+        resp.model = payload.get("model")
+        resp.usage = payload.get("usage", {}) if isinstance(payload.get("usage"), dict) else {}
+
+        # assistant message
+        choices = payload.get("choices") or []
+        choice0 = choices[0] if isinstance(choices, list) and choices and isinstance(choices[0], dict) else {}
+        msg = choice0.get("message") or {}
+
+        resp.role = msg.get("role", "assistant")
+        resp.text = msg.get("content") or ""
+
     def convert_format_override(
         self,
         format_override: t.Union[bool, dict, pydantic.BaseModel, t.Type[pydantic.BaseModel], None],
@@ -1142,7 +1142,6 @@ class OpenAIResp(LangEngine):
             },
         }
 
-
     def set_tools_delta(
         self,
         cur_resp: "Resp",
@@ -1152,18 +1151,27 @@ class OpenAIResp(LangEngine):
     ) -> dict:
         """
         Responses API (streaming events):
-        - Tracks tool call items by item_id
-        - Accumulates args text fragments into a ToolBuffer
-        - Emits ToolUse objects only when a call completes (done=True)
-        """
-        cur_delta.tool = None
-        cur_resp.tool_use = list(prev_resp.tool_use)
 
-        # --- persistent state across chunks (store on resp.meta so it survives via prev_resp)
+        - Tracks tool call output items by item_id
+        - Accumulates arguments text (full + deltas) via ToolBuffer
+        - Emits ToolUse objects only when a call completes (done=True)
+        - Keeps streaming state in resp.meta["_responses_tool_stream"]
+        """
+        # DeltaResp.tool must be None unless we completed a full tool call this chunk
+        cur_delta.tool = None
+
+        # Start from prior tool_use, then append any newly completed calls
+        if prev_resp is not None and isinstance(prev_resp.tool_use, list):
+            cur_resp.tool_use = list(prev_resp.tool_use)
+        else:
+            cur_resp.tool_use = []
+
+        # --- persistent state across chunks (stored on resp.meta so it survives via prev_resp)
         if not isinstance(getattr(cur_resp, "meta", None), dict):
             cur_resp.meta = {}
+
+        # Carry forward prior streaming state if present
         if prev_resp is not None and isinstance(getattr(prev_resp, "meta", None), dict):
-            # keep any existing meta; but prefer to carry tool-stream state forward
             if "_responses_tool_stream" in prev_resp.meta and "_responses_tool_stream" not in cur_resp.meta:
                 cur_resp.meta["_responses_tool_stream"] = prev_resp.meta["_responses_tool_stream"]
 
@@ -1201,152 +1209,178 @@ class OpenAIResp(LangEngine):
 
         ev_type = delta_message.get("type")
 
-        # Helper: get or create routing record for an item_id
-        def _get_rec(item_id: str) -> dict:
-            nonlocal next_call_index
-            rec = by_item_id.get(item_id)
-            if not isinstance(rec, dict):
-                rec = {"id": None, "name": None, "call_index": next_call_index, "has_text": False}
-                by_item_id[item_id] = rec
-                next_call_index += 1
-                state["next_call_index"] = next_call_index
-            return rec
+        # ---- 1) Handle output items (function_call/tool_call being added or done)
+        if ev_type in ("response.output_item.added", "response.output_item.done"):
+            item = delta_message.get("item")
+            if isinstance(item, dict) and item.get("type") in ("function_call", "tool_call"):
+                item_id = item.get("id")
+                if isinstance(item_id, str) and item_id:
+                    rec = by_item_id.get(item_id)
+                    if not isinstance(rec, dict):
+                        rec = {
+                            "id": None,
+                            "name": None,
+                            "call_index": next_call_index,
+                            "has_text": False,
+                        }
+                        by_item_id[item_id] = rec
+                        next_call_index += 1
+                        state["next_call_index"] = next_call_index
 
-    # --- handle Responses tool-call events
-    if ev_type in ("response.output_item.added", "response.output_item.done"):
-        item = delta_message.get("item")
-        if isinstance(item, dict) and item.get("type") in ("function_call", "tool_call"):
-            item_id = item.get("id")
+                    # call_id (provider id for this tool call)
+                    call_id = item.get("call_id")
+                    if isinstance(call_id, str) and call_id:
+                        rec["id"] = call_id
+
+                    # tool/function name
+                    name = item.get("name") or item.get("tool_name")
+                    if isinstance(name, str) and name:
+                        rec["name"] = name
+
+                    # full arguments (sometimes appear right on the item)
+                    args_text = item.get("arguments")
+                    if isinstance(args_text, str) and args_text:
+                        rec["has_text"] = True
+                        try:
+                            buf.append(
+                                ToolChunk(
+                                    id=rec["id"] or item_id,
+                                    turn_index=0,
+                                    call_index=rec["call_index"],
+                                    name=rec["name"],
+                                    args_text_delta=args_text,
+                                    done=False,
+                                )
+                            )
+                        except Exception:
+                            pass
+
+                    # If the provider marks the output item as done, finalize this call
+                    if ev_type == "response.output_item.done":
+                        try:
+                            buf.append(
+                                ToolChunk(
+                                    id=rec["id"] or item_id,
+                                    turn_index=0,
+                                    call_index=rec["call_index"],
+                                    name=rec["name"],
+                                    args_text_delta=None,
+                                    done=True,
+                                )
+                            )
+                        except Exception:
+                            pass
+                        # No further deltas should arrive for this item_id
+                        by_item_id.pop(item_id, None)
+
+        # ---- 2) Handle streaming argument deltas
+        elif ev_type == "response.function_call_arguments.delta":
+            item_id = delta_message.get("item_id")
             if isinstance(item_id, str) and item_id:
-                rec = _get_rec(item_id)
+                rec = by_item_id.get(item_id)
+                if not isinstance(rec, dict):
+                    rec = {
+                        "id": None,
+                        "name": None,
+                        "call_index": next_call_index,
+                        "has_text": False,
+                    }
+                    by_item_id[item_id] = rec
+                    next_call_index += 1
+                    state["next_call_index"] = next_call_index
 
-                call_id = item.get("call_id")
-                if isinstance(call_id, str) and call_id:
-                    rec["id"] = call_id
-
-                name = item.get("name") or item.get("tool_name")
-                if isinstance(name, str) and name:
-                    rec["name"] = name
-
-                args_text = item.get("arguments")
-                if isinstance(args_text, str) and args_text:
+                delta_txt = delta_message.get("delta")
+                if isinstance(delta_txt, str) and delta_txt:
                     rec["has_text"] = True
                     try:
                         buf.append(
                             ToolChunk(
-                                id=rec["id"],
+                                id=rec["id"] or item_id,
                                 turn_index=0,
                                 call_index=rec["call_index"],
                                 name=rec["name"],
-                                args_text_delta=args_text,
+                                args_text_delta=delta_txt,
                                 done=False,
                             )
                         )
                     except Exception:
                         pass
 
-                # If the provider marks the output item as done, finalize the call.
-                if ev_type == "response.output_item.done":
+        # ---- 3) Handle arguments.done (finalization, possibly with full arguments)
+        elif ev_type == "response.function_call_arguments.done":
+            item_id = delta_message.get("item_id")
+            if isinstance(item_id, str) and item_id:
+                rec = by_item_id.get(item_id)
+                if not isinstance(rec, dict):
+                    rec = {
+                        "id": None,
+                        "name": None,
+                        "call_index": next_call_index,
+                        "has_text": False,
+                    }
+                    by_item_id[item_id] = rec
+                    next_call_index += 1
+                    state["next_call_index"] = next_call_index
+
+                # Some providers send final full arguments here instead of as deltas
+                final_args = delta_message.get("arguments")
+                if isinstance(final_args, str) and final_args and not rec.get("has_text", False):
+                    rec["has_text"] = True
                     try:
                         buf.append(
                             ToolChunk(
-                                id=rec["id"],
+                                id=rec["id"] or item_id,
                                 turn_index=0,
                                 call_index=rec["call_index"],
                                 name=rec["name"],
-                                args_text_delta=None,
-                                done=True,
+                                args_text_delta=final_args,
+                                done=False,
                             )
                         )
                     except Exception:
                         pass
-                    # No further argument deltas should arrive for this item_id
-                    by_item_id.pop(item_id, None)
 
-    elif ev_type == "response.function_call_arguments.delta":
-        item_id = delta_message.get("item_id")
-        if isinstance(item_id, str) and item_id:
-            rec = _get_rec(item_id)
-            delta_txt = delta_message.get("delta")
-            if isinstance(delta_txt, str) and delta_txt:
-                rec["has_text"] = True
+                # Mark completion
                 try:
                     buf.append(
                         ToolChunk(
-                            id=rec["id"],
+                            id=rec["id"] or item_id,
                             turn_index=0,
                             call_index=rec["call_index"],
                             name=rec["name"],
-                            args_text_delta=delta_txt,
-                            done=False,
+                            args_text_delta=None,
+                            done=True,
                         )
                     )
                 except Exception:
                     pass
 
-    elif ev_type == "response.function_call_arguments.done":
-        item_id = delta_message.get("item_id")
-        if isinstance(item_id, str) and item_id:
-            rec = _get_rec(item_id)
+                by_item_id.pop(item_id, None)
 
-            final_args = delta_message.get("arguments")
-            if isinstance(final_args, str) and final_args and not rec.get("has_text", False):
-                # If we never saw deltas, treat `arguments` as the full payload once.
-                rec["has_text"] = True
-                try:
-                    buf.append(
-                        ToolChunk(
-                            id=rec["id"],
-                            turn_index=0,
-                            call_index=rec["call_index"],
-                            name=rec["name"],
-                            args_text_delta=final_args,
-                            done=False,
-                        )
-                    )
-                except Exception:
-                    pass
+        # ---- 4) Clear streaming state if the whole response is done/failed/cancelled
+        if ev_type in ("response.completed", "response.failed", "response.cancelled"):
+            cur_resp.meta.pop("_responses_tool_stream", None)
 
-            # Mark completion
+        # ---- 5) Emit newly completed ToolUse calls from ToolBuffer
+        calls = getattr(buf, "_calls", [])
+        if isinstance(calls, list) and emitted < len(calls):
+            new_calls = calls[emitted:]
+
+            # Ensure .id is set (mirror from tool_id if missing)
+            for c in new_calls:
+                if getattr(c, "id", None) is None and isinstance(getattr(c, "tool_id", None), str):
+                    c.id = c.tool_id
+
+            cur_resp.tool_use.extend(new_calls)
+            state["emitted"] = len(calls)
+
+            # Only set delta.tool when a call completed this chunk
+            last = new_calls[-1]
             try:
-                buf.append(
-                    ToolChunk(
-                        id=rec["id"],
-                        turn_index=0,
-                        call_index=rec["call_index"],
-                        name=rec["name"],
-                        args_text_delta=None,
-                        done=True,
-                    )
-                )
+                cur_delta.tool = json.dumps(last.inputs.model_dump())
             except Exception:
-                pass
+                cur_delta.tool = "{}"
 
-            by_item_id.pop(item_id, None)
-
-    # If the response is fully completed, clear tool-stream state to avoid leakage
-    if ev_type in ("response.completed", "response.failed", "response.cancelled"):
-        cur_resp.meta.pop("_responses_tool_stream", None)
-
-    # --- emit newly completed ToolUse calls from ToolBuffer
-    calls = getattr(buf, "_calls", [])
-    if isinstance(calls, list) and emitted < len(calls):
-        new_calls = calls[emitted:]
-        for c in new_calls:
-            # ToolBuffer sets tool_id from provider id; mirror it into `id` for consistency
-            if getattr(c, "id", None) is None and isinstance(getattr(c, "tool_id", None), str):
-                c.id = c.tool_id
-
-        cur_resp.tool_use.extend(new_calls)
-        state["emitted"] = len(calls)
-
-        # Only set delta.tool when a call completed this chunk
-        last = new_calls[-1]
-        try:
-            cur_delta.tool = json.dumps(last.inputs.model_dump())
-        except Exception:
-            cur_delta.tool = "{}"
-        return {"completed": new_calls}
 
 
 
