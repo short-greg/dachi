@@ -17,21 +17,6 @@ import json
 
 # Format conversion helper functions
 
-def convert_tools_to_openai_format(tools: list[BaseTool]) -> list[dict]:
-    """Convert Dachi tools to OpenAI tools format"""
-    openai_tools = []
-    for tool in tools:
-        schema = {
-            "type": "function",
-            "function": {
-                "name": tool.name,
-                "description": tool.description,
-                "parameters": tool.input_model.model_json_schema()
-            }
-        }
-        openai_tools.append(schema)
-    return openai_tools
-
 # ============================================================================
 # Tool Call Processing Helper Functions
 # ============================================================================
@@ -78,7 +63,7 @@ class OpenAIChat(LangEngine):
         
         # Add tools if present
         if tools:
-            api_input["tools"] = convert_tools_to_openai_format(tools)
+            api_input["tools"] = None
             
         # Add text format if present
         if isinstance(format_override, pydantic.BaseModel):
@@ -89,36 +74,127 @@ class OpenAIChat(LangEngine):
             api_input['stream'] = True
         
         return api_input
-
-    def _convert_message(self, msg: Msg) -> t.Dict:
-        """Convert single Msg to OpenAI message format."""
-        openai_msg = {
-            "role": msg.role,
-            "content": msg.text or ""
-        }
-        
-        # Handle attachments (vision)
-        if msg.attachments:
-            content = []
-            if msg.text:
-                content.append({"type": "text", "text": msg.text})
-            
-            for attachment in msg.attachments:
-                if attachment.kind == "image":
-                    image_url = attachment.data
-                    if not image_url.startswith("data:"):
-                        mime = attachment.mime or "image/png"
-                        image_url = f"data:{mime};base64,{attachment.data}"
-                    
-                    content.append({
-                        "type": "image_url",
-                        "image_url": {"url": image_url}
-                    })
-            
-            openai_msg["content"] = content
-        
-        return openai_msg
     
+    def convert_tools(self, tools: list[BaseTool]) -> list[dict]:
+        """
+        Convert Dachi BaseTool objects into Chat Completions `tools` payload entries.
+
+        We default to Structured Outputs for function calls by setting `strict: true`.
+        This expects the top-level object schema to be "closed" (additionalProperties: false)
+        and to explicitly list required properties. We enforce those at the top level.
+        """
+        if not tools:
+            return []
+
+        openai_tools: list[dict] = []
+
+        for tool in tools:
+            name = getattr(tool, "name", None)
+            if not isinstance(name, str) or not name:
+                continue
+
+            description = getattr(tool, "description", "")
+            if not isinstance(description, str):
+                description = ""
+
+            params: dict = {"type": "object", "properties": {}}
+            input_model = getattr(tool, "input_model", None)
+
+            if input_model is not None:
+                try:
+                    if hasattr(input_model, "model_json_schema"):
+                        params = input_model.model_json_schema()
+                    elif hasattr(input_model, "schema"):
+                        params = input_model.schema()
+                except Exception:
+                    params = {"type": "object", "properties": {}}
+
+            # Strict-mode-friendly top-level adjustments (best-effort, top-level only)
+            if isinstance(params, dict) and params.get("type") == "object":
+                props = params.get("properties")
+                if isinstance(props, dict):
+                    # In strict mode, OpenAI expects an explicit required list.
+                    if "required" not in params:
+                        params["required"] = list(props.keys())
+                    # In strict mode, OpenAI expects objects to disallow extra keys.
+                    if "additionalProperties" not in params:
+                        params["additionalProperties"] = False
+
+            openai_tools.append(
+                {
+                    "type": "function",
+                    "function": {
+                        "name": name,
+                        "description": description,
+                        "strict": True,
+                        "parameters": params,
+                    },
+                }
+            )
+
+        return openai_tools
+
+    def convert_format_override(
+        self,
+        format_override: t.Union[bool, str, dict, t.Type[pydantic.BaseModel], pydantic.BaseModel, None],
+    ) -> t.Optional[dict]:
+        """
+        Convert Dachi format_override into Chat Completions `response_format`.
+
+        Returns either:
+        - None (no override)
+        - {"type":"json_object"} for JSON mode
+        - {"type":"json_schema","json_schema":{...}} for Structured Outputs
+        """
+        if format_override is None or format_override is False:
+            return None
+
+        # Simple JSON mode
+        if format_override is True or format_override == "json":
+            return {"type": "json_object"}
+
+        # Default text mode: omit response_format (Chat Completions default is text)
+        if format_override == "text":
+            return None
+
+        # If caller already provided a response_format dict, pass through
+        if isinstance(format_override, dict):
+            if "type" in format_override:
+                return format_override
+            # Otherwise interpret as a raw JSON Schema to wrap as structured output
+            return {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "response",
+                    "strict": True,
+                    "schema": format_override,
+                },
+            }
+
+        # Pydantic model class or instance -> JSON Schema -> structured output wrapper
+        model_cls: t.Optional[t.Type[pydantic.BaseModel]] = None
+        if isinstance(format_override, type) and issubclass(format_override, pydantic.BaseModel):
+            model_cls = format_override
+        elif isinstance(format_override, pydantic.BaseModel):
+            model_cls = format_override.__class__
+
+        if model_cls is not None:
+            if hasattr(model_cls, "model_json_schema"):
+                schema = model_cls.model_json_schema()
+            else:
+                schema = model_cls.schema()  # pydantic v1 fallback
+
+            return {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": getattr(model_cls, "__name__", "response"),
+                    "strict": True,
+                    "schema": schema,
+                },
+            }
+
+        return None
+        
     def set_core_elements(self, resp: "Resp", message: t.Dict) -> t.Dict[str, t.Any]:
         payload = message
 
@@ -134,8 +210,6 @@ class OpenAIChat(LangEngine):
 
         resp.role = msg.get("role", "assistant")
         resp.text = msg.get("content") or ""
-
-        return {"assistant_message": msg, "choice": choice0}
 
     def set_tools(self, resp: "Resp", message: dict) -> dict:
         """
@@ -191,6 +265,398 @@ class OpenAIChat(LangEngine):
             raw_completed.append(tc)
 
         resp.tool_use = out
+
+    def set_core_elements(self, resp: "Resp", message: dict):
+        """
+        Chat Completions (non-streamed) core extraction:
+        - id/model/usage from payload
+        - role/content from choices[0].message
+        - finish_reason/logprobs from choices[0]
+        """
+        payload = message
+
+        resp.raw = payload
+        resp.id = payload.get("id")
+        resp.model = payload.get("model")
+        resp.usage = payload.get("usage") if isinstance(payload.get("usage"), dict) else {}
+        resp.choices = payload.get("choices") if isinstance(payload.get("choices"), list) else None
+
+        choices = payload.get("choices") or []
+        choice0 = choices[0] if isinstance(choices, list) and choices and isinstance(choices[0], dict) else {}
+
+        resp.finish_reason = choice0.get("finish_reason")
+        resp.logprobs = choice0.get("logprobs")
+
+        msg = choice0.get("message") or {}
+        resp.role = msg.get("role", "assistant")
+
+        content = msg.get("content", "")
+        if isinstance(content, str):
+            resp.text = content
+        elif isinstance(content, list):
+            # Join text blocks if assistant content is in parts form
+            out_parts: list[str] = []
+            for part in content:
+                if not isinstance(part, dict):
+                    continue
+                if part.get("type") == "text" and isinstance(part.get("text"), str):
+                    out_parts.append(part["text"])
+                elif isinstance(part.get("text"), str):
+                    out_parts.append(part["text"])
+            resp.text = "".join(out_parts)
+        else:
+            resp.text = ""
+
+    def set_core_delta_elements(
+        self,
+        cur_resp: "Resp",
+        cur_delta: "DeltaResp",
+        prev_resp: "Resp",
+        delta_message: dict,  # full chat.completion.chunk payload
+    ) -> None:
+        # --- delta: reset to "this chunk only"
+        cur_delta.text = None
+        cur_delta.thinking = None
+        cur_delta.citations = None
+        cur_delta.tool = None
+        cur_delta.usage = None
+        cur_delta.finish_reason = None
+
+        # Defensive: allow prev_resp to be empty-ish
+        if prev_resp is None:
+            prev_resp = Resp()
+
+        # --- extract first choice delta (Chat chunks are choice-based)
+        choices = delta_message.get("choices")
+        if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
+            # Still propagate stable metadata if present
+            mid = delta_message.get("id")
+            model = delta_message.get("model")
+
+            cur_resp.id = prev_resp.id or (mid if isinstance(mid, str) else None)
+            cur_resp.model = prev_resp.model or (model if isinstance(model, str) else None)
+            cur_resp.role = prev_resp.role or "assistant"
+            cur_resp.text = prev_resp.text or ""
+            cur_resp.finish_reason = prev_resp.finish_reason
+            cur_resp.usage = prev_resp.usage or {}
+            cur_resp.raw = delta_message
+            return
+
+        choice0 = choices[0]
+        delta = choice0.get("delta")
+        delta = delta if isinstance(delta, dict) else {}
+
+        text_inc = delta.get("content")               # incremental text fragment
+        role_inc = delta.get("role")                  # may appear only once (first chunk)
+        finish_inc = choice0.get("finish_reason")     # usually only last chunk
+
+        usage_inc = delta_message.get("usage")        # only if stream_options include it
+        usage_inc = usage_inc if isinstance(usage_inc, dict) else None
+
+        # --- accumulate into cur_resp (prev + increment)
+        mid = delta_message.get("id")
+        model = delta_message.get("model")
+        cur_resp.id = prev_resp.id or (mid if isinstance(mid, str) else None)
+        cur_resp.model = prev_resp.model or (model if isinstance(model, str) else None)
+
+        cur_resp.role = (
+            role_inc if isinstance(role_inc, str) and role_inc else (prev_resp.role or "assistant")
+        )
+
+        prev_text = prev_resp.text if isinstance(prev_resp.text, str) else (prev_resp.text or "")
+        if isinstance(text_inc, str) and text_inc:
+            cur_delta.text = text_inc
+            cur_resp.text = prev_text + text_inc
+        else:
+            cur_resp.text = prev_text
+
+        # usage: overwrite with latest if provided, otherwise keep previous
+        cur_resp.usage = usage_inc if usage_inc is not None else (prev_resp.usage or {})
+        if usage_inc is not None:
+            cur_delta.usage = usage_inc
+
+        # finish_reason exists for chat completions
+        cur_resp.finish_reason = finish_inc if finish_inc is not None else prev_resp.finish_reason
+        if finish_inc is not None:
+            cur_delta.finish_reason = finish_inc
+
+        # keep raw around
+        cur_resp.raw = delta_message
+            
+    def set_tools(self, resp: "Resp", message: dict):
+        """
+        Chat Completions (non-streamed):
+        payload["choices"][0]["message"]["tool_calls"] -> resp.tool_use
+        """
+        resp.tool_use = []
+
+        tool_defs = (
+            getattr(self, "_tool_defs", None)
+            or getattr(self, "_tools", None)
+            or getattr(self, "tools", None)
+            or []
+        )
+        if not isinstance(tool_defs, list) or not tool_defs:
+            return
+
+        tool_map = {}
+        for tool in tool_defs:
+            name = getattr(tool, "name", None)
+            if isinstance(name, str) and name:
+                tool_map[name] = tool
+
+        choices = message.get("choices") or []
+        if not (isinstance(choices, list) and choices and isinstance(choices[0], dict)):
+            return
+
+        msg = (choices[0].get("message") or {})
+        if not isinstance(msg, dict):
+            return
+
+        tool_calls = msg.get("tool_calls") or []
+        if not isinstance(tool_calls, list) or not tool_calls:
+            return
+
+        for tool_call in tool_calls:
+            if not isinstance(tool_call, dict):
+                continue
+
+            fn = tool_call.get("function") or {}
+            if not isinstance(fn, dict):
+                continue
+
+            name = fn.get("name")
+            if not isinstance(name, str) or not name:
+                continue
+
+            tool_def = tool_map.get(name)
+            if tool_def is None:
+                continue
+
+            args_text = fn.get("arguments", "")
+            if not isinstance(args_text, str):
+                args_text = ""
+
+            args = {}
+            if args_text.strip():
+                try:
+                    parsed = json.loads(args_text)
+                    if isinstance(parsed, dict):
+                        args = parsed
+                except Exception:
+                    args = {}
+
+            tool_id = tool_call.get("id")
+            if not isinstance(tool_id, str) or not tool_id:
+                tool_id = f"tool_{len(resp.tool_use)}"
+
+            tool_use = tool_def.to_tool_call(tool_id=tool_id, **args)
+
+            provider_id = tool_call.get("id")
+            if isinstance(provider_id, str) and provider_id:
+                tool_use.id = provider_id
+
+            resp.tool_use.append(tool_use)
+
+    def set_tools_delta(
+        self,
+        cur_resp: "Resp",
+        cur_delta: "DeltaResp",
+        prev_resp: "Resp",
+        delta_message: dict,  # chat.completion.chunk payload
+    ):
+        """
+        Chat Completions streaming:
+        chunk["choices"][0]["delta"]["tool_calls"][...]
+
+        Contract:
+        - cur_delta.tool stays None unless a tool call fully completes in this chunk.
+        - newly completed ToolUse objects get appended to cur_resp.tool_use
+        - accumulation is cleared once completion happens (no lingering partials).
+        """
+        cur_delta.tool = None
+        cur_resp.tool_use = list(prev_resp.tool_use)
+
+        if not isinstance(getattr(cur_delta, "accumulation", None), dict):
+            cur_delta.accumulation = {}
+
+        buf = cur_delta.accumulation.get("tool_buffer")
+        if buf is None:
+            tools = getattr(self, "tools", None) or getattr(self, "_tools", None) or []
+            buf = ToolBuffer(tools=tools)
+            cur_delta.accumulation["tool_buffer"] = buf
+            cur_delta.accumulation["tool_buffer_emitted"] = 0
+            cur_delta.accumulation["tool_call_meta"] = {}
+
+        emitted_n = cur_delta.accumulation.get("tool_buffer_emitted", 0)
+        if not isinstance(emitted_n, int):
+            emitted_n = 0
+            cur_delta.accumulation["tool_buffer_emitted"] = 0
+
+        meta = cur_delta.accumulation.get("tool_call_meta")
+        if not isinstance(meta, dict):
+            meta = {}
+            cur_delta.accumulation["tool_call_meta"] = meta
+
+        choices = delta_message.get("choices") or []
+        choice0 = choices[0] if isinstance(choices, list) and choices and isinstance(choices[0], dict) else {}
+        finish_reason = choice0.get("finish_reason")
+
+        delta = choice0.get("delta")
+        delta = delta if isinstance(delta, dict) else {}
+
+        tool_calls_delta = delta.get("tool_calls")
+
+        # Back-compat: deprecated delta["function_call"] -> tool_calls[0]
+        if not isinstance(tool_calls_delta, list) or not tool_calls_delta:
+            fc = delta.get("function_call")
+            if isinstance(fc, dict):
+                tool_calls_delta = [{
+                    "index": 0,
+                    "id": None,
+                    "type": "function",
+                    "function": fc,
+                }]
+            else:
+                tool_calls_delta = []
+
+        # 1) Accumulate chunks
+        for tc in tool_calls_delta:
+            if not isinstance(tc, dict):
+                continue
+
+            call_index = tc.get("index")
+            if not isinstance(call_index, int):
+                continue
+
+            fn = tc.get("function")
+            fn = fn if isinstance(fn, dict) else {}
+
+            tc_id = tc.get("id") if isinstance(tc.get("id"), str) else None
+            fn_name = fn.get("name") if isinstance(fn.get("name"), str) else None
+            fn_args = fn.get("arguments") if isinstance(fn.get("arguments"), str) else None
+
+            existing = meta.get(call_index)
+            existing = existing if isinstance(existing, dict) else {}
+
+            # IMPORTANT: ToolBuffer keying prefers id if present; if OpenAI only sends id once,
+            # we must remember it and pass it on every chunk afterwards.
+            stable_id = tc_id or (existing.get("id") if isinstance(existing.get("id"), str) else None)
+            stable_name = fn_name or (existing.get("name") if isinstance(existing.get("name"), str) else None)
+
+            meta[call_index] = {"id": stable_id, "name": stable_name}
+
+            try:
+                buf.append(
+                    ToolChunk(
+                        id=stable_id,
+                        turn_index=0,  # chat doesn't expose a message index; stable constant
+                        call_index=call_index,
+                        name=stable_name,
+                        args_text_delta=fn_args,
+                        done=False,
+                    )
+                )
+            except Exception:
+                # Don't crash streaming on partial tool-call issues; subclass can inspect raw if desired.
+                pass
+
+        # 2) Finalize on terminal chunk even if it contains no delta.tool_calls
+        if finish_reason == "tool_calls":
+            for call_index, rec in list(meta.items()):
+                if not isinstance(call_index, int) or not isinstance(rec, dict):
+                    continue
+
+                stable_id = rec.get("id") if isinstance(rec.get("id"), str) else None
+                stable_name = rec.get("name") if isinstance(rec.get("name"), str) else None
+
+                try:
+                    buf.append(
+                        ToolChunk(
+                            id=stable_id,
+                            turn_index=0,
+                            call_index=call_index,
+                            name=stable_name,
+                            args_text_delta=None,
+                            done=True,
+                        )
+                    )
+                except Exception:
+                    pass
+
+        # 3) Emit newly completed calls
+        new_calls = buf._calls[emitted_n:]
+        if new_calls:
+            cur_resp.tool_use.extend(new_calls)
+            cur_delta.accumulation["tool_buffer_emitted"] = emitted_n + len(new_calls)
+
+            last = new_calls[-1]
+            try:
+                cur_delta.tool = json.dumps(last.inputs.model_dump())
+            except Exception:
+                cur_delta.tool = "{}"
+
+        # 4) Clear accumulation when tool-calling turn is finished (no lingering partials)
+        if finish_reason == "tool_calls":
+            cur_delta.accumulation.pop("tool_buffer", None)
+            cur_delta.accumulation.pop("tool_buffer_emitted", None)
+            cur_delta.accumulation.pop("tool_call_meta", None)
+
+
+    def convert_messages(self, msg: Msg | BaseDialog | str) -> list[dict]:
+        """Convert Dachi Msg/BaseDialog into Chat Completions `messages` list (no tools)."""
+        if isinstance(msg, str):
+            msg = Msg(role="user", text=msg)
+
+        original_messages = [msg] if isinstance(msg, Msg) else list(msg)
+        openai_messages: list[dict] = []
+
+        for m in original_messages:
+            # --- coerce text to a string
+            if isinstance(m.text, str):
+                text_content = m.text
+            elif m.text is None:
+                text_content = ""
+            else:
+                text_content = str(m.text)
+
+            openai_msg: dict[str, t.Any] = {"role": m.role}
+
+            # Optional alias/name (harmless for most roles; omit if you dislike it)
+            alias = getattr(m, "alias", None)
+            if isinstance(alias, str) and alias:
+                openai_msg["name"] = alias
+
+            attachments = getattr(m, "attachments", None) or []
+            if attachments:
+                parts: list[dict] = []
+
+                if text_content:
+                    parts.append({"type": "text", "text": text_content})
+
+                for att in attachments:
+                    if getattr(att, "kind", None) != "image":
+                        continue
+
+                    data = getattr(att, "data", None)
+                    if not isinstance(data, str) or not data:
+                        continue
+
+                    image_url = data
+                    if not image_url.startswith("data:"):
+                        mime = getattr(att, "mime", None) or "image/png"
+                        image_url = f"data:{mime};base64,{image_url}"
+
+                    parts.append({"type": "image_url", "image_url": {"url": image_url}})
+
+                # If we built blocks, use block form; otherwise fall back to plain text
+                openai_msg["content"] = parts if parts else text_content
+            else:
+                openai_msg["content"] = text_content
+
+            openai_messages.append(openai_msg)
+
+        return openai_messages
 
     def set_tools_delta(
         self,
@@ -357,69 +823,114 @@ class OpenAIResp(LangEngine):
     3. Uses text.format instead of response_format for structured output
     """
 
-    def to_api_input(self, messages: list[dict], tools: list[BaseTool], format_override, **kwargs) -> t.Dict:
-        """Convert to OpenAI Responses API input format."""
-        api_input = {
-            "messages": messages,
-            **kwargs
-        }
-        
-        # Add tools if present
+    def to_api_input(
+        self,
+        messages: list[dict],
+        tools: list[dict],
+        format_override: t.Union[bool, dict, None],
+        **kwargs,
+    ) -> t.Dict:
+        """Build payload for OpenAI Responses API."""
+        api_input: dict[str, t.Any] = {"input": messages}
+        api_input.update(kwargs)
+
         if tools:
-            api_input["tools"] = convert_tools_to_openai_format(tools)
-            
-        # Add json structure as per the format override
-        if format_override and isinstance(format_override, pydantic.BaseModel):
-            pass
-        # Build format dict
-        
-        if kwargs.get('stream', False) is True:
-            api_input['stream'] = True
-        
+            api_input["tools"] = tools
+
+        if format_override:
+            # Responses API uses `text.format` for structured outputs in this codebase style
+            # (caller passes converted dict, e.g. {"type":"json_schema", ...})
+            api_input.setdefault("text", {})
+            if isinstance(api_input["text"], dict):
+                api_input["text"]["format"] = format_override
+
         return api_input
     
-    def convert_messages(self, msg: Msg | BaseDialog | list[Msg] | str) -> list[dict]:
-        """Convert Dachi messages to OpenAI Responses API message format."""
-        # TODO: Confirm this is correct
-        # TODO: must confirm this is correct
-        if isinstance(msg, Msg):
-            original_messages = [msg]
-        elif isinstance(msg, str):
-            original_messages = [Msg(role="user", text=msg)]
-        else:
-            original_messages = list(msg)
-        
-        openai_messages = []
-        for original_msg in original_messages:
-            openai_msg = {
-                "role": original_msg.role,
-                "content": original_msg.text or ""
-            }
-            
-            # Handle attachments (same as Chat Completions)
-            if original_msg.attachments:
-                content = []
-                if original_msg.text:
-                    content.append({"type": "text", "text": original_msg.text})
-                
-                for attachment in original_msg.attachments:
-                    if attachment.kind == "image":
-                        image_url = attachment.data
-                        if not image_url.startswith("data:"):
-                            mime = attachment.mime or "image/png"
-                            image_url = f"data:{mime};base64,{attachment.data}"
-                        
-                        content.append({
-                            "type": "image_url",
-                            "image_url": {"url": image_url}
-                        })
-                
-                openai_msg["content"] = content
-            
-            openai_messages.append(openai_msg)
-        
+
+    def convert_tools(self, tools: list[BaseTool]) -> list[dict]:
+        """Convert Dachi BaseTool objects into Responses API `tools` entries."""
+        if not tools:
+            return []
+
+        out: list[dict] = []
+
+        for tool in tools:
+            name = getattr(tool, "name", None)
+            if not isinstance(name, str) or not name:
+                continue
+
+            description = getattr(tool, "description", "")
+            if not isinstance(description, str):
+                description = ""
+
+            # Build JSON Schema for tool parameters
+            params: dict = {"type": "object", "properties": {}}
+            input_model = getattr(tool, "input_model", None)
+            if input_model is not None:
+                try:
+                    if hasattr(input_model, "model_json_schema"):
+                        params = input_model.model_json_schema()
+                    elif hasattr(input_model, "schema"):
+                        params = input_model.schema()
+                except Exception:
+                    params = {"type": "object", "properties": {}}
+
+            out.append(
+                {
+                    "type": "function",
+                    "name": name,
+                    "description": description,
+                    "parameters": params,
+                    "strict": True,
+                }
+            )
+
+        return out
+
+    def convert_messages(self, msg: Msg | BaseDialog | str) -> list[dict]:
+        """Convert Dachi Msg/BaseDialog into Responses API `input` items (role + content blocks)."""
+        if isinstance(msg, str):
+            msg = Msg(role="user", text=msg)
+
+        original_messages = [msg] if isinstance(msg, Msg) else list(msg)
+
+        openai_messages: list[dict] = []
+        for m in original_messages:
+            text_content: str
+            if isinstance(m.text, str):
+                text_content = m.text
+            elif m.text is None:
+                text_content = ""
+            else:
+                text_content = str(m.text)
+
+            content: list[dict] = []
+            if text_content:
+                content.append({"type": "input_text", "text": text_content})
+
+            for att in (getattr(m, "attachments", None) or []):
+                if getattr(att, "kind", None) != "image":
+                    continue
+
+                image_url = getattr(att, "data", "")
+                if not isinstance(image_url, str) or not image_url:
+                    continue
+
+                # If it's not already a URL or a data: URI, treat as base64 and wrap it.
+                if not (image_url.startswith("data:") or image_url.startswith("http://") or image_url.startswith("https://")):
+                    mime = getattr(att, "mime", None) or "image/png"
+                    image_url = f"data:{mime};base64,{image_url}"
+
+                content.append({"type": "input_image", "image_url": image_url})
+
+            # Responses API expects content blocks; keep it non-empty.
+            if not content:
+                content = [{"type": "input_text", "text": ""}]
+
+            openai_messages.append({"role": m.role, "content": content})
+
         return openai_messages
-    
+
     def _responses_text_from_message_item(self, msg_item: t.Dict[str, t.Any]) -> str:
         content = msg_item.get("content", [])
         if not isinstance(content, list):
@@ -430,48 +941,47 @@ class OpenAIResp(LangEngine):
             if isinstance(part, dict) and isinstance(part.get("text"), str)
         )
 
-    def set_core_elements(self, resp: "Resp", message: t.Dict) -> t.Dict[str, t.Any]:
-        payload = message
-
-        resp.raw = payload
-        resp.id = payload.get("id")
-        resp.model = payload.get("model")
-        resp.usage = payload.get("usage", {}) if isinstance(payload.get("usage"), dict) else {}
-
-        # first output message item
-        output = payload.get("output") or []
-        msg_item = next(
-            (it for it in output if isinstance(it, dict) and it.get("type") == "message"),
-            {}
-        )
-
-        resp.role = msg_item.get("role", "assistant")
-        resp.text = self._responses_text_from_message_item(msg_item)
-
     def set_core_delta_elements(
         self,
         cur_resp: "Resp",
         cur_delta: "DeltaResp",
         prev_resp: "Resp",
         delta_message: dict,  # single Responses streaming event payload
-    ) -> t.Dict[str, t.Any]:
+    ):
+        # --- delta: reset to "this chunk only"
         cur_delta.text = None
         cur_delta.usage = None
-        cur_delta.finish_reason = None  # no clean analogue here; leave to subclass if desired
+        cur_delta.finish_reason = None  # Responses events don't map cleanly; leave unset here
+
+        # --- tolerate first chunk where prev_resp may be None
+        prev_id = getattr(prev_resp, "id", None) if prev_resp is not None else None
+        prev_model = getattr(prev_resp, "model", None) if prev_resp is not None else None
+        prev_role = getattr(prev_resp, "role", None) if prev_resp is not None else None
+        prev_text = getattr(prev_resp, "text", "") if prev_resp is not None else ""
+        prev_usage = getattr(prev_resp, "usage", {}) if prev_resp is not None else {}
+
+        if not isinstance(prev_text, str):
+            prev_text = ""
+        if not isinstance(prev_usage, dict):
+            prev_usage = {}
 
         ev_type = delta_message.get("type")
 
-        # Some events contain a nested "response" object (created/completed/error-ish)
         resp_obj = delta_message.get("response")
         resp_obj = resp_obj if isinstance(resp_obj, dict) else {}
 
-        # Accumulate identity/model as they become available
-        cur_resp.id = prev_resp.id or delta_message.get("response_id") or resp_obj.get("id")
-        cur_resp.model = prev_resp.model or resp_obj.get("model")
-        cur_resp.role = prev_resp.role or "assistant"
+        # Identity/model can arrive on created/completed events via resp_obj, or per-event response_id
+        response_id = delta_message.get("response_id")
+        if not isinstance(response_id, str):
+            response_id = None
 
-        # Text is typically delivered via response.output_text.delta events
-        prev_text = prev_resp.text if isinstance(prev_resp.text, str) else ""
+        cur_resp.id = prev_id or response_id or (resp_obj.get("id") if isinstance(resp_obj.get("id"), str) else None)
+        cur_resp.model = prev_model or (resp_obj.get("model") if isinstance(resp_obj.get("model"), str) else None)
+
+        # Role is typically not included on text delta events; keep previous/default
+        cur_resp.role = prev_role or "assistant"
+
+        # Text is typically delivered via response.output_text.delta
         if ev_type == "response.output_text.delta":
             text_inc = delta_message.get("delta")
             if isinstance(text_inc, str) and text_inc:
@@ -482,33 +992,54 @@ class OpenAIResp(LangEngine):
         else:
             cur_resp.text = prev_text
 
-        # Usage often arrives on/near completion in resp_obj["usage"]; treat as "latest total"
+        # Usage commonly arrives on/near completion in resp_obj["usage"] (treat as latest total)
         usage_inc = resp_obj.get("usage")
         usage_inc = usage_inc if isinstance(usage_inc, dict) else None
 
-        cur_resp.usage = usage_inc if usage_inc is not None else (prev_resp.usage or {})
         if usage_inc is not None:
             cur_delta.usage = usage_inc
+            cur_resp.usage = usage_inc
+        else:
+            cur_resp.usage = prev_usage
 
+        # Keep raw event around for debugging
         cur_resp.raw = delta_message
-            
-    def set_tools(self, resp: "Resp", message: dict) -> dict:
+
+    def set_tools(self, resp: "Resp", message: dict) -> None:
         """
         Responses API (non-streamed):
-        payload["output"] contains items; tool calls are typically items with type == "function_call".
-        Completed tool calls -> resp.tool_use (ToolUse objects).
-        """
 
+        The full response payload has an `output` array of items, where tool calls
+        are typically objects with:
+            {
+            "type": "function_call" | "tool_call",
+            "call_id": "...",          # id the model uses for this call
+            "name": "...",             # tool/function name
+            "arguments": "{...json...}"
+            ...
+            }
+
+        This method converts those into ToolUse objects on resp.tool_use.
+        """
+        # Resolve available tools -> map by name
         tools = getattr(self, "tools", None) or getattr(self, "_tools", None) or []
-        tool_map = {t.name: t for t in tools}
+        if not isinstance(tools, list) or not tools:
+            resp.tool_use = []
+            return
+
+        tool_map: dict[str, BaseTool] = {}
+        for tool in tools:
+            name = getattr(tool, "name", None)
+            if isinstance(name, str) and name:
+                tool_map[name] = tool
 
         output = message.get("output") or []
         if not isinstance(output, list) or not output:
             resp.tool_use = []
-            return {"tool_calls": []}
+            return
 
-        out: list["ToolUse"] = []
-        raw_completed: list[dict] = []
+        tool_uses: list[ToolUse] = []
+        unknown_calls: list[dict] = []
 
         for item in output:
             if not isinstance(item, dict):
@@ -518,7 +1049,7 @@ class OpenAIResp(LangEngine):
             if itype not in ("function_call", "tool_call"):
                 continue
 
-            # Responses commonly uses: {"type":"function_call","call_id":...,"name":...,"arguments":...}
+            # Common Responses shape: {"type":"function_call","call_id":...,"name":...,"arguments":...}
             name = item.get("name") or item.get("tool_name")
             args_text = item.get("arguments", "")
             call_id = item.get("call_id") or item.get("id")
@@ -528,26 +1059,89 @@ class OpenAIResp(LangEngine):
 
             tool_def = tool_map.get(name)
             if tool_def is None:
+                unknown_calls.append(item)
                 continue
 
-            try:
-                args = json.loads(args_text) if args_text.strip() else {}
-                if not isinstance(args, dict):
+            # Parse arguments JSON (best-effort)
+            args: dict = {}
+            if args_text.strip():
+                try:
+                    parsed = json.loads(args_text)
+                    if isinstance(parsed, dict):
+                        args = parsed
+                except Exception:
                     args = {}
+
+            tool_id = call_id if isinstance(call_id, str) and call_id else f"tool_{len(tool_uses)}"
+
+            try:
+                tool_use = tool_def.to_tool_call(tool_id=tool_id, **args)
             except Exception:
-                args = {}
+                # If something goes wrong building ToolUse, treat as unknown
+                unknown_calls.append(item)
+                continue
 
-            tool_id = (call_id if isinstance(call_id, str) and call_id else f"tool_{len(out)}")
-            tool_use = tool_def.to_tool_call(tool_id=tool_id, **args)
+            # Preserve provider call id on ToolUse.id if present
+            if isinstance(call_id, str) and call_id:
+                tool_use.id = call_id
 
-            # Preserve provider ids where possible
-            if isinstance(item.get("id"), str):
-                tool_use.id = item["id"]
+            tool_uses.append(tool_use)
 
-            out.append(tool_use)
-            raw_completed.append(item)
+        resp.tool_use = tool_uses
 
-        resp.tool_use = out
+        if unknown_calls:
+            if not isinstance(resp.meta, dict):
+                resp.meta = {}
+            resp.meta.setdefault("unknown_tool_calls", [])
+            if isinstance(resp.meta["unknown_tool_calls"], list):
+                resp.meta["unknown_tool_calls"].extend(unknown_calls)
+
+    def convert_format_override(
+        self,
+        format_override: t.Union[bool, dict, pydantic.BaseModel, t.Type[pydantic.BaseModel], None],
+    ) -> t.Union[bool, dict, None]:
+        """Convert Dachi format override to Responses-API-compatible `text.format` payload."""
+        if format_override is None or format_override is False:
+            return None
+
+        # "json mode" (no schema)
+        if format_override is True:
+            return {"type": "json_object"}
+
+        # Already-converted / user-supplied format dict
+        if isinstance(format_override, dict):
+            return format_override
+
+        model_cls: t.Optional[t.Type[pydantic.BaseModel]] = None
+
+        # Accept either a BaseModel instance or a BaseModel subclass
+        if isinstance(format_override, pydantic.BaseModel):
+            model_cls = format_override.__class__
+        elif isinstance(format_override, type) and issubclass(format_override, pydantic.BaseModel):
+            model_cls = format_override
+
+        if model_cls is None:
+            return None
+
+        # Build JSON Schema
+        schema: dict
+        try:
+            schema = model_cls.model_json_schema()  # pydantic v2
+        except Exception:
+            try:
+                schema = model_cls.schema()  # pydantic v1
+            except Exception:
+                schema = {}
+
+        return {
+            "type": "json_schema",
+            "json_schema": {
+                "name": model_cls.__name__,
+                "schema": schema,
+                "strict": True,
+            },
+        }
+
 
     def set_tools_delta(
         self,
@@ -558,129 +1152,200 @@ class OpenAIResp(LangEngine):
     ) -> dict:
         """
         Responses API (streaming events):
-        - Accumulate partial tool calls in cur_delta.accumulation via ToolBuffer
-        - Only set cur_delta.tool when a tool call has fully completed
-        - When a call completes, ToolBuffer clears that call’s accumulator automatically
-        - We also clear the item_id routing entry on completion
+        - Tracks tool call items by item_id
+        - Accumulates args text fragments into a ToolBuffer
+        - Emits ToolUse objects only when a call completes (done=True)
         """
-        # DeltaResp.tool must be None unless we completed a full tool call this chunk
         cur_delta.tool = None
-
-        # Start tool_use accumulation from prev_resp, then append any newly completed calls
         cur_resp.tool_use = list(prev_resp.tool_use)
 
-        # Ensure accumulation exists
-        if not isinstance(cur_delta.accumulation, dict):
-            cur_delta.accumulation = {}
+        # --- persistent state across chunks (store on resp.meta so it survives via prev_resp)
+        if not isinstance(getattr(cur_resp, "meta", None), dict):
+            cur_resp.meta = {}
+        if prev_resp is not None and isinstance(getattr(prev_resp, "meta", None), dict):
+            # keep any existing meta; but prefer to carry tool-stream state forward
+            if "_responses_tool_stream" in prev_resp.meta and "_responses_tool_stream" not in cur_resp.meta:
+                cur_resp.meta["_responses_tool_stream"] = prev_resp.meta["_responses_tool_stream"]
 
-        # ToolBuffer + emitted counter persist in cur_delta.accumulation (your caller must carry it forward)
-        buf = cur_delta.accumulation.get("tool_buffer")
-        if buf is None:
+        state = cur_resp.meta.get("_responses_tool_stream")
+        if not isinstance(state, dict):
+            tools = getattr(self, "tools", None) or getattr(self, "_tools", None) or []
+            state = {
+                "buf": ToolBuffer(tools=tools),
+                "emitted": 0,
+                "by_item_id": {},      # item_id -> {"id": call_id|None, "name": str|None, "call_index": int, "has_text": bool}
+                "next_call_index": 0,
+            }
+            cur_resp.meta["_responses_tool_stream"] = state
+
+        buf = state.get("buf")
+        if not isinstance(buf, ToolBuffer):
             tools = getattr(self, "tools", None) or getattr(self, "_tools", None) or []
             buf = ToolBuffer(tools=tools)
-            cur_delta.accumulation["tool_buffer"] = buf
-            cur_delta.accumulation["tool_emitted"] = 0
-            cur_delta.accumulation["tool_item_meta"] = {}  # item_id -> {"call_id":..., "name":...}
+            state["buf"] = buf
 
-        emitted = cur_delta.accumulation.get("tool_emitted", 0)
+        emitted = state.get("emitted", 0)
         if not isinstance(emitted, int):
             emitted = 0
-            cur_delta.accumulation["tool_emitted"] = 0
+            state["emitted"] = 0
 
-        item_meta = cur_delta.accumulation.get("tool_item_meta")
-        if not isinstance(item_meta, dict):
-            item_meta = {}
-            cur_delta.accumulation["tool_item_meta"] = item_meta
+        by_item_id = state.get("by_item_id")
+        if not isinstance(by_item_id, dict):
+            by_item_id = {}
+            state["by_item_id"] = by_item_id
+
+        next_call_index = state.get("next_call_index", 0)
+        if not isinstance(next_call_index, int):
+            next_call_index = 0
+            state["next_call_index"] = 0
 
         ev_type = delta_message.get("type")
 
-        # ---- 1) Discover tool call identity (name/call_id) when item is added/done
-        if ev_type in ("response.output_item.added", "response.output_item.done"):
-            item = delta_message.get("item")
-            if isinstance(item, dict) and item.get("type") == "function_call":
-                item_id = item.get("id") if isinstance(item.get("id"), str) else None
-                call_id = item.get("call_id") if isinstance(item.get("call_id"), str) else None
-                name = item.get("name") if isinstance(item.get("name"), str) else None
-                args_text = item.get("arguments") if isinstance(item.get("arguments"), str) else None
+        # Helper: get or create routing record for an item_id
+        def _get_rec(item_id: str) -> dict:
+            nonlocal next_call_index
+            rec = by_item_id.get(item_id)
+            if not isinstance(rec, dict):
+                rec = {"id": None, "name": None, "call_index": next_call_index, "has_text": False}
+                by_item_id[item_id] = rec
+                next_call_index += 1
+                state["next_call_index"] = next_call_index
+            return rec
 
-                if item_id and name:
-                    # store routing so later arguments.delta knows the name/call_id
-                    item_meta[item_id] = {"call_id": (call_id or item_id), "name": name}
+    # --- handle Responses tool-call events
+    if ev_type in ("response.output_item.added", "response.output_item.done"):
+        item = delta_message.get("item")
+        if isinstance(item, dict) and item.get("type") in ("function_call", "tool_call"):
+            item_id = item.get("id")
+            if isinstance(item_id, str) and item_id:
+                rec = _get_rec(item_id)
 
-                    # feed any args already present
-                    buf.append(
-                        ToolChunk(
-                            id=(call_id or item_id),
-                            name=name,
-                            args_text_delta=args_text,
-                            done=(ev_type == "response.output_item.done"),
-                            metadata={"event": ev_type, "item_id": item_id},
+                call_id = item.get("call_id")
+                if isinstance(call_id, str) and call_id:
+                    rec["id"] = call_id
+
+                name = item.get("name") or item.get("tool_name")
+                if isinstance(name, str) and name:
+                    rec["name"] = name
+
+                args_text = item.get("arguments")
+                if isinstance(args_text, str) and args_text:
+                    rec["has_text"] = True
+                    try:
+                        buf.append(
+                            ToolChunk(
+                                id=rec["id"],
+                                turn_index=0,
+                                call_index=rec["call_index"],
+                                name=rec["name"],
+                                args_text_delta=args_text,
+                                done=False,
+                            )
                         )
-                    )
+                    except Exception:
+                        pass
 
-                    # if done, clear routing entry now
-                    if ev_type == "response.output_item.done":
-                        item_meta.pop(item_id, None)
+                # If the provider marks the output item as done, finalize the call.
+                if ev_type == "response.output_item.done":
+                    try:
+                        buf.append(
+                            ToolChunk(
+                                id=rec["id"],
+                                turn_index=0,
+                                call_index=rec["call_index"],
+                                name=rec["name"],
+                                args_text_delta=None,
+                                done=True,
+                            )
+                        )
+                    except Exception:
+                        pass
+                    # No further argument deltas should arrive for this item_id
+                    by_item_id.pop(item_id, None)
 
-        # ---- 2) Stream arguments fragments
-        elif ev_type == "response.function_call_arguments.delta":
-            item_id = delta_message.get("item_id") if isinstance(delta_message.get("item_id"), str) else None
-            text = delta_message.get("delta") if isinstance(delta_message.get("delta"), str) else None
-
-            if item_id and text:
-                meta = item_meta.get(item_id) or {}
-                call_id = meta.get("call_id") if isinstance(meta.get("call_id"), str) else item_id
-                name = meta.get("name") if isinstance(meta.get("name"), str) else None
-
-                if name:
+    elif ev_type == "response.function_call_arguments.delta":
+        item_id = delta_message.get("item_id")
+        if isinstance(item_id, str) and item_id:
+            rec = _get_rec(item_id)
+            delta_txt = delta_message.get("delta")
+            if isinstance(delta_txt, str) and delta_txt:
+                rec["has_text"] = True
+                try:
                     buf.append(
                         ToolChunk(
-                            id=call_id,
-                            name=name,
-                            args_text_delta=text,
+                            id=rec["id"],
+                            turn_index=0,
+                            call_index=rec["call_index"],
+                            name=rec["name"],
+                            args_text_delta=delta_txt,
                             done=False,
-                            metadata={"event": ev_type, "item_id": item_id},
                         )
                     )
+                except Exception:
+                    pass
 
-        # ---- 3) Mark arguments done
-        elif ev_type == "response.function_call_arguments.done":
-            item_id = delta_message.get("item_id") if isinstance(delta_message.get("item_id"), str) else None
-            final_text = delta_message.get("arguments") if isinstance(delta_message.get("arguments"), str) else None
+    elif ev_type == "response.function_call_arguments.done":
+        item_id = delta_message.get("item_id")
+        if isinstance(item_id, str) and item_id:
+            rec = _get_rec(item_id)
 
-            if item_id:
-                meta = item_meta.get(item_id) or {}
-                call_id = meta.get("call_id") if isinstance(meta.get("call_id"), str) else item_id
-                name = meta.get("name") if isinstance(meta.get("name"), str) else None
-
-                if name:
+            final_args = delta_message.get("arguments")
+            if isinstance(final_args, str) and final_args and not rec.get("has_text", False):
+                # If we never saw deltas, treat `arguments` as the full payload once.
+                rec["has_text"] = True
+                try:
                     buf.append(
                         ToolChunk(
-                            id=call_id,
-                            name=name,
-                            args_text_delta=final_text,
-                            done=True,
-                            metadata={"event": ev_type, "item_id": item_id},
+                            id=rec["id"],
+                            turn_index=0,
+                            call_index=rec["call_index"],
+                            name=rec["name"],
+                            args_text_delta=final_args,
+                            done=False,
                         )
                     )
+                except Exception:
+                    pass
 
-                # routing no longer needed once done signal arrives
-                item_meta.pop(item_id, None)
-
-        # ---- Emit any newly completed ToolUse objects from ToolBuffer
-        new_calls = buf._calls[emitted:]
-        if new_calls:
-            cur_resp.tool_use.extend(new_calls)
-            cur_delta.accumulation["tool_emitted"] = emitted + len(new_calls)
-
-            # DeltaResp.tool must only be set when fully accumulated.
-            # ToolBuffer doesn’t keep exact original JSON text, so we emit canonical JSON from inputs.
-            last = new_calls[-1]
+            # Mark completion
             try:
-                cur_delta.tool = json.dumps(last.inputs.model_dump())
+                buf.append(
+                    ToolChunk(
+                        id=rec["id"],
+                        turn_index=0,
+                        call_index=rec["call_index"],
+                        name=rec["name"],
+                        args_text_delta=None,
+                        done=True,
+                    )
+                )
             except Exception:
-                cur_delta.tool = "{}"
+                pass
 
+            by_item_id.pop(item_id, None)
+
+    # If the response is fully completed, clear tool-stream state to avoid leakage
+    if ev_type in ("response.completed", "response.failed", "response.cancelled"):
+        cur_resp.meta.pop("_responses_tool_stream", None)
+
+    # --- emit newly completed ToolUse calls from ToolBuffer
+    calls = getattr(buf, "_calls", [])
+    if isinstance(calls, list) and emitted < len(calls):
+        new_calls = calls[emitted:]
+        for c in new_calls:
+            # ToolBuffer sets tool_id from provider id; mirror it into `id` for consistency
+            if getattr(c, "id", None) is None and isinstance(getattr(c, "tool_id", None), str):
+                c.id = c.tool_id
+
+        cur_resp.tool_use.extend(new_calls)
+        state["emitted"] = len(calls)
+
+        # Only set delta.tool when a call completed this chunk
+        last = new_calls[-1]
+        try:
+            cur_delta.tool = json.dumps(last.inputs.model_dump())
+        except Exception:
+            cur_delta.tool = "{}"
         return {"completed": new_calls}
 
 
@@ -1207,4 +1872,3 @@ class OpenAIResp(LangEngine):
 # [5]: https://zenn.dev/tomodo_ysys/articles/openai-streaming-token-count?utm_source=chatgpt.com "[OpenAI API] ストリーミングレスポンスの構造を理解して ..."
 # [6]: https://platform.openai.com/docs/api-reference/responses?utm_source=chatgpt.com "Responses API reference"
 # [7]: https://community.openai.com/t/api-response-is-not-json-parsable-despite-specified-response-format/1014311?utm_source=chatgpt.com "API response is not JSON parsable despite specified ..."
-

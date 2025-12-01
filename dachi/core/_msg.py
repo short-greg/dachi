@@ -97,9 +97,9 @@ class Msg(BaseModel):
     # Core message content
     role: str
     alias: t.Optional[str] = None
-    text: t.Optional[t.Union[str, t.Dict[str, t.Any]]] = Field(
-        default="", 
-        description="Text content as string or structured dict with channels (e.g., final, thinking)"
+    text: t.Optional[str] = Field(
+        default=None, 
+        description="Text content as string."
     )
     
     # Rich content  

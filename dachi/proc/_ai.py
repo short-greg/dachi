@@ -7,39 +7,36 @@ import pydantic
 
 # local
 from ..core import (
-    Msg, Resp, Module, DeltaResp, Prompt,  BaseDialog, BaseTool
+    Msg, Resp, DeltaResp, Prompt,  BaseDialog, BaseTool
 )
-from ._process import AsyncProcess
+from ._process import AsyncProcess, Process, AsyncStreamProcess, StreamProcess
 from ._resp import ToOut
-from ._msg import TO_PROMPT
 
 # TODO: MOVE OUT OF HERE
-S = t.TypeVar('S', bound=pydantic.BaseModel)
 
-from ._process import Process, AsyncProcess, AsyncStreamProcess, StreamProcess
 from ..core import BaseDialog
 
 # TODO: Update Assistant / LLM
 LLM_PROMPT: t.TypeAlias = t.Union[t.Iterable[Msg], Msg]
-S = t.TypeVar('S', bound=pydantic.BaseModel)
+BASE_MODEL = t.TypeVar('S', bound=pydantic.BaseModel)
 
 
 class LLMAdapter(Process, AsyncProcess, StreamProcess, AsyncStreamProcess, ABC):
 
     @abstractmethod
-    def forward(self, *args, **kwargs):
+    def forward(self, *args, **kwargs) :
         pass
     
     @abstractmethod
-    async def aforward(self, *args, **kwargs):
+    async def aforward(self, *args, **kwargs) -> t.Dict:
         pass
 
     @abstractmethod
-    def stream(self, *args, **kwargs):
+    def stream(self, *args, **kwargs) -> t.Iterator[t.Dict]:
         pass
 
     @abstractmethod
-    async def astream(self, *args, **kwargs):
+    async def astream(self, *args, **kwargs) -> t.AsyncIterator:
         pass
 
 
@@ -111,11 +108,6 @@ class LangEngine(Process, AsyncProcess, StreamProcess, AsyncStreamProcess, t.Gen
     """
     llm: LLM_ADAPTER
 
-    @abstractmethod
-    def to_input(self, msg: Msg | BaseDialog, **kwargs) -> t.Dict:
-        """Convert Dachi messages to LLM-specific input format"""
-        pass
-
     def forward(self, msg: Msg | BaseDialog, out: t.Union[t.Tuple[ToOut, ...], t.Dict[str, ToOut], ToOut, None] = None, *args, **kwargs) -> Resp:
         """Execute LLM function with format conversion"""
         api_input = self.to_input(msg, *args, **kwargs)
@@ -135,13 +127,14 @@ class LangEngine(Process, AsyncProcess, StreamProcess, AsyncStreamProcess, t.Gen
         prev_resp = None
         delta_store = {}
         for chunk in self.llm.stream(**api_input):
-            yield self.from_streamed_resp(
+            prev_resp, delta_resp = self.from_streamed_resp(
                 prev_resp=prev_resp,
                 chunk=chunk,
                 out=out,
                 delta_store=delta_store,
                 is_last=False,  # You might want to replace this with actual is_last flag
             )
+            yield prev_resp, delta_resp      
     
     async def astream(self, msg: Msg | BaseDialog, out: t.Union[t.Tuple[ToOut, ...], t.Dict[str, ToOut], ToOut, None] = None, *args, **kwargs) -> t.AsyncIterator[t.Tuple[Resp, DeltaResp]]:
         """Execute streaming LLM function asynchronously with format conversion"""
@@ -149,15 +142,16 @@ class LangEngine(Process, AsyncProcess, StreamProcess, AsyncStreamProcess, t.Gen
         
         prev_resp = None
         delta_store = {}
-        async for chunk in await self.llm.astream(**api_input):
+        async for chunk in self.llm.astream(**api_input):
             
-            yield self.from_streamed_resp(
+            prev_resp, delta_resp = self.from_streamed_resp(
                 prev_resp=prev_resp,
                 chunk=chunk,
                 out=out,
                 delta_store=delta_store,
                 is_last=False,  # You might want to replace this with actual is_last flag
             )
+            yield prev_resp, delta_resp
         # have to set the last response outside the loop to mark is_last=True
         # think how to do that 
 
@@ -174,18 +168,26 @@ class LangEngine(Process, AsyncProcess, StreamProcess, AsyncStreamProcess, t.Gen
         )
         self.set_out(resp, out)
         return resp
+    
+    @abstractmethod
+    def to_api_input(self, messages: list[dict], tools: list[dict], format_override: t.Union[bool, dict, pydantic.BaseModel, None], **kwargs) -> t.Dict:
+        """Convert Dachi messages, tools, and format override to LLM-specific input format"""
+        pass
+
+    def convert_format_override(self, format_override: t.Union[bool, dict, pydantic.BaseModel, None]) -> t.Union[bool, dict, None]:
+        """Convert Dachi format override to LLM-specific format override"""
+        pass
 
     def to_input(self, msg: Msg | BaseDialog, **kwargs) -> t.Dict:
         """Convert Dachi messages to LLM-specific input format"""
 
         tools = extract_tools_from_messages(msg)
-        format_override = extract_format_override_from_messages(msg)    
+        format_override = extract_format_override_from_messages(msg)
         messages = self.convert_messages(msg)
-        api_input = {
-            'messages': messages,
-            'tools': tools,
-            'format_override': format_override,
-        }
+        tools = self.convert_tools(tools)
+        format_override = self.convert_format_override(format_override)
+        api_input = self.to_api_input(messages, tools, format_override, **kwargs)
+
         api_input.update(kwargs)
         return api_input
 
@@ -205,10 +207,16 @@ class LangEngine(Process, AsyncProcess, StreamProcess, AsyncStreamProcess, t.Gen
             prev_resp=prev_resp,
             delta_message=chunk
         )
-        resp.out = self.set_out_delta(resp, delta, out, delta_store, is_last=is_last)  
+        self.set_out_delta(resp, delta, out, delta_store, is_last=is_last)  
         return resp, delta
+    
+    def convert_messages(self, msg: Msg | BaseDialog) -> t.List[t.Dict]:
+        pass
 
-    def set_core_elements(self, resp: "Resp", message: t.Dict) -> t.Dict[str, t.Any]:
+    def convert_tools(self, tools: t.List[BaseTool]) -> t.List[t.Dict]:
+        pass
+
+    def set_core_elements(self, resp: "Resp", message: t.Dict):
         pass
 
     def set_core_delta_elements(
@@ -266,5 +274,3 @@ class LangEngine(Process, AsyncProcess, StreamProcess, AsyncStreamProcess, t.Gen
             cur_resp.out = out.delta(cur_delta.text, delta_store, is_last)
         else:
             raise TypeError(f"Unsupported out type: {type(out)}")
-
-
