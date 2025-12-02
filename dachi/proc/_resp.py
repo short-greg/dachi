@@ -63,55 +63,6 @@ from dachi.proc import Process
 
 RESPONSE_FIELD = 'response'
 
-# TODO: After updating this
-# the _out.py, _parse.py and _resp.py tests must
-# be updated. and consolidated into here
-# I also want to remove "def post"
-# all of these just output a value (They will be ToOuts)
-# and that value will 
-
-# Also, I want to update these to take in a Resp rather
-# than a message. Then I want to have a delta method
-# and a regular forward method (separate them
-# Aim to simplify all of these classes
-
-
-# RespProc => use to covert to "out"
-# out = {
-#   'x': bool, # will create a boolean RespProc (convert text to bool)
-#   'y': int, # will create an integer (PrimConv) RespProc (convert text to int)
-#   'd': pydantic.BaseModel # use the actual Pydantic model type..
-#        # will use "StructConv" i.e.. Structured output conv
-#   'z': ToOut()
-# }
-# out = tuple(...) # outputs a tuple
-# out = dict() # outputs a dict 
-# out = ... # outputs a single value
-# out = ToOut()
-# ToOut(CSV())
-# ToOut(JSON())
-# ToOut(JSONList())
-# # this will loop key by key
-# # returning dictionary by dictionary
-# ToOut(JSONKeys())
-# ToolUse() 
-# <- set the name of the tool
-# <- allow to execute the tool and write the result
-#
-# Don't add out to LLM
-# add it to op... op
-
-
-# Adapter... <- keep this separate
-# OP(LLM(), out=...)
-# llm( out=...)
-# llm.forward(out=...)
-# llm()
-# # set the default out
-# op("")
-# tool_user("", out=..)
-# <- checks tool use and can continue the conversation
-
 # TODO: Decide where to put this
 class JSONObj(pydantic.BaseModel):
     """Wrapper for JSON output configuration"""
@@ -177,7 +128,7 @@ class ToOut(
     Templatable, 
     ExampleMixin
 ):
-    """ToOut is used to set an AI response (Resp)'s out member.
+    """ToOut is used to set an AI response (str)'s out member.
     """
     
     @abstractmethod
@@ -232,7 +183,7 @@ class ToOut(
         """Process streaming response chunks
         
         Args:
-            resp: Response chunk containing data in resp.data['response']
+            str | None: Response chunk containing data in resp.data['response']
             delta_store: State storage for accumulating across chunks
             is_last: Whether this is the final chunk
             
@@ -280,7 +231,7 @@ class PrimOut(ToOut):
     def forward(self, resp: str | None) -> typing.Any:
         """Process complete non-streaming response
         
-        resp (Resp): Complete response to process
+        resp (str | None): Complete response to process
         """
         if resp is None:
             return utils.UNDEFINED
@@ -301,7 +252,7 @@ class PrimOut(ToOut):
         """Process streaming response chunks
         
         Args:
-            resp (Resp): The response object to process
+            resp (str | None): The response object to process
             delta_store (typing.Dict): The dictionary to store deltas
             is_last (bool, optional): Whether this is the last chunk. Defaults to True. 
         """
@@ -590,7 +541,7 @@ class IndexOut(ToOut):
     def forward(self, resp: str | None) -> typing.Any:
         """Process complete non-streaming response
         
-        resp (Resp): The response object to process
+        str
         """
         if resp is None:
             return utils.UNDEFINED
@@ -623,7 +574,7 @@ class IndexOut(ToOut):
     ) -> typing.Any:
         """Process streaming response chunks
         Args:
-            resp (Resp): The response object to process
+            resp (str | None): The response object to process
             delta_store (typing.Dict): The dictionary to store deltas
             is_last (bool, optional): Whether this is the last chunk. Defaults to True.
         Raises:
@@ -865,7 +816,7 @@ class TupleOut(ToOut, typing.Generic[OUT]):
         """Process streaming response chunks
         
         Args:
-            resp (Resp): The response object to process
+            resp (str | None): The response object to process
             delta_store (typing.Dict): The dictionary to store deltas
             is_last (bool, optional): Whether this is the last chunk. Defaults to True.
         Raises:
