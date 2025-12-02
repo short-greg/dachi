@@ -48,16 +48,6 @@ from ._dialog import (
     NULL_TOK,
     FieldRenderer
 )
-
-
-from ._msg import (
-    Msg,
-    Prompt,
-    Resp,
-    DeltaResp,
-    Attachment,
-    to_dialog,
-)
 from ._render import (
     TemplateField,
     model_to_text,
