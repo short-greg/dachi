@@ -884,7 +884,7 @@ class JSONValsOut(ToOut):
         # Output: [('name', 'John'), ('age', 30), ('city', 'New York')]
 
         resp1 = Resp(msg=Msg(role='assistant', text='{"name": "John", '))
-        resp2 = Resp(msg=Msg(role='assistant', text='"age": 30, '))
+        resp2 = 'Resp'(msg=Msg(role='assistant', text='"age": 30, '))
         resp3 = Resp(msg=Msg(role='assistant', text='"city": "New York"}'))
         resp4 = Resp(msg=Msg(role='assistant', text='}'))
         print("Streaming JSON values:")
