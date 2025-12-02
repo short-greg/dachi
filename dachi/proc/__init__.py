@@ -53,15 +53,6 @@ from ._msg import (
     ToText,
     TO_PROMPT
 )
-from ._ai import (
-    LLM_PROMPT,
-    LLMAdapter,
-)
-from .openai import (
-    OpenAIChat,
-    OpenAIResp,
-    OpenAILLM,
-)
 from ._resp import (
     JSONObj,
     ReadError,

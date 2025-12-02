@@ -12,10 +12,6 @@ from ..core import (
 from ._process import AsyncProcess, Process, AsyncStreamProcess, StreamProcess
 from ._resp import ToOut
 
-# TODO: MOVE OUT OF HERE
-
-from ..core import BaseDialog
-
 # TODO: Update Assistant / LLM
 LLM_PROMPT: t.TypeAlias = t.Union[t.Iterable[Msg], Msg]
 BASE_MODEL = t.TypeVar('S', bound=pydantic.BaseModel)
