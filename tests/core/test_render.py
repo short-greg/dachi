@@ -20,7 +20,7 @@ import pytest
 
 # Dynamic import so the tests work regardless of project layout.
 from dachi.core import (
-    Templatable, model_to_text,
+    model_to_text,
     render, is_renderable,
     render_multi, Renderable,
     TemplateField

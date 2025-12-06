@@ -18,7 +18,7 @@ from dachi.inst._criterion import (
     TextField,
     BoolField,
 )
-from dachi.core import Prompt
+from dachi.core import Inp
 from dachi.proc import Process
 
 

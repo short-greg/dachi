@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-import typing
+import typing as t
 from abc import abstractmethod
-from typing import Type, List
 from pydantic import BaseModel, Field, ConfigDict, PrivateAttr, create_model
 from ..core import Renderable
 
@@ -59,19 +58,19 @@ class BoolField(EvalField):
 class DictField(EvalField):
     """Dictionary field for dynamic key-value pairs."""
 
-    value_type: Type = str
+    value_type: t.Type = str
 
     def get_field(self) -> tuple:
-        return (typing.Dict[str, self.value_type], Field(description=self.description))
+        return (t.Dict[str, self.value_type], Field(description=self.description))
 
 
 class ListField(EvalField):
     """List field."""
 
-    item_type: Type = str
+    item_type: t.Type = str
 
     def get_field(self) -> tuple:
-        return (typing.List[self.item_type], Field(description=self.description, default_factory=list))
+        return (t.List[self.item_type], Field(description=self.description, default_factory=list))
 
 
 class BaseCriterion(BaseModel, Renderable):
@@ -82,18 +81,18 @@ class BaseCriterion(BaseModel, Renderable):
     name: str
     description: str | None = None
 
-    _evaluation_schema: Type[BaseModel] | None = PrivateAttr(default=None)
-    _batch_evaluation_schema: Type[BaseModel] | None = PrivateAttr(default=None)
+    _evaluation_schema: t.Type[BaseModel] | None = PrivateAttr(default=None)
+    _batch_evaluation_schema: t.Type[BaseModel] | None = PrivateAttr(default=None)
 
     @property
-    def evaluation_schema(self) -> Type[BaseModel]:
+    def evaluation_schema(self) -> t.Type[BaseModel]:
         """Get the single evaluation schema."""
         if self._evaluation_schema is None:
             raise RuntimeError("evaluation_schema not initialized")
         return self._evaluation_schema
 
     @property
-    def batch_evaluation_schema(self) -> Type[BaseModel]:
+    def batch_evaluation_schema(self) -> t.Type[BaseModel]:
         """Get the batch evaluation schema."""
         if self._batch_evaluation_schema is None:
             raise RuntimeError("batch_evaluation_schema not initialized")
@@ -108,7 +107,7 @@ class BaseCriterion(BaseModel, Renderable):
         object.__setattr__(self, '_evaluation_schema', single)
         object.__setattr__(self, '_batch_evaluation_schema', batch)
 
-    def _create_single(self) -> Type[BaseModel]:
+    def _create_single(self) -> t.Type[BaseModel]:
         """Create single evaluation schema by introspecting EvalFields.
 
         Note: criterion_name uses Optional[str] with default to support OpenAI strict mode.
@@ -116,10 +115,9 @@ class BaseCriterion(BaseModel, Renderable):
         traditional defaults. Instead, we use nullable types (str | None) and apply the
         default after validation if the LLM returns null.
         """
-        from typing import Optional
         fields = {
             'criterion_name': (
-                Optional[str],
+                t.Optional[str],
                 Field(default=self.name, description="Name of the criterion")
             )
         }
@@ -138,16 +136,15 @@ class BaseCriterion(BaseModel, Renderable):
             __base__=Evaluation,
         )
 
-    def _create_batch(self, single_schema: Type[BaseModel]) -> Type[BaseModel]:
+    def _create_batch(self, single_schema: t.Type[BaseModel]) -> t.Type[BaseModel]:
         """Create batch evaluation schema.
 
         Note: criterion_name uses Optional[str] with default to support OpenAI strict mode.
         """
-        from typing import Optional
         return create_model(
             f'{self.name.replace(" ", "_")}BatchEvaluation',
-            criterion_name=(Optional[str], Field(default=self.name, description="Name of the criterion")),
-            evaluations=(List[single_schema], Field(description="List of evaluations")),
+            criterion_name=(t.Optional[str], Field(default=self.name, description="Name of the criterion")),
+            evaluations=(t.List[single_schema], Field(description="List of evaluations")),
             __base__=BatchEvaluation
         )
 
@@ -156,6 +153,7 @@ class BaseCriterion(BaseModel, Renderable):
         """Render criterion for prompt."""
         pass
 
+CRITERION = t.TypeVar("CRITERION", bound=BaseCriterion)
 
 class PassFailCriterion(BaseCriterion):
     """Dichotomous judgment criterion (pass/fail)."""
@@ -256,11 +254,11 @@ class Evaluation(BaseModel):
     """
     model_config = ConfigDict(extra='forbid')
 
-    def to_record(self) -> typing.Dict:
+    def to_record(self) -> t.Dict:
         """
         Convert the evaluation to a record.
         Returns:
-            typing.Dict: A record
+            t.Dict: A record
         """
         return self.model_dump()
 
@@ -279,13 +277,13 @@ class BatchEvaluation(BaseModel):
     This value is used to evaluate the performance of the parameters.
     """
     model_config = ConfigDict(extra='forbid')
-    evaluations: typing.List[Evaluation]
+    evaluations: t.List[Evaluation]
 
-    def to_records(self) -> typing.List[typing.Dict]:
+    def to_records(self) -> t.List[t.Dict]:
         """
         Convert the evaluations to a list of records.
         Returns:
-            typing.List[typing.Dict]: A list of records
+            t.List[t.Dict]: A list of records
         """
         return [
             self.evaluations[i].to_record()

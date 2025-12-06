@@ -2,7 +2,6 @@
 from __future__ import annotations
 from abc import abstractmethod, ABC
 from typing import Union, Generic, Callable, Any, Dict, Optional, Union, List
-from pydantic.fields import FieldInfo
 import typing as t
 import pydantic
 from typing import Generic, Union
@@ -11,6 +10,10 @@ import json
 from enum import Enum, auto
 from dachi.utils import get_all_private_attr_annotations
 from abc import ABC, abstractmethod
+
+from abc import abstractmethod
+from enum import Enum
+
 
 from pydantic import BaseModel, Field
 
@@ -1440,6 +1443,15 @@ class ParamSet(pydantic.BaseModel, t.Generic[J]):
         for old_param, new_param in zip(self, updated):
             old_param.set(new_param.data)
 
+    def to_schema(self) -> dict:
+        """Get the JSON-schema for this ParamSet."""
+        return self.model_json_schema()
+    
+    @classmethod
+    def from_schema(cls, schema: dict) -> "ParamSet":
+        """Reconstruct a ParamSet from its JSON-schema."""
+        return cls.model_validate_json_schema(schema)
+
 
 class AdaptModule(
     Module, 
@@ -1605,3 +1617,31 @@ class AdaptModule(
 #     meta["is_runtime"] = True
 #     f.json_schema_extra = meta
 #     return f
+
+
+
+class TokenType(str, Enum):
+    END = 'END_TOK'
+    NULL = 'NULL_TOK'
+
+END_TOK = TokenType.END
+NULL_TOK = TokenType.NULL
+
+
+@pydantic.dataclasses.dataclass
+class Msg:
+    """A message in a dialog
+    """
+    role: str
+
+
+@pydantic.dataclasses.dataclass
+class TextMsg(Msg):
+    """A message in a dialog
+    """
+    role: str
+    text: str
+
+
+ITEM = t.TypeVar('ITEM')
+Inp: t.TypeAlias = pydantic.BaseModel | t.Dict[str, t.Any] | str | Msg

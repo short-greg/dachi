@@ -1,7 +1,29 @@
-from dachi.proc import _inst as core
-from ..utils.test_core import SimpleStruct
-from .test_ai import DummyAIModel
+import typing as t
 
+from dachi.proc import _inst as core
+from dachi.proc._ai import LangModel
+from dachi.core import Inp
+from ..utils.test_core import SimpleStruct
+
+
+class DummyAIModel(LangModel):
+    """Dummy AI model for testing instruction decorators."""
+    target: str = 'Great!'
+
+    def forward(self, prompt, structure=None, tools=None, **kwargs) -> t.Tuple[str, t.List[Inp]]:
+        return (self.target, [])
+
+    async def aforward(self, prompt, structure=None, tools=None, **kwargs) -> t.Tuple[str, t.List[Inp]]:
+        return (self.target, [])
+
+    def stream(self, prompt, structure=None, tools=None, **kwargs) -> t.Iterator[t.Tuple[str, t.List[Inp]]]:
+        for char in self.target:
+            yield (char, [])
+        yield ('', [])
+
+    async def astream(self, prompt, structure=None, tools=None, **kwargs) -> t.AsyncIterator[t.Tuple[str, t.List[Inp]]]:
+        for char in self.target:
+            yield (char, []) 
 
 def dummy_dec(f):
     """Use to ensure signaturemethod works 

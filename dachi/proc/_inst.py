@@ -45,11 +45,12 @@ from ._process import (
 )
 from ..core import Param, END_TOK
 from ..utils import primitives, str_formatter
-from ._msg import ToPrompt, NullToPrompt, ToText
+from ._msg import ToPrompt, NullToPrompt
 from ._resp import (
     ToOut, PrimOut, TextOut, StructOut
 )
 Engine: typing.TypeAlias = Process | AsyncProcess | StreamProcess | AsyncStreamProcess
+from dachi.core import render, style_formatter
 
 S = typing.TypeVar('S')
 # TODO: MOVE OUT OF HERE
@@ -399,7 +400,7 @@ class FuncDec(FuncDecBase):
         Returns:
             The processed output obtained after parsing and processing the engine's result.
         """
-        
+
         instance, args = self.get_instance(args)
         cue = self.inst(
             instance, *args, **kwargs
@@ -407,10 +408,8 @@ class FuncDec(FuncDecBase):
         msg = self.to_msg(cue)
         engine = self.get_engine(instance)
 
-        resp = engine(
-            msg, **self.kwargs
-        )
-        result = self.inst.out_conv.forward(resp.text)
+        text, _ = engine(msg, **self.kwargs)
+        result = self.inst.out_conv.forward(text)
         return result
 
     def spawn(self, instance=None) -> Self:
@@ -536,13 +535,9 @@ class StreamDec(FuncDecBase, StreamProcess):
         )
 
         delta_store = {}
-        for resp, delta_resp in engine.stream(
-            msg, **self.kwargs
-        ):  
-            is_last = resp.raw.get('response') == END_TOK
-            result = self.inst.out_conv.delta(delta_resp.text, delta_store, is_last)
-            resp.out = result
-            yield resp.out
+        for text, _ in engine.stream(msg, **self.kwargs):
+            result = self.inst.out_conv.delta(text, delta_store, is_last=False)
+            yield result
 
     def spawn(self, instance=None) -> Self:
         """
@@ -662,18 +657,18 @@ def instructfunc(
         )
 
         if not to_async and not to_stream:
-            dec = FuncDec(engine=engine, inst=inst, to_msg=ToText())
+            dec = FuncDec(engine=engine, inst=inst, to_msg=NullToPrompt())
             dec._kwargs = kwargs
             return dec
         if not to_stream:
-            dec = AFuncDec(engine=engine, inst=inst, to_msg=ToText())
+            dec = AFuncDec(engine=engine, inst=inst, to_msg=NullToPrompt())
             dec._kwargs = kwargs
             return dec
         if not to_async:
-            dec = StreamDec(engine=engine, inst=inst, to_msg=ToText())
+            dec = StreamDec(engine=engine, inst=inst, to_msg=NullToPrompt())
             dec._kwargs = kwargs
             return dec
-        dec = AStreamDec(engine=engine, inst=inst, to_msg=ToText())
+        dec = AStreamDec(engine=engine, inst=inst, to_msg=NullToPrompt())
         dec._kwargs = kwargs
         return dec
     return _
@@ -731,18 +726,18 @@ def signaturefunc(
         )
 
         if not to_async and not to_stream:
-            dec = FuncDec(engine=engine, inst=inst, to_msg=ToText())
+            dec = FuncDec(engine=engine, inst=inst, to_msg=NullToPrompt())
             dec._kwargs = kwargs
             return dec
         if not to_stream:
-            dec = AFuncDec(engine=engine, inst=inst, to_msg=ToText())
+            dec = AFuncDec(engine=engine, inst=inst, to_msg=NullToPrompt())
             dec._kwargs = kwargs
             return dec
         if not to_async:
-            dec = StreamDec(engine=engine, inst=inst, to_msg=ToText())
+            dec = StreamDec(engine=engine, inst=inst, to_msg=NullToPrompt())
             dec._kwargs = kwargs
             return dec
-        dec = AStreamDec(engine=engine, inst=inst, to_msg=ToText())
+        dec = AStreamDec(engine=engine, inst=inst, to_msg=NullToPrompt())
         dec._kwargs = kwargs
         return dec
 
@@ -773,3 +768,24 @@ def signaturemethod(
         kwargs=kwargs
     )
 
+
+class TemplateFormatter(Process):
+    """Formats a prompt template with objective, constraints, and evaluations.
+    """
+
+    prompt_template: str
+    to_render: bool = True
+    style: typing.Dict[str, typing.Any] | None = None
+
+    def forward(self, **kwargs) -> str:
+        if self.to_render:
+            kwargs = {
+                k: render(v, False) for k, v in kwargs.items()
+            }
+        if self.style is not None:
+            return style_formatter(
+                self.prompt_template, _style=self.style, **kwargs
+            )
+        return self.prompt_template.format(
+            **kwargs
+        )

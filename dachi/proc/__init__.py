@@ -47,12 +47,12 @@ from ._graph import (
     sync_t,
     async_t,
 )
-from ._msg import (
-    ToPrompt,
-    NullToPrompt,
-    ToText,
-    TO_PROMPT
-)
+# from ._msg import (
+#     ToPrompt,
+#     NullToPrompt,
+#     ToText,
+#     TO_PROMPT
+# )
 from ._resp import (
     JSONObj,
     ReadError,
@@ -86,9 +86,13 @@ from ._inst import (
     instructmethod,
     signaturefunc,
     signaturemethod,
+    TemplateFormatter,
 )
 from ._optim import (
     Optim,
-    LLMOptim,
-    Critic
+    LangOptim,
+    LangCritic
+)
+from ._ai import (
+    LangModel,
 )
