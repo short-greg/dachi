@@ -294,23 +294,3 @@ class BatchEvaluation(BaseModel):
         return str({
             "evaluations": [e.render() for e in self.evaluations]
         })
-
-
-# def create_tuples(**kwargs: typing.List):
-#     """
-#     Create a list of dictionaries from keyword arguments.
-#     Each dictionary in the list will have keys corresponding to the keyword arguments
-#     and values corresponding to the values of those keyword arguments, grouped by their
-#     position in the input.
-#     Args:
-#         **kwargs: Arbitrary keyword arguments where each key is a string and each value is an iterable.
-#     Returns:
-#         List[Dict[str, Any]]: A list of dictionaries where each dictionary represents a combination
-#         of the input keyword arguments' values.
-#     """
-#     keys = kwargs.keys()
-#     values = zip(*kwargs.values())
-#     return [dict(zip(keys, value)) for value in values]
-
-
-

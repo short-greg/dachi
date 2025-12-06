@@ -3,10 +3,10 @@ import asyncio
 import typing as t
 from typing import Any, Dict, List, Optional, Union, Literal
 from ._base import ChartBase, ChartStatus
-from ._state import BaseState, BASE_STATE
+from ._state import BASE_STATE
 from dataclasses import dataclass
 
-from dachi.core import Runtime, ModuleList, PrivateParam, PrivateRuntime
+from dachi.core import Runtime, ModuleList, PrivateRuntime
 from dachi.core._scope import Scope, Ctx
 from ._event import Event, EventQueue, Timer, MonotonicClock, ChartEventHandler, EventPost
 
@@ -354,21 +354,3 @@ class StateChart(ChartBase, ChartEventHandler, t.Generic[BASE_STATE]):
             if raise_on_error and not result.is_valid():
                 result.raise_if_invalid()
         return results
-
-
-# @dataclass
-# class Snapshot:
-#     lifecycle: "ChartLifecycle"
-#     started_at: Optional[float]
-#     finished_at: Optional[float]
-#     queue_items: List["Envelope"]
-#     regions: List[Dict[str, Any]]      # per-region runtime flags (current, last, quiescing, pending_target, pending_reason)
-#     timers: List[Dict[str, Any]]       # Timer.snapshot()
-
-# class ChartStatus(Enum):
-#     IDLE = auto()
-#     RUNNING = auto()
-#     FINISHED = auto()
-#     STOPPED = auto()
-#     ERROR = auto()
-

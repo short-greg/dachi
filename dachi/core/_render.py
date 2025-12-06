@@ -393,34 +393,3 @@ DEFAULT_STYLE = {
     "bullet": bullet,
     "numbered": numbered
 }
-
-
-# def generate_numbered_list(n, numbering_type='arabic') -> typing.List:
-#     """Generate a numbered list in arabic or roman numerals
-
-#     Args:
-#         n: The number of numbers to output
-#         numbering_type (str, optional): The type of numberals to use
-#         "arabic" or "roman" or "alphabet". Defaults to 'arabic'.
-
-#     Raises:
-#         ValueError: If the amount of numbers is not supported
-#         ValueError: If the numbering system is incorrect
-
-#     Returns:
-#         : 
-#     """
-#     if n < -1:
-#         raise ValueError('The number in list must be greater than or equal to 0.')
-#     if numbering_type == 'arabic':
-#         return [str(i) for i in range(1, n + 1)]
-#     elif numbering_type == 'roman':
-#         return [roman.toRoman(i).lower() for i in range(1, n + 1)]
-#     elif numbering_type == 'alphabet':
-#         if n > 26:
-#             raise ValueError("Alphabetic numbering can only handle up to 26 items")
-#         return [string.ascii_uppercase[i] for i in range(n)]
-#     else:
-#         raise ValueError("Unsupported numbering type")
-
-

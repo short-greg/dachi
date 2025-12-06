@@ -3,7 +3,7 @@ from abc import abstractmethod
 import typing as t
 
 # local
-from ._core import Task, TaskStatus, CompositeTask, LeafTask, TASK, LEAF
+from ._core import Task, TaskStatus, CompositeTask, TASK, LEAF
 
 
 class Decorator(CompositeTask, t.Generic[TASK]):

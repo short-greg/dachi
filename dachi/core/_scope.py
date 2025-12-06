@@ -185,17 +185,6 @@ class Scope(pydantic.BaseModel):
     
     def ctx(self, *index_path: int) -> 'Ctx':
         """Get or create context at index path, optionally register tag alias"""
-        # if tag:
-        #     # Remove old tag if it exists
-        #     old_tag = None
-        #     for existing_tag, existing_path in self.aliases.items():
-        #         if existing_path == index_path:
-        #             old_tag = existing_tag
-        #             break
-        #     if old_tag:
-        #         del self.aliases[old_tag]
-        #     # Register new tag
-        #     self.aliases[tag] = index_path
         
         return Ctx(scope=self, index_path=index_path)
     
@@ -250,21 +239,7 @@ class Scope(pydantic.BaseModel):
             return self.__getitem__(key)
         except KeyError:
             return default
-        # """Support both indexed and unindexed data access"""
-        # if isinstance(key, tuple):
-        #     # Handle indexed access - key is tuple like (0, "goal") or ('./', 0, "goal")
-        #     # scope, key = self._resolve_scope(key)
-            
-        #     return scope.full_path[key]
-        # elif isinstance(key, str):
-        #     # Handle string path resolution
-        #     scope, key = self._resolve_scope(key)
-        #     key = '.'.join(key)
-        #     resolved_key = scope._resolve_path(key)
-        #     return scope.full_path[resolved_key]
-        # else:
-        #     raise ValueError(f"Invalid key format: {key}")
-    
+
     def __setitem__(self, key: Union[str, Tuple], value: Any):
         """Support both indexed and unindexed data assignment"""
         scope, key, index = self._resolve_var(key)
@@ -275,27 +250,6 @@ class Scope(pydantic.BaseModel):
         scope.data[key[-1]] = value
         scope.aliases[key[-1]] = key
         return value
-        # if isinstance(key, tuple):
-        #     # Handle indexed assignment - key is tuple like (0, "goal") or ('./', 0, "goal")
-        #     scope, key = self._resolve_scope(key)
-        #     scope.full_path[key] = value
-        #     # Also store in unindexed if it's a simple field reference
-        #     if len(key) >= 2 and isinstance(key[-1], str):
-        #         scope.data[key[-1]] = value
-        #         print(key[-1])
-        #         scope.aliases[key[-1]] = key
-        # elif isinstance(key, str):
-        #     # Handle string path resolution
-        #     scope, key = self._resolve_scope(key)
-        #     key = '.'.join(key)
-        #     resolved_key = scope._resolve_path(key)
-        #     scope.full_path[resolved_key] = value
-        #     # Also store in unindexed if it's a simple field reference
-        #     if len(resolved_key) >= 2 and isinstance(resolved_key[-1], str):
-        #         scope.data[resolved_key[-1]] = value
-        #         scope.aliases[resolved_key[-1]] = resolved_key
-        # else:
-        #     raise ValueError(f"Invalid key format: {key}")
     
     def set(self, path: Union[Tuple, str], field: str, value: Any, index: Union[str, int] = None):
         """Set value at both indexed and unindexed locations"""

@@ -1,6 +1,7 @@
 # 1st party
 from __future__ import annotations
 from abc import abstractmethod, ABC
+import inspect
 from typing import Union, Generic, Callable, Any, Dict, Optional, Union, List
 import typing as t
 import pydantic
@@ -388,7 +389,6 @@ class Param(ShareableItem[J]):
         self._fixed = False   
 
 
-
 class Runtime(ShareableItem[J]):
     """Mutable runtime state (e.g. counters, RNG seeds, rolling averages).
 
@@ -564,6 +564,10 @@ def PrivateRuntime(
     )
 
 
+T = t.TypeVar("T")
+V = t.TypeVar("V", bound=Module)
+
+
 def PrivateParam(
     default=None, 
     default_factory=None, 
@@ -595,69 +599,6 @@ def PrivateShared(
         instance_field=instance_field
     )
 
-
-# import sys
-# from typing import Any
-# from pydantic import BaseModel
-
-
-# def _resolve_raw_annotation(defining_cls: type[BaseModel], raw: Any) -> Any:
-#     """Best-effort resolution of a single annotation value."""
-#     if raw is None:
-#         return None
-
-#     # Already a real type or typing object
-#     if not isinstance(raw, str):
-#         return raw
-
-#     module_globals = vars(sys.modules[defining_cls.__module__])
-#     localns = dict(vars(defining_cls))
-
-#     try:
-#         return eval(raw, module_globals, localns)
-#     except Exception:
-#         # NameError, SyntaxError, whatever – don't blow up, just keep the string
-#         return raw
-
-
-# def get_all_private_attr_annotations(model_cls: type[BaseModel]) -> dict[str, Any]:
-#     """
-#     Return {name: annotation_or_type} for all private attributes on this
-#     Pydantic model class, including those declared on base classes.
-
-#     - If the annotation is a real type (int, SomeModel, list[str], ...),
-#       you'll get that object.
-#     - If it's a string and resolvable in the defining class's namespace,
-#       you'll get the resolved type.
-#     - If resolution fails, you'll get the raw string.
-#     """
-#     private_attrs = getattr(model_cls, "__private_attributes__", {})
-#     if not private_attrs:
-#         return {}
-
-#     result: dict[str, Any] = {}
-
-#     for name in private_attrs.keys():
-#         raw = None
-#         defining_cls: type[BaseModel] | None = None
-
-#         # Find the class in the MRO that actually defines the annotation
-#         for cls in model_cls.__mro__:
-#             anns = getattr(cls, "__annotations__", {})
-#             if name in anns:
-#                 raw = anns[name]
-#                 defining_cls = cls
-#                 break
-
-#         if defining_cls is None:
-#             # No annotation found anywhere in the MRO
-#             result[name] = None
-#         else:
-#             result[name] = _resolve_raw_annotation(defining_cls, raw)
-
-#     return result
-
-import inspect
 
 class Module(pydantic.BaseModel, StorableState, Trainable):
     # Pydantic v2 style config
@@ -1107,73 +1048,7 @@ class Module(pydantic.BaseModel, StorableState, Trainable):
                 raise KeyError(f"Missing keys in load_state_dict: {sorted(missing)}")
             if extra:
                 raise KeyError(f"Unexpected keys in load_state_dict: {sorted(extra)}")
-    
 
-    # def children(self):
-    #     """Immediate child modules (non-recursive)."""
-    #     return [child for (child, state_type) in self._registry.values() if state_type == StateType.MODULE]
-    # def eval_args(self):
-    #     """Alias for ``train(False)``."""
-    #     return self.train(False)
-
-    # def train(self, mode: bool = True):
-    #     """Recursively set ``Param.training`` for all parameters."""
-    #     self.training = mode
-    #     for child in self._modules.values():
-    #         child.train(mode)
-    #     return self
-
-    # def __setattr__(self, name, value):
-        
-    #     # TODO: confirm that name does 
-    #     # not exist in more than one of these 
-    #     # dictionaries
-    #     # this currently has some issues
-    #     # have to debug
-    #     super().__setattr__(name, value)
-    #     if isinstance(value, Param):
-    #         if name in self.__annotations__:
-    #             value = Param[self.__annotations__[name]](data=value)
-    #         self._registry[name] = value, StateType.PARAM
-    #     elif isinstance(value, Runtime):
-    #         if name in self.__annotations__:
-    #             value = Runtime[self.__annotations__[name]](data=value)
-    #         value = Runtime[self.__annotations__[name]](data=value)
-    #         self._registry[name] = value, StateType.ATTR
-    #     elif isinstance(value, Module):
-    #         self._registry[name] = value, StateType.MODULE
-
-        # if name in self._states:
-        #     self._states[name] = 
-        #     self._parameters[name] = value
-        # elif name in self._states:
-        #     self._states[name] = value
-        # elif name in self._modules:
-        #     self._modules[name] = value
-        # return value
-
-    # def __getattribute__(self, name):
-    #     val = super().__getattribute__(name)
-    #     return val
-    
-    # def register_parameter(self, name: str, param: Param):
-    #     """Register a parameter with the given name."""
-    #     self._parameters[name] = param
-    #     super().__setattr__(name, param)
-
-    # def register_state(self, name: str, state: Runtime):
-    #     """Register a state with the given name."""
-    #     self._registry[name] = state
-    #     super().__setattr__(name, state)
-
-    # def register_module(self, name: str, module: 'Module'):
-    #     """Register a submodule with the given name."""
-    #     self._modules[name] = module
-    #     super().__setattr__(name, module)
-
-
-
-T = t.TypeVar("T")
 
 
 class RegistryEntry(t.Generic[T]):
@@ -1188,9 +1063,6 @@ class RegistryEntry(t.Generic[T]):
         self.tags = tags
         self.package = package
         self.description = description
-
-
-V = t.TypeVar("V", bound=Module)
 
 
 class Checkpoint(pydantic.BaseModel):
@@ -1226,32 +1098,6 @@ class Checkpoint(pydantic.BaseModel):
         spec = load_cls.obj.__spec__.model_validate(data['spec'])
         state = data['state']
         return cls(spec=spec, state=state)
-
-    # TODO: Update the following methods
-
-    # @classmethod  
-    # def load_module(cls, path: str, ctx: Optional[dict] = None) -> V:
-    #     """Reconstruct the BaseModule from the checkpoint."""
-    #     if ctx is None:
-    #         ctx = {}
-    #     obj = cls.load(path)
-    #     module_cls = obj.spec.load_cls()
-    #     module = module_cls.from_spec(obj.spec, ctx=ctx)
-    #     module.load_state_dict(obj.state_dict)
-    #     return module
-    
-    # @classmethod
-    # def save_module(self, module: Module, path: str):
-    #     """Save the BaseModule as a checkpoint."""
-    #     spec = module.spec(to_dict=False)
-    #     state_dict = module.state_dict(
-    #         recurse=True, train=True, runtime=True
-    #     )
-    #     checkpoint = Checkpoint(
-    #         spec=spec,
-    #         state_dict=state_dict
-    #     )
-    #     checkpoint.save(path)
 
 
 # ============================================================================
@@ -1564,60 +1410,6 @@ class AdaptModule(
         # Load adapted sub-module state dict
         if self._adapted.data is not None and adapted_sd:
             self._adapted.data.load_state_dict(adapted_sd, recurse=recurse, train=train, runtime=runtime, strict=strict)
-
-    # @pydantic.field_validator('adapted', mode='before')
-    # def validate_adapted(self, val: J | None | Param[J | None]) -> t.Set[str]:
-    #     """Validate the allowed set."""
-
-    #     if isinstance(val, Param):
-    #         return val
-        
-    #     return Param[J](data=val)
-    
-
-
-# def ParamField(
-#     *, default=..., frozen=True, default_factory=..., **kwargs
-# ):
-#     """Create a Field for Param with default value.
-#     Frozen is set to True by default 
-#     """
-#     f = Field(default, frozen=frozen, default_factory=default_factory, **kwargs)
-#     # mark this field as a "param"
-#     meta = getattr(f, "json_schema_extra", None) or {}
-#     meta["is_param"] = True
-#     f.json_schema_extra = meta
-#     return f
-
-
-# def SharedField(
-#     *, default=..., frozen=True, default_factory=..., **kwargs
-# ):
-#     """Create a Field for Param with default value.
-#     Frozen is set to True by default 
-#     """
-#     f = Field(default, frozen=frozen, default_factory=default_factory, **kwargs)
-#     # mark this field as a "param"
-#     meta = getattr(f, "json_schema_extra", None) or {}
-#     meta["is_param"] = True
-#     f.json_schema_extra = meta
-#     return f
-
-
-# def RuntimeField(
-#     *, default=..., default_factory=..., **kwargs
-# ):
-#     """Create a Field for Runtime with default value.
-#     Frozen is always True for this. It can be treated as a way to initialize a variable that will be used at runtime.
-#     """
-#     f = Field(default, default_factory=default_factory,
-#     frozen=True, **kwargs)
-#     # mark this field as a "runtime"
-#     meta = getattr(f, "json_schema_extra", None) or {}
-#     meta["is_runtime"] = True
-#     f.json_schema_extra = meta
-#     return f
-
 
 
 class TokenType(str, Enum):

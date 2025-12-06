@@ -275,21 +275,6 @@ class FuncDecBase(pydantic.BaseModel):
         """Access _kwargs via property for backward compatibility"""
         return self._kwargs or {}
 
-    # def model_post_init(
-    #     self, __context
-    # ):
-    #     """Initialize the Func Decorator
-
-    #     Args:
-    #         engine (Engine): The engine to use for the function
-    #         inst (IBase): The instruction base to use
-    #         to_msg (ToMsg, optional): The function to convert the Cue to a Msg. Defaults to None.
-    #         instance (optional): The instance to use if a method. Defaults to None.
-    #         kwargs (typing.Dict, optional): The kwargs to pass to the engine. Defaults to None.
-    #     """
-    #     super().model_post_init(__context)
-    #     # self.to_msg = to_msg if to_msg is not None else (lambda x: x)
-
     @abstractmethod
     def __call__(self, *args, **kwargs):
         """

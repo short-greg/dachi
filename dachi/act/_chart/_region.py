@@ -360,22 +360,6 @@ class Region(ChartBase, ChartEventHandler, Recoverable, t.Generic[BASE_STATE]):
     def is_final(self) -> bool:
         """Check if region is in any final state (SUCCESS, FAILURE, or CANCELED)"""
         return self._current_state.get() in ("SUCCESS", "FAILURE", "CANCELED")
-
-    # def is_at_ready(self) -> bool:
-    #     """Check if region is in READY state"""
-    #     return self._current_state.get() == "READY"
-
-    # def is_at_success(self) -> bool:
-    #     """Check if region is in SUCCESS state"""
-    #     return self._current_state.get() == "SUCCESS"
-
-    # def is_at_failure(self) -> bool:
-    #     """Check if region is in FAILURE state"""
-    #     return self._current_state.get() == "FAILURE"
-
-    # def is_at_canceled(self) -> bool:
-    #     """Check if region is in CANCELED state"""
-    #     return self._current_state.get() == "CANCELED"
     
     def can_start(self) -> bool:
         """Check if region can be started"""

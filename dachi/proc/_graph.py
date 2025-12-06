@@ -366,39 +366,6 @@ class Inp(pydantic.BaseModel):
     name: str
 
 
-
-# def build_args_model_from_forward(process_cls: type) -> type[BaseModel]:
-#     """
-#     Inspect `process_cls.forward` and build a Pydantic model for its args.
-#     Only handles keyword-style params; *args/**kwargs are ignored or forbidden.
-#     """
-#     forward = process_cls.forward
-#     sig = inspec.signature(forward)
-#     hints = typing.get_type_hints(forward)
-
-#     fields: dict[str, tuple[typing.Any, typing.Any]] = {}
-
-#     for name, param in sig.parameters.items():
-#         if name == "self":
-#             continue
-
-#         if param.kind in (param.VAR_POSITIONAL, param.VAR_KEYWORD):
-#             raise TypeError(
-#                 f"{process_cls.__name__}.forward uses *args/**kwargs; "
-#                 "cannot derive a static args model."
-#             )
-
-#         anno = hints.get(name, typing.Any)
-
-#         if param.default is inspectyping._empty:
-#             fields[name] = (anno, ...)
-#         else:
-#             fields[name] = (anno, param.default)
-
-#     model_name = f"{process_cls.__name__}Args"
-#     return create_model(model_name, **fields)  # type: ignore[call-arg]
-
-
 class DataFlow(AsyncProcess, typing.Generic[PROCESS_CALL]):
     """DataFlow: Directed Acyclic Graph (DAG) for processing data pipelines.
 

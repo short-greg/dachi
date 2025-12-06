@@ -2,7 +2,6 @@ from __future__ import annotations
 
 # 1st party
 import typing as t
-import types
 from typing import TypeVar, Iterator, Optional
 
 # Local
@@ -243,52 +242,3 @@ class ModuleDict(Module, t.Generic[V]):
                 yield child_prefix.rstrip("."), module
             if recurse:
                 yield from module.named_modules(recurse=recurse, prefix=child_prefix, f=f, _seen=_seen, _skip_self=True)
-
-    # def parameters(self, *, recurse = True, _seen = None, with_annotations = False):
-    #     for param in super().parameters(recurse=recurse, _seen=_seen, with_annotations=with_annotations):
-    #         yield param
-        
-    #     for module in self.items.values():
-    #         if isinstance(module, Module):
-    #             for param in module.parameters(recurse=recurse, _seen=_seen, with_annotations=with_annotations):
-    #                 yield param
-    
-    # def named_parameters(self, *, recurse = True, _seen = None, prefix = ""):
-
-    #     _seen = _seen or set()
-
-    #     for param in super().named_parameters(recurse=recurse, _seen=_seen):
-    #         yield param
-    #     for k, module in self.items.items():
-    #         if isinstance(module, Module):
-    #             child_prefix = f"{prefix}{k}."
-    #             for param in module.named_parameters(recurse=recurse, _seen=_seen, prefix=child_prefix):
-    #                 yield param
-
-    # def children(self):
-    #     """Immediate child modules (non-recursive)."""
-    #     for module in self.items.values():
-    #         if isinstance(module, Module):
-    #             yield module
-
-    # def named_children(self):
-    #     """Immediate child modules (non-recursive) as (name, module) pairs."""
-    #     for k, module in self.items.items():
-    #         if isinstance(module, Module):
-    #             yield k, module
-
-    # def state_dict(self, *, recurse = True, train = True, runtime = True):
-    #     d = super().state_dict(recurse=recurse, train=train, runtime=runtime)
-    #     for k, module in self.items.items():
-    #         if isinstance(module, Module):
-    #             d["items." + str(k)] = module.state_dict(recurse=recurse, train=train, runtime=runtime)
-    #     return d
-    
-    # def load_state_dict(self, sd, *, recurse = True, train = True, runtime = True, strict = True):
-    #     super().load_state_dict(sd, recurse=recurse, train=train, runtime=runtime, strict=strict)
-    #     for k, module in self.items.items():
-    #         if isinstance(module, Module):
-    #             module.load_state_dict(
-    #                 sd.get("items." + str(k), {}),
-    #                 recurse=recurse, train=train, runtime=runtime, strict=strict
-    #             )
