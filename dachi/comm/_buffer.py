@@ -8,7 +8,7 @@ import typing
 # local
 
 T = typing.TypeVar("T")
-K = bool | str | None | int | float
+PRIMITIVE = bool | str | None | int | float
 
 
 class Buffer(pydantic.BaseModel):

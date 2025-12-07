@@ -2,32 +2,37 @@ from dataclasses import InitVar
 from typing import ClassVar
 from ._base import (
     to_kind,
-    ShareableItem,
-    Param,
-    Runtime,
-    Shared,
-    Renderable,
-    Trainable,
-    Templatable,
-    ExampleMixin,
-    Module,
-    PrivateRuntime,
-    PrivateParam,
-    PrivateShared,
-    Module,
-    RegistryEntry,
-    Registry,
-    Checkpoint,
-    mod_registry,
-    AdaptModule,
-    ParamSet,
     END_TOK,
     NULL_TOK,
     TextMsg,
     Msg,
     Inp,
-    
+    Renderable,
+    Templatable,
+    ExampleMixin,
 )
+from ._module import (
+    PrivateParam,
+    PrivateRuntime,
+    PrivateShared,
+    Module,
+    AdaptModule,
+    Checkpoint,
+)
+from ._registry import (
+    Registry,
+    RegistryEntry
+)
+from ._shareable import (
+    ShareableItem,
+    Param,
+    Runtime,
+    Shared,
+    ParamSet,
+    PARAM,
+    Trainable
+)
+
 from ._structs import (
     ModuleDict,
     ModuleList,

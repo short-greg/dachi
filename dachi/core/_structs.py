@@ -2,38 +2,33 @@ from __future__ import annotations
 
 # 1st party
 import typing as t
-from typing import TypeVar, Iterator, Optional
+from typing import Iterator, Optional
 
 # Local
-from ._base import Module
+from ._module import Module, MODULE
 from dachi.utils import is_primitive
-
-V_co = t.TypeVar("V_co", bound=Module, covariant=True)
-V = t.TypeVar("V", bound=Module)
-T = TypeVar("T", bound=Module)
-
 import pydantic
 
 
-class ModuleList(Module, t.Generic[V]):
+class ModuleList(Module, t.Generic[MODULE]):
     """
     A list-like container whose elements are themselves `BaseModule`
     instances.  Works seamlessly with the new serialization / dedup rules.
     """
-    vals: list[V] = pydantic.Field(default_factory=list)
+    vals: list[MODULE] = pydantic.Field(default_factory=list)
 
     # Positive test: len reflects number added
     def __len__(self) -> int:  
         return len(self.vals)
 
     # Positive test: order preserved
-    def __iter__(self) -> Iterator[V]:  
+    def __iter__(self) -> Iterator[MODULE]:  
         return iter(self.vals)
 
-    def __getitem__(self, idx: int) -> V:  # Edge test: negative index ok
+    def __getitem__(self, idx: int) -> MODULE:  # Edge test: negative index ok
         return self.vals[idx]
 
-    def __setitem__(self, idx: int, value: V):
+    def __setitem__(self, idx: int, value: MODULE):
         if not isinstance(value, Module):
             raise TypeError("ModuleList accepts only BaseModule instances")
         if idx >= len(self):
@@ -41,12 +36,12 @@ class ModuleList(Module, t.Generic[V]):
         # unregister old, register new
         self.vals[idx] = value
 
-    def items(self) -> Iterator[str | int, V]:
+    def items(self) -> Iterator[str | int, MODULE]:
         for idx, module in enumerate(self.vals):
             yield idx, module
 
     # public API – intentionally *append‑only*
-    def append(self, module: V):
+    def append(self, module: MODULE):
 
         if not isinstance(module, Module):
             raise TypeError("ModuleList accepts only BaseModule instances")
@@ -54,7 +49,7 @@ class ModuleList(Module, t.Generic[V]):
         self.vals.append(module)
     
     @property
-    def aslist(self) -> list[V]:
+    def aslist(self) -> list[MODULE]:
         """
         Expose the internal list of modules.
         This is useful for iterating over the modules directly.
@@ -127,16 +122,16 @@ class ModuleList(Module, t.Generic[V]):
         return item in self.vals
 
 
-class ModuleDict(Module, t.Generic[V]):
+class ModuleDict(Module, t.Generic[MODULE]):
     """
     A dict-like container whose values are themselves `BaseModule`
     instances. Keys must be strings.
     """
     # __spec_hooks__: ClassVar[t.List[str]] = ["items"]
     # items: InitVar[dict[str, BaseModule | t.Any]] = {}
-    vals: dict[str | int, V] = pydantic.Field(default_factory=dict)
+    vals: dict[str | int, MODULE] = pydantic.Field(default_factory=dict)
 
-    def __getitem__(self, key: str) -> V:
+    def __getitem__(self, key: str) -> MODULE:
         """Get an item from the module dict.
 
         Args:
@@ -147,7 +142,7 @@ class ModuleDict(Module, t.Generic[V]):
         """
         return self.vals[key]
 
-    def __setitem__(self, key: str, val: V):
+    def __setitem__(self, key: str, val: MODULE):
         """Set an item in the module dict.
 
         Args:
@@ -189,7 +184,7 @@ class ModuleDict(Module, t.Generic[V]):
     def items(self):
         return self.vals.items()
     
-    def get(self, key: str, default: Optional[V] = None) -> Optional[V]:
+    def get(self, key: str, default: Optional[MODULE] = None) -> Optional[MODULE]:
         """Get an item from the module dict, returning a default if not found.
         Args:
             key (str): The key of the item to retrieve.

@@ -3,7 +3,8 @@ from __future__ import annotations
 import pytest
 import pydantic
 
-from dachi.core._base import Module, Param, Runtime, PrivateParam, PrivateRuntime
+from dachi.core._module import Module, PrivateParam, PrivateRuntime
+from dachi.core._shareable import Param, Runtime
 from dachi.core._structs import ModuleList, ModuleDict
 
 
