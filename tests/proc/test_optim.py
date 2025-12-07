@@ -43,13 +43,12 @@ class TestCritic:
 
     def test_forward_returns_evaluation_matching_schema(self):
         """LangCritic.forward() returns instance of criterion.evaluation_schema."""
-        response_json = '{"criterion_name": "test", "passed": true, "reason": "good"}'
+        response_json = '{"criterion_name": "test", "passed": true}'
         evaluator = MockLangModel(response_json=response_json)
 
         criterion = PassFailCriterion(
             name="test",
-            passed=BoolField(),
-            reason=TextField()
+            passed=BoolField()
         )
 
         critic = LangCritic(
@@ -62,17 +61,15 @@ class TestCritic:
 
         assert isinstance(result, criterion.evaluation_schema)
         assert result.passed is True
-        assert result.reason == "good"
 
     def test_forward_passes_structure_to_evaluator(self):
         """LangCritic passes criterion.evaluation_schema as structure."""
-        response_json = '{"criterion_name": "test", "passed": true, "reason": "good"}'
+        response_json = '{"criterion_name": "test", "passed": true}'
         evaluator = MockLangModel(response_json=response_json)
 
         criterion = PassFailCriterion(
             name="test",
-            passed=BoolField(),
-            reason=TextField()
+            passed=BoolField()
         )
 
         critic = LangCritic(
@@ -87,13 +84,12 @@ class TestCritic:
 
     def test_prompt_template_receives_output_and_criterion_render(self):
         """Formatted prompt includes output and criterion.render()."""
-        response_json = '{"criterion_name": "test", "passed": true, "reason": "good"}'
+        response_json = '{"criterion_name": "test", "passed": true}'
         evaluator = MockLangModel(response_json=response_json)
 
         criterion = PassFailCriterion(
             name="test",
-            passed=BoolField(),
-            reason=TextField()
+            passed=BoolField()
         )
 
         critic = LangCritic(
@@ -109,13 +105,12 @@ class TestCritic:
 
     def test_batch_forward_creates_batch_evaluation_with_list(self):
         """LangCritic.batch_forward() returns batch_evaluation_schema instance."""
-        response_json = '{"criterion_name": "test", "evaluations": [{"criterion_name": "test", "passed": true, "reason": "good"}, {"criterion_name": "test", "passed": false, "reason": "bad"}]}'
+        response_json = '{"criterion_name": "test", "evaluations": [{"criterion_name": "test", "passed": true}, {"criterion_name": "test", "passed": false}]}'
         evaluator = MockLangModel(response_json=response_json)
 
         criterion = PassFailCriterion(
             name="test",
-            passed=BoolField(),
-            reason=TextField()
+            passed=BoolField()
         )
 
         critic = LangCritic(
@@ -133,13 +128,12 @@ class TestCritic:
 
     def test_reference_parameter_is_included_in_template(self):
         """Reference argument is formatted into prompt template."""
-        response_json = '{"criterion_name": "test", "passed": true, "reason": "good"}'
+        response_json = '{"criterion_name": "test", "passed": true}'
         evaluator = MockLangModel(response_json=response_json)
 
         criterion = PassFailCriterion(
             name="test",
-            passed=BoolField(),
-            reason=TextField()
+            passed=BoolField()
         )
 
         critic = LangCritic(
@@ -154,13 +148,12 @@ class TestCritic:
 
     def test_context_parameter_is_included_in_template(self):
         """Context argument is formatted into prompt template."""
-        response_json = '{"criterion_name": "test", "passed": true, "reason": "good"}'
+        response_json = '{"criterion_name": "test", "passed": true}'
         evaluator = MockLangModel(response_json=response_json)
 
         criterion = PassFailCriterion(
             name="test",
-            passed=BoolField(),
-            reason=TextField()
+            passed=BoolField()
         )
 
         critic = LangCritic(

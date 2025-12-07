@@ -1,14 +1,3 @@
-from ._data import (
-    Description, Ref, Record
-)
-# from ._critique import (
-#     Evaluation,
-#     EvaluationBatch,
-#     Criterion,
-#     LikertItem,
-#     LikertScaleCriterion,
-#     CompoundCriterion,
-# )
 from ._criterion import (
     Evaluation,
     BatchEvaluation,
@@ -30,6 +19,7 @@ from ._criterion import (
     ComparativeCriterion,
     CRITERION
 )
-from ._lang import (
-    Term, Glossary
+from ._data import (
+    Term, Glossary,
+    Record
 )

@@ -1,4 +1,3 @@
-from dachi.inst._data import Description
 from pydantic import BaseModel, Field
 from dachi.utils import str_formatter
 
@@ -19,7 +18,7 @@ class NestedStruct(BaseModel):
     simple: SimpleStruct
 
 
-class Role(Description):
+class Role(BaseModel):
 
     duty: str = Field(description='The duty of the role')
 
@@ -30,6 +29,6 @@ class Role(Description):
 
         {self.duty}
         """
-    
-    def update(self, **kwargs) -> Description:
+
+    def update(self, **kwargs) -> 'Role':
         return Role(name=self.name, duty=str_formatter(self.duty, **kwargs))
