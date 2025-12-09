@@ -10,10 +10,11 @@ import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
-from dachi.act._chart._state import BaseState, LeafState, State, StreamState, FinalState, PseudoState, ReadyState, BoundState, BoundStreamState
-from dachi.act._chart._base import ChartStatus, InvalidTransition
-from dachi.act._chart._event import EventQueue, EventPost
-from dachi.core import Scope, Module
+from dachi.act.chart._state import BaseState, LeafState, State, StreamState, FinalState, PseudoState, ReadyState, BoundState, BoundStreamState
+from dachi.act.chart._base import ChartStatus, InvalidTransition
+from dachi.act.chart._event import EventQueue, EventPost
+from dachi.core import Module
+from dachi.act.comm import Scope
 
 import typing as t
 import pydantic

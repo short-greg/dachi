@@ -5,9 +5,10 @@ import typing as t
 import json
 
 # local
-from ...core import Runtime, Module, Scope, PrivateRuntime
+from dachi.core import Runtime, Module, PrivateRuntime
 from ...proc import Process
-from ...utils._utils import resolve_fields, resolve_from_signature
+from dachi.act.comm import Scope
+from ...utils import resolve_fields, resolve_from_signature
 from ...utils import python_type_to_json_schema_type
 # TODO: Add in Action (For GOAP)
 from abc import ABC

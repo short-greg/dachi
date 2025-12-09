@@ -1,7 +1,7 @@
 # 1st party
 import typing as t
-from dataclasses import InitVar
-from dachi.core import Ctx, Scope, Runtime, PrivateRuntime
+from dachi.core import Runtime, PrivateRuntime
+from dachi.act.comm import Scope, Ctx
 from ._core import TASK
 from ._serial import SequenceTask, SelectorTask
 from ._parallel import MultiTask

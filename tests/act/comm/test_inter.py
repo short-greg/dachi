@@ -11,7 +11,7 @@ import pytest
 from pydantic import BaseModel
 
 # local
-from dachi.comm._inter import Bulletin, Post
+from dachi.act.comm._inter import Bulletin, Post
 from dachi.utils._utils import singleton
 
 

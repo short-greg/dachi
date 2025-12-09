@@ -21,7 +21,6 @@ from ._process import (
 )
 from ._arg_model import (
     Ref,
-
 )
 from ._multi import (
     chunk,
@@ -95,4 +94,9 @@ from ._optim import (
 )
 from ._ai import (
     LangModel,
+)
+from ._dispatch import (
+    RequestState,
+    DispatchStatus,
+    AsyncDispatcher,
 )

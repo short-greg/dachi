@@ -17,10 +17,9 @@ import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', '..', '..'))
 
-from dachi.act._chart._chart import StateChart, ChartStatus
-from dachi.act._chart._region import Region, Rule
-from dachi.act._chart._state import State, StreamState, FinalState
-from dachi.core import Scope
+from dachi.act.chart._chart import StateChart
+from dachi.act.chart._region import Region, Rule
+from dachi.act.chart._state import State, FinalState
 
 
 pytestmark = pytest.mark.e2e

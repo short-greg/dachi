@@ -10,9 +10,9 @@ conventions.  All async tests use `pytest.mark.asyncio`.
 
 import pytest
 from dachi.core import ModuleList
-from dachi.act._bt._core import TaskStatus
+from dachi.act.bt._core import TaskStatus
 
-from dachi.act._bt._parallel import MultiTask
+from dachi.act.bt._parallel import MultiTask
 from ..utils import ImmediateAction, SetStorageAction, create_test_ctx
 
 

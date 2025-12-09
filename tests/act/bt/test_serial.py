@@ -1,8 +1,9 @@
 import pytest
-from dachi.core import InitVar, Runtime, ModuleList, Scope
-from dachi.act._bt._core import TaskStatus
-from dachi.act._bt._leafs import Action
-from dachi.act._bt._serial import PreemptCond, SerialTask, SelectorTask, SequenceTask
+from dachi.core import Runtime, ModuleList
+from dachi.act.comm import Scope
+from dachi.act.bt._core import TaskStatus
+from dachi.act.bt._leafs import Action
+from dachi.act.bt._serial import PreemptCond, SerialTask, SelectorTask, SequenceTask
 from ..utils import ImmediateAction, SetStorageActionCounter, AlwaysTrueCond, AlwaysFalseCond, SetStorageAction
 
 from dachi.core import PrivateRuntime, Runtime
@@ -403,8 +404,8 @@ class TestFallback:
 
 
 # Context-aware test helpers
-from dachi.core import Scope
-from dachi.act._bt._leafs import Action, Condition
+from dachi.act.comm import Scope
+from dachi.act.bt._leafs import Action, Condition
 
 class ContextTestAction(Action):
     """Test action using function signature for input resolution"""
@@ -885,9 +886,9 @@ class TestSerialTaskSerialization:
 
     def test_to_spec_preserves_sequence_task_structure(self):
         """to_spec() preserves SequenceTask structure."""
-        from dachi.act._bt._serial import SequenceTask
+        from dachi.act.bt._serial import SequenceTask
         from tests.act.utils import ImmediateAction
-        from dachi.act._bt._core import TaskStatus
+        from dachi.act.bt._core import TaskStatus
 
         task1 = ImmediateAction(status_val=TaskStatus.SUCCESS)
         task2 = ImmediateAction(status_val=TaskStatus.SUCCESS)
@@ -900,9 +901,9 @@ class TestSerialTaskSerialization:
 
     def test_to_spec_preserves_selector_task_structure(self):
         """to_spec() preserves SelectorTask structure."""
-        from dachi.act._bt._serial import SelectorTask
+        from dachi.act.bt._serial import SelectorTask
         from tests.act.utils import ImmediateAction
-        from dachi.act._bt._core import TaskStatus
+        from dachi.act.bt._core import TaskStatus
 
         task1 = ImmediateAction(status_val=TaskStatus.FAILURE)
         task2 = ImmediateAction(status_val=TaskStatus.SUCCESS)

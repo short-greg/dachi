@@ -9,7 +9,8 @@ from ._state import BaseState, BASE_STATE
 from ._base import ChartStatus, InvalidTransition, Recoverable
 from ._event import EventPost, ChartEventHandler, Event
 from ._region import Region, ValidationResult
-from dachi.core import Ctx, Runtime, PrivateRuntime
+from dachi.act.comm import Ctx
+from dachi.core import Runtime, PrivateRuntime
 
 from dachi.core import ModuleList
 

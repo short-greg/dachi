@@ -29,7 +29,7 @@ from collections import OrderedDict
 import pydantic
 
 # local
-from ..core import render
+from dachi.core import render
 from ._process import Process
 from dachi import utils
 from ._parser import LineParser, PARSER
@@ -37,7 +37,7 @@ from ._parser import LineParser, PARSER
 from dachi.core import (
     Templatable, 
     ExampleMixin, ModuleList,
-    render, struct_template
+    struct_template
 )
 
 # local

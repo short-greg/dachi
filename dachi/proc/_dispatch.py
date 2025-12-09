@@ -40,7 +40,7 @@ from typing import Any, Iterator, Optional, Callable
 import threading, traceback
 
 from ..utils._utils import singleton
-from ..proc._process import AsyncProcess, AsyncStreamProcess
+from ._process import AsyncProcess, AsyncStreamProcess
 
 
 class RequestState(Enum):

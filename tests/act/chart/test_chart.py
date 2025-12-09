@@ -8,12 +8,10 @@ import asyncio
 import pytest
 from dataclasses import fields
 
-from dachi.act._chart._chart import StateChart, ChartSnapshot
-from dachi.act._chart._base import ChartStatus
-from dachi.act._chart._event import EventPost, EventQueue
-from dachi.core import Scope
-from dachi.act._chart._region import Region, Rule
-from dachi.act._chart._state import State, StreamState, FinalState
+from dachi.act.chart._chart import StateChart, ChartSnapshot
+from dachi.act.chart._base import ChartStatus
+from dachi.act.chart._region import Region, Rule
+from dachi.act.chart._state import State, StreamState, FinalState
 
 
 # ============================================================================
@@ -905,7 +903,7 @@ class TestChartHandleEvent:
         region.add(IdleState(name="idle"))
         chart = StateChart(name="test", regions=[region])
 
-        from dachi.act._chart._event import Event
+        from dachi.act.chart._event import Event
         event: Event = {
             "type": "test",
             "payload": {},
@@ -1086,7 +1084,7 @@ class TestStateChartSerialization:
 
     def test_spec_roundtrip_with_generic_type(self):
         """Spec round-trip with StateChart[State | PseudoState] works."""
-        from dachi.act._chart._state import State, ReadyState, FinalState
+        from dachi.act.chart._state import State, ReadyState, FinalState
 
         region = Region[IdleState | ActiveState | ReadyState | FinalState](
             name="main",

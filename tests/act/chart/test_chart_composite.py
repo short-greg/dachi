@@ -7,12 +7,13 @@ propagation, and completion logic following the framework testing conventions.
 import asyncio
 import pytest
 
-from dachi.act._chart._composite import CompositeState
-from dachi.act._chart._region import Region
-from dachi.act._chart._state import State, FinalState, BaseState, PseudoState
-from dachi.act._chart._base import ChartStatus, InvalidTransition
-from dachi.act._chart._event import EventQueue, EventPost
-from dachi.core import Scope, ModuleList
+from dachi.act.chart._composite import CompositeState
+from dachi.act.chart._region import Region
+from dachi.act.chart._state import State, FinalState, BaseState, PseudoState
+from dachi.act.chart._base import ChartStatus, InvalidTransition
+from dachi.act.chart._event import EventQueue, EventPost
+from dachi.act.comm import Scope
+from dachi.core import ModuleList
 
 
 @pytest.fixture(autouse=True)
@@ -912,7 +913,7 @@ class TestCompositeStateSerialization:
 
     def test_to_spec_preserves_composite_structure(self):
         """to_spec() preserves CompositeState structure."""
-        from dachi.act._chart._state import ReadyState, FinalState
+        from dachi.act.chart._state import ReadyState, FinalState
 
         region1 = Region[SimpleState | ReadyState | FinalState](name="r1", initial="idle", rules=[])
         region1.add(SimpleState(name="idle"))
@@ -935,7 +936,7 @@ class TestCompositeStateSerialization:
 
     def test_spec_roundtrip_with_union_type(self):
         """Spec round-trip with CompositeState[State | PseudoState] works."""
-        from dachi.act._chart._state import ReadyState, FinalState
+        from dachi.act.chart._state import ReadyState, FinalState
 
         region1 = Region[SimpleState | ReadyState | FinalState](name="child1", initial="idle", rules=[])
         region1.add(SimpleState(name="idle"))

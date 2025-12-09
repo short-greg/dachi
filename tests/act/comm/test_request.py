@@ -12,7 +12,7 @@ import inspect
 import typing as t
 
 # Adjust if your module path differs
-from dachi.comm._dispatch import AsyncDispatcher, RequestState, DispatchStatus
+from dachi.proc._dispatch import AsyncDispatcher, RequestState, DispatchStatus
 from dachi.proc._process import AsyncProcess, AsyncStreamProcess
 
 

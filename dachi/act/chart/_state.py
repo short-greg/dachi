@@ -10,7 +10,8 @@ import logging
 import json
 
 from typing import ClassVar, Dict, Any
-from dachi.core import Runtime, Ctx, Module, PrivateRuntime
+from dachi.core import Runtime, Module, PrivateRuntime
+from dachi.act.comm import Ctx
 from ._event import EventPost
 from dachi.utils._utils import resolve_fields, resolve_from_signature
 from dachi.utils import python_type_to_json_schema_type

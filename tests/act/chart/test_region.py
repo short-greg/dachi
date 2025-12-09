@@ -2,16 +2,17 @@ from __future__ import annotations
 import pytest
 import asyncio
 
-from dachi.act._chart._region import (
+from dachi.act.chart._region import (
     Decision,
     Region, Rule, RuleBuilder,
     ValidationResult, ValidationIssue, RegionValidationError,
 )
-from dachi.act._chart._state import State, StreamState, FinalState
-from dachi.act._chart._event import Event, EventQueue, EventPost
-from dachi.act._chart._base import ChartStatus, InvalidTransition
-from dachi.core import ModuleDict, Scope, Ctx
-from dachi.act._chart._state import ReadyState, FinalState
+from dachi.act.chart._state import State, StreamState, FinalState
+from dachi.act.chart._event import Event, EventQueue, EventPost
+from dachi.act.chart._base import ChartStatus, InvalidTransition
+from dachi.core import ModuleDict
+from dachi.act.comm import Scope
+from dachi.act.chart._state import ReadyState, FinalState
 
 class SimpleState(State):
     async def execute(self, post, **inputs):
@@ -1104,7 +1105,7 @@ class TestRegionSerialization:
 
     def test_to_spec_preserves_region_structure(self):
         """to_spec() preserves Region structure with complete state union."""
-        from dachi.act._chart._state import ReadyState, FinalState
+        from dachi.act.chart._state import ReadyState, FinalState
 
         region = Region[SimpleState | ReadyState | FinalState](
             name="test_region",

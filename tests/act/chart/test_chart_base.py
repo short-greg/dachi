@@ -7,9 +7,9 @@ testing conventions.
 import asyncio
 import pytest
 
-from dachi.core import Scope
-from dachi.act._chart._base import ChartStatus, ChartBase
-from dachi.act._chart._event import EventPost, EventQueue
+from dachi.act.comm import Scope
+from dachi.act.chart._base import ChartStatus, ChartBase
+from dachi.act.chart._event import EventPost, EventQueue
 
 
 class TestChartStatus:

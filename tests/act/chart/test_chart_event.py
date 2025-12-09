@@ -11,8 +11,8 @@ import time
 import sys
 import os
 
-from dachi.act._chart import _event
-from dachi.act._chart._event import EventQueue, Event, EventPost, Timer, MonotonicClock
+from dachi.act.chart import _event
+from dachi.act.chart._event import EventQueue, Event, EventPost, Timer, MonotonicClock
 
 Post = EventPost  # Alias for backward compatibility in tests
 

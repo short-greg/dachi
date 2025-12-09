@@ -3,7 +3,6 @@ from __future__ import annotations
 from abc import abstractmethod, ABC
 import typing as t
 import pydantic
-import inspect
 from enum import Enum, auto
 from abc import ABC, abstractmethod
 
@@ -142,5 +141,3 @@ class TextMsg(Msg):
 
 ITEM = t.TypeVar('ITEM')
 Inp: t.TypeAlias = pydantic.BaseModel | t.Dict[str, t.Any] | str | Msg
-
-

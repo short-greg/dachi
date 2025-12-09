@@ -7,10 +7,10 @@ import asyncio
 import logging
 import pytest
 
-from dachi.act._chart import StateChart, Region, State, StreamState, FinalState
-from dachi.act._chart._base import ChartStatus
-from dachi.core import ModuleList, Scope
-from dachi.act._chart._region import Rule
+from dachi.act.chart import StateChart, Region, State, StreamState, FinalState
+from dachi.act.chart._base import ChartStatus
+from dachi.act.comm import Scope
+from dachi.act.chart._region import Rule
 
 
 # ============================================================================

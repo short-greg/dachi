@@ -1,5 +1,5 @@
 import pytest
-from dachi.comm._buffer import Buffer, BufferIter
+from dachi.act.comm._buffer import Buffer, BufferIter
 
 
 class TestBuffer:

@@ -6,7 +6,8 @@ from abc import ABC, abstractmethod
 import asyncio
 import logging
 from pydantic import PrivateAttr
-from dachi.core import Module, Runtime, Ctx, PrivateRuntime
+from dachi.core import Module, Runtime, PrivateRuntime
+from dachi.act.comm import Ctx
 from ._event import EventPost
 
 logger = logging.getLogger("dachi.statechart")

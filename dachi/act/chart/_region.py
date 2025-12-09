@@ -10,7 +10,8 @@ import pydantic
 from pydantic import Field
 
 # Local
-from dachi.core import Runtime, ModuleDict, ModuleList, Ctx, PrivateRuntime
+from dachi.core import Runtime, ModuleDict, ModuleList, PrivateRuntime
+from dachi.act.comm import Ctx
 from ._state import State, BaseState, PseudoState, ReadyState, FinalState, HistoryState, BASE_STATE
 from ._event import Event, EventPost, ChartEventHandler
 from ._base import ChartBase, ChartStatus, InvalidTransition, Recoverable

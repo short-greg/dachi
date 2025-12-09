@@ -1,7 +1,7 @@
 from typing import Tuple
 import pytest
 
-from dachi.core._scope import Scope, Ctx, BoundCtx, BoundScope
+from dachi.act.comm._scope import Scope, Ctx, BoundCtx, BoundScope
 
 
 class TestScope:

@@ -8,7 +8,8 @@ import typing as t
 import pandas as pd
 
 # Local
-from dachi.core import Renderable, render
+from dachi.core import Renderable
+from ..utils.text._render import render
 
 
 class Record(Renderable):
@@ -305,29 +306,3 @@ class Glossary(pydantic.BaseModel, Renderable):
             typing.Iterator[typing.Tuple[str, Term]]: The iterator for the terms
         """
         return self.terms.items()
-
-
-# class Ref(pydantic.BaseModel, Renderable):
-#     """Reference to another description.
-#     Useful when one only wants to include the 
-#     name of a description in part of the prompt
-#     """
-#     desc: Description
-
-#     @property
-#     def name(self) -> str:
-#         """Get the name of the ref
-
-#         Returns:
-#             str: The name of the ref
-#         """
-#         return self.desc.name
-
-#     def render(self) -> str:
-#         """Generate the text rendering of the ref
-
-#         Returns:
-#             str: The name for the ref
-#         """
-#         return self.desc.name
-

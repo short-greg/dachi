@@ -4,7 +4,7 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
 # Import directly from internal modules to avoid broken import chain in dachi.act.__init__
-from dachi.act._chart._build import (
+from dachi.act.chart._build import (
     build_chart,
     build_region,
     build_composite,
@@ -12,10 +12,10 @@ from dachi.act._chart._build import (
     RegionBuilder,
     CompositeBuilder,
 )
-from dachi.act._chart._chart import StateChart
-from dachi.act._chart._region import Region
-from dachi.act._chart._composite import CompositeState
-from dachi.act._chart._state import State
+from dachi.act.chart._chart import StateChart
+from dachi.act.chart._region import Region
+from dachi.act.chart._composite import CompositeState
+from dachi.act.chart._state import State
 
 
 class IdleState(State):

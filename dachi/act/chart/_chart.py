@@ -7,7 +7,7 @@ from ._state import BASE_STATE
 from dataclasses import dataclass
 
 from dachi.core import Runtime, ModuleList, PrivateRuntime
-from dachi.core._scope import Scope, Ctx
+from dachi.act.comm._scope import Scope, Ctx
 from ._event import Event, EventQueue, Timer, MonotonicClock, ChartEventHandler, EventPost
 
 import pydantic

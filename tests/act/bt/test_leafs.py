@@ -13,9 +13,10 @@ import types
 import random
 import pytest
 import pydantic
-from dachi.core import InitVar, Runtime, Scope, PrivateRuntime
-from dachi.act._bt._core import TaskStatus
-from dachi.act._bt._leafs import Action, Condition, WaitCondition, FixedTimer, RandomTimer, CountLimit
+from dachi.core import Runtime, PrivateRuntime
+from dachi.act.comm import Scope
+from dachi.act.bt._core import TaskStatus
+from dachi.act.bt._leafs import Action, Condition, WaitCondition, FixedTimer, RandomTimer, CountLimit
 
 import time
 
@@ -222,7 +223,7 @@ class TestPortSystem:
     """Test the port declaration and processing system for leaf classes"""
     
     def test_process_ports_extracts_annotations_from_simple_class(self):
-        from dachi.act._bt._core import LeafTask
+        from dachi.act.bt._core import LeafTask
         
         class TestInputs:
             param1: int
@@ -236,7 +237,7 @@ class TestPortSystem:
         assert result["param2"]["type"] == str
     
     def test_process_ports_extracts_defaults_from_class(self):
-        from dachi.act._bt._core import LeafTask
+        from dachi.act.bt._core import LeafTask
         
         class TestInputs:
             param1: int = 5

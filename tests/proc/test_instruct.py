@@ -3,7 +3,7 @@ import typing as t
 from dachi.proc import _inst as core
 from dachi.proc._ai import LangModel
 from dachi.core import Inp
-from ..utils.test_core import SimpleStruct
+from ..core.test_core import SimpleStruct
 
 
 class DummyAIModel(LangModel):

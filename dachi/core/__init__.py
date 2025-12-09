@@ -19,10 +19,6 @@ from ._module import (
     AdaptModule,
     Checkpoint,
 )
-from ._registry import (
-    Registry,
-    RegistryEntry
-)
 from ._shareable import (
     ShareableItem,
     Param,
@@ -37,32 +33,12 @@ from ._structs import (
     ModuleDict,
     ModuleList,
 )
-# from ._dialog import (
-#     Tree,
-#     END_TOK,
-#     NULL_TOK,
-#     TextMsg,
-#     Inp
-#     # FieldRenderer
-# )
 from ._render import (
     TemplateField,
-    model_to_text,
     render,
     render_multi,
     is_renderable,
-    generate_numbered_list,
-    parse_function_spec,
-    Styling,
-    style_formatter,
-    numbered,
-    bullet,
-    bold,
-    italic,
-    DEFAULT_STYLE,
-    struct_template
-)
-from ._scope import (
-    Scope,
-    Ctx
-)
+    struct_template,
+    model_template,
+    model_to_text
+)   

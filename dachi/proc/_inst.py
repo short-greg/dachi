@@ -50,7 +50,8 @@ from ._resp import (
     ToOut, PrimOut, TextOut, StructOut
 )
 Engine: typing.TypeAlias = Process | AsyncProcess | StreamProcess | AsyncStreamProcess
-from dachi.core import render, style_formatter
+from dachi.core import render
+from dachi.inst import style_formatter
 
 S = typing.TypeVar('S')
 # TODO: MOVE OUT OF HERE

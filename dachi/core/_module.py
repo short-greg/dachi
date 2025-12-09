@@ -150,7 +150,6 @@ class FuncInit(t.Generic[T]):
 
 
 class Module(pydantic.BaseModel, StorableState, Trainable):
-    # Pydantic v2 style config
     model_config = pydantic.ConfigDict(
         arbitrary_types_allowed=True,
         ignored_types=(ShareableItem,),  # do not treat Param/Runtime annotations as fields

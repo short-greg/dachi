@@ -5,7 +5,7 @@ and buffered data collection commonly used in AI processing pipelines.
 """
 
 import typing
-from ._utils import UNDEFINED
+from .._utils import UNDEFINED
 
 
 def get_or_set(d: typing.Dict, key, value) -> typing.Any:

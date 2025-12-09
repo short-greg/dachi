@@ -10,12 +10,13 @@ conventions.  All async tests use `pytest.mark.asyncio`.
 """
 
 import pytest
-from dachi.core import InitVar, Runtime, Scope, PrivateRuntime
+from dachi.core import InitVar, Runtime, PrivateRuntime
+from dachi.act.comm import Scope
 from ..utils import create_test_ctx
-from dachi.act._bt._core import TaskStatus, LeafTask
-from dachi.act._bt._decorators import Not, Until, BoundTask, Decorator
+from dachi.act.bt._core import TaskStatus
+from dachi.act.bt._decorators import Not, Until, BoundTask, Decorator
 from dachi.core import PrivateRuntime, Runtime
-from dachi.act._bt._leafs import Action, Condition
+from dachi.act.bt._leafs import Action, Condition
 
 
 class AlwaysTrueCond(Condition):
@@ -140,9 +141,9 @@ class TestUntil:
 
 
 # Context-aware decorator test helpers
-from dachi.core import Scope
-from dachi.act._bt._decorators import Decorator
-from dachi.act._bt._serial import SequenceTask
+from dachi.act.comm import Scope
+from dachi.act.bt._decorators import Decorator
+from dachi.act.bt._serial import SequenceTask
 
 class ContextTestAction(Action):
     """Test action with configurable input/output ports for context testing"""
