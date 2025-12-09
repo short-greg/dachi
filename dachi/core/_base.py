@@ -3,13 +3,11 @@ from __future__ import annotations
 from abc import abstractmethod, ABC
 import typing as t
 import pydantic
-from enum import Enum, auto
+from enum import Enum
 from abc import ABC, abstractmethod
 
 from abc import abstractmethod
 from enum import Enum
-
-
 from pydantic import BaseModel
 
 
@@ -40,6 +38,34 @@ Usage::
 
 T = t.TypeVar("T")
 CORE_TYPE = t.TypeVar("J", bound=t.Union[BaseModel, dict, str, int, float, bool])
+
+
+class _Types(Enum):
+
+    UNDEFINED = 'UNDEFINED'
+    WAITING = 'WAITING'
+
+
+UNDEFINED = _Types.UNDEFINED
+"""Constant for UNDEFINED. usage: value is UNDEFINED"""
+WAITING = _Types.WAITING
+"""Constant for WAITING when streaming. usage: value is WAITING"""
+
+
+primitives = (bool, str, int, float, type(None))
+"""a list of primitive types"""
+
+
+def is_primitive(obj) -> bool:
+    """Utility to check if a value is a primitive
+
+    Args:
+        obj: Value to check
+
+    Returns:
+        bool: If it is a "primitive"
+    """
+    return type(obj) in primitives
 
 
 class StorableState(ABC):
