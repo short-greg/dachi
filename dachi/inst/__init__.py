@@ -30,7 +30,7 @@ from ._field import (
     ListField,
 )
 
-from ..utils.text._render import (
+from ..utils.text._style import (
     generate_numbered_list,
     parse_function_spec,
     Styling,

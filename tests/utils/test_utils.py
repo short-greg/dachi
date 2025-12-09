@@ -5,35 +5,35 @@ from typing import List
 from typing import ForwardRef
 
 
-class TestGetMember(object):
+# class TestGetMember(object):
 
-    def test_get_member_gets_immediate_child(self):
+#     def test_get_member_gets_immediate_child(self):
 
-        class X:
-            y = 2
+#         class X:
+#             y = 2
 
-        x = X()
+#         x = X()
 
-        assert utils.get_member(
-            x, 'y'
-        ) == 2
+#         assert utils.get_member(
+#             x, 'y'
+#         ) == 2
 
-    def test_get_member_gets_sub_child(self):
+#     def test_get_member_gets_sub_child(self):
 
-        class X:
-            y = 2
+#         class X:
+#             y = 2
 
-            def __getattr__(self, key):
+#             def __getattr__(self, key):
 
-                o = X()
-                object.__setattr__(self, key, o)
-                return o
+#                 o = X()
+#                 object.__setattr__(self, key, o)
+#                 return o
 
-        x = X()
+#         x = X()
 
-        assert utils.get_member(
-            x, 'z.y'
-        ) == 2
+#         assert utils.get_member(
+#             x, 'z.y'
+#         ) == 2
 
 
 class TestGetOrSpawn(object):

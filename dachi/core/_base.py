@@ -68,24 +68,6 @@ def to_kind(cls):
     return cls.__qualname__
 
 
-
-class Renderable(ABC):
-    """Mixin for classes that implement the render()
-    method. Render is used to determine how to represent an
-    object as a string to send to thte LLM
-    """
-
-    @abstractmethod
-    def render(self) -> str:
-        """Convert an object to a string representation for 
-        an llm
-
-        Returns:
-            str: the string representation of the object
-        """
-        pass
-
-
 class Templatable(ABC):
     """A mixin to indicate that the class 
     has a template function defined. Templates are

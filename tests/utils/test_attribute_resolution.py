@@ -4,7 +4,7 @@ import pytest
 from typing import Dict, List, TypeVar, Generic, get_args, get_origin
 from pydantic import BaseModel, PrivateAttr
 
-from dachi.utils._attribute_resolution import (
+from dachi.utils._internal._attribute_resolution import (
     get_all_private_attr_annotations,
     _resolve_raw_annotation,
     _get_typevar_map_for_model,

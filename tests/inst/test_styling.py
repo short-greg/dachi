@@ -16,16 +16,16 @@ import pytest
 
 
 # Dynamic import so the tests work regardless of project layout.
-from dachi.utils.text import _render
+from dachi.utils.text import _style
 from dachi.core import Renderable
-from dachi.utils.text._render import str_formatter
+from dachi.utils.text._style import str_formatter
 from pydantic import BaseModel
 from dachi.utils import get_str_variables
 
 
-from dachi.utils.text._render import style_formatter, bullet
+from dachi.utils.text._style import style_formatter, bullet
 import pytest
-from dachi.utils.text._render import generate_numbered_list, numbered
+from dachi.utils.text._style import generate_numbered_list, numbered
 from dachi.core._render import model_to_text
 
 
@@ -201,41 +201,41 @@ class TestModelToText:
 class TestRender:
 
     def test_render_with_primitive(self):
-        result = _render.render(42)
+        result = _style.render(42)
         assert result == "42"
 
     def test_render_with_string(self):
-        result = _render.render("hello")
+        result = _style.render("hello")
         assert result == "hello"
 
     def test_render_with_dict(self):
         input_data = {"key": "value", "number": 42}
         expected = '{"key": "value", "number": 42}'
-        result = _render.render(input_data, escape_braces=False)
+        result = _style.render(input_data, escape_braces=False)
         assert result == expected
 
     def test_render_with_dict_escaped(self):
         input_data = {"key": "value", "number": 42}
         expected = '{{"key": "value", "number": 42}}'
-        result = _render.render(input_data, escape_braces=True)
+        result = _style.render(input_data, escape_braces=True)
         assert result == expected
 
     def test_render_with_list(self):
         input_data = [1, "two", 3.0]
         expected = '[1, "two", 3.0]'
-        result = _render.render(input_data)
+        result = _style.render(input_data)
         assert result == expected
 
     def test_render_with_nested_dict(self):
         input_data = {"outer": {"inner": "value"}}
         expected = '{"outer": {"inner": "value"}}'
-        result = _render.render(input_data, escape_braces=False)
+        result = _style.render(input_data, escape_braces=False)
         assert result == expected
 
     def test_render_with_nested_dict_escaped(self):
         input_data = {"outer": {"inner": "value"}}
         expected = '{{"outer": {{"inner": "value"}}}}'
-        result = _render.render(input_data, escape_braces=True)
+        result = _style.render(input_data, escape_braces=True)
         assert result == expected
 
     # def test_render_with_pydantic_model(self):
@@ -254,7 +254,7 @@ class TestRender:
                 return "rendered_template"
 
         template_field = MockTemplateField()
-        result = _render.render(template_field)
+        result = _style.render(template_field)
         assert result == "rendered_template"
 
     def test_render_with_unknown_type(self):
@@ -263,7 +263,7 @@ class TestRender:
                 return "unknown"
 
         unknown = UnknownType()
-        result = _render.render(unknown)
+        result = _style.render(unknown)
         assert result == "unknown"
 
 

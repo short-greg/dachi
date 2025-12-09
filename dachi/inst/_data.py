@@ -9,7 +9,7 @@ import pandas as pd
 
 # Local
 from dachi.core import Renderable
-from ..utils.text._render import render
+from ..utils.text._style import render
 
 
 class Record(Renderable):
