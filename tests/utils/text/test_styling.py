@@ -17,10 +17,10 @@ import pytest
 
 # Dynamic import so the tests work regardless of project layout.
 from dachi.utils.text import _style
-from dachi.core import Renderable
-from dachi.utils.text._style import str_formatter
+from dachi.utils.text._render import Renderable
+from dachi.utils.text._str import str_formatter
 from pydantic import BaseModel
-from dachi.utils import get_str_variables
+from dachi.utils.text._str import get_str_variables
 
 
 from dachi.utils.text._style import style_formatter, bullet

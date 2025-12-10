@@ -8,7 +8,8 @@ from abc import ABC, abstractmethod
 import pydantic
 
 # local
-from dachi.utils import escape_curly_braces, is_primitive
+from ._str import escape_curly_braces
+from ..store._store import is_primitive
 
 
 class Renderable(ABC):

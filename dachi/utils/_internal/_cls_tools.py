@@ -1,5 +1,6 @@
 import inspect
 import typing
+import pydantic
 
 
 def is_generic_type(annotation) -> bool:
@@ -56,23 +57,6 @@ def generic_class(t: typing.TypeVar, idx: int=0) -> typing.Type:
         typing.Type: the type specified by the generic class
     """
     return t.__orig_class__.__args__[idx]
-
-
-def get_member(obj, loc: str):
-    """Get a member from an object recursively
-
-    Args:
-        obj : the object
-        loc (str): the location as a string, use '.' to indicate sub objects
-
-    Returns:
-        Any: The member
-    """
-    locs = loc.split('.')
-    for loc in locs:
-        obj = getattr(obj, loc)
-    return obj
-
 
 def resolve_fields(ctx, cls) -> dict:
     """Resolve fields from a context dict based on class definition.
@@ -251,3 +235,78 @@ def python_type_to_json_schema(python_type: typing.Any) -> dict:
         return {"oneOf": [python_type_to_json_schema(arg) for arg in args]}
 
     return {"type": "string"}
+
+
+def is_generic_type(annotation) -> bool:
+    """Detect whether an annotation represents a generic type.
+
+    A generic type is a parameterized type like list[int], Dict[str, Any],
+    or ModuleList[Task]. This function handles various forms of annotations
+    including strings and ForwardRefs.
+
+    Args:
+        annotation: Type annotation (could be type, string, ForwardRef, etc.)
+
+    Returns:
+        True if annotation appears to be a generic type, False otherwise
+
+    Examples:
+        >>> is_generic_type(int)
+        False
+        >>> is_generic_type(list[int])
+        True
+        >>> is_generic_type(Dict[str, int])
+        True
+        >>> is_generic_type("List[int]")
+        True
+        >>> is_generic_type("int")
+        False
+        >>> is_generic_type(ForwardRef("Dict[str, Any]"))
+        True
+
+    Notes:
+        - For string annotations, uses heuristic (presence of '[')
+        - For ForwardRef, checks the forward argument string
+        - For type annotations, uses typing.get_origin()
+        - Unsubscripted generic classes (e.g., list, dict) return False
+    """
+    if isinstance(annotation, str):
+        return '[' in annotation
+
+    if isinstance(annotation, typing.ForwardRef):
+        return '[' in annotation.__forward_arg__
+
+    origin = typing.get_origin(annotation)
+    return origin is not None
+
+
+def generic_class(t: typing.TypeVar, idx: int=0) -> typing.Type:
+    """Gets the generic type for a class assuming that it only has 
+    one.
+
+    Args:
+        t (typing.TypeVar): The class to get the generic type for
+        idx (int, optional): . Defaults to 0.
+
+    Returns:
+        typing.Type: the type specified by the generic class
+    """
+    return t.__orig_class__.__args__[idx]
+
+
+def is_nested_model(
+    pydantic_model_cls: typing.Type[pydantic.BaseModel]
+) -> bool:
+    """Helper function to check if it is a nested model
+
+    Args:
+        pydantic_model_cls (typing.Type[pydantic.BaseModel]): The class to check if it is a nested model
+
+    Returns:
+        bool: If it is a nested model
+    """
+    for field in pydantic_model_cls.model_fields.values():
+        
+        if isinstance(field.annotation, type) and issubclass(field.annotation, pydantic.BaseModel):
+            return True
+    return False

@@ -6,7 +6,7 @@ from typing import Iterator, Optional
 
 # Local
 from ._module import Module, MODULE
-from dachi.utils import is_primitive
+from dachi.utils.store._store import is_primitive
 import pydantic
 
 

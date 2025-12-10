@@ -120,8 +120,8 @@ class CSVRowParser(Parser):
         delta_store = delta_store if delta_store is not None else {}
 
         val = utils.acc(delta_store, 'val', val, '')
-        row = utils.get_or_set(delta_store, 'row', 0)
-        header = utils.get_or_set(
+        row = utils.store.get_or_set(delta_store, 'row', 0)
+        header = utils.store.get_or_set(
             delta_store, 'header', None
         )
         # Process accumulated data using csv.reader

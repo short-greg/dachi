@@ -1,5 +1,5 @@
 import pytest
-from dachi.utils import extract_parameter_types
+from dachi.utils.func import extract_parameter_types
 
 
 class TestExtractParameterTypes:

@@ -2,7 +2,7 @@
 from __future__ import annotations
 from abc import abstractmethod, ABC
 import inspect
-from typing import Union, Generic, Callable, Any, Dict, Optional, Union, List
+from typing import Union, Generic, Callable, Any, Dict
 import typing as t
 import pydantic
 from pydantic import Field
@@ -10,7 +10,7 @@ from typing import Generic, Union
 import inspect
 import json
 from enum import Enum, auto
-from dachi.utils import get_all_private_attr_annotations
+from dachi.utils._internal import get_all_private_attr_annotations
 
 from enum import Enum
 from ._shareable import Runtime, Param, Shared, ParamSet, Trainable, ShareableItem

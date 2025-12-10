@@ -6,7 +6,6 @@ from typing import Any, Iterable
 import typing
 import pytest
 
-from dachi import utils
 from dachi.core._render import model_to_text, struct_template
 from pydantic import BaseModel
 import pytest
@@ -19,6 +18,8 @@ from dachi.core import (
     render_multi, Renderable,
     TemplateField
 )
+from dachi.utils.store._store import is_undefined, UNDEFINED, is_primitive, primitives
+from dachi.utils._internal import is_nested_model
 
 from dachi.core import Renderable
 from pydantic import BaseModel
@@ -232,13 +233,13 @@ class TestIsUndefined(object):
 
     def test_is_undefined(self):
 
-        assert utils.is_undefined(
-            utils.UNDEFINED
+        assert is_undefined(
+            UNDEFINED
         )
 
     def test_not_is_undefined(self):
 
-        assert not utils.is_undefined(
+        assert not is_undefined(
             1
         )
 
@@ -247,11 +248,11 @@ class TestIsNestedModel:
 
     def test_is_nested_model_returns_true_for_nested(self):
 
-        assert utils.is_nested_model(NestedStruct) is True
+        assert is_nested_model(NestedStruct) is True
 
     def test_is_nested_model_returns_false_for_not_nested(self):
 
-        assert utils.is_nested_model(SimpleStruct) is False
+        assert is_nested_model(SimpleStruct) is False
 
 
 class TestStruct(object):

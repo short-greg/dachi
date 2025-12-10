@@ -7,14 +7,11 @@ from ._base import (
     TextMsg,
     Msg,
     Inp,
-    Renderable,
     Templatable,
     ExampleMixin,
-    is_primitive,
-    primitives, 
-    UNDEFINED,
-    WAITING,
 )
+from dachi.utils.store._store import UNDEFINED, is_primitive, primitives
+from dachi.utils.text._render import Renderable, is_renderable
 from ._module import (
     PrivateParam,
     PrivateRuntime,

@@ -5,7 +5,40 @@ and buffered data collection commonly used in AI processing pipelines.
 """
 
 import typing
-from .._utils import UNDEFINED
+
+"""Constant for UNDEFINED. usage: value is UNDEFINED"""
+UNDEFINED = object()
+
+primitives = (bool, str, int, float, type(None))
+"""a list of primitive types"""
+
+
+def is_primitive(obj) -> bool:
+    """Utility to check if a value is a primitive
+
+    Args:
+        obj: Value to check
+
+    Returns:
+        bool: If it is a "primitive"
+    """
+    return type(obj) in primitives
+
+
+def get_member(obj, loc: str):
+    """Get a member from an object recursively
+
+    Args:
+        obj : the object
+        loc (str): the location as a string, use '.' to indicate sub objects
+
+    Returns:
+        Any: The member
+    """
+    locs = loc.split('.')
+    for loc in locs:
+        obj = getattr(obj, loc)
+    return obj
 
 
 def get_or_set(d: typing.Dict, key, value) -> typing.Any:

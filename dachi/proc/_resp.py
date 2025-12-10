@@ -366,7 +366,7 @@ class KVOut(ToOut):
         """
         
         resp = self.coalesce_resp(resp)
-        line_store = utils.get_or_set(delta_store, 'lines', {})
+        line_store = utils.store.get_or_set(delta_store, 'lines', {})
         res = self._line_parser.delta(resp, line_store, streamed=True, is_last=is_last)
 
         if res is utils.UNDEFINED or res is None:
@@ -582,7 +582,7 @@ class IndexOut(ToOut):
             typing.Any: The processed result
         """
         resp = self.coalesce_resp(resp)
-        line_store = utils.get_or_set(
+        line_store = utils.store.get_or_set(
             delta_store, 'lines', {}
         )
         resp = self._line_parser.delta(resp, line_store, streamed=True, is_last=is_last)
@@ -697,7 +697,7 @@ class JSONListOut(ToOut):
         resp = self.coalesce_resp(resp)
         val = utils.acc(delta_store, 'val', resp)
         
-        processed_count = utils.get_or_set(delta_store, 'processed_count', 0)
+        processed_count = utils.store.get_or_set(delta_store, 'processed_count', 0)
         
         try:
             parsed = json.loads(val)
@@ -822,8 +822,8 @@ class TupleOut(ToOut, typing.Generic[OUT]):
             RuntimeError: If processing fails
         """
         resp = self.coalesce_resp(resp)
-        parsed = utils.sub_dict(delta_store, 'parsed')
-        i = utils.get_or_set(delta_store, 'i', 0)
+        parsed = utils.store.sub_dict(delta_store, 'parsed')
+        i = utils.store.get_or_set(delta_store, 'i', 0)
         res = self.parser.delta(
             resp, 
             parsed, 
@@ -930,7 +930,7 @@ class JSONValsOut(ToOut):
         resp = self.coalesce_resp(resp)
         val = utils.acc(delta_store, 'val', resp)
         
-        processed_keys = utils.get_or_set(delta_store, 'processed_keys', set())
+        processed_keys = utils.store.get_or_set(delta_store, 'processed_keys', set())
         
         try:
             parsed = json.loads(val)
@@ -1021,8 +1021,8 @@ class CSVOut(ToOut):
         resp = self.coalesce_resp(resp, '')
 
         val = utils.acc(delta_store, 'val', resp, '')
-        row = utils.get_or_set(delta_store, 'row', 0)
-        header = utils.get_or_set(
+        row = utils.store.get_or_set(delta_store, 'row', 0)
+        header = utils.store.get_or_set(
             delta_store, 'header', None
         )
         # Process accumulated data using csv.reader
