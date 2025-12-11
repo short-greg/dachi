@@ -11,7 +11,7 @@ from ._process import (
 )
 from dachi.core import Inp
 
-class LangModel(Process, AsyncProcess, StreamProcess, AsyncStreamProcess, ABC):
+class LangModel(Process, AsyncProcess, StreamProcess, AsyncStreamProcess):
     """A simple LLM process that echoes input with a prefix.
     """
 

@@ -44,7 +44,7 @@ from ._arg_model import (
 S = t.TypeVar('S', bound=pydantic.BaseModel)
 
 
-class Process(Module, ABC):
+class Process(ABC, Module):
     """
     Base class for synchronous processing modules.
     It inherits from BaseModule and implements the forward method.
@@ -129,7 +129,7 @@ class Process(Module, ABC):
 PROCESS = t.TypeVar('PROCESS', bound=Process)
 
 
-class AsyncProcess(Module, ABC):
+class AsyncProcess(ABC, Module):
     """Base class for Async Processes. It defines the
     aforward method that must be implemented by subclasses.
     Refer to the BaseModule documentation for details on field definitions and initialization.
@@ -279,7 +279,7 @@ class AsyncProcessCall(
         })
 
 
-class StreamProcess(Module, ABC):
+class StreamProcess(ABC, Module):
     """Base class for Stream Processes. It defines the
     stream method that must be implemented by subclasses.
 
@@ -355,7 +355,7 @@ class StreamProcess(Module, ABC):
 STREAM = t.TypeVar('STREAM', bound=StreamProcess)
 
 
-class AsyncStreamProcess(Module, ABC):
+class AsyncStreamProcess(ABC, Module):
     """Base class for AsyncStream Processes. It defines the
     stream method that must be implemented by subclasses.
 
