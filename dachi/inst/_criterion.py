@@ -22,19 +22,15 @@ class PassFailCriterion(BaseCriterion):
     passed: BoolField = Field(
         default_factory=lambda: BoolField(description="Whether the criterion was passed")
     )
-    passing_criteria: TextField | None
+    passing_criteria: TextField | None = Field(
+        default_factory=lambda: TextField(description="Description of the criteria for passing"
+    ))
 
     @pydantic.field_validator('passing_criteria', mode='before')
     def validate_passing_criteria(cls, v):
         if isinstance(v, str):
             return TextField(description=v)
         return v
-
-    def render(self) -> str:
-        base = f"{self.name}: {self.description}" if self.description else self.name
-        if self.passing_criteria:
-            return f"{base}\nPassing criteria: {self.passing_criteria}"
-        return base
 
 
 class LikertCriterion(BaseCriterion):
@@ -44,10 +40,6 @@ class LikertCriterion(BaseCriterion):
         default_factory=lambda: BoundInt(min_val=1, max_val=5, description="Likert scale rating for the criterion")
     )
 
-    def render(self) -> str:
-        base = f"{self.name}: {self.description}" if self.description else self.name
-        return f"{base}\nScale: {self.rating.min_val} to {self.rating.max_val}"
-
 
 class NumericalRatingCriterion(BaseCriterion):
     """Numerical rating scale criterion with continuous values."""
@@ -55,11 +47,6 @@ class NumericalRatingCriterion(BaseCriterion):
     score: BoundFloat = Field(
         default_factory=lambda: BoundFloat(min_val=0.0, max_val=10.0, description="Numerical score for the criterion")
     )
-
-    def render(self) -> str:
-        base = f"{self.name}: {self.description}" if self.description else self.name
-        return f"{base}\nRating range: {self.score.min_val} to {self.score.max_val}"
-
 
 class ChecklistCriterion(BaseCriterion):
     """Checklist criterion with multiple boolean checks."""
@@ -74,9 +61,6 @@ class ChecklistCriterion(BaseCriterion):
         default_factory=lambda: ListField(item_type=str, description="List of missing checklist items")
     )  # List[str]
 
-    def render(self) -> str:
-        base = f"{self.name}: {self.description}" if self.description else self.name
-        return base
 
 
 class HolisticRubricCriterion(BaseCriterion):
@@ -88,10 +72,6 @@ class HolisticRubricCriterion(BaseCriterion):
     level_index: BoundInt = Field(
         default_factory=lambda: BoundInt(min_val=1, max_val=5, description="Index of the overall level")
     )
-
-    def render(self) -> str:
-        base = f"{self.name}: {self.description}" if self.description else self.name
-        return f"{base}\nLevels: {self.level_index.min_val} to {self.level_index.max_val}"
 
 
 class AnalyticRubricCriterion(BaseCriterion):
@@ -107,10 +87,6 @@ class AnalyticRubricCriterion(BaseCriterion):
         default_factory=lambda: BoundFloat(0.0, 10.0, description="Overall score across all dimensions")
     )
 
-    def render(self) -> str:
-        base = f"{self.name}: {self.description}" if self.description else self.name
-        return base
-
 
 class NarrativeCriterion(BaseCriterion):
     """Narrative/qualitative criterion."""
@@ -118,10 +94,6 @@ class NarrativeCriterion(BaseCriterion):
     narrative: TextField = Field(
         default_factory=lambda: TextField(description="The narrative evaluation text")
     )
-
-    def render(self) -> str:
-        base = f"{self.name}: {self.description}" if self.description else self.name
-        return base
 
 
 class ComparativeCriterion(BaseCriterion):
@@ -134,10 +106,6 @@ class ComparativeCriterion(BaseCriterion):
         default_factory=lambda: TextField(description="The comparison result")
     ) # Winner ID, ranking list (as string), or best ID
 
-    def render(self) -> str:
-        base = f"{self.name}: {self.description}" if self.description else self.name
-        return base
-
 
 class CrispCiterion(BaseCriterion):
     """Comparative criterion for ranking/comparing outputs."""
@@ -146,10 +114,6 @@ class CrispCiterion(BaseCriterion):
         default_factory=lambda: BoolField(description="The element either belongs to the set or does not")
     )
 
-    def render(self) -> str:
-        base = f"{self.name}: {self.description}" if self.description else self.name
-        return base
-
 
 class FuzzyCiterion(BaseCriterion):
     """Comparative criterion for ranking/comparing outputs."""
@@ -157,7 +121,3 @@ class FuzzyCiterion(BaseCriterion):
     result: BoundFloat = Field(
         default_factory=lambda: BoundFloat(0.0, 1.0, description="The degree of membership of the element between 0 and 1")
     )
-
-    def render(self) -> str:
-        base = f"{self.name}: {self.description}" if self.description else self.name
-        return base

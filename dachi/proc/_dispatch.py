@@ -39,7 +39,7 @@ from queue import Queue, Empty
 from typing import Any, Iterator, Optional, Callable
 import threading, traceback
 
-from ..utils._utils import singleton
+from dachi.utils import singleton
 from ._process import AsyncProcess, AsyncStreamProcess
 
 

@@ -19,10 +19,6 @@ class AsyncStreamProcess
 
 # 1st party
 from abc import ABC, abstractmethod
-from functools import partial
-import asyncio
-import itertools
-import dataclasses
 import numpy as np
 import typing as t
 
@@ -30,8 +26,8 @@ import typing as t
 import pydantic
 
 # local
-from ..core import Module, ModuleList
-from ..utils import (
+from dachi.core import Module
+from dachi.utils.func import (
     is_async_function,
     is_generator_function,
     is_async_generator_function,
@@ -41,9 +37,6 @@ from ..utils import (
 )
 from ._arg_model import (
     Ref,
-    KWOnly,
-    PosArgs,
-    KWArgs,
     BaseArgs,
     func_arg_model
 )

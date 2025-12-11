@@ -6,6 +6,7 @@ from dachi import utils
 import json
 import pytest
 import pydantic
+from dachi.core import UNDEFINED
 
 
 # Test helper classes that use the new ToOut API
@@ -13,7 +14,7 @@ class EchoOut(ToOut):
     """Pass-through processor for testing."""
     
     def forward(self, resp: str | None):
-        return str(resp) if resp is not None else utils.UNDEFINED
+        return str(resp) if resp is not None else UNDEFINED
     
     def delta(self, resp: str | None, delta_store, is_last=True):
         return str(resp) if resp is not None else ""
@@ -32,7 +33,7 @@ class ConcatOut(ToOut):
     """Concatenates chunks across streaming."""
     
     def forward(self, resp: str | None):
-        return str(resp) if resp is not None else utils.UNDEFINED
+        return str(resp) if resp is not None else UNDEFINED
     
     def delta(self, chunk: str | None, delta_store, is_last=True):
         chunk_str = str(chunk) if chunk is not None else ""
@@ -40,7 +41,7 @@ class ConcatOut(ToOut):
         if is_last:
             return buf
         delta_store["buf"] = buf
-        return utils.UNDEFINED
+        return UNDEFINED
     
     def render(self, data):
         return str(data)
@@ -113,7 +114,7 @@ class TestToOutStreaming:
         
         # First chunk
         result1 = proc.delta("4", delta_store, is_last=False)
-        assert result1 == utils.UNDEFINED
+        assert result1 == UNDEFINED
         
         # Final chunk
         result2 = proc.delta("2", delta_store, is_last=True)
@@ -125,11 +126,11 @@ class TestToOutStreaming:
         
         # First chunk
         result1 = proc.delta("Hel", delta_store, is_last=False)
-        assert result1 == utils.UNDEFINED
+        assert result1 == UNDEFINED
         
         # Second chunk
         result2 = proc.delta("lo", delta_store, is_last=False)
-        assert result2 == utils.UNDEFINED
+        assert result2 == UNDEFINED
         
         # Final chunk
         result3 = proc.delta("!", delta_store, is_last=True)
@@ -158,8 +159,8 @@ class TestPrimOutExtended:
         delta_store = {}
         
         # Stream individual digits
-        assert proc.delta("1", delta_store, is_last=False) == utils.UNDEFINED
-        assert proc.delta("2", delta_store, is_last=False) == utils.UNDEFINED  
+        assert proc.delta("1", delta_store, is_last=False) == UNDEFINED
+        assert proc.delta("2", delta_store, is_last=False) == UNDEFINED  
         result = proc.delta("3", delta_store, is_last=True)
         assert result == 123
 
@@ -297,7 +298,7 @@ class TestJSONListOut:
         for i, chunk in enumerate(chunks):
             is_last = (i == len(chunks) - 1)
             result = proc.delta(chunk, delta_store, is_last)
-            if result != utils.UNDEFINED:
+            if result != UNDEFINED:
                 results.extend(result if isinstance(result, list) else [result])
         
         expected = [{"name": "John"}, {"name": "Jane"}]
@@ -339,7 +340,7 @@ class TestJSONValsOut:
         for i, chunk in enumerate(chunks):
             is_last = (i == len(chunks) - 1)
             result = proc.delta(chunk, delta_store, is_last)
-            if result != utils.UNDEFINED and result is not None:
+            if result != UNDEFINED and result is not None:
                 if isinstance(result, list):
                     results.extend(result)
                 else:
@@ -391,7 +392,7 @@ class TestTextOut:
         """Test handling of None text."""
         proc = TextOut()
         result = proc.forward(None)
-        assert result == utils.UNDEFINED
+        assert result == UNDEFINED
     
     def test_textout_delta_streaming(self):
         """Test TextOut streaming behavior."""

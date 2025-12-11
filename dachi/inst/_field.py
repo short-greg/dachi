@@ -2,24 +2,10 @@ from __future__ import annotations
 
 import typing as t
 from abc import abstractmethod
-from pydantic import BaseModel, Field, ConfigDict, PrivateAttr, create_model
+from pydantic import BaseModel, Field
 import pydantic
-from ..core import Renderable
 
-
-class EvalField(BaseModel):
-    """Base class for evaluation field descriptors."""
-
-    description: str | None = None
-
-    @abstractmethod
-    def get_field(self) -> tuple:
-        """Return (type, Field(...)) tuple for create_model.
-
-        Returns:
-            tuple: (field_type, Field(...)) for use in create_model
-        """
-        pass
+from ._base import EvalField
 
 
 class BoundInt(EvalField):

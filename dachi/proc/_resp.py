@@ -29,7 +29,6 @@ from collections import OrderedDict
 import pydantic
 
 # local
-from dachi.core import render
 from ._process import Process
 from dachi import utils
 from ._parser import LineParser, PARSER
@@ -37,7 +36,7 @@ from ._parser import LineParser, PARSER
 from dachi.core import (
     Templatable, 
     ExampleMixin, ModuleList,
-    struct_template
+    UNDEFINED
 )
 
 # local
@@ -169,7 +168,7 @@ class ToOut(
         Returns:
             str: 
         """
-        if resp is utils.UNDEFINED or resp is None:
+        if resp is UNDEFINED or resp is None:
             return default
         
         return resp
@@ -233,7 +232,7 @@ class PrimOut(ToOut):
         resp (str | None): Complete response to process
         """
         if resp is None:
-            return utils.UNDEFINED
+            return UNDEFINED
 
         if isinstance(self.out_cls, typing.Type):
             return self.out_cls(resp)
@@ -257,10 +256,10 @@ class PrimOut(ToOut):
         """
         resp = self.coalesce_resp(resp)
 
-        val = utils.acc(delta_store, 'val', resp)
+        val = utils.store.acc(delta_store, 'val', resp)
 
         if not is_last:
-            return utils.UNDEFINED
+            return UNDEFINED
         
         if isinstance(self.out_cls, typing.Type):
             return self.out_cls(val)
@@ -328,7 +327,7 @@ class KVOut(ToOut):
             resp (Resp): The response object to process
         """
         if resp is None:
-            return utils.UNDEFINED
+            return UNDEFINED
         
         lines = resp.strip().split('\n')
 
@@ -369,7 +368,7 @@ class KVOut(ToOut):
         line_store = utils.store.get_or_set(delta_store, 'lines', {})
         res = self._line_parser.delta(resp, line_store, streamed=True, is_last=is_last)
 
-        if res is utils.UNDEFINED or res is None:
+        if res is UNDEFINED or res is None:
             return res
         
         result = {}
@@ -398,7 +397,7 @@ class KVOut(ToOut):
             inspect.isclass(self.key_descr) and 
             issubclass(self.key_descr, pydantic.BaseModel)
         ):
-            temp = struct_template(self.key_descr)
+            temp = str(self.key_descr.model_json_schema())
             key_descr = {}
             for k, v in temp.items():
                 description =  v.description or 'value'
@@ -420,7 +419,7 @@ class KVOut(ToOut):
             str: 
         """
         return '\n'.join(
-            f'{k}{self.sep}{render(v)}' for k, v in data.items()
+            f'{k}{self.sep}{str(v)}' for k, v in data.items()
         )
 
     def example(self):
@@ -442,7 +441,7 @@ class StructOut(ToOut):
     def forward(self, resp: str | None) -> typing.Any:
         """Process complete non-streaming structured response"""
         if resp is None:
-            return utils.UNDEFINED
+            return UNDEFINED
 
         try:
             parsed_json = json.loads(resp)
@@ -468,7 +467,7 @@ class StructOut(ToOut):
     ) -> typing.Any:
         """Process structured data from unified response."""
         resp = self.coalesce_resp(resp)
-        utils.acc(delta_store, 'content', resp)
+        utils.store.acc(delta_store, 'content', resp)
 
         if is_last:
             try:
@@ -477,7 +476,7 @@ class StructOut(ToOut):
             except json.JSONDecodeError:
                 return {}
 
-        return utils.UNDEFINED
+        return UNDEFINED
 
     def render(self, data: typing.Any) -> str:
         """Render structured data as JSON string"""
@@ -502,7 +501,7 @@ class TextOut(ToOut):
         resp: Complete response to process
         """
         if resp is None:
-            return utils.UNDEFINED
+            return UNDEFINED
         return resp
 
     def delta(
@@ -543,7 +542,7 @@ class IndexOut(ToOut):
         str
         """
         if resp is None:
-            return utils.UNDEFINED
+            return UNDEFINED
         lines = resp.strip().split('\n')
 
         result = []
@@ -586,8 +585,8 @@ class IndexOut(ToOut):
             delta_store, 'lines', {}
         )
         resp = self._line_parser.delta(resp, line_store, streamed=True, is_last=is_last)
-        if resp is utils.UNDEFINED or resp is None:
-            return utils.UNDEFINED
+        if resp is UNDEFINED or resp is None:
+            return UNDEFINED
         result = []
         for line in resp:
             try:
@@ -618,7 +617,7 @@ class IndexOut(ToOut):
             str: 
         """
         return '\n'.join(
-            f'{k}{self.sep}{render(v)}' for k, v in enumerate(data)
+            f'{k}{self.sep}{str(v)}' for k, v in enumerate(data)
         )
 
     def template(self, count: int=None) -> str:
@@ -674,7 +673,7 @@ class JSONListOut(ToOut):
     def forward(self, resp: str | None) -> typing.Any:
         """Process complete JSON array response"""
         if resp is None:
-            return utils.UNDEFINED
+            return UNDEFINED
         
         try:
             data = json.loads(resp)
@@ -695,7 +694,7 @@ class JSONListOut(ToOut):
     ) -> typing.Any:
         """Process streaming JSON array chunks, returning individual objects as they complete"""
         resp = self.coalesce_resp(resp)
-        val = utils.acc(delta_store, 'val', resp)
+        val = utils.store.acc(delta_store, 'val', resp)
         
         processed_count = utils.store.get_or_set(delta_store, 'processed_count', 0)
         
@@ -713,7 +712,7 @@ class JSONListOut(ToOut):
         except json.JSONDecodeError:
             pass
         
-        return utils.UNDEFINED
+        return UNDEFINED
     
     def render(self, data: typing.Any) -> str:
         """Render data as JSON array"""
@@ -791,7 +790,7 @@ class TupleOut(ToOut, typing.Generic[OUT]):
         """Process complete non-streaming response"""
         # Simple implementation - parse and process each part with its processor
         if resp is None:
-            return utils.UNDEFINED
+            return UNDEFINED
         
         # Use parser to split the text into parts
         parts = self.parser.forward(resp)
@@ -830,8 +829,8 @@ class TupleOut(ToOut, typing.Generic[OUT]):
             streamed=True,
             is_last=is_last
         )
-        if res is utils.UNDEFINED:
-            return utils.UNDEFINED
+        if res is UNDEFINED:
+            return UNDEFINED
 
         outs = []
         if is_last and len(res) != len(self.processors[i:]):
@@ -847,7 +846,7 @@ class TupleOut(ToOut, typing.Generic[OUT]):
 
             # Note: processors take in a string and output some value
             outs.append(processor.forward(str(res_i)))
-            utils.acc(delta_store, 'i', 1)
+            utils.store.acc(delta_store, 'i', 1)
         return outs
         
     def render(self, data) -> str:
@@ -902,7 +901,7 @@ class JSONValsOut(ToOut):
     def forward(self, resp: str | None) -> typing.Any:
         """Process complete JSON object response"""
         if resp is None:
-            return utils.UNDEFINED
+            return UNDEFINED
         try:
             data = json.loads(resp)
             if isinstance(data, dict):
@@ -928,7 +927,7 @@ class JSONValsOut(ToOut):
     ) -> typing.Any:
         """Process streaming JSON object chunks, returning new key-value pairs as they complete"""
         resp = self.coalesce_resp(resp)
-        val = utils.acc(delta_store, 'val', resp)
+        val = utils.store.acc(delta_store, 'val', resp)
         
         processed_keys = utils.store.get_or_set(delta_store, 'processed_keys', set())
         
@@ -952,7 +951,7 @@ class JSONValsOut(ToOut):
         except json.JSONDecodeError:
             pass
         
-        return utils.UNDEFINED
+        return UNDEFINED
     
     def render(self, data: typing.Any) -> str:
         """Render key-value pairs as JSON object"""
@@ -990,7 +989,7 @@ class CSVOut(ToOut):
         """Process complete non-streaming CSV response"""
 
         if resp is None:
-            return utils.UNDEFINED
+            return UNDEFINED
 
         rows = list(csv.reader(io.StringIO(resp), delimiter=self.delimiter))
 
@@ -1020,7 +1019,7 @@ class CSVOut(ToOut):
         # just get the data from resp.text
         resp = self.coalesce_resp(resp, '')
 
-        val = utils.acc(delta_store, 'val', resp, '')
+        val = utils.store.acc(delta_store, 'val', resp, '')
         row = utils.store.get_or_set(delta_store, 'row', 0)
         header = utils.store.get_or_set(
             delta_store, 'header', None
@@ -1037,13 +1036,13 @@ class CSVOut(ToOut):
             new_rows.append(row)
 
         if len(new_rows) == 0:
-            return utils.UNDEFINED
+            return UNDEFINED
         
         if not is_last:
             new_rows.pop()
 
         if len(new_rows) == 0:
-            return utils.UNDEFINED
+            return UNDEFINED
 
         if (
             self.use_header is True 
@@ -1055,7 +1054,7 @@ class CSVOut(ToOut):
         header = delta_store['header']
         utils.acc(delta_store, 'row', len(new_rows))
         if len(new_rows) == 0:
-            return utils.UNDEFINED
+            return UNDEFINED
         
         if self.use_header:
             return [OrderedDict(zip(header, row)) for row in new_rows]

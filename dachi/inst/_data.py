@@ -8,11 +8,11 @@ import typing as t
 import pandas as pd
 
 # Local
-from dachi.core import Renderable
-from ..utils.text._style import render
+# from dachi.core import Renderable
+# from ..utils.text._style import render
 
 
-class Record(Renderable):
+class Record(object):
     """Use to create a pairwise object
     """
     def __init__(self, indexed: bool=False, **kwargs):
@@ -96,14 +96,6 @@ class Record(Renderable):
             int: The length of the pairwise object
         """
         return len(self._data.index)
-    
-    def render(self) -> str:
-        """Render the pairwise object
-
-        Returns:
-            str: The rendered string
-        """
-        return render(self._data.to_dict(orient='records'))
 
     def top(self, field: str, largest: bool=True):
 
@@ -118,7 +110,7 @@ class Record(Renderable):
         return self._data.loc[idx]
 
 
-class Term(pydantic.BaseModel, Renderable):
+class Term(pydantic.BaseModel):
     """Use to define a term used in the AI system
     for repeated usage
     """
@@ -167,7 +159,7 @@ class Term(pydantic.BaseModel, Renderable):
                 self.meta[k] = v
         return val
     
-    def render(self) -> str:
+    def __str__(self) -> str:
         """Render the DataList
 
         Returns:
@@ -181,7 +173,7 @@ class Term(pydantic.BaseModel, Renderable):
         return f'{base}\n{meta}'
 
 
-class Glossary(pydantic.BaseModel, Renderable):
+class Glossary(pydantic.BaseModel):
     """A glossary contains a list of terms
     """
     terms: typing.Dict[str, Term]

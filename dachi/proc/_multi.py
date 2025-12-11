@@ -12,8 +12,8 @@ import typing as t
 import pydantic
 
 # local
-from ..core import ModuleList
-from ..utils import (
+from dachi.core import ModuleList
+from dachi.utils.func import (
     is_async_function,
 
 )

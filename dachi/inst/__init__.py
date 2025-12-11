@@ -30,18 +30,18 @@ from ._field import (
     ListField,
 )
 
-from ..utils.text._style import (
-    generate_numbered_list,
-    parse_function_spec,
-    Styling,
-    style_formatter,
-    numbered,
-    bullet,
-    bold,
-    italic,
-    DEFAULT_STYLE,
-    get_str_variables,
-    escape_curly_braces,
-    str_formatter,
-    unescape_curly_braces,
-)
+# from ..utils.text._style import (
+#     generate_numbered_list,
+#     parse_function_spec,
+#     Styling,
+#     style_formatter,
+#     numbered,
+#     bullet,
+#     bold,
+#     italic,
+#     DEFAULT_STYLE,
+#     get_str_variables,
+#     escape_curly_braces,
+#     str_formatter,
+#     unescape_curly_braces,
+# )

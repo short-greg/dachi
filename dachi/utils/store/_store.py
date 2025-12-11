@@ -12,6 +12,16 @@ UNDEFINED = object()
 primitives = (bool, str, int, float, type(None))
 """a list of primitive types"""
 
+def is_undefined(value) -> bool:
+    """Utility to check if a value is UNDEFINED
+
+    Args:
+        value: Value to check
+    Returns:
+        bool: If it is UNDEFINED
+    """
+    return value is UNDEFINED
+
 
 def is_primitive(obj) -> bool:
     """Utility to check if a value is a primitive

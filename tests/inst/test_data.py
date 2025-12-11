@@ -1,3 +1,4 @@
+import pytest
 from .._structs import Role
 
 """Unit tests for new criterion system (_criterion.py)
@@ -7,30 +8,6 @@ This suite covers the EvalField-based criterion architecture including:
 - Concrete criterion types (PassFail, Likert, NumericalRating)
 - Critic evaluation executor
 """
-import pytest
-
-
-class TestRendering:
-
-    def test_text_for_description_is_correct(self):
-        
-        role = Role(name='Assistant', duty='You are a helpful assistant')
-        text = role.render()
-
-        assert text == f"""
-        # Role Assistant
-
-        {role.duty}
-        """
-
-    def test_text_for_description_is_correct_after_updating(self):
-        
-        role = Role(name='Assistant', duty='You are a helpful {role}')
-        
-        role = role.update(role='Sales Assistant')
-        text = role.render()
-        assert 'Sales Assistant' in text
-
 
 class TestTerm:
     def test_init(self):
@@ -58,17 +35,6 @@ class TestTerm:
         assert term.meta["source"] == "Encyclopedia"
         assert term.meta["usage"] == "Science"
 
-    def test_render_no_meta(self):
-        term = Term(name="AI", definition="Artificial Intelligence")
-        assert term.render() == "AI: Artificial Intelligence"
-
-    def test_render_with_meta(self):
-        term = Term(name="AI", definition="Artificial Intelligence", source="Wikipedia", usage="Technology")
-        rendered = term.render()
-        assert "AI: Artificial Intelligence" in rendered
-        assert "source: Wikipedia" in rendered
-        assert "usage: Technology" in rendered
-
 
 class TestGlossary:
     def test_add(self):
@@ -90,18 +56,6 @@ class TestGlossary:
         glossary.add(term)
         glossary.remove("AI")
         assert "AI" not in glossary.terms
-
-    def test_render_glossary(self):
-        glossary = Glossary()
-        term1 = Term(name="AI", definition="Artificial Intelligence", source="Wikipedia")
-        term2 = Term(name="ML", definition="Machine Learning", source="Encyclopedia")
-        glossary.add(term1)
-        glossary.add(term2)
-        rendered = glossary.render()
-        assert "AI: Artificial Intelligence" in rendered
-        assert "source: Wikipedia" in rendered
-        assert "ML: Machine Learning" in rendered
-        assert "source: Encyclopedia" in rendered
 
     def test_update_term(self):
         glossary = Glossary()
@@ -153,17 +107,6 @@ class TestTerm:
         assert term.meta["source"] == "Encyclopedia"
         assert term.meta["usage"] == "Science"
 
-    def test_render_no_meta(self):
-        term = Term(name="AI", definition="Artificial Intelligence")
-        assert term.render() == "AI: Artificial Intelligence"
-
-    def test_render_with_meta(self):
-        term = Term(name="AI", definition="Artificial Intelligence", source="Wikipedia", usage="Technology")
-        rendered = term.render()
-        assert "AI: Artificial Intelligence" in rendered
-        assert "source: Wikipedia" in rendered
-        assert "usage: Technology" in rendered
-
 
 class TestGlossary:
     def test_add(self):
@@ -185,18 +128,6 @@ class TestGlossary:
         glossary.add(term)
         glossary.remove("AI")
         assert "AI" not in glossary.terms
-
-    def test_render_glossary(self):
-        glossary = Glossary()
-        term1 = Term(name="AI", definition="Artificial Intelligence", source="Wikipedia")
-        term2 = Term(name="ML", definition="Machine Learning", source="Encyclopedia")
-        glossary.add(term1)
-        glossary.add(term2)
-        rendered = glossary.render()
-        assert "AI: Artificial Intelligence" in rendered
-        assert "source: Wikipedia" in rendered
-        assert "ML: Machine Learning" in rendered
-        assert "source: Encyclopedia" in rendered
 
     def test_update_term(self):
         glossary = Glossary()

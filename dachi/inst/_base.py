@@ -4,16 +4,36 @@ import typing as t
 from abc import abstractmethod
 from pydantic import BaseModel, Field, ConfigDict, PrivateAttr, create_model
 import pydantic
-from dachi.core import Renderable
 
 import typing as t
 from abc import abstractmethod
 from pydantic import BaseModel, Field, ConfigDict, PrivateAttr, create_model
 import pydantic
-from ._field import EvalField, BoundInt, BoundFloat, TextField, BoolField, DictField, ListField
 
 
-class BaseCriterion(BaseModel, Renderable):
+class EvalField(BaseModel):
+    """Base class for evaluation field descriptors."""
+
+    description: str | None = None
+
+    @abstractmethod
+    def get_field(self) -> tuple:
+        """Return (type, Field(...)) tuple for create_model.
+
+        Returns:
+            tuple: (field_type, Field(...)) for use in create_model
+        """
+        pass
+
+    def __str__(self) -> str:
+        cls_name = self.__class__.__name__
+        fields = ', '.join(
+            f'{k}={getattr(self, k)}' for k, _ in self.__class__.model_fields.items()
+        )
+        return f'{cls_name}({fields})'
+
+
+class BaseCriterion(BaseModel):
     """Base class for all criteria. Auto-generates evaluation schemas from EvalFields."""
 
     model_config = ConfigDict(frozen=True)
@@ -56,18 +76,20 @@ class BaseCriterion(BaseModel, Renderable):
         default after validation if the LLM returns null.
         """
         fields = {
-            'criterion_name': (
-                t.Optional[str],
-                Field(default=self.name, description="Name of the criterion")
-            )
+            # #'criterion_name': (
+            #     t.Optional[str],
+            #     Field(default=self.name, description="Name of the criterion")
+            # )
         }
 
         # Use model_fields to find EvalField annotations
-        for field_name, field_info in self.model_fields.items():
+        for field_name, field_info in self.__class__.model_fields.items():
             field_value = getattr(self, field_name)
             if isinstance(field_value, EvalField):
                 fields[field_name] = field_value.get_field()
-
+            else:
+                
+                fields[field_name] = (t.Literal[field_value], Field(default=field_value))
         # include eval_type in the model that is 
         # "single" or "batch"
         return create_model(
@@ -83,15 +105,17 @@ class BaseCriterion(BaseModel, Renderable):
         """
         return create_model(
             f'{self.name.replace(" ", "_")}BatchEvaluation',
-            criterion_name=(t.Optional[str], Field(default=self.name, description="Name of the criterion")),
+            # criterion_name=(t.Optional[str], Field(default=self.name, description="Name of the criterion")),
             evaluations=(t.List[single_schema], Field(description="List of evaluations")),
             __base__=BatchEvaluation
         )
-
-    @abstractmethod
-    def render(self) -> str:
-        """Render criterion for prompt."""
-        pass
+    
+    def __str__(self) -> str:
+        cls_name = self.__class__.__name__
+        fields = ', '.join(
+            f'{k}={getattr(self, k)}' for k, _ in self.__class__.model_fields.items()
+        )
+        return f'{cls_name}({fields})'
 
 
 CRITERION = t.TypeVar("CRITERION", bound=BaseCriterion)
@@ -132,14 +156,6 @@ class Evaluation(BaseModel):
         """
         return self.model_dump()
 
-    def render(self) -> str:
-        """
-        Render the evaluation as a string.
-        Returns:
-            str: The rendered evaluation
-        """
-        return str(self.model_dump())
-
 
 class BatchEvaluation(BaseModel):
     """
@@ -159,9 +175,3 @@ class BatchEvaluation(BaseModel):
             self.evaluations[i].to_record()
             for i in self.evaluations.keys()
         ]
-
-    def render(self) -> str:
-        return str({
-            "evaluations": [e.render() for e in self.evaluations]
-        })
-

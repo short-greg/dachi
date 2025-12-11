@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from dachi.utils import str_formatter
+from dachi.utils.text import str_formatter
 
 
 class SimpleStruct(BaseModel):
@@ -22,13 +22,6 @@ class Role(BaseModel):
 
     duty: str = Field(description='The duty of the role')
 
-    def render(self) -> str:
-
-        return f"""
-        # Role {self.name}
-
-        {self.duty}
-        """
 
     def update(self, **kwargs) -> 'Role':
         return Role(name=self.name, duty=str_formatter(self.duty, **kwargs))

@@ -46,7 +46,7 @@ import pydantic
 # local
 from dachi.core import PrivateRuntime, PrivateParam, ModuleDict, Runtime
 from ._process import ProcessCall, AsyncProcessCall, StreamProcessCall, AsyncStreamProcessCall, Ref, Process, AsyncProcess, Func, AsyncFunc
-from ..utils import is_undefined, UNDEFINED
+from dachi.core import is_undefined, UNDEFINED
 
 
 P = typing.TypeVar("P", bound=Process)

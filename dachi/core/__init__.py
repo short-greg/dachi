@@ -10,8 +10,8 @@ from ._base import (
     Templatable,
     ExampleMixin,
 )
-from dachi.utils.store._store import UNDEFINED, is_primitive, primitives
-from dachi.utils.text._render import Renderable, is_renderable
+from dachi.utils.store._store import UNDEFINED, is_primitive, primitives, is_undefined
+# from dachi.utils.text._render import Renderable, is_renderable
 from ._module import (
     PrivateParam,
     PrivateRuntime,
@@ -34,12 +34,12 @@ from ._structs import (
     ModuleDict,
     ModuleList,
 )
-from ._render import (
-    TemplateField,
-    render,
-    render_multi,
-    is_renderable,
-    struct_template,
-    model_template,
-    model_to_text
-)   
+# from ._render import (
+#     TemplateField,
+#     render,
+#     render_multi,
+#     is_renderable,
+#     struct_template,
+#     model_template,
+#     model_to_text
+# )   

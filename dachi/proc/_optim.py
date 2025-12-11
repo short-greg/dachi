@@ -8,7 +8,8 @@ from dachi.inst import CRITERION, BatchEvaluation, Evaluation
 from dachi.core import ParamSet, Module, Inp
 from abc import ABC
 from dachi.proc import Process, AsyncProcess
-from dachi.core import render, TextMsg
+from dachi.core import TextMsg
+from dachi.utils.text import str_formatter
 
 from ._ai import LangModel, LANG_MODEL
 from ._inst import TemplateFormatter
@@ -76,7 +77,7 @@ class LangOptim(Optim, t.Generic[CRITERION]):
             constraints=constraints
         )
         system = TextMsg("system", prompt_text)
-        user = TextMsg("user", render(evaluations))
+        user = TextMsg("user", str(evaluations))
 
         updated_params = self.llm.forward(
             [system, user], structure=self.params.to_schema()
@@ -97,7 +98,7 @@ class LangOptim(Optim, t.Generic[CRITERION]):
             constraints=constraints
         )
         system = TextMsg("system", prompt_text)
-        user = TextMsg("user", render(evaluations))
+        user = TextMsg("user", str(evaluations))
 
         updated_params = await self.llm.aforward(
             [system, user], structure=self.params.to_schema()
@@ -124,7 +125,7 @@ class LangCritic(Process, AsyncProcess, t.Generic[CRITERION, LANG_MODEL]):
         """Execute single evaluation."""
 
         prompt_text = self.prompt_template.format(
-            criterion=self.criterion.render(),
+            criterion=str(self.criterion),
             output=output,
             input=input or "",
             reference=reference or self.reference or "",
@@ -140,14 +141,13 @@ class LangCritic(Process, AsyncProcess, t.Generic[CRITERION, LANG_MODEL]):
     async def aforward(self, output, input=None, reference=None, context=None, **kwargs) -> BaseModel:
         """Async single evaluation."""
         prompt_text = self.prompt_template.format(
-            criterion=self.criterion.render(),
+            criterion=str(self.criterion),
             output=output,
             input=input or "",
             reference=reference or self.reference or "",
             context=context or {},
             **kwargs
         )
-
 
         if isinstance(self.evaluator, AsyncProcess):
             text, _ = await self.evaluator.aforward(
@@ -164,7 +164,7 @@ class LangCritic(Process, AsyncProcess, t.Generic[CRITERION, LANG_MODEL]):
     ) -> BaseModel:
         """Execute batch evaluation."""
         prompt_text = self.prompt_template.format(
-            criterion=self.criterion.render(),
+            criterion=str(self.criterion),
             outputs=outputs,
             inputs=inputs or [],
             reference=reference or self.reference or "",
@@ -181,7 +181,7 @@ class LangCritic(Process, AsyncProcess, t.Generic[CRITERION, LANG_MODEL]):
     async def batch_aforward(self, outputs: List, inputs: List = None, reference=None, context=None, **kwargs) -> BaseModel:
         """Async batch evaluation."""
         prompt_text = self.prompt_template.format(
-            criterion=self.criterion.render(),
+            criterion=str(self.criterion),
             outputs=outputs,
             inputs=inputs or [],
             reference=reference or self.reference or "",

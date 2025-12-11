@@ -17,10 +17,10 @@ import csv
 import io
 from collections import OrderedDict
 
-
 # local
 from ._process import Process
-from .. import utils
+import dachi.utils as utils
+from dachi.core import UNDEFINED
 
 
 class Parser(Process):
@@ -59,9 +59,6 @@ class Parser(Process):
         """
         pass
 
-    @abstractmethod
-    def render(self, data) -> str:
-        pass
 
 PARSER = typing.TypeVar('PARSER', bound=Parser)
 
@@ -119,7 +116,7 @@ class CSVRowParser(Parser):
         # resp = self.handle_null(resp, '')
         delta_store = delta_store if delta_store is not None else {}
 
-        val = utils.acc(delta_store, 'val', val, '')
+        val = utils.store.acc(delta_store, 'val', val, '')
         row = utils.store.get_or_set(delta_store, 'row', 0)
         header = utils.store.get_or_set(
             delta_store, 'header', None
@@ -135,25 +132,25 @@ class CSVRowParser(Parser):
             new_rows.append(row)
 
         if len(new_rows) == 0:
-            return utils.UNDEFINED
+            return UNDEFINED
         
         if not is_last:
             new_rows.pop()
 
         if len(new_rows) == 0:
-            return utils.UNDEFINED
+            return UNDEFINED
 
         if (
             self.use_header is True 
             and delta_store['header'] is None
         ):
             delta_store['header'] = new_rows.pop(0)
-            utils.acc(delta_store, 'row', 1)
+            utils.store.acc(delta_store, 'row', 1)
 
         header = delta_store['header']
-        utils.acc(delta_store, 'row', len(new_rows))
+        utils.store.acc(delta_store, 'row', len(new_rows))
         if len(new_rows) == 0:
-            return utils.UNDEFINED
+            return UNDEFINED
         
         if self.use_header:
             return [OrderedDict(zip(header, row)) for row in new_rows]
@@ -237,9 +234,9 @@ class CharDelimParser(Parser):
         delta_store = delta_store if delta_store is not None else {}
         # resp = self.handle_null(resp, '')
         val = val or ''
-        val = utils.acc(delta_store, 'val', val)
+        val = utils.store.acc(delta_store, 'val', val)
         res = val.split(self.sep)
-        return_val = utils.UNDEFINED
+        return_val = UNDEFINED
         
         if len(res) > 0:
             if len(val) == 0:
@@ -335,7 +332,7 @@ class LineParser(Parser):
         """
         delta_store = delta_store if delta_store is not None else {}
         val = val or ''
-        utils.acc(delta_store, 'val', val)
+        utils.store.acc(delta_store, 'val', val)
         lines = delta_store['val'].splitlines()
         buffer = []
 
@@ -366,7 +363,7 @@ class LineParser(Parser):
             buffered_lines.pop(-1)
 
         if len(buffered_lines) == 0:
-            return utils.UNDEFINED
+            return UNDEFINED
 
         return [
             ''.join(line)

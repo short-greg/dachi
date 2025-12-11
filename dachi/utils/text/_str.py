@@ -74,20 +74,31 @@ def get_str_variables(format_string: str) -> typing.List[str]:
 str_formatter = _PartialFormatter() # Use to format a string with keys and values, does not require all keys specified
 
 
-def escape_curly_braces(value: typing.Any, render: bool=False) -> str:
-    """Escape curly braces for dictionary-like structures."""
+# def escape_curly_braces(value: typing.Any, render: bool=False) -> str:
+#     """Escape curly braces for dictionary-like structures."""
 
-    if isinstance(value, str):
-        result = f'"{value}"'
-        return result
-    if isinstance(value, typing.Dict):
-        items = ', '.join(f'"{k}": {escape_curly_braces(v)}' for k, v in value.items())
-        return f"{{{{{items}}}}}"
-    if isinstance(value, typing.List):
-        return '[{}]'.format(', '.join(escape_curly_braces(v) for v in value))
-    if render:
-        return render(value)
-    return str(value)
+#     if isinstance(value, str):
+#         result = f'"{value}"'
+#         return result
+#     if isinstance(value, typing.Dict):
+#         items = ', '.join(f'"{k}": {escape_curly_braces(v)}' for k, v in value.items())
+#         return f"{{{{{items}}}}}"
+#     if isinstance(value, typing.List):
+#         return '[{}]'.format(', '.join(escape_curly_braces(v) for v in value))
+#     if render:
+#         return render(value)
+#     return str(value)
+
+
+def escape_curly_braces(value: str) -> str:
+    """Escape curly braces in a string."""
+    # replace { with {{ and } with }} 
+    # but do not escape ones that are already escaped how do i do this. I cannot use value.replace and value is a string already. 
+    # the code below is wrong because it will double escape already escaped braces
+    
+    return value.replace('{', '{{').replace('}', '}}')
+
+    
 
 
 def unescape_curly_braces(value: typing.Any) -> str:

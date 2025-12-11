@@ -704,9 +704,9 @@ class AdaptModule(
         if recurse and self._train_submods and not self._fixed and self._adapted.data is not None:
             yield from self._adapted.data.parameters(recurse=True, _seen=_seen, with_annotations=with_annotations)
 
-    def render(self) -> str:  # for LLM debugging
-        adapted_name = self._adapted.data.__class__.__name__ if self._adapted.data else 'None'
-        return f"AdaptModule(adapted={adapted_name}, fixed={self._fixed})"
+    # def render(self) -> str:  # for LLM debugging
+    #     adapted_name = self._adapted.data.__class__.__name__ if self._adapted.data else 'None'
+    #     return f"AdaptModule(adapted={adapted_name}, fixed={self._fixed})"
 
     @classmethod
     def build(cls, 

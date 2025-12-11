@@ -43,7 +43,7 @@ class TestCritic:
 
     def test_forward_returns_evaluation_matching_schema(self):
         """LangCritic.forward() returns instance of criterion.evaluation_schema."""
-        response_json = '{"criterion_name": "test", "passed": true}'
+        response_json = '{"name": "test", "passed": true, "passing_criteria": "criteria was met"}'
         evaluator = MockLangModel(response_json=response_json)
 
         criterion = PassFailCriterion(
@@ -64,7 +64,7 @@ class TestCritic:
 
     def test_forward_passes_structure_to_evaluator(self):
         """LangCritic passes criterion.evaluation_schema as structure."""
-        response_json = '{"criterion_name": "test", "passed": true}'
+        response_json = '{"name": "test", "passed": true, "passing_criteria": "criteria was met"}'
         evaluator = MockLangModel(response_json=response_json)
 
         criterion = PassFailCriterion(
@@ -84,7 +84,7 @@ class TestCritic:
 
     def test_prompt_template_receives_output_and_criterion_render(self):
         """Formatted prompt includes output and criterion.render()."""
-        response_json = '{"criterion_name": "test", "passed": true}'
+        response_json = '{"name": "test", "passed": true, "passing_criteria": "criteria was met"}'
         evaluator = MockLangModel(response_json=response_json)
 
         criterion = PassFailCriterion(
@@ -105,7 +105,7 @@ class TestCritic:
 
     def test_batch_forward_creates_batch_evaluation_with_list(self):
         """LangCritic.batch_forward() returns batch_evaluation_schema instance."""
-        response_json = '{"criterion_name": "test", "evaluations": [{"criterion_name": "test", "passed": true}, {"criterion_name": "test", "passed": false}]}'
+        response_json = '{"evaluations": [{"name": "test", "passed": true, "passing_criteria": "passed"}, {"name": "test", "passed": false, "passing_criteria": "failed"}]}'
         evaluator = MockLangModel(response_json=response_json)
 
         criterion = PassFailCriterion(
@@ -128,7 +128,7 @@ class TestCritic:
 
     def test_reference_parameter_is_included_in_template(self):
         """Reference argument is formatted into prompt template."""
-        response_json = '{"criterion_name": "test", "passed": true}'
+        response_json = '{"name": "test", "passed": true, "passing_criteria": "criteria was met"}'
         evaluator = MockLangModel(response_json=response_json)
 
         criterion = PassFailCriterion(
@@ -148,12 +148,12 @@ class TestCritic:
 
     def test_context_parameter_is_included_in_template(self):
         """Context argument is formatted into prompt template."""
-        response_json = '{"criterion_name": "test", "passed": true}'
+        response_json = '{"name": "test", "passed": true, "passing_criteria": "criteria was met"}'
         evaluator = MockLangModel(response_json=response_json)
 
         criterion = PassFailCriterion(
             name="test",
-            passed=BoolField()
+            passed=BoolField(),
         )
 
         critic = LangCritic(

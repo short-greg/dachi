@@ -3,7 +3,7 @@ import asyncio
 import typing
 import pytest
 from dachi.proc import _graph as G
-from dachi.utils import UNDEFINED 
+from dachi.core import UNDEFINED 
 
 
 class MyProcess:

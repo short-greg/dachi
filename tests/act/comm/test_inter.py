@@ -12,7 +12,7 @@ from pydantic import BaseModel
 
 # local
 from dachi.act.comm._inter import Bulletin, Post
-from dachi.utils._utils import singleton
+from dachi.utils import singleton
 
 
 class Essay(BaseModel):

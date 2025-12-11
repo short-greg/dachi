@@ -44,14 +44,14 @@ from ._process import (
     AsyncStreamProcess
 )
 from ..core import Param, END_TOK
-from ..utils import primitives, str_formatter
+from dachi.core import primitives
+from dachi.utils.text import str_formatter
 from ._msg import ToPrompt, NullToPrompt
 from ._resp import (
     ToOut, PrimOut, TextOut, StructOut
 )
 Engine: typing.TypeAlias = Process | AsyncProcess | StreamProcess | AsyncStreamProcess
-from dachi.core import render
-from dachi.inst import style_formatter
+# from dachi.utils.text import style_formatter
 
 S = typing.TypeVar('S')
 # TODO: MOVE OUT OF HERE
@@ -761,16 +761,15 @@ class TemplateFormatter(Process):
 
     prompt_template: str
     to_render: bool = True
-    style: typing.Dict[str, typing.Any] | None = None
 
     def forward(self, **kwargs) -> str:
         if self.to_render:
             kwargs = {
-                k: render(v, False) for k, v in kwargs.items()
+                k: str(v, False) for k, v in kwargs.items()
             }
         if self.style is not None:
-            return style_formatter(
-                self.prompt_template, _style=self.style, **kwargs
+            return str_formatter(
+                self.prompt_template, **kwargs
             )
         return self.prompt_template.format(
             **kwargs

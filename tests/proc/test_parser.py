@@ -1,5 +1,5 @@
 from dachi.proc._parser import CSVRowParser, LineParser, CharDelimParser
-from dachi import utils
+from dachi.core import UNDEFINED
 from collections import OrderedDict
 
 class TestCSVRowParser:
@@ -69,7 +69,7 @@ class TestCSVRowParser:
         
         # Stream header + partial first row
         result1 = parser.delta("name,age\nJo", delta_store, is_last=False)
-        assert result1 == utils.UNDEFINED
+        assert result1 == UNDEFINED
         
         # Complete first row + start second
         result2 = parser.delta("hn,25\nJa", delta_store, is_last=False) 
@@ -184,7 +184,7 @@ class TestLineParser:
         
         # Stream partial line
         result1 = parser.delta("Hello wo", delta_store, is_last=False)
-        assert result1 == utils.UNDEFINED
+        assert result1 == UNDEFINED
         
         # Complete first line + start second
         result2 = parser.delta("rld\nSecond li", delta_store, is_last=False)
@@ -201,7 +201,7 @@ class TestLineParser:
         
         # Stream line with continuation
         result1 = parser.delta("line1\\", delta_store, is_last=False)
-        assert result1 == utils.UNDEFINED
+        assert result1 == UNDEFINED
         
         # Complete continuation + new line
         result2 = parser.delta("\nline2\nline3", delta_store, is_last=True)
