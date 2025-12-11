@@ -636,13 +636,12 @@ class Checkpoint(pydantic.BaseModel):
         state = data['state']
         return cls(spec=spec, state=state)
 
-    def to_param_set(self) -> ParamSet:
+    def param_set(self) -> ParamSet:
         """Build a ParamSet from a BaseModule, collecting all parameters."""
         params, annotations = list(
             self.parameters(recurse=True, with_annotations=True)
         )
         return ParamSet[annotations](params=params)
-
 
 
 MODULE = t.TypeVar("MODULE", bound=Module)
