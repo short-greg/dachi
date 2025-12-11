@@ -144,11 +144,11 @@ class BaseState(ChartBase):
     @abstractmethod
     async def execute(self, post: "EventPost", **inputs: Any) -> t.Iterator[t.Dict | None] | Optional[t.Dict]:
         """Execute the state's main logic. Return optional output."""
-        pass
+        raise NotImplementedError
 
     @abstractmethod
     async def run(self, post: "EventPost", ctx: Ctx) -> None:
-        pass
+        raise NotImplementedError
 
     def is_final(self) -> bool:
         """Return True if this is a final state."""
@@ -487,7 +487,7 @@ class StreamState(LeafState):
     @abstractmethod
     async def execute(self, post: "EventPost", **inputs: Any) -> t.Iterator[Optional[Any]]:
         """Execute with preemption checks at each yield."""
-        pass
+        raise NotImplementedError
 
     async def run(self, post: "EventPost", ctx: Ctx) -> None:
         """Execute streaming state with context updates.

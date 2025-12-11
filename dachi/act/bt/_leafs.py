@@ -20,7 +20,7 @@ class Condition(LeafTask):
         Returns:
             bool or (bool, outputs_dict): The result of the condition, optionally with outputs
         """
-        pass
+        raise NotImplementedError
 
     async def tick(self, ctx) -> TaskStatus:
         """Check the condition
@@ -61,7 +61,7 @@ class WaitCondition(LeafTask):
         Returns:
             bool: The result of the condition
         """
-        pass
+        raise NotImplementedError
 
     async def tick(self, ctx) -> TaskStatus:
         """Check the condition

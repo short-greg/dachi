@@ -15,7 +15,7 @@ class Payload(TypedDict, total=False):
     pass
 
 
-class ChartEventHandler(ABC):
+class ChartEventHandler:
     """Mixin for components that can handle events (StateChart, Region, CompositeState)."""
 
     @abstractmethod
@@ -27,7 +27,7 @@ class ChartEventHandler(ABC):
             post: Post object for sending new events
             ctx: Context for this component
         """
-        pass
+        raise NotImplementedError
 
 
 class Event(TypedDict, total=False):

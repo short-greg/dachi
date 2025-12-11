@@ -49,18 +49,18 @@ CORE_TYPE = t.TypeVar("J", bound=t.Union[BaseModel, dict, str, int, float, bool]
 # WAITING = _Types.WAITING
 # """Constant for WAITING when streaming. usage: value is WAITING"""
 
-class StorableState(ABC):
+class StorableState:
     """Mixin for classes that implement state_dict() and load_state_dict() methods."""
 
     @abstractmethod
     def state_dict(self, *, recurse: bool = True) -> dict:
         """Return a dictionary representing the state of the object."""
-        pass
+        raise NotImplementedError
 
     @abstractmethod
     def load_state_dict(self, state_dict: dict, *, recurse: bool = True):
         """Load the state of the object from a dictionary."""
-        pass
+        raise NotImplementedError
 
 
 def to_kind(cls): 
@@ -75,7 +75,7 @@ def to_kind(cls):
     return cls.__qualname__
 
 
-class Templatable(ABC):
+class Templatable:
     """A mixin to indicate that the class 
     has a template function defined. Templates are
     used by the LLM to determine how to output.
@@ -88,10 +88,10 @@ class Templatable(ABC):
         Returns:
             str: 
         """
-        pass
+        raise NotImplementedError
 
 
-class ExampleMixin(ABC):
+class ExampleMixin:
     """A mixin to indicate that the class 
     has an example function
     """
@@ -102,7 +102,7 @@ class ExampleMixin(ABC):
         Returns:
             str: 
         """
-        pass
+        raise NotImplementedError
 
 
 class TokenType(str, Enum):

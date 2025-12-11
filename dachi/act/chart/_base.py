@@ -54,7 +54,7 @@ class InvalidTransition(Exception):
     pass
 
 
-class Recoverable(ABC):
+class Recoverable:
     """Protocol for objects that can recover their internal state.
 
     Implemented by:
@@ -76,7 +76,7 @@ class Recoverable(ABC):
             - Region: True if _last_active_state is not None
             - CompositeState: True if any child region can recover
         """
-        pass
+        raise NotImplementedError
 
     @abstractmethod
     def recover(self, policy: Literal["shallow", "deep"]) -> None:
@@ -92,7 +92,7 @@ class Recoverable(ABC):
         Raises:
             RuntimeError: If can_recover() is False
         """
-        pass
+        raise NotImplementedError
 
 
 class ChartBase(Module):
