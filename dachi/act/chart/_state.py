@@ -91,7 +91,7 @@ class DeepHistoryState(HistoryState):
     history_type: Literal["deep"] = "deep"
 
 
-class BaseState(ChartBase, ABC):
+class BaseState(ChartBase):
     """Base class for all state types."""
     name: Optional[str] = None
 
@@ -210,7 +210,7 @@ class BaseState(ChartBase, ABC):
             loop.create_task(self.finish(post, ctx))
 
 
-class LeafState(BaseState, ABC):
+class LeafState(BaseState):
     """Leaf state that does not contain nested regions."""
 
     __sc_params__: ClassVar[Dict[str, Dict[str, Any]]] = {}
@@ -481,7 +481,7 @@ class BoundState(BaseState, t.Generic[STATE]):
         super().reset()
 
 
-class StreamState(LeafState, ABC):
+class StreamState(LeafState):
     """Streaming state with preemption at yield points."""
 
     @abstractmethod

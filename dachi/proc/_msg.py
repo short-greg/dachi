@@ -14,7 +14,7 @@ from ._process import Process
 RESPONSE = 'resp'
 S = t.TypeVar('S', bound=pydantic.BaseModel)
 
-class ToPrompt(Process, ABC):
+class ToPrompt(Process):
     """Converts the input to a message
 
     Example:
