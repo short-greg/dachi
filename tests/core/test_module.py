@@ -9,6 +9,7 @@ from dachi.core._shareable import (
     Param,
     Runtime,
     Shared,
+    ParamSet,
 )
 from dachi.core._base import to_kind
 from dachi.core._module import (
@@ -1428,3 +1429,97 @@ class TestAdaptModuleEdgeCases:
 
         # With train_submods=True should have more params
         assert len(params_with) > len(params_without)
+
+
+class TestModuleParamSet:
+    """Test Module.param_set() method."""
+
+    def test_param_set_when_no_params_returns_empty_param_set(self):
+        class TestModule(Module):
+            pass
+
+        module = TestModule()
+        param_set = module.param_set()
+
+        assert isinstance(param_set, ParamSet)
+        assert len(param_set.params) == 0
+
+    def test_param_set_when_has_params_returns_param_set_with_all_params(self):
+        class TestModule(Module):
+            _p1: Param[int] = PrivateParam(default=10)
+            _p2: Param[int] = PrivateParam(default=20)
+
+        module = TestModule()
+        param_set = module.param_set()
+
+        assert isinstance(param_set, ParamSet)
+        assert len(param_set.params) == 2
+        assert all(isinstance(p, Param) for p in param_set.params)
+
+    def test_param_set_when_recurse_includes_child_params(self):
+        class ChildModule(Module):
+            _p_child: Param[int] = PrivateParam(default=10)
+
+        class ParentModule(Module):
+            _p_parent: Param[int] = PrivateParam(default=20)
+            _child: ChildModule = pydantic.PrivateAttr(default_factory=ChildModule)
+
+        parent = ParentModule()
+        param_set = parent.param_set()
+
+        # param_set uses parameters(recurse=True) by default
+        assert len(param_set.params) == 2
+
+    def test_param_set_returns_tuple_of_params(self):
+        class TestModule(Module):
+            _p1: Param[int] = PrivateParam(default=42)
+
+        module = TestModule()
+        param_set = module.param_set()
+
+        assert isinstance(param_set.params, tuple)
+        assert param_set.params[0] is module._p1
+
+    def test_param_set_excludes_runtime_and_shared(self):
+        class TestModule(Module):
+            _param: Param[int] = PrivateParam(default=10)
+            _runtime: Runtime[int] = PrivateRuntime(default=20)
+            _shared: Shared[int] = PrivateShared(default=30)
+
+        module = TestModule()
+        param_set = module.param_set()
+
+        # Should only include the Param, not Runtime or Shared
+        assert len(param_set.params) == 1
+        assert param_set.params[0] is module._param
+
+    def test_param_set_can_be_used_with_to_schema(self):
+        class TestModule(Module):
+            _p1: Param[int] = PrivateParam(default=42)
+
+        module = TestModule()
+        param_set = module.param_set()
+        schema = param_set.to_schema()
+
+        assert isinstance(schema, dict)
+        assert "properties" in schema or "$defs" in schema
+
+    def test_param_set_with_nested_modules_returns_all_params(self):
+        class GrandchildModule(Module):
+            _p_grand: Param[int] = PrivateParam(default=5)
+
+        class ChildModule(Module):
+            _p_child: Param[int] = PrivateParam(default=10)
+            _grandchild: GrandchildModule = pydantic.PrivateAttr(default_factory=GrandchildModule)
+
+        class ParentModule(Module):
+            _p_parent: Param[int] = PrivateParam(default=20)
+            _child: ChildModule = pydantic.PrivateAttr(default_factory=ChildModule)
+
+        parent = ParentModule()
+        param_set = parent.param_set()
+
+        # Should include all 3 params from the hierarchy
+        assert len(param_set.params) == 3
+        param_values = {p.data for p in param_set.params}
+        assert param_values == {5, 10, 20}

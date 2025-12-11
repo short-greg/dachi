@@ -597,6 +597,16 @@ class Module(pydantic.BaseModel, StorableState, Trainable):
             if extra:
                 raise KeyError(f"Unexpected keys in load_state_dict: {sorted(extra)}")
 
+    def param_set(self) -> ParamSet:
+        """Build a ParamSet from a BaseModule, collecting all parameters."""
+        params_with_annot = list(
+            self.parameters(recurse=True, with_annotations=True)
+        )
+        if not params_with_annot:
+            return ParamSet(params=())
+
+        params, annotations = zip(*params_with_annot)
+        return ParamSet[annotations[0]](params=params)
 
 
 mod_registry = Registry[Module]()
@@ -635,13 +645,6 @@ class Checkpoint(pydantic.BaseModel):
         spec = load_cls.obj.__spec__.model_validate(data['spec'])
         state = data['state']
         return cls(spec=spec, state=state)
-
-    def param_set(self) -> ParamSet:
-        """Build a ParamSet from a BaseModule, collecting all parameters."""
-        params, annotations = list(
-            self.parameters(recurse=True, with_annotations=True)
-        )
-        return ParamSet[annotations](params=params)
 
 
 MODULE = t.TypeVar("MODULE", bound=Module)

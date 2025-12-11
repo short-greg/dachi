@@ -332,9 +332,9 @@ class Shared(ShareableItem[CORE_TYPE]):
 
 
 class ParamSet(pydantic.BaseModel, t.Generic[CORE_TYPE]):
-    """ParamSet is a 
+    """ParamSet is a collection of parameters.
     """
-    params: t.Tuple[PARAM] = Field(default_factory=tuple)
+    params: t.Tuple[PARAM, ...] = Field(default_factory=tuple)
 
     def update(self, param_set: Dict):
         """Update the parameters from a dictionary.
