@@ -139,7 +139,7 @@ class ToOut(
         Returns:
             str: 
         """
-        pass
+        raise NotImplementedError
 
     @abstractmethod
     def template(self) -> str:
@@ -148,7 +148,7 @@ class ToOut(
         Returns:
             str: The template as a string
         """
-        pass
+        raise NotImplementedError
 
     @abstractmethod
     def example(self) -> str:
@@ -157,7 +157,7 @@ class ToOut(
         Returns:
             str: Example output as a string
         """
-        pass    
+        raise NotImplementedError
 
     def coalesce_resp(self, resp, default='') -> str:
         """Coalesce the response into a single string
@@ -188,7 +188,7 @@ class ToOut(
         Returns:
             Processed result or UNDEFINED if not ready
         """
-        pass
+        raise NotImplementedError
 
     @abstractmethod
     def delta(
@@ -207,7 +207,7 @@ class ToOut(
         Returns:
             Processed result or UNDEFINED if not ready
         """
-        pass
+        raise NotImplementedError
 
 
 

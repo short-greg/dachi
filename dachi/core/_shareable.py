@@ -334,7 +334,6 @@ class Shared(ShareableItem[CORE_TYPE]):
 class ParamSet(pydantic.BaseModel, t.Generic[CORE_TYPE]):
     """ParamSet is a 
     """
-
     params: t.Tuple[PARAM] = Field(default_factory=tuple)
 
     def update(self, param_set: Dict):
@@ -364,7 +363,7 @@ class ParamSet(pydantic.BaseModel, t.Generic[CORE_TYPE]):
 PARAM = t.TypeVar("P", bound=Param)
 
 
-class Trainable(ABC):
+class Trainable:
     """
     """
 
@@ -376,5 +375,14 @@ class Trainable(ABC):
         _seen: t.Optional[set[int]] = None,
         with_annotations: bool = False,
     ) -> t.Iterator[Param | tuple[Param, t.Any]]:
-        pass
+        """Yield all trainable parameters.
+        Args:
+            recurse: If True, recursively yield parameters from submodules.
+            _seen: Internal set to track seen parameters and avoid duplicates.
+            with_annotations: If True, yield (Param, annotation) tuples.
+        Yields:
+            Iterator[Param | tuple[Param, Any]]: Trainable parameters
+        """
+
+        raise NotImplementedError
 

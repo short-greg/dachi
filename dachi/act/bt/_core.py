@@ -268,11 +268,13 @@ class CompositeTask(Task, t.Generic[TASK]):
         Yields:
             Task: Each current sub-task
         """
-        pass
+        
+        raise NotImplementedError
 
     @abstractmethod
     async def update_status(self) -> TaskStatus:
-        pass
+        
+        raise NotImplementedError
 
 
 class LeafTask(Task):
@@ -294,7 +296,7 @@ class LeafTask(Task):
         For Action: returns TaskStatus or (TaskStatus, outputs_dict)
         For Condition: returns bool or (bool, outputs_dict)
         """
-        pass
+        raise NotImplementedError
     
     @classmethod
     def _process_ports(cls, port_class):
@@ -416,7 +418,8 @@ class LeafTask(Task):
         Returns:
             TaskStatus or (TaskStatus, outputs_dict): The result after execution
         """
-        pass
+        
+        raise NotImplementedError
         # try:
         #     inputs = self.build_inputs(ctx)
         #     return await self.tick(**inputs)
@@ -434,7 +437,7 @@ class ToStatus(Process):
     """
 
     @abstractmethod
-    def __call__(self, val) -> TaskStatus:
+    def forward(self, val) -> TaskStatus:
         """Convert the value to a status
 
         Args:
@@ -443,7 +446,7 @@ class ToStatus(Process):
         Returns:
             TaskStatus: The status
         """
-        pass
+        raise NotImplementedError
 
 
 TOSTATUS = ToStatus | t.Callable[[t.Any], TaskStatus]

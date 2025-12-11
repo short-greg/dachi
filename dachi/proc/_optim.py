@@ -9,7 +9,6 @@ from dachi.core import ParamSet, Module, Inp
 from abc import ABC
 from dachi.proc import Process, AsyncProcess
 from dachi.core import TextMsg
-from dachi.utils.text import str_formatter
 
 from ._ai import LangModel, LANG_MODEL
 from ._inst import TemplateFormatter
@@ -20,11 +19,11 @@ class Optim(Module):
 
     @abstractmethod
     def step(self, evaluations: Evaluation | BatchEvaluation):
-        pass
+        raise NotImplementedError
 
     @abstractmethod
     async def astep(self, evaluations: Evaluation | BatchEvaluation):
-        pass
+        raise NotImplementedError
 
 
 class LangOptim(Optim, t.Generic[CRITERION]):
@@ -44,7 +43,7 @@ class LangOptim(Optim, t.Generic[CRITERION]):
         Returns:
             str: The objective description
         """
-        pass
+        raise NotImplementedError
         
     @abstractmethod
     def constraints(self) -> str:
@@ -53,7 +52,7 @@ class LangOptim(Optim, t.Generic[CRITERION]):
         Returns:
             str: The constraints description
         """
-        pass
+        raise NotImplementedError
 
     @abstractmethod
     def param_evaluations(self, evaluations: Evaluation | BatchEvaluation) -> str:
@@ -65,7 +64,7 @@ class LangOptim(Optim, t.Generic[CRITERION]):
         Returns:
             str: The formatted evaluations
         """
-        pass
+        raise NotImplementedError
     
     def step(self, evaluations: Evaluation | BatchEvaluation):
 
@@ -136,7 +135,6 @@ class LangCritic(Process, AsyncProcess, t.Generic[CRITERION, LANG_MODEL]):
         text, _ = self.evaluator.forward(
             prompt_text, structure=self.criterion.evaluation_schema
         )
-        print (text, self.criterion.evaluation_schema.model_fields)
         return self.criterion.evaluation_schema.model_validate_json(text)
 
     async def aforward(self, output, input=None, reference=None, context=None, **kwargs) -> BaseModel:
