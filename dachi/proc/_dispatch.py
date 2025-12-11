@@ -39,7 +39,6 @@ from queue import Queue, Empty
 from typing import Any, Iterator, Optional, Callable
 import threading, traceback
 
-from dachi.utils import singleton
 from ._process import AsyncProcess, AsyncStreamProcess
 
 
@@ -124,9 +123,8 @@ class _Job:
 
 _SENTINEL = object()
 
-MAX_CONCURRENCY = 8  # Default maximum concurrent requests to prevent API overload 
+MAX_CONCURRENCY = 8  # Default maximum concurrent requests to prevent API overload
 
-@singleton
 class AsyncDispatcher:
     """
     Centralized async request dispatcher for AI processing with concurrency control.
@@ -658,14 +656,13 @@ class AsyncDispatcher:
 
     def shutdown(self):
         """Shutdown the dispatcher event loop.
-        
+
         Stops the internal asyncio event loop used for request processing.
         Should be called when the dispatcher is no longer needed, particularly
         in testing scenarios or during application shutdown.
-        
+
         Note:
             This is primarily for cleanup in tests and shutdown procedures.
-            In normal operation, the singleton dispatcher runs for the application lifetime.
         """
         self._loop.call_soon_threadsafe(self._loop.stop)
 

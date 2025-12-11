@@ -112,8 +112,7 @@ def _wait_until(rd: AsyncDispatcher, rid: str, states: set[RequestState], timeou
 
 @pytest.fixture(scope="module")
 def rd() -> AsyncDispatcher:
-    # Singleton instance (your decorator/property should handle this).
-    return AsyncDispatcher.obj
+    return AsyncDispatcher()
 
 
 # Async function returning a value
