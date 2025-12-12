@@ -2,6 +2,7 @@ import typing as t
 from typing import List
 from abc import abstractmethod
 
+import pydantic
 from pydantic import BaseModel
 
 from dachi.inst import CRITERION, BatchEvaluation, Evaluation
@@ -32,9 +33,11 @@ class LangOptim(Optim, t.Generic[CRITERION]):
     params: ParamSet
     criterion: CRITERION
     prompt_template: str
+    _formatter: TemplateFormatter = pydantic.PrivateAttr()
 
     def model_post_init(self, __context):
-        self.formatter = TemplateFormatter()
+        super().model_post_init(__context)
+        self._formatter = TemplateFormatter(prompt_template=self.prompt_template)
 
     @abstractmethod
     def objective(self) -> str:
@@ -132,7 +135,7 @@ class LangCritic(Process, AsyncProcess, t.Generic[CRITERION, LANG_MODEL]):
             **kwargs
         )
 
-        text, _ = self.evaluator.forward(
+        text, _, _ = self.evaluator.forward(
             prompt_text, structure=self.criterion.evaluation_schema
         )
         return self.criterion.evaluation_schema.model_validate_json(text)
@@ -149,11 +152,11 @@ class LangCritic(Process, AsyncProcess, t.Generic[CRITERION, LANG_MODEL]):
         )
 
         if isinstance(self.evaluator, AsyncProcess):
-            text, _ = await self.evaluator.aforward(
+            text, _, _ = await self.evaluator.aforward(
                 prompt_text, structure=self.criterion.evaluation_schema
             )
         else:
-            text, _ = self.evaluator.forward(prompt_text, structure=self.criterion.evaluation_schema)
+            text, _, _ = self.evaluator.forward(prompt_text, structure=self.criterion.evaluation_schema)
         return self.criterion.evaluation_schema.model_validate_json(text)
     
     def batch_forward(
@@ -172,7 +175,7 @@ class LangCritic(Process, AsyncProcess, t.Generic[CRITERION, LANG_MODEL]):
         )
 
 
-        text, _ = self.evaluator.forward(
+        text, _, _ = self.evaluator.forward(
             prompt_text, structure=self.criterion.batch_evaluation_schema
         )
         return self.criterion.batch_evaluation_schema.model_validate_json(text)
@@ -189,8 +192,8 @@ class LangCritic(Process, AsyncProcess, t.Generic[CRITERION, LANG_MODEL]):
         )
 
         if isinstance(self.evaluator, AsyncProcess):
-            text, _ = await self.evaluator.aforward(prompt_text, structure=self.criterion.batch_evaluation_schema)
+            text, _, _ = await self.evaluator.aforward(prompt_text, structure=self.criterion.batch_evaluation_schema)
         else:
-            text, _ = self.evaluator.forward(prompt_text, structure=self.criterion.batch_evaluation_schema)
+            text, _, _ = self.evaluator.forward(prompt_text, structure=self.criterion.batch_evaluation_schema)
 
         return self.criterion.batch_evaluation_schema.model_validate_json(text)

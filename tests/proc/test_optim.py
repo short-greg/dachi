@@ -9,6 +9,10 @@ from dachi.proc._optim import LangCritic
 from dachi.proc._ai import LangModel
 from dachi.core import Inp
 
+from dachi.proc import LangOptim, LangModel
+from dachi.core import ParamSet, Param, TextMsg
+from dachi.inst import BaseCriterion, BoundInt, Evaluation, BatchEvaluation
+from pydantic import Field
 
 class MockLangModel(LangModel):
     """Mock LangModel for testing LangCritic."""
@@ -17,25 +21,25 @@ class MockLangModel(LangModel):
     last_prompt: str = None
     last_structure: typing.Any = None
 
-    def forward(self, prompt, structure=None, tools=None, **kwargs) -> typing.Tuple[str, typing.List[Inp]]:
+    def forward(self, prompt, structure=None, tools=None, **kwargs) -> typing.Tuple[str, typing.List[Inp], typing.Any]:
         self.last_prompt = prompt
         self.last_structure = structure
-        return (self.response_json, [])
+        return (self.response_json, [], None)
 
-    async def aforward(self, prompt, structure=None, tools=None, **kwargs) -> typing.Tuple[str, typing.List[Inp]]:
+    async def aforward(self, prompt, structure=None, tools=None, **kwargs) -> typing.Tuple[str, typing.List[Inp], typing.Any]:
         self.last_prompt = prompt
         self.last_structure = structure
-        return (self.response_json, [])
+        return (self.response_json, [], None)
 
-    def stream(self, prompt, structure=None, tools=None, **kwargs) -> typing.Iterator[typing.Tuple[str, typing.List[Inp]]]:
+    def stream(self, prompt, structure=None, tools=None, **kwargs) -> typing.Iterator[typing.Tuple[str, typing.List[Inp], typing.Any]]:
         self.last_prompt = prompt
         self.last_structure = structure
-        yield (self.response_json, [])
+        yield (self.response_json, [], None)
 
-    async def astream(self, prompt, structure=None, tools=None, **kwargs) -> typing.AsyncIterator[typing.Tuple[str, typing.List[Inp]]]:
+    async def astream(self, prompt, structure=None, tools=None, **kwargs) -> typing.AsyncIterator[typing.Tuple[str, typing.List[Inp], typing.Any]]:
         self.last_prompt = prompt
         self.last_structure = structure
-        yield (self.response_json, [])
+        yield (self.response_json, [], None)
 
 
 class TestCritic:
@@ -165,3 +169,68 @@ class TestCritic:
         critic.forward(output="test output", context={"key": "value"})
 
         assert "key" in evaluator.last_prompt or "value" in evaluator.last_prompt
+
+
+"""Test LangOptim subclassing to diagnose validation error."""
+
+
+class SimpleCriterion(BaseCriterion):
+    """Minimal criterion for testing."""
+
+    name: str = "Test"
+    description: str = "Test criterion"
+    score: BoundInt = Field(
+        default_factory=lambda: BoundInt(min_val=1, max_val=5, description="Score")
+    )
+
+
+class SimpleLangOptim(LangOptim):
+    """Minimal LangOptim subclass to test inheritance."""
+
+    objective_text: str
+    constraints_text: str
+
+    def objective(self) -> str:
+        return self.objective_text
+
+    def constraints(self) -> str:
+        return self.constraints_text
+
+    def param_evaluations(self, evaluations: Evaluation | BatchEvaluation) -> str:
+        return str(evaluations)
+
+
+def test_langoptim_instantiation():
+    """Test that LangOptim subclass can be instantiated."""
+    print("Creating MockLangModel...")
+    llm = MockLangModel(response_json='{}')
+    print(f"  Success: {llm}")
+
+    print("Creating SimpleCriterion...")
+    criterion = SimpleCriterion()
+    print(f"  Success: {criterion}")
+
+    print("Creating ParamSet...")
+    params = ParamSet(params=(Param(data="test prompt"),))
+    print(f"  Success: {params}")
+
+    print("Creating SimpleLangOptim...")
+    try:
+        optimizer = SimpleLangOptim(
+            llm=llm,
+            params=params,
+            criterion=criterion,
+            objective_text="Test objective",
+            constraints_text="Test constraints",
+            prompt_template="Objective: {objective}\nConstraints: {constraints}"
+        )
+        print(f"  Success: {optimizer}")
+    except Exception as e:
+        print(f"  FAILED: {type(e).__name__}: {e}")
+        raise
+
+
+if __name__ == "__main__":
+    test_langoptim_instantiation()
+    print("\nAll tests passed!")
+
