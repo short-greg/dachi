@@ -223,7 +223,7 @@ class Scope(pydantic.BaseModel):
             bindings (Dict[str, str]): The bindings to apply
             inherit (bool, optional): Whether to inherit from the parent context. Defaults to True.
         """
-        return BoundScope(base_scope=self, base_ctx=ctx, bindings=bindings)
+        return BoundScope(bound=self, base_ctx=ctx, bindings=bindings)
 
     def __getitem__(self, key: Union[str, Tuple]) -> Any:
         scope, key, index = self._resolve_var(key)
@@ -457,7 +457,7 @@ class Scope(pydantic.BaseModel):
 class BoundScope(Scope):
     """A scope that has bindings applied"""
 
-    base_scope: Scope
+    bound: Scope
     base_ctx: 'Ctx'
     bindings: Dict[str, str] = pydantic.Field(default_factory=dict)
     
@@ -471,7 +471,7 @@ class BoundScope(Scope):
             else:
                 raise KeyError(f"Binding for {key} not found")
 
-        return self.base_scope[key]
+        return self.bound[key]
     
     def get(self, key: Union[str, Tuple], default: Any = None) -> Any:
         """Get value by key, returning default if not found"""
@@ -493,7 +493,7 @@ class BoundScope(Scope):
                 return value
             else:
                 raise KeyError(f"Binding for {key} not found")
-        self.base_scope[key] = value
+        self.bound[key] = value
         return value
 
     def __contains__(self, key) :
@@ -504,15 +504,15 @@ class BoundScope(Scope):
                 bound_key = self.bindings[key]
                 return bound_key in self.base_ctx
             return False
-        return key in self.base_scope
+        return key in self.bound
 
     def path(self, index_path: Tuple[int, ...], field: str, index: Union[str, int] = None) -> Any:
         """Get value from indexed location at this context's path"""
-        return self.base_scope.path(index_path, field, index)
+        return self.bound.path(index_path, field, index)
     
     def set(self, index_path: Tuple[int, ...], field: str, value: Any, index: Union[str, int] = None):
         """Set value at both indexed and unindexed locations"""
-        return self.base_scope.set(index_path, field, value, index)
+        return self.bound.set(index_path, field, value, index)
 
 
 class Ctx(pydantic.BaseModel):

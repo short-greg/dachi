@@ -1,6 +1,7 @@
 import typing as t
 from typing import List
 from abc import abstractmethod
+import json
 
 import pydantic
 from pydantic import BaseModel
@@ -81,17 +82,17 @@ class LangOptim(Optim, t.Generic[CRITERION]):
         system = TextMsg("system", prompt_text)
         user = TextMsg("user", str(evaluations))
 
-        updated_params = self.llm.forward(
+        text, _, _ = self.llm.forward(
             [system, user], structure=self.params.to_schema()
         )
-        self.params.update(updated_params)
+        self.params.update(json.loads(text))
 
     @property
     def thread(self) -> t.Optional[t.List[Inp]]:
         return []
 
     async def astep(self, evaluations):
-        
+
         evaluations = self.param_evaluations(evaluations)
         objective = self.objective()
         constraints = self.constraints()
@@ -102,10 +103,10 @@ class LangOptim(Optim, t.Generic[CRITERION]):
         system = TextMsg("system", prompt_text)
         user = TextMsg("user", str(evaluations))
 
-        updated_params = await self.llm.aforward(
+        text, _, _ = await self.llm.aforward(
             [system, user], structure=self.params.to_schema()
         )
-        self.params.update(updated_params)
+        self.params.update(json.loads(text))
 
 
 class LangCritic(Process, AsyncProcess, t.Generic[CRITERION, LANG_MODEL]):

@@ -1,4 +1,5 @@
 import typing
+import pytest
 
 from dachi.inst._criterion import (
     PassFailCriterion,
@@ -170,6 +171,52 @@ class TestCritic:
 
         assert "key" in evaluator.last_prompt or "value" in evaluator.last_prompt
 
+    @pytest.mark.asyncio
+    async def test_aforward_returns_evaluation_matching_schema(self):
+        """LangCritic.aforward() returns instance of criterion.evaluation_schema."""
+        response_json = '{"name": "test", "passed": true, "passing_criteria": "async criteria was met"}'
+        evaluator = MockLangModel(response_json=response_json)
+
+        criterion = PassFailCriterion(
+            name="test",
+            passed=BoolField()
+        )
+
+        critic = LangCritic(
+            criterion=criterion,
+            evaluator=evaluator,
+            prompt_template="Evaluate: {output}"
+        )
+
+        result = await critic.aforward(output="test output")
+
+        assert isinstance(result, criterion.evaluation_schema)
+        assert result.passed is True
+
+    @pytest.mark.asyncio
+    async def test_batch_aforward_creates_batch_evaluation_with_list(self):
+        """LangCritic.batch_aforward() returns batch_evaluation_schema instance."""
+        response_json = '{"evaluations": [{"name": "test", "passed": true, "passing_criteria": "passed"}, {"name": "test", "passed": false, "passing_criteria": "failed"}]}'
+        evaluator = MockLangModel(response_json=response_json)
+
+        criterion = PassFailCriterion(
+            name="test",
+            passed=BoolField()
+        )
+
+        critic = LangCritic(
+            criterion=criterion,
+            evaluator=evaluator,
+            prompt_template="Evaluate: {outputs}"
+        )
+
+        result = await critic.batch_aforward(outputs=["output1", "output2"])
+
+        assert isinstance(result, criterion.batch_evaluation_schema)
+        assert len(result.evaluations) == 2
+        assert result.evaluations[0].passed is True
+        assert result.evaluations[1].passed is False
+
 
 """Test LangOptim subclassing to diagnose validation error."""
 
@@ -228,6 +275,68 @@ def test_langoptim_instantiation():
     except Exception as e:
         print(f"  FAILED: {type(e).__name__}: {e}")
         raise
+
+
+def test_langoptim_step_updates_params():
+    """Test that LangOptim.step() properly updates parameters."""
+    llm = MockLangModel(response_json='{"params": [{"data": "updated prompt"}]}')
+    criterion = SimpleCriterion()
+    params = ParamSet(params=(Param(data="initial prompt"),))
+
+    optimizer = SimpleLangOptim(
+        llm=llm,
+        params=params,
+        criterion=criterion,
+        objective_text="Maximize effectiveness",
+        constraints_text="Keep it concise",
+        prompt_template="Objective: {objective}\nConstraints: {constraints}"
+    )
+
+    evaluation = criterion.evaluation_schema(score=3)
+    optimizer.step(evaluation)
+
+    assert optimizer.params.params[0].data == "updated prompt"
+
+
+@pytest.mark.asyncio
+async def test_langoptim_astep_updates_params():
+    """Test that LangOptim.astep() properly updates parameters asynchronously."""
+    llm = MockLangModel(response_json='{"params": [{"data": "async updated prompt"}]}')
+    criterion = SimpleCriterion()
+    params = ParamSet(params=(Param(data="initial prompt"),))
+
+    optimizer = SimpleLangOptim(
+        llm=llm,
+        params=params,
+        criterion=criterion,
+        objective_text="Maximize effectiveness",
+        constraints_text="Keep it concise",
+        prompt_template="Objective: {objective}\nConstraints: {constraints}"
+    )
+
+    evaluation = criterion.evaluation_schema(score=3)
+    await optimizer.astep(evaluation)
+
+    assert optimizer.params.params[0].data == "async updated prompt"
+
+
+def test_langoptim_thread_property_returns_empty_list():
+    """Test that LangOptim.thread property returns empty list."""
+    llm = MockLangModel(response_json='{}')
+    criterion = SimpleCriterion()
+    params = ParamSet(params=(Param(data="test"),))
+
+    optimizer = SimpleLangOptim(
+        llm=llm,
+        params=params,
+        criterion=criterion,
+        objective_text="Test",
+        constraints_text="Test",
+        prompt_template="Test"
+    )
+
+    assert optimizer.thread == []
+    assert isinstance(optimizer.thread, list)
 
 
 if __name__ == "__main__":

@@ -1963,7 +1963,7 @@ class TestAtomStateSchemaMetadata:
             async def execute(self, post, param1):
                 return {"result": "test"}
 
-        schema = TestState.schema()
+        schema = TestState.to_schema()
 
         assert isinstance(schema, dict)
         assert "x-ports" in schema
@@ -1979,7 +1979,7 @@ class TestAtomStateSchemaMetadata:
             async def execute(self, post, param1, param2):
                 return {"result": f"{param1}_{param2}"}
 
-        schema = TestState.schema()
+        schema = TestState.to_schema()
 
         assert "x-ports" in schema
         assert "inputs" in schema["x-ports"]
@@ -1999,7 +1999,7 @@ class TestAtomStateSchemaMetadata:
             async def execute(self, post):
                 return {"result": 42, "success": True}
 
-        schema = TestState.schema()
+        schema = TestState.to_schema()
 
         assert "x-ports" in schema
         assert "outputs" in schema["x-ports"]
@@ -2018,7 +2018,7 @@ class TestAtomStateSchemaMetadata:
             async def execute(self, post):
                 return {"data": "test"}
 
-        schema = TestState.schema()
+        schema = TestState.to_schema()
 
         assert "x-ports" in schema
         assert "emit" in schema["x-ports"]
@@ -2033,7 +2033,7 @@ class TestAtomStateSchemaMetadata:
             async def execute(self, post):
                 return {"result": "test"}
 
-        schema = TestState.schema()
+        schema = TestState.to_schema()
 
         assert "x-ports" not in schema
 
@@ -2048,7 +2048,7 @@ class TestAtomStateSchemaMetadata:
             async def execute(self, post, input1):
                 return {"result": input1}
 
-        schema = TestState.schema()
+        schema = TestState.to_schema()
 
         assert "properties" in schema
         assert "param" in schema["properties"]
@@ -2066,7 +2066,7 @@ class TestAtomStateSchemaMetadata:
                 for i in range(count):
                     yield {"item": f"item_{i}"}
 
-        schema = TestStreamState.schema()
+        schema = TestStreamState.to_schema()
 
         assert "x-ports" in schema
         assert "inputs" in schema["x-ports"]
@@ -2092,7 +2092,7 @@ class TestAtomStateSchemaMetadata:
             async def execute(self, post, input_val):
                 return {"output_val": str(input_val)}
 
-        schema = TestState.schema()
+        schema = TestState.to_schema()
 
         assert "x-ports" in schema
         assert "inputs" in schema["x-ports"]

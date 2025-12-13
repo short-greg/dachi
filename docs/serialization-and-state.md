@@ -357,7 +357,7 @@ print(spec_dict)
 
 ```python
 # Get the Pydantic model class for the spec
-spec_class = MyAgent.schema()
+spec_class = MyAgent.to_schema()
 print(spec_class)  # <class MyAgentSpec>
 
 # Create specs directly from the schema

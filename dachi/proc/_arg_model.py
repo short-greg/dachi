@@ -52,7 +52,7 @@ class BaseArgs(pydantic.BaseModel):
         kw_only = {}
         kwargs = {}
 
-        for k, _ in self.model_fields.items():
+        for k, _ in self.__class__.model_fields.items():
             value = getattr(self, k)
 
             if isinstance(value, PosArgs):

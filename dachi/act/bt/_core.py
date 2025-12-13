@@ -339,13 +339,13 @@ class LeafTask(Task):
         cls.__ports__ = ports
 
     @classmethod
-    def schema(cls) -> dict:
+    def to_schema(cls) -> dict:
         """Return the Pydantic schema dict with port metadata.
 
         Returns:
             dict: Pydantic schema dict with added 'x-ports' key for port metadata
         """
-        base_schema = super().schema()
+        base_schema = super().to_schema()
 
         ports_metadata = {}
         if cls.__ports__["inputs"]:

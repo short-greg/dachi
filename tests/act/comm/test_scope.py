@@ -323,7 +323,7 @@ class TestBoundScope:
         bound_scope = scope.bind(incoming_ctx, bindings)
         assert isinstance(bound_scope, BoundScope)
         assert bound_scope.base_ctx is incoming_ctx
-        assert bound_scope.base_scope is scope
+        assert bound_scope.bound is scope
         assert bound_scope.bindings == bindings
     
     def test_bound_scope_getitem_with_at_prefix(self):
@@ -913,7 +913,7 @@ class TestScopeSerialization:
         base_ctx["target"] = (10, 20, 0)
 
         bound = BoundScope(
-            base_scope=base_scope,
+            bound=base_scope,
             base_ctx=base_ctx,
             bindings={"goal": "target"}
         )

@@ -319,7 +319,7 @@ class TestLeafSchemaMetadata:
             class outputs:
                 result: str
 
-        schema = TestAction.schema()
+        schema = TestAction.to_schema()
 
         assert isinstance(schema, dict)
         assert "x-ports" in schema
@@ -334,7 +334,7 @@ class TestLeafSchemaMetadata:
             async def execute(self, param1, param2):
                 return TaskStatus.SUCCESS
 
-        schema = TestAction.schema()
+        schema = TestAction.to_schema()
 
         assert "x-ports" in schema
         assert "inputs" in schema["x-ports"]
@@ -353,7 +353,7 @@ class TestLeafSchemaMetadata:
             async def execute(self):
                 return TaskStatus.SUCCESS
 
-        schema = TestAction.schema()
+        schema = TestAction.to_schema()
 
         assert "x-ports" in schema
         assert "outputs" in schema["x-ports"]
@@ -367,7 +367,7 @@ class TestLeafSchemaMetadata:
             async def execute(self):
                 return TaskStatus.SUCCESS
 
-        schema = TestAction.schema()
+        schema = TestAction.to_schema()
 
         assert "x-ports" not in schema
 
@@ -378,7 +378,7 @@ class TestLeafSchemaMetadata:
             class inputs:
                 input1: str
 
-        schema = TestAction.schema()
+        schema = TestAction.to_schema()
 
         assert "properties" in schema
         assert "param" in schema["properties"]
@@ -391,7 +391,7 @@ class TestLeafSchemaMetadata:
             async def execute(self, threshold):
                 return True
 
-        schema = TestCondition.schema()
+        schema = TestCondition.to_schema()
 
         assert "x-ports" in schema
         assert "inputs" in schema["x-ports"]

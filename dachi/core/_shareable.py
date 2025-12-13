@@ -359,6 +359,8 @@ class ParamSet(pydantic.BaseModel, t.Generic[CORE_TYPE]):
         """Reconstruct a ParamSet from its JSON-schema."""
         return cls.model_validate_json_schema(schema)
 
+    def __iter__(self) -> t.Iterator[PARAM]:
+        return iter(self.params)
 
 PARAM = t.TypeVar("P", bound=Param)
 
