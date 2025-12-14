@@ -335,7 +335,7 @@ class ParamSet(pydantic.BaseModel):
     """
     params: t.List[Param] = Field(default_factory=list)
 
-    def update(self, param_set: Dict):
+    def update(self, param_set: Dict | t.List[Param]):
         """Update the parameters from a dictionary.
 
         Args:
@@ -343,9 +343,27 @@ class ParamSet(pydantic.BaseModel):
             flat: If True, expects flat dict like {"param_0": "value"}.
                   If False (default), expects schema-compliant structure.
         """
-        updated = ParamSet.model_validate(
-            param_set
-        )
+        # updated = ParamSet.model_validate(
+        #     param_set
+        # )
+        # The ParamSet is a list of Params in json schema format
+
+        if isinstance(param_set, t.List):
+            for old_param, new_param in zip(self, param_set):
+                old_param.set(new_param.data)
+                return
+
+        updated = []
+        print(self.params, param_set)
+        for i, param in enumerate(self.params):
+            param_key = f"param_{i}"
+            param_schema = param_set.get(param_key)
+            print(param_schema)
+            if param_schema is None:
+                continue
+            updated_ = param.from_spec(param_schema)
+            updated.append(updated_)
+
         for old_param, new_param in zip(self, updated):
             old_param.set(new_param.data)
 

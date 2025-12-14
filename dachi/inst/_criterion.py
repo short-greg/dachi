@@ -62,7 +62,6 @@ class ChecklistCriterion(BaseCriterion):
     )  # List[str]
 
 
-
 class HolisticRubricCriterion(BaseCriterion):
     """Holistic rubric criterion with single overall level."""
 

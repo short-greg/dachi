@@ -258,7 +258,7 @@ def test_langoptim_instantiation():
     print(f"  Success: {criterion}")
 
     print("Creating ParamSet...")
-    params = ParamSet(params=(Param(data="test prompt"),))
+    params = ParamSet(params=[Param(data="test prompt")])
     print(f"  Success: {params}")
 
     print("Creating SimpleLangOptim...")
@@ -279,9 +279,9 @@ def test_langoptim_instantiation():
 
 def test_langoptim_step_updates_params():
     """Test that LangOptim.step() properly updates parameters."""
-    llm = MockLangModel(response_json='{"params": [{"data": "updated prompt"}]}')
+    llm = MockLangModel(response_json='{"param_0": {"data": "updated prompt"}}')
     criterion = SimpleCriterion()
-    params = ParamSet(params=(Param(data="initial prompt"),))
+    params = ParamSet(params=[Param(data="initial prompt")])
 
     optimizer = SimpleLangOptim(
         llm=llm,
@@ -301,9 +301,9 @@ def test_langoptim_step_updates_params():
 @pytest.mark.asyncio
 async def test_langoptim_astep_updates_params():
     """Test that LangOptim.astep() properly updates parameters asynchronously."""
-    llm = MockLangModel(response_json='{"params": [{"data": "async updated prompt"}]}')
+    llm = MockLangModel(response_json='{"param_0": {"data": "async updated prompt"}}')
     criterion = SimpleCriterion()
-    params = ParamSet(params=(Param(data="initial prompt"),))
+    params = ParamSet(params=[Param(data="initial prompt")])
 
     optimizer = SimpleLangOptim(
         llm=llm,
@@ -324,7 +324,7 @@ def test_langoptim_thread_property_returns_empty_list():
     """Test that LangOptim.thread property returns empty list."""
     llm = MockLangModel(response_json='{}')
     criterion = SimpleCriterion()
-    params = ParamSet(params=(Param(data="test"),))
+    params = ParamSet(params=[Param(data="test")])
 
     optimizer = SimpleLangOptim(
         llm=llm,

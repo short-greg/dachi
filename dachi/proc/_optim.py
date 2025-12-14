@@ -175,7 +175,6 @@ class LangCritic(Process, AsyncProcess, t.Generic[CRITERION, LANG_MODEL]):
             **kwargs
         )
 
-
         text, _, _ = self.evaluator.forward(
             prompt_text, structure=self.criterion.batch_evaluation_schema
         )
@@ -198,3 +197,70 @@ class LangCritic(Process, AsyncProcess, t.Generic[CRITERION, LANG_MODEL]):
             text, _, _ = self.evaluator.forward(prompt_text, structure=self.criterion.batch_evaluation_schema)
 
         return self.criterion.batch_evaluation_schema.model_validate_json(text)
+
+
+class LangCalibrator(Process, AsyncProcess, t.Generic[CRITERION, LANG_MODEL]):
+    """Use to calibrate the batches of evaluations.."""
+    calibrator: LANG_MODEL
+    CRITERION: CRITERION
+    prompt_template: str
+    reference: t.Any | None = None
+
+    def forward(
+        self,
+        outputs: List,
+        evaluations: List,
+        inputs: List = None,
+        reference: List = None,
+        context=None,
+        **kwargs
+    ) -> BaseModel:
+        """Execute calibration."""
+
+        reference = reference or self.reference
+        prompt_text = self.prompt_template.format(
+            criterion=str(self.CRITERION),
+            outputs=outputs,
+            evaluations=evaluations,
+            inputs=inputs or [],
+            reference=reference or [],
+            context=context or {},
+            **kwargs
+        )
+
+        text, _, _ = self.calibrator.forward(
+            prompt_text, structure=self.CRITERION.batch_evaluation_schema
+        )
+        return self.CRITERION.batch_evaluation_schema.model_validate_json(text)
+    
+    async def aforward(
+        self,
+        outputs: List,
+        evaluations: List,
+        inputs: List = None,
+        reference: List = None,
+        context=None,
+        **kwargs
+    ) -> BaseModel:
+        """Async calibration."""
+
+        reference = reference or self.reference
+        prompt_text = self.prompt_template.format(
+            criterion=str(self.CRITERION),
+            outputs=outputs,
+            evaluations=evaluations,
+            inputs=inputs or [],
+            reference=reference or [],
+            context=context or {},
+            **kwargs
+        )
+
+        if isinstance(self.calibrator, AsyncProcess):
+            text, _, _ = await self.calibrator.aforward(
+                prompt_text, structure=self.CRITERION.batch_evaluation_schema
+            )
+        else:
+            text, _, _ = self.calibrator.forward(
+                prompt_text, structure=self.CRITERION.batch_evaluation_schema
+            )
+        return self.CRITERION.batch_evaluation_schema.model_validate_json(text)
