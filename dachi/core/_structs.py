@@ -19,10 +19,16 @@ class ModuleList(Module, t.Generic[MODULE]):
 
     # Positive test: len reflects number added
     def __len__(self) -> int:  
+        """
+        Returns the number of modules in the list.
+        """
         return len(self.vals)
 
     # Positive test: order preserved
     def __iter__(self) -> Iterator[MODULE]:  
+        """
+        Returns an iterator over the modules in the list.
+        """
         return iter(self.vals)
 
     def __getitem__(self, idx: int) -> MODULE:  # Edge test: negative index ok

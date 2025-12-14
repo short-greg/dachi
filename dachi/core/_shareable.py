@@ -330,11 +330,10 @@ class Shared(ShareableItem[CORE_TYPE]):
     pass
 
 
-
-class ParamSet(pydantic.BaseModel, t.Generic[CORE_TYPE]):
+class ParamSet(pydantic.BaseModel):
     """ParamSet is a collection of parameters.
     """
-    params: t.Tuple[PARAM, ...] = Field(default_factory=tuple)
+    params: t.List[Param] = Field(default_factory=list)
 
     def update(self, param_set: Dict):
         """Update the parameters from a dictionary.
@@ -352,15 +351,70 @@ class ParamSet(pydantic.BaseModel, t.Generic[CORE_TYPE]):
 
     def to_schema(self) -> dict:
         """Get the JSON-schema for this ParamSet."""
-        return self.model_json_schema()
-    
-    @classmethod
-    def from_schema(cls, schema: dict) -> "ParamSet":
+        # create a schema dict by looping over all params. DO NOT USE model_json_schema
+        schema: dict = {
+            "type": "object",
+            "properties": {},
+            "required": [],
+        }
+        for i, param in enumerate(self.params):
+            param_key = f"param_{i}"
+            schema["properties"][param_key] = param.model_json_schema()
+            schema["required"].append(param_key)
+        return schema
+
+    def from_spec(self, schema: dict) -> "ParamSet":
         """Reconstruct a ParamSet from its JSON-schema."""
-        return cls.model_validate_json_schema(schema)
+        # reconstruct by looping over all params
+        params = []
+        for i in range(len(self.params)):
+            param_key = f"param_{i}"
+            param_schema = schema["properties"][param_key]
+            param = self.params[i].from_spec(param_schema)
+            params.append(param)
+        return ParamSet(params=params)
+    
+    def to_spec(self) -> dict:
+        """Convert the ParamSet to a specification dictionary."""
+        spec: dict = {}
+        for i, param in enumerate(self.params):
+            param_key = f"param_{i}"
+            spec[param_key] = param.to_spec()
+        return spec
 
     def __iter__(self) -> t.Iterator[PARAM]:
         return iter(self.params)
+    
+    def __len__(self) -> int:
+        return len(self.params)
+    
+    # @pydantic.field_validator('params', mode='before')
+    # def validate_regions(cls, v):
+    #     """Validate and convert regions to ModuleList
+
+    #     Args:
+    #         v: The regions input (list, ModuleList)
+
+    #     Returns:
+    #         Param[CORE_TYPE]: The regions as a ModuleList
+    #     """
+    #     # Accept any ModuleList regardless of type parameter
+    #     # Accept ModuleList and convert
+
+    #     # get the annotation args for the generic for ModuleList 
+        
+    #     base_param = cls.model_fields['params'].annotation.__pydantic_generic_metadata__['args'][0]
+
+    #     if isinstance(v, list):
+    #         converted = Param[base_param](data=v)
+    #         return converted
+    #     if isinstance(v, Tuple):
+    #         converted = Param[base_param](data=v.data)
+    #         return converted
+
+    #     return v
+
+
 
 PARAM = t.TypeVar("P", bound=Param)
 

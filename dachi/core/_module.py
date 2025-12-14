@@ -599,14 +599,15 @@ class Module(pydantic.BaseModel, StorableState, Trainable):
 
     def param_set(self) -> ParamSet:
         """Build a ParamSet from a BaseModule, collecting all parameters."""
-        params_with_annot = list(
+        params_with_annot = tuple(
             self.parameters(recurse=True, with_annotations=True)
         )
         if not params_with_annot:
             return ParamSet(params=())
 
         params, annotations = zip(*params_with_annot)
-        return ParamSet[annotations[0]](params=params)
+        print(params)
+        return ParamSet(params=params)
 
 
 mod_registry = Registry[Module]()

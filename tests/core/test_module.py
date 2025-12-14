@@ -1477,7 +1477,7 @@ class TestModuleParamSet:
         module = TestModule()
         param_set = module.param_set()
 
-        assert isinstance(param_set.params, tuple)
+        assert isinstance(param_set.params, list)
         assert param_set.params[0] is module._p1
 
     def test_param_set_excludes_runtime_and_shared(self):
