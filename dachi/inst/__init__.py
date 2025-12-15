@@ -3,9 +3,12 @@ from ._base import (
     BaseBatchResponse,
     RESPONSE_SPEC,
     RespField,
-    ResponseSpec
+    ResponseSpec,
 )
 from ._criterion import (
+    Reason,
+    Brainstorming,
+    BaseCriterion,
     PassFailCriterion,
     LikertCriterion,
     NumericalRatingCriterion,

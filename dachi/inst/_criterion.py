@@ -16,14 +16,14 @@ class Brainstorming(ResponseSpec):
     ideas: ListField
 
 
-class CriterionBase(ResponseSpec):
+class BaseCriterion(ResponseSpec):
     pass
 
 
-CRITERION = t.TypeVar("CRITERION", bound=CriterionBase)
+CRITERION = t.TypeVar("CRITERION", bound=BaseCriterion)
 
 
-class PassFailCriterion(CriterionBase):
+class PassFailCriterion(BaseCriterion):
     """Dichotomous judgment criterion (pass/fail)."""
 
     passed: BoolField = Field(
@@ -39,7 +39,7 @@ class PassFailCriterion(CriterionBase):
         return v
 
 
-class LikertCriterion(CriterionBase):
+class LikertCriterion(BaseCriterion):
     """Likert scale criterion."""
 
     rating: BoundInt = Field(
@@ -47,7 +47,7 @@ class LikertCriterion(CriterionBase):
     )
 
 
-class NumericalRatingCriterion(CriterionBase):
+class NumericalRatingCriterion(BaseCriterion):
     """Numerical rating scale criterion with continuous values."""
 
     score: BoundFloat = Field(
@@ -55,7 +55,7 @@ class NumericalRatingCriterion(CriterionBase):
     )
 
 
-class ChecklistCriterion(CriterionBase):
+class ChecklistCriterion(BaseCriterion):
     """Checklist criterion with multiple boolean checks."""
 
     items: DictField = Field(
@@ -69,7 +69,7 @@ class ChecklistCriterion(CriterionBase):
     )  # List[str]
 
 
-class HolisticRubricCriterion(CriterionBase):
+class HolisticRubricCriterion(BaseCriterion):
     """Holistic rubric criterion with single overall level."""
 
     level: TextField = Field(
@@ -80,7 +80,7 @@ class HolisticRubricCriterion(CriterionBase):
     )
 
 
-class AnalyticRubricCriterion(CriterionBase):
+class AnalyticRubricCriterion(BaseCriterion):
     """Analytic rubric criterion with multiple dimensions."""
 
     dimensions: DictField = Field(
@@ -94,7 +94,7 @@ class AnalyticRubricCriterion(CriterionBase):
     )
 
 
-class NarrativeCriterion(CriterionBase):
+class NarrativeCriterion(BaseCriterion):
     """Narrative/qualitative criterion."""
 
     narrative: TextField = Field(
@@ -102,7 +102,7 @@ class NarrativeCriterion(CriterionBase):
     )
 
 
-class ComparativeCriterion(CriterionBase):
+class ComparativeCriterion(BaseCriterion):
     """Comparative criterion for ranking/comparing outputs."""
 
     mode: TextField = Field(
@@ -113,7 +113,7 @@ class ComparativeCriterion(CriterionBase):
     ) # Winner ID, ranking list (as string), or best ID
 
 
-class CrispCiterion(CriterionBase):
+class CrispCiterion(BaseCriterion):
     """Comparative criterion for ranking/comparing outputs."""
 
     result: BoolField = Field(
@@ -121,7 +121,7 @@ class CrispCiterion(CriterionBase):
     )
 
 
-class FuzzyCiterion(CriterionBase):
+class FuzzyCiterion(BaseCriterion):
     """Comparative criterion for ranking/comparing outputs."""
 
     result: BoundFloat = Field(
