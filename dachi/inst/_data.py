@@ -7,10 +7,6 @@ import pydantic
 import typing as t
 import pandas as pd
 
-# Local
-# from dachi.core import Renderable
-# from ..utils.text._style import render
-
 
 class Record(object):
     """Use to create a pairwise object
@@ -114,15 +110,18 @@ class Term(pydantic.BaseModel):
     """Use to define a term used in the AI system
     for repeated usage
     """
-    name: str
-    definition: str
-    meta: typing.Dict[str, typing.Union[str, typing.List[str]]]
-
-    def __init__(self, name: str, definition: str, **meta: str):
-
-        super().__init__(
-            name=name, definition=definition, meta=meta
-        )
+    name: str = pydantic.Field(
+        default_factory=str,
+        description="The name of the term"
+    )
+    definition: str = pydantic.Field(
+        default_factory=str,
+        description="The definition of the term"
+    )
+    meta: typing.Dict[str, typing.Union[str, typing.List[str]]] = pydantic.Field(
+        default_factory=dict,
+        description="Meta data for the term"
+    )
 
     def __getitem__(
         self, key: typing.Union[str, typing.Iterable[str]]
@@ -176,18 +175,21 @@ class Term(pydantic.BaseModel):
 class Glossary(pydantic.BaseModel):
     """A glossary contains a list of terms
     """
-    terms: typing.Dict[str, Term]
+    terms: typing.Dict[str, Term] = pydantic.Field(default_factory=dict)
 
-    def __init__(self, terms: typing.List[Term] = None):
-        """Create a glossary of terms
+    @pydantic.model_validator(mode='before')
+    def validate_terms(cls, v):
+        """Validate and convert terms to a dictionary
 
         Args:
-            terms (typing.List[Term], optional): . Defaults to None.
+            v: The terms input (list or dict)
+
+        Returns:
+            dict: The terms as a dictionary
         """
-        terms = terms or []
-        super().__init__(
-            terms={term.name: term for term in terms}
-        )
+        if isinstance(v, list):
+            return {term.name: term for term in v}
+        return v
 
     def __getitem__(
         self, key: typing.Union[str, typing.Iterable[str]]

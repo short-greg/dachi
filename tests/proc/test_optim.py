@@ -12,7 +12,7 @@ from dachi.core import Inp
 
 from dachi.proc import LangOptim, LangModel
 from dachi.core import ParamSet, Param, TextMsg
-from dachi.inst import BaseCriterion, BoundInt, Evaluation, BatchEvaluation
+from dachi.inst import ResponseSpec, BoundInt, BaseResponse, BaseBatchResponse
 from pydantic import Field
 
 class MockLangModel(LangModel):
@@ -64,7 +64,7 @@ class TestCritic:
 
         result = critic.forward(output="test output")
 
-        assert isinstance(result, criterion.evaluation_schema)
+        assert isinstance(result, criterion.response_schema)
         assert result.passed is True
 
     def test_forward_passes_structure_to_evaluator(self):
@@ -85,7 +85,7 @@ class TestCritic:
 
         critic.forward(output="test output")
 
-        assert evaluator.last_structure == criterion.evaluation_schema
+        assert evaluator.last_structure == criterion.response_schema
 
     def test_prompt_template_receives_output_and_criterion_render(self):
         """Formatted prompt includes output and criterion.render()."""
@@ -110,7 +110,7 @@ class TestCritic:
 
     def test_batch_forward_creates_batch_evaluation_with_list(self):
         """LangCritic.batch_forward() returns batch_evaluation_schema instance."""
-        response_json = '{"evaluations": [{"name": "test", "passed": true, "passing_criteria": "passed"}, {"name": "test", "passed": false, "passing_criteria": "failed"}]}'
+        response_json = '{"responses": [{"name": "test", "passed": true, "passing_criteria": "passed"}, {"name": "test", "passed": false, "passing_criteria": "failed"}]}'
         evaluator = MockLangModel(response_json=response_json)
 
         criterion = PassFailCriterion(
@@ -126,10 +126,10 @@ class TestCritic:
 
         result = critic.batch_forward(outputs=["output1", "output2"])
 
-        assert isinstance(result, criterion.batch_evaluation_schema)
-        assert len(result.evaluations) == 2
-        assert result.evaluations[0].passed is True
-        assert result.evaluations[1].passed is False
+        assert isinstance(result, criterion.batch_response_schema)
+        assert len(result.responses) == 2
+        assert result.responses[0].passed is True
+        assert result.responses[1].passed is False
 
     def test_reference_parameter_is_included_in_template(self):
         """Reference argument is formatted into prompt template."""
@@ -190,13 +190,13 @@ class TestCritic:
 
         result = await critic.aforward(output="test output")
 
-        assert isinstance(result, criterion.evaluation_schema)
+        assert isinstance(result, criterion.response_schema)
         assert result.passed is True
 
     @pytest.mark.asyncio
     async def test_batch_aforward_creates_batch_evaluation_with_list(self):
         """LangCritic.batch_aforward() returns batch_evaluation_schema instance."""
-        response_json = '{"evaluations": [{"name": "test", "passed": true, "passing_criteria": "passed"}, {"name": "test", "passed": false, "passing_criteria": "failed"}]}'
+        response_json = '{"responses": [{"name": "test", "passed": true, "passing_criteria": "passed"}, {"name": "test", "passed": false, "passing_criteria": "failed"}]}'
         evaluator = MockLangModel(response_json=response_json)
 
         criterion = PassFailCriterion(
@@ -212,16 +212,16 @@ class TestCritic:
 
         result = await critic.batch_aforward(outputs=["output1", "output2"])
 
-        assert isinstance(result, criterion.batch_evaluation_schema)
-        assert len(result.evaluations) == 2
-        assert result.evaluations[0].passed is True
-        assert result.evaluations[1].passed is False
+        assert isinstance(result, criterion.batch_response_schema)
+        assert len(result.responses) == 2
+        assert result.responses[0].passed is True
+        assert result.responses[1].passed is False
 
 
 """Test LangOptim subclassing to diagnose validation error."""
 
 
-class SimpleCriterion(BaseCriterion):
+class SimpleCriterion(ResponseSpec):
     """Minimal criterion for testing."""
 
     name: str = "Test"
@@ -243,7 +243,7 @@ class SimpleLangOptim(LangOptim):
     def constraints(self) -> str:
         return self.constraints_text
 
-    def param_evaluations(self, evaluations: Evaluation | BatchEvaluation) -> str:
+    def param_evaluations(self, evaluations: BaseResponse | BaseBatchResponse) -> str:
         return str(evaluations)
 
 
@@ -292,7 +292,7 @@ def test_langoptim_step_updates_params():
         prompt_template="Objective: {objective}\nConstraints: {constraints}"
     )
 
-    evaluation = criterion.evaluation_schema(score=3)
+    evaluation = criterion.response_schema(score=3)
     optimizer.step(evaluation)
 
     assert optimizer.params.params[0].data == "updated prompt"
@@ -314,7 +314,7 @@ async def test_langoptim_astep_updates_params():
         prompt_template="Objective: {objective}\nConstraints: {constraints}"
     )
 
-    evaluation = criterion.evaluation_schema(score=3)
+    evaluation = criterion.response_schema(score=3)
     await optimizer.astep(evaluation)
 
     assert optimizer.params.params[0].data == "async updated prompt"

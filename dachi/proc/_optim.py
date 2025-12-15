@@ -6,7 +6,7 @@ import json
 import pydantic
 from pydantic import BaseModel
 
-from dachi.inst import CRITERION, BatchEvaluation, Evaluation
+from dachi.inst import RESPONSE_SPEC, BaseBatchResponse, BaseResponse
 from dachi.core import ParamSet, Module, Inp
 from abc import ABC
 from dachi.proc import Process, AsyncProcess
@@ -20,19 +20,19 @@ class Optim(Module):
     """Executes optimization using an LLM optimizer and a criterion."""
 
     @abstractmethod
-    def step(self, evaluations: Evaluation | BatchEvaluation):
+    def step(self, evaluations: BaseResponse | BaseBatchResponse):
         raise NotImplementedError
 
     @abstractmethod
-    async def astep(self, evaluations: Evaluation | BatchEvaluation):
+    async def astep(self, evaluations: BaseResponse | BaseBatchResponse):
         raise NotImplementedError
 
 
-class LangOptim(Optim, t.Generic[CRITERION]):
+class LangOptim(Optim, t.Generic[RESPONSE_SPEC]):
     """Executes optimization using an LLM optimizer and a criterion."""
     llm: LangModel
     params: ParamSet
-    criterion: CRITERION
+    criterion: RESPONSE_SPEC
     prompt_template: str
     _formatter: TemplateFormatter = pydantic.PrivateAttr()
 
@@ -59,7 +59,7 @@ class LangOptim(Optim, t.Generic[CRITERION]):
         raise NotImplementedError
 
     @abstractmethod
-    def param_evaluations(self, evaluations: Evaluation | BatchEvaluation) -> str:
+    def param_evaluations(self, evaluations: BaseResponse | BaseBatchResponse) -> str:
         """Formats the parameter evaluations for the prompt
 
         Args:
@@ -70,7 +70,7 @@ class LangOptim(Optim, t.Generic[CRITERION]):
         """
         raise NotImplementedError
     
-    def step(self, evaluations: Evaluation | BatchEvaluation):
+    def step(self, evaluations: BaseResponse | BaseBatchResponse):
 
         evaluations = self.param_evaluations(evaluations)
         objective = self.objective()
@@ -109,10 +109,10 @@ class LangOptim(Optim, t.Generic[CRITERION]):
         self.params.update(json.loads(text))
 
 
-class LangCritic(Process, AsyncProcess, t.Generic[CRITERION, LANG_MODEL]):
+class LangCritic(Process, AsyncProcess, t.Generic[RESPONSE_SPEC, LANG_MODEL]):
     """Executes evaluations using an LLM evaluator and a criterion."""
 
-    criterion: CRITERION
+    criterion: RESPONSE_SPEC
     evaluator: LANG_MODEL
     prompt_template: str
     reference: t.Any | None = None
@@ -137,9 +137,9 @@ class LangCritic(Process, AsyncProcess, t.Generic[CRITERION, LANG_MODEL]):
         )
 
         text, _, _ = self.evaluator.forward(
-            prompt_text, structure=self.criterion.evaluation_schema
+            prompt_text, structure=self.criterion.response_schema
         )
-        return self.criterion.evaluation_schema.model_validate_json(text)
+        return self.criterion.response_schema.model_validate_json(text)
 
     async def aforward(self, output, input=None, reference=None, context=None, **kwargs) -> BaseModel:
         """Async single evaluation."""
@@ -154,11 +154,11 @@ class LangCritic(Process, AsyncProcess, t.Generic[CRITERION, LANG_MODEL]):
 
         if isinstance(self.evaluator, AsyncProcess):
             text, _, _ = await self.evaluator.aforward(
-                prompt_text, structure=self.criterion.evaluation_schema
+                prompt_text, structure=self.criterion.response_schema
             )
         else:
-            text, _, _ = self.evaluator.forward(prompt_text, structure=self.criterion.evaluation_schema)
-        return self.criterion.evaluation_schema.model_validate_json(text)
+            text, _, _ = self.evaluator.forward(prompt_text, structure=self.criterion.response_schema)
+        return self.criterion.response_schema.model_validate_json(text)
     
     def batch_forward(
         self, outputs: List,
@@ -176,9 +176,9 @@ class LangCritic(Process, AsyncProcess, t.Generic[CRITERION, LANG_MODEL]):
         )
 
         text, _, _ = self.evaluator.forward(
-            prompt_text, structure=self.criterion.batch_evaluation_schema
+            prompt_text, structure=self.criterion.batch_response_schema
         )
-        return self.criterion.batch_evaluation_schema.model_validate_json(text)
+        return self.criterion.batch_response_schema.model_validate_json(text)
     
     async def batch_aforward(self, outputs: List, inputs: List = None, reference=None, context=None, **kwargs) -> BaseModel:
         """Async batch evaluation."""
@@ -192,17 +192,17 @@ class LangCritic(Process, AsyncProcess, t.Generic[CRITERION, LANG_MODEL]):
         )
 
         if isinstance(self.evaluator, AsyncProcess):
-            text, _, _ = await self.evaluator.aforward(prompt_text, structure=self.criterion.batch_evaluation_schema)
+            text, _, _ = await self.evaluator.aforward(prompt_text, structure=self.criterion.batch_response_schema)
         else:
-            text, _, _ = self.evaluator.forward(prompt_text, structure=self.criterion.batch_evaluation_schema)
+            text, _, _ = self.evaluator.forward(prompt_text, structure=self.criterion.batch_response_schema)
 
-        return self.criterion.batch_evaluation_schema.model_validate_json(text)
+        return self.criterion.batch_response_schema.model_validate_json(text)
 
 
-class LangCalibrator(Process, AsyncProcess, t.Generic[CRITERION, LANG_MODEL]):
+class LangCalibrator(Process, AsyncProcess, t.Generic[RESPONSE_SPEC, LANG_MODEL]):
     """Use to calibrate the batches of evaluations.."""
     calibrator: LANG_MODEL
-    CRITERION: CRITERION
+    CRITERION: RESPONSE_SPEC
     prompt_template: str
     reference: t.Any | None = None
 
@@ -229,9 +229,9 @@ class LangCalibrator(Process, AsyncProcess, t.Generic[CRITERION, LANG_MODEL]):
         )
 
         text, _, _ = self.calibrator.forward(
-            prompt_text, structure=self.CRITERION.batch_evaluation_schema
+            prompt_text, structure=self.CRITERION.batch_response_schema
         )
-        return self.CRITERION.batch_evaluation_schema.model_validate_json(text)
+        return self.CRITERION.batch_response_schema.model_validate_json(text)
     
     async def aforward(
         self,
@@ -257,10 +257,10 @@ class LangCalibrator(Process, AsyncProcess, t.Generic[CRITERION, LANG_MODEL]):
 
         if isinstance(self.calibrator, AsyncProcess):
             text, _, _ = await self.calibrator.aforward(
-                prompt_text, structure=self.CRITERION.batch_evaluation_schema
+                prompt_text, structure=self.CRITERION.batch_response_schema
             )
         else:
             text, _, _ = self.calibrator.forward(
-                prompt_text, structure=self.CRITERION.batch_evaluation_schema
+                prompt_text, structure=self.CRITERION.batch_response_schema
             )
-        return self.CRITERION.batch_evaluation_schema.model_validate_json(text)
+        return self.CRITERION.batch_response_schema.model_validate_json(text)

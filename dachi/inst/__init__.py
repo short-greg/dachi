@@ -1,10 +1,9 @@
 from ._base import (
-    Evaluation,
-    BatchEvaluation,
-    CriterionMixin,
-    CRITERION,
-    EvalField,
-    BaseCriterion
+    BaseResponse,
+    BaseBatchResponse,
+    RESPONSE_SPEC,
+    RespField,
+    ResponseSpec
 )
 from ._criterion import (
     PassFailCriterion,
@@ -21,7 +20,7 @@ from ._data import (
     Record
 )
 from ._field import (
-    EvalField,
+    RespField,
     BoundInt,
     BoundFloat,
     TextField,
@@ -30,18 +29,3 @@ from ._field import (
     ListField,
 )
 
-# from ..utils.text._style import (
-#     generate_numbered_list,
-#     parse_function_spec,
-#     Styling,
-#     style_formatter,
-#     numbered,
-#     bullet,
-#     bold,
-#     italic,
-#     DEFAULT_STYLE,
-#     get_str_variables,
-#     escape_curly_braces,
-#     str_formatter,
-#     unescape_curly_braces,
-# )

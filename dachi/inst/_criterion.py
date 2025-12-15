@@ -3,20 +3,27 @@ from __future__ import annotations
 from pydantic import Field
 import pydantic
 from ._field import BoundInt, BoundFloat, TextField, BoolField, DictField, ListField
-from ._base import BaseCriterion, CriterionMixin
+from ._base import ResponseSpec
+import typing as t
 
-
-class Reason(CriterionMixin):
+class Reason(ResponseSpec):
     """Reasoning text field."""
     reason: TextField
 
 
-class Brainstorming(CriterionMixin):
+class Brainstorming(ResponseSpec):
     """Brainstorming text field."""
     ideas: ListField
 
 
-class PassFailCriterion(BaseCriterion):
+class CriterionBase(ResponseSpec):
+    pass
+
+
+CRITERION = t.TypeVar("CRITERION", bound=CriterionBase)
+
+
+class PassFailCriterion(CriterionBase):
     """Dichotomous judgment criterion (pass/fail)."""
 
     passed: BoolField = Field(
@@ -25,7 +32,6 @@ class PassFailCriterion(BaseCriterion):
     passing_criteria: TextField | None = Field(
         default_factory=lambda: TextField(description="Description of the criteria for passing"
     ))
-
     @pydantic.field_validator('passing_criteria', mode='before')
     def validate_passing_criteria(cls, v):
         if isinstance(v, str):
@@ -33,7 +39,7 @@ class PassFailCriterion(BaseCriterion):
         return v
 
 
-class LikertCriterion(BaseCriterion):
+class LikertCriterion(CriterionBase):
     """Likert scale criterion."""
 
     rating: BoundInt = Field(
@@ -41,14 +47,15 @@ class LikertCriterion(BaseCriterion):
     )
 
 
-class NumericalRatingCriterion(BaseCriterion):
+class NumericalRatingCriterion(CriterionBase):
     """Numerical rating scale criterion with continuous values."""
 
     score: BoundFloat = Field(
         default_factory=lambda: BoundFloat(min_val=0.0, max_val=10.0, description="Numerical score for the criterion")
     )
 
-class ChecklistCriterion(BaseCriterion):
+
+class ChecklistCriterion(CriterionBase):
     """Checklist criterion with multiple boolean checks."""
 
     items: DictField = Field(
@@ -62,7 +69,7 @@ class ChecklistCriterion(BaseCriterion):
     )  # List[str]
 
 
-class HolisticRubricCriterion(BaseCriterion):
+class HolisticRubricCriterion(CriterionBase):
     """Holistic rubric criterion with single overall level."""
 
     level: TextField = Field(
@@ -73,7 +80,7 @@ class HolisticRubricCriterion(BaseCriterion):
     )
 
 
-class AnalyticRubricCriterion(BaseCriterion):
+class AnalyticRubricCriterion(CriterionBase):
     """Analytic rubric criterion with multiple dimensions."""
 
     dimensions: DictField = Field(
@@ -87,7 +94,7 @@ class AnalyticRubricCriterion(BaseCriterion):
     )
 
 
-class NarrativeCriterion(BaseCriterion):
+class NarrativeCriterion(CriterionBase):
     """Narrative/qualitative criterion."""
 
     narrative: TextField = Field(
@@ -95,7 +102,7 @@ class NarrativeCriterion(BaseCriterion):
     )
 
 
-class ComparativeCriterion(BaseCriterion):
+class ComparativeCriterion(CriterionBase):
     """Comparative criterion for ranking/comparing outputs."""
 
     mode: TextField = Field(
@@ -106,7 +113,7 @@ class ComparativeCriterion(BaseCriterion):
     ) # Winner ID, ranking list (as string), or best ID
 
 
-class CrispCiterion(BaseCriterion):
+class CrispCiterion(CriterionBase):
     """Comparative criterion for ranking/comparing outputs."""
 
     result: BoolField = Field(
@@ -114,7 +121,7 @@ class CrispCiterion(BaseCriterion):
     )
 
 
-class FuzzyCiterion(BaseCriterion):
+class FuzzyCiterion(CriterionBase):
     """Comparative criterion for ranking/comparing outputs."""
 
     result: BoundFloat = Field(

@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field, ConfigDict, PrivateAttr, create_model
 import pydantic
 
 
-class EvalField(BaseModel):
+class RespField(BaseModel):
     """Base class for evaluation field descriptors."""
 
     description: str | None = None
@@ -33,39 +33,33 @@ class EvalField(BaseModel):
         return f'{cls_name}({fields})'
 
 
-class BaseCriterion(BaseModel):
+class ResponseSpec(BaseModel):
     """Base class for all criteria. Auto-generates evaluation schemas from EvalFields."""
 
     model_config = ConfigDict(frozen=True)
-
     name: str
     description: str | None = None
 
-    _evaluation_schema: t.Type[BaseModel] | None = PrivateAttr(default=None)
-    _batch_evaluation_schema: t.Type[BaseModel] | None = PrivateAttr(default=None)
-
-    @property
-    def evaluation_schema(self) -> t.Type[BaseModel]:
-        """Get the single evaluation schema."""
-        if self._evaluation_schema is None:
-            raise RuntimeError("evaluation_schema not initialized")
-        return self._evaluation_schema
-
-    @property
-    def batch_evaluation_schema(self) -> t.Type[BaseModel]:
-        """Get the batch evaluation schema."""
-        if self._batch_evaluation_schema is None:
-            raise RuntimeError("batch_evaluation_schema not initialized")
-        return self._batch_evaluation_schema
-
-    def model_post_init(self, __context) -> None:
-        """Auto-generate evaluation schemas from EvalFields."""
+    def model_post_init(self, __context):
+        """Post-init to create response schemas."""
         super().model_post_init(__context)
-        single = self._create_single()
-        batch = self._create_batch(single)
+        single_schema = self._create_single()
+        batch_schema = self._create_batch(single_schema)
+        self._response_schema = single_schema
+        self._batch_response_schema = batch_schema
 
-        object.__setattr__(self, '_evaluation_schema', single)
-        object.__setattr__(self, '_batch_evaluation_schema', batch)
+    _response_schema: t.Type[BaseModel] | None = PrivateAttr(default=None)
+    _batch_response_schema: t.Type[BaseModel] | None = PrivateAttr(default=None)
+
+    @property
+    def response_schema(self) -> t.Type[BaseModel] | None:
+        """Get the single evaluation schema."""
+        return self._response_schema
+
+    @property
+    def batch_response_schema(self) -> t.Type[BaseModel] | None:
+        """Get the batch evaluation schema."""
+        return self._batch_response_schema
 
     def _create_single(self) -> t.Type[BaseModel]:
         """Create single evaluation schema by introspecting EvalFields.
@@ -85,7 +79,7 @@ class BaseCriterion(BaseModel):
         # Use model_fields to find EvalField annotations
         for field_name, field_info in self.__class__.model_fields.items():
             field_value = getattr(self, field_name)
-            if isinstance(field_value, EvalField):
+            if isinstance(field_value, RespField):
                 fields[field_name] = field_value.get_field()
             else:
                 
@@ -93,9 +87,9 @@ class BaseCriterion(BaseModel):
         # include eval_type in the model that is 
         # "single" or "batch"
         return create_model(
-            f'{self.name.replace(" ", "_")}Evaluation',
+            f'{self.name.replace(" ", "_")}Response',
             **fields,
-            __base__=Evaluation,
+            __base__=BaseResponse,
         )
 
     def _create_batch(self, single_schema: t.Type[BaseModel]) -> t.Type[BaseModel]:
@@ -106,8 +100,8 @@ class BaseCriterion(BaseModel):
         return create_model(
             f'{self.name.replace(" ", "_")}BatchEvaluation',
             # criterion_name=(t.Optional[str], Field(default=self.name, description="Name of the criterion")),
-            evaluations=(t.List[single_schema], Field(description="List of evaluations")),
-            __base__=BatchEvaluation
+            responses=(t.List[single_schema], Field(description="List of responses")),
+            __base__=BaseBatchResponse
         )
     
     def __str__(self) -> str:
@@ -118,15 +112,10 @@ class BaseCriterion(BaseModel):
         return f'{cls_name}({fields})'
 
 
-CRITERION = t.TypeVar("CRITERION", bound=BaseCriterion)
+RESPONSE_SPEC = t.TypeVar("RESPONSE_SPEC", bound=ResponseSpec)
 
 
-class CriterionMixin(BaseModel):
-    """Mixin for criteria with reasoning."""
-    pass
-
-
-class EvalField(BaseModel):
+class RespField(BaseModel):
     """Base class for evaluation field descriptors."""
 
     description: str | None = None
@@ -141,29 +130,43 @@ class EvalField(BaseModel):
         pass
 
 
-class Evaluation(BaseModel):
+def to_records(responses: t.List['BaseResponse'] | 'BaseBatchResponse') -> t.List[t.Dict]:
+    """Convert response(s) to list of records.
+
+    Args:
+        response: Single or batch response
+
+    Returns:
+        t.List[t.Dict]: List of records
+    """
+    if isinstance(responses, BaseBatchResponse):
+        responses = responses.evaluations
+
+    records = []
+    for response in responses:
+        if hasattr(response, 'to_record'):
+            records.append(response.to_record())
+        else:
+            records.append(response.model_dump())
+
+    return records
+    
+
+class BaseResponse(BaseModel):
     """
     A evaluation is a function that takes in a set of parameters and returns a value.
     This value is used to evaluate the performance of the parameters.
     """
     model_config = ConfigDict(extra='forbid')
 
-    def to_record(self) -> t.Dict:
-        """
-        Convert the evaluation to a record.
-        Returns:
-            t.Dict: A record
-        """
-        return self.model_dump()
 
-
-class BatchEvaluation(BaseModel):
+class BaseBatchResponse(BaseModel):
     """
     A evaluation is a function that takes in a set of parameters and returns a value.
     This value is used to evaluate the performance of the parameters.
     """
     model_config = ConfigDict(extra='forbid')
-    evaluations: t.List[Evaluation]
+    responses: t.List[BaseResponse]
 
     def to_records(self) -> t.List[t.Dict]:
         """
@@ -171,7 +174,10 @@ class BatchEvaluation(BaseModel):
         Returns:
             t.List[t.Dict]: A list of records
         """
-        return [
-            self.evaluations[i].to_record()
-            for i in self.evaluations.keys()
-        ]
+        records = []
+        for response in self.responses:
+            if hasattr(response, 'to_record'):
+                records.append(response.to_record())
+            else:
+                records.append(response.model_dump())
+        return records

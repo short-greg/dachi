@@ -28,22 +28,22 @@ class TestBaseCriterion:
             passed=BoolField()
         )
 
-        assert criterion.evaluation_schema is not None
-        assert isinstance(criterion.evaluation_schema, type)
-        assert issubclass(criterion.evaluation_schema, BaseModel)
+        assert criterion.response_schema is not None
+        assert isinstance(criterion.response_schema, type)
+        assert issubclass(criterion.response_schema, BaseModel)
 
     def test_batch_evaluation_schema_wraps_single_schema_in_list(self):
-        """Batch schema contains evaluations field as List[SingleSchema]."""
+        """Batch schema contains responses field as List[SingleSchema]."""
         criterion = PassFailCriterion(
             name="test",
             passed=BoolField()
         )
 
-        batch_schema = criterion.batch_evaluation_schema
-        batch_instance = batch_schema(evaluations=[])
+        batch_schema = criterion.batch_response_schema
+        batch_instance = batch_schema(responses=[])
 
-        assert hasattr(batch_instance, 'evaluations')
-        assert isinstance(batch_instance.evaluations, list)
+        assert hasattr(batch_instance, 'responses')
+        assert isinstance(batch_instance.responses, list)
 
     def test_criterion_is_immutable_after_creation(self):
         """Criterion with frozen=True raises error when modified."""
@@ -62,7 +62,7 @@ class TestBaseCriterion:
             rating=BoundInt(min_val=1, max_val=5)
         )
 
-        evaluation = criterion.evaluation_schema(rating=3)
+        evaluation = criterion.response_schema(rating=3)
 
         assert hasattr(evaluation, 'rating')
         assert evaluation.rating == 3
@@ -75,7 +75,7 @@ class TestBaseCriterion:
             passed=BoolField()
         )
 
-        evaluation = criterion.evaluation_schema(passed=True, passing_criteria="All good")
+        evaluation = criterion.response_schema(passed=True, passing_criteria="All good")
         assert evaluation is not None
 
 
@@ -90,9 +90,9 @@ class TestLikertCriterion:
         )
 
         with pytest.raises(ValidationError):
-            criterion.evaluation_schema(rating=0)
+            criterion.response_schema(rating=0)
         with pytest.raises(ValidationError):
-            criterion.evaluation_schema(rating=6)
+            criterion.response_schema(rating=6)
 
     def test_rating_at_boundaries_is_valid(self):
         """Rating equal to min_val or max_val is valid."""
@@ -101,8 +101,8 @@ class TestLikertCriterion:
             rating=BoundInt(min_val=1, max_val=5)
         )
 
-        eval_min = criterion.evaluation_schema(rating=1)
-        eval_max = criterion.evaluation_schema(rating=5)
+        eval_min = criterion.response_schema(rating=1)
+        eval_max = criterion.response_schema(rating=5)
         assert eval_min.rating == 1
         assert eval_max.rating == 5
 
@@ -133,7 +133,7 @@ class TestPassFailCriterion:
             )
         )
 
-        evaluation = criterion.evaluation_schema(passed=True, passing_criteria="All checks passed")
+        evaluation = criterion.response_schema(passed=True, passing_criteria="All checks passed")
 
         assert isinstance(evaluation.passed, bool)
         assert evaluation.passed is True
@@ -163,10 +163,10 @@ class TestNumericalRatingCriterion:
         )
 
         with pytest.raises(ValidationError):
-            criterion.evaluation_schema(score=-0.1)
+            criterion.response_schema(score=-0.1)
 
         with pytest.raises(ValidationError):
-            criterion.evaluation_schema(score=10.1)
+            criterion.response_schema(score=10.1)
 
     def test_fractional_scores_work_correctly(self):
         """Fractional score values are properly validated as floats."""
@@ -175,7 +175,7 @@ class TestNumericalRatingCriterion:
             score=BoundFloat(min_val=0.0, max_val=10.0)
         )
 
-        evaluation = criterion.evaluation_schema(score=7.5)
+        evaluation = criterion.response_schema(score=7.5)
 
         assert evaluation.score == 7.5
         assert isinstance(evaluation.score, float)
