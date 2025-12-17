@@ -1,426 +1,236 @@
 # Quick Start Guide
 
-Get up and running with Dachi in under 10 minutes. This guide shows you how to build a simple AI agent that can process requests and maintain conversation state.
+Get started with Dachi in under 10 minutes. This guide introduces you to Dachi's core capabilities: building adaptive behavior trees, composing computational graphs, and optimizing text parameters.
+
+## What is Dachi?
+
+Dachi is a machine learning framework that uses **text as parameters** instead of numerical parameters. It enables you to:
+
+- **Build adaptive systems** that modify their own behavior
+- **Compose computational graphs** (DAGs) from processes
+- **Create behavior trees** for complex decision-making
+- **Optimize text parameters** using LLMs via Bayesian updating
 
 ## Prerequisites
 
 ```bash
-# Install Dachi (assuming it's available via pip)
-pip install dachi
-
-# Or if working from source
+# Install from source
+git clone https://github.com/your-org/dachi.git
+cd dachi
 pip install -e .
-
-# You'll also need an OpenAI API key
-export OPENAI_API_KEY="your-api-key-here"
 ```
 
-## Hello World: Basic AI Agent
+## Example 1: Dynamic Behavior Trees
 
-Create a file called `hello_dachi.py`:
+Behavior trees let you create complex decision-making systems. In Dachi, you can build them programmatically and adapt them at runtime.
 
 ```python
-from dachi.comm import Blackboard, AsyncDispatcher
-from dachi.proc import OpenAIChat
-from dachi.utils import Msg
+from dachi.act.bt import SequenceTask, SelectorTask, Action, TaskStatus
+from dachi.act.comm import Scope
 
-# Create the core components
-blackboard = Blackboard()
-dispatcher = AsyncDispatcher(max_concurrent_requests=2)
-ai_processor = OpenAIChat(model="gpt-4", temperature=0.7)
+# Define custom actions
+class CheckInventory(Action):
+    """Check if item is in stock"""
+    item: str = "widget"
 
-# Initialize conversation state
-blackboard.set("messages", [])
-blackboard.set("conversation_count", 0)
+    async def execute(self) -> TaskStatus:
+        # Simulate inventory check
+        in_stock = True  # Your logic here
+        return TaskStatus.SUCCESS if in_stock else TaskStatus.FAILURE
 
-def chat(user_message: str) -> str:
-    """Send a message to the AI and get a response"""
-    
-    # Update conversation history
-    messages = blackboard.get("messages", [])
-    messages.append({"role": "user", "content": user_message})
-    blackboard.set("messages", messages)
-    
-    # Create AI request
-    ai_message = Msg(content=user_message)
-    
-    # Submit async request
-    request_id = dispatcher.submit_proc(ai_processor, ai_message)
-    
-    # Wait for response
-    import time
-    while True:
-        status = dispatcher.status(request_id)
-        if status.is_complete():
-            result = dispatcher.result(request_id)
-            
-            # Update conversation history
-            messages.append({"role": "assistant", "content": result.content})
-            blackboard.set("messages", messages)
-            
-            # Update stats
-            count = blackboard.get("conversation_count", 0) + 1
-            blackboard.set("conversation_count", count)
-            
-            return result.content
-        
-        time.sleep(0.1)
+class ProcessOrder(Action):
+    """Process the order"""
 
-# Test it out
-if __name__ == "__main__":
-    print("Dachi Hello World - Simple AI Chat")
-    print("Type 'quit' to exit\n")
-    
-    while True:
-        user_input = input("You: ").strip()
-        if user_input.lower() in ['quit', 'exit']:
-            break
-        
-        if user_input:
-            response = chat(user_input)
-            print(f"AI: {response}\n")
-            
-            # Show conversation stats
-            count = blackboard.get("conversation_count")
-            print(f"[Conversation turns: {count}]")
-```
-
-Run it:
-
-```bash
-python hello_dachi.py
-```
-
-## Example Interaction
-
-```
-Dachi Hello World - Simple AI Chat
-Type 'quit' to exit
-
-You: Hello! What is Dachi?
-AI: Hello! Dachi is an AI framework for building intelligent systems using Large Language Models (LLMs). It provides flexible interaction with LLMs, task coordination through behavior trees, and customizable workflows for AI agents. The framework includes components for communication, state management, and async processing to help developers build sophisticated AI applications.
-
-[Conversation turns: 1]
-
-You: Show me a simple behavior tree example
-AI: Here's a simple behavior tree example using Dachi:
-
-```python
-from dachi.act import Task, TaskStatus, Sequence
-
-class CheckWeatherTask(Task):
-    def tick(self):
-        # Simulate checking weather
-        print("Checking weather...")
+    async def execute(self) -> TaskStatus:
+        print("Processing order...")
         return TaskStatus.SUCCESS
 
-class DecideActivityTask(Task): 
-    def tick(self):
-        print("Deciding on activity based on weather...")
+class NotifyOutOfStock(Action):
+    """Notify customer item is out of stock"""
+
+    async def execute(self) -> TaskStatus:
+        print("Item out of stock - notifying customer")
         return TaskStatus.SUCCESS
 
-# Create a sequence that runs tasks in order
-morning_routine = Sequence("morning_routine")
-morning_routine.add_child(CheckWeatherTask("check_weather"))
-morning_routine.add_child(DecideActivityTask("decide_activity"))
+# Build a behavior tree
+order_fulfillment = SelectorTask(tasks=[
+    # Try to fulfill order (sequence)
+    SequenceTask(tasks=[
+        CheckInventory(),
+        ProcessOrder()
+    ]),
+    # If that fails, notify customer
+    NotifyOutOfStock()
+])
 
 # Execute the behavior tree
-status = morning_routine.tick()  # Returns SUCCESS if all tasks succeed
+scope = Scope()
+ctx = scope.ctx()
+
+status = await order_fulfillment.tick(ctx)
+print(f"Order fulfillment status: {status}")
 ```
 
-This creates a behavior tree that checks weather first, then decides on an activity - only proceeding to the second task if the first succeeds.
+**Key Points:**
+- `SequenceTask`: Executes children in order, fails if any child fails
+- `SelectorTask`: Tries each child until one succeeds
+- `TaskStatus`: READY, RUNNING, SUCCESS, FAILURE, WAITING
+- Build trees dynamically based on runtime conditions
 
-[Conversation turns: 2]
-```
+## Example 2: Computational Graphs (DataFlow)
 
-## 5-Minute Tutorial: Smart Task Processor
-
-Let's build something more interesting - a task processor that can handle different types of work:
+DataFlow lets you build computational graphs where processes depend on each other's outputs.
 
 ```python
-# smart_processor.py
-from dachi.comm import Blackboard, Bulletin, AsyncDispatcher
-from dachi.proc import OpenAIChat
-from dachi.utils import Msg
-from pydantic import BaseModel
-from typing import Dict, Any
-import uuid
+from dachi.proc import DataFlow, Ref, Process
 
-class TaskRequest(BaseModel):
-    task_id: str
-    task_type: str  # "analyze", "summarize", "translate"
-    data: Dict[str, Any]
+# Define simple processes
+class AddNumbers(Process):
+    def forward(self, a: int, b: int) -> int:
+        return a + b
 
-class TaskResult(BaseModel):
-    task_id: str
-    result: str
-    processing_time: float
+class MultiplyNumbers(Process):
+    def forward(self, x: int, factor: int) -> int:
+        return x * factor
 
-class SmartProcessor:
-    def __init__(self):
-        # Core components
-        self.blackboard = Blackboard()
-        self.task_queue = Bulletin[TaskRequest]()
-        self.results = Bulletin[TaskResult]()
-        self.dispatcher = AsyncDispatcher(max_concurrent_requests=3)
-        self.ai_processor = OpenAIChat(model="gpt-4", temperature=0.3)
-        
-        # Initialize stats
-        self.blackboard.set("tasks_completed", 0)
-        self.blackboard.set("tasks_failed", 0)
-    
-    def submit_task(self, task_type: str, data: Dict[str, Any]) -> str:
-        """Submit a task for processing"""
-        task_id = str(uuid.uuid4())[:8]
-        
-        task = TaskRequest(
-            task_id=task_id,
-            task_type=task_type,
-            data=data
-        )
-        
-        self.task_queue.publish(task)
-        print(f"Submitted {task_type} task: {task_id}")
-        return task_id
-    
-    def process_next_task(self) -> bool:
-        """Process the next available task"""
-        import time
-        
-        # Get next task
-        task = self.task_queue.retrieve_first()
-        if not task:
-            return False
-        
-        print(f"Processing task {task.task_id} ({task.task_type})")
-        start_time = time.time()
-        
-        try:
-            # Create AI prompt based on task type
-            if task.task_type == "analyze":
-                prompt = f"Analyze the following text and provide key insights: {task.data.get('text', '')}"
-            elif task.task_type == "summarize":
-                prompt = f"Summarize the following text in 2-3 sentences: {task.data.get('text', '')}"
-            elif task.task_type == "translate":
-                target_lang = task.data.get('target_language', 'Spanish')
-                prompt = f"Translate the following text to {target_lang}: {task.data.get('text', '')}"
-            else:
-                raise ValueError(f"Unknown task type: {task.task_type}")
-            
-            # Submit to AI
-            ai_message = Msg(content=prompt)
-            request_id = self.dispatcher.submit_proc(self.ai_processor, ai_message)
-            
-            # Wait for result
-            while True:
-                status = self.dispatcher.status(request_id)
-                if status.is_complete():
-                    ai_result = self.dispatcher.result(request_id)
-                    break
-                time.sleep(0.1)
-            
-            # Create and publish result
-            processing_time = time.time() - start_time
-            result = TaskResult(
-                task_id=task.task_id,
-                result=ai_result.content,
-                processing_time=processing_time
-            )
-            
-            self.results.publish(result)
-            self.task_queue.remove(task.task_id)
-            
-            # Update stats
-            completed = self.blackboard.get("tasks_completed", 0) + 1
-            self.blackboard.set("tasks_completed", completed)
-            
-            print(f"✓ Completed task {task.task_id} in {processing_time:.2f}s")
-            return True
-            
-        except Exception as e:
-            # Handle error
-            failed = self.blackboard.get("tasks_failed", 0) + 1
-            self.blackboard.set("tasks_failed", failed)
-            
-            self.task_queue.release(task.task_id)  # Release for retry
-            print(f"✗ Task {task.task_id} failed: {e}")
-            return False
-    
-    def get_result(self, task_id: str, timeout: float = 30.0) -> str:
-        """Get result for a specific task"""
-        import time
-        start_time = time.time()
-        
-        while time.time() - start_time < timeout:
-            result = self.results.retrieve_first(filters={"task_id": task_id})
-            if result:
-                return result.result
-            time.sleep(0.5)
-        
-        return "Task result not available (timeout or still processing)"
-    
-    def worker_loop(self):
-        """Run continuous processing loop"""
-        import time
-        print("Worker started - processing tasks...")
-        
-        while True:
-            try:
-                if not self.process_next_task():
-                    time.sleep(1)  # No tasks available
-            except KeyboardInterrupt:
-                print("Worker stopped")
-                break
-    
-    def get_stats(self) -> Dict[str, Any]:
-        """Get processing statistics"""
-        return {
-            "tasks_completed": self.blackboard.get("tasks_completed", 0),
-            "tasks_failed": self.blackboard.get("tasks_failed", 0),
-            "pending_tasks": len(self.task_queue.retrieve_all()),
-            "available_results": len(self.results.retrieve_all())
-        }
+class Constant(Process):
+    def __init__(self, value):
+        self.value = value
 
-# Demo usage
-def main():
-    processor = SmartProcessor()
-    
-    # Submit some tasks
-    analyze_id = processor.submit_task("analyze", {
-        "text": "The rise of artificial intelligence is transforming industries worldwide. From healthcare to finance, AI is enabling new capabilities and efficiencies."
-    })
-    
-    summarize_id = processor.submit_task("summarize", {
-        "text": "Machine learning algorithms can identify patterns in large datasets that humans might miss. This capability is particularly valuable in medical diagnosis, where ML can analyze medical images and patient data to suggest potential diagnoses or treatments."
-    })
-    
-    translate_id = processor.submit_task("translate", {
-        "text": "Hello, world! Welcome to the future of AI.",
-        "target_language": "French"
-    })
-    
-    # Process tasks
-    import threading
-    worker_thread = threading.Thread(target=processor.worker_loop, daemon=True)
-    worker_thread.start()
-    
-    # Wait and display results
-    import time
-    print("\nWaiting for results...\n")
-    time.sleep(10)  # Give tasks time to process
-    
-    print("RESULTS:")
-    print("="*50)
-    
-    print(f"Analysis: {processor.get_result(analyze_id)}")
-    print("\n" + "-"*50)
-    
-    print(f"Summary: {processor.get_result(summarize_id)}")
-    print("\n" + "-"*50)
-    
-    print(f"Translation: {processor.get_result(translate_id)}")
-    print("\n" + "-"*50)
-    
-    print(f"Stats: {processor.get_stats()}")
+    def forward(self) -> int:
+        return self.value
 
-if __name__ == "__main__":
-    main()
+# Build a computational graph
+dag = DataFlow()
+
+# Link nodes
+dag.link("a", Constant(value=5))
+dag.link("b", Constant(value=3))
+dag.link("sum", AddNumbers(), a=Ref("a"), b=Ref("b"))
+dag.link("result", MultiplyNumbers(), x=Ref("sum"), factor=2)
+
+# Set outputs
+dag.set_out(["result"])
+
+# Execute the graph
+output = await dag.aforward()
+print(f"Result: {output}")  # (16,)  -> (5+3) * 2 = 16
 ```
 
-Run it:
+**Key Points:**
+- `dag.link(name, process, **refs)`: Add a node to the graph
+- `Ref("node_name")`: Reference another node's output
+- Automatic dependency resolution and caching
+- Async execution with `await dag.aforward()`
 
-```bash
-python smart_processor.py
-```
+## Example 3: Text Parameters (Foundation)
 
-## What Just Happened?
+Unlike traditional ML frameworks that optimize numerical parameters, Dachi optimizes text.
 
-In just a few lines of code, you built a sophisticated AI system with:
-
-1. **Async Processing**: AI requests run asynchronously without blocking
-2. **Message Queues**: Tasks are queued and processed efficiently  
-3. **Shared State**: Statistics and results are stored in thread-safe shared memory
-4. **Type Safety**: Pydantic models ensure message structure
-5. **Error Handling**: Failed tasks can be retried
-
-## Core Concepts Demonstrated
-
-### Blackboard (Shared State)
 ```python
-blackboard.set("key", value)  # Store data
-value = blackboard.get("key")  # Retrieve data
+from dachi.core import Module, Param, PrivateParam
+
+class PromptModule(Module):
+    """A module with text parameters"""
+    _system_prompt: Param[str] = PrivateParam(
+        default="You are a helpful assistant"
+    )
+    _temperature: Param[float] = PrivateParam(default=0.7)
+
+# Create instance
+prompt_mod = PromptModule()
+
+# Access parameters
+params = prompt_mod.parameters()
+# or
+param_set = prompt_mod.param_set()
+
+# Parameters can be optimized using LangOptim (covered in optimization guide)
 ```
 
-### Bulletin (Message Passing)
-```python
-bulletin.publish(message)       # Send message
-message = bulletin.retrieve_first()  # Get message
-```
+**Key Points:**
+- `Param[T]`: Trainable parameter (can be fixed/unfixed)
+- `PrivateParam`: Prefix with `_` for private fields
+- `parameters()`: Returns all trainable parameters
+- `param_set()`: Returns ParamSet for optimization
 
-### AsyncDispatcher (AI Processing)
-```python
-request_id = dispatcher.submit_proc(ai_processor, message)
-result = dispatcher.result(request_id)  # Get result when ready
-```
+## What's Next?
 
-## Next Steps
+Now that you've seen the basics, explore these topics:
 
-1. **Read the tutorials**:
-   - [Simple Chat Agent](tutorial-simple-chat-agent.md) - Build a conversational AI
-   - [Multi-Agent Communication](tutorial-multi-agent-communication.md) - Coordinate multiple agents
+### Core Capabilities
+- **[Behavior Trees & Coordination](behavior-trees-and-coordination.md)** - Build complex decision trees and state machines
+- **[Process Framework](process-framework.md)** - Create custom processes with 4 execution modes
+- **[Computational Graphs](computational-graphs.md)** - Build DAGs with DataFlow
 
-2. **Explore usage patterns**:
-   - [Usage Patterns](usage-patterns.md) - Canonical patterns for each component
-   - [Architecture in Practice](architecture-in-practice.md) - How components work together
+### Advanced Topics
+- **[Optimization Guide](optimization-guide.md)** - Optimize text parameters using LangOptim
+- **[Criterion System](criterion-system.md)** - Define evaluation schemas for optimization
+- **[LangModel Adapters](langmodel-adapters.md)** - Integrate LLM providers (optional)
 
-3. **Try behavior trees**:
-   ```python
-   from dachi.act import Task, TaskStatus, Sequence, Parallel
-   # Build complex decision trees and state machines
-   ```
-
-4. **Add streaming**:
-   ```python
-   # For real-time AI responses
-   dispatcher.submit_stream(ai_processor, message, chunk_callback=handle_chunk)
-   ```
+### Tutorials
+- **[Adaptive Behavior Trees](tutorial-adaptive-behavior-trees.md)** - Create behavior trees that modify themselves
+- **[Process Composition](tutorial-process-composition.md)** - Build complex computational workflows
+- **[Prompt Optimization](tutorial-prompt-optimization.md)** - Use LangOptim to improve prompts
 
 ## Common Patterns
 
-### Request-Response with State
+### Adaptive Behavior Trees
+
 ```python
-# Store request context
-blackboard.set("current_user", user_id)
-blackboard.set("conversation_context", context)
+# Build a behavior tree that adapts based on runtime data
+def create_strategy_tree(strategy_type: str) -> Task:
+    if strategy_type == "aggressive":
+        return SequenceTask(tasks=[
+            CheckOpportunity(),
+            TakeAction()
+        ])
+    else:
+        return SelectorTask(tasks=[
+            WaitForSafeCondition(),
+            Fallback Action()
+        ])
 
-# Process with AI
-request_id = dispatcher.submit_proc(ai_processor, message)
-response = wait_for_result(request_id)
-
-# Update state with result
-update_conversation_history(response)
+# Strategy can change at runtime
+current_strategy = create_strategy_tree("aggressive")
 ```
 
-### Multi-Step Workflows
+### Process Pipelines
+
 ```python
-# Task 1: Analyze
-analyze_task = submit_analysis_task(data)
+# Chain multiple processes together
+dag = DataFlow()
+dag.link("input", Constant(value="raw data"))
+dag.link("cleaned", CleanData(), data=Ref("input"))
+dag.link("processed", ProcessData(), data=Ref("cleaned"))
+dag.link("output", FormatOutput(), data=Ref("processed"))
+dag.set_out(["output"])
 
-# Task 2: Process (depends on analysis)
-process_task = submit_processing_task(depends_on=[analyze_task])
-
-# Task 3: Report (depends on processing)  
-report_task = submit_report_task(depends_on=[process_task])
+result = await dag.aforward()
 ```
 
-### Event-Driven Coordination
-```python
-def on_task_complete(result, event_type):
-    if result.task_type == "analysis":
-        # Trigger next step
-        submit_followup_task(result.data)
+### Module Composition
 
-bulletin.register_callback(on_task_complete, events={BulletinEventType.ON_PUBLISH})
+```python
+from dachi.core import ModuleList
+
+class Pipeline(Module):
+    """Compose multiple modules"""
+    stages: ModuleList = []
+
+    def __init__(self):
+        self.stages = ModuleList([
+            PreprocessModule(),
+            AnalysisModule(),
+            OutputModule()
+        ])
 ```
 
-You're now ready to build sophisticated AI applications with Dachi! 🚀
+## Key Takeaways
+
+1. **Dachi uses text as parameters** - This enables LLM-driven optimization instead of gradient descent
+2. **Build systems dynamically** - Behavior trees, process graphs, and modules can be created and modified at runtime
+3. **Compositional architecture** - Modules, processes, and tasks compose into complex systems
+4. **Evaluation-driven** - Use the criterion system to define what "good" means for your task
+
+You're now ready to build adaptive AI systems with Dachi! 🚀

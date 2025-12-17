@@ -4,7 +4,7 @@ This guide covers Dachi's communication and request handling infrastructure, ess
 
 ## Overview
 
-Dachi provides three core communication primitives in the `dachi.comm` module:
+Dachi provides three core communication primitives in the `dachi.act.comm` module:
 
 - **Bulletin**: Message board for inter-agent communication and task coordination
 - **Blackboard**: Shared state storage with reactive callbacks and TTL support
@@ -38,7 +38,7 @@ The Bulletin acts as a message board where agents can post messages, retrieve wo
 #### Basic Usage
 
 ```python
-from dachi.comm import Bulletin
+from dachi.act.comm import Bulletin
 from pydantic import BaseModel
 
 class TaskRequest(BaseModel):
@@ -112,7 +112,7 @@ The Blackboard provides thread-safe key-value storage for shared state between a
 #### Basic State Operations
 
 ```python
-from dachi.comm import Blackboard
+from dachi.act.comm import Blackboard
 
 # Global blackboard instance
 blackboard = Blackboard()
@@ -170,11 +170,11 @@ The AsyncDispatcher manages concurrent AI requests with concurrency limiting, st
 #### Non-Streaming Requests
 
 ```python
-from dachi.comm import AsyncDispatcher, RequestState
-from dachi.proc import OpenAIChat  # Example AI process
+from dachi.act.comm import AsyncDispatcher, RequestState
+from dachi.proc import LangModel  # Example: your LLM adapter
 
 dispatcher = AsyncDispatcher(max_concurrency=5)
-llm = OpenAIChat()
+llm = my_llm_adapter  # Your LangModel instance
 
 # Submit non-blocking request
 req_id = dispatcher.submit_proc(
@@ -238,7 +238,7 @@ Buffer provides thread-safe collection and processing of streaming data, commonl
 #### Basic Streaming
 
 ```python
-from dachi.comm import Buffer
+from dachi.act.comm import Buffer
 
 # Create buffer for streaming responses
 response_buffer = Buffer(buffer=[])
