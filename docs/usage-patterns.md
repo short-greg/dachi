@@ -9,7 +9,7 @@ The Blackboard provides thread-safe shared state storage with automatic expirati
 ### Basic Usage
 
 ```python
-from dachi.comm import Blackboard
+from dachi.act.comm import Blackboard
 
 # Create a blackboard instance
 bb = Blackboard()
@@ -51,7 +51,7 @@ cache = bb.get("cache_result")  # Returns None (expired)
 ### Reactive Pattern with Callbacks
 
 ```python
-from dachi.comm import BlackboardEventType
+from dachi.act.comm import BlackboardEventType
 
 def on_config_change(key: str, value: any, event_type: BlackboardEventType):
     print(f"Configuration changed: {key} = {value}")
@@ -97,7 +97,7 @@ The Bulletin provides a message board for posting and retrieving typed messages 
 
 ```python
 from pydantic import BaseModel
-from dachi.comm import Bulletin
+from dachi.act.comm import Bulletin
 
 class TaskRequest(BaseModel):
     task_id: str
@@ -180,7 +180,7 @@ for i in range(3):
 ### Event-Driven Communication
 
 ```python
-from dachi.comm import BulletinEventType
+from dachi.act.comm import BulletinEventType
 
 def on_new_request(item: TaskRequest, event_type: BulletinEventType):
     print(f"New task request: {item.task_id}")
@@ -225,22 +225,17 @@ The AsyncDispatcher coordinates asynchronous AI requests while maintaining threa
 
 ```python
 import asyncio
-from dachi.comm import AsyncDispatcher
-from dachi.proc import OpenAIChat
-from dachi.utils import Msg
+from dachi.act.comm import AsyncDispatcher
 
 # Create dispatcher with concurrency limit
 dispatcher = AsyncDispatcher(max_concurrent_requests=5)
 
-# Create an AI processor
-openai_proc = OpenAIChat(
-    model="gpt-4",
-    temperature=0.7
-)
+# Create an AI processor (your LangModel implementation)
+llm_proc = my_llm_adapter  # Your LangModel instance
 
 # Submit a request
-message = Msg(content="Explain quantum computing in simple terms")
-request_id = dispatcher.submit_proc(openai_proc, message, callback_id="explain_quantum")
+message = {"role": "user", "content": "Explain quantum computing in simple terms"}
+request_id = dispatcher.submit_proc(llm_proc, message, callback_id="explain_quantum")
 
 # Poll for completion
 import time
@@ -256,18 +251,18 @@ while True:
 ### Callback Pattern
 
 ```python
-from dachi.comm import RequestStatus
+from dachi.act.comm import RequestState
 
-def on_completion(request_id: str, result: any, status: RequestStatus):
-    if status == RequestStatus.DONE:
-        print(f"Request {request_id} completed: {result.content}")
-    elif status == RequestStatus.ERROR:
+def on_completion(request_id: str, result: any, status: RequestState):
+    if status == RequestState.DONE:
+        print(f"Request {request_id} completed: {result}")
+    elif status == RequestState.ERROR:
         print(f"Request {request_id} failed: {result}")
 
 # Submit request with callback
 request_id = dispatcher.submit_proc(
-    openai_proc, 
-    message, 
+    llm_proc,
+    message,
     callback=on_completion,
     callback_id="async_task"
 )
@@ -287,7 +282,7 @@ def handle_stream_complete(request_id: str, final_result: str):
 
 # Submit streaming request
 request_id = dispatcher.submit_stream(
-    openai_proc,
+    llm_proc,
     message,
     chunk_callback=handle_stream_chunk,
     completion_callback=handle_stream_complete
@@ -302,15 +297,15 @@ time.sleep(5)  # Let stream complete
 ```python
 # Submit multiple requests for parallel processing
 messages = [
-    Msg(content="Summarize the benefits of renewable energy"),
-    Msg(content="Explain the water cycle"),
-    Msg(content="Describe photosynthesis process"),
-    Msg(content="What causes earthquakes?")
+    {"role": "user", "content": "Summarize the benefits of renewable energy"},
+    {"role": "user", "content": "Explain the water cycle"},
+    {"role": "user", "content": "Describe photosynthesis process"},
+    {"role": "user", "content": "What causes earthquakes?"}
 ]
 
 request_ids = []
 for i, msg in enumerate(messages):
-    req_id = dispatcher.submit_proc(openai_proc, msg, callback_id=f"batch_{i}")
+    req_id = dispatcher.submit_proc(llm_proc, msg, callback_id=f"batch_{i}")
     request_ids.append(req_id)
 
 # Wait for all to complete
@@ -331,36 +326,37 @@ print(f"Completed {len(completed_results)} requests")
 
 ```python
 from dachi.act import Task, TaskStatus
+from dachi.act.comm import RequestState
 
 class AIRequestTask(Task):
-    def __init__(self, dispatcher: AsyncDispatcher, processor, message: Msg):
+    def __init__(self, dispatcher: AsyncDispatcher, processor, message: dict):
         super().__init__()
         self.dispatcher = dispatcher
         self.processor = processor
         self.message = message
         self.request_id = None
-    
+
     def tick(self) -> TaskStatus:
         if self.request_id is None:
             # Submit request on first tick
             self.request_id = self.dispatcher.submit_proc(
-                self.processor, 
+                self.processor,
                 self.message
             )
             return TaskStatus.RUNNING
-        
+
         # Check status on subsequent ticks
         status = self.dispatcher.status(self.request_id)
-        if status == RequestStatus.DONE:
+        if status == RequestState.DONE:
             self.result = self.dispatcher.result(self.request_id)
             return TaskStatus.SUCCESS
-        elif status == RequestStatus.ERROR:
+        elif status == RequestState.ERROR:
             return TaskStatus.FAILURE
         else:
             return TaskStatus.RUNNING
 
 # Use in behavior tree
-ai_task = AIRequestTask(dispatcher, openai_proc, Msg(content="Hello, AI!"))
+ai_task = AIRequestTask(dispatcher, llm_proc, {"role": "user", "content": "Hello, AI!"})
 result = ai_task.tick()  # Returns RUNNING initially
 # ... continue ticking until SUCCESS or FAILURE
 ```
@@ -375,7 +371,7 @@ result = ai_task.tick()  # Returns RUNNING initially
 ### Error Handling
 - Always check for None returns from `get()` and `retrieve_first()`
 - Use try/catch blocks when processing retrieved data
-- Monitor RequestStatus for ERROR states in AsyncDispatcher
+- Monitor RequestState for ERROR states in AsyncDispatcher
 
 ### Performance
 - Use TTL to prevent memory leaks in long-running systems

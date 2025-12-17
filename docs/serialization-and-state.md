@@ -81,6 +81,60 @@ print(learned_agent.successful_strategies)  # {'greeting': 'friendly_approach'}
 
 ## ShareableItem Types
 
+### Text Parameters and Optimization
+
+**PrivateParam** is a special type of Param for text parameters that can be optimized by LangOptim:
+
+```python
+from dachi.core import Module, Param, PrivateParam
+
+class OptimizableModule(Module):
+    # Regular configuration
+    model_name: str = Param(default="gpt-4")
+
+    # Text parameters - optimizable via LangOptim
+    _system_prompt: Param[str] = PrivateParam(
+        default="You are a helpful assistant",
+        description="System prompt defining behavior"
+    )
+
+    _instruction: Param[str] = PrivateParam(
+        default="Answer questions concisely",
+        description="Task instruction"
+    )
+
+    # Learning state
+    optimization_iterations: int = Attr(default=0)
+    best_pass_rate: float = Attr(default=0.0)
+
+module = OptimizableModule()
+
+# Extract text parameters for optimization
+param_set = module.param_set()
+
+# After optimization, parameters are updated
+# optimizer.step(evaluations)  # This updates _system_prompt and _instruction
+
+# Optimized parameters persist through serialization
+spec = module.spec()
+state = module.state_dict()
+
+# Both spec and state contain the optimized text parameters
+print(spec._system_prompt)  # Optimized value
+print(state['_system_prompt'])  # Optimized value
+
+# When restored, module has optimized parameters
+restored = OptimizableModule.from_spec(spec)
+restored.load_state_dict(state)
+print(restored._system_prompt)  # Still optimized
+```
+
+**Key Points:**
+- **PrivateParam** marks text parameters as optimizable
+- Optimized values persist in both spec and state
+- Description field helps optimizer understand parameter purpose
+- Text parameters are serialized just like regular Param values
+
 ### Param - Configuration Parameters
 
 Parameters define what your module *is*. They're part of both the spec and the state:
@@ -938,14 +992,23 @@ response4 = learned_agent.chat("I have another Python question")
 
 **Spec vs State**: Spec defines what a module *is* (configuration), State tracks what it *learns* (runtime changes).
 
+**Text Parameter Optimization**: PrivateParam enables text parameters to be optimized via LangOptim, with optimized values persisting through serialization.
+
 **Automatic Registry**: All BaseModule classes auto-register, enabling `from_spec()` to recreate any module from just its spec.
 
 **Shared State is Manual**: Shared data is global but not auto-saved - you manage it explicitly when needed.
 
 **AdaptModule Magic**: Modules become parameters themselves, enabling LLM-designed architectures and dynamic system composition.
 
-**Complete Reconstruction**: `from_spec()` + `load_state_dict()` gives you the full learned system back.
+**Complete Reconstruction**: `from_spec()` + `load_state_dict()` gives you the full learned system back, including optimized text parameters.
 
 **LLM-Generated Systems**: LLMs can output specs to create entirely new system architectures - true machine learning at the system level.
 
-This serialization system transforms AI from stateless tools into intelligent, learning entities that improve over time and can even evolve their own architectures. Your systems become genuinely intelligent because they remember, learn, and adapt.
+**Optimization Persistence**: Text parameters optimized by LangOptim are saved in both spec and state, ensuring your optimizations persist across system restarts.
+
+This serialization system transforms AI from stateless tools into intelligent, learning entities that improve over time and can even evolve their own architectures. Your systems become genuinely intelligent because they remember, learn, adapt, and optimize their own prompts and instructions.
+
+See also:
+- **[Optimization Guide](optimization-guide.md)** - Complete text parameter optimization workflow
+- **[Core Architecture](core-architecture.md)** - Text parameters and ParamSet details
+- **[Design Pillars](design-pillars.md)** - Philosophy behind learning systems
