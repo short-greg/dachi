@@ -94,6 +94,14 @@ from ._optim import (
 )
 from ._ai import (
     LangModel,
+    LANG_MODEL,
+    BaseToolCall,
+    Call,
+    AsyncCall,
+    StreamCall,
+    AsyncStreamCall,
+    ToolCall,
+    ToolUse,
 )
 from ._dispatch import (
     RequestState,

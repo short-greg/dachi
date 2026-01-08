@@ -5,9 +5,11 @@ from ._base import (
     RespField,
     ResponseSpec,
 )
-from ._criterion import (
+from ._resp import (
     Reason,
     Brainstorming,
+)
+from ._criterion import (
     BaseCriterion,
     PassFailCriterion,
     LikertCriterion,
