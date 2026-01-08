@@ -2,13 +2,10 @@ from __future__ import annotations
 
 import typing as t
 from abc import abstractmethod
-from pydantic import BaseModel, Field, ConfigDict, PrivateAttr, create_model
-import pydantic
+from pydantic import BaseModel, Field, ConfigDict, PrivateAttr, create_model, model_validator
 
 import typing as t
 from abc import abstractmethod
-from pydantic import BaseModel, Field, ConfigDict, PrivateAttr, create_model
-import pydantic
 
 
 class RespField(BaseModel):
@@ -50,6 +47,19 @@ class ResponseSpec(BaseModel):
 
     _response_schema: t.Type[BaseModel] | None = PrivateAttr(default=None)
     _batch_response_schema: t.Type[BaseModel] | None = PrivateAttr(default=None)
+
+    @model_validator(mode='before')
+    @classmethod
+    def validate_field(cls, values: t.Dict[str, t.Any]) -> t.Dict[str, t.Any]:
+        """Convert any field that has been passed in as a string."""
+        for field_name, field_info in cls.model_fields.items():
+            if issubclass(field_info.annotation, RespField):
+                value = values.get(field_name)
+                if value is not None and isinstance(value, str):
+                    # Allow string shorthand for RespField
+                    values[field_name] = field_info.annotation(description=value)
+
+        return values
 
     @property
     def response_schema(self) -> t.Type[BaseModel] | None:

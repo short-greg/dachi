@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 import typing as t
-from abc import abstractmethod
-from pydantic import BaseModel, Field
-import pydantic
+from pydantic import Field
 
 from ._base import RespField
 
@@ -54,6 +52,7 @@ class TypedDictField(RespField):
 class DictField(RespField):
     """Dictionary field for dynamic key-value pairs."""
 
+    key_type: t.Type = str
     value_type: t.Type = str
     max_length: int | None = None
     min_length: int | None = None
@@ -71,6 +70,16 @@ class ListField(RespField):
 
     def get_field(self) -> tuple:
         return (t.List[self.item_type], Field(description=self.description, default_factory=list, min_items=self.min_len, max_items=self.max_len))
+
+
+class FixedListField(RespField):
+    """List field."""
+
+    item_type: t.Type = str
+    n_items: int = 1
+
+    def get_field(self) -> tuple:
+        return (t.List[self.item_type], Field(description=self.description, default_factory=list, min_items=self.n_items, max_items=self.n_items))
 
 
 class TupleField(RespField):

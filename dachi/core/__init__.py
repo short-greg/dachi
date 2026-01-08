@@ -34,6 +34,10 @@ from ._structs import (
     ModuleDict,
     ModuleList,
 )
+from ._registry import (
+    Registry,
+    RegistryEntry   
+)
 # from ._render import (
 #     TemplateField,
 #     render,

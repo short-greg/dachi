@@ -6,15 +6,6 @@ from ._field import BoundInt, BoundFloat, TextField, BoolField, DictField, ListF
 from ._base import ResponseSpec
 import typing as t
 
-class Reason(ResponseSpec):
-    """Reasoning text field."""
-    reason: TextField
-
-
-class Brainstorming(ResponseSpec):
-    """Brainstorming text field."""
-    ideas: ListField
-
 
 class BaseCriterion(ResponseSpec):
     pass

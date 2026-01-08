@@ -34,7 +34,46 @@ class Registry(t.Generic[T]):
     by name, type, tags, and package.
     """
     def __init__(self):
+        """
+        """
         self._entries: Dict[str, RegistryEntry[T]] = {}
+        self._default: Optional[str] = None
+
+    @property
+    def default(self) -> Optional[RegistryEntry[T]] | None:
+        """
+        Get the default registry entry.
+        Returns:
+            The default registry entry or None if not set.
+        """
+        if self._default is None:
+            return None
+        return self._entries.get(self._default)
+
+    @default.setter
+    def default(self, key: str | None | T) -> None:
+        """
+        Set the default registry entry by key or object.
+        Args:
+            key: The name of the object or the object itself to set as default.
+        Raises:
+            KeyError: If the key is not found in the registry.
+            ValueError: If the object is not found in the registry.
+        """
+
+        if key is None:
+            self._default = None
+        elif isinstance(key, str):
+            if key not in self._entries:
+                raise KeyError(f"Registry entry '{key}' not found. Cannot set as default.")
+            self._default = key
+        else:
+            # Find the key for the given object
+            for k, v in self._entries.items():
+                if v.obj == key:
+                    self._default = k
+                    return
+            raise ValueError("Given object not found in registry. Cannot set as default.")
 
     def register_item(
         self,

@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Dict, Tuple, Any, Union, Optional, List
+from typing import Dict, Tuple, Any, Union, Optional, List, model_serializer
 import pydantic
 
 """
@@ -171,10 +171,13 @@ class Scope(pydantic.BaseModel):
     aliases: Dict[str, Tuple] = pydantic.Field(default_factory=dict)
     data: Dict[str, Any] = pydantic.Field(default_factory=dict)
 
+    _skip_serialization: List[str] = pydantic.PrivateAttr(default_factory=list)
+
     _parent: Optional['Scope'] = pydantic.PrivateAttr(default=None)
 
     def model_post_init(self, __context):
         """Reconstruct parent references for all children after deserialization"""
+        super().model_post_init(__context)
         for child in self.children.values():
             child._parent = self
 
@@ -251,7 +254,7 @@ class Scope(pydantic.BaseModel):
         scope.aliases[key[-1]] = key
         return value
     
-    def set(self, path: Union[Tuple, str], field: str, value: Any, index: Union[str, int] = None):
+    def set(self, path: Union[Tuple, str], field: str, value: Any, index: Union[str, int] = None, skip_serialize: bool = False):
         """Set value at both indexed and unindexed locations"""
         if isinstance(path, str):
             # Use same pattern as __setitem__
@@ -267,6 +270,8 @@ class Scope(pydantic.BaseModel):
                 key = key + (index,)
         
         self[key] = value
+        if skip_serialize:
+            self.skip_serialize(path)
         return value
     
     def path(self, path: Union[Tuple, str], field: str, index: Union[str, int] = None) -> Any:
@@ -433,7 +438,6 @@ class Scope(pydantic.BaseModel):
             raise KeyError(f"Unknown tag: {parts[0]}")
         return tuple(resolved_parts)
 
-    
     def _resolve_alias_scope(self, alias: str) -> Tuple['Scope', Tuple]:
         """Resolve alias using lexical scoping - search up parent chain"""
         scope = self
@@ -442,6 +446,43 @@ class Scope(pydantic.BaseModel):
                 return scope, scope.aliases[alias]
             scope = scope._parent
         raise KeyError(f"Alias '{alias}' not found in scope chain")
+    
+    # override serialization to skip _skip_serialization fields
+    @model_serializer
+    def serialize_model(self) -> dict[str, Any]:
+        # all the data that is in _skip_serialization should be skipped, serialize the other fields
+        result = {}
+        data = self.model_dump()
+        for key in self._skip_serialization:
+            if key in data:
+                del data[key]
+
+        result['data'] = data
+        result['name'] = self.name
+
+        alias_data = {}
+        for alias, path in self.aliases.items():
+            if path not in self._skip_serialization:
+                alias_data[alias] = path
+        result['aliases'] = alias_data
+        result['children'] = [
+            child.serialize_model() for child in self.children.values()
+        ]
+        result['full_path'] = {}
+        for path, value in self.full_path.items():
+            if path not in self._skip_serialization:
+                result['full_path'][path] = value
+        return result
+    
+    def skip_serialize(self, field: Union[str, Tuple]):
+        """Mark field or path to be skipped during serialization"""
+        if isinstance(field, str):
+            # Resolve to tuple path
+            resolved_key = self._resolve_path(field)
+            self._skip_serialization.append(resolved_key)
+        else:
+            self._skip_serialization.append(field)
+
     
 # $.x
 # BT(
@@ -479,7 +520,7 @@ class BoundScope(Scope):
             return self.__getitem__(key)
         except KeyError:
             return default
-    
+
     def __setitem__(self, key: Union[str, Tuple], value: Any):
         """Store data with bindings applied
         
@@ -510,9 +551,15 @@ class BoundScope(Scope):
         """Get value from indexed location at this context's path"""
         return self.bound.path(index_path, field, index)
     
-    def set(self, index_path: Tuple[int, ...], field: str, value: Any, index: Union[str, int] = None):
+    def set(self, index_path: Tuple[int, ...], field: str, value: Any, index: Union[str, int] = None, skip_serialize: bool = False):
         """Set value at both indexed and unindexed locations"""
-        return self.bound.set(index_path, field, value, index)
+        return self.bound.set(index_path, field, value, index, skip_serialize)
+
+    def skip_serialize(self, field):
+        """Mark field or path to be skipped during serialization"""
+        if isinstance(field, str) and field.startswith("@"):
+            raise ValueError("Cannot skip serialization for bound keys")
+        self.bound.skip_serialize(field)
 
 
 class Ctx(pydantic.BaseModel):
@@ -522,7 +569,7 @@ class Ctx(pydantic.BaseModel):
 
     scope: Scope
     index_path: Tuple[int, ...] = ()
-    
+
     def __setitem__(self, key: str, value: Any):
         """Store data at both indexed and unindexed locations"""
         if key.startswith('/'):
@@ -550,6 +597,20 @@ class Ctx(pydantic.BaseModel):
             return self.__getitem__(key)
         except KeyError:
             return default
+        
+    # def set(self, key: str, value: Any, skip_serialize: bool = False):
+    #     """Store data at both indexed and unindexed locations"""
+    #     self.__setitem__(key, value)
+
+    #     key = key.split('.')
+    #     if len(key) == 1:
+    #         key = key[0]
+    #         index = None
+    #     else:
+    #         key, index = key[0], key[1]
+        
+    #     self.scope.set(self.index_path, key, value, index, skip_serialize)
+    #     return value
     
     def path(self, field: str, index: Union[str, int] = None) -> Any:
         """Get value from indexed location at this context's path"""

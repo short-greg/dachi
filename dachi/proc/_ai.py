@@ -1,17 +1,21 @@
 import typing as t
 from abc import abstractmethod, ABC
-
 import pydantic
-
 from ._process import (
     Process,
     AsyncProcess,
     StreamProcess,
     AsyncStreamProcess,
 )
-from dachi.core import Inp
+from dachi.core import Inp, Registry, Runtime
 
-class LangModel(Process, AsyncProcess, StreamProcess, AsyncStreamProcess):
+
+class LangModel(
+    Process, 
+    AsyncProcess, 
+    StreamProcess, 
+    AsyncStreamProcess
+):
     """A simple LLM process that echoes input with a prefix.
     """
 
@@ -108,3 +112,120 @@ class LangModel(Process, AsyncProcess, StreamProcess, AsyncStreamProcess):
 
 
 LANG_MODEL = t.TypeVar("LANG_MODEL", bound=LangModel)
+
+Engines = Registry[LangModel]()
+
+
+class Op(
+    Process, 
+    AsyncProcess, 
+    StreamProcess, 
+    AsyncStreamProcess
+):
+    """An operation that uses a language model to process input and generate output.
+    """
+    def model_post_init(self, __context):
+        """Post init to set up model property.
+        """
+        super().model_post_init(__context)
+        self._model = Runtime[LangModel](
+            data=None
+        )
+
+    @property
+    def model(self) -> LangModel | str | None:
+        """The language model used by this operation.
+        """
+        return self._model.data
+    
+    @model.setter
+    def model(
+        self, 
+        value: LangModel | str | None
+    ) -> LangModel | str | None:
+        self._model.data = value
+        return self._model.data
+
+    def get_model(self, override: t.Optional[LangModel | str]=None) -> LangModel:
+        """Get the language model, raising an error if it is not set.
+        """
+        if override is None:
+            override = self._model.data
+        if override is None:
+            raise ValueError("Model is not set.")
+        model = Engines.get(override)
+        if model is None:
+            raise ValueError(f"Model '{override}' not found in registry.")
+        return override
+    
+    def forward(
+        self, 
+        prompt: list[Inp] | Inp, 
+        structure: t.Dict | None | pydantic.BaseModel = None, 
+        tools: t.Dict | None | pydantic.BaseModel = None, 
+        _model: LangModel | None = None, **kwargs
+    ) -> t.Tuple[str, t.List[Inp], t.Any]:
+        model = self.get_model(_model)
+        if model is None:
+            raise ValueError("Model is not set so must pass in to use.")
+        return model.forward(prompt, structure=structure, tools=tools, **kwargs)
+    
+    async def aforward(
+        self, 
+        prompt: list[Inp] | Inp, 
+        structure: t.Dict | None | pydantic.BaseModel = None, 
+        tools: t.Dict | None | pydantic.BaseModel = None, 
+        _model: LangModel | None = None, **kwargs
+    ) -> t.Tuple[str, t.List[Inp], t.Any]:
+        model = self.get_model(_model)
+        if model is None:
+            raise ValueError("Model is not set so must pass in to use.")
+        return await model.aforward(prompt, structure=structure, tools=tools, **kwargs)
+    
+    def stream(
+        self, 
+        prompt: list[Inp] | Inp, 
+        structure: t.Dict | None | pydantic.BaseModel = None, 
+        tools: t.Dict | None | pydantic.BaseModel = None, 
+        _model: LangModel | None = None, **kwargs
+    ) -> t.Iterator[t.Tuple[str, t.List[Inp], t.Any]]:
+        model = self.get_model(_model)
+        if model is None:
+            raise ValueError("Model is not set so must pass in to use.")
+        return model.stream(prompt, structure=structure, tools=tools, **kwargs)
+    
+    async def astream(
+        self, 
+        prompt: list[Inp] | Inp,
+        structure: t.Dict | None | pydantic.BaseModel = None,
+        tools: t.Dict | None | pydantic.BaseModel = None,
+        _model: LangModel | None = None,
+        **kwargs
+    ) -> t.AsyncIterator[t.Tuple[str, t.List[Inp], t.Any]]:
+        model = self.get_model(_model)
+        if model is None:
+            raise ValueError("Model is not set so must pass in to use.")
+        return await model.astream(prompt, structure=structure, tools=tools, **kwargs)
+
+
+class ToolUser(Op):
+    """An operation that uses tools with a language model to process input and generate output.
+    """
+    
+    def forward(
+        self, 
+        prompt: list[Inp] | Inp, 
+        structure: t.Dict | None | pydantic.BaseModel = None, 
+        tools: t.Dict | None | pydantic.BaseModel = None, 
+        _model: LangModel | None = None, **kwargs
+    ) -> t.Tuple[str, t.List[Inp], t.Any]:
+        if tools is None:
+            raise ValueError("Tools must be provided for ToolUser operations.")
+        res = super().forward(prompt, structure=structure, tools=tools, _model=_model, **kwargs)
+        # check if tools were used in the response, raise error if not
+        
+
+
+OP = t.TypeVar("OP", bound=Op)
+
+
