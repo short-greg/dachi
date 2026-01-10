@@ -125,7 +125,24 @@ class TextMsg(Msg):
     """A message in a dialog
     """
     role: str
+    text: str | None = None
+
+
+class ToolResult(BaseModel):
+    """The result of a tool call
+    """
+    id: str
+    output: str
+
+
+@pydantic.dataclasses.dataclass
+class ToolMsg(Msg):
+    """A message in a dialog
+    """
     text: str
+    # what is necessary to be able to create a "tool message". like what if there are multiple tools?. This tool message will be passed to the LLM as a response from the tool call
+    tool_calls: list[ToolResult]
+
 
 
 ITEM = t.TypeVar('ITEM')

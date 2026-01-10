@@ -8,7 +8,9 @@ from ._process import (
     AsyncStreamProcess,
 )
 from dachi.core import Inp, Registry, Runtime, Module
+from dachi.core._base import ToolResult
 
+from ._resp import ToOut
 
 # =============================================================================
 # Tool Use Types
@@ -84,6 +86,146 @@ class ToolUse(Module):
     """
     text: str = ""
     calls: t.List[BaseToolCall] = pydantic.Field(default_factory=list)
+
+    def forward(self) -> t.List[ToolResult]:
+        """Execute all tool calls synchronously and return a ToolMsg."""
+        tool_results = []
+        for call in self.calls:
+            if isinstance(call, Call):
+                output = call.forward()
+            elif isinstance(call, StreamCall):
+                output = "".join(list(call.stream()))
+            elif isinstance(call, AsyncCall):
+                raise ValueError(f"Cannot execute async call {call} in synchronous forward.")
+            elif isinstance(call, AsyncStreamCall):
+                raise ValueError(f"Cannot execute async streaming call {call} in synchronous forward.")
+            else:
+                raise ValueError(f"Cannot execute async or streaming call {call} in synchronous forward.")
+            tool_result = ToolResult(
+                id=...,
+                output=output
+            )
+            tool_results.append(tool_result)
+        return tool_results
+    
+    async def aforward(self) -> t.List[ToolResult]:
+        """Execute all tool calls asynchronously and return a ToolMsg."""
+        tool_results = []
+        for call in self.calls:
+            if isinstance(call, Call):
+                output = call.forward()
+            elif isinstance(call, AsyncCall):
+                output = await call.aforward()
+            elif isinstance(call, StreamCall):
+                output = "".join(list(call.stream()))
+            elif isinstance(call, AsyncStreamCall):
+                output = "".join([chunk async for chunk in call.astream()])
+            else:
+                raise ValueError(f"Unknown call type: {call}")
+            # you are not using the correct id!
+            tool_result = ToolResult(
+                id=...,
+                output=output
+            )
+
+            tool_results.append(tool_result)
+        return tool_results
+
+
+def lang_forward(
+    prompt: list[Inp] | Inp,
+    structure: t.Dict | None | pydantic.BaseModel = None,
+    tools: t.Dict | None | pydantic.BaseModel = None,
+    _model: t.Optional["LangModel"] = None,
+    _out: t.Optional[ToOut] = None,
+    **kwargs
+) -> t.Tuple[str | ToolUse, t.List[Inp], t.Any]:
+    """Helper function to call LLM forward method."""
+    if _model is None:
+        raise ValueError("Model must be provided for llm_forward.")
+    res = _model.forward(
+        prompt,
+        structure=structure,
+        tools=tools,
+        **kwargs
+    )
+    if _out is not None and isinstance(res, str):
+        res = _out.process(res)
+    return res
+
+
+async def lang_aforward(
+    prompt: list[Inp] | Inp,
+    structure: t.Dict | None | pydantic.BaseModel = None,
+    tools: t.Dict | None | pydantic.BaseModel = None,
+    _model: t.Optional["LangModel"] = None,
+    _out: t.Optional[ToOut] = None,
+    **kwargs
+) -> t.Tuple[str | ToolUse, t.List[Inp], t.Any]:
+    """Helper function to call LLM aforward method."""
+    if _model is None:
+        raise ValueError("Model must be provided for llm_aforward.")
+    res = await _model.aforward(
+        prompt,
+        structure=structure,
+        tools=tools,
+        **kwargs
+    )
+    if _out is not None and isinstance(res, str):
+        res = _out.process(res)
+    return res
+
+
+def lang_stream(
+    prompt: list[Inp] | Inp,
+    structure: t.Dict | None | pydantic.BaseModel = None,
+    tools: t.Dict | None | pydantic.BaseModel = None,
+    _model: t.Optional["LangModel"] = None,
+    _out: t.Optional[ToOut] = None,
+    **kwargs
+) -> t.Iterator[t.Tuple[str | ToolUse, t.List[Inp], t.Any]]:
+    """Helper function to call LLM stream method."""
+    if _model is None:
+        raise ValueError("Model must be provided for llm_stream.")
+    delta_store = {}
+    for res in _model.stream(
+        prompt,
+        structure=structure,
+        tools=tools,
+        **kwargs
+    ):
+        if _out is not None and isinstance(res, str):
+            res = _out.delta(res, delta_store)
+        yield res
+    if _out is not None and isinstance(res, str):
+        res = _out.delta(res, delta_store, True)
+    yield res
+
+
+async def lang_astream(
+    prompt: list[Inp] | Inp,
+    structure: t.Dict | None | pydantic.BaseModel = None,
+    tools: t.Dict | None | pydantic.BaseModel = None,
+    _model: t.Optional["LangModel"] = None,
+    _out: t.Optional[ToOut] = None,
+    **kwargs
+) -> t.AsyncIterator[t.Tuple[str | ToolUse, t.List[Inp], t.Any]]:
+    """Helper function to call LLM astream method."""
+    if _model is None:
+        raise ValueError("Model must be provided for llm_astream.")
+    delta_store = {}
+    async for res in _model.astream(
+        prompt,
+        structure=structure,
+        tools=tools,
+        **kwargs
+    ):
+        if _out is not None and isinstance(res, str):
+            res = _out.delta(res, delta_store)
+        yield res
+    if _out is not None and isinstance(res, str):
+        res = _out.delta(res, delta_store, True)
+    yield res
 
 
 class LangModel(
@@ -191,7 +333,7 @@ LANG_MODEL = t.TypeVar("LANG_MODEL", bound=LangModel)
 Engines = Registry[LangModel]()
 
 
-class Op(
+class LangEngine(
     Process, 
     AsyncProcess, 
     StreamProcess, 
@@ -283,24 +425,83 @@ class Op(
         return await model.astream(prompt, structure=structure, tools=tools, **kwargs)
 
 
-class ToolUser(Op):
-    """An operation that uses tools with a language model to process input and generate output.
+class LangOp(Process, AsyncProcess, StreamProcess, AsyncStreamProcess):
+    """An operation that uses a language model to process input and generate output.
     """
-    
+
     def forward(
         self, 
         prompt: list[Inp] | Inp, 
         structure: t.Dict | None | pydantic.BaseModel = None, 
         tools: t.Dict | None | pydantic.BaseModel = None, 
-        _model: LangModel | None = None, **kwargs
+        _model: LangModel | None = None, 
+        _out: ToOut | None = None,
+        **kwargs
     ) -> t.Tuple[str, t.List[Inp], t.Any]:
-        if tools is None:
-            raise ValueError("Tools must be provided for ToolUser operations.")
-        res = super().forward(prompt, structure=structure, tools=tools, _model=_model, **kwargs)
-        # check if tools were used in the response, raise error if not
+        if _model is None:
+            raise ValueError("Model must be provided for LangOp operations.")
+        res, _, _ = _model.forward(prompt, structure=structure, tools=tools, **kwargs)
+        if _out is not None and isinstance(res, str):
+            res = _out.process(res)
         
+        return res
+    
+    async def aforward(
+        self, 
+        prompt: list[Inp] | Inp, 
+        structure: t.Dict | None | pydantic.BaseModel = None, 
+        tools: t.Dict | None | pydantic.BaseModel = None, 
+        _model: LangModel | None = None, 
+        _out: ToOut | None = None,
+        **kwargs
+    ) -> t.Tuple[str, t.List[Inp], t.Any]:
+        if _model is None:
+            raise ValueError("Model must be provided for LangOp operations.")
+        res, _, _ = await _model.aforward(prompt, structure=structure, tools=tools, **kwargs)
+        if _out is not None and isinstance(res, str):
+            res = _out.process(res)
+        
+        return res
+    
+    def stream(
+        self, 
+        prompt: list[Inp] | Inp, 
+        structure: t.Dict | None | pydantic.BaseModel = None, 
+        tools: t.Dict | None | pydantic.BaseModel = None, 
+        _model: LangModel | None = None, 
+        _out: ToOut | None = None,
+        **kwargs
+    ) -> t.Iterator[t.Tuple[str, t.List[Inp], t.Any]]:
+        if _model is None:
+            raise ValueError("Model must be provided for LangOp operations.")
+        delta_store = {}
+        for res, msgs, raw in _model.stream(prompt, structure=structure, tools=tools, **kwargs):
+            if _out is not None and isinstance(res, str):
+                res = _out.delta(res, delta_store) 
+            yield res
+        if _out is not None and isinstance(res, str):
+            res = _out.delta(res, delta_store, True)
+        yield res
+
+    async def astream(
+        self, 
+        prompt: list[Inp] | Inp, 
+        structure: t.Dict | None | pydantic.BaseModel = None, 
+        tools: t.Dict | None | pydantic.BaseModel = None, 
+        _model: LangModel | None = None, 
+        _out: ToOut | None = None,
+        **kwargs
+    ) -> t.AsyncIterator[t.Tuple[str, t.List[Inp], t.Any]]:
+        if _model is None:
+            raise ValueError("Model must be provided for LangOp operations.")
+        delta_store = {}
+        async for res, msgs, raw in _model.astream(prompt, structure=structure, tools=tools, **kwargs):
+            if _out is not None and isinstance(res, str):
+                res = _out.delta(res, delta_store) 
+            yield res
+        if _out is not None and isinstance(res, str):
+            res = _out.delta(res, delta_store, True)
+        yield res
 
 
-OP = t.TypeVar("OP", bound=Op)
-
-
+OP = t.TypeVar("OP", bound=LangEngine)

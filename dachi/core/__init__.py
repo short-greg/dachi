@@ -6,6 +6,7 @@ from ._base import (
     NULL_TOK,
     TextMsg,
     Msg,
+    ToolMsg,
     Inp,
     Templatable,
     ExampleMixin,

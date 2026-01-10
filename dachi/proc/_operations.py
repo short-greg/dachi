@@ -1,4 +1,4 @@
-from ._ai import LangModel, Engines, Op
+from ._ai import LangModel, Engines, LangEngine
 from dachi.utils.text import str_formatter
 import typing as t
 import pydantic
@@ -392,7 +392,7 @@ async def symmetric_difference_astream(
 
 
 
-class Union(Op):
+class Union(LangEngine):
     """Operation to combine multiple texts into one unified text using a language model.
     """
     def __init__(
@@ -482,7 +482,7 @@ class Union(Op):
         )
     
 
-class Intersection(Op):
+class Intersection(LangEngine):
     """Operation to get the intersection of multiple texts using a language model.
     """
     def __init__(
@@ -560,7 +560,7 @@ class Intersection(Op):
         )
 
 
-class Difference(Op):
+class Difference(LangEngine):
     """Operation to get the difference between two texts using a language model.
     """
 
@@ -647,7 +647,7 @@ class Difference(Op):
         )
     
 
-class SymmetricDifference(Op):
+class SymmetricDifference(LangEngine):
     """Operation to get the symmetric difference between two texts using a language model.
     """
     def __init__(
