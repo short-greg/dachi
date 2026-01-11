@@ -53,13 +53,15 @@ class ResponseSpec(BaseModel):
     def validate_field(cls, values: t.Dict[str, t.Any]) -> t.Dict[str, t.Any]:
         """Convert any field that has been passed in as a string."""
         for field_name, field_info in cls.model_fields.items():
-            print(field_info.annotation)
-            
-            if issubclass(field_info.annotation, RespField):
-                value = values.get(field_name)
-                if value is not None and isinstance(value, str):
-                    # Allow string shorthand for RespField
-                    values[field_name] = field_info.annotation(description=value)
+            try:
+                if issubclass(field_info.annotation, RespField):
+                    value = values.get(field_name)
+                    if value is not None and isinstance(value, str):
+                        # Allow string shorthand for RespField
+                        values[field_name] = field_info.annotation(description=value)
+            except TypeError:
+                # Skip non-class annotations (e.g., Union types like str | None)
+                continue
 
         return values
 
