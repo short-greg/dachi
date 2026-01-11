@@ -1,36 +1,16 @@
-from ._lang import LangModel, Engines, LangEngine
-from dachi.utils.text import str_formatter
 import typing as t
+
 import pydantic
 
-
-DIFFERENCE_TEMPLATE = """Describe everything that is in Text A but is not in Text B.
-Text A:
-{a}
-Text B:
-{b}"""
-
-
-SYMMETRIC_DIFFERENCE_TEMPLATE = """Describe everything that is in Text A but is not in Text B, and everything that is in Text B but is not in Text A.
-Text A:
-{a}
-Text B:
-{b}"""
-
-
-UNION_TEMPLATE = """Combine the following texts into one unified text, separating sections with '{sep}': 
-{texts}"""
-
-
-INTERSECTION_TEMPLATE = """Given the following texts, extract and return only the content that is common to all texts.
-Texts:
-{texts}"""
+from dachi.config import config
+from dachi.utils.text import str_formatter
+from ._lang import Engines, LangEngine, LangModel
 
 
 def difference(
     a: str, 
     b: str, 
-    _prompt: str=DIFFERENCE_TEMPLATE, 
+    _prompt: str | None = None, 
     _model: LangModel | None | str = None,
     _structure: t.Dict | None | pydantic.BaseModel = None, 
 ) -> str:
@@ -44,13 +24,15 @@ def difference(
     Returns:
         The difference between the two texts.
     """
-    response, _, _ =Engines.get(_model).forward(
-        prompt=str_formatter(_prompt, a=a, b=b), structure=_structure
+    prompt = _prompt if _prompt is not None else config.Ops.Difference.prompt
+    model = _model if _model is not None else config.Ops.Difference.model
+    response, _, _ = Engines.get(model).forward(
+        prompt=str_formatter(prompt, a=a, b=b), structure=_structure
     )
     return response
 
 
-def difference_stream(a: str, b: str, _prompt: str=DIFFERENCE_TEMPLATE, _model: LangModel | None | str = None, _structure: t.Dict | None | pydantic.BaseModel = None) -> t.Iterator[str]:
+def difference_stream(a: str, b: str, _prompt: str | None = None, _model: LangModel | None | str = None, _structure: t.Dict | None | pydantic.BaseModel = None) -> t.Iterator[str]:
     """Get the difference between two texts using a language model.
 
     Args:
@@ -61,13 +43,15 @@ def difference_stream(a: str, b: str, _prompt: str=DIFFERENCE_TEMPLATE, _model: 
     Returns:
         An iterator over the difference between the two texts.
     """
-    for chunk, _, _ in Engines.get(_model).stream(
-        prompt=str_formatter(_prompt, a=a, b=b), structure=_structure
+    prompt = _prompt if _prompt is not None else config.Ops.Difference.prompt
+    model = _model if _model is not None else config.Ops.Difference.model
+    for chunk, _, _ in Engines.get(model).stream(
+        prompt=str_formatter(prompt, a=a, b=b), structure=_structure
     ):
         yield chunk
 
 
-async def async_difference(a: str, b: str, _prompt: str=DIFFERENCE_TEMPLATE, _model: LangModel | None | str = None, _structure: t.Dict | None | pydantic.BaseModel = None) -> str:
+async def async_difference(a: str, b: str, _prompt: str | None = None, _model: LangModel | None | str = None, _structure: t.Dict | None | pydantic.BaseModel = None) -> str:
     """Get the difference between two texts using a language model.
 
     Args:
@@ -78,8 +62,10 @@ async def async_difference(a: str, b: str, _prompt: str=DIFFERENCE_TEMPLATE, _mo
     Returns:
         The difference between the two texts.
     """
-    response, _, _ = await Engines.get(_model).aforward(
-        prompt=str_formatter(_prompt, a=a, b=b), structure=_structure
+    prompt = _prompt if _prompt is not None else config.Ops.Difference.prompt
+    model = _model if _model is not None else config.Ops.Difference.model
+    response, _, _ = await Engines.get(model).aforward(
+        prompt=str_formatter(prompt, a=a, b=b), structure=_structure
     )
     return response
 
@@ -87,7 +73,7 @@ async def async_difference(a: str, b: str, _prompt: str=DIFFERENCE_TEMPLATE, _mo
 async def difference_astream(
     a: str, 
     b: str, 
-    _prompt: str=DIFFERENCE_TEMPLATE, 
+    _prompt: str | None = None, 
     _model: LangModel | None | str = None, 
     _structure: t.Dict | None | pydantic.BaseModel = None
 ) -> t.AsyncIterator[str]:
@@ -101,8 +87,10 @@ async def difference_astream(
     Returns:
         An async iterator over the difference between the two texts.
     """
-    async for chunk, _, _ in Engines.get(_model).astream(
-        prompt=str_formatter(_prompt, a=a, b=b), structure=_structure
+    prompt = _prompt if _prompt is not None else config.Ops.Difference.prompt
+    model = _model if _model is not None else config.Ops.Difference.model
+    async for chunk, _, _ in Engines.get(model).astream(
+        prompt=str_formatter(prompt, a=a, b=b), structure=_structure
     ):
         yield chunk
 
@@ -120,9 +108,9 @@ def _add_header(
 
 def union(
     *text: str, 
-    _sep: str='\n', 
-    _header: str="**TEXT {}**\n", 
-    _prompt: str=UNION_TEMPLATE, 
+    _sep: str | None = None, 
+    _header: str | None = None, 
+    _prompt: str | None = None, 
     _model: LangModel | None | str = None, 
     _structure: t.Dict | None | pydantic.BaseModel = None
 ) -> str:
@@ -136,14 +124,18 @@ def union(
     Returns:
         The combined text.
     """
-    data = _add_header(list(text), _header, _sep)
-    response, _, _ = Engines.get(_model).forward(
-        prompt=str_formatter(_prompt, texts=data, sep=_sep), structure=_structure
+    sep = _sep if _sep is not None else config.Ops.Union.sep
+    header = _header if _header is not None else config.Ops.Union.header
+    prompt = _prompt if _prompt is not None else config.Ops.Union.prompt
+    model = _model if _model is not None else config.Ops.Union.model
+    data = _add_header(list(text), header, sep)
+    response, _, _ = Engines.get(model).forward(
+        prompt=str_formatter(prompt, texts=data, sep=sep), structure=_structure
     )
     return response
 
 
-def union_stream(*text: str, _sep: str='\n', _header: str="**TEXT {}**\n", _prompt: str=UNION_TEMPLATE, _model: LangModel | None | str = None, _structure: t.Dict | None | pydantic.BaseModel = None) -> t.Iterator[str]:
+def union_stream(*text: str, _sep: str | None = None, _header: str | None = None, _prompt: str | None = None, _model: LangModel | None | str = None, _structure: t.Dict | None | pydantic.BaseModel = None) -> t.Iterator[str]:
     """Combine multiple texts into one unified text using a language model.
 
     Args:
@@ -154,15 +146,19 @@ def union_stream(*text: str, _sep: str='\n', _header: str="**TEXT {}**\n", _prom
     Returns:
         An iterator over the combined text.
     """
-    data = _add_header(list(text), _header, _sep)
-    for chunk, _, _ in Engines.get(_model).stream(
-        prompt=str_formatter(_prompt, texts=data, sep=_sep),
+    sep = _sep if _sep is not None else config.Ops.Union.sep
+    header = _header if _header is not None else config.Ops.Union.header
+    prompt = _prompt if _prompt is not None else config.Ops.Union.prompt
+    model = _model if _model is not None else config.Ops.Union.model
+    data = _add_header(list(text), header, sep)
+    for chunk, _, _ in Engines.get(model).stream(
+        prompt=str_formatter(prompt, texts=data, sep=sep),
         structure=_structure
     ):
         yield chunk
 
 
-async def async_union(*text: str, _sep: str='\n', _header: str="**TEXT {}**\n", _prompt: str=UNION_TEMPLATE, _model: LangModel | None | str = None, _structure: t.Dict | None | pydantic.BaseModel = None) -> str:
+async def async_union(*text: str, _sep: str | None = None, _header: str | None = None, _prompt: str | None = None, _model: LangModel | None | str = None, _structure: t.Dict | None | pydantic.BaseModel = None) -> str:
     """Combine multiple texts into one unified text using a language model.
 
     Args:
@@ -173,18 +169,22 @@ async def async_union(*text: str, _sep: str='\n', _header: str="**TEXT {}**\n", 
     Returns:
         The combined text.
     """
-    data = _add_header(list(text), _header, _sep)
-    response, _, _ = await Engines.get(_model).aforward(
-        prompt=str_formatter(_prompt, texts=data, sep=_sep), structure=_structure
+    sep = _sep if _sep is not None else config.Ops.Union.sep
+    header = _header if _header is not None else config.Ops.Union.header
+    prompt = _prompt if _prompt is not None else config.Ops.Union.prompt
+    model = _model if _model is not None else config.Ops.Union.model
+    data = _add_header(list(text), header, sep)
+    response, _, _ = await Engines.get(model).aforward(
+        prompt=str_formatter(prompt, texts=data, sep=sep), structure=_structure
     )
     return response
 
 
 async def union_astream(
     *text: str, 
-    _sep: str='\n', 
-    _header: str="**TEXT {}**\n", 
-    _prompt: str=UNION_TEMPLATE, 
+    _sep: str | None = None, 
+    _header: str | None = None, 
+    _prompt: str | None = None, 
     _model: LangModel | None | str = None, 
     _structure: t.Dict | None | pydantic.BaseModel = None
 ) -> t.AsyncIterator[str]:
@@ -198,9 +198,13 @@ async def union_astream(
     Returns:
         An async iterator over the combined text.
     """
-    data = _add_header(list(text), _header, _sep)
-    async for chunk, _, _ in Engines.get(_model).astream(
-        prompt=str_formatter(_prompt, texts=data, sep=_sep),
+    sep = _sep if _sep is not None else config.Ops.Union.sep
+    header = _header if _header is not None else config.Ops.Union.header
+    prompt = _prompt if _prompt is not None else config.Ops.Union.prompt
+    model = _model if _model is not None else config.Ops.Union.model
+    data = _add_header(list(text), header, sep)
+    async for chunk, _, _ in Engines.get(model).astream(
+        prompt=str_formatter(prompt, texts=data, sep=sep),
         structure=_structure
     ):
         yield chunk
@@ -210,9 +214,9 @@ async def union_astream(
 
 def intersect(
     *texts: str,
-    _sep: str='\n',
-    _header: str="**TEXT {}**\n",
-    _prompt: str=INTERSECTION_TEMPLATE,
+    _sep: str | None = None,
+    _header: str | None = None,
+    _prompt: str | None = None,
     _model: LangModel | None | str = None,
     _structure: t.Dict | None | pydantic.BaseModel = None
 ) -> str:
@@ -224,18 +228,22 @@ def intersect(
     Returns:
         The intersection of the texts.
     """
-    data = _add_header(list(texts), _header, _sep)
-    response, _, _ = Engines.get(_model).forward(
-        prompt=str_formatter(_prompt, texts=data), structure=_structure
+    sep = _sep if _sep is not None else config.Ops.Intersection.sep
+    header = _header if _header is not None else config.Ops.Intersection.header
+    prompt = _prompt if _prompt is not None else config.Ops.Intersection.prompt
+    model = _model if _model is not None else config.Ops.Intersection.model
+    data = _add_header(list(texts), header, sep)
+    response, _, _ = Engines.get(model).forward(
+        prompt=str_formatter(prompt, texts=data), structure=_structure
     )
     return response
 
 
 def intersect_stream(
     *texts: str,
-    _sep: str='\n',
-    _header: str="**TEXT {}**\n",
-    _prompt: str=INTERSECTION_TEMPLATE,
+    _sep: str | None = None,
+    _header: str | None = None,
+    _prompt: str | None = None,
     _model: LangModel | None | str = None,
     _structure: t.Dict | None | pydantic.BaseModel = None
 ) -> t.Iterator[str]:
@@ -247,17 +255,21 @@ def intersect_stream(
     Returns:
         An iterator over the intersection of the texts.
     """
-    data = _add_header(list(texts), _header, _sep)
-    for chunk, _, _ in Engines.get(_model).stream(
-        prompt=str_formatter(_prompt, texts=data), structure=_structure
+    sep = _sep if _sep is not None else config.Ops.Intersection.sep
+    header = _header if _header is not None else config.Ops.Intersection.header
+    prompt = _prompt if _prompt is not None else config.Ops.Intersection.prompt
+    model = _model if _model is not None else config.Ops.Intersection.model
+    data = _add_header(list(texts), header, sep)
+    for chunk, _, _ in Engines.get(model).stream(
+        prompt=str_formatter(prompt, texts=data), structure=_structure
     ):
         yield chunk
 
 async def async_intersect(
     *texts: str,
-    _sep: str='\n',
-    _header: str="**TEXT {}**\n",
-    _prompt: str=INTERSECTION_TEMPLATE,
+    _sep: str | None = None,
+    _header: str | None = None,
+    _prompt: str | None = None,
     _model: LangModel | None | str = None,
     _structure: t.Dict | None | pydantic.BaseModel = None
 ) -> str:
@@ -269,18 +281,22 @@ async def async_intersect(
     Returns:
         The intersection of the texts.
     """
-    data = _add_header(list(texts), _header, _sep)
-    response, _, _ = await Engines.get(_model).aforward(
-        prompt=str_formatter(_prompt, texts=data), structure=_structure
+    sep = _sep if _sep is not None else config.Ops.Intersection.sep
+    header = _header if _header is not None else config.Ops.Intersection.header
+    prompt = _prompt if _prompt is not None else config.Ops.Intersection.prompt
+    model = _model if _model is not None else config.Ops.Intersection.model
+    data = _add_header(list(texts), header, sep)
+    response, _, _ = await Engines.get(model).aforward(
+        prompt=str_formatter(prompt, texts=data), structure=_structure
     )
     return response
 
 
 async def intersect_astream(
     *texts: str,
-    _sep: str='\n',
-    _header: str="**TEXT {}**\n",
-    _prompt: str=INTERSECTION_TEMPLATE,
+    _sep: str | None = None,
+    _header: str | None = None,
+    _prompt: str | None = None,
     _model: LangModel | None | str = None,
     _structure: t.Dict | None | pydantic.BaseModel = None
 ) -> t.AsyncIterator[str]:
@@ -292,9 +308,13 @@ async def intersect_astream(
     Returns:
         An async iterator over the intersection of the texts.
     """
-    data = _add_header(list(texts), _header, _sep)
-    async for chunk, _, _ in Engines.get(_model).astream(
-        prompt=str_formatter(_prompt, texts=data), structure=_structure
+    sep = _sep if _sep is not None else config.Ops.Intersection.sep
+    header = _header if _header is not None else config.Ops.Intersection.header
+    prompt = _prompt if _prompt is not None else config.Ops.Intersection.prompt
+    model = _model if _model is not None else config.Ops.Intersection.model
+    data = _add_header(list(texts), header, sep)
+    async for chunk, _, _ in Engines.get(model).astream(
+        prompt=str_formatter(prompt, texts=data), structure=_structure
     ):
         yield chunk
 
@@ -302,7 +322,7 @@ async def intersect_astream(
 def symmetric_difference(
     a: str,
     b: str,
-    _prompt: str=DIFFERENCE_TEMPLATE,
+    _prompt: str | None = None,
     _model: LangModel | None | str = None,
     _structure: t.Dict | None | pydantic.BaseModel = None
 ) -> str:
@@ -316,8 +336,10 @@ def symmetric_difference(
     Returns:
         The symmetric difference between the two texts.
     """
-    response, _, _ = Engines.get(_model).forward(
-        prompt=str_formatter(_prompt, a=a, b=b), structure=_structure
+    prompt = _prompt if _prompt is not None else config.Ops.SymmetricDifference.prompt
+    model = _model if _model is not None else config.Ops.SymmetricDifference.model
+    response, _, _ = Engines.get(model).forward(
+        prompt=str_formatter(prompt, a=a, b=b), structure=_structure
     )
     return response
 
@@ -325,7 +347,7 @@ def symmetric_difference(
 def symmetric_difference_stream(
     a: str,
     b: str,
-    _prompt: str=DIFFERENCE_TEMPLATE,
+    _prompt: str | None = None,
     _model: LangModel | None | str = None,
     _structure: t.Dict | None | pydantic.BaseModel = None
 ) -> t.Iterator[str]:
@@ -339,8 +361,10 @@ def symmetric_difference_stream(
     Returns:
         An iterator over the symmetric difference between the two texts.
     """
-    for chunk, _, _ in Engines.get(_model).stream(
-        prompt=str_formatter(_prompt, a=a, b=b), structure=_structure
+    prompt = _prompt if _prompt is not None else config.Ops.SymmetricDifference.prompt
+    model = _model if _model is not None else config.Ops.SymmetricDifference.model
+    for chunk, _, _ in Engines.get(model).stream(
+        prompt=str_formatter(prompt, a=a, b=b), structure=_structure
     ):
         yield chunk
 
@@ -348,7 +372,7 @@ def symmetric_difference_stream(
 async def async_symmetric_difference(
     a: str,
     b: str,
-    _prompt: str=DIFFERENCE_TEMPLATE,
+    _prompt: str | None = None,
     _model: LangModel | None | str = None,
     _structure: t.Dict | None | pydantic.BaseModel = None
 ) -> str:
@@ -362,8 +386,10 @@ async def async_symmetric_difference(
     Returns:
         The symmetric difference between the two texts.
     """
-    response, _, _ = await Engines.get(_model).aforward(
-        prompt=str_formatter(_prompt, a=a, b=b), structure=_structure
+    prompt = _prompt if _prompt is not None else config.Ops.SymmetricDifference.prompt
+    model = _model if _model is not None else config.Ops.SymmetricDifference.model
+    response, _, _ = await Engines.get(model).aforward(
+        prompt=str_formatter(prompt, a=a, b=b), structure=_structure
     )
     return response
 
@@ -371,7 +397,7 @@ async def async_symmetric_difference(
 async def symmetric_difference_astream(
     a: str,
     b: str,
-    _prompt: str=DIFFERENCE_TEMPLATE,
+    _prompt: str | None = None,
     _model: LangModel | None | str = None,
     _structure: t.Dict | None | pydantic.BaseModel = None
 ) -> t.AsyncIterator[str]:
@@ -385,8 +411,10 @@ async def symmetric_difference_astream(
     Returns:
         An async iterator over the symmetric difference between the two texts.
     """
-    async for chunk, _, _ in Engines.get(_model).astream(
-        prompt=str_formatter(_prompt, a=a, b=b), structure=_structure
+    prompt = _prompt if _prompt is not None else config.Ops.SymmetricDifference.prompt
+    model = _model if _model is not None else config.Ops.SymmetricDifference.model
+    async for chunk, _, _ in Engines.get(model).astream(
+        prompt=str_formatter(prompt, a=a, b=b), structure=_structure
     ):
         yield chunk
 
@@ -397,19 +425,23 @@ class Union(LangEngine):
     """
     def __init__(
         self,
-        sep: str = '\n',
-        header: str = "**TEXT {}**\n",
-        prompt: str = UNION_TEMPLATE,
+        sep: str | None = None,
+        header: str | None = None,
+        prompt: str | None = None,
         model: None | str = None,
         structure: t.Dict | None | pydantic.BaseModel = None
     ):
+        sep_val = sep if sep is not None else config.Ops.Union.sep
+        header_val = header if header is not None else config.Ops.Union.header
+        prompt_val = prompt if prompt is not None else config.Ops.Union.prompt
+        model_val = model if model is not None else config.Ops.Union.model
         super().__init__(
-            prompt=prompt,
-            model=model,
+            prompt=prompt_val,
+            model=model_val,
             structure=structure
         )
-        self.sep = sep
-        self.header = header
+        self.sep = sep_val
+        self.header = header_val
 
     def forward(self, *text: str) -> str:
         """Combine multiple texts into one unified text.
@@ -487,13 +519,15 @@ class Intersection(LangEngine):
     """
     def __init__(
         self,
-        prompt: str = INTERSECTION_TEMPLATE,
+        prompt: str | None = None,
         model: None | str = None,
         structure: t.Dict | None | pydantic.BaseModel = None
     ):
+        prompt_val = prompt if prompt is not None else config.Ops.Intersection.prompt
+        model_val = model if model is not None else config.Ops.Intersection.model
         super().__init__(
-            prompt=prompt,
-            model=model,
+            prompt=prompt_val,
+            model=model_val,
             structure=structure
         )
 
@@ -566,13 +600,15 @@ class Difference(LangEngine):
 
     def __init__(
         self,
-        prompt: str = DIFFERENCE_TEMPLATE,
+        prompt: str | None = None,
         model: None | str = None,
         structure: t.Dict | None | pydantic.BaseModel = None
     ):
+        prompt_val = prompt if prompt is not None else config.Ops.Difference.prompt
+        model_val = model if model is not None else config.Ops.Difference.model
         super().__init__(
-            prompt=prompt,
-            model=model,
+            prompt=prompt_val,
+            model=model_val,
             structure=structure
         )
 
@@ -652,13 +688,15 @@ class SymmetricDifference(LangEngine):
     """
     def __init__(
         self,
-        prompt: str = SYMMETRIC_DIFFERENCE_TEMPLATE,
+        prompt: str | None = None,
         model: None | str = None,
         structure: t.Dict | None | pydantic.BaseModel = None
     ):
+        prompt_val = prompt if prompt is not None else config.Ops.SymmetricDifference.prompt
+        model_val = model if model is not None else config.Ops.SymmetricDifference.model
         super().__init__(
-            prompt=prompt,
-            model=model,
+            prompt=prompt_val,
+            model=model_val,
             structure=structure
         )
 

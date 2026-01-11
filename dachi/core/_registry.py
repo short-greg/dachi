@@ -197,6 +197,17 @@ class Registry(t.Generic[T]):
         for v in self._entries.values():
             tags.update(v.tags.keys())
         return list(tags)
+
+    def get(self, key: T | str | None = None) -> T:
+        """Retrieve an object by key, or the default if key is None."""
+        if key is None:
+            default_entry = self.default
+            if default_entry is None:
+                raise ValueError("No default entry is set in the registry.")
+            return default_entry.obj
+        if isinstance(key, str):
+            return self._entries[key].obj
+        return key
     
     def __call__(self,
                  name: Optional[str] = None,

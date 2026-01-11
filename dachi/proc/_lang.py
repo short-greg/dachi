@@ -351,7 +351,6 @@ class LangModel(
 
 
 LANG_MODEL = t.TypeVar("LANG_MODEL", bound=LangModel)
-
 Engines = Registry[LangModel]()
 
 
