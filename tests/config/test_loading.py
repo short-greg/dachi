@@ -6,9 +6,7 @@ from dachi.config._models import DachiConfig
 class TestYamlLoading:
     def test_load_from_yaml(self, tmp_path):
         yaml_file = tmp_path / "dachi.yaml"
-        yaml_file.write_text(
-            "Ops:\n  Difference:\n    model: gpt-4\n"
-        )
+        yaml_file.write_text("Ops:\n  Difference:\n    model: gpt-4\n")
 
         class FileConfig(DachiConfig):
             model_config = {**DachiConfig.model_config, "yaml_file": str(yaml_file)}

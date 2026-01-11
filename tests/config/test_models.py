@@ -1,7 +1,15 @@
 import pytest
 from pydantic import ValidationError
 
-from dachi.config._models import ActConfig, CriterionConfig, DachiConfig, DifferenceConfig, OpsConfig, OptimConfig, ProcConfig
+from dachi.config._models import (
+    ActConfig,
+    CriterionConfig,
+    DachiConfig,
+    DifferenceConfig,
+    OpsConfig,
+    OptimConfig,
+    ProcConfig,
+)
 
 
 class TestDifferenceConfig:

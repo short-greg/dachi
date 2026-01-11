@@ -4,50 +4,37 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict, YamlConfigSettingsSource
-
-
-DIFFERENCE_PROMPT = """Describe everything that is in Text A but is not in Text B.
-Text A:
-{a}
-Text B:
-{b}"""
-
-
-SYMMETRIC_DIFFERENCE_PROMPT = """Describe everything that is in Text A but is not in Text B, and everything that is in Text B but is not in Text A.
-Text A:
-{a}
-Text B:
-{b}"""
-
-
-UNION_PROMPT = """Combine the following texts into one unified text, separating sections with '{sep}': 
-{texts}"""
-
-
-INTERSECTION_PROMPT = """Given the following texts, extract and return only the content that is common to all texts.
-Texts:
-{texts}"""
-
-
 class DifferenceConfig(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     model: str | None = None
-    prompt: str = DIFFERENCE_PROMPT
+    prompt: str = (
+        "Describe everything that is in Text A but is not in Text B.\n"
+        "Text A:\n"
+        "{a}\n"
+        "Text B:\n"
+        "{b}"
+    )
 
 
 class SymmetricDifferenceConfig(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     model: str | None = None
-    prompt: str = SYMMETRIC_DIFFERENCE_PROMPT
+    prompt: str = (
+        "Describe everything that is in Text A but is not in Text B, and everything that is in Text B but is not in Text A.\n"
+        "Text A:\n"
+        "{a}\n"
+        "Text B:\n"
+        "{b}"
+    )
 
 
 class UnionConfig(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     model: str | None = None
-    prompt: str = UNION_PROMPT
+    prompt: str = "Combine the following texts into one unified text, separating sections with '{sep}': \n{texts}"
     sep: str = "\n"
     header: str = "**TEXT {}**\n"
 
@@ -56,7 +43,7 @@ class IntersectionConfig(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     model: str | None = None
-    prompt: str = INTERSECTION_PROMPT
+    prompt: str = "Given the following texts, extract and return only the content that is common to all texts.\nTexts:\n{texts}"
     sep: str = "\n"
     header: str = "**TEXT {}**\n"
 
