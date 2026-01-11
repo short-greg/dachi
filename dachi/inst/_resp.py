@@ -31,8 +31,8 @@ class Plan(ResponseSpec):
 
 class Hypothesis(ResponseSpec):
     """Hypothesis text field."""
-    hypothesis: TextField = Field(
-        default_factory=lambda: TextField(description="A hypothesis to be tested and evaluated.")
+    claim: TextField = Field(
+        default_factory=lambda: TextField(description="A hypothesis or value to be tested and evaluated.")
     )
 
 
@@ -61,13 +61,20 @@ class HypoSupport(ResponseSpec):
     """Hypothesis support field."""
     support: BoolField = Field(
         default_factory=lambda: BoolField(description="Whether the hypothesis is supported by the evidence")
-    )  
+    )
 
 
 class Evidence(ResponseSpec):
     """Hypothesis evaluation field."""
     evidence: ListField = Field(
         default_factory=lambda: ListField(item_type=str, description="The evidence supporting or refuting the hypothesis.")
+    )
+
+
+class Confidence(ResponseSpec):
+    """Confidence boolean field."""
+    level: BoundFloat = Field(
+        default_factory=lambda: BoundFloat(description="The level of confidence in the response.", min_val=0.0, max_val=1.0)
     )
 
 

@@ -79,6 +79,7 @@ class FixedListField(RespField):
     n_items: int = 1
 
     def get_field(self) -> tuple:
+        
         return (t.List[self.item_type], Field(description=self.description, default_factory=list, min_items=self.n_items, max_items=self.n_items))
 
 

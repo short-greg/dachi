@@ -53,6 +53,8 @@ class ResponseSpec(BaseModel):
     def validate_field(cls, values: t.Dict[str, t.Any]) -> t.Dict[str, t.Any]:
         """Convert any field that has been passed in as a string."""
         for field_name, field_info in cls.model_fields.items():
+            print(field_info.annotation)
+            
             if issubclass(field_info.annotation, RespField):
                 value = values.get(field_name)
                 if value is not None and isinstance(value, str):

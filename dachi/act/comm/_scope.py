@@ -1,6 +1,7 @@
 from __future__ import annotations
-from typing import Dict, Tuple, Any, Union, Optional, List, model_serializer
+from typing import Dict, Tuple, Any, Union, Optional, List
 import pydantic
+from pydantic import model_serializer
 
 """
 Hierarchical Data Storage and Context Management System
