@@ -934,3 +934,180 @@ class TestScopeSerialization:
         )
 
         assert bound_ctx["input"] == (5, 10, 0)
+
+
+class TestSkipSerialize:
+    """Test skip_serialize functionality across all context types"""
+
+    def test_scope_skip_serialize_excludes_field_from_serialization(self):
+        """Test that skip_serialize on Scope excludes field from model_dump"""
+        scope = Scope()
+        scope[(0, "public")] = "public_value"
+        scope[(0, "secret")] = "secret_value"
+
+        # Mark secret as skip_serialize
+        scope.skip_serialize((0, "secret"))
+
+        data = scope.model_dump()
+
+        # Public data should be present
+        assert (0, "public") in data["full_path"]
+        assert data["full_path"][(0, "public")] == "public_value"
+
+        # Secret data should be excluded
+        assert (0, "secret") not in data["full_path"]
+
+    def test_scope_set_with_skip_serialize_flag(self):
+        """Test that set() with skip_serialize=True excludes field"""
+        scope = Scope()
+        scope.set((0,), "normal", "normal_value")
+        scope.set((0,), "private", "private_value", skip_serialize=True)
+
+        data = scope.model_dump()
+
+        assert (0, "normal") in data["full_path"]
+        assert (0, "private") not in data["full_path"]
+
+    def test_scope_skip_serialize_with_indexed_field(self):
+        """Test skip_serialize with field.index pattern"""
+        scope = Scope()
+        scope[(0, "data", 0)] = "item_0"
+        scope[(0, "data", 1)] = "item_1"
+
+        # Skip only index 1
+        scope.skip_serialize((0, "data", 1))
+
+        data = scope.model_dump()
+
+        assert (0, "data", 0) in data["full_path"]
+        assert (0, "data", 1) not in data["full_path"]
+
+    def test_ctx_skip_serialize_method(self):
+        """Test Ctx.skip_serialize() uses context's index_path"""
+        scope = Scope()
+        ctx = scope.ctx(0, 1)
+
+        ctx["visible"] = "visible_value"
+        ctx["hidden"] = "hidden_value"
+
+        # Skip hidden using just field name (index_path is implicit)
+        ctx.skip_serialize("hidden")
+
+        data = scope.model_dump()
+
+        assert (0, 1, "visible") in data["full_path"]
+        assert (0, 1, "hidden") not in data["full_path"]
+
+    def test_ctx_set_with_skip_serialize_flag(self):
+        """Test Ctx.set() with skip_serialize=True"""
+        scope = Scope()
+        ctx = scope.ctx(0)
+
+        ctx.set("normal", "normal_value", skip_serialize=False)
+        ctx.set("secret", "secret_value", skip_serialize=True)
+
+        data = scope.model_dump()
+
+        assert (0, "normal") in data["full_path"]
+        assert (0, "secret") not in data["full_path"]
+
+    def test_bound_ctx_skip_serialize_with_binding(self):
+        """Test BoundCtx.skip_serialize() resolves bindings"""
+        scope = Scope()
+        ctx = scope.ctx(0)
+        ctx["sensor_data"] = "sensor_value"
+        ctx["status"] = "status_value"
+
+        # Create bound context with binding
+        bound_ctx = ctx.bind({"input": "sensor_data"})
+
+        # Skip using bound name (should resolve to "sensor_data")
+        bound_ctx.skip_serialize("input")
+
+        data = scope.model_dump()
+
+        # sensor_data should be excluded (it was bound to "input")
+        assert (0, "sensor_data") not in data["full_path"]
+        # status should still be present
+        assert (0, "status") in data["full_path"]
+
+    def test_bound_ctx_set_with_skip_serialize_and_binding(self):
+        """Test BoundCtx.set() with skip_serialize and binding"""
+        scope = Scope()
+        ctx = scope.ctx(0)
+
+        bound_ctx = ctx.bind({"output": "result"})
+
+        # Set through binding with skip_serialize
+        bound_ctx.set("output", "computed_value", skip_serialize=True)
+
+        data = scope.model_dump()
+
+        # result (bound from "output") should be excluded
+        assert (0, "result") not in data["full_path"]
+
+    def test_bound_scope_skip_serialize_delegates_to_bound(self):
+        """Test BoundScope.skip_serialize() delegates to underlying scope"""
+        base_scope = Scope()
+        external_ctx = base_scope.ctx(0)
+
+        bt_scope = Scope()
+        bound_scope = bt_scope.bind(external_ctx, {"mission": "external_goal"})
+
+        bt_scope[(0, "internal")] = "internal_value"
+        bt_scope[(0, "private")] = "private_value"
+
+        # Skip through bound scope
+        bound_scope.skip_serialize((0, "private"))
+
+        data = bt_scope.model_dump()
+
+        assert (0, "internal") in data["full_path"]
+        assert (0, "private") not in data["full_path"]
+
+    def test_skip_serialize_preserves_aliases(self):
+        """Test that aliases are also filtered when field is skipped"""
+        scope = Scope()
+        ctx = scope.ctx(0)
+        ctx["public"] = "public_value"
+        ctx["secret"] = "secret_value"
+
+        scope.skip_serialize((0, "secret"))
+
+        data = scope.model_dump()
+
+        # Alias for public should exist
+        assert "public" in data["aliases"]
+        # Alias for secret should be excluded
+        assert "secret" not in data["aliases"]
+
+    def test_skip_serialize_preserves_data_field(self):
+        """Test that data field is also filtered when field is skipped"""
+        scope = Scope()
+        ctx = scope.ctx(0)
+        ctx["visible"] = "visible_value"
+        ctx["hidden"] = "hidden_value"
+
+        scope.skip_serialize((0, "hidden"))
+
+        data = scope.model_dump()
+
+        # data field should be filtered
+        assert "visible" in data["data"]
+        assert "hidden" not in data["data"]
+
+    def test_skip_serialize_roundtrip_excludes_field(self):
+        """Test that skipped fields don't come back after deserialization"""
+        scope = Scope()
+        scope[(0, "keep")] = "keep_value"
+        scope[(0, "skip")] = "skip_value"
+
+        scope.skip_serialize((0, "skip"))
+
+        data = scope.model_dump()
+        restored = Scope(**data)
+
+        # Kept field should exist
+        assert (0, "keep") in restored.full_path
+        # Skipped field should not exist
+        assert (0, "skip") not in restored.full_path

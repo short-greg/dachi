@@ -272,7 +272,7 @@ class Scope(pydantic.BaseModel):
         
         self[key] = value
         if skip_serialize:
-            self.skip_serialize(path)
+            self.skip_serialize(key)
         return value
     
     def path(self, path: Union[Tuple, str], field: str, index: Union[str, int] = None) -> Any:
@@ -320,8 +320,6 @@ class Scope(pydantic.BaseModel):
         if isinstance(key, str) and '/' in key:
             # Explicit path navigation
             scope, key_parts = self._resolve_scope(key)
-            print(scope, key_parts)
-            print(id(scope))
             resolved_key = self._resolve_path('.'.join(key_parts))
             return scope, resolved_key, None
         elif isinstance(key, str):
@@ -375,7 +373,6 @@ class Scope(pydantic.BaseModel):
 
         for part in scope_part:
             try:
-                print('Changing: ', part)
                 scope = scope.change_scope(part)
             except KeyError:
                 raise KeyError(f"Unknown scope part: {part}")
@@ -451,24 +448,33 @@ class Scope(pydantic.BaseModel):
     # override serialization to skip _skip_serialization fields
     @model_serializer
     def serialize_model(self) -> dict[str, Any]:
-        # all the data that is in _skip_serialization should be skipped, serialize the other fields
+        # Filter out fields in _skip_serialization
         result = {}
-        data = self.model_dump()
-        for key in self._skip_serialization:
-            if key in data:
-                del data[key]
 
-        result['data'] = data
+        # Serialize data field, filtering out skipped items
+        data_filtered = {}
+        for key, value in self.data.items():
+            # Find the path for this key and check if it should be skipped
+            key_path = self.aliases.get(key)
+            if key_path not in self._skip_serialization:
+                data_filtered[key] = value
+        result['data'] = data_filtered
+
         result['name'] = self.name
 
+        # Serialize aliases, filtering out skipped items
         alias_data = {}
         for alias, path in self.aliases.items():
             if path not in self._skip_serialization:
                 alias_data[alias] = path
         result['aliases'] = alias_data
-        result['children'] = [
-            child.serialize_model() for child in self.children.values()
-        ]
+
+        # Serialize children as dict (not list)
+        result['children'] = {
+            name: child.serialize_model() for name, child in self.children.items()
+        }
+
+        # Serialize full_path, filtering out skipped items
         result['full_path'] = {}
         for path, value in self.full_path.items():
             if path not in self._skip_serialization:
@@ -598,21 +604,34 @@ class Ctx(pydantic.BaseModel):
             return self.__getitem__(key)
         except KeyError:
             return default
-        
-    # def set(self, key: str, value: Any, skip_serialize: bool = False):
-    #     """Store data at both indexed and unindexed locations"""
-    #     self.__setitem__(key, value)
 
-    #     key = key.split('.')
-    #     if len(key) == 1:
-    #         key = key[0]
-    #         index = None
-    #     else:
-    #         key, index = key[0], key[1]
-        
-    #     self.scope.set(self.index_path, key, value, index, skip_serialize)
-    #     return value
-    
+    def set(self, key: str, value: Any, skip_serialize: bool = False):
+        """Store data at both indexed and unindexed locations"""
+        self.__setitem__(key, value)
+
+        key_parts = key.split('.')
+        if len(key_parts) == 1:
+            field = key_parts[0]
+            index = None
+        else:
+            field, index = key_parts[0], key_parts[1]
+
+        self.scope.set(self.index_path, field, value, index, skip_serialize)
+        return value
+
+    def skip_serialize(self, field: str):
+        """Mark field to be skipped during serialization (uses context's index_path)"""
+        key_parts = field.split('.')
+        if len(key_parts) == 1:
+            full_key = self.index_path + (field,)
+        else:
+            # field has an index component like "field.0"
+            field_name, index = key_parts[0], key_parts[1]
+            if index.isdigit():
+                index = int(index)
+            full_key = self.index_path + (field_name, index)
+        self.scope.skip_serialize(full_key)
+
     def path(self, field: str, index: Union[str, int] = None) -> Any:
         """Get value from indexed location at this context's path"""
         return self.scope.path(self.index_path, field, index)
@@ -702,6 +721,23 @@ class BoundCtx(Ctx):
             self.base_ctx[bound_key] = value
         else:
             self.base_ctx[key] = value
+
+    def set(self, key: str, value: Any, skip_serialize: bool = False):
+        """Store data with bindings applied"""
+        if key in self.bindings:
+            bound_key = self.bindings[key]
+            self.base_ctx.set(bound_key, value, skip_serialize)
+        else:
+            self.base_ctx.set(key, value, skip_serialize)
+        return value
+
+    def skip_serialize(self, field: str):
+        """Mark field to be skipped during serialization (with bindings applied)"""
+        if field in self.bindings:
+            bound_field = self.bindings[field]
+            self.base_ctx.skip_serialize(bound_field)
+        else:
+            self.base_ctx.skip_serialize(field)
 
     def __contains__(self, key):
         """Check if key exists with bindings applied"""
