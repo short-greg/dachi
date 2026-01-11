@@ -567,7 +567,7 @@ class ToolUser(LangEngine):
                 _callback(res, tool_results, iteration, msgs)
             msg = ToolMsg(
                 role="tool",
-                text=res.text,
+                text='',
                 tool_calls=tool_results
             )
             msgs = msgs + [msg]
@@ -606,7 +606,7 @@ class ToolUser(LangEngine):
                 _callback(res, tool_results, iteration, msgs)
             msg = ToolMsg(
                 role="tool",
-                text=res.text,
+                text='',
                 tool_calls=tool_results
             )
             msgs = msgs + [msg]
@@ -627,9 +627,9 @@ class ToolUser(LangEngine):
         if model is None:
             raise ValueError("Model is not set so must pass in to use.")
 
-        tool_use = ToolUse()
         msgs = [*prompt] if isinstance(prompt, list) else [prompt]
         for iteration in range(self._max_iterations):
+            tool_use = ToolUse()
             for res, msgs, raw in lang_stream(
                 prompt=msgs,
                 structure=structure,
@@ -643,13 +643,15 @@ class ToolUser(LangEngine):
                     tool_use.merge(res)
                 yield res, msgs, raw
 
-            if not tool_use.empty():
-                tool_results = tool_use.forward()
+            if tool_use.empty():
+                return
+            
+            tool_results = tool_use.forward()
             if _callback is not None:
-                _callback(res, tool_results, iteration, msgs)
+                _callback(tool_use, tool_results, iteration, msgs)
             msg = ToolMsg(
                 role="tool",
-                text=res.text,
+                text='',
                 tool_calls=tool_results
             )
             msgs = msgs + [msg]
@@ -670,9 +672,10 @@ class ToolUser(LangEngine):
         if model is None:
             raise ValueError("Model is not set so must pass in to use.")
 
-        tool_use = ToolUse()
         msgs = [*prompt] if isinstance(prompt, list) else [prompt]
         for iteration in range(self._max_iterations):
+
+            tool_use = ToolUse()
             async for res, msgs, raw in lang_astream(
                 prompt=msgs,
                 structure=structure,
@@ -686,13 +689,15 @@ class ToolUser(LangEngine):
                     tool_use.merge(res)
                 yield res, msgs, raw
 
-            if not tool_use.empty():
-                tool_results = await tool_use.aforward()
+            if tool_use.empty():
+                return
+
+            tool_results = await tool_use.aforward()
             if _callback is not None:
-                _callback(res, tool_results, iteration, msgs)
+                _callback(tool_use, tool_results, iteration, msgs)
             msg = ToolMsg(
                 role="tool",
-                text=res.text,
+                text='',
                 tool_calls=tool_results
             )
             msgs = msgs + [msg]

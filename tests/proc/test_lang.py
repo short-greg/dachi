@@ -707,7 +707,9 @@ class TestToolUserStream:
         assert results[0][0] == "chunk1"
         assert results[1][0] == "chunk2"
         assert isinstance(results[2][0], ToolUse)
-        assert results[3][0] == "final"
+        assert results[3][0] == ""
+        assert results[4][0] == "final"
+        assert results[5][0] == ""
 
     def test_stream_raises_on_max_iterations(self):
         def add(a: int, b: int) -> int:
@@ -775,7 +777,9 @@ class TestToolUserAstream:
         assert results[0][0] == "chunk1"
         assert results[1][0] == "chunk2"
         assert isinstance(results[2][0], ToolUse)
-        assert results[3][0] == "final"
+        assert results[3][0] == ""
+        assert results[4][0] == "final"
+        assert results[5][0] == ""
 
     @pytest.mark.asyncio
     async def test_astream_raises_on_max_iterations(self):
