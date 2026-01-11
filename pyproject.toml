@@ -17,6 +17,7 @@ packages = [
     {include="dachi/act"},
     {include="dachi/core"},
     {include="dachi/config"},
+    {include="dachi/contrib"},
     {include="dachi/inst"},
     {include="dachi/proc"},
     {include="dachi/utils"},
