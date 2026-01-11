@@ -1,4 +1,4 @@
-from ._ai import LangModel, Engines, LangEngine
+from ._lang import LangModel, Engines, LangEngine
 from dachi.utils.text import str_formatter
 import typing as t
 import pydantic

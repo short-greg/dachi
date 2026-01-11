@@ -7,7 +7,7 @@ from dachi.inst._criterion import (
     BoolField,
 )
 from dachi.proc._optim import LangCritic
-from dachi.proc._ai import LangModel
+from dachi.proc._lang import LangModel
 from dachi.core import Inp
 
 from dachi.proc import LangOptim, LangModel

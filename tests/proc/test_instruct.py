@@ -1,7 +1,7 @@
 import typing as t
 
 from dachi.proc import _inst as core
-from dachi.proc._ai import LangModel
+from dachi.proc._lang import LangModel
 from dachi.core import Inp
 from ..core.test_core import SimpleStruct
 

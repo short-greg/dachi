@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from pydantic import Field
 import pydantic
-from ._field import BoundInt, BoundFloat, TextField, BoolField, DictField, ListField
+from ._field import (
+    BoundInt, BoundFloat, 
+    TextField, BoolField, 
+    DictField, ListField
+)
 from ._base import ResponseSpec
 import typing as t
 

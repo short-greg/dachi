@@ -8,7 +8,7 @@ from ._process import (
     AsyncStreamProcess,
 )
 from dachi.core import Inp, Registry, Runtime, Module
-from dachi.core._base import ToolResult
+from dachi.core._base import ToolResult, ToolMsg
 
 from ._resp import ToOut
 
@@ -24,9 +24,11 @@ class BaseToolCall(pydantic.BaseModel):
     discarded within a single LLM interaction.
 
     Attributes:
+        id: Optional tool call ID from LLM API (e.g., "call_abc123", "toolu_01A09...")
         func: The callable to invoke (function, method, or callable object)
         args: Named arguments to pass to the callable
     """
+    id: str | None = None
     func: t.Callable
     args: t.Dict[str, t.Any] = pydantic.Field(default_factory=dict)
 
@@ -90,7 +92,7 @@ class ToolUse(Module):
     def forward(self) -> t.List[ToolResult]:
         """Execute all tool calls synchronously and return a ToolMsg."""
         tool_results = []
-        for call in self.calls:
+        for idx, call in enumerate(self.calls):
             if isinstance(call, Call):
                 output = call.forward()
             elif isinstance(call, StreamCall):
@@ -102,16 +104,17 @@ class ToolUse(Module):
             else:
                 raise ValueError(f"Cannot execute async or streaming call {call} in synchronous forward.")
             tool_result = ToolResult(
-                id=...,
-                output=output
+                id=call.id or f"call_{idx}",
+                output=str(output)
             )
             tool_results.append(tool_result)
+        
         return tool_results
     
     async def aforward(self) -> t.List[ToolResult]:
         """Execute all tool calls asynchronously and return a ToolMsg."""
         tool_results = []
-        for call in self.calls:
+        for idx, call in enumerate(self.calls):
             if isinstance(call, Call):
                 output = call.forward()
             elif isinstance(call, AsyncCall):
@@ -122,14 +125,29 @@ class ToolUse(Module):
                 output = "".join([chunk async for chunk in call.astream()])
             else:
                 raise ValueError(f"Unknown call type: {call}")
-            # you are not using the correct id!
             tool_result = ToolResult(
-                id=...,
-                output=output
+                id=call.id or f"call_{idx}",
+                output=str(output)
             )
 
             tool_results.append(tool_result)
         return tool_results
+    
+    def merge(self, other: "ToolUse"):
+        """Merge another ToolUse into this one."""
+        self.calls.extend(other.calls)
+        if other.text:
+            if self.text:
+                self.text += "\n" + other.text
+            else:
+                self.text = other.text
+
+    def empty(self) -> bool:
+        """Check if there are no tool calls."""
+        return len(self.calls) == 0
+    
+    def __len__(self) -> int:
+        return len(self.calls)
 
 
 def lang_forward(
@@ -143,7 +161,7 @@ def lang_forward(
     """Helper function to call LLM forward method."""
     if _model is None:
         raise ValueError("Model must be provided for llm_forward.")
-    res = _model.forward(
+    res, msgs, raw = _model.forward(
         prompt,
         structure=structure,
         tools=tools,
@@ -151,7 +169,7 @@ def lang_forward(
     )
     if _out is not None and isinstance(res, str):
         res = _out.process(res)
-    return res
+    return res, msgs, raw
 
 
 async def lang_aforward(
@@ -165,7 +183,7 @@ async def lang_aforward(
     """Helper function to call LLM aforward method."""
     if _model is None:
         raise ValueError("Model must be provided for llm_aforward.")
-    res = await _model.aforward(
+    res, msgs, raw = await _model.aforward(
         prompt,
         structure=structure,
         tools=tools,
@@ -173,7 +191,7 @@ async def lang_aforward(
     )
     if _out is not None and isinstance(res, str):
         res = _out.process(res)
-    return res
+    return res, msgs, raw
 
 
 def lang_stream(
@@ -188,7 +206,7 @@ def lang_stream(
     if _model is None:
         raise ValueError("Model must be provided for llm_stream.")
     delta_store = {}
-    for res in _model.stream(
+    for res, msgs, raw in _model.stream(
         prompt,
         structure=structure,
         tools=tools,
@@ -196,10 +214,12 @@ def lang_stream(
     ):
         if _out is not None and isinstance(res, str):
             res = _out.delta(res, delta_store)
-        yield res
+        yield res, msgs, raw
     if _out is not None and isinstance(res, str):
         res = _out.delta(res, delta_store, True)
-    yield res
+    else:
+        res = ''
+    yield res, msgs, raw
 
 
 async def lang_astream(
@@ -214,7 +234,7 @@ async def lang_astream(
     if _model is None:
         raise ValueError("Model must be provided for llm_astream.")
     delta_store = {}
-    async for res in _model.astream(
+    async for res, msgs, raw in _model.astream(
         prompt,
         structure=structure,
         tools=tools,
@@ -222,10 +242,12 @@ async def lang_astream(
     ):
         if _out is not None and isinstance(res, str):
             res = _out.delta(res, delta_store)
-        yield res
+        yield res, msgs, raw
     if _out is not None and isinstance(res, str):
         res = _out.delta(res, delta_store, True)
-    yield res
+    else:
+        res = ''
+    yield res, msgs, raw
 
 
 class LangModel(
@@ -370,9 +392,10 @@ class LangEngine(
             override = self._model.data
         if override is None:
             raise ValueError("Model is not set.")
-        model = Engines.get(override)
-        if model is None:
-            raise ValueError(f"Model '{override}' not found in registry.")
+
+        if isinstance(override, str):
+            return Engines[override].obj
+
         return override
     
     def forward(
@@ -385,7 +408,7 @@ class LangEngine(
         model = self.get_model(_model)
         if model is None:
             raise ValueError("Model is not set so must pass in to use.")
-        return model.forward(prompt, structure=structure, tools=tools, **kwargs)
+        return lang_forward(prompt, structure=structure, tools=tools, _model=model, **kwargs)
     
     async def aforward(
         self, 
@@ -397,7 +420,7 @@ class LangEngine(
         model = self.get_model(_model)
         if model is None:
             raise ValueError("Model is not set so must pass in to use.")
-        return await model.aforward(prompt, structure=structure, tools=tools, **kwargs)
+        return await lang_aforward(prompt, structure=structure, tools=tools, _model=model, **kwargs)
     
     def stream(
         self, 
@@ -409,7 +432,7 @@ class LangEngine(
         model = self.get_model(_model)
         if model is None:
             raise ValueError("Model is not set so must pass in to use.")
-        return model.stream(prompt, structure=structure, tools=tools, **kwargs)
+        return lang_stream(prompt, structure=structure, tools=tools, _model=model, **kwargs)
     
     async def astream(
         self, 
@@ -422,7 +445,7 @@ class LangEngine(
         model = self.get_model(_model)
         if model is None:
             raise ValueError("Model is not set so must pass in to use.")
-        return await model.astream(prompt, structure=structure, tools=tools, **kwargs)
+        return await lang_astream(prompt, structure=structure, tools=tools, _model=model, **kwargs)
 
 
 class LangOp(Process, AsyncProcess, StreamProcess, AsyncStreamProcess):
@@ -502,6 +525,179 @@ class LangOp(Process, AsyncProcess, StreamProcess, AsyncStreamProcess):
         if _out is not None and isinstance(res, str):
             res = _out.delta(res, delta_store, True)
         yield res
+
+
+class ToolUser(LangEngine):
+    """An engine that uses tools with a language model.
+    """
+
+    def model_post_init(self, __context):
+        super().model_post_init(__context)
+        self._max_iterations = 10
+
+    def forward(
+        self, 
+        prompt: list[Inp] | Inp, 
+        structure: t.Dict | None | pydantic.BaseModel = None, 
+        tools: t.Dict | None | pydantic.BaseModel = None, 
+        _model: LangModel | None = None, 
+        _out: ToOut | None = None,
+        _callback: t.Callable | None = None,
+        **kwargs
+    ) -> t.Tuple[t.Any, t.List[Inp], t.Any]:
+        model = self.get_model(_model)
+        if model is None:
+            raise ValueError("Model is not set so must pass in to use.")
+        
+        msgs = [*prompt] if isinstance(prompt, list) else [prompt]
+        for iteration in range(self._max_iterations):
+            res, msgs, raw = lang_forward(
+                prompt=msgs,
+                structure=structure,
+                tools=tools,
+                _model=model,
+                _out=_out,
+                **kwargs
+            )
+            if not isinstance(res, ToolUse):
+                return res, msgs, raw
+
+            tool_results = res.forward()
+            if _callback is not None:
+                _callback(res, tool_results, iteration, msgs)
+            msg = ToolMsg(
+                role="tool",
+                text=res.text,
+                tool_calls=tool_results
+            )
+            msgs = msgs + [msg]
+
+        raise RuntimeError(f"Max tool use iterations ({self._max_iterations}) exceeded.")
+
+    async def aforward(
+        self, 
+        prompt: list[Inp] | Inp, 
+        structure: t.Dict | None | pydantic.BaseModel = None, 
+        tools: t.Dict | None | pydantic.BaseModel = None, 
+        _model: LangModel | None = None, 
+        _out: ToOut | None = None,
+        _callback: t.Callable | None = None,
+        **kwargs
+    ) -> t.Tuple[t.Any, t.List[Inp], t.Any]:
+        model = self.get_model(_model)
+        if model is None:
+            raise ValueError("Model is not set so must pass in to use.")
+        
+        msgs = [*prompt] if isinstance(prompt, list) else [prompt]
+        for iteration in range(self._max_iterations):
+            res, msgs, raw = await lang_aforward(
+                prompt=msgs,
+                structure=structure,
+                tools=tools,
+                _model=model,
+                _out=_out,
+                **kwargs
+            )
+            if not isinstance(res, ToolUse):
+                return res, msgs, raw
+
+            tool_results = await res.aforward()
+            if _callback is not None:
+                _callback(res, tool_results, iteration, msgs)
+            msg = ToolMsg(
+                role="tool",
+                text=res.text,
+                tool_calls=tool_results
+            )
+            msgs = msgs + [msg]
+
+        raise RuntimeError(f"Max tool use iterations ({self._max_iterations}) exceeded.")
+    
+    def stream(
+        self,
+        prompt: list[Inp] | Inp,
+        structure: t.Dict | None | pydantic.BaseModel = None,
+        tools: t.Dict | None | pydantic.BaseModel = None,
+        _model: LangModel | None = None,
+        _out: ToOut | None = None,
+        _callback: t.Callable | None = None,
+        **kwargs
+    ) -> t.Iterator[t.Tuple[t.Any, t.List[Inp], t.Any]]:
+        model = self.get_model(_model)
+        if model is None:
+            raise ValueError("Model is not set so must pass in to use.")
+
+        tool_use = ToolUse()
+        msgs = [*prompt] if isinstance(prompt, list) else [prompt]
+        for iteration in range(self._max_iterations):
+            for res, msgs, raw in lang_stream(
+                prompt=msgs,
+                structure=structure,
+                tools=tools,
+                _model=model,
+                _out=_out,
+                **kwargs
+            ):
+                
+                if isinstance(res, ToolUse):
+                    tool_use.merge(res)
+                yield res, msgs, raw
+
+            if not tool_use.empty():
+                tool_results = tool_use.forward()
+            if _callback is not None:
+                _callback(res, tool_results, iteration, msgs)
+            msg = ToolMsg(
+                role="tool",
+                text=res.text,
+                tool_calls=tool_results
+            )
+            msgs = msgs + [msg]
+
+        raise RuntimeError(f"Max tool use iterations ({self._max_iterations}) exceeded.")
+
+    async def astream(
+        self,
+        prompt: list[Inp] | Inp,
+        structure: t.Dict | None | pydantic.BaseModel = None,
+        tools: t.Dict | None | pydantic.BaseModel = None,
+        _model: LangModel | None = None,
+        _out: ToOut | None = None,
+        _callback: t.Callable | None = None,
+        **kwargs
+    ) -> t.AsyncIterator[t.Tuple[t.Any, t.List[Inp], t.Any]]:
+        model = self.get_model(_model)
+        if model is None:
+            raise ValueError("Model is not set so must pass in to use.")
+
+        tool_use = ToolUse()
+        msgs = [*prompt] if isinstance(prompt, list) else [prompt]
+        for iteration in range(self._max_iterations):
+            async for res, msgs, raw in lang_astream(
+                prompt=msgs,
+                structure=structure,
+                tools=tools,
+                _model=model,
+                _out=_out,
+                **kwargs
+            ):
+                
+                if isinstance(res, ToolUse):
+                    tool_use.merge(res)
+                yield res, msgs, raw
+
+            if not tool_use.empty():
+                tool_results = await tool_use.aforward()
+            if _callback is not None:
+                _callback(res, tool_results, iteration, msgs)
+            msg = ToolMsg(
+                role="tool",
+                text=res.text,
+                tool_calls=tool_results
+            )
+            msgs = msgs + [msg]
+
+        raise RuntimeError(f"Max tool use iterations ({self._max_iterations}) exceeded.")
 
 
 OP = t.TypeVar("OP", bound=LangEngine)

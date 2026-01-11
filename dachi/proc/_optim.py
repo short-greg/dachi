@@ -12,7 +12,7 @@ from abc import ABC
 from dachi.proc import Process, AsyncProcess
 from dachi.core import TextMsg
 
-from ._ai import LangModel, LANG_MODEL
+from ._lang import LangModel, LANG_MODEL
 from ._inst import TemplateFormatter
 
 

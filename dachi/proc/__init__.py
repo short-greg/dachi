@@ -92,7 +92,7 @@ from ._optim import (
     LangOptim,
     LangCritic
 )
-from ._ai import (
+from ._lang import (
     LangModel,
     LANG_MODEL,
     BaseToolCall,

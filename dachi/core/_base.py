@@ -143,6 +143,22 @@ class ToolMsg(Msg):
     # what is necessary to be able to create a "tool message". like what if there are multiple tools?. This tool message will be passed to the LLM as a response from the tool call
     tool_calls: list[ToolResult]
 
+    def merge(self, other: ToolMsg) -> ToolMsg:
+        """Merge two ToolMsgs together
+
+        Args:
+            other (ToolMsg): The other ToolMsg to merge with
+
+        Returns:
+            ToolMsg: The merged ToolMsg
+        """
+        merged_tool_calls = self.tool_calls + other.tool_calls
+        merged_text = self.text + "\n" + other.text
+        return ToolMsg(
+            role=self.role, 
+            text=merged_text,
+            tool_calls=merged_tool_calls
+        )
 
 
 ITEM = t.TypeVar('ITEM')
