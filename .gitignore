@@ -25,6 +25,8 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
+specs_/
+specs/
 
 CLAUDE.md
 AGENTS.md
