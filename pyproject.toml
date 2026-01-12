@@ -17,11 +17,9 @@ packages = [
     {include="dachi/act"},
     {include="dachi/core"},
     {include="dachi/config"},
-    {include="dachi/contrib"},
     {include="dachi/inst"},
     {include="dachi/proc"},
     {include="dachi/utils"},
-    {include="dachi/inst"},
 ]
 
 [tool.poetry.dependencies]
@@ -37,7 +35,7 @@ pydantic-settings = "^2.0"
 pyyaml = "^6.0"
 
 
-[tool.poetry.dev-dependencies]
+[tool.poetry.group.dev.dependencies]
 pytest = "^6"
 flake8 = "^3"
 isort = "^5"
