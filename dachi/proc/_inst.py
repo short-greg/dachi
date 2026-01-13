@@ -200,7 +200,6 @@ class SigF(IBase):
     dictionary of arguments that are inserted into
     the signature
     """
-    train: bool = False
     doc: str = ''
 
     def model_post_init(self, __context):
@@ -216,7 +215,7 @@ class SigF(IBase):
         self.doc = self.doc or self._docstring
         self._doc_param = Param[str](
             data=self.doc,
-            _fixed=not self.train
+            _fixed=not self._training
         )
         
     def __call__(self, instance, *args, **kwargs) -> str:
