@@ -354,3 +354,8 @@ class StateChart(ChartBase, ChartEventHandler, t.Generic[BASE_STATE]):
             if raise_on_error and not result.is_valid():
                 result.raise_if_invalid()
         return results
+    
+    @property
+    def scope(self) -> Scope:
+        """Get the chart's scope."""
+        return self._scope.get()
