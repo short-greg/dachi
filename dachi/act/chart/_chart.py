@@ -45,7 +45,7 @@ class StateChart(ChartBase, ChartEventHandler, t.Generic[BASE_STATE]):
     _queue: EventQueue = pydantic.PrivateAttr()
     _clock: MonotonicClock = pydantic.PrivateAttr(default_factory=MonotonicClock)
     _timer: Timer = pydantic.PrivateAttr()
-    _scope: Runtime[Scope] = PrivateRuntime(default_factory=Scope)
+    _scope: Runtime[Scope]
     _event_loop_task: Optional[asyncio.Task] = pydantic.PrivateAttr(default=None)
     _event_tasks: t.Set[asyncio.Task] = pydantic.PrivateAttr(default_factory=set)
     _finish_callbacks: Dict[t.Callable, t.Tuple[tuple, dict]] = pydantic.PrivateAttr(default_factory=dict)
@@ -65,7 +65,9 @@ class StateChart(ChartBase, ChartEventHandler, t.Generic[BASE_STATE]):
             self._process_event_callback
         )
         self._timer = Timer(queue=self._queue, clock=self._clock)
-        self._scope = Scope(name=self.name)
+        self._scope = Runtime(
+            data=Scope(name=self.name)
+        )
         self._regions_completed.set({
             region.name: False for region in self.regions
         })

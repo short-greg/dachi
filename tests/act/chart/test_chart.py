@@ -1111,6 +1111,28 @@ class TestStateChartSerialization:
         assert len(restored.regions[0].rules) == 1
 
 
+class TestStateChartBaseCtx:
+    """Test set_base_ctx and get_base_ctx on StateChart"""
+
+    def test_set_base_ctx_stores_value_retrievable_by_get_base_ctx(self):
+        """Test set_base_ctx stores value retrievable by get_base_ctx"""
+        region = Region(name="r1", initial="s1", rules=[])
+        region.add(IdleState(name="s1"))
+        chart = StateChart(name="test_chart", regions=[region])
+
+        chart.set_base_ctx("key", "value")
+
+        assert chart.get_base_ctx("key") == "value"
+
+    def test_get_base_ctx_returns_default_when_key_not_found(self):
+        """Test get_base_ctx returns default when key not found"""
+        region = Region(name="r1", initial="s1", rules=[])
+        region.add(IdleState(name="s1"))
+        chart = StateChart(name="test_chart", regions=[region])
+
+        assert chart.get_base_ctx("missing", default="default") == "default"
+
+
 # Run a quick test to see if this works
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
