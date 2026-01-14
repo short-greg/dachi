@@ -4,6 +4,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict, YamlConfigSettingsSource
+
+
 class DifferenceConfig(BaseModel):
     model_config = ConfigDict(frozen=True)
 

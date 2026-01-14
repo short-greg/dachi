@@ -147,6 +147,29 @@ class StateChart(ChartBase, ChartEventHandler, t.Generic[BASE_STATE]):
         # only item remaining is to somehow convert the regions to the correct base type if not defined
 
         return v
+    
+    def set_base_ctx(self, key: str, value: Any, _skip_serialize: bool=False) -> None:
+        """Set a value in the chart's scope context.
+
+        Args:
+            key: Context key
+            value: Value to set
+        """
+        ctx = self._scope.get().ctx()
+
+        return ctx.set(key, value, skip_serialize=_skip_serialize)
+
+    def get_base_ctx(self, key: str, default=None) -> Any:
+        """Get a value from the chart's scope context.
+
+        Args:
+            key: Context key
+
+        Returns:
+            The value associated with the key
+        """
+        ctx = self._scope.get().ctx()
+        return ctx.get(key, default)
 
     def can_reset(self):
         return self._status.get().is_completed()
