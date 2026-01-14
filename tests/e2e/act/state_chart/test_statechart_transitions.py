@@ -113,7 +113,7 @@ class TestConditionalTransition:
         chart = StateChart(name="conditional", regions=[region], auto_finish=True)
 
         # Set valid input in context
-        scope = chart._scope
+        scope = chart.scope
         ctx = scope.ctx(0)
         ctx["value"] = 50
 
@@ -143,7 +143,7 @@ class TestConditionalTransition:
         chart = StateChart(name="conditional", regions=[region], auto_finish=True)
 
         # Set invalid input in context
-        scope = chart._scope
+        scope = chart.scope
         ctx = scope.ctx(0)
         ctx["value"] = 150  # Out of range
 
@@ -252,7 +252,7 @@ class TestSelfTransition:
         assert completed is True
         assert region.current_state_name == "done"
 
-        scope = chart._scope
+        scope = chart.scope
         ctx = scope.ctx(0)
         assert ctx.get("attempt") == 3
 
@@ -478,7 +478,7 @@ class TestTransitionChain:
         assert region.current_state_name == "complete"
 
         # Verify all states executed
-        scope = chart._scope
+        scope = chart.scope
         ctx = scope.ctx(0)
         assert ctx.get("step") == 3
 
@@ -549,7 +549,7 @@ class TestDataTransformationPipeline:
         assert completed is True
         assert region.current_state_name == "complete"
 
-        scope = chart._scope
+        scope = chart.scope
         ctx = scope.ctx(0)
         # raw_data: [1,2,3,4,5]
         # transformed: [2,4,6,8,10]

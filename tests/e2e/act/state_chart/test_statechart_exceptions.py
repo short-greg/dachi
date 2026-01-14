@@ -69,7 +69,7 @@ class TestExceptionContextStorage:
         ctx = scope.ctx()
 
         chart = StateChart(name="test_chart", regions=[region])
-        chart._scope = scope
+        chart._scope.set(scope)
 
         await chart.start()
 
@@ -169,7 +169,7 @@ class TestStreamStatePartialProgress:
         ctx = scope.ctx()
 
         chart = StateChart(name="stream_test", regions=[region])
-        chart._scope = scope
+        chart._scope.set(scope)
 
         await chart.start()
 

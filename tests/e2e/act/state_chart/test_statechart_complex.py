@@ -117,7 +117,7 @@ class TestFormValidationWithRetry:
         assert region.current_state_name == "SUCCESS"
 
         # Verify retries happened
-        scope = chart._scope
+        scope = chart.scope
         ctx = scope.ctx(0)
         assert ctx.get("retry_count") >= 2  # Took multiple tries
         assert ctx.get("is_valid") is True
@@ -167,7 +167,7 @@ class TestLongRunningTaskCancellation:
         assert region.current_state_name == "CANCELED"
 
         # Verify partial progress saved
-        scope = chart._scope
+        scope = chart.scope
         ctx = scope.ctx(0)
         progress = ctx.get("progress", 0)
         assert 1 <= progress < 10, f"Expected partial progress, got {progress}"
@@ -246,7 +246,7 @@ class TestEditorLifecycle:
         assert region.current_state_name == "SUCCESS"
 
         # Verify lifecycle completed
-        scope = chart._scope
+        scope = chart.scope
         ctx = scope.ctx(0)
         assert ctx.get("opened") is True
         assert ctx.get("edit_count") >= 2
@@ -311,7 +311,7 @@ class TestRequestWithRetry:
         assert region.current_state_name == "FAILURE"
 
         # Verify retries
-        scope = chart._scope
+        scope = chart.scope
         ctx = scope.ctx(0)
         assert ctx.get("attempt") == 3
 
@@ -394,7 +394,7 @@ class TestParallelDataFetching:
         assert main_region.current_state_name == "SUCCESS"
 
         # Verify data was fetched
-        scope = chart._scope
+        scope = chart.scope
         main_ctx = scope.ctx(0)
         composite_ctx = main_ctx.child(0)  # Composite context
         ctx_a = composite_ctx.child(0)
@@ -466,7 +466,7 @@ class TestCrossRegionCoordination:
         assert consumer_region.current_state_name == "SUCCESS"
 
         # Verify coordination happened
-        scope = chart._scope
+        scope = chart.scope
         ctx_producer = scope.ctx(0)
         ctx_consumer = scope.ctx(1)
         assert ctx_producer.get("producer_done") is True
@@ -536,7 +536,7 @@ class TestContextPersistenceThroughReset:
         assert region.current_state_name == "FAILURE"
 
         # Context should have step1 and step2 data
-        scope = chart._scope
+        scope = chart.scope
         ctx = scope.ctx(0)
         assert ctx.get("step1") == "complete"
         assert ctx.get("step2") == "complete"

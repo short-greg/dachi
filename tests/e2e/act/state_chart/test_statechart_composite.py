@@ -243,7 +243,7 @@ class TestParallelDataCollection:
 
         chart = StateChart(name="data_collection", regions=[main_region])
 
-        scope = chart._scope
+        scope = chart.scope
         main_ctx = scope.ctx(0)  # Main region context
         composite_ctx = main_ctx.child(0)  # Composite state context
 

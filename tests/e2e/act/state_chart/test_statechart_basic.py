@@ -257,7 +257,7 @@ class TestBuiltInFailureState:
         assert region.is_final() is True
 
         # Verify exception details stored in context
-        scope = chart._scope
+        scope = chart.scope
         ctx = scope.ctx(0)  # First region's context
         exception_info = ctx.get("__exception__")
         assert exception_info is not None
@@ -376,7 +376,7 @@ class TestContextDataFlow:
         assert region.current_state_name == "complete"
 
         # Verify context accumulated data from all states
-        scope = chart._scope
+        scope = chart.scope
         ctx = scope.ctx(0)
         assert ctx.get("name") == "John"
         assert ctx.get("age") == 30
@@ -427,7 +427,7 @@ class TestResetAndRerun:
         assert completed is True
         assert region.current_state_name == "done"
 
-        scope = chart._scope
+        scope = chart.scope
         ctx = scope.ctx(0)
         first_count = ctx.get("count")
         assert first_count == 1
@@ -479,6 +479,6 @@ class TestStateWithNoOutput:
         assert region.current_state_name == "final"
 
         # Context should not have undefined keys from None return
-        scope = chart._scope
+        scope = chart.scope
         ctx = scope.ctx(0)
         # Should complete without errors

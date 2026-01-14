@@ -249,7 +249,7 @@ class StateChart(ChartBase, ChartEventHandler, t.Generic[BASE_STATE]):
                 region.name,
             )
             post = self._queue.child(region.name)
-            ctx = self._scope.ctx(i)
+            ctx = self._scope.get().ctx(i)
             await region.start(post, ctx)
 
     def _process_event_callback(self, event: Event) -> None:
@@ -280,7 +280,7 @@ class StateChart(ChartBase, ChartEventHandler, t.Generic[BASE_STATE]):
             for i, region in enumerate(self.regions):
                 if region.status.is_running():
                     post = self._queue.child(region.name)
-                    ctx = self._scope.ctx(i)
+                    ctx = self._scope.get().ctx(i)
                     await region.handle_event(event, post, ctx)
 
     async def stop(self) -> None:
@@ -298,7 +298,7 @@ class StateChart(ChartBase, ChartEventHandler, t.Generic[BASE_STATE]):
         for i, region in enumerate(self.regions):
             if region.can_stop():
                 post = self._queue.child(region.name)
-                ctx = self._scope.ctx(i)
+                ctx = self._scope.get().ctx(i)
                 await region.stop(post, ctx, preempt=True)
 
     def post(

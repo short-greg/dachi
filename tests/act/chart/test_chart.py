@@ -153,7 +153,7 @@ class TestChartInit:
 
         chart = StateChart(name="my_chart", regions=[region])
 
-        assert chart._scope.name == "my_chart"
+        assert chart.scope.name == "my_chart"
 
     def test_init_creates_event_queue(self):
         """EventQueue is created during initialization."""
